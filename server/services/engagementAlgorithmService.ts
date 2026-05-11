@@ -224,7 +224,7 @@ export async function runEngagementTick(sessionId: string): Promise<void> {
         .eq('action_type', 'email_sent');
 
       leaderAmplificationActive = (leaderActions || []).some((a) =>
-        /leader|imam|pastor|rabbi|priest|community|interfaith/i.test(
+        /leader|imam|pastor|rabbi|priest|community|interfaith|ceo|chairman|director|regulator|commissioner|spokesperson|counsel|attorney|board|stakeholder|governor|mayor|minister/i.test(
           String(a.content || '') + String(a.target_id || ''),
         ),
       );

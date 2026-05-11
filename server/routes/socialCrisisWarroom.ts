@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import multer from 'multer';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
@@ -12,6 +13,7 @@ import {
   generateStrategyWindows,
   researchBestPractices,
   researchGeneralBestPractices,
+  researchPublicSentiment,
   buildSOPFromResearch,
   assemblePayload,
   type NPCPersona,
@@ -19,11 +21,14 @@ import {
   type TeamDef,
   type SocialInject,
   type ResearchGuidelines,
+  type PublicSentimentProfile,
 } from '../services/socialCrisisGeneratorService.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 
@@ -446,6 +451,15 @@ router.post(
         shared_injects: z.array(z.unknown()),
         convergence_gates: z.array(z.unknown()),
         research: z.unknown(),
+        sentiment_profile: z.unknown().optional(),
+        dimension_labels: z
+          .object({
+            public_trust: z.string(),
+            community_safety: z.string(),
+            narrative_control: z.string(),
+            escalation_risk: z.string(),
+          })
+          .optional(),
         duration: z.number().default(60),
       }),
     }),
@@ -504,6 +518,8 @@ router.post(
           body.duration,
           strategyWindows,
           body.storyline_injects as SocialInject[] | undefined,
+          body.sentiment_profile as PublicSentimentProfile | undefined,
+          body.dimension_labels || null,
         );
 
         if (body.country) {
@@ -646,5 +662,94 @@ router.post('/generate-factsheet', requireAuth, async (req: AuthenticatedRequest
     res.status(500).json({ error: 'Failed' });
   }
 });
+
+// Document upload: extract text from PDF, DOCX, or TXT
+router.post(
+  '/upload-document',
+  requireAuth,
+  upload.single('file'),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const ext = file.originalname.split('.').pop()?.toLowerCase();
+      let text = '';
+      const MAX_CHARS = 50000;
+
+      if (ext === 'pdf' || file.mimetype === 'application/pdf') {
+        const pdfParse = (await import('pdf-parse')).default;
+        const parsed = await pdfParse(file.buffer);
+        text = parsed.text;
+      } else if (
+        ext === 'docx' ||
+        file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ) {
+        const mammoth = await import('mammoth');
+        const result = await mammoth.extractRawText({ buffer: file.buffer });
+        text = result.value;
+      } else if (ext === 'txt' || file.mimetype === 'text/plain') {
+        text = file.buffer.toString('utf-8');
+      } else {
+        return res.status(400).json({ error: 'Unsupported file type. Use PDF, DOCX, or TXT.' });
+      }
+
+      const truncated = text.length > MAX_CHARS;
+      if (truncated) {
+        text = text.slice(0, MAX_CHARS);
+      }
+
+      const wordCount = text.split(/\s+/).filter(Boolean).length;
+
+      res.json({ text, word_count: wordCount, truncated });
+    } catch (err) {
+      logger.error({ err }, 'Document upload/parse failed');
+      res.status(500).json({ error: 'Failed to parse document' });
+    }
+  },
+);
+
+// Public sentiment research (NDJSON streaming)
+router.post(
+  '/research-sentiment',
+  requireAuth,
+  validate(
+    z.object({
+      body: z.object({
+        crisis_description: z.string(),
+        country: z.string().default('Singapore'),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Transfer-Encoding', 'chunked');
+
+      const { crisis_description, country } = req.body;
+
+      const sentimentProfile = await researchPublicSentiment(
+        crisis_description,
+        country,
+        (msg: string) => {
+          res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+        },
+      );
+
+      res.write(JSON.stringify({ type: 'complete', sentiment_profile: sentimentProfile }) + '\n');
+      res.end();
+    } catch (err) {
+      logger.error({ err }, 'Failed to research public sentiment');
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Sentiment research failed' });
+      } else {
+        res.write(JSON.stringify({ type: 'error', message: 'Sentiment research failed' }) + '\n');
+        res.end();
+      }
+    }
+  },
+);
 
 export { router as socialCrisisWarroomRouter };

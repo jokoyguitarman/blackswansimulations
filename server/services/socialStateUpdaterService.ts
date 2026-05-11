@@ -5,6 +5,8 @@ import { logger } from '../lib/logger.js';
 export interface SocialState {
   total_posts: number;
   player_post_count: number;
+  npc_harmful_post_count: number;
+  /** @deprecated Use npc_harmful_post_count */
   npc_hate_post_count: number;
   unaddressed_hate_count: number;
   unaddressed_misinfo_count: number;
@@ -20,6 +22,8 @@ export interface SocialState {
   escalation_risk: number;
 
   community_leader_contacted: boolean;
+  stakeholder_statement_issued: boolean;
+  /** @deprecated Use stakeholder_statement_issued */
   interfaith_statement_issued: boolean;
   platform_reports_filed: number;
   official_statement_drafted: boolean;
@@ -47,23 +51,39 @@ export interface SocialState {
   impression_dominance_ratio: number;
 
   // Semantic signals (aggregated from AI content grading)
-  signal_acknowledged_victims: boolean;
+  signal_acknowledged_affected_parties: boolean;
   signal_no_collective_blame: boolean;
-  signal_includes_support_resources: boolean;
-  signal_includes_safety_guidance: boolean;
-  signal_avoided_group_targeting: boolean;
-  signal_includes_links_to_sources: boolean;
-  signal_calls_for_unity: boolean;
-  signal_addresses_specific_misinfo: boolean;
+  signal_includes_actionable_guidance: boolean;
+  signal_includes_safety_info: boolean;
+  signal_avoids_harmful_amplification: boolean;
+  signal_cites_verified_sources: boolean;
+  signal_promotes_constructive_dialogue: boolean;
+  signal_addresses_specific_claims: boolean;
+  /** @deprecated Use signal_acknowledged_affected_parties */ signal_acknowledged_victims: boolean;
+  /** @deprecated Use signal_includes_actionable_guidance */ signal_includes_support_resources: boolean;
+  /** @deprecated Use signal_includes_safety_info */ signal_includes_safety_guidance: boolean;
+  /** @deprecated Use signal_avoids_harmful_amplification */ signal_avoided_group_targeting: boolean;
+  /** @deprecated Use signal_cites_verified_sources */ signal_includes_links_to_sources: boolean;
+  /** @deprecated Use signal_promotes_constructive_dialogue */ signal_calls_for_unity: boolean;
+  /** @deprecated Use signal_addresses_specific_claims */ signal_addresses_specific_misinfo: boolean;
 
   // Action-pattern flags
   player_used_leader_amplification: boolean;
   player_executed_multi_platform_blitz: boolean;
   player_used_strategic_silence: boolean;
   player_pinned_verified_update: boolean;
+  player_is_actively_moderating: boolean;
+  /** @deprecated Use player_is_actively_moderating */
   player_is_actively_moderating_hate_speech: boolean;
   player_message_is_consistent_across_channels: boolean;
   player_message_inconsistent_across_channels: boolean;
+
+  dimension_labels?: {
+    public_trust: string;
+    community_safety: string;
+    narrative_control: string;
+    escalation_risk: string;
+  };
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -120,6 +140,14 @@ export async function computeSocialState(
 
   const scenarioId = sessionRow?.scenario_id;
   let npcHandles: Set<string> = new Set();
+  let dimensionLabels:
+    | {
+        public_trust: string;
+        community_safety: string;
+        narrative_control: string;
+        escalation_risk: string;
+      }
+    | undefined;
 
   if (scenarioId) {
     const { data: scenario } = await supabaseAdmin
@@ -131,6 +159,16 @@ export async function computeSocialState(
     const is = (scenario?.initial_state || {}) as Record<string, unknown>;
     const personas = (is.npc_personas || []) as Array<Record<string, unknown>>;
     npcHandles = new Set(personas.map((p) => String(p.handle || '')).filter(Boolean));
+
+    const dl = is.dimension_labels as Record<string, string> | undefined;
+    if (dl) {
+      dimensionLabels = {
+        public_trust: dl.public_trust || 'Public Trust',
+        community_safety: dl.community_safety || 'Stakeholder Confidence',
+        narrative_control: dl.narrative_control || 'Narrative Control',
+        escalation_risk: dl.escalation_risk || 'Escalation Risk',
+      };
+    }
   }
 
   const topLevelPosts = allPosts.filter((p) => !p.reply_to_post_id);
@@ -145,9 +183,12 @@ export async function computeSocialState(
     const flags = (p.content_flags || {}) as Record<string, unknown>;
     return !!(
       flags.is_hate_speech ||
+      flags.is_harmful_narrative ||
       flags.is_misinformation ||
       flags.is_racist ||
-      flags.incites_violence
+      flags.is_inflammatory ||
+      flags.incites_violence ||
+      flags.is_organized_pressure
     );
   });
 
@@ -177,7 +218,13 @@ export async function computeSocialState(
 
     weightedHatePenalty += ageTier * weight;
 
-    if (flags.is_hate_speech || flags.is_racist || flags.incites_violence) {
+    if (
+      flags.is_hate_speech ||
+      flags.is_racist ||
+      flags.incites_violence ||
+      flags.is_harmful_narrative ||
+      flags.is_inflammatory
+    ) {
       unaddressedHateCount++;
       if (ageMinutes > oldestHateMinutes) oldestHateMinutes = ageMinutes;
     }
@@ -206,7 +253,7 @@ export async function computeSocialState(
   const communityLeaderContacted = allActions.some(
     (a) =>
       a.action_type === 'email_sent' &&
-      /leader|imam|pastor|rabbi|priest|community|interfaith/i.test(
+      /leader|imam|pastor|rabbi|priest|community|interfaith|ceo|chairman|director|regulator|commissioner|spokesperson|counsel|attorney|board|stakeholder|governor|mayor|minister/i.test(
         String(a.content || '') + String(a.target_id || ''),
       ),
   );
@@ -217,7 +264,11 @@ export async function computeSocialState(
   const rallyPosts = unattendedPosts.filter((p) => {
     const flags = (p.content_flags || {}) as Record<string, unknown>;
     return (
-      !!flags.incites_violence || /rally|gather|march|patrol|meet up/i.test(String(p.content || ''))
+      !!flags.incites_violence ||
+      !!flags.is_organized_pressure ||
+      /rally|gather|march|patrol|meet up|boycott|protest|class.action|petition|walkout|strike/i.test(
+        String(p.content || ''),
+      )
     );
   });
   const rallyCallActive = rallyPosts.length > 0;
@@ -346,6 +397,7 @@ export async function computeSocialState(
   const state: SocialState = {
     total_posts: allPosts.length,
     player_post_count: playerPostCount,
+    npc_harmful_post_count: harmfulPosts.length,
     npc_hate_post_count: harmfulPosts.length,
     unaddressed_hate_count: unaddressedHateCount,
     unaddressed_misinfo_count: unaddressedMisinfoCount,
@@ -361,6 +413,7 @@ export async function computeSocialState(
     escalation_risk: escalationRisk,
 
     community_leader_contacted: communityLeaderContacted,
+    stakeholder_statement_issued: communityLeaderContacted && officialPublished,
     interfaith_statement_issued: communityLeaderContacted && officialPublished,
     platform_reports_filed: platformReports,
     official_statement_drafted: officialDrafted,
@@ -391,11 +444,18 @@ export async function computeSocialState(
     ),
     impression_dominance_ratio: Math.round(impressionRatio * 100) / 100,
 
-    // Aggregate semantic signals from graded player posts
+    // Aggregate semantic signals from graded player posts (reads both new and legacy signal names)
     ...(() => {
       const signalDefaults = {
-        signal_acknowledged_victims: false,
+        signal_acknowledged_affected_parties: false,
         signal_no_collective_blame: false,
+        signal_includes_actionable_guidance: false,
+        signal_includes_safety_info: false,
+        signal_avoids_harmful_amplification: false,
+        signal_cites_verified_sources: false,
+        signal_promotes_constructive_dialogue: false,
+        signal_addresses_specific_claims: false,
+        signal_acknowledged_victims: false,
         signal_includes_support_resources: false,
         signal_includes_safety_guidance: false,
         signal_avoided_group_targeting: false,
@@ -406,17 +466,35 @@ export async function computeSocialState(
       for (const gp of gradedPosts) {
         const score = (gp.sop_compliance_score || {}) as Record<string, unknown>;
         const signals = (score.signals || {}) as Record<string, boolean>;
-        if (signals.acknowledged_victims) signalDefaults.signal_acknowledged_victims = true;
+        if (signals.acknowledged_affected_parties || signals.acknowledged_victims) {
+          signalDefaults.signal_acknowledged_affected_parties = true;
+          signalDefaults.signal_acknowledged_victims = true;
+        }
         if (signals.no_collective_blame) signalDefaults.signal_no_collective_blame = true;
-        if (signals.includes_support_resources)
+        if (signals.includes_actionable_guidance || signals.includes_support_resources) {
+          signalDefaults.signal_includes_actionable_guidance = true;
           signalDefaults.signal_includes_support_resources = true;
-        if (signals.includes_safety_guidance) signalDefaults.signal_includes_safety_guidance = true;
-        if (signals.avoided_group_targeting) signalDefaults.signal_avoided_group_targeting = true;
-        if (signals.includes_links_to_sources)
+        }
+        if (signals.includes_safety_info || signals.includes_safety_guidance) {
+          signalDefaults.signal_includes_safety_info = true;
+          signalDefaults.signal_includes_safety_guidance = true;
+        }
+        if (signals.avoids_harmful_amplification || signals.avoided_group_targeting) {
+          signalDefaults.signal_avoids_harmful_amplification = true;
+          signalDefaults.signal_avoided_group_targeting = true;
+        }
+        if (signals.cites_verified_sources || signals.includes_links_to_sources) {
+          signalDefaults.signal_cites_verified_sources = true;
           signalDefaults.signal_includes_links_to_sources = true;
-        if (signals.calls_for_unity) signalDefaults.signal_calls_for_unity = true;
-        if (signals.addresses_specific_misinfo)
+        }
+        if (signals.promotes_constructive_dialogue || signals.calls_for_unity) {
+          signalDefaults.signal_promotes_constructive_dialogue = true;
+          signalDefaults.signal_calls_for_unity = true;
+        }
+        if (signals.addresses_specific_claims || signals.addresses_specific_misinfo) {
+          signalDefaults.signal_addresses_specific_claims = true;
           signalDefaults.signal_addresses_specific_misinfo = true;
+        }
       }
       return signalDefaults;
     })(),
@@ -439,6 +517,7 @@ export async function computeSocialState(
     player_pinned_verified_update: playerPosts.some(
       (p) => String(p.post_format || '') === 'official_statement',
     ),
+    player_is_actively_moderating: misinfoFlagged > 2,
     player_is_actively_moderating_hate_speech: misinfoFlagged > 2,
     player_message_is_consistent_across_channels: (() => {
       const xPosts = playerPosts.filter(
@@ -451,6 +530,8 @@ export async function computeSocialState(
       return true;
     })(),
     player_message_inconsistent_across_channels: false,
+
+    dimension_labels: dimensionLabels,
   };
 
   const currentState = (sessionRow?.current_state as Record<string, unknown>) || {};
@@ -490,7 +571,7 @@ export async function evaluateConsequenceTriggers(
     void generateConsequenceInject(
       sessionId,
       'hate_unaddressed_10min',
-      'A community member from the targeted group posts about feeling abandoned. Hate speech has been circulating for over 10 minutes with no official response or flagging.',
+      'A concerned stakeholder posts about feeling abandoned. Harmful content has been circulating for over 10 minutes with no official response or flagging from the response team.',
       'negative',
       false,
     );
@@ -551,7 +632,7 @@ export async function evaluateConsequenceTriggers(
     void generateConsequenceInject(
       sessionId,
       'rally_gaining_traction',
-      'People are sharing and responding positively to a call for a real-world gathering or "citizen patrol." The rally is gaining traction online.',
+      'People are sharing and responding positively to a call for organized collective action. The movement is gaining traction online.',
       'inflammatory',
       false,
     );
@@ -561,7 +642,7 @@ export async function evaluateConsequenceTriggers(
     void generateConsequenceInject(
       sessionId,
       'leader_contacted',
-      'A community or religious leader posts a message of support and calm after being contacted by the response team. They thank the team for reaching out.',
+      'A key stakeholder posts a message of support and calm after being contacted by the response team. They thank the team for reaching out and urge the public to remain measured.',
       'supportive',
       true,
     );
@@ -581,7 +662,7 @@ export async function evaluateConsequenceTriggers(
     void generateConsequenceInject(
       sessionId,
       'narrative_recovering',
-      'A regular citizen posts something supportive: "Finally seeing some sanity in this feed. Facts matter. Don\'t let hate win."',
+      'A regular citizen posts something supportive: "Finally seeing some clarity in this feed. Facts matter. Don\'t let the noise drown out the truth."',
       'supportive',
       true,
     );
@@ -591,7 +672,7 @@ export async function evaluateConsequenceTriggers(
     void generateConsequenceInject(
       sessionId,
       'narrative_collapsing',
-      'The hateful narrative is now dominant. A scared community member posts about being afraid to go outside. Mainstream media is picking up the story of online hate spiraling out of control.',
+      'The hostile narrative is now dominant. Concerned stakeholders are expressing alarm. Mainstream media is covering the growing public backlash spiraling out of control.',
       'negative',
       false,
     );

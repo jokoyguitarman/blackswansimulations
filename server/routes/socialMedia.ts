@@ -248,10 +248,14 @@ router.post(
         const isHarmfulReply = !!(
           pFlags.is_hate_speech ||
           pFlags.hate_speech ||
+          pFlags.is_harmful_narrative ||
           pFlags.is_misinformation ||
           pFlags.misinformation ||
           pFlags.inflammatory ||
-          pFlags.threatening
+          pFlags.is_inflammatory ||
+          pFlags.threatening ||
+          pFlags.incites_violence ||
+          pFlags.is_organized_pressure
         );
         await recordPlayerAction(
           session_id,
@@ -772,7 +776,7 @@ router.post(
         .insert({
           session_id,
           direction: 'outbound',
-          from_address: `${(user.email || 'player').replace(/@.*/, '').replace(/\s+/g, '.')}@harmony.gov.sg`,
+          from_address: `${(user.email || 'player').replace(/@.*/, '').replace(/\s+/g, '.')}@crisisresponse.sim`,
           from_name: (user.metadata?.full_name as string) || user.email || 'Player',
           to_addresses,
           cc_addresses: cc_addresses || [],

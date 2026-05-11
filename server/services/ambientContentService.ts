@@ -246,16 +246,16 @@ THE CRISIS: ${String(scenario.description).substring(0, 300)}
 Current situation:
 - Overall sentiment: ${socialState?.sentiment_score ?? sentiment.overall}/100
 - Public trust: ${socialState?.public_trust ?? 50}/100
-- Community safety: ${socialState?.community_safety ?? 40}/100
+- Stakeholder confidence: ${socialState?.community_safety ?? 40}/100
 - Narrative control: ${socialState?.narrative_control ?? 30}/100
 - Escalation risk: ${socialState?.escalation_risk ?? 20}/100
-- Unaddressed hate posts: ${socialState?.unaddressed_hate_count ?? 0}
-- Rally/violence calls active: ${socialState?.rally_call_active ? 'YES' : 'no'}
+- Unaddressed harmful posts: ${socialState?.unaddressed_hate_count ?? 0}
+- Organized pressure/rally calls active: ${socialState?.rally_call_active ? 'YES' : 'no'}
 
-${Number(socialState?.narrative_control ?? 30) < 30 ? 'NARRATIVE CONTROL IS LOW: Generate more hate posts and misinformation spreading. The response team is losing control of the conversation.' : ''}
-${Number(socialState?.community_safety ?? 40) < 30 ? 'COMMUNITY SAFETY IS LOW: Generate fear posts from targeted community members reporting harassment and feeling unsafe.' : ''}
-${Number(socialState?.escalation_risk ?? 20) > 70 ? 'ESCALATION RISK IS HIGH: Generate posts organizing real-world action, sharing locations, citizen patrol calls.' : ''}
-${Number(socialState?.narrative_control ?? 30) > 60 ? 'NARRATIVE IS STABILIZING: Reduce hate post frequency. More neutral and supportive voices emerging.' : ''}
+${Number(socialState?.narrative_control ?? 30) < 30 ? 'NARRATIVE CONTROL IS LOW: Generate more hostile posts, misinformation, and damaging narratives. The response team is losing control of the conversation.' : ''}
+${Number(socialState?.community_safety ?? 40) < 30 ? 'STAKEHOLDER CONFIDENCE IS LOW: Generate posts from affected stakeholders expressing fear, frustration, loss of trust, and demands for accountability.' : ''}
+${Number(socialState?.escalation_risk ?? 20) > 70 ? 'ESCALATION RISK IS HIGH: Generate posts organizing collective action — boycotts, protests, petitions, regulatory complaints, or other pressure campaigns.' : ''}
+${Number(socialState?.narrative_control ?? 30) > 60 ? 'NARRATIVE IS STABILIZING: Reduce hostile post frequency. More neutral and supportive voices emerging.' : ''}
 Elapsed: ${elapsedMinutes}min.
 
 ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
@@ -272,10 +272,11 @@ ${sentiment.overall < 40 ? '- Sentiment critical: more fear/anger' : ''}
 For 1 out of every 3 posts, include an "image_prompt" field with a short description of a photo, meme, or video the user would attach. For video content, start the description with "video clip:" or "footage:" (e.g. "footage: shaky phone recording of crowd running from train station"). Leave image_prompt as "" for text-only posts.
 
 IMPORTANT: For each post, set "content_flags" based on the content:
-- is_hate_speech: true if the post contains hate speech targeting an ethnic/religious/racial group
+- is_harmful_narrative: true if the post spreads damaging narratives (hate speech, boycott incitement, defamatory claims, scapegoating, doxxing, stock manipulation, etc.)
 - is_misinformation: true if the post spreads false or unverified claims as fact
-- is_racist: true if the post contains racist generalizations or slurs
+- is_inflammatory: true if the post is designed to provoke outrage, panic, or extreme reactions
 - incites_violence: true if the post calls for violence, vigilante action, or physical harm
+- is_organized_pressure: true if the post organizes collective action against the crisis subject (boycotts, protests, class actions, petitions, mass unsubscribes, etc.)
 Leave content_flags as {} for neutral, factual, or supportive posts.
 
 Return ONLY valid JSON:
@@ -385,10 +386,11 @@ Generate 3-5 Facebook posts. Use a DIFFERENT author for each post -- rotate thro
 IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the image or video. For video content, start the description with "video clip:" or "footage:" (e.g. "video clip: CCTV-style overhead view of emergency responders at station entrance"). Only leave image_prompt as "" for purely text-based status updates.
 
 For each post, set "content_flags" based on the content:
-- is_hate_speech: true if hate speech targeting a group
-- is_misinformation: true if spreading false claims
-- is_racist: true if racist content
-- incites_violence: true if calling for violence
+- is_harmful_narrative: true if the post spreads damaging narratives (hate speech, boycott incitement, defamatory claims, scapegoating, etc.)
+- is_misinformation: true if spreading false or unverified claims
+- is_inflammatory: true if designed to provoke outrage, panic, or extreme reactions
+- incites_violence: true if calling for violence or vigilante action
+- is_organized_pressure: true if organizing collective action (boycotts, protests, class actions, petitions, etc.)
 Leave content_flags as {} for neutral/supportive posts.
 
 Return ONLY valid JSON:
@@ -809,12 +811,12 @@ KNOWN NPCs:\n${npcList}
 
 ${recentContext ? `RECENT POSTS IN GROUP:\n${recentContext}\n` : 'This group has no posts yet. Start the conversation.'}
 
-Generate 1-2 posts that members would write in this group. Make them feel authentic to the group type:
-- community: concerned residents, sharing info, asking questions
-- religious: prayer requests, community support, interfaith dialogue
-- neighborhood: safety concerns, patrol coordination, local updates
-- activism: calls to action, organizing, sharing evidence
-- official: announcements, verified information
+Generate 1-2 posts that members would write in this group. Make them feel authentic to the group type and the specific crisis described above:
+- community: concerned stakeholders, sharing info, asking questions
+- religious: community support, solidarity, mutual aid
+- neighborhood: safety concerns, local coordination, updates
+- activism: calls to action, organizing, sharing evidence, pressure campaigns
+- official: announcements, verified information, official guidance
 
 Return ONLY valid JSON:
 { "posts": [{ "author_handle": "@handle", "author_display_name": "Name", "author_type": "npc_public", "content": "post text" }] }`,

@@ -38,7 +38,7 @@ Set "cancel": true when:
 - The team has already posted counter-narratives addressing this inject's concern
 - The team has flagged and debunked the misinformation this inject would spread
 - The team's responses have shifted sentiment enough that this inject would feel contradictory
-- The team has engaged community leaders who would have prevented this narrative
+- The team has engaged key stakeholders who would have prevented this narrative
 
 Set "cancel": false when:
 - The team has NOT taken any actions related to this inject's concern
@@ -49,7 +49,7 @@ Set "cancel": false when:
 If the team addressed the original concern, can the adversary still cause trouble on the SAME SUBJECT?
 - A different social media platform (team responded on X, adversary moves to Facebook)
 - A different angle (team debunked the claim, adversary posts "proof" photos)
-- A second-order consequence (team addressed hate speech, but now community trust is damaged)
+- A second-order consequence (team addressed the original concern, but stakeholder trust is now damaged from a different angle)
 
 Return ONLY valid JSON:
 {

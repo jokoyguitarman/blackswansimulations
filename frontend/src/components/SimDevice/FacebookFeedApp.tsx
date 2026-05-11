@@ -1789,9 +1789,14 @@ export default function FacebookFeedApp() {
                         {isTrainer &&
                           !!(
                             post.content_flags?.is_hate_speech ||
-                            post.content_flags?.is_misinformation
+                            post.content_flags?.is_harmful_narrative ||
+                            post.content_flags?.is_misinformation ||
+                            post.content_flags?.is_inflammatory ||
+                            post.content_flags?.incites_violence ||
+                            post.content_flags?.is_organized_pressure ||
+                            post.content_flags?.is_racist
                           ) && (
-                            <div className="px-3 pb-1 flex gap-1.5">
+                            <div className="px-3 pb-1 flex gap-1.5 flex-wrap">
                               {!!post.content_flags.is_hate_speech && (
                                 <span
                                   className="text-[11px] px-2 py-0.5 rounded font-semibold"
@@ -1800,12 +1805,45 @@ export default function FacebookFeedApp() {
                                   Hate Speech
                                 </span>
                               )}
+                              {!!post.content_flags.is_harmful_narrative &&
+                                !post.content_flags.is_hate_speech && (
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                    style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                                  >
+                                    Harmful
+                                  </span>
+                                )}
                               {!!post.content_flags.is_misinformation && (
                                 <span
                                   className="text-[11px] px-2 py-0.5 rounded font-semibold"
                                   style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
                                 >
                                   Misinformation
+                                </span>
+                              )}
+                              {!!post.content_flags.is_inflammatory && (
+                                <span
+                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                  style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                                >
+                                  Inflammatory
+                                </span>
+                              )}
+                              {!!post.content_flags.incites_violence && (
+                                <span
+                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                  style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                                >
+                                  Threat
+                                </span>
+                              )}
+                              {!!post.content_flags.is_organized_pressure && (
+                                <span
+                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                  style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                                >
+                                  Pressure
                                 </span>
                               )}
                             </div>

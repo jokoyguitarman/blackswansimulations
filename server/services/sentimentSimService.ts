@@ -4,6 +4,8 @@ import { getWebSocketService } from './websocketService.js';
 
 export interface SentimentState {
   overall: number;
+  harmful_content_volume: number;
+  /** @deprecated Use harmful_content_volume */
   hate_speech_volume: number;
   misinformation_volume: number;
   supportive_volume: number;
@@ -19,6 +21,7 @@ export async function computeSessionSentiment(sessionId: string): Promise<Sentim
   if (!posts || posts.length === 0) {
     return {
       overall: 65,
+      harmful_content_volume: 0,
       hate_speech_volume: 0,
       misinformation_volume: 0,
       supportive_volume: 0,
@@ -82,6 +85,7 @@ export async function computeSessionSentiment(sessionId: string): Promise<Sentim
 
   const state: SentimentState = {
     overall,
+    harmful_content_volume: hateCount,
     hate_speech_volume: hateCount,
     misinformation_volume: misinfoCount,
     supportive_volume: supportiveCount,

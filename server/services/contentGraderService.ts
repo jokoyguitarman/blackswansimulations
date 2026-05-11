@@ -22,12 +22,12 @@ const FORMAT_RUBRICS: Record<string, string> = {
   text: `Grade the following response on these criteria (each 0-100):
 
 1. ACCURACY: Uses only verified facts? Cites official sources? Avoids speculation?
-2. TONE: Empathetic, calm, authoritative? Not defensive, sarcastic, or preachy? Would a scared bystander feel reassured?
-3. CULTURAL SENSITIVITY: Protects targeted communities? Avoids collective blame? Uses inclusive language? Separates perpetrators from communities?
-4. PERSUASIVENESS: Would a neutral bystander be convinced? Does it address the concerns behind the hate (fear, uncertainty) rather than just condemning?
-5. COMPLETENESS: Provides actionable guidance (report hate, follow official channels, helplines)? Includes verified facts? Redirects to safe sources?
+2. TONE: Empathetic, calm, authoritative? Not defensive, sarcastic, or preachy? Would a concerned stakeholder feel reassured?
+3. CONTEXTUAL_SENSITIVITY: Appropriate for the crisis context? Avoids amplifying harmful narratives? Shows awareness of affected stakeholders' concerns?
+4. PERSUASIVENESS: Would a concerned stakeholder be convinced? Does it address the underlying fears and concerns driving public outrage?
+5. COMPLETENESS: Provides actionable guidance? Includes verified facts? Directs people to appropriate resources or channels?
 
-ANTI-AMPLIFICATION CHECK: If the response QUOTES or REPEATS hateful language verbatim (even to debunk it), deduct 20 points from PERSUASIVENESS and 10 from CULTURAL SENSITIVITY.
+ANTI-AMPLIFICATION CHECK: If the response QUOTES or REPEATS harmful content verbatim (even to debunk it), deduct 20 points from PERSUASIVENESS and 10 from CONTEXTUAL_SENSITIVITY.
 
 Return ONLY valid JSON:
 {
@@ -59,11 +59,11 @@ Return ONLY valid JSON:
 
 1. RELEVANCE: Does the humor actually address the crisis narrative? Or is it just a random joke?
 2. CLEVERNESS: Is it genuinely funny/shareable? Or forced/cringe "fellow kids" energy?
-3. TASTE: Does it punch UP at aggressors/misinformation, not DOWN at victims? Would affected communities find this empowering rather than dismissive?
+3. TASTE: Does it punch UP at aggressors/misinformation, not DOWN at those affected? Would affected stakeholders find this empowering rather than dismissive?
 4. MESSAGE_RETENTION: After laughing, will people remember the factual counter-narrative? Or does humor overshadow the point?
 5. PRODUCTION_QUALITY: Does the described concept suggest something polished and professional, or hastily thrown together?
 
-CRITICAL: Humor during a crisis is HIGH-RISK. Grade harshly if the humor trivializes victims, makes light of injuries/deaths, or could be screenshotted out of context to embarrass the response team. Grade generously if it effectively disarms hate speech through wit.
+CRITICAL: Humor during a crisis is HIGH-RISK. Grade harshly if the humor trivializes those affected, makes light of harm, or could be screenshotted out of context to embarrass the response team. Grade generously if it effectively disarms harmful narratives through wit.
 
 Return ONLY valid JSON:
 {
@@ -113,7 +113,7 @@ Return ONLY valid JSON:
 1. AUTHENTICITY: Does it feel genuine and heartfelt? Not performative or manufactured?
 2. EMOTIONAL_RESONANCE: Does it create empathy? Would a reader feel moved?
 3. FACTUAL_CONNECTION: Does it tie the personal experience to the broader counter-narrative and facts?
-4. CULTURAL_SENSITIVITY: Does it respect affected communities? Appropriate level of personal disclosure?
+4. CONTEXTUAL_SENSITIVITY: Does it respect affected stakeholders? Appropriate level of personal disclosure?
 5. VULNERABILITY_BALANCE: Vulnerable enough to be powerful, but not so raw that it undermines the professional response?
 
 Return ONLY valid JSON:
@@ -147,8 +147,8 @@ export async function gradePlayerContent(
   const rubric = FORMAT_RUBRICS[format] || FORMAT_RUBRICS.text;
 
   try {
-    const systemPrompt = `You are an expert evaluator for a racial harmony crisis response team.
-You evaluate responses from a BYSTANDER AND COMMUNITY PROTECTION perspective -- NOT whether the response "wins an argument."
+    const systemPrompt = `You are an expert evaluator for a crisis response team. Evaluate responses based on the specific crisis context provided below.
+You evaluate responses from a STAKEHOLDER AND PUBLIC PROTECTION perspective -- NOT whether the response "wins an argument."
 
 ${rubric}
 
@@ -158,7 +158,7 @@ ${context.crisis_description}
 Confirmed facts available:
 ${context.confirmed_facts.map((f) => '- ' + f).join('\\n')}
 
-${context.hateful_post_being_addressed ? 'The hateful post being addressed:\\n' + context.hateful_post_being_addressed : ''}
+${context.hateful_post_being_addressed ? 'The harmful post being addressed:\\n' + context.hateful_post_being_addressed : ''}
 
 ${context.research_guidelines?.length ? 'Doctrine-based best practices to evaluate against:\\n' + context.research_guidelines.map((g) => '- ' + g.best_practice + ' (' + g.source_basis + ')').join('\\n') : ''}
 
@@ -168,14 +168,14 @@ Post format declared by player: ${format}
 
 SEMANTIC SIGNALS: In addition to grading, evaluate these boolean signals about the player's post content. Return them in a "signals" object alongside the other fields:
 
-- acknowledged_victims: true if the post acknowledges victims, injuries, or expresses empathy for those affected
-- no_collective_blame: true if the post avoids blaming any ethnic, religious, or racial group collectively
-- includes_support_resources: true if the post mentions hotlines, reporting channels, helplines, or practical help
-- includes_safety_guidance: true if the post gives actionable safety advice (avoid areas, report suspicious items, follow official channels)
-- avoided_group_targeting: true if the post does not single out any community, ethnicity, or religion negatively
-- includes_links_to_sources: true if the post references official sources, police statements, or verified information
-- calls_for_unity: true if the post promotes community solidarity, togetherness, or mutual support
-- addresses_specific_misinfo: true if the post directly debunks or corrects a specific false claim circulating online
+- acknowledged_affected_parties: true if the post acknowledges those affected by the crisis and expresses empathy
+- no_collective_blame: true if the post avoids unfair generalizations or scapegoating of any group
+- includes_actionable_guidance: true if the post provides concrete next steps, resources, reporting channels, or practical help
+- includes_safety_info: true if the post includes relevant safety or protective information for affected parties
+- avoids_harmful_amplification: true if the post does not inadvertently amplify harmful narratives or repeat damaging content
+- cites_verified_sources: true if the post references official sources, verified statements, or authoritative information
+- promotes_constructive_dialogue: true if the post encourages calm, fact-based discussion and constructive engagement
+- addresses_specific_claims: true if the post directly addresses or corrects specific false or misleading claims circulating online
 
 ${
   context.image_prompt

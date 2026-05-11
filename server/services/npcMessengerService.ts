@@ -129,7 +129,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
     const playerHandles = playerList.map((p) => p.handle).join(', ');
 
     const crisisMetrics = socialState
-      ? `Sentiment: ${socialState.sentiment_score ?? 'unknown'}, Escalation risk: ${socialState.escalation_risk ?? 'unknown'}, Public trust: ${socialState.public_trust ?? 'unknown'}, Community safety: ${socialState.community_safety ?? 'unknown'}`
+      ? `Sentiment: ${socialState.sentiment_score ?? 'unknown'}, Escalation risk: ${socialState.escalation_risk ?? 'unknown'}, Public trust: ${socialState.public_trust ?? 'unknown'}, Stakeholder confidence: ${socialState.community_safety ?? 'unknown'}`
       : 'No metrics available yet';
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -156,11 +156,11 @@ Current crisis metrics: ${crisisMetrics}
 
 Types of DMs NPCs might send:
 - Journalist requesting an official comment or interview
-- Community leader seeking guidance or expressing frustration
-- Concerned citizen asking what's being done
+- Key stakeholder seeking guidance or expressing frustration
+- Concerned citizen or affected party asking what's being done
 - Anonymous tipster sharing unverified information
-- Threatening or hostile message from an extremist persona
-- Ally offering support or sharing useful intel
+- Threatening or hostile message from an aggressive persona
+- Ally or advocate offering support or sharing useful intel
 
 RULES:
 - Only generate 1-3 messages total (or 0 if the situation doesn't warrant it).

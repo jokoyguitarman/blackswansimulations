@@ -249,21 +249,23 @@ export default function DraftPadApp() {
                 </span>
               </div>
               <div className="p-4 space-y-2.5">
-                {[
-                  'accuracy',
-                  'tone',
-                  'cultural_sensitivity',
-                  'persuasiveness',
-                  'completeness',
-                  'overall',
-                ].map((key) => {
+                {(
+                  [
+                    ['accuracy', 'Accuracy'],
+                    ['tone', 'Tone'],
+                    ['cultural_sensitivity', 'Sensitivity'],
+                    ['persuasiveness', 'Persuasiveness'],
+                    ['completeness', 'Completeness'],
+                    ['overall', 'Overall'],
+                  ] as const
+                ).map(([key, label]) => {
                   const score = Number(grade[key]) || 0;
                   const color = getScoreColor(score);
                   const bg = getScoreBg(score);
                   return (
                     <div key={key} className="flex items-center justify-between">
-                      <span className="text-[14px] capitalize" style={{ color: '#6C6C70' }}>
-                        {key.replace('_', ' ')}
+                      <span className="text-[14px]" style={{ color: '#6C6C70' }}>
+                        {label}
                       </span>
                       <span
                         className="text-[14px] font-bold px-2.5 py-0.5 rounded-md"

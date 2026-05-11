@@ -1748,7 +1748,11 @@ export default function SocialFeedApp({
                         !!(
                           post.content_flags &&
                           (post.content_flags.is_hate_speech ||
-                            post.content_flags.is_misinformation)
+                            post.content_flags.is_harmful_narrative ||
+                            post.content_flags.is_misinformation ||
+                            post.content_flags.is_inflammatory ||
+                            post.content_flags.incites_violence ||
+                            post.content_flags.is_organized_pressure)
                         ) && (
                           <div className="flex gap-1.5 mt-2 flex-wrap">
                             {!!post.content_flags.is_hate_speech && (
@@ -1762,6 +1766,18 @@ export default function SocialFeedApp({
                                 Hate Speech
                               </span>
                             )}
+                            {!!post.content_flags.is_harmful_narrative &&
+                              !post.content_flags.is_hate_speech && (
+                                <span
+                                  className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                  style={{
+                                    backgroundColor: 'rgba(239,68,68,0.15)',
+                                    color: '#F87171',
+                                  }}
+                                >
+                                  Harmful
+                                </span>
+                              )}
                             {!!post.content_flags.is_misinformation && (
                               <span
                                 className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
@@ -1771,6 +1787,39 @@ export default function SocialFeedApp({
                                 }}
                               >
                                 Misinformation
+                              </span>
+                            )}
+                            {!!post.content_flags.is_inflammatory && (
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(249,115,22,0.15)',
+                                  color: '#FB923C',
+                                }}
+                              >
+                                Inflammatory
+                              </span>
+                            )}
+                            {!!post.content_flags.incites_violence && (
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(239,68,68,0.15)',
+                                  color: '#F87171',
+                                }}
+                              >
+                                Threat
+                              </span>
+                            )}
+                            {!!post.content_flags.is_organized_pressure && (
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(249,115,22,0.15)',
+                                  color: '#FB923C',
+                                }}
+                              >
+                                Pressure Campaign
                               </span>
                             )}
                             {!!post.content_flags.is_racist && (

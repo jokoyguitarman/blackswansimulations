@@ -67,69 +67,80 @@ interface ResearchGuidelines {
   };
 }
 
+interface PublicSentimentProfile {
+  analogous_cases: Array<{
+    name: string;
+    year: number;
+    similarity_rationale: string;
+    key_lessons: string[];
+    sentiment_timeline: string;
+  }>;
+  expected_reaction_arc: {
+    phase_1_shock: {
+      duration_minutes: number;
+      dominant_emotions: string[];
+      key_behaviors: string[];
+    };
+    phase_2_outrage: {
+      duration_minutes: number;
+      dominant_emotions: string[];
+      key_behaviors: string[];
+    };
+    phase_3_blame: {
+      duration_minutes: number;
+      dominant_emotions: string[];
+      key_behaviors: string[];
+    };
+    phase_4_demand: {
+      duration_minutes: number;
+      dominant_emotions: string[];
+      key_behaviors: string[];
+    };
+    phase_5_resolution: { dominant_emotions: string[]; key_behaviors: string[] };
+  };
+  platform_behaviors: Array<{
+    platform: string;
+    typical_content_style: string;
+    virality_pattern: string;
+    key_hashtag_patterns: string[];
+  }>;
+  demographic_splits: Array<{
+    group: string;
+    likely_stance: string;
+    intensity: number;
+    key_concerns: string[];
+  }>;
+  cultural_factors: string[];
+  counter_narrative_effectiveness: Array<{
+    strategy: string;
+    historical_success_rate: string;
+    timing_requirement: string;
+    risk: string;
+  }>;
+}
+
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
-const CRISIS_TYPES = [
-  {
-    id: 'racial_tension',
-    label: 'Racial Tension',
-    icon: '⚡',
-    description: 'Hate speech and scapegoating targeting ethnic communities',
-    default_context:
-      'A violent assault has occurred in a public area. Bystander video goes viral showing the attacker, who appears to be of a specific ethnicity. Social media erupts with racist generalizations, calls to "send them back", and threats against the attacker\'s perceived ethnic community. Community members who share the attacker\'s ethnicity report receiving threats and harassment online. Several viral posts falsely claim the attack was coordinated by a larger group.',
-  },
-  {
-    id: 'religious_incident',
-    label: 'Religious Incident',
-    icon: '🕌',
-    description: 'Inflammatory posts targeting religious communities',
-    default_context:
-      'A place of worship has been vandalized with hate symbols and threatening graffiti overnight. Photos spread rapidly on social media. Inflammatory accounts claim this is "justified payback" for a recent overseas terror attack attributed to the same religion. Counter-posts from the affected religious community express fear and anger. Unverified claims circulate that the vandalism is a false flag. Community leaders call for calm while demanding police action. A local politician\'s ambiguous statement about "understanding frustrations" goes viral and is interpreted as endorsing the vandalism.',
-  },
-  {
-    id: 'xenophobic_attack',
-    label: 'Xenophobic Attack',
-    icon: '🌍',
-    description: 'Anti-immigrant sentiment and misinformation',
-    default_context:
-      'A workplace accident at a construction site has resulted in multiple injuries. Initial reports indicate the site employed a large number of foreign workers. Social media narratives quickly shift from sympathy for the injured to blaming foreign workers for "taking local jobs" and "lowering safety standards." Viral posts falsely claim foreign workers are paid to undercut locals. Anti-immigration hashtags trend. Foreign worker dormitory addresses are shared online with threatening messages. Migrant advocacy groups report a spike in harassment.',
-  },
-  {
-    id: 'terror_aftermath',
-    label: 'Terror Aftermath',
-    icon: '💥',
-    description: 'Social media backlash after a terror event',
-    default_context:
-      "An explosion has occurred at a crowded public transit station during morning rush hour. At least 15 people injured, 3 in critical condition. Police confirm it was caused by an improvised explosive device. No arrests have been made and no group has claimed responsibility. Social media immediately attributes the attack to a specific ethnic and religious minority community without any evidence. Hate speech surges with calls for deportation, travel bans, and vigilante action. A fake video claiming to show the bomber's face goes viral — it is actually footage from an unrelated incident in another country years ago. Muslim community members report being verbally and physically harassed on public transport.",
-  },
-  {
-    id: 'police_incident',
-    label: 'Police Incident',
-    icon: '🚔',
-    description: 'Viral video of a controversial police encounter',
-    default_context:
-      "A bystander video shows police officers using force during an arrest of a person from a visible minority group. The 45-second clip, which does not show what preceded the arrest, goes viral with millions of views. Social media splits between those accusing police of racial profiling and excessive force, and those defending police actions. Protest hashtags trend alongside counter-hashtags. Doxxing attempts target both the officers and the arrested individual. Unverified claims about the arrested person's criminal history circulate. Community organizations demand an independent investigation. A planned vigil is co-opted online by extremist groups on both sides.",
-  },
-  {
-    id: 'fake_news_spiral',
-    label: 'Fake News Spiral',
-    icon: '📰',
-    description: 'Viral misinformation causing real-world harm',
-    default_context:
-      'A fabricated news article claiming that a specific ethnic community is responsible for a disease outbreak has gone viral across multiple social media platforms. The article cites a non-existent "health ministry report" and includes manipulated photos. It has been shared over 50,000 times in 3 hours. Real-world consequences are emerging: businesses owned by the targeted community report customers refusing to enter, children from the community are being bullied at school, and a popular restaurant has been vandalized. The actual health ministry has not issued any such report. Mainstream media has not yet picked up the debunking. Influencer accounts with large followings are amplifying the false claims.',
-  },
-];
-
 const STEP_LABELS: Record<number, string> = {
-  1: 'Crisis Event',
+  1: 'Scenario Setup',
   2: 'Characters & Facts',
   3: 'Storyline',
   4: 'Convergence',
-  5: 'Research',
-  6: 'Review & Compile',
+  5: 'Sentiment Research',
+  6: 'Best Practices',
+  7: 'Review & Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 3, 4, 5, 6];
+const VISIBLE_STEPS = [1, 2, 3, 4, 5, 6, 7];
+
+const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social media crisis simulation.
+
+Examples:
+- A major electronics company announces a recall of 2 million smartphones due to battery fires. Leaked internal emails suggest the company knew about the defect for months...
+- A large tech company announces layoffs affecting 15,000 employees via a company-wide email that leaks to the press before employees are notified...
+- A food delivery platform experiences a massive data breach exposing 30 million users' personal data, payment information, and order histories...
+- A viral video shows factory workers at a popular clothing brand working in unsafe conditions, sparking calls for boycotts...
+- A pharmaceutical company's new drug is linked to severe side effects that were allegedly downplayed during clinical trials...`;
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -147,6 +158,12 @@ async function authHeaders(): Promise<Record<string, string>> {
   const { data } = await (await import('../lib/supabase')).supabase.auth.getSession();
   const token = data.session?.access_token || '';
   return { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` };
+}
+
+async function authHeadersMultipart(): Promise<Record<string, string>> {
+  const { data } = await (await import('../lib/supabase')).supabase.auth.getSession();
+  const token = data.session?.access_token || '';
+  return { Authorization: `Bearer ${token}` };
 }
 
 /* ─── Spinner ────────────────────────────────────────────────────────── */
@@ -171,13 +188,21 @@ export const SocialCrisisWizard = () => {
   /* Draft persistence */
   const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
 
-  /* Step 1 — Crisis Event */
-  const [crisisTypes, setCrisisTypes] = useState<string[]>([]);
+  /* Step 1 — Scenario Setup (free-form) */
   const [country, setCountry] = useState('Singapore');
   const [context, setContext] = useState('');
+  const [uploadedDocText, setUploadedDocText] = useState('');
+  const [uploadedDocName, setUploadedDocName] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const crisisType = crisisTypes.length > 0 ? crisisTypes.join(' + ') : null;
-  const location = '';
+  const crisisDescription = useMemo(() => {
+    const parts: string[] = [];
+    if (context.trim()) parts.push(context.trim());
+    if (uploadedDocText.trim()) parts.push(uploadedDocText.trim());
+    return parts.join('\n\n--- UPLOADED DOCUMENT ---\n\n');
+  }, [context, uploadedDocText]);
 
   /* Step 2 — NPCs, Fact Sheet & Communities */
   const [personas, setPersonas] = useState<NPCPersona[]>([]);
@@ -201,16 +226,23 @@ export const SocialCrisisWizard = () => {
     briefing: string;
   } | null>(null);
   const [objectives, setObjectives] = useState<ObjectiveDef[]>([]);
+  const [dimensionLabels, setDimensionLabels] = useState<Record<string, string> | null>(null);
   const [step4Loading, setStep4Loading] = useState(false);
   const [step4Error, setStep4Error] = useState<string | null>(null);
 
-  /* Step 5 — Research (NDJSON streaming) */
-  const [research, setResearch] = useState<ResearchGuidelines | null>(null);
+  /* Step 5 — Public Sentiment Research (NEW) */
+  const [sentimentProfile, setSentimentProfile] = useState<PublicSentimentProfile | null>(null);
   const [step5Loading, setStep5Loading] = useState(false);
   const [step5Progress, setStep5Progress] = useState<string[]>([]);
   const [step5Error, setStep5Error] = useState<string | null>(null);
 
-  /* Step 6 — Compile */
+  /* Step 6 — Best Practices / Research (NDJSON streaming) */
+  const [research, setResearch] = useState<ResearchGuidelines | null>(null);
+  const [step6Loading, setStep6Loading] = useState(false);
+  const [step6Progress, setStep6Progress] = useState<string[]>([]);
+  const [step6Error, setStep6Error] = useState<string | null>(null);
+
+  /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
   const [compileProgress, setCompileProgress] = useState<string[]>([]);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
@@ -221,10 +253,11 @@ export const SocialCrisisWizard = () => {
   const buildDraftInput = useCallback(
     () => ({
       sim_mode: 'social_media',
-      crisis_type: crisisType,
-      crisis_types: crisisTypes,
+      crisis_description: crisisDescription,
       country,
       context,
+      uploaded_doc_text: uploadedDocText,
+      uploaded_doc_name: uploadedDocName,
       personas,
       fact_sheet: factSheet,
       communities,
@@ -233,12 +266,16 @@ export const SocialCrisisWizard = () => {
       convergence_gates: convergenceGates,
       narrative,
       objectives,
+      sentiment_profile: sentimentProfile,
+      dimension_labels: dimensionLabels,
       research,
     }),
     [
-      crisisType,
+      crisisDescription,
       country,
       context,
+      uploadedDocText,
+      uploadedDocName,
       personas,
       factSheet,
       communities,
@@ -247,6 +284,8 @@ export const SocialCrisisWizard = () => {
       convergenceGates,
       narrative,
       objectives,
+      sentimentProfile,
+      dimensionLabels,
       research,
     ],
   );
@@ -308,16 +347,10 @@ export const SocialCrisisWizard = () => {
         const savedStep = Number(draft.current_step) || 1;
         const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
 
-        if (input.crisis_type) {
-          if (Array.isArray(input.crisis_types)) {
-            setCrisisTypes(input.crisis_types as string[]);
-          } else {
-            const ct = String(input.crisis_type);
-            setCrisisTypes(ct.includes(' + ') ? ct.split(' + ') : [ct]);
-          }
-        }
         if (input.country) setCountry(String(input.country));
         if (input.context) setContext(String(input.context));
+        if (input.uploaded_doc_text) setUploadedDocText(String(input.uploaded_doc_text));
+        if (input.uploaded_doc_name) setUploadedDocName(String(input.uploaded_doc_name));
         if (Array.isArray(input.communities)) setCommunities(input.communities.map(String));
         if (Array.isArray(input.personas)) setPersonas(input.personas as NPCPersona[]);
         if (input.fact_sheet) setFactSheet(input.fact_sheet as FactSheet);
@@ -330,6 +363,10 @@ export const SocialCrisisWizard = () => {
         if (input.narrative && typeof input.narrative === 'object')
           setNarrative(input.narrative as { title: string; description: string; briefing: string });
         if (Array.isArray(input.objectives)) setObjectives(input.objectives as ObjectiveDef[]);
+        if (input.sentiment_profile && typeof input.sentiment_profile === 'object')
+          setSentimentProfile(input.sentiment_profile as PublicSentimentProfile);
+        if (input.dimension_labels && typeof input.dimension_labels === 'object')
+          setDimensionLabels(input.dimension_labels as Record<string, string>);
         if (input.research) setResearch(input.research as ResearchGuidelines);
 
         setStep(validStep);
@@ -340,25 +377,12 @@ export const SocialCrisisWizard = () => {
     resume();
   }, [searchParams]);
 
-  /* ─── Effective context (use default_context as fallback) ────────── */
-
-  const effectiveContext = useMemo(() => {
-    const userContext = context.trim();
-    const defaults = crisisTypes
-      .map((id) => CRISIS_TYPES.find((t) => t.id === id)?.default_context)
-      .filter(Boolean)
-      .join('\n\nADDITIONAL CRISIS DIMENSION:\n');
-    if (userContext && defaults) return `${userContext}\n\nBACKGROUND CONTEXT:\n${defaults}`;
-    if (userContext) return userContext;
-    return defaults || '';
-  }, [context, crisisTypes]);
-
   /* ─── Validation ───────────────────────────────────────────────────── */
 
   const canProceed = useMemo(() => {
     switch (step) {
       case 1:
-        return crisisTypes.length > 0;
+        return crisisDescription.length >= 50;
       case 2:
         return personas.length > 0 && !!factSheet && !step2Loading;
       case 3:
@@ -366,15 +390,17 @@ export const SocialCrisisWizard = () => {
       case 4:
         return (sharedInjects.length > 0 || convergenceGates.length > 0) && !step4Loading;
       case 5:
-        return !!research && !step5Loading;
+        return !!sentimentProfile && !step5Loading;
       case 6:
+        return !!research && !step6Loading;
+      case 7:
         return true;
       default:
         return false;
     }
   }, [
     step,
-    crisisTypes,
+    crisisDescription,
     personas,
     factSheet,
     step2Loading,
@@ -383,14 +409,87 @@ export const SocialCrisisWizard = () => {
     sharedInjects,
     convergenceGates,
     step4Loading,
-    research,
+    sentimentProfile,
     step5Loading,
+    research,
+    step6Loading,
   ]);
+
+  /* ─── File upload ───────────────────────────────────────────────────── */
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    const validTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'text/plain',
+    ];
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (!validTypes.includes(file.type) && !['pdf', 'docx', 'txt'].includes(ext || '')) {
+      setUploadError('Only PDF, DOCX, and TXT files are supported.');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('File must be under 10MB.');
+      return;
+    }
+
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      const headers = await authHeadersMultipart();
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const res = await fetch(apiUrl('/api/warroom/social-crisis/upload-document'), {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        setUploadError(err?.error || 'Upload failed.');
+        setUploading(false);
+        return;
+      }
+
+      const json = await res.json();
+      setUploadedDocText(json.text || '');
+      setUploadedDocName(file.name);
+      if (json.truncated) {
+        setUploadError(
+          `Document was truncated to ${json.word_count.toLocaleString()} words due to size limits.`,
+        );
+      }
+    } catch {
+      setUploadError('Network error during upload.');
+    }
+    setUploading(false);
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      const file = e.dataTransfer.files[0];
+      if (file) handleFileUpload(file);
+    },
+    [handleFileUpload],
+  );
+
+  const handleFileSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) handleFileUpload(file);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    },
+    [handleFileUpload],
+  );
 
   /* ─── API calls ──────────────────────────────────────────────────── */
 
   const generateNPCs = useCallback(async () => {
-    if (!crisisType) return;
+    if (!crisisDescription) return;
     setStep2Loading(true);
     setStep2Error(null);
     try {
@@ -399,10 +498,9 @@ export const SocialCrisisWizard = () => {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          crisis_type: crisisType,
-          location,
+          crisis_type: crisisDescription,
           country,
-          context: effectiveContext,
+          context: crisisDescription,
         }),
       });
       if (!res.ok) {
@@ -412,7 +510,6 @@ export const SocialCrisisWizard = () => {
       }
       const json = await res.json();
 
-      // If server returned data directly (legacy sync response)
       if (json.data) {
         const d = json.data;
         if (Array.isArray(d.personas)) setPersonas(d.personas);
@@ -422,7 +519,6 @@ export const SocialCrisisWizard = () => {
         return;
       }
 
-      // Async polling
       const jobId = json.job_id;
       if (!jobId) {
         setStep2Error('Unexpected server response.');
@@ -462,10 +558,10 @@ export const SocialCrisisWizard = () => {
       setStep2Error('Network error generating NPCs.');
     }
     setStep2Loading(false);
-  }, [crisisType, location, country, effectiveContext]);
+  }, [crisisDescription, country]);
 
   const generateStoryline = useCallback(async () => {
-    if (!crisisType) return;
+    if (!crisisDescription) return;
     setStep3Loading(true);
     setStep3Error(null);
     setStep3Progress([]);
@@ -477,9 +573,9 @@ export const SocialCrisisWizard = () => {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          crisis_type: crisisType,
+          crisis_type: crisisDescription,
           country,
-          context: effectiveContext,
+          context: crisisDescription,
           duration: 60,
           personas,
           fact_sheet: factSheet,
@@ -521,10 +617,10 @@ export const SocialCrisisWizard = () => {
       setStep3Error('Network error generating storyline.');
     }
     setStep3Loading(false);
-  }, [crisisType, country, effectiveContext, personas, factSheet]);
+  }, [crisisDescription, country, personas, factSheet]);
 
   const generateConvergence = useCallback(async () => {
-    if (!crisisType) return;
+    if (!crisisDescription) return;
     setStep4Loading(true);
     setStep4Error(null);
 
@@ -534,10 +630,10 @@ export const SocialCrisisWizard = () => {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          crisis_type: crisisType,
+          crisis_type: crisisDescription,
           location: '',
           country,
-          context: effectiveContext,
+          context: crisisDescription,
           duration: 60,
           communities,
           personas,
@@ -554,7 +650,6 @@ export const SocialCrisisWizard = () => {
 
       const json = await res.json();
 
-      // Legacy sync response
       if (json.data && !json.job_id) {
         const d = json.data;
         const si = d.sharedInjects || d.shared_injects;
@@ -563,11 +658,12 @@ export const SocialCrisisWizard = () => {
         if (Array.isArray(cg)) setConvergenceGates(cg);
         if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
         if (Array.isArray(d.objectives)) setObjectives(d.objectives);
+        const dl = d.dimensionLabels || d.dimension_labels;
+        if (dl && typeof dl === 'object') setDimensionLabels(dl);
         setStep4Loading(false);
         return;
       }
 
-      // Async polling
       const jobId = json.job_id;
       if (!jobId) {
         setStep4Error('Unexpected server response.');
@@ -592,6 +688,8 @@ export const SocialCrisisWizard = () => {
             if (Array.isArray(cg)) setConvergenceGates(cg);
             if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
             if (Array.isArray(d.objectives)) setObjectives(d.objectives);
+            const dl = d.dimensionLabels || d.dimension_labels;
+            if (dl && typeof dl === 'object') setDimensionLabels(dl);
             setStep4Loading(false);
             return;
           }
@@ -609,23 +707,23 @@ export const SocialCrisisWizard = () => {
       setStep4Error('Network error generating convergence.');
     }
     setStep4Loading(false);
-  }, [crisisType, country, effectiveContext, communities, personas, factSheet]);
+  }, [crisisDescription, country, communities, personas, factSheet]);
 
-  const generateResearch = useCallback(async () => {
-    if (!crisisType) return;
+  const generateSentimentResearch = useCallback(async () => {
+    if (!crisisDescription) return;
     setStep5Loading(true);
     setStep5Error(null);
     setStep5Progress([]);
-    setResearch(null);
+    setSentimentProfile(null);
 
     try {
       const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research-general'), {
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research-sentiment'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
-          crisis_type: crisisType,
-          context: effectiveContext,
+          crisis_description: crisisDescription,
+          country,
         }),
       });
 
@@ -647,10 +745,10 @@ export const SocialCrisisWizard = () => {
               const msg = JSON.parse(line);
               if (msg.type === 'progress') {
                 setStep5Progress((prev) => [...prev, String(msg.message)]);
-              } else if (msg.type === 'complete' && msg.research) {
-                setResearch(msg.research);
+              } else if (msg.type === 'complete' && msg.sentiment_profile) {
+                setSentimentProfile(msg.sentiment_profile);
               } else if (msg.type === 'error') {
-                setStep5Error(String(msg.message || 'Research generation failed'));
+                setStep5Error(String(msg.message || 'Sentiment research failed'));
               }
             } catch {
               /* skip malformed */
@@ -658,16 +756,72 @@ export const SocialCrisisWizard = () => {
           }
         }
       } else {
-        setStep5Error('Failed to generate research.');
+        setStep5Error('Failed to research public sentiment.');
       }
     } catch {
-      setStep5Error('Network error generating research.');
+      setStep5Error('Network error during sentiment research.');
     }
     setStep5Loading(false);
-  }, [crisisType, effectiveContext]);
+  }, [crisisDescription, country]);
+
+  const generateResearch = useCallback(async () => {
+    if (!crisisDescription) return;
+    setStep6Loading(true);
+    setStep6Error(null);
+    setStep6Progress([]);
+    setResearch(null);
+
+    try {
+      const headers = await authHeaders();
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research-general'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          crisis_type: crisisDescription,
+          context: crisisDescription,
+          sentiment_profile: sentimentProfile,
+        }),
+      });
+
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.type === 'progress') {
+                setStep6Progress((prev) => [...prev, String(msg.message)]);
+              } else if (msg.type === 'complete' && msg.research) {
+                setResearch(msg.research);
+              } else if (msg.type === 'error') {
+                setStep6Error(String(msg.message || 'Research generation failed'));
+              }
+            } catch {
+              /* skip malformed */
+            }
+          }
+        }
+      } else {
+        setStep6Error('Failed to generate research.');
+      }
+    } catch {
+      setStep6Error('Network error generating research.');
+    }
+    setStep6Loading(false);
+  }, [crisisDescription, sentimentProfile]);
 
   const compileScenario = useCallback(async () => {
-    if (!crisisType) return;
+    if (!crisisDescription) return;
     setCompiling(true);
     setCompileProgress([]);
 
@@ -681,7 +835,7 @@ export const SocialCrisisWizard = () => {
         headers,
         body: JSON.stringify({
           narrative,
-          crisis_type: crisisType,
+          crisis_type: crisisDescription,
           objectives,
           country,
           personas,
@@ -691,6 +845,8 @@ export const SocialCrisisWizard = () => {
           shared_injects: sharedInjects,
           convergence_gates: convergenceGates,
           research,
+          sentiment_profile: sentimentProfile,
+          dimension_labels: dimensionLabels,
           duration: 60,
         }),
       });
@@ -704,7 +860,6 @@ export const SocialCrisisWizard = () => {
 
       const json = await res.json();
 
-      // Legacy sync response
       if (json.data && !json.job_id) {
         const d = json.data;
         setScenarioId(String(d.scenario_id));
@@ -715,7 +870,6 @@ export const SocialCrisisWizard = () => {
         return;
       }
 
-      // Async polling
       const jobId = json.job_id;
       if (!jobId) {
         addProgress('Error: Unexpected server response.');
@@ -758,9 +912,8 @@ export const SocialCrisisWizard = () => {
     }
     setCompiling(false);
   }, [
-    crisisType,
+    crisisDescription,
     country,
-    effectiveContext,
     communities,
     personas,
     factSheet,
@@ -770,6 +923,7 @@ export const SocialCrisisWizard = () => {
     narrative,
     objectives,
     research,
+    sentimentProfile,
   ]);
 
   /* ─── Step transition ────────────────────────────────────────────── */
@@ -807,22 +961,28 @@ export const SocialCrisisWizard = () => {
       generateConvergence();
       return;
     }
-    if (step === 4 && !research) {
+    if (step === 4 && !sentimentProfile) {
+      generateSentimentResearch();
+      return;
+    }
+    if (step === 5 && !research) {
       generateResearch();
       return;
     }
   };
 
-  /* ─── Computed stats for step 7 ──────────────────────────────────── */
+  /* ─── Computed stats ────────────────────────────────────────────── */
 
   const totalTeamInjects = useMemo(() => {
     return storylineInjects.length;
   }, [storylineInjects]);
 
   const crisisLabel = useMemo(() => {
-    if (crisisTypes.length === 0) return 'Unknown';
-    return crisisTypes.map((id) => CRISIS_TYPES.find((c) => c.id === id)?.label || id).join(' + ');
-  }, [crisisTypes]);
+    if (!crisisDescription) return 'Not specified';
+    return crisisDescription.length > 80
+      ? crisisDescription.slice(0, 80) + '...'
+      : crisisDescription;
+  }, [crisisDescription]);
 
   /* ─── Render ─────────────────────────────────────────────────────── */
 
@@ -868,59 +1028,101 @@ export const SocialCrisisWizard = () => {
     </div>
   );
 
-  /* ── Step 1: Crisis Event ──────────────────────────────────────────── */
-
-  const toggleCrisisType = (id: string) => {
-    setCrisisTypes((prev) => (prev.includes(id) ? prev.filter((t) => t !== id) : [...prev, id]));
-  };
+  /* ── Step 1: Scenario Setup (free-form) ─────────────────────────────── */
 
   const renderStep1 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: CRISIS EVENT]</h2>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: SCENARIO SETUP]</h2>
       <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        Select one or more crisis types to create a compound scenario. Multiple types create
-        overlapping narrative fronts that the response team must address simultaneously.
+        Describe any crisis scenario in detail. The AI will analyze your description to understand
+        the crisis dynamics and generate an appropriate simulation. You can also upload a document
+        with a detailed scenario brief.
       </p>
 
       <div className="mb-6">
         <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-          Crisis Types (select one or more)
+          Crisis Scenario Description
         </label>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-          {CRISIS_TYPES.map((ct) => {
-            const isSelected = crisisTypes.includes(ct.id);
-            return (
-              <button
-                key={ct.id}
-                onClick={() => toggleCrisisType(ct.id)}
-                className={`p-4 border rounded text-left transition-all relative ${
-                  isSelected
-                    ? 'border-cyan-400 bg-cyan-900/30'
-                    : 'border-robotic-gray-200 hover:border-robotic-yellow/50'
-                }`}
-              >
-                {isSelected && (
-                  <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-cyan-400 flex items-center justify-center text-[10px] text-black font-bold">
-                    {crisisTypes.indexOf(ct.id) + 1}
-                  </div>
-                )}
-                <div className="text-2xl mb-2">{ct.icon}</div>
-                <div className="text-xs terminal-text font-bold mb-1">{ct.label}</div>
-                <div className="text-[10px] terminal-text text-robotic-yellow/40">
-                  {ct.description}
-                </div>
-              </button>
-            );
-          })}
+        <textarea
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+          rows={10}
+          placeholder={SCENARIO_PLACEHOLDER}
+          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none resize-none"
+        />
+        <div className="flex justify-between mt-1">
+          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+            {context.length < 50
+              ? `Minimum 50 characters required (${50 - context.length} more)`
+              : `${context.length} characters`}
+          </span>
         </div>
-        {crisisTypes.length > 1 && (
-          <div className="mt-3 p-2 border border-cyan-400/30 rounded bg-cyan-900/10">
-            <p className="text-[10px] terminal-text text-cyan-400">
-              COMPOUND CRISIS:{' '}
-              {crisisTypes.map((id) => CRISIS_TYPES.find((c) => c.id === id)?.label).join(' + ')}
-              {' — '}NPCs will attack from {crisisTypes.length} different angles simultaneously.
-            </p>
+      </div>
+
+      {/* Document Upload */}
+      <div className="mb-6">
+        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+          Upload Scenario Document (optional)
+        </label>
+        {!uploadedDocText ? (
+          <div
+            onDrop={handleDrop}
+            onDragOver={(e) => e.preventDefault()}
+            onClick={() => fileInputRef.current?.click()}
+            className="border-2 border-dashed border-robotic-gray-200 rounded p-8 text-center cursor-pointer hover:border-robotic-yellow/50 transition-colors"
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.docx,.txt"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            {uploading ? (
+              <Spinner text="Extracting document text..." />
+            ) : (
+              <>
+                <div className="text-3xl mb-3 text-robotic-yellow/30">+</div>
+                <div className="text-xs terminal-text text-robotic-yellow/50 mb-1">
+                  Drag & drop or click to upload
+                </div>
+                <div className="text-[10px] terminal-text text-robotic-yellow/30">
+                  PDF, DOCX, or TXT (max 10MB)
+                </div>
+              </>
+            )}
           </div>
+        ) : (
+          <div className="border border-cyan-400/30 rounded p-4 bg-cyan-900/10">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-cyan-400 text-sm">&#128196;</span>
+                <span className="text-xs terminal-text text-cyan-400 font-bold">
+                  {uploadedDocName}
+                </span>
+              </div>
+              <button
+                onClick={() => {
+                  setUploadedDocText('');
+                  setUploadedDocName('');
+                  setUploadError(null);
+                }}
+                className="text-[10px] terminal-text text-red-400 hover:text-red-300 border border-red-400/30 px-2 py-0.5 rounded"
+              >
+                Remove
+              </button>
+            </div>
+            <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-2">
+              {uploadedDocText.split(/\s+/).length.toLocaleString()} words extracted
+            </div>
+            <div className="text-[10px] terminal-text text-robotic-yellow/50 max-h-24 overflow-y-auto border border-robotic-gray-200 rounded p-2 bg-black/20">
+              {uploadedDocText.slice(0, 500)}
+              {uploadedDocText.length > 500 && '...'}
+            </div>
+          </div>
+        )}
+        {uploadError && (
+          <div className="mt-2 text-[10px] terminal-text text-yellow-400">{uploadError}</div>
         )}
       </div>
 
@@ -936,18 +1138,14 @@ export const SocialCrisisWizard = () => {
         />
       </div>
 
-      <div>
-        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
-          Additional Context (optional)
-        </label>
-        <textarea
-          value={context}
-          onChange={(e) => setContext(e.target.value)}
-          rows={3}
-          placeholder="Any specific scenario details, recent events, or nuances to incorporate..."
-          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none resize-none"
-        />
-      </div>
+      {crisisDescription.length >= 50 && (
+        <div className="mt-4 p-3 border border-green-400/30 rounded bg-green-900/10">
+          <p className="text-[10px] terminal-text text-green-400">
+            READY: The AI will analyze your scenario and generate appropriate crisis dynamics, NPCs,
+            social media narratives, and public sentiment patterns for {country}.
+          </p>
+        </div>
+      )}
     </div>
   );
 
@@ -974,7 +1172,6 @@ export const SocialCrisisWizard = () => {
         </div>
       ) : (
         <>
-          {/* NPC Personas */}
           <div className="mb-6">
             <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
               NPC Personas ({personas.length})
@@ -1015,7 +1212,6 @@ export const SocialCrisisWizard = () => {
             </div>
           </div>
 
-          {/* Fact Sheet */}
           {factSheet && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
@@ -1066,11 +1262,10 @@ export const SocialCrisisWizard = () => {
             </div>
           )}
 
-          {/* Inferred Communities */}
           {communities.length > 0 && (
             <div>
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Inferred Communities ({communities.length})
+                Affected Stakeholder Groups ({communities.length})
               </h3>
               <div className="space-y-1">
                 {communities.map((c, i) => (
@@ -1078,7 +1273,7 @@ export const SocialCrisisWizard = () => {
                     key={i}
                     className="flex items-center gap-2 border border-robotic-gray-200 px-4 py-2 rounded"
                   >
-                    <span className="text-cyan-400 text-xs">▸</span>
+                    <span className="text-cyan-400 text-xs">&#9656;</span>
                     <span className="text-sm terminal-text">{c}</span>
                   </div>
                 ))}
@@ -1090,7 +1285,7 @@ export const SocialCrisisWizard = () => {
     </div>
   );
 
-  /* ── Step 3: Response Teams (read-only preview) ────────────────────── */
+  /* ── Step 3: Storyline ──────────────────────────────────────────────── */
 
   const renderStep3 = () => (
     <div>
@@ -1115,7 +1310,7 @@ export const SocialCrisisWizard = () => {
                 {msg}
               </div>
             ))}
-            <div className="animate-pulse text-robotic-yellow/40">▌</div>
+            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
           </div>
         </div>
       )}
@@ -1189,7 +1384,7 @@ export const SocialCrisisWizard = () => {
     </div>
   );
 
-  /* ── Step 4: Convergence + Shared Chaos (read-only) ────────────────── */
+  /* ── Step 4: Convergence + Shared Chaos ─────────────────────────────── */
 
   const renderStep4 = () => (
     <div>
@@ -1213,7 +1408,6 @@ export const SocialCrisisWizard = () => {
         </div>
       ) : (
         <>
-          {/* Narrative */}
           {narrative && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
@@ -1230,7 +1424,6 @@ export const SocialCrisisWizard = () => {
             </div>
           )}
 
-          {/* Objectives */}
           {objectives.length > 0 && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
@@ -1256,7 +1449,6 @@ export const SocialCrisisWizard = () => {
             </div>
           )}
 
-          {/* Convergence Gates */}
           {convergenceGates.length > 0 && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
@@ -1305,7 +1497,7 @@ export const SocialCrisisWizard = () => {
                               key={ci}
                               className="text-[9px] terminal-text text-robotic-yellow/40 flex gap-1"
                             >
-                              <span className="text-cyan-400">•</span> {String(cond)}
+                              <span className="text-cyan-400">&#8226;</span> {String(cond)}
                             </div>
                           ))}
                         </div>
@@ -1317,7 +1509,6 @@ export const SocialCrisisWizard = () => {
             </div>
           )}
 
-          {/* Shared Injects */}
           {sharedInjects.length > 0 && (
             <div>
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
@@ -1353,13 +1544,14 @@ export const SocialCrisisWizard = () => {
     </div>
   );
 
-  /* ── Step 6: Research (NDJSON streaming, read-only) ─────────────────── */
+  /* ── Step 5: Public Sentiment Research (NEW) ────────────────────────── */
 
   const renderStep5 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 5: BEST PRACTICES]</h2>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 5: PUBLIC SENTIMENT RESEARCH]</h2>
       <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        AI-researched guidelines and best practices for this crisis type. Read-only preview.
+        Deep analysis of public forum reactions to analogous real-world crises. This research
+        calibrates NPC behavior and sentiment curves for realistic simulation.
       </p>
 
       {step5Loading && (
@@ -1367,7 +1559,7 @@ export const SocialCrisisWizard = () => {
           <div className="flex items-center gap-3 mb-4">
             <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
             <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
-              Researching best practices...
+              Researching public sentiment patterns...
             </span>
           </div>
           <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
@@ -1377,7 +1569,7 @@ export const SocialCrisisWizard = () => {
                 {msg}
               </div>
             ))}
-            <div className="animate-pulse text-robotic-yellow/40">▌</div>
+            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
           </div>
         </div>
       )}
@@ -1385,6 +1577,291 @@ export const SocialCrisisWizard = () => {
       {step5Error && (
         <div className="text-center py-4 mb-4">
           <p className="text-sm terminal-text text-red-400 mb-4">{step5Error}</p>
+          <button
+            onClick={generateSentimentResearch}
+            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {sentimentProfile && (
+        <>
+          {/* Analogous Cases */}
+          {sentimentProfile.analogous_cases.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Analogous Real-World Cases ({sentimentProfile.analogous_cases.length})
+              </h3>
+              <div className="space-y-3">
+                {sentimentProfile.analogous_cases.map((cs, i) => (
+                  <div key={i} className="border border-robotic-gray-200 rounded px-4 py-3">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs terminal-text text-cyan-400 font-bold">
+                        {cs.name}
+                      </span>
+                      <span className="text-[9px] terminal-text bg-cyan-900/30 text-cyan-400 px-1.5 py-0.5 rounded">
+                        {cs.year}
+                      </span>
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
+                      {cs.similarity_rationale}
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-2 italic">
+                      Timeline: {cs.sentiment_timeline}
+                    </div>
+                    {cs.key_lessons.length > 0 && (
+                      <div className="space-y-1">
+                        {cs.key_lessons.map((lesson, li) => (
+                          <div
+                            key={li}
+                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
+                          >
+                            <span className="text-green-400">&#8226;</span> {lesson}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Reaction Arc */}
+          {sentimentProfile.expected_reaction_arc && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Expected Public Reaction Arc
+              </h3>
+              <div className="space-y-2">
+                {(
+                  [
+                    'phase_1_shock',
+                    'phase_2_outrage',
+                    'phase_3_blame',
+                    'phase_4_demand',
+                    'phase_5_resolution',
+                  ] as const
+                ).map((phaseKey) => {
+                  const phase = sentimentProfile.expected_reaction_arc[phaseKey];
+                  if (!phase) return null;
+                  const label = phaseKey
+                    .replace('phase_', '')
+                    .replace('_', ': ')
+                    .replace(/^\d+/, (m) => `Phase ${m}`);
+                  const colors: Record<string, string> = {
+                    phase_1_shock: 'border-yellow-400/30 bg-yellow-900/10',
+                    phase_2_outrage: 'border-red-400/30 bg-red-900/10',
+                    phase_3_blame: 'border-orange-400/30 bg-orange-900/10',
+                    phase_4_demand: 'border-purple-400/30 bg-purple-900/10',
+                    phase_5_resolution: 'border-green-400/30 bg-green-900/10',
+                  };
+                  return (
+                    <div key={phaseKey} className={`border rounded p-3 ${colors[phaseKey] || ''}`}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs terminal-text font-bold uppercase">{label}</span>
+                        {'duration_minutes' in phase && (
+                          <span className="text-[9px] terminal-text text-robotic-yellow/40">
+                            ~{(phase as { duration_minutes: number }).duration_minutes} min
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1 mb-1">
+                        {phase.dominant_emotions.map((e, ei) => (
+                          <span
+                            key={ei}
+                            className="text-[9px] terminal-text bg-robotic-gray-200/30 text-robotic-yellow/60 px-1.5 py-0.5 rounded"
+                          >
+                            {e}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="space-y-0.5">
+                        {phase.key_behaviors.map((b, bi) => (
+                          <div
+                            key={bi}
+                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
+                          >
+                            <span className="text-cyan-400">&#9656;</span> {b}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Platform Behaviors */}
+          {sentimentProfile.platform_behaviors.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Platform-Specific Behaviors
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {sentimentProfile.platform_behaviors.map((pb, i) => (
+                  <div key={i} className="border border-robotic-gray-200 rounded p-3">
+                    <div className="text-xs terminal-text text-cyan-400 font-bold mb-1">
+                      {pb.platform}
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-1">
+                      {pb.typical_content_style}
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-1">
+                      Virality: {pb.virality_pattern}
+                    </div>
+                    {pb.key_hashtag_patterns.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {pb.key_hashtag_patterns.map((h, hi) => (
+                          <span
+                            key={hi}
+                            className="text-[9px] terminal-text text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded"
+                          >
+                            {h}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Demographic Splits */}
+          {sentimentProfile.demographic_splits.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Demographic Sentiment Splits
+              </h3>
+              <div className="space-y-2">
+                {sentimentProfile.demographic_splits.map((ds, i) => (
+                  <div key={i} className="border border-robotic-gray-200 rounded p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs terminal-text font-bold">{ds.group}</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[9px] terminal-text text-robotic-yellow/40">
+                          {ds.likely_stance}
+                        </span>
+                        <div className="w-16 h-2 bg-robotic-gray-200 rounded overflow-hidden">
+                          <div
+                            className={`h-full rounded ${
+                              ds.intensity >= 7
+                                ? 'bg-red-400'
+                                : ds.intensity >= 4
+                                  ? 'bg-yellow-400'
+                                  : 'bg-green-400'
+                            }`}
+                            style={{ width: `${ds.intensity * 10}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {ds.key_concerns.map((c, ci) => (
+                        <span
+                          key={ci}
+                          className="text-[9px] terminal-text text-robotic-yellow/40 bg-robotic-gray-200/20 px-1.5 py-0.5 rounded"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Cultural Factors */}
+          {sentimentProfile.cultural_factors.length > 0 && (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Cultural Factors ({country})
+              </h3>
+              <div className="space-y-1">
+                {sentimentProfile.cultural_factors.map((cf, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
+                  >
+                    <span className="text-cyan-400 mt-0.5">&#9656;</span>
+                    <span>{cf}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Counter-Narrative Effectiveness */}
+          {sentimentProfile.counter_narrative_effectiveness.length > 0 && (
+            <div>
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Counter-Narrative Strategies
+              </h3>
+              <div className="space-y-2">
+                {sentimentProfile.counter_narrative_effectiveness.map((cn, i) => (
+                  <div key={i} className="border border-robotic-gray-200 rounded p-3">
+                    <div className="text-xs terminal-text font-bold mb-1">{cn.strategy}</div>
+                    <div className="grid grid-cols-3 gap-2 text-[10px] terminal-text">
+                      <div>
+                        <span className="text-robotic-yellow/40">Success rate: </span>
+                        <span className="text-green-400">{cn.historical_success_rate}</span>
+                      </div>
+                      <div>
+                        <span className="text-robotic-yellow/40">Timing: </span>
+                        <span className="text-cyan-400">{cn.timing_requirement}</span>
+                      </div>
+                      <div>
+                        <span className="text-robotic-yellow/40">Risk: </span>
+                        <span className="text-red-400">{cn.risk}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+
+  /* ── Step 6: Best Practices (NDJSON streaming, read-only) ──────────── */
+
+  const renderStep6 = () => (
+    <div>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: BEST PRACTICES]</h2>
+      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+        AI-researched guidelines and best practices for this crisis scenario. Read-only preview.
+      </p>
+
+      {step6Loading && (
+        <div className="mb-6">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
+            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
+              Researching best practices...
+            </span>
+          </div>
+          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
+            {step6Progress.map((msg, i) => (
+              <div key={i} className="text-robotic-yellow/70">
+                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                {msg}
+              </div>
+            ))}
+            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
+          </div>
+        </div>
+      )}
+
+      {step6Error && (
+        <div className="text-center py-4 mb-4">
+          <p className="text-sm terminal-text text-red-400 mb-4">{step6Error}</p>
           <button
             onClick={generateResearch}
             className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
@@ -1396,11 +1873,10 @@ export const SocialCrisisWizard = () => {
 
       {research && (
         <>
-          {/* Per-Team Guidelines */}
           {research.per_team.length > 0 && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Per-Team Guidelines
+                Response Guidelines
               </h3>
               <div className="space-y-4">
                 {research.per_team.map((team, ti) => (
@@ -1440,7 +1916,7 @@ export const SocialCrisisWizard = () => {
                                   key={si}
                                   className="text-[9px] terminal-text text-robotic-yellow/30 flex gap-1"
                                 >
-                                  <span className="text-green-400">▸</span> {sig}
+                                  <span className="text-green-400">&#9656;</span> {sig}
                                 </div>
                               ))}
                             </div>
@@ -1454,7 +1930,6 @@ export const SocialCrisisWizard = () => {
             </div>
           )}
 
-          {/* Group-Wide */}
           {research.group_wide && (
             <div className="mb-6">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
@@ -1491,7 +1966,7 @@ export const SocialCrisisWizard = () => {
                         key={i}
                         className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
                       >
-                        <span className="text-orange-400 mt-0.5">▸</span>
+                        <span className="text-orange-400 mt-0.5">&#9656;</span>
                         <span>{ep}</span>
                       </div>
                     ))}
@@ -1501,7 +1976,6 @@ export const SocialCrisisWizard = () => {
             </div>
           )}
 
-          {/* Case Studies */}
           {research.group_wide?.case_studies.length > 0 && (
             <div>
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
@@ -1523,7 +1997,7 @@ export const SocialCrisisWizard = () => {
                             key={li}
                             className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
                           >
-                            <span className="text-green-400">•</span> {lesson}
+                            <span className="text-green-400">&#8226;</span> {lesson}
                           </div>
                         ))}
                       </div>
@@ -1540,9 +2014,9 @@ export const SocialCrisisWizard = () => {
 
   /* ── Step 7: Review & Compile ──────────────────────────────────────── */
 
-  const renderStep6 = () => (
+  const renderStep7 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: REVIEW & COMPILE]</h2>
+      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 7: REVIEW & COMPILE]</h2>
 
       {!scenarioId && !compiling && (
         <div className="space-y-6">
@@ -1550,64 +2024,52 @@ export const SocialCrisisWizard = () => {
             Review the full scenario summary, then compile to persist.
           </p>
 
-          {/* Summary Dashboard */}
           <div className="border border-robotic-gray-200 rounded p-4 mb-4">
             <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-4">
               Scenario Summary
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs terminal-text">
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">
-                  {CRISIS_TYPES.find((c) => c.id === crisisType)?.icon || '📋'}
-                </div>
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Crisis Type</div>
-                <div className="text-robotic-yellow font-bold">{crisisLabel}</div>
+              <div className="border border-robotic-gray-200 rounded p-3 text-center col-span-2 sm:col-span-3">
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Crisis Scenario</div>
+                <div className="text-robotic-yellow text-xs mt-1 line-clamp-2">{crisisLabel}</div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">📍</div>
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Location</div>
-                <div className="text-robotic-yellow font-bold">
-                  {location}, {country}
-                </div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Country</div>
+                <div className="text-robotic-yellow font-bold">{country}</div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">👥</div>
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Storyline</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">
+                  Storyline Injects
+                </div>
                 <div className="text-robotic-yellow font-bold text-lg">
                   {storylineInjects.length}
                 </div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">🎭</div>
                 <div className="text-[10px] text-robotic-yellow/40 uppercase">NPC Count</div>
                 <div className="text-robotic-yellow font-bold text-lg">{personas.length}</div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">💉</div>
                 <div className="text-[10px] text-robotic-yellow/40 uppercase">Team Injects</div>
                 <div className="text-robotic-yellow font-bold text-lg">{totalTeamInjects}</div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">🌐</div>
                 <div className="text-[10px] text-robotic-yellow/40 uppercase">Shared Injects</div>
                 <div className="text-robotic-yellow font-bold text-lg">{sharedInjects.length}</div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">🚪</div>
                 <div className="text-[10px] text-robotic-yellow/40 uppercase">Conv. Gates</div>
                 <div className="text-robotic-yellow font-bold text-lg">
                   {convergenceGates.length}
                 </div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">📚</div>
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Research Teams</div>
+                <div className="text-[10px] text-robotic-yellow/40 uppercase">Sentiment Cases</div>
                 <div className="text-robotic-yellow font-bold text-lg">
-                  {research?.per_team.length || 0}
+                  {sentimentProfile?.analogous_cases.length || 0}
                 </div>
               </div>
               <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-2xl mb-1">🏆</div>
                 <div className="text-[10px] text-robotic-yellow/40 uppercase">Case Studies</div>
                 <div className="text-robotic-yellow font-bold text-lg">
                   {research?.group_wide.case_studies.length || 0}
@@ -1616,7 +2078,6 @@ export const SocialCrisisWizard = () => {
             </div>
           </div>
 
-          {/* Narrative preview */}
           {narrative && (
             <div className="border border-robotic-gray-200 rounded p-4 mb-4">
               <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
@@ -1655,14 +2116,14 @@ export const SocialCrisisWizard = () => {
                 {msg}
               </div>
             ))}
-            <div className="animate-pulse text-robotic-yellow/40">▌</div>
+            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
           </div>
         </div>
       )}
 
       {scenarioId && !compiling && (
         <div className="text-center py-8">
-          <div className="text-4xl mb-4">✅</div>
+          <div className="text-4xl mb-4">&#9989;</div>
           <h3 className="text-lg terminal-text font-bold mb-2">Scenario Created Successfully</h3>
           {scenarioTitle && (
             <p className="text-sm terminal-text text-cyan-400 mb-1">{scenarioTitle}</p>
@@ -1671,15 +2132,12 @@ export const SocialCrisisWizard = () => {
             Scenario ID: {scenarioId}
           </p>
 
-          {/* Final stats */}
           <div className="border border-robotic-gray-200 rounded p-4 bg-black/20 text-xs terminal-text mb-4 text-left max-w-md mx-auto">
             <div className="grid grid-cols-2 gap-2">
               <span className="text-robotic-yellow/40">Injects:</span>
               <span className="text-robotic-yellow">{storylineInjects.length}</span>
               <span className="text-robotic-yellow/40">NPCs:</span>
               <span className="text-robotic-yellow">{personas.length}</span>
-              <span className="text-robotic-yellow/40">Team Injects:</span>
-              <span className="text-robotic-yellow">{totalTeamInjects}</span>
               <span className="text-robotic-yellow/40">Shared Injects:</span>
               <span className="text-robotic-yellow">{sharedInjects.length}</span>
               <span className="text-robotic-yellow/40">Convergence Gates:</span>
@@ -1729,26 +2187,23 @@ export const SocialCrisisWizard = () => {
   return (
     <div className="min-h-screen scanline p-2 sm:p-6">
       <div className="w-full px-1 sm:px-4">
-        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/warroom')}
               className="text-xs terminal-text text-robotic-yellow/50 hover:text-robotic-yellow border border-robotic-gray-200 px-2 py-1"
             >
-              ← WAR ROOM
+              &#8592; WAR ROOM
             </button>
             <h1 className="text-2xl terminal-text uppercase tracking-wider">
-              [SOCIAL CRISIS WIZARD]
+              [CRISIS SIMULATION WIZARD]
             </h1>
           </div>
-          <span className="text-xs terminal-text text-robotic-yellow/50">📱 Social Media Mode</span>
+          <span className="text-xs terminal-text text-robotic-yellow/50">Universal Mode</span>
         </div>
 
-        {/* Progress bar */}
         {progressBar}
 
-        {/* Step content */}
         <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6">
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
@@ -1756,15 +2211,15 @@ export const SocialCrisisWizard = () => {
           {step === 4 && renderStep4()}
           {step === 5 && renderStep5()}
           {step === 6 && renderStep6()}
+          {step === 7 && renderStep7()}
         </div>
 
-        {/* Navigation buttons */}
         <div className="flex justify-between items-center flex-shrink-0 pt-2">
           <button
             onClick={goBack}
             className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
           >
-            {step === 1 ? '[← WAR ROOM]' : '[BACK]'}
+            {step === 1 ? '[&#8592; WAR ROOM]' : '[BACK]'}
           </button>
           <span className="text-xs terminal-text text-robotic-yellow/40">
             Step {currentStepIndex + 1} of {VISIBLE_STEPS.length}

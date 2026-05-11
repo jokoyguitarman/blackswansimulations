@@ -55,6 +55,12 @@ interface SocialState {
   sop_assess_overdue: boolean;
   sop_draft_overdue: boolean;
   sop_publish_overdue: boolean;
+  dimension_labels?: {
+    public_trust: string;
+    community_safety: string;
+    narrative_control: string;
+    escalation_risk: string;
+  };
 }
 
 interface GradedReply {
@@ -122,28 +128,28 @@ interface OrchestrationInject {
 }
 
 const CONDITION_LABELS: Record<string, string> = {
-  player_acknowledged_victims_and_ongoing_investigation: 'Acknowledged victims',
+  player_acknowledged_victims_and_ongoing_investigation: 'Acknowledged affected parties',
   player_message_includes_no_collective_blame: 'No collective blame',
-  player_included_support_resources: 'Included support resources',
-  player_avoided_group_targeting_language: 'Avoided group targeting',
-  player_included_public_safety_guidance: 'Included safety guidance',
-  player_provided_shareable_assets: 'Provided shareable assets/links',
-  leader_message_calls_for_unity: 'Leader calls for unity',
-  leader_message_includes_links_to_sources: 'Leader includes source links',
-  leader_has_preexisting_credibility: 'Leader has credibility',
-  player_addressed_fake_news_spiral: 'Addressed fake news',
+  player_included_support_resources: 'Included actionable guidance',
+  player_avoided_group_targeting_language: 'Avoided harmful amplification',
+  player_included_public_safety_guidance: 'Included safety/protective info',
+  player_provided_shareable_assets: 'Cited verified sources',
+  leader_message_calls_for_unity: 'Stakeholder promotes dialogue',
+  leader_message_includes_links_to_sources: 'Stakeholder includes source links',
+  leader_has_preexisting_credibility: 'Key stakeholder has credibility',
+  player_addressed_fake_news_spiral: 'Addressed false claims',
   player_used_leader_amplification: 'Leader amplification used',
   player_executed_multi_platform_blitz: 'Multi-platform posting (X + Facebook)',
   player_used_strategic_silence: 'Strategic silence (ignoring trolls)',
   player_pinned_verified_update: 'Official statement posted',
-  player_is_actively_moderating_hate_speech: 'Actively moderating hate speech',
+  player_is_actively_moderating_hate_speech: 'Actively moderating harmful content',
   player_message_is_consistent_across_channels: 'Consistent messaging across platforms',
   player_message_inconsistent_across_channels: 'Inconsistent messaging across platforms',
-  community_leader_contacted: 'Community leader contacted',
+  community_leader_contacted: 'Key stakeholder contacted',
   impression_dominance_player: 'Player impressions dominate hostile',
   sentiment_above_60: 'Sentiment above 60',
   sentiment_below_30: 'Sentiment below 30',
-  hate_post_unaddressed_count_gt_3: 'Hate posts unaddressed (>3)',
+  hate_post_unaddressed_count_gt_3: 'Harmful posts unaddressed (>3)',
   misinformation_unaddressed_10min: 'Misinfo unaddressed 10+ min',
   team_published_counter_narrative: 'Counter-narrative published',
   team_flagged_misinformation: 'Misinformation flagged',
@@ -705,9 +711,15 @@ export default function TrainerSimDashboard() {
     const isHarmful =
       !!flags &&
       (!!flags.hate_speech ||
+        !!flags.is_hate_speech ||
+        !!flags.is_harmful_narrative ||
         !!flags.misinformation ||
+        !!flags.is_misinformation ||
         !!flags.inflammatory ||
-        !!flags.threatening);
+        !!flags.is_inflammatory ||
+        !!flags.threatening ||
+        !!flags.incites_violence ||
+        !!flags.is_organized_pressure);
     return isHarmful && !p.responded_at;
   });
 
@@ -776,10 +788,14 @@ export default function TrainerSimDashboard() {
 
   function flagBadges(flags: Record<string, unknown>) {
     const out: { text: string; variant: 'red' | 'amber' | 'blue' | 'gray' }[] = [];
-    if (flags.hate_speech) out.push({ text: 'Hate', variant: 'red' });
-    if (flags.misinformation) out.push({ text: 'Misinfo', variant: 'amber' });
-    if (flags.inflammatory) out.push({ text: 'Inflam.', variant: 'amber' });
-    if (flags.threatening) out.push({ text: 'Threat', variant: 'red' });
+    if (flags.hate_speech || flags.is_hate_speech) out.push({ text: 'Hate', variant: 'red' });
+    if (flags.is_harmful_narrative) out.push({ text: 'Harmful', variant: 'red' });
+    if (flags.misinformation || flags.is_misinformation)
+      out.push({ text: 'Misinfo', variant: 'amber' });
+    if (flags.inflammatory || flags.is_inflammatory)
+      out.push({ text: 'Inflam.', variant: 'amber' });
+    if (flags.threatening || flags.incites_violence) out.push({ text: 'Threat', variant: 'red' });
+    if (flags.is_organized_pressure) out.push({ text: 'Pressure', variant: 'amber' });
     if (flags.manipulative) out.push({ text: 'Manip.', variant: 'amber' });
     return out;
   }
@@ -789,9 +805,15 @@ export default function TrainerSimDashboard() {
     const isHarmful =
       !!flags &&
       (!!flags.hate_speech ||
+        !!flags.is_hate_speech ||
+        !!flags.is_harmful_narrative ||
         !!flags.misinformation ||
+        !!flags.is_misinformation ||
         !!flags.inflammatory ||
-        !!flags.threatening);
+        !!flags.is_inflammatory ||
+        !!flags.threatening ||
+        !!flags.incites_violence ||
+        !!flags.is_organized_pressure);
     if (isHarmful && !post.responded_at) return 'border-l-2 border-red-500 animate-pulse';
     if (post.author_type === 'npc' || post.author_type === 'designed_npc')
       return 'border-l-2 border-amber-400';
@@ -914,10 +936,23 @@ export default function TrainerSimDashboard() {
                     </div>
                   </div>
                 </div>
-                <Gauge label="Public Trust" value={socialState.public_trust} />
-                <Gauge label="Community Safety" value={socialState.community_safety} />
-                <Gauge label="Narrative Control" value={socialState.narrative_control} />
-                <Gauge label="Escalation Risk" value={socialState.escalation_risk} invert />
+                <Gauge
+                  label={socialState.dimension_labels?.public_trust || 'Public Trust'}
+                  value={socialState.public_trust}
+                />
+                <Gauge
+                  label={socialState.dimension_labels?.community_safety || 'Stakeholder Confidence'}
+                  value={socialState.community_safety}
+                />
+                <Gauge
+                  label={socialState.dimension_labels?.narrative_control || 'Narrative Control'}
+                  value={socialState.narrative_control}
+                />
+                <Gauge
+                  label={socialState.dimension_labels?.escalation_risk || 'Escalation Risk'}
+                  value={socialState.escalation_risk}
+                  invert
+                />
               </>
             ) : (
               <p className="text-xs text-center py-8" style={{ color: '#64748b' }}>
@@ -1120,7 +1155,7 @@ export default function TrainerSimDashboard() {
                         </span>
                         <span style={{ color: gradeColor(score.tone) }}>TONE {score.tone}</span>
                         <span style={{ color: gradeColor(score.cultural_sensitivity) }}>
-                          CULT {score.cultural_sensitivity}
+                          SENS {score.cultural_sensitivity}
                         </span>
                         <span style={{ color: gradeColor(score.persuasiveness) }}>
                           PERS {score.persuasiveness}
@@ -1279,7 +1314,7 @@ export default function TrainerSimDashboard() {
                   <span style={{ color: '#3b82f6' }}>{socialState.player_post_count}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span style={{ color: '#64748b' }}>Unaddressed Hate</span>
+                  <span style={{ color: '#64748b' }}>Unaddressed Harmful</span>
                   <span
                     style={{
                       color: socialState.unaddressed_hate_count > 0 ? '#ef4444' : '#22c55e',
@@ -1299,7 +1334,7 @@ export default function TrainerSimDashboard() {
                   </span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span style={{ color: '#64748b' }}>Oldest Hate Post</span>
+                  <span style={{ color: '#64748b' }}>Oldest Harmful Post</span>
                   <span
                     style={{
                       color: ageColor(socialState.oldest_unaddressed_hate_minutes),
@@ -1364,15 +1399,16 @@ export default function TrainerSimDashboard() {
                   </li>
                   <li>
                     <strong style={{ color: '#e5e5e5' }}>Public Trust (0-100)</strong> — Measures
-                    whether the public perceives the response team as competent. Increases when
+                    whether stakeholders perceive the response team as competent. Increases when
                     players publish official statements and respond to harmful content quickly.
-                    Decreases when hate speech goes unaddressed or the team is silent.
+                    Decreases when harmful posts go unaddressed or the team is silent.
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Community Safety (0-100)</strong> — Tracks
-                    perceived safety in the community. Drops when racist content, violence
-                    incitement, or targeted harassment appears and remains unaddressed. Recovers
-                    when counter-narratives are published.
+                    <strong style={{ color: '#e5e5e5' }}>Stakeholder Confidence (0-100)</strong> —
+                    Tracks how safe and confident affected parties feel. Drops when harmful
+                    narratives, inflammatory content, or pressure campaigns appear and remain
+                    unaddressed. Recovers when counter-narratives are published and key stakeholders
+                    are contacted.
                   </li>
                   <li>
                     <strong style={{ color: '#e5e5e5' }}>Narrative Control (0-100)</strong> — Ratio
@@ -1382,9 +1418,9 @@ export default function TrainerSimDashboard() {
                   </li>
                   <li>
                     <strong style={{ color: '#e5e5e5' }}>Escalation Risk (0-100, inverted)</strong>{' '}
-                    — Higher is worse. Increases when hate speech, violence, and misinformation
-                    accumulate without response. Decreases when players flag misinfo, publish
-                    statements, and contact community leaders.
+                    — Higher is worse. Increases when harmful content, organized pressure campaigns,
+                    and misinformation accumulate without response. Decreases when players flag
+                    content, publish statements, and contact key stakeholders.
                   </li>
                 </ul>
               </section>
@@ -1394,8 +1430,9 @@ export default function TrainerSimDashboard() {
                   Unattended Harmful Posts
                 </h3>
                 <p>
-                  Lists NPC posts flagged with hate speech, misinformation, racist content, or
-                  violence incitement that the player has not yet responded to or flagged.
+                  Lists NPC posts flagged with harmful narratives, misinformation, inflammatory
+                  content, or violence incitement that the player has not yet responded to or
+                  flagged.
                 </p>
                 <ul className="list-disc ml-5 mt-2 space-y-1">
                   <li>
@@ -1408,7 +1445,7 @@ export default function TrainerSimDashboard() {
                   </li>
                   <li>
                     After 10+ minutes unaddressed, automated consequence injects fire (e.g.,
-                    "community feels abandoned").
+                    "stakeholders feel abandoned").
                   </li>
                 </ul>
               </section>

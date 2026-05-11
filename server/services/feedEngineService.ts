@@ -297,7 +297,7 @@ async function routeToEmail(
       direction: 'inbound',
       from_address: config.from_address || 'system@sim.local',
       from_name: config.from_name || 'System',
-      to_addresses: ['team@harmony.gov.sg'],
+      to_addresses: ['team@crisisresponse.sim'],
       subject,
       body_html: `<p>${bodyText.replace(/\n/g, '</p><p>')}</p>`,
       body_text: bodyText,
@@ -425,7 +425,7 @@ async function routeToPhoneCall(
 function determineSentiment(flags: Record<string, unknown> | undefined): string {
   if (!flags) return 'neutral';
   if (flags.is_hate_speech || flags.incites_violence) return 'hateful';
-  if (flags.is_racist) return 'inflammatory';
-  if (flags.is_misinformation) return 'negative';
+  if (flags.is_racist || flags.is_inflammatory || flags.is_harmful_narrative) return 'inflammatory';
+  if (flags.is_misinformation || flags.is_organized_pressure) return 'negative';
   return 'neutral';
 }

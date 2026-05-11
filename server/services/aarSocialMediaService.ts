@@ -156,11 +156,17 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
 
     return {
       timestamp: p.created_at as string,
-      event_type: (p.content_flags as Record<string, unknown>)?.is_hate_speech
-        ? 'hate_speech'
-        : (p.content_flags as Record<string, unknown>)?.is_misinformation
-          ? 'misinformation'
-          : 'general',
+      event_type:
+        (p.content_flags as Record<string, unknown>)?.is_hate_speech ||
+        (p.content_flags as Record<string, unknown>)?.is_harmful_narrative
+          ? 'harmful_narrative'
+          : (p.content_flags as Record<string, unknown>)?.is_misinformation
+            ? 'misinformation'
+            : (p.content_flags as Record<string, unknown>)?.is_inflammatory
+              ? 'inflammatory'
+              : (p.content_flags as Record<string, unknown>)?.is_organized_pressure
+                ? 'organized_pressure'
+                : 'general',
       description: (p.content as string).substring(0, 100),
       response_time_minutes: responseTimeMinutes
         ? Math.round(responseTimeMinutes * 10) / 10
@@ -311,7 +317,15 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
   const hostileViews = posts
     .filter((p: Record<string, unknown>) => {
       const flags = (p.content_flags || {}) as Record<string, unknown>;
-      return !!(flags.is_hate_speech || flags.is_misinformation || flags.is_racist);
+      return !!(
+        flags.is_hate_speech ||
+        flags.is_harmful_narrative ||
+        flags.is_misinformation ||
+        flags.is_racist ||
+        flags.is_inflammatory ||
+        flags.incites_violence ||
+        flags.is_organized_pressure
+      );
     })
     .reduce((s: number, p: Record<string, unknown>) => s + (Number(p.view_count) || 0), 0);
 

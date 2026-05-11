@@ -645,8 +645,8 @@ export const WarRoom = () => {
                   <h3 className="text-lg font-bold terminal-text mb-2">Social Media Crisis</h3>
                   <p className="text-sm text-robotic-yellow/60">
                     Social media crisis response simulation. Players use a simulated phone to
-                    monitor feeds, counter hate speech, and coordinate responses during racial
-                    tension events.
+                    monitor feeds, address harmful narratives, and coordinate responses during any
+                    crisis scenario.
                   </p>
                 </button>
               </div>

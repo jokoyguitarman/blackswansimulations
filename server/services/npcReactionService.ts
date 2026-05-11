@@ -116,7 +116,11 @@ export async function triggerNPCReactions(
         if (roll < Math.min(threshold, 0.9)) {
           reactingNPCs.push({ persona, reactionType: 'cover' });
         }
-      } else if (/supportive|community|interfaith|unity/i.test(persona.personality)) {
+      } else if (
+        /supportive|community|interfaith|unity|advocate|defender|moderate|balanced|reasonable/i.test(
+          persona.personality,
+        )
+      ) {
         if (roll < Math.min(0.6 * probabilityBoost, 0.9)) {
           reactingNPCs.push({ persona, reactionType: 'support' });
         }

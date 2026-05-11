@@ -15,6 +15,19 @@ function normalizeRole(teamName: string): string {
     .trim();
 }
 
+function deriveCrisisCategory(crisisType: string): string {
+  if (!crisisType || crisisType.length < 10) return 'social_media_crisis';
+  const lower = crisisType.toLowerCase();
+  if (/product.?recall|defect|safety.?issue|consumer.?protection/i.test(lower))
+    return 'product_recall';
+  if (/data.?breach|cyber|hack|privacy|leak/i.test(lower)) return 'data_breach';
+  if (/layoff|restructur|downsiz|workforce.?reduction/i.test(lower)) return 'corporate_layoffs';
+  if (/racial|ethnic|religious|hate.?speech|xenophob/i.test(lower)) return 'social_tension';
+  if (/environment|pollution|spill|emission|contamina/i.test(lower)) return 'environmental';
+  if (/scandal|misconduct|fraud|corruption|embezzle/i.test(lower)) return 'corporate_scandal';
+  return 'social_media_crisis';
+}
+
 export async function getCachedTeamDoctrines(
   teamName: string,
   crisisCategory = 'social_media_crisis',
@@ -160,21 +173,22 @@ export async function getOrResearchTeamDoctrines(
   ) => Promise<ResearchGuidelines>,
   onTeamComplete?: (teamName: string) => void,
 ): Promise<ResearchGuidelines> {
+  const cacheCategory = deriveCrisisCategory(crisisType);
   const cachedPerTeam: TeamBestPractice[] = [];
   const uncachedTeams: TeamDef[] = [];
 
   for (const team of teams) {
-    const cached = await getCachedTeamDoctrines(team.team_name);
+    const cached = await getCachedTeamDoctrines(team.team_name, cacheCategory);
     if (cached && cached.guidelines.length > 0) {
       cachedPerTeam.push(cached);
-      logger.info({ team: team.team_name }, 'Using cached doctrines');
+      logger.info({ team: team.team_name, cacheCategory }, 'Using cached doctrines');
       onTeamComplete?.(team.team_name);
     } else {
       uncachedTeams.push(team);
     }
   }
 
-  const cachedGroupWide = await getCachedGroupDoctrines();
+  const cachedGroupWide = await getCachedGroupDoctrines(cacheCategory);
 
   if (uncachedTeams.length === 0 && cachedGroupWide) {
     logger.info({ cachedTeams: cachedPerTeam.length }, 'All doctrines from cache');
@@ -191,12 +205,12 @@ export async function getOrResearchTeamDoctrines(
 
   for (const teamRes of freshResult.per_team) {
     if (teamRes.guidelines.length > 0) {
-      await cacheTeamDoctrines(teamRes.team_name, teamRes.guidelines);
+      await cacheTeamDoctrines(teamRes.team_name, teamRes.guidelines, cacheCategory);
     }
   }
 
   if (!cachedGroupWide) {
-    await cacheGroupDoctrines(freshResult.group_wide);
+    await cacheGroupDoctrines(freshResult.group_wide, cacheCategory);
   }
 
   return {
