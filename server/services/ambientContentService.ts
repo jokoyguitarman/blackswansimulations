@@ -522,7 +522,7 @@ Return ONLY valid JSON:
       sessionId,
       String(scenario.description || ''),
       elapsedMinutes,
-      knownNPCs,
+      keyNPCsForPrompt,
       socialState,
     );
 
@@ -552,7 +552,7 @@ Return ONLY valid JSON:
     await generateGroupActivity(
       sessionId,
       String(scenario.description || ''),
-      knownNPCs,
+      keyNPCsForPrompt,
       socialState,
     ).catch((err) =>
       logger.warn({ err, sessionId }, 'Group activity generation failed (non-critical)'),

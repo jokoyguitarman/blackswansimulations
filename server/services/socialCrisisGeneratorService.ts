@@ -1048,6 +1048,7 @@ async function researchTeamBestPractices(
   crisisType: string,
   context: string,
   storylineInjects: SocialInject[],
+  orgName?: string,
 ): Promise<TeamBestPractice> {
   const injectSummary = storylineInjects
     .slice(0, 10)
@@ -1094,6 +1095,7 @@ async function researchGroupBestPractices(
   crisisType: string,
   context: string,
   teams: TeamDef[],
+  orgName?: string,
 ): Promise<ResearchGuidelines['group_wide']> {
   const result = await callAI(
     `You are an expert researcher in inter-agency crisis coordination and social media crisis management.
@@ -1163,6 +1165,7 @@ export async function generateStrategicBenchmarks(
   crisisType: string,
   context: string,
   teams: TeamDef[],
+  orgName?: string,
 ): Promise<StrategicActionBenchmark[]> {
   const result = await callAI(
     `You are generating strategic action benchmarks for a social media crisis simulation. These benchmarks define what the response team SHOULD do (based on crisis communication doctrine) and when they should do it.

@@ -92,9 +92,9 @@ export default function OrgPageView({
       if (targetPage) setPageInfo(targetPage);
 
       const postsJson = await postsRes.json();
-      const officialPosts = ((postsJson.data || []) as PagePost[]).filter(
-        (p: Record<string, unknown>) => p.author_type === 'official_account',
-      );
+      const officialPosts = (
+        (postsJson.data || []) as (PagePost & { author_type?: string })[]
+      ).filter((p) => p.author_type === 'official_account') as PagePost[];
       setPosts(
         officialPosts.sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
