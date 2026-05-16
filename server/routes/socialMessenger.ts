@@ -26,11 +26,23 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
     const playerHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
+    const { data: orgPages } = await supabaseAdmin
+      .from('sim_org_pages')
+      .select('page_handle')
+      .eq('session_id', sessionId)
+      .eq('platform', platformFilter || 'facebook');
+
+    const orgPageHandle = orgPages?.[0]?.page_handle || '';
+
+    const handleFilter = orgPageHandle
+      ? `sender_handle.eq."${playerHandle}",recipient_handle.eq."${playerHandle}",recipient_handle.eq."${orgPageHandle}",sender_handle.eq."${orgPageHandle}"`
+      : `sender_handle.eq."${playerHandle}",recipient_handle.eq."${playerHandle}"`;
+
     let query = supabaseAdmin
       .from('sim_direct_messages')
       .select('*')
       .eq('session_id', sessionId)
-      .or(`sender_handle.eq."${playerHandle}",recipient_handle.eq."${playerHandle}"`);
+      .or(handleFilter);
 
     if (platformFilter) {
       query = query.eq('platform', platformFilter);
@@ -52,12 +64,18 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
         latest_message: (typeof messages)[0];
         unread_count: number;
         other_participant: { handle: string; display_name: string };
+        is_org_page_thread: boolean;
       }
     >();
 
     for (const msg of messages || []) {
       const existing = threadMap.get(msg.thread_id);
-      const isIncoming = msg.recipient_handle === playerHandle;
+      const isOrgThread =
+        orgPageHandle &&
+        (msg.sender_handle === orgPageHandle || msg.recipient_handle === orgPageHandle);
+      const isIncoming = isOrgThread
+        ? msg.recipient_handle === orgPageHandle
+        : msg.recipient_handle === playerHandle;
       const otherHandle = isIncoming ? msg.sender_handle : msg.recipient_handle;
       const otherDisplayName = isIncoming ? msg.sender_display_name : otherHandle;
 
@@ -67,6 +85,7 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
           latest_message: msg,
           unread_count: isIncoming && !msg.is_read ? 1 : 0,
           other_participant: { handle: otherHandle, display_name: otherDisplayName },
+          is_org_page_thread: !!isOrgThread,
         });
       } else {
         if (new Date(msg.created_at) > new Date(existing.latest_message.created_at)) {
@@ -128,7 +147,7 @@ router.get('/thread/:threadId', requireAuth, async (req: AuthenticatedRequest, r
 router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
-    const { session_id, recipient_handle, content, platform } = req.body;
+    const { session_id, recipient_handle, content, platform, send_as_page } = req.body;
 
     if (!session_id || !recipient_handle || !content) {
       return res
@@ -144,15 +163,33 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const playerName =
       (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    const senderHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    const personalHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
-    // Find existing thread between these two handles in this session
+    let senderHandle = personalHandle;
+    let senderDisplayName = playerName;
+    let senderType = 'player';
+
+    if (send_as_page) {
+      const { data: orgPage } = await supabaseAdmin
+        .from('sim_org_pages')
+        .select('page_name, page_handle')
+        .eq('session_id', session_id)
+        .eq('platform', platform || 'facebook')
+        .single();
+
+      if (orgPage) {
+        senderHandle = orgPage.page_handle;
+        senderDisplayName = orgPage.page_name;
+        senderType = 'official_account';
+      }
+    }
+
     const { data: existingThread } = await supabaseAdmin
       .from('sim_direct_messages')
       .select('thread_id')
       .eq('session_id', session_id)
       .or(
-        `and(sender_handle.eq.${senderHandle},recipient_handle.eq.${recipient_handle}),and(sender_handle.eq.${recipient_handle},recipient_handle.eq.${senderHandle})`,
+        `and(sender_handle.eq."${senderHandle}",recipient_handle.eq."${recipient_handle}"),and(sender_handle.eq."${recipient_handle}",recipient_handle.eq."${senderHandle}")`,
       )
       .limit(1)
       .single();
@@ -165,8 +202,8 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
         session_id,
         thread_id: threadId,
         sender_handle: senderHandle,
-        sender_display_name: playerName,
-        sender_type: 'player',
+        sender_display_name: senderDisplayName,
+        sender_type: senderType,
         recipient_handle,
         recipient_user_id: null,
         content,
@@ -189,6 +226,36 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
     });
 
     await recordPlayerAction(session_id, user.id, 'dm_sent', message.id, content);
+
+    // Trigger NPC reply if the recipient is an NPC (non-blocking)
+    void (async () => {
+      try {
+        const { triggerNPCDMReply } = await import('../services/npcMessengerService.js');
+        const { data: scenario } = await supabaseAdmin
+          .from('sessions')
+          .select('scenario_id')
+          .eq('id', session_id)
+          .single();
+        if (scenario?.scenario_id) {
+          const { data: sc } = await supabaseAdmin
+            .from('scenarios')
+            .select('initial_state')
+            .eq('id', scenario.scenario_id)
+            .single();
+          const personas = ((sc?.initial_state as Record<string, unknown>)?.npc_personas ||
+            []) as Array<{ handle: string }>;
+          const isNPC = personas.some((p) => p.handle === recipient_handle);
+          if (isNPC) {
+            const delay = 10000 + Math.floor(Math.random() * 20000);
+            setTimeout(() => {
+              void triggerNPCDMReply(session_id, threadId, recipient_handle, content);
+            }, delay);
+          }
+        }
+      } catch {
+        /* non-critical */
+      }
+    })();
 
     res.status(201).json({ data: message });
   } catch (err) {

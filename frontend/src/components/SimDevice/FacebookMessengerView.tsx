@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -27,6 +28,7 @@ interface Thread {
   last_message: string;
   last_time: string;
   unread_count: number;
+  is_org_page_thread: boolean;
   latest_message?: { content: string; created_at: string };
   other_participant?: { handle: string; display_name: string };
 }
@@ -89,6 +91,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   const [composeRecipient, setComposeRecipient] = useState('');
   const [composeText, setComposeText] = useState('');
   const [knownHandles, setKnownHandles] = useState<string[]>([]);
+  const [inboxTab, setInboxTab] = useState<'personal' | 'page'>('personal');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -146,6 +149,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
             (t.latest_message as Record<string, string>)?.created_at || t.last_time || '',
           ),
           unread_count: Number(t.unread_count) || 0,
+          is_org_page_thread: !!t.is_org_page_thread,
         }));
         setThreads(normalized);
       }
@@ -214,6 +218,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
           recipient_handle: thread.other_handle,
           content,
           platform: 'facebook',
+          send_as_page: thread.is_org_page_thread || false,
         }),
       });
       if (res.ok) {
@@ -272,6 +277,27 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
     setMessages([]);
     fetchThreads();
   }
+
+  useWebSocket({
+    sessionId,
+    eventTypes: ['messenger.received'],
+    onEvent: (event) => {
+      if (event.type === 'messenger.received') {
+        const msg = (event.data as { message: Message }).message;
+        if (msg && msg.thread_id === selectedThread) {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+        }
+        fetchThreads();
+      }
+    },
+  });
+
+  const filteredThreads = threads.filter((t) =>
+    inboxTab === 'page' ? t.is_org_page_thread : !t.is_org_page_thread,
+  );
 
   const activeThread = threads.find((t) => t.thread_id === selectedThread);
 
@@ -495,15 +521,40 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         </div>
       )}
 
+      {/* Inbox Tabs */}
+      <div style={{ display: 'flex', borderBottom: '1px solid #E4E6EB' }}>
+        {(['personal', 'page'] as const).map((tab) => (
+          <button
+            key={tab}
+            onClick={() => setInboxTab(tab)}
+            style={{
+              flex: 1,
+              padding: '10px 0',
+              fontSize: 13,
+              fontWeight: 600,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              color: inboxTab === tab ? '#1877F2' : '#65676B',
+              borderBottom: inboxTab === tab ? '2px solid #1877F2' : '2px solid transparent',
+            }}
+          >
+            {tab === 'personal' ? 'Personal' : 'Page Inbox'}
+          </button>
+        ))}
+      </div>
+
       {/* Thread List */}
       <div style={styles.threadList}>
         {loading && threads.length === 0 && (
           <div style={styles.loadingText}>Loading conversations...</div>
         )}
-        {!loading && threads.length === 0 && (
-          <div style={styles.emptyText}>No conversations yet</div>
+        {!loading && filteredThreads.length === 0 && (
+          <div style={styles.emptyText}>
+            {inboxTab === 'page' ? 'No page messages yet' : 'No conversations yet'}
+          </div>
         )}
-        {threads.map((thread) => (
+        {filteredThreads.map((thread) => (
           <div
             key={thread.thread_id}
             style={styles.threadItem}

@@ -86,6 +86,10 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
     const personas = (initialState.npc_personas || []) as NPCPersona[];
     if (personas.length === 0) return;
     const orgName = String(initialState.org_name || '');
+    const orgPageData = initialState.org_page as Record<string, unknown> | undefined;
+    const orgFb = orgPageData?.facebook as Record<string, string> | undefined;
+    const orgPageHandle = orgFb?.page_handle || '';
+    const orgPageName = orgFb?.page_name || '';
 
     // Fetch all session participants with their profiles
     const { data: participants } = await supabaseAdmin
@@ -111,7 +115,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
       .select('id', { count: 'exact', head: true })
       .eq('session_id', sessionId);
 
-    if ((existingCount || 0) > 15) {
+    if ((existingCount || 0) > 40) {
       logger.debug({ sessionId, existingCount }, 'NPC DM limit reached, skipping');
       return;
     }
@@ -144,7 +148,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
         messages: [
           {
             role: 'system',
-            content: `You are generating NPC direct messages to players during a crisis simulation. NPCs may privately DM players to create pressure, share tips, request comments, or express concern.
+            content: `You are generating NPC direct messages during a crisis simulation. NPCs may privately DM the organization's page or individual players.
 
 Crisis context: ${String(scenario.description || '').substring(0, 400)}${orgName ? `\nOrganization: ${orgName}` : ''}
 
@@ -152,28 +156,24 @@ NPC personas:
 ${personaList}
 
 Player handles in this session: ${playerHandles}
+${orgPageHandle ? `Organization page handle: ${orgPageHandle} (${orgPageName})` : ''}
 
 Current crisis metrics: ${crisisMetrics}
 
-Types of DMs NPCs might send:
-- Journalist requesting an official comment or interview
-- Key stakeholder seeking guidance or expressing frustration
-- Concerned citizen or affected party asking what's being done
-- Anonymous tipster sharing unverified information
-- Threatening or hostile message from an aggressive persona
-- Ally or advocate offering support or sharing useful intel
+RECIPIENT RULES:
+${orgPageHandle ? `- Journalists, media outlets, regulators, affected customers, and organizations should DM the ORGANIZATION PAGE (${orgPageHandle}) -- they would contact the official account, not a random employee.` : ''}
+- Anonymous tipsters, allies, hostile/threatening personas, and internal colleagues should DM individual PLAYER handles -- they target people, not brands.
+- recipient_handle must be ${orgPageHandle ? `either "${orgPageHandle}" (org page) or ` : ''}one of the player handles listed.
 
 RULES:
 - Only generate 1-3 messages total (or 0 if the situation doesn't warrant it).
 - Each message should be 1-3 sentences and feel authentic to the sender's personality.
-- Messages should create meaningful decision pressure for the player.
+- Messages should create meaningful decision pressure.
 - sender_handle and sender_display_name must match an NPC from the persona list.
 - sender_type must match the NPC's type.
-- recipient_handle must be one of the player handles listed.
-- urgency reflects how time-sensitive the message feels.
 
 Return ONLY valid JSON:
-{ "messages": [{ "sender_handle": "@exact_handle", "sender_display_name": "Exact Name", "sender_type": "npc_public|npc_media|npc_politician|npc_influencer", "recipient_handle": "@player_handle", "content": "message text", "urgency": "low|medium|high" }] }
+{ "messages": [{ "sender_handle": "@exact_handle", "sender_display_name": "Exact Name", "sender_type": "npc_public|npc_media|npc_politician|npc_influencer", "recipient_handle": "@recipient", "content": "message text", "urgency": "low|medium|high" }] }
 
 If no messages are warranted right now, return: { "messages": [] }`,
           },
@@ -316,5 +316,123 @@ export async function sendNPCDirectMessage(
     logger.info({ sessionId, senderHandle, recipientHandle }, 'Scripted NPC DM sent');
   } catch (err) {
     logger.warn({ err, sessionId, senderHandle }, 'Scripted NPC DM failed');
+  }
+}
+
+export async function triggerNPCDMReply(
+  sessionId: string,
+  threadId: string,
+  recipientHandle: string,
+  playerMessage: string,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('scenario_id')
+      .eq('id', sessionId)
+      .single();
+
+    if (!session?.scenario_id) return;
+
+    const { data: scenario } = await supabaseAdmin
+      .from('scenarios')
+      .select('description, initial_state')
+      .eq('id', session.scenario_id)
+      .single();
+
+    if (!scenario) return;
+
+    const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
+    const personas = (initialState.npc_personas || []) as NPCPersona[];
+    const npc = personas.find((p) => p.handle === recipientHandle);
+    if (!npc) return;
+
+    const orgName = String(initialState.org_name || '');
+
+    const { data: threadMessages } = await supabaseAdmin
+      .from('sim_direct_messages')
+      .select('sender_handle, content')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true })
+      .limit(10);
+
+    const conversationContext = (threadMessages || [])
+      .map((m) => `${m.sender_handle}: ${String(m.content).substring(0, 150)}`)
+      .join('\n');
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${env.openAiApiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'gpt-5.2',
+        messages: [
+          {
+            role: 'system',
+            content: `You are ${npc.handle} (${npc.name}), an NPC in a crisis simulation. Reply to a direct message in character.
+
+Your personality: ${npc.personality}
+Your bias: ${npc.bias}
+Your type: ${npc.type}
+Crisis context: ${String(scenario.description || '').substring(0, 300)}${orgName ? `\nOrganization: ${orgName}` : ''}
+
+Conversation so far:
+${conversationContext}
+
+Reply in 1-3 sentences. Stay in character. Be authentic to your personality and bias.
+
+Return ONLY valid JSON:
+{ "reply": "your reply text" }`,
+          },
+          {
+            role: 'user',
+            content: `The player just sent you this DM: "${playerMessage}"`,
+          },
+        ],
+        temperature: 0.85,
+        max_completion_tokens: 300,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!response.ok) return;
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    if (!content) return;
+
+    const parsed = JSON.parse(content);
+    const replyText = String(parsed.reply || '');
+    if (!replyText) return;
+
+    const { data: inserted, error } = await supabaseAdmin
+      .from('sim_direct_messages')
+      .insert({
+        session_id: sessionId,
+        thread_id: threadId,
+        sender_handle: npc.handle,
+        sender_display_name: npc.name,
+        sender_type: npc.type || 'npc_public',
+        recipient_handle: '',
+        content: replyText,
+        platform: 'facebook',
+      })
+      .select()
+      .single();
+
+    if (!error && inserted) {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'messenger.received',
+        data: { message: inserted },
+        timestamp: new Date().toISOString(),
+      });
+      logger.info({ sessionId, npcHandle: npc.handle, threadId }, 'NPC DM reply sent');
+    }
+  } catch (err) {
+    logger.warn({ err, sessionId, threadId }, 'NPC DM reply failed');
   }
 }
