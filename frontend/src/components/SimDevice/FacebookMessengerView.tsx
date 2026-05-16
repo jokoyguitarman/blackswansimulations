@@ -83,11 +83,26 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showCompose, setShowCompose] = useState(false);
+  const [composeRecipient, setComposeRecipient] = useState('');
+  const [composeText, setComposeText] = useState('');
+  const [knownHandles, setKnownHandles] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetchThreads();
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/social/handles/session/${sessionId}`), { headers });
+        const json = await res.json();
+        if (Array.isArray(json.data))
+          setKnownHandles(json.data.map((h: { handle: string }) => h.handle || String(h)));
+      } catch {
+        /* ignore */
+      }
+    })();
   }, [sessionId]);
 
   useEffect(() => {
@@ -180,6 +195,31 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
       }
     } catch {
       // silently fail
+    }
+  }
+
+  async function handleComposeSend() {
+    if (!composeRecipient || !composeText.trim()) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/social/messenger/send'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          recipient_handle: composeRecipient,
+          content: composeText.trim(),
+          platform: 'facebook',
+        }),
+      });
+      if (res.ok) {
+        setShowCompose(false);
+        setComposeRecipient('');
+        setComposeText('');
+        fetchThreads();
+      }
+    } catch {
+      /* ignore */
     }
   }
 
@@ -306,7 +346,11 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
       {/* Header */}
       <div style={styles.header}>
         <span style={styles.headerTitle}>Messenger</span>
-        <button style={styles.composeButton} aria-label="New message">
+        <button
+          style={styles.composeButton}
+          aria-label="New message"
+          onClick={() => setShowCompose(true)}
+        >
           <svg
             width="20"
             height="20"
@@ -322,6 +366,102 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
           </svg>
         </button>
       </div>
+
+      {/* Compose New Message Panel */}
+      {showCompose && (
+        <div style={{ padding: 16, borderBottom: '1px solid #E4E6EB', backgroundColor: '#FFFFFF' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            <span style={{ fontWeight: 600, fontSize: 14, color: '#050505' }}>New Message</span>
+            <button
+              onClick={() => {
+                setShowCompose(false);
+                setComposeRecipient('');
+                setComposeText('');
+              }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: 18,
+                color: '#65676B',
+              }}
+            >
+              &#10005;
+            </button>
+          </div>
+          <div style={{ marginBottom: 8 }}>
+            <label style={{ fontSize: 12, color: '#65676B', display: 'block', marginBottom: 4 }}>
+              To:
+            </label>
+            <select
+              value={composeRecipient}
+              onChange={(e) => setComposeRecipient(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 10px',
+                borderRadius: 8,
+                border: '1px solid #CED0D4',
+                fontSize: 14,
+                color: '#050505',
+                backgroundColor: '#F0F2F5',
+              }}
+            >
+              <option value="">Select a person...</option>
+              {knownHandles
+                .filter((h) => h && !h.startsWith('@player'))
+                .map((handle) => (
+                  <option key={handle} value={handle}>
+                    {handle}
+                  </option>
+                ))}
+            </select>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              type="text"
+              value={composeText}
+              onChange={(e) => setComposeText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleComposeSend();
+              }}
+              placeholder="Type a message..."
+              style={{
+                flex: 1,
+                padding: '8px 12px',
+                borderRadius: 20,
+                border: '1px solid #CED0D4',
+                fontSize: 14,
+                color: '#050505',
+                backgroundColor: '#F0F2F5',
+                outline: 'none',
+              }}
+            />
+            <button
+              onClick={handleComposeSend}
+              disabled={!composeRecipient || !composeText.trim()}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 20,
+                border: 'none',
+                backgroundColor: composeRecipient && composeText.trim() ? '#1877F2' : '#E4E6EB',
+                color: composeRecipient && composeText.trim() ? '#FFFFFF' : '#BCC0C4',
+                fontWeight: 600,
+                fontSize: 14,
+                cursor: composeRecipient && composeText.trim() ? 'pointer' : 'default',
+              }}
+            >
+              Send
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Thread List */}
       <div style={styles.threadList}>

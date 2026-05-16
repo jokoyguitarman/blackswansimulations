@@ -358,35 +358,42 @@ export default function SocialFeedApp({
           return;
         const newPost = evtData.post;
         if (newPost.platform && newPost.platform !== 'x_twitter') return;
+        const isOwnPost =
+          currentUserIdRef.current &&
+          (newPost as Record<string, unknown>).user_id === currentUserIdRef.current;
 
         if (newPost.reply_to_post_id) {
-          setPosts((prev) =>
-            prev.map((p) =>
-              p.id === newPost.reply_to_post_id
-                ? { ...p, reply_count: (p.reply_count || 0) + 1 }
-                : p,
-            ),
-          );
-
-          const currentSelected = selectedPostRef.current;
-          setThreadReplies((prev) => {
-            if (currentSelected && currentSelected.id === newPost.reply_to_post_id) {
-              if (prev.some((r) => r.id === newPost.id)) return prev;
-              return [...prev, newPost];
-            }
-            return prev;
-          });
-
-          if (currentSelected && currentSelected.id === newPost.reply_to_post_id) {
-            setSelectedPost((prev) =>
-              prev ? { ...prev, reply_count: (prev.reply_count || 0) + 1 } : prev,
+          if (!isOwnPost) {
+            setPosts((prev) =>
+              prev.map((p) =>
+                p.id === newPost.reply_to_post_id
+                  ? { ...p, reply_count: (p.reply_count || 0) + 1 }
+                  : p,
+              ),
             );
+
+            const currentSelected = selectedPostRef.current;
+            setThreadReplies((prev) => {
+              if (currentSelected && currentSelected.id === newPost.reply_to_post_id) {
+                if (prev.some((r) => r.id === newPost.id)) return prev;
+                return [...prev, newPost];
+              }
+              return prev;
+            });
+
+            if (currentSelected && currentSelected.id === newPost.reply_to_post_id) {
+              setSelectedPost((prev) =>
+                prev ? { ...prev, reply_count: (prev.reply_count || 0) + 1 } : prev,
+              );
+            }
           }
         } else {
-          setPosts((prev) => {
-            if (prev.some((p) => p.id === newPost.id)) return prev;
-            return [newPost, ...prev];
-          });
+          if (!isOwnPost) {
+            setPosts((prev) => {
+              if (prev.some((p) => p.id === newPost.id)) return prev;
+              return [newPost, ...prev];
+            });
+          }
         }
       } else if (event.type === 'notification.created') {
         const eventData = event.data as { user_id?: string } | undefined;
@@ -421,9 +428,14 @@ export default function SocialFeedApp({
         console.error('Post failed:', postRes.status, errBody);
         return;
       }
-      // Don't optimistically add the post here -- the WebSocket `social_post.created`
-      // event will add it to avoid duplicates from both paths firing simultaneously.
-      await postRes.json().catch(() => null);
+      const result = await postRes.json().catch(() => null);
+      const createdPost = result?.data as SocialPost | undefined;
+      if (createdPost && !createdPost.reply_to_post_id) {
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === createdPost.id)) return prev;
+          return [createdPost, ...prev];
+        });
+      }
 
       const wasReplyingTo = replyingTo;
 

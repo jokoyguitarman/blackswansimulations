@@ -501,25 +501,32 @@ export default function FacebookFeedApp() {
           return;
         const newPost = evtData.post;
         if (newPost.platform !== 'facebook') return;
+        const isOwnPost =
+          currentUserIdRef.current &&
+          (newPost as Record<string, unknown>).user_id === currentUserIdRef.current;
         if (newPost.reply_to_post_id) {
-          setPostReplies((prev) => {
-            const pid = newPost.reply_to_post_id!;
-            const existing = prev[pid] || [];
-            if (existing.some((r) => r.id === newPost.id)) return prev;
-            return { ...prev, [pid]: [...existing, newPost] };
-          });
-          setPosts((prev) =>
-            prev.map((p) =>
-              p.id === newPost.reply_to_post_id
-                ? { ...p, reply_count: (p.reply_count || 0) + 1 }
-                : p,
-            ),
-          );
+          if (!isOwnPost) {
+            setPostReplies((prev) => {
+              const pid = newPost.reply_to_post_id!;
+              const existing = prev[pid] || [];
+              if (existing.some((r) => r.id === newPost.id)) return prev;
+              return { ...prev, [pid]: [...existing, newPost] };
+            });
+            setPosts((prev) =>
+              prev.map((p) =>
+                p.id === newPost.reply_to_post_id
+                  ? { ...p, reply_count: (p.reply_count || 0) + 1 }
+                  : p,
+              ),
+            );
+          }
         } else {
-          setPosts((prev) => {
-            if (prev.some((p) => p.id === newPost.id)) return prev;
-            return [newPost, ...prev];
-          });
+          if (!isOwnPost) {
+            setPosts((prev) => {
+              if (prev.some((p) => p.id === newPost.id)) return prev;
+              return [newPost, ...prev];
+            });
+          }
         }
       } else if (event.type === 'notification.created') {
         const eventData = event.data as { user_id?: string } | undefined;
@@ -551,7 +558,14 @@ export default function FacebookFeedApp() {
         console.error('Post failed:', postRes.status);
         return;
       }
-      await postRes.json().catch(() => null);
+      const result = await postRes.json().catch(() => null);
+      const createdPost = result?.data as SocialPost | undefined;
+      if (createdPost && !createdPost.reply_to_post_id) {
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === createdPost.id)) return prev;
+          return [createdPost, ...prev];
+        });
+      }
 
       setComposeText('');
       setMediaPromptText('');
@@ -676,7 +690,20 @@ export default function FacebookFeedApp() {
         }),
       });
       if (postRes.ok) {
-        await postRes.json().catch(() => null);
+        const result = await postRes.json().catch(() => null);
+        const createdReply = result?.data as SocialPost | undefined;
+        if (createdReply) {
+          setPostReplies((prev) => {
+            const existing = prev[postId] || [];
+            if (existing.some((r) => r.id === createdReply.id)) return prev;
+            return { ...prev, [postId]: [...existing, createdReply] };
+          });
+          setPosts((prev) =>
+            prev.map((p) =>
+              p.id === postId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
+            ),
+          );
+        }
       }
       setCommentText((prev) => ({ ...prev, [postId]: '' }));
       setReplyTarget((prev) => ({ ...prev, [postId]: null }));
@@ -802,7 +829,7 @@ export default function FacebookFeedApp() {
                   setShowNotifPanel(false);
                   setShowMessengerDropdown(false);
                 }}
-                className="relative px-6 py-3 rounded-lg hover:bg-[#F0F2F5] transition-colors"
+                className="relative px-3 py-3 rounded-lg hover:bg-[#F0F2F5] transition-colors"
                 title={tab.label}
               >
                 {tab.icon}
@@ -1733,386 +1760,447 @@ export default function FacebookFeedApp() {
 
             {/* ── Feed ── */}
             <div className="flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="flex items-center justify-center h-32">
-                  <div
-                    className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin"
-                    style={{ borderColor: '#1877F2', borderTopColor: 'transparent' }}
-                  />
-                </div>
-              ) : posts.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-48 gap-2 px-8 text-center">
-                  <p className="text-[16px] font-bold" style={{ color: '#050505' }}>
-                    No posts yet
-                  </p>
-                  <p className="text-[14px]" style={{ color: '#65676B' }}>
-                    Posts will appear here as the simulation progresses.
-                  </p>
-                </div>
-              ) : (
-                posts
-                  .filter((p) => {
-                    if (p.reply_to_post_id) return false;
-                    const q = searchQuery.toLowerCase().trim();
-                    if (!q) return true;
-                    const content = (p.content || '').toLowerCase();
-                    const handle = (p.author_handle || '').toLowerCase();
-                    const name = (p.author_display_name || '').toLowerCase();
-                    const tags = (p.hashtags || []).map((t: string) => t.toLowerCase());
-                    return (
-                      content.includes(q) ||
-                      handle.includes(q) ||
-                      name.includes(q) ||
-                      tags.some((t: string) => t.includes(q))
-                    );
-                  })
-                  .sort((a, b) => {
-                    const aIsPlayer = a.author_type === 'player';
-                    const bIsPlayer = b.author_type === 'player';
-                    if (aIsPlayer && !bIsPlayer) return -1;
-                    if (!aIsPlayer && bIsPlayer) return 1;
-                    if (aIsPlayer && bIsPlayer) {
-                      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-                    }
-                    return (b.virality_score || 0) - (a.virality_score || 0);
-                  })
-                  .map((post) => {
-                    const badge = getBadge(post.author_type);
-                    const reactionEmojis = getReactionEmojis(post.like_count);
-                    const replies = postReplies[post.id] || [];
-                    const isExpanded = expandedPosts.has(post.id);
-                    const isLong = post.content.length > 200;
+              <div style={{ maxWidth: 680, margin: '0 auto', width: '100%' }}>
+                {loading ? (
+                  <div className="flex items-center justify-center h-32">
+                    <div
+                      className="w-7 h-7 border-2 border-t-transparent rounded-full animate-spin"
+                      style={{ borderColor: '#1877F2', borderTopColor: 'transparent' }}
+                    />
+                  </div>
+                ) : posts.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-48 gap-2 px-8 text-center">
+                    <p className="text-[16px] font-bold" style={{ color: '#050505' }}>
+                      No posts yet
+                    </p>
+                    <p className="text-[14px]" style={{ color: '#65676B' }}>
+                      Posts will appear here as the simulation progresses.
+                    </p>
+                  </div>
+                ) : (
+                  posts
+                    .filter((p) => {
+                      if (p.reply_to_post_id) return false;
+                      const q = searchQuery.toLowerCase().trim();
+                      if (!q) return true;
+                      const content = (p.content || '').toLowerCase();
+                      const handle = (p.author_handle || '').toLowerCase();
+                      const name = (p.author_display_name || '').toLowerCase();
+                      const tags = (p.hashtags || []).map((t: string) => t.toLowerCase());
+                      return (
+                        content.includes(q) ||
+                        handle.includes(q) ||
+                        name.includes(q) ||
+                        tags.some((t: string) => t.includes(q))
+                      );
+                    })
+                    .sort((a, b) => {
+                      const aIsPlayer = a.author_type === 'player';
+                      const bIsPlayer = b.author_type === 'player';
+                      if (aIsPlayer && !bIsPlayer) return -1;
+                      if (!aIsPlayer && bIsPlayer) return 1;
+                      if (aIsPlayer && bIsPlayer) {
+                        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                      }
+                      return (b.virality_score || 0) - (a.virality_score || 0);
+                    })
+                    .map((post) => {
+                      const badge = getBadge(post.author_type);
+                      const reactionEmojis = getReactionEmojis(post.like_count);
+                      const replies = postReplies[post.id] || [];
+                      const isExpanded = expandedPosts.has(post.id);
+                      const isLong = post.content.length > 200;
 
-                    return (
-                      <div
-                        key={post.id}
-                        id={`fb-post-${post.id}`}
-                        className="mt-2"
-                        style={{
-                          backgroundColor: '#FFFFFF',
-                          borderTop: '1px solid #CED0D4',
-                          borderBottom: '1px solid #CED0D4',
-                        }}
-                      >
-                        {/* Author Row */}
+                      return (
                         <div
-                          className="flex items-center gap-2.5 px-3 pt-3 pb-1.5"
-                          onClick={
-                            post.author_type === 'official_account'
-                              ? () => setActiveView('page')
-                              : undefined
-                          }
-                          style={
-                            post.author_type === 'official_account'
-                              ? { cursor: 'pointer' }
-                              : undefined
-                          }
+                          key={post.id}
+                          id={`fb-post-${post.id}`}
+                          className="mt-2"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            borderTop: '1px solid #CED0D4',
+                            borderBottom: '1px solid #CED0D4',
+                          }}
                         >
+                          {/* Author Row */}
                           <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
-                            style={{
-                              backgroundColor:
-                                post.author_type === 'official_account'
-                                  ? '#1877F2'
-                                  : getAvatarColor(post.author_display_name),
-                            }}
+                            className="flex items-center gap-2.5 px-3 pt-3 pb-1.5"
+                            onClick={
+                              post.author_type === 'official_account'
+                                ? () => setActiveView('page')
+                                : undefined
+                            }
+                            style={
+                              post.author_type === 'official_account'
+                                ? { cursor: 'pointer' }
+                                : undefined
+                            }
                           >
-                            {post.author_display_name.charAt(0).toUpperCase()}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1">
-                              <span
-                                className="font-semibold text-[15px]"
-                                style={{ color: '#050505' }}
-                              >
-                                {post.author_display_name}
-                              </span>
-                              {badge && (
-                                <span className="text-[13px]" style={{ color: '#1877F2' }}>
-                                  {badge}
-                                </span>
-                              )}
-                            </div>
-                            {post.author_type === 'official_account' &&
-                              post.posted_by_display_name && (
-                                <div className="text-[11px]" style={{ color: '#65676B' }}>
-                                  Posted by {post.posted_by_display_name}
-                                </div>
-                              )}
                             <div
-                              className="flex items-center gap-1 text-[13px]"
-                              style={{ color: '#65676B' }}
+                              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
+                              style={{
+                                backgroundColor:
+                                  post.author_type === 'official_account'
+                                    ? '#1877F2'
+                                    : getAvatarColor(post.author_display_name),
+                              }}
                             >
-                              <span>{timeAgo(post.created_at)}</span>
-                              <span>·</span>
-                              <svg width="12" height="12" viewBox="0 0 16 16" fill="#65676B">
-                                <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13z" />
-                              </svg>
+                              {post.author_display_name.charAt(0).toUpperCase()}
                             </div>
-                          </div>
-                          <button
-                            onClick={() => handleFlag(post.id)}
-                            className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
-                          >
-                            <svg
-                              width="20"
-                              height="20"
-                              viewBox="0 0 24 24"
-                              fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
-                            >
-                              <circle cx="12" cy="5" r="2" />
-                              <circle cx="12" cy="12" r="2" />
-                              <circle cx="12" cy="19" r="2" />
-                            </svg>
-                          </button>
-                        </div>
-
-                        {/* Content Flags (trainer only) */}
-                        {isTrainer &&
-                          !!(
-                            post.content_flags?.is_hate_speech ||
-                            post.content_flags?.is_harmful_narrative ||
-                            post.content_flags?.is_misinformation ||
-                            post.content_flags?.is_inflammatory ||
-                            post.content_flags?.incites_violence ||
-                            post.content_flags?.is_organized_pressure ||
-                            post.content_flags?.is_racist
-                          ) && (
-                            <div className="px-3 pb-1 flex gap-1.5 flex-wrap">
-                              {!!post.content_flags.is_hate_speech && (
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1">
                                 <span
-                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                                  style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                                  className="font-semibold text-[15px]"
+                                  style={{ color: '#050505' }}
                                 >
-                                  Hate Speech
+                                  {post.author_display_name}
                                 </span>
-                              )}
-                              {!!post.content_flags.is_harmful_narrative &&
-                                !post.content_flags.is_hate_speech && (
+                                {badge && (
+                                  <span className="text-[13px]" style={{ color: '#1877F2' }}>
+                                    {badge}
+                                  </span>
+                                )}
+                              </div>
+                              {post.author_type === 'official_account' &&
+                                post.posted_by_display_name && (
+                                  <div className="text-[11px]" style={{ color: '#65676B' }}>
+                                    Posted by {post.posted_by_display_name}
+                                  </div>
+                                )}
+                              <div
+                                className="flex items-center gap-1 text-[13px]"
+                                style={{ color: '#65676B' }}
+                              >
+                                <span>{timeAgo(post.created_at)}</span>
+                                <span>·</span>
+                                <svg width="12" height="12" viewBox="0 0 16 16" fill="#65676B">
+                                  <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13z" />
+                                </svg>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleFlag(post.id)}
+                              className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
+                            >
+                              <svg
+                                width="20"
+                                height="20"
+                                viewBox="0 0 24 24"
+                                fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
+                              >
+                                <circle cx="12" cy="5" r="2" />
+                                <circle cx="12" cy="12" r="2" />
+                                <circle cx="12" cy="19" r="2" />
+                              </svg>
+                            </button>
+                          </div>
+
+                          {/* Content Flags (trainer only) */}
+                          {isTrainer &&
+                            !!(
+                              post.content_flags?.is_hate_speech ||
+                              post.content_flags?.is_harmful_narrative ||
+                              post.content_flags?.is_misinformation ||
+                              post.content_flags?.is_inflammatory ||
+                              post.content_flags?.incites_violence ||
+                              post.content_flags?.is_organized_pressure ||
+                              post.content_flags?.is_racist
+                            ) && (
+                              <div className="px-3 pb-1 flex gap-1.5 flex-wrap">
+                                {!!post.content_flags.is_hate_speech && (
                                   <span
                                     className="text-[11px] px-2 py-0.5 rounded font-semibold"
                                     style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
                                   >
-                                    Harmful
+                                    Hate Speech
                                   </span>
                                 )}
-                              {!!post.content_flags.is_misinformation && (
-                                <span
-                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                                  style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
-                                >
-                                  Misinformation
-                                </span>
-                              )}
-                              {!!post.content_flags.is_inflammatory && (
-                                <span
-                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                                  style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
-                                >
-                                  Inflammatory
-                                </span>
-                              )}
-                              {!!post.content_flags.incites_violence && (
-                                <span
-                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                                  style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
-                                >
-                                  Threat
-                                </span>
-                              )}
-                              {!!post.content_flags.is_organized_pressure && (
-                                <span
-                                  className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                                  style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
-                                >
-                                  Pressure
-                                </span>
-                              )}
+                                {!!post.content_flags.is_harmful_narrative &&
+                                  !post.content_flags.is_hate_speech && (
+                                    <span
+                                      className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                      style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                                    >
+                                      Harmful
+                                    </span>
+                                  )}
+                                {!!post.content_flags.is_misinformation && (
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                    style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                                  >
+                                    Misinformation
+                                  </span>
+                                )}
+                                {!!post.content_flags.is_inflammatory && (
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                    style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                                  >
+                                    Inflammatory
+                                  </span>
+                                )}
+                                {!!post.content_flags.incites_violence && (
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                    style={{ backgroundColor: '#FDECEA', color: '#D32F2F' }}
+                                  >
+                                    Threat
+                                  </span>
+                                )}
+                                {!!post.content_flags.is_organized_pressure && (
+                                  <span
+                                    className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                    style={{ backgroundColor: '#FFF3E0', color: '#E65100' }}
+                                  >
+                                    Pressure
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                          {isTrainer && post.requires_response && !post.responded_at && (
+                            <div className="px-3 pb-1">
+                              <span
+                                className="text-[11px] font-bold px-2 py-0.5 rounded"
+                                style={{ backgroundColor: '#FFF3CD', color: '#856404' }}
+                              >
+                                REQUIRES RESPONSE
+                              </span>
                             </div>
                           )}
 
-                        {isTrainer && post.requires_response && !post.responded_at && (
-                          <div className="px-3 pb-1">
-                            <span
-                              className="text-[11px] font-bold px-2 py-0.5 rounded"
-                              style={{ backgroundColor: '#FFF3CD', color: '#856404' }}
-                            >
-                              REQUIRES RESPONSE
-                            </span>
-                          </div>
-                        )}
+                          {post.post_format && FORMAT_BADGE[post.post_format] && (
+                            <div className="px-3 pb-1">
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded font-semibold"
+                                style={{
+                                  backgroundColor: FORMAT_BADGE[post.post_format].bg,
+                                  color: FORMAT_BADGE[post.post_format].fg,
+                                }}
+                              >
+                                {FORMAT_BADGE[post.post_format].label}
+                              </span>
+                            </div>
+                          )}
 
-                        {post.post_format && FORMAT_BADGE[post.post_format] && (
-                          <div className="px-3 pb-1">
-                            <span
-                              className="text-[11px] px-2 py-0.5 rounded font-semibold"
-                              style={{
-                                backgroundColor: FORMAT_BADGE[post.post_format].bg,
-                                color: FORMAT_BADGE[post.post_format].fg,
-                              }}
+                          {/* Content Text */}
+                          <div className="px-3 pb-2">
+                            <p
+                              className="text-[15px] leading-[20px] whitespace-pre-wrap"
+                              style={{ color: '#050505' }}
                             >
-                              {FORMAT_BADGE[post.post_format].label}
-                            </span>
-                          </div>
-                        )}
-
-                        {/* Content Text */}
-                        <div className="px-3 pb-2">
-                          <p
-                            className="text-[15px] leading-[20px] whitespace-pre-wrap"
-                            style={{ color: '#050505' }}
-                          >
-                            {(() => {
-                              const text =
-                                isLong && !isExpanded
-                                  ? post.content.substring(0, 200) + '...'
-                                  : post.content;
-                              const rendered = String(text)
-                                .split(/(#\w+)/g)
-                                .map((part: string, i: number) =>
-                                  part.startsWith('#') ? (
-                                    <span
-                                      key={i}
-                                      onClick={() => setSearchQuery(part)}
-                                      className="cursor-pointer hover:underline"
-                                      style={{ color: '#1877F2' }}
-                                    >
-                                      {part}
-                                    </span>
-                                  ) : (
-                                    <span key={i}>{part}</span>
-                                  ),
-                                );
-                              return isLong && !isExpanded ? (
-                                <>
-                                  {rendered}
-                                  <button
-                                    onClick={() =>
-                                      setExpandedPosts((prev) => new Set([...prev, post.id]))
-                                    }
-                                    className="font-semibold ml-1"
-                                    style={{ color: '#65676B' }}
-                                  >
-                                    See more
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  {rendered}
-                                  {isLong && (
+                              {(() => {
+                                const text =
+                                  isLong && !isExpanded
+                                    ? post.content.substring(0, 200) + '...'
+                                    : post.content;
+                                const rendered = String(text)
+                                  .split(/(#\w+)/g)
+                                  .map((part: string, i: number) =>
+                                    part.startsWith('#') ? (
+                                      <span
+                                        key={i}
+                                        onClick={() => setSearchQuery(part)}
+                                        className="cursor-pointer hover:underline"
+                                        style={{ color: '#1877F2' }}
+                                      >
+                                        {part}
+                                      </span>
+                                    ) : (
+                                      <span key={i}>{part}</span>
+                                    ),
+                                  );
+                                return isLong && !isExpanded ? (
+                                  <>
+                                    {rendered}
                                     <button
                                       onClick={() =>
-                                        setExpandedPosts((prev) => {
-                                          const n = new Set(prev);
-                                          n.delete(post.id);
-                                          return n;
-                                        })
+                                        setExpandedPosts((prev) => new Set([...prev, post.id]))
                                       }
                                       className="font-semibold ml-1"
                                       style={{ color: '#65676B' }}
                                     >
-                                      See less
+                                      See more
                                     </button>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </p>
-                        </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    {rendered}
+                                    {isLong && (
+                                      <button
+                                        onClick={() =>
+                                          setExpandedPosts((prev) => {
+                                            const n = new Set(prev);
+                                            n.delete(post.id);
+                                            return n;
+                                          })
+                                        }
+                                        className="font-semibold ml-1"
+                                        style={{ color: '#65676B' }}
+                                      >
+                                        See less
+                                      </button>
+                                    )}
+                                  </>
+                                );
+                              })()}
+                            </p>
+                          </div>
 
-                        {/* Media (full width, no padding) */}
-                        {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
-                          <div className="relative">
-                            {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
-                              <video
-                                src={post.media_urls[0]}
-                                controls
-                                className="w-full"
-                                style={{ backgroundColor: '#000' }}
-                              />
-                            ) : (
-                              <img src={post.media_urls[0]} alt="" className="w-full" />
-                            )}
-                            {post.post_format === 'video_concept' &&
-                              !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
-                                <div className="absolute inset-0 flex items-center justify-center">
-                                  <div
-                                    className="w-16 h-16 rounded-full flex items-center justify-center"
-                                    style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-                                  >
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
-                                      <polygon points="8,5 19,12 8,19" />
-                                    </svg>
+                          {/* Media */}
+                          {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
+                            <div
+                              className="relative"
+                              style={{ maxHeight: 500, overflow: 'hidden' }}
+                            >
+                              {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
+                                <video
+                                  src={post.media_urls[0]}
+                                  controls
+                                  className="w-full"
+                                  style={{
+                                    backgroundColor: '#000',
+                                    maxHeight: 500,
+                                    objectFit: 'contain',
+                                  }}
+                                />
+                              ) : (
+                                <img
+                                  src={post.media_urls[0]}
+                                  alt=""
+                                  className="w-full"
+                                  style={{ maxHeight: 500, objectFit: 'cover' }}
+                                />
+                              )}
+                              {post.post_format === 'video_concept' &&
+                                !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <div
+                                      className="w-16 h-16 rounded-full flex items-center justify-center"
+                                      style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                                    >
+                                      <svg width="28" height="28" viewBox="0 0 24 24" fill="white">
+                                        <polygon points="8,5 19,12 8,19" />
+                                      </svg>
+                                    </div>
                                   </div>
+                                )}
+                            </div>
+                          )}
+
+                          {/* Reaction + Comment Counts */}
+                          <div
+                            className="flex items-center justify-between px-3 py-2"
+                            style={{ borderBottom: '1px solid #CED0D4' }}
+                          >
+                            <div className="flex items-center gap-1">
+                              {reactionEmojis.length > 0 && (
+                                <div className="flex -space-x-0.5">
+                                  {reactionEmojis.map((emoji, i) => (
+                                    <span key={i} className="text-[14px]">
+                                      {emoji}
+                                    </span>
+                                  ))}
                                 </div>
                               )}
-                          </div>
-                        )}
-
-                        {/* Reaction + Comment Counts */}
-                        <div
-                          className="flex items-center justify-between px-3 py-2"
-                          style={{ borderBottom: '1px solid #CED0D4' }}
-                        >
-                          <div className="flex items-center gap-1">
-                            {reactionEmojis.length > 0 && (
-                              <div className="flex -space-x-0.5">
-                                {reactionEmojis.map((emoji, i) => (
-                                  <span key={i} className="text-[14px]">
-                                    {emoji}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {post.like_count > 0 && (
-                              <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
-                                {formatCount(post.like_count)}
-                              </span>
-                            )}
-                          </div>
-                          <div
-                            className="flex items-center gap-3 text-[14px]"
-                            style={{ color: '#65676B' }}
-                          >
-                            {post.reply_count > 0 && (
-                              <button
-                                onClick={() =>
-                                  setExpandedComments((prev) => new Set([...prev, post.id]))
-                                }
-                                className="hover:underline"
-                                style={{ color: '#65676B' }}
-                              >
-                                {formatCount(post.reply_count)} comments
-                              </button>
-                            )}
-                            {post.repost_count > 0 && (
-                              <span>{formatCount(post.repost_count)} shares</span>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* Action Buttons */}
-                        <div
-                          className="flex items-center justify-around px-1 py-0.5"
-                          style={{ borderBottom: '1px solid #CED0D4', backgroundColor: '#FFFFFF' }}
-                        >
-                          <div className="relative flex-1">
-                            {(() => {
-                              const myRx = myReactions[post.id];
-                              const rxInfo = myRx ? REACTIONS.find((r) => r.type === myRx) : null;
-                              const rxColor =
-                                myRx === 'like'
-                                  ? '#1877F2'
-                                  : myRx === 'love'
-                                    ? '#F33E58'
-                                    : myRx === 'angry'
-                                      ? '#E9710F'
-                                      : myRx
-                                        ? '#F7B928'
-                                        : '#65676B';
-                              return (
+                              {post.like_count > 0 && (
+                                <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
+                                  {formatCount(post.like_count)}
+                                </span>
+                              )}
+                            </div>
+                            <div
+                              className="flex items-center gap-3 text-[14px]"
+                              style={{ color: '#65676B' }}
+                            >
+                              {post.reply_count > 0 && (
                                 <button
-                                  onClick={() => handleReaction(post.id, 'like')}
+                                  onClick={() =>
+                                    setExpandedComments((prev) => new Set([...prev, post.id]))
+                                  }
+                                  className="hover:underline"
+                                  style={{ color: '#65676B' }}
+                                >
+                                  {formatCount(post.reply_count)} comments
+                                </button>
+                              )}
+                              {post.repost_count > 0 && (
+                                <span>{formatCount(post.repost_count)} shares</span>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div
+                            className="flex items-center justify-around px-1 py-0.5"
+                            style={{
+                              borderBottom: '1px solid #CED0D4',
+                              backgroundColor: '#FFFFFF',
+                            }}
+                          >
+                            <div className="relative flex-1">
+                              {(() => {
+                                const myRx = myReactions[post.id];
+                                const rxInfo = myRx ? REACTIONS.find((r) => r.type === myRx) : null;
+                                const rxColor =
+                                  myRx === 'like'
+                                    ? '#1877F2'
+                                    : myRx === 'love'
+                                      ? '#F33E58'
+                                      : myRx === 'angry'
+                                        ? '#E9710F'
+                                        : myRx
+                                          ? '#F7B928'
+                                          : '#65676B';
+                                return (
+                                  <button
+                                    onClick={() => handleReaction(post.id, 'like')}
+                                    onMouseEnter={() => {
+                                      if (reactionTimeoutRef.current)
+                                        clearTimeout(reactionTimeoutRef.current);
+                                      setShowReactions(post.id);
+                                    }}
+                                    onMouseLeave={() => {
+                                      reactionTimeoutRef.current = setTimeout(
+                                        () => setShowReactions(null),
+                                        600,
+                                      );
+                                    }}
+                                    className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                                    style={{ color: post.liked_by_me ? rxColor : '#65676B' }}
+                                  >
+                                    {rxInfo ? (
+                                      <span className="text-[18px] leading-none">
+                                        {rxInfo.emoji}
+                                      </span>
+                                    ) : (
+                                      <svg
+                                        width="18"
+                                        height="18"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                      >
+                                        <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
+                                      </svg>
+                                    )}
+                                    <span className="text-[14px] font-semibold">
+                                      {rxInfo
+                                        ? rxInfo.type.charAt(0).toUpperCase() + rxInfo.type.slice(1)
+                                        : 'Like'}
+                                    </span>
+                                  </button>
+                                );
+                              })()}
+                              {showReactions === post.id && (
+                                <div
+                                  className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
+                                  style={{
+                                    backgroundColor: '#FFFFFF',
+                                    boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+                                  }}
                                   onMouseEnter={() => {
                                     if (reactionTimeoutRef.current)
                                       clearTimeout(reactionTimeoutRef.current);
@@ -2121,106 +2209,32 @@ export default function FacebookFeedApp() {
                                   onMouseLeave={() => {
                                     reactionTimeoutRef.current = setTimeout(
                                       () => setShowReactions(null),
-                                      600,
+                                      300,
                                     );
                                   }}
-                                  className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                                  style={{ color: post.liked_by_me ? rxColor : '#65676B' }}
                                 >
-                                  {rxInfo ? (
-                                    <span className="text-[18px] leading-none">{rxInfo.emoji}</span>
-                                  ) : (
-                                    <svg
-                                      width="18"
-                                      height="18"
-                                      viewBox="0 0 24 24"
-                                      fill="none"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
+                                  {REACTIONS.map((r) => (
+                                    <button
+                                      key={r.type}
+                                      onClick={() => handleReaction(post.id, r.type)}
+                                      className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
+                                      style={{ fontSize: 28, lineHeight: 1 }}
+                                      title={r.type}
                                     >
-                                      <path d="M14 9V5a3 3 0 00-3-3l-4 9v11h11.28a2 2 0 002-1.7l1.38-9a2 2 0 00-2-2.3H14zM7 22H4a2 2 0 01-2-2v-7a2 2 0 012-2h3" />
-                                    </svg>
-                                  )}
-                                  <span className="text-[14px] font-semibold">
-                                    {rxInfo
-                                      ? rxInfo.type.charAt(0).toUpperCase() + rxInfo.type.slice(1)
-                                      : 'Like'}
-                                  </span>
-                                </button>
-                              );
-                            })()}
-                            {showReactions === post.id && (
-                              <div
-                                className="absolute bottom-full left-0 mb-1 flex gap-1 px-2.5 py-2 rounded-full z-50"
-                                style={{
-                                  backgroundColor: '#FFFFFF',
-                                  boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
-                                }}
-                                onMouseEnter={() => {
-                                  if (reactionTimeoutRef.current)
-                                    clearTimeout(reactionTimeoutRef.current);
-                                  setShowReactions(post.id);
-                                }}
-                                onMouseLeave={() => {
-                                  reactionTimeoutRef.current = setTimeout(
-                                    () => setShowReactions(null),
-                                    300,
-                                  );
-                                }}
-                              >
-                                {REACTIONS.map((r) => (
-                                  <button
-                                    key={r.type}
-                                    onClick={() => handleReaction(post.id, r.type)}
-                                    className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
-                                    style={{ fontSize: 28, lineHeight: 1 }}
-                                    title={r.type}
-                                  >
-                                    {r.emoji}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <button
-                            onClick={() => {
-                              setExpandedComments((prev) => new Set([...prev, post.id]));
-                              setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
-                            }}
-                            className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                            style={{ color: '#65676B' }}
-                          >
-                            <svg
-                              width="18"
-                              height="18"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
+                                      {r.emoji}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => {
+                                setExpandedComments((prev) => new Set([...prev, post.id]));
+                                setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
+                              }}
+                              className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                              style={{ color: '#65676B' }}
                             >
-                              <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
-                            </svg>
-                            <span className="text-[14px] font-semibold">Comment</span>
-                          </button>
-                          <button
-                            onClick={() => handleShare(post.id, post.author_handle)}
-                            className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                            style={{ color: copiedPostId === post.id ? '#22c55e' : '#65676B' }}
-                          >
-                            {copiedPostId === post.id ? (
-                              <svg
-                                width="18"
-                                height="18"
-                                viewBox="0 0 24 24"
-                                fill="none"
-                                stroke="#22c55e"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                              >
-                                <polyline points="20 6 9 17 4 12" />
-                              </svg>
-                            ) : (
                               <svg
                                 width="18"
                                 height="18"
@@ -2229,818 +2243,863 @@ export default function FacebookFeedApp() {
                                 stroke="currentColor"
                                 strokeWidth="2"
                               >
-                                <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
+                                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" />
                               </svg>
-                            )}
-                            <span className="text-[14px] font-semibold">
-                              {copiedPostId === post.id ? 'Copied!' : 'Share'}
-                            </span>
-                          </button>
-                        </div>
-
-                        {/* Inline Comments */}
-                        {(() => {
-                          const commentsExpanded = expandedComments.has(post.id);
-                          const visibleReplies = commentsExpanded ? replies : replies.slice(-2);
-                          return (
-                            <>
-                              {replies.length > 0 && (
-                                <div
-                                  className="px-3 pt-2 pb-1"
-                                  style={{ backgroundColor: '#FFFFFF' }}
+                              <span className="text-[14px] font-semibold">Comment</span>
+                            </button>
+                            <button
+                              onClick={() => handleShare(post.id, post.author_handle)}
+                              className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                              style={{ color: copiedPostId === post.id ? '#22c55e' : '#65676B' }}
+                            >
+                              {copiedPostId === post.id ? (
+                                <svg
+                                  width="18"
+                                  height="18"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="#22c55e"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
                                 >
-                                  {replies.length > 2 && !commentsExpanded && (
-                                    <button
-                                      onClick={() =>
-                                        setExpandedComments((prev) => new Set([...prev, post.id]))
-                                      }
-                                      className="text-[14px] font-semibold mb-2"
-                                      style={{ color: '#65676B' }}
-                                    >
-                                      View all {replies.length} comments
-                                    </button>
-                                  )}
-                                  {commentsExpanded && replies.length > 2 && (
-                                    <button
-                                      onClick={() =>
-                                        setExpandedComments((prev) => {
-                                          const n = new Set(prev);
-                                          n.delete(post.id);
-                                          return n;
-                                        })
-                                      }
-                                      className="text-[14px] font-semibold mb-2"
-                                      style={{ color: '#65676B' }}
-                                    >
-                                      Hide comments
-                                    </button>
-                                  )}
-                                  {(() => {
-                                    const replyIdSet = new Set(visibleReplies.map((r) => r.id));
-                                    const parentComments: typeof visibleReplies = [];
-                                    const childMap: Record<string, typeof visibleReplies> = {};
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
+                              ) : (
+                                <svg
+                                  width="18"
+                                  height="18"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2"
+                                >
+                                  <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
+                                </svg>
+                              )}
+                              <span className="text-[14px] font-semibold">
+                                {copiedPostId === post.id ? 'Copied!' : 'Share'}
+                              </span>
+                            </button>
+                          </div>
 
-                                    for (const reply of visibleReplies) {
-                                      const content = reply.content || '';
-                                      const targetIdMatch = content.match(/^@[\w._]+\[([^\]]+)\] /);
-                                      if (targetIdMatch && replyIdSet.has(targetIdMatch[1])) {
-                                        const targetId = targetIdMatch[1];
-                                        if (!childMap[targetId]) childMap[targetId] = [];
-                                        childMap[targetId].push(reply);
-                                        continue;
-                                      }
-                                      const handleMatch = content.match(/^@([\w._]+) /);
-                                      if (handleMatch) {
-                                        const parentHandle = `@${handleMatch[1]}`;
-                                        const matchingParents = parentComments.filter(
-                                          (p) => p.author_handle === parentHandle,
-                                        );
-                                        const parent = matchingParents[matchingParents.length - 1];
-                                        if (parent) {
-                                          if (!childMap[parent.id]) childMap[parent.id] = [];
-                                          childMap[parent.id].push(reply);
+                          {/* Inline Comments */}
+                          {(() => {
+                            const commentsExpanded = expandedComments.has(post.id);
+                            const visibleReplies = commentsExpanded ? replies : replies.slice(-2);
+                            return (
+                              <>
+                                {replies.length > 0 && (
+                                  <div
+                                    className="px-3 pt-2 pb-1"
+                                    style={{ backgroundColor: '#FFFFFF' }}
+                                  >
+                                    {replies.length > 2 && !commentsExpanded && (
+                                      <button
+                                        onClick={() =>
+                                          setExpandedComments((prev) => new Set([...prev, post.id]))
+                                        }
+                                        className="text-[14px] font-semibold mb-2"
+                                        style={{ color: '#65676B' }}
+                                      >
+                                        View all {replies.length} comments
+                                      </button>
+                                    )}
+                                    {commentsExpanded && replies.length > 2 && (
+                                      <button
+                                        onClick={() =>
+                                          setExpandedComments((prev) => {
+                                            const n = new Set(prev);
+                                            n.delete(post.id);
+                                            return n;
+                                          })
+                                        }
+                                        className="text-[14px] font-semibold mb-2"
+                                        style={{ color: '#65676B' }}
+                                      >
+                                        Hide comments
+                                      </button>
+                                    )}
+                                    {(() => {
+                                      const replyIdSet = new Set(visibleReplies.map((r) => r.id));
+                                      const parentComments: typeof visibleReplies = [];
+                                      const childMap: Record<string, typeof visibleReplies> = {};
+
+                                      for (const reply of visibleReplies) {
+                                        const content = reply.content || '';
+                                        const targetIdMatch =
+                                          content.match(/^@[\w._]+\[([^\]]+)\] /);
+                                        if (targetIdMatch && replyIdSet.has(targetIdMatch[1])) {
+                                          const targetId = targetIdMatch[1];
+                                          if (!childMap[targetId]) childMap[targetId] = [];
+                                          childMap[targetId].push(reply);
                                           continue;
                                         }
+                                        const handleMatch = content.match(/^@([\w._]+) /);
+                                        if (handleMatch) {
+                                          const parentHandle = `@${handleMatch[1]}`;
+                                          const matchingParents = parentComments.filter(
+                                            (p) => p.author_handle === parentHandle,
+                                          );
+                                          const parent =
+                                            matchingParents[matchingParents.length - 1];
+                                          if (parent) {
+                                            if (!childMap[parent.id]) childMap[parent.id] = [];
+                                            childMap[parent.id].push(reply);
+                                            continue;
+                                          }
+                                        }
+                                        parentComments.push(reply);
                                       }
-                                      parentComments.push(reply);
-                                    }
 
-                                    const renderComment = (
-                                      reply: SocialPost,
-                                      indented: boolean,
-                                    ) => {
-                                      const content = reply.content || '';
-                                      const targetIdMatch =
-                                        content.match(/^@([\w._]+)\[([^\]]+)\] /);
-                                      const mentionMatch = content.match(/^@[\w._]+ /);
-                                      let displayContent: React.ReactNode = content;
-                                      if (targetIdMatch) {
-                                        const mentionedHandle = `@${targetIdMatch[1]}`;
-                                        const restContent = content.slice(targetIdMatch[0].length);
-                                        const mentionedReply = visibleReplies.find(
-                                          (r) => r.author_handle === mentionedHandle,
-                                        );
-                                        const mentionedName =
-                                          mentionedReply?.author_display_name ||
-                                          post.author_display_name;
-                                        displayContent = (
-                                          <>
-                                            <span style={{ color: '#1877F2', fontWeight: 600 }}>
-                                              {mentionedName}
-                                            </span>{' '}
-                                            {restContent}
-                                          </>
-                                        );
-                                      } else if (mentionMatch) {
-                                        const mentionedHandle = mentionMatch[0].trim();
-                                        const restContent = content.slice(mentionMatch[0].length);
-                                        const mentionedReply = visibleReplies.find(
-                                          (r) => r.author_handle === mentionedHandle,
-                                        );
-                                        const mentionedName =
-                                          mentionedReply?.author_display_name ||
-                                          post.author_display_name;
-                                        displayContent = (
-                                          <>
-                                            <span style={{ color: '#1877F2', fontWeight: 600 }}>
-                                              {mentionedName}
-                                            </span>{' '}
-                                            {restContent}
-                                          </>
-                                        );
-                                      }
-                                      return (
-                                        <div
-                                          key={reply.id}
-                                          id={`fb-reply-${reply.id}`}
-                                          className={`flex gap-2 mb-2.5 ${indented ? 'ml-10' : ''}`}
-                                        >
+                                      const renderComment = (
+                                        reply: SocialPost,
+                                        indented: boolean,
+                                      ) => {
+                                        const content = reply.content || '';
+                                        const targetIdMatch =
+                                          content.match(/^@([\w._]+)\[([^\]]+)\] /);
+                                        const mentionMatch = content.match(/^@[\w._]+ /);
+                                        let displayContent: React.ReactNode = content;
+                                        if (targetIdMatch) {
+                                          const mentionedHandle = `@${targetIdMatch[1]}`;
+                                          const restContent = content.slice(
+                                            targetIdMatch[0].length,
+                                          );
+                                          const mentionedReply = visibleReplies.find(
+                                            (r) => r.author_handle === mentionedHandle,
+                                          );
+                                          const mentionedName =
+                                            mentionedReply?.author_display_name ||
+                                            post.author_display_name;
+                                          displayContent = (
+                                            <>
+                                              <span style={{ color: '#1877F2', fontWeight: 600 }}>
+                                                {mentionedName}
+                                              </span>{' '}
+                                              {restContent}
+                                            </>
+                                          );
+                                        } else if (mentionMatch) {
+                                          const mentionedHandle = mentionMatch[0].trim();
+                                          const restContent = content.slice(mentionMatch[0].length);
+                                          const mentionedReply = visibleReplies.find(
+                                            (r) => r.author_handle === mentionedHandle,
+                                          );
+                                          const mentionedName =
+                                            mentionedReply?.author_display_name ||
+                                            post.author_display_name;
+                                          displayContent = (
+                                            <>
+                                              <span style={{ color: '#1877F2', fontWeight: 600 }}>
+                                                {mentionedName}
+                                              </span>{' '}
+                                              {restContent}
+                                            </>
+                                          );
+                                        }
+                                        return (
                                           <div
-                                            className={`${indented ? 'w-7 h-7 text-[10px]' : 'w-8 h-8 text-[12px]'} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}
-                                            style={{
-                                              backgroundColor: getAvatarColor(
-                                                reply.author_display_name,
-                                              ),
-                                            }}
+                                            key={reply.id}
+                                            id={`fb-reply-${reply.id}`}
+                                            className={`flex gap-2 mb-2.5 ${indented ? 'ml-10' : ''}`}
                                           >
-                                            {reply.author_display_name.charAt(0).toUpperCase()}
-                                          </div>
-                                          <div>
                                             <div
-                                              className="rounded-2xl px-3 py-1.5"
-                                              style={{ backgroundColor: '#F0F2F5' }}
+                                              className={`${indented ? 'w-7 h-7 text-[10px]' : 'w-8 h-8 text-[12px]'} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}
+                                              style={{
+                                                backgroundColor: getAvatarColor(
+                                                  reply.author_display_name,
+                                                ),
+                                              }}
                                             >
-                                              <span
-                                                className="text-[13px] font-semibold"
-                                                style={{ color: '#050505' }}
-                                              >
-                                                {reply.author_display_name}
-                                              </span>
-                                              <p
-                                                className="text-[14px]"
-                                                style={{ color: '#050505' }}
-                                              >
-                                                {displayContent}
-                                              </p>
+                                              {reply.author_display_name.charAt(0).toUpperCase()}
                                             </div>
-                                            <div className="flex items-center gap-3 ml-3 mt-0.5">
-                                              <button
-                                                onClick={() => handleReaction(reply.id, 'like')}
-                                                className="text-[12px] font-semibold hover:underline"
-                                                style={{
-                                                  color: reply.liked_by_me ? '#1877F2' : '#65676B',
-                                                }}
+                                            <div>
+                                              <div
+                                                className="rounded-2xl px-3 py-1.5"
+                                                style={{ backgroundColor: '#F0F2F5' }}
                                               >
-                                                Like
-                                              </button>
-                                              <button
-                                                onClick={() => {
-                                                  setReplyTarget((prev) => ({
-                                                    ...prev,
-                                                    [post.id]: {
-                                                      handle: reply.author_handle,
-                                                      displayName: reply.author_display_name,
-                                                      replyToId: reply.id,
-                                                    },
-                                                  }));
-                                                  setCommentText((prev) => ({
-                                                    ...prev,
-                                                    [post.id]: '',
-                                                  }));
-                                                  setExpandedComments(
-                                                    (prev) => new Set([...prev, post.id]),
-                                                  );
-                                                  setTimeout(
-                                                    () =>
-                                                      commentInputRefs.current[post.id]?.focus(),
-                                                    100,
-                                                  );
-                                                }}
-                                                className="text-[12px] font-semibold hover:underline"
-                                                style={{ color: '#65676B' }}
-                                              >
-                                                Reply
-                                              </button>
-                                              <span
-                                                className="text-[12px]"
-                                                style={{ color: '#65676B' }}
-                                              >
-                                                {timeAgo(reply.created_at)}
-                                              </span>
-                                              {reply.like_count > 0 && (
+                                                <span
+                                                  className="text-[13px] font-semibold"
+                                                  style={{ color: '#050505' }}
+                                                >
+                                                  {reply.author_display_name}
+                                                </span>
+                                                <p
+                                                  className="text-[14px]"
+                                                  style={{ color: '#050505' }}
+                                                >
+                                                  {displayContent}
+                                                </p>
+                                              </div>
+                                              <div className="flex items-center gap-3 ml-3 mt-0.5">
+                                                <button
+                                                  onClick={() => handleReaction(reply.id, 'like')}
+                                                  className="text-[12px] font-semibold hover:underline"
+                                                  style={{
+                                                    color: reply.liked_by_me
+                                                      ? '#1877F2'
+                                                      : '#65676B',
+                                                  }}
+                                                >
+                                                  Like
+                                                </button>
+                                                <button
+                                                  onClick={() => {
+                                                    setReplyTarget((prev) => ({
+                                                      ...prev,
+                                                      [post.id]: {
+                                                        handle: reply.author_handle,
+                                                        displayName: reply.author_display_name,
+                                                        replyToId: reply.id,
+                                                      },
+                                                    }));
+                                                    setCommentText((prev) => ({
+                                                      ...prev,
+                                                      [post.id]: '',
+                                                    }));
+                                                    setExpandedComments(
+                                                      (prev) => new Set([...prev, post.id]),
+                                                    );
+                                                    setTimeout(
+                                                      () =>
+                                                        commentInputRefs.current[post.id]?.focus(),
+                                                      100,
+                                                    );
+                                                  }}
+                                                  className="text-[12px] font-semibold hover:underline"
+                                                  style={{ color: '#65676B' }}
+                                                >
+                                                  Reply
+                                                </button>
                                                 <span
                                                   className="text-[12px]"
                                                   style={{ color: '#65676B' }}
                                                 >
-                                                  👍 {reply.like_count}
+                                                  {timeAgo(reply.created_at)}
                                                 </span>
-                                              )}
+                                                {reply.like_count > 0 && (
+                                                  <span
+                                                    className="text-[12px]"
+                                                    style={{ color: '#65676B' }}
+                                                  >
+                                                    👍 {reply.like_count}
+                                                  </span>
+                                                )}
+                                              </div>
                                             </div>
                                           </div>
+                                        );
+                                      };
+
+                                      return parentComments.map((reply) => (
+                                        <div key={reply.id}>
+                                          {renderComment(reply, false)}
+                                          {(childMap[reply.id] || []).map((child) =>
+                                            renderComment(child, true),
+                                          )}
                                         </div>
-                                      );
-                                    };
+                                      ));
+                                    })()}
+                                  </div>
+                                )}
 
-                                    return parentComments.map((reply) => (
-                                      <div key={reply.id}>
-                                        {renderComment(reply, false)}
-                                        {(childMap[reply.id] || []).map((child) =>
-                                          renderComment(child, true),
-                                        )}
-                                      </div>
-                                    ));
-                                  })()}
-                                </div>
-                              )}
-
-                              {/* Comment Input */}
-                              {replyTarget[post.id] && (
+                                {/* Comment Input */}
+                                {replyTarget[post.id] && (
+                                  <div
+                                    className="flex items-center justify-between px-3 pt-1"
+                                    style={{ backgroundColor: '#FFFFFF' }}
+                                  >
+                                    <span className="text-[12px]" style={{ color: '#65676B' }}>
+                                      Replying to{' '}
+                                      <span style={{ color: '#1877F2' }}>
+                                        {replyTarget[post.id]!.displayName}
+                                      </span>
+                                    </span>
+                                    <button
+                                      onClick={() =>
+                                        setReplyTarget((prev) => ({ ...prev, [post.id]: null }))
+                                      }
+                                      className="text-[11px]"
+                                      style={{ color: '#65676B' }}
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                )}
                                 <div
-                                  className="flex items-center justify-between px-3 pt-1"
+                                  className="flex items-center gap-2 px-3 py-1.5 relative"
                                   style={{ backgroundColor: '#FFFFFF' }}
                                 >
-                                  <span className="text-[12px]" style={{ color: '#65676B' }}>
-                                    Replying to{' '}
-                                    <span style={{ color: '#1877F2' }}>
-                                      {replyTarget[post.id]!.displayName}
-                                    </span>
-                                  </span>
-                                  <button
-                                    onClick={() =>
-                                      setReplyTarget((prev) => ({ ...prev, [post.id]: null }))
-                                    }
-                                    className="text-[11px]"
-                                    style={{ color: '#65676B' }}
+                                  <div
+                                    className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
+                                    style={{ backgroundColor: '#1877F2' }}
                                   >
-                                    Cancel
-                                  </button>
-                                </div>
-                              )}
-                              <div
-                                className="flex items-center gap-2 px-3 py-1.5 relative"
-                                style={{ backgroundColor: '#FFFFFF' }}
-                              >
-                                <div
-                                  className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
-                                  style={{ backgroundColor: '#1877F2' }}
-                                >
-                                  Y
-                                </div>
-                                <div
-                                  className="flex-1 flex items-center rounded-full px-3 py-1 relative"
-                                  style={{ backgroundColor: '#F0F2F5' }}
-                                >
-                                  <input
-                                    ref={(el) => {
-                                      commentInputRefs.current[post.id] = el;
-                                    }}
-                                    type="text"
-                                    value={commentText[post.id] || ''}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      setCommentText((prev) => ({ ...prev, [post.id]: val }));
-                                      const match = val.match(/@(\w*)$/);
-                                      if (match) {
-                                        setMentionQuery(match[1].toLowerCase());
-                                        setShowMentions(true);
-                                      } else {
-                                        setShowMentions(false);
-                                      }
-                                    }}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter') {
-                                        handleComment(post.id);
-                                        setShowMentions(false);
-                                      }
-                                    }}
-                                    placeholder="Write a comment..."
-                                    className="flex-1 bg-transparent text-[13px] outline-none"
-                                    style={{ color: '#050505' }}
-                                  />
-                                  {commentText[post.id]?.trim() && (
-                                    <button
-                                      onClick={() => {
-                                        handleComment(post.id);
-                                        setShowMentions(false);
+                                    Y
+                                  </div>
+                                  <div
+                                    className="flex-1 flex items-center rounded-full px-3 py-1 relative"
+                                    style={{ backgroundColor: '#F0F2F5' }}
+                                  >
+                                    <input
+                                      ref={(el) => {
+                                        commentInputRefs.current[post.id] = el;
                                       }}
-                                      className="ml-1"
-                                    >
-                                      <svg
-                                        width="14"
-                                        height="14"
-                                        viewBox="0 0 24 24"
-                                        fill="#1877F2"
-                                      >
-                                        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-                                      </svg>
-                                    </button>
-                                  )}
-                                  {showMentions &&
-                                    document.activeElement ===
-                                      commentInputRefs.current[post.id] && (
-                                      <div
-                                        className="absolute left-0 right-0 bottom-full mb-1 rounded-lg overflow-hidden z-50"
-                                        style={{
-                                          backgroundColor: '#FFFFFF',
-                                          boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                                          maxHeight: 120,
-                                          overflowY: 'auto',
+                                      type="text"
+                                      value={commentText[post.id] || ''}
+                                      onChange={(e) => {
+                                        const val = e.target.value;
+                                        setCommentText((prev) => ({ ...prev, [post.id]: val }));
+                                        const match = val.match(/@(\w*)$/);
+                                        if (match) {
+                                          setMentionQuery(match[1].toLowerCase());
+                                          setShowMentions(true);
+                                        } else {
+                                          setShowMentions(false);
+                                        }
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter') {
+                                          handleComment(post.id);
+                                          setShowMentions(false);
+                                        }
+                                      }}
+                                      placeholder="Write a comment..."
+                                      className="flex-1 bg-transparent text-[13px] outline-none"
+                                      style={{ color: '#050505' }}
+                                    />
+                                    {commentText[post.id]?.trim() && (
+                                      <button
+                                        onClick={() => {
+                                          handleComment(post.id);
+                                          setShowMentions(false);
                                         }}
+                                        className="ml-1"
                                       >
-                                        {knownHandles
-                                          .filter((h) =>
-                                            h.handle.toLowerCase().includes(mentionQuery),
-                                          )
-                                          .slice(0, 5)
-                                          .map((h) => (
-                                            <button
-                                              key={h.handle}
-                                              onMouseDown={(e) => {
-                                                e.preventDefault();
-                                                setCommentText((prev) => ({
-                                                  ...prev,
-                                                  [post.id]: (prev[post.id] || '').replace(
-                                                    /@\w*$/,
-                                                    h.handle + ' ',
-                                                  ),
-                                                }));
-                                                setShowMentions(false);
-                                                commentInputRefs.current[post.id]?.focus();
-                                              }}
-                                              className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#F2F3F5]"
-                                              style={{ color: '#050505' }}
-                                            >
-                                              <span style={{ color: '#1877F2' }}>{h.handle}</span>
-                                              <span
-                                                className="ml-1 text-[11px]"
-                                                style={{ color: '#65676B' }}
-                                              >
-                                                {h.display_name}
-                                              </span>
-                                            </button>
-                                          ))}
-                                      </div>
+                                        <svg
+                                          width="14"
+                                          height="14"
+                                          viewBox="0 0 24 24"
+                                          fill="#1877F2"
+                                        >
+                                          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                                        </svg>
+                                      </button>
                                     )}
+                                    {showMentions &&
+                                      document.activeElement ===
+                                        commentInputRefs.current[post.id] && (
+                                        <div
+                                          className="absolute left-0 right-0 bottom-full mb-1 rounded-lg overflow-hidden z-50"
+                                          style={{
+                                            backgroundColor: '#FFFFFF',
+                                            boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                            maxHeight: 120,
+                                            overflowY: 'auto',
+                                          }}
+                                        >
+                                          {knownHandles
+                                            .filter((h) =>
+                                              h.handle.toLowerCase().includes(mentionQuery),
+                                            )
+                                            .slice(0, 5)
+                                            .map((h) => (
+                                              <button
+                                                key={h.handle}
+                                                onMouseDown={(e) => {
+                                                  e.preventDefault();
+                                                  setCommentText((prev) => ({
+                                                    ...prev,
+                                                    [post.id]: (prev[post.id] || '').replace(
+                                                      /@\w*$/,
+                                                      h.handle + ' ',
+                                                    ),
+                                                  }));
+                                                  setShowMentions(false);
+                                                  commentInputRefs.current[post.id]?.focus();
+                                                }}
+                                                className="w-full text-left px-3 py-1.5 text-[13px] hover:bg-[#F2F3F5]"
+                                                style={{ color: '#050505' }}
+                                              >
+                                                <span style={{ color: '#1877F2' }}>{h.handle}</span>
+                                                <span
+                                                  className="ml-1 text-[11px]"
+                                                  style={{ color: '#65676B' }}
+                                                >
+                                                  {h.display_name}
+                                                </span>
+                                              </button>
+                                            ))}
+                                        </div>
+                                      )}
+                                  </div>
                                 </div>
-                              </div>
-                            </>
-                          );
-                        })()}
-                      </div>
-                    );
-                  })
-              )}
-              <div style={{ height: 16 }} />
-            </div>
+                              </>
+                            );
+                          })()}
+                        </div>
+                      );
+                    })
+                )}
+                <div style={{ height: 16 }} />
+              </div>
 
-            {/* ── Compose Modal ── */}
-            {composing && (
-              <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
-                <div
-                  className="flex-1"
-                  style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
-                  onClick={() => setComposing(false)}
-                />
-                <div
-                  className="flex flex-col"
-                  style={{
-                    backgroundColor: '#FFFFFF',
-                    borderRadius: '12px 12px 0 0',
-                    maxHeight: '80%',
-                    minHeight: 320,
-                  }}
-                >
-                  {/* Header */}
+              {/* ── Compose Modal ── */}
+              {composing && (
+                <div className="absolute inset-0 flex flex-col" style={{ zIndex: 60 }}>
                   <div
-                    className="flex items-center justify-between px-4 py-3"
-                    style={{ borderBottom: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
-                  >
-                    <button
-                      onClick={() => setComposing(false)}
-                      className="text-[15px] font-semibold"
-                      style={{ color: '#65676B' }}
-                    >
-                      Cancel
-                    </button>
-                    <span className="font-bold text-[17px]" style={{ color: '#050505' }}>
-                      Create post
-                    </span>
-                    <button
-                      onClick={handlePost}
-                      disabled={!composeText.trim()}
-                      className="px-4 py-1.5 rounded-md text-[14px] font-bold text-white disabled:opacity-40"
-                      style={{ backgroundColor: '#1877F2' }}
-                    >
-                      Post
-                    </button>
-                  </div>
-
-                  {/* Format Picker */}
+                    className="flex-1"
+                    style={{ backgroundColor: 'rgba(0,0,0,0.4)' }}
+                    onClick={() => setComposing(false)}
+                  />
                   <div
-                    className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap"
-                    style={{ backgroundColor: '#FFFFFF' }}
+                    className="flex flex-col"
+                    style={{
+                      backgroundColor: '#FFFFFF',
+                      borderRadius: '12px 12px 0 0',
+                      maxHeight: '80%',
+                      minHeight: 320,
+                    }}
                   >
-                    {POST_FORMATS.map((fmt) => (
-                      <button
-                        key={fmt.value}
-                        onClick={() => setSelectedFormat(fmt.value)}
-                        className="px-2.5 py-1 rounded-full text-[12px] font-semibold transition-colors"
-                        style={{
-                          backgroundColor: selectedFormat === fmt.value ? '#1877F2' : '#E4E6EB',
-                          color: selectedFormat === fmt.value ? '#FFFFFF' : '#65676B',
-                        }}
-                      >
-                        {fmt.icon} {fmt.label}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Post As Toggle */}
-                  {orgPageInfo && (
+                    {/* Header */}
                     <div
-                      className="px-4 py-2 flex items-center gap-2"
-                      style={{ backgroundColor: '#F0F2F5', borderBottom: '1px solid #E4E6EB' }}
+                      className="flex items-center justify-between px-4 py-3"
+                      style={{ borderBottom: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
                     >
-                      <span className="text-[12px]" style={{ color: '#65676B' }}>
-                        Posting as:
+                      <button
+                        onClick={() => setComposing(false)}
+                        className="text-[15px] font-semibold"
+                        style={{ color: '#65676B' }}
+                      >
+                        Cancel
+                      </button>
+                      <span className="font-bold text-[17px]" style={{ color: '#050505' }}>
+                        Create post
                       </span>
                       <button
-                        onClick={() => setPostingAsPage(false)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
-                        style={{
-                          backgroundColor: !postingAsPage ? '#E7F3FF' : 'transparent',
-                          color: !postingAsPage ? '#1877F2' : '#65676B',
-                          border: !postingAsPage ? '1px solid #1877F2' : '1px solid #CED0D4',
-                        }}
+                        onClick={handlePost}
+                        disabled={!composeText.trim()}
+                        className="px-4 py-1.5 rounded-md text-[14px] font-bold text-white disabled:opacity-40"
+                        style={{ backgroundColor: '#1877F2' }}
                       >
-                        You
-                      </button>
-                      <button
-                        onClick={() => setPostingAsPage(true)}
-                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
-                        style={{
-                          backgroundColor: postingAsPage ? '#E7F3FF' : 'transparent',
-                          color: postingAsPage ? '#1877F2' : '#65676B',
-                          border: postingAsPage ? '1px solid #1877F2' : '1px solid #CED0D4',
-                        }}
-                      >
-                        &#10003; {orgPageInfo.page_name}
+                        Post
                       </button>
                     </div>
-                  )}
 
-                  {/* Compose Area */}
-                  <div
-                    className="flex-1 px-4 pb-2 overflow-y-auto"
-                    style={{ backgroundColor: '#FFFFFF' }}
-                  >
-                    <div className="flex gap-3 pt-3">
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-                        style={{ backgroundColor: postingAsPage ? '#4267B2' : '#1877F2' }}
-                      >
-                        {postingAsPage ? orgPageInfo?.page_name?.[0] || 'O' : 'Y'}
-                      </div>
-                      <div className="flex-1 relative">
-                        <textarea
-                          value={composeText}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            setComposeText(val);
-                            const match = val.match(/@(\w*)$/);
-                            if (match) {
-                              setMentionQuery(match[1].toLowerCase());
-                              setShowMentions(true);
-                            } else {
-                              setShowMentions(false);
-                            }
+                    {/* Format Picker */}
+                    <div
+                      className="px-4 pt-3 pb-1 flex gap-1.5 flex-wrap"
+                      style={{ backgroundColor: '#FFFFFF' }}
+                    >
+                      {POST_FORMATS.map((fmt) => (
+                        <button
+                          key={fmt.value}
+                          onClick={() => setSelectedFormat(fmt.value)}
+                          className="px-2.5 py-1 rounded-full text-[12px] font-semibold transition-colors"
+                          style={{
+                            backgroundColor: selectedFormat === fmt.value ? '#1877F2' : '#E4E6EB',
+                            color: selectedFormat === fmt.value ? '#FFFFFF' : '#65676B',
                           }}
-                          placeholder="What's on your mind?"
-                          className="w-full bg-transparent text-[16px] resize-none outline-none min-h-[140px]"
-                          style={{ color: '#050505', lineHeight: '1.5' }}
-                          maxLength={maxChars}
-                          autoFocus
-                        />
-                        {showMentions && (
-                          <div
-                            className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
+                        >
+                          {fmt.icon} {fmt.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Post As Toggle */}
+                    {orgPageInfo && (
+                      <div
+                        className="px-4 py-2 flex items-center gap-2"
+                        style={{ backgroundColor: '#F0F2F5', borderBottom: '1px solid #E4E6EB' }}
+                      >
+                        <span className="text-[12px]" style={{ color: '#65676B' }}>
+                          Posting as:
+                        </span>
+                        <button
+                          onClick={() => setPostingAsPage(false)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                          style={{
+                            backgroundColor: !postingAsPage ? '#E7F3FF' : 'transparent',
+                            color: !postingAsPage ? '#1877F2' : '#65676B',
+                            border: !postingAsPage ? '1px solid #1877F2' : '1px solid #CED0D4',
+                          }}
+                        >
+                          You
+                        </button>
+                        <button
+                          onClick={() => setPostingAsPage(true)}
+                          className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                          style={{
+                            backgroundColor: postingAsPage ? '#E7F3FF' : 'transparent',
+                            color: postingAsPage ? '#1877F2' : '#65676B',
+                            border: postingAsPage ? '1px solid #1877F2' : '1px solid #CED0D4',
+                          }}
+                        >
+                          &#10003; {orgPageInfo.page_name}
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Compose Area */}
+                    <div
+                      className="flex-1 px-4 pb-2 overflow-y-auto"
+                      style={{ backgroundColor: '#FFFFFF' }}
+                    >
+                      <div className="flex gap-3 pt-3">
+                        <div
+                          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+                          style={{ backgroundColor: postingAsPage ? '#4267B2' : '#1877F2' }}
+                        >
+                          {postingAsPage ? orgPageInfo?.page_name?.[0] || 'O' : 'Y'}
+                        </div>
+                        <div className="flex-1 relative">
+                          <textarea
+                            value={composeText}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setComposeText(val);
+                              const match = val.match(/@(\w*)$/);
+                              if (match) {
+                                setMentionQuery(match[1].toLowerCase());
+                                setShowMentions(true);
+                              } else {
+                                setShowMentions(false);
+                              }
+                            }}
+                            placeholder="What's on your mind?"
+                            className="w-full bg-transparent text-[16px] resize-none outline-none min-h-[140px]"
+                            style={{ color: '#050505', lineHeight: '1.5' }}
+                            maxLength={maxChars}
+                            autoFocus
+                          />
+                          {showMentions && (
+                            <div
+                              className="absolute left-0 right-0 rounded-lg overflow-hidden z-50"
+                              style={{
+                                top: 40,
+                                backgroundColor: '#FFFFFF',
+                                boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
+                                maxHeight: 150,
+                                overflowY: 'auto',
+                              }}
+                            >
+                              {knownHandles
+                                .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
+                                .slice(0, 6)
+                                .map((h) => (
+                                  <button
+                                    key={h.handle}
+                                    onClick={() => {
+                                      setComposeText((prev) =>
+                                        prev.replace(/@\w*$/, h.handle + ' '),
+                                      );
+                                      setShowMentions(false);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#F2F3F5]"
+                                    style={{ color: '#050505' }}
+                                  >
+                                    <span style={{ color: '#1877F2' }}>{h.handle}</span>
+                                    <span className="ml-2 text-[12px]" style={{ color: '#65676B' }}>
+                                      {h.display_name}
+                                    </span>
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Media preview */}
+                    {mediaPreviewUrl && !showMediaPanel && (
+                      <div
+                        className="mx-4 mb-2 rounded-xl overflow-hidden relative"
+                        style={{ border: '1px solid #DADDE1' }}
+                      >
+                        {mediaPreviewUrl.endsWith('.mp4') ? (
+                          <video
+                            src={mediaPreviewUrl}
+                            controls
+                            className="w-full max-h-[200px] object-contain"
+                            style={{ backgroundColor: '#F0F2F5' }}
+                          />
+                        ) : (
+                          <img
+                            src={mediaPreviewUrl}
+                            alt="Media preview"
+                            className="w-full max-h-[200px] object-contain"
+                            style={{ backgroundColor: '#F0F2F5' }}
+                          />
+                        )}
+                        <div className="absolute top-2 right-2 flex gap-1">
+                          <button
+                            onClick={() => setShowMediaPanel(true)}
+                            className="px-2 py-1 rounded text-[11px] font-semibold"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: '#1877F2' }}
+                          >
+                            Change
+                          </button>
+                          <button
+                            onClick={() => {
+                              setMediaPreviewUrl(null);
+                              setMediaPromptText('');
+                            }}
+                            className="px-2 py-1 rounded text-[11px] font-semibold"
+                            style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: '#e74c3c' }}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Media panel */}
+                    {showMediaPanel && (
+                      <div
+                        className="mx-4 mb-2 rounded-xl p-3"
+                        style={{ backgroundColor: '#F0F2F5', border: '1px solid #DADDE1' }}
+                      >
+                        <div
+                          className="flex items-center gap-1 mb-3 rounded-lg overflow-hidden"
+                          style={{ backgroundColor: '#FFFFFF' }}
+                        >
+                          <button
+                            onClick={() => setMediaType('image')}
+                            className="flex-1 py-2 text-[13px] font-semibold text-center"
                             style={{
-                              top: 40,
-                              backgroundColor: '#FFFFFF',
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                              maxHeight: 150,
-                              overflowY: 'auto',
+                              backgroundColor: mediaType === 'image' ? '#1877F2' : 'transparent',
+                              color: mediaType === 'image' ? '#fff' : '#65676B',
                             }}
                           >
-                            {knownHandles
-                              .filter((h) => h.handle.toLowerCase().includes(mentionQuery))
-                              .slice(0, 6)
-                              .map((h) => (
-                                <button
-                                  key={h.handle}
-                                  onClick={() => {
-                                    setComposeText((prev) => prev.replace(/@\w*$/, h.handle + ' '));
-                                    setShowMentions(false);
-                                  }}
-                                  className="w-full text-left px-3 py-2 text-[14px] hover:bg-[#F2F3F5]"
-                                  style={{ color: '#050505' }}
+                            Image
+                          </button>
+                          <button
+                            onClick={() => setMediaType('video')}
+                            className="flex-1 py-2 text-[13px] font-semibold text-center"
+                            style={{
+                              backgroundColor: mediaType === 'video' ? '#1877F2' : 'transparent',
+                              color: mediaType === 'video' ? '#fff' : '#65676B',
+                            }}
+                          >
+                            Video
+                          </button>
+                        </div>
+                        <textarea
+                          autoFocus
+                          value={mediaPromptText}
+                          onChange={(e) => setMediaPromptText(e.target.value)}
+                          placeholder={
+                            mediaType === 'video'
+                              ? 'Describe your video concept...'
+                              : 'Describe the image you want to create...'
+                          }
+                          className="w-full rounded-lg px-3 py-2 text-[14px] outline-none resize-none"
+                          style={{
+                            backgroundColor: '#FFFFFF',
+                            color: '#050505',
+                            border: '1px solid #DADDE1',
+                            minHeight: 50,
+                          }}
+                          rows={2}
+                          maxLength={500}
+                        />
+                        {mediaType === 'video' && (
+                          <div className="mt-2 flex gap-3">
+                            <div className="flex-1">
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[11px]" style={{ color: '#65676B' }}>
+                                  Duration
+                                </span>
+                                <span
+                                  className="text-[11px] font-bold"
+                                  style={{ color: '#1877F2' }}
                                 >
-                                  <span style={{ color: '#1877F2' }}>{h.handle}</span>
-                                  <span className="ml-2 text-[12px]" style={{ color: '#65676B' }}>
-                                    {h.display_name}
-                                  </span>
-                                </button>
-                              ))}
+                                  {videoDuration}s
+                                </span>
+                              </div>
+                              <input
+                                type="range"
+                                min={5}
+                                max={15}
+                                step={1}
+                                value={videoDuration}
+                                onChange={(e) => setVideoDuration(Number(e.target.value))}
+                                className="w-full accent-[#1877F2]"
+                                style={{ height: 4 }}
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[11px] block mb-1" style={{ color: '#65676B' }}>
+                                Orientation
+                              </span>
+                              <div className="flex gap-1">
+                                {(
+                                  [
+                                    ['16:9', 'Landscape'],
+                                    ['9:16', 'Portrait'],
+                                    ['1:1', 'Square'],
+                                  ] as const
+                                ).map(([ratio, label]) => (
+                                  <button
+                                    key={ratio}
+                                    onClick={() => setVideoOrientation(ratio)}
+                                    className="px-2 py-1.5 rounded text-[10px] font-semibold"
+                                    style={{
+                                      backgroundColor:
+                                        videoOrientation === ratio ? '#1877F2' : '#E4E6EB',
+                                      color: videoOrientation === ratio ? '#fff' : '#65676B',
+                                    }}
+                                  >
+                                    {label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         )}
+                        {mediaGenerating && (
+                          <div className="flex items-center gap-2 mt-2 px-1">
+                            <div
+                              className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
+                              style={{ borderColor: '#1877F2', borderTopColor: 'transparent' }}
+                            />
+                            <span className="text-[12px]" style={{ color: '#65676B' }}>
+                              {mediaType === 'video'
+                                ? 'Generating video...'
+                                : 'Generating image...'}
+                            </span>
+                          </div>
+                        )}
+                        {mediaPreviewUrl && (
+                          <div
+                            className="mt-2 rounded-lg overflow-hidden"
+                            style={{ border: '1px solid #DADDE1' }}
+                          >
+                            {mediaPreviewUrl.endsWith('.mp4') ? (
+                              <video
+                                src={mediaPreviewUrl}
+                                controls
+                                className="w-full max-h-[180px] object-contain"
+                                style={{ backgroundColor: '#F0F2F5' }}
+                              />
+                            ) : (
+                              <img
+                                src={mediaPreviewUrl}
+                                alt="Preview"
+                                className="w-full max-h-[180px] object-contain"
+                                style={{ backgroundColor: '#F0F2F5' }}
+                              />
+                            )}
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between mt-2">
+                          <div className="flex gap-2">
+                            {mediaPreviewUrl && (
+                              <button
+                                onClick={() => {
+                                  setMediaPreviewUrl(null);
+                                  handleGeneratePreview();
+                                }}
+                                className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
+                                style={{ backgroundColor: '#E4E6EB', color: '#050505' }}
+                              >
+                                Regenerate
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setShowMediaPanel(false)}
+                              className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
+                              style={{ backgroundColor: '#1877F2', color: '#fff' }}
+                            >
+                              Done
+                            </button>
+                          </div>
+                          {!mediaPreviewUrl && !mediaGenerating && (
+                            <button
+                              disabled={!mediaPromptText.trim()}
+                              onClick={handleGeneratePreview}
+                              className="text-[12px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
+                              style={{ backgroundColor: '#1877F2', color: '#fff' }}
+                            >
+                              Generate
+                            </button>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </div>
+                    )}
 
-                  {/* Media preview */}
-                  {mediaPreviewUrl && !showMediaPanel && (
+                    {/* Bottom toolbar */}
                     <div
-                      className="mx-4 mb-2 rounded-xl overflow-hidden relative"
-                      style={{ border: '1px solid #DADDE1' }}
+                      className="flex items-center justify-between px-4 py-2.5"
+                      style={{ borderTop: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
                     >
-                      {mediaPreviewUrl.endsWith('.mp4') ? (
-                        <video
-                          src={mediaPreviewUrl}
-                          controls
-                          className="w-full max-h-[200px] object-contain"
-                          style={{ backgroundColor: '#F0F2F5' }}
-                        />
-                      ) : (
-                        <img
-                          src={mediaPreviewUrl}
-                          alt="Media preview"
-                          className="w-full max-h-[200px] object-contain"
-                          style={{ backgroundColor: '#F0F2F5' }}
-                        />
-                      )}
-                      <div className="absolute top-2 right-2 flex gap-1">
+                      <div className="flex items-center gap-4">
                         <button
-                          onClick={() => setShowMediaPanel(true)}
-                          className="px-2 py-1 rounded text-[11px] font-semibold"
-                          style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: '#1877F2' }}
+                          onClick={() => {
+                            setShowMediaPanel(!showMediaPanel);
+                            setMediaType('image');
+                          }}
+                          className="outline-none focus:outline-none hover:opacity-70"
                         >
-                          Change
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                            <rect
+                              x="3"
+                              y="3"
+                              width="18"
+                              height="18"
+                              rx="3"
+                              stroke="#45BD62"
+                              strokeWidth="2"
+                            />
+                            <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
+                            <path
+                              d="M21 15l-5-5L5 21"
+                              stroke="#45BD62"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                            />
+                          </svg>
                         </button>
                         <button
                           onClick={() => {
-                            setMediaPreviewUrl(null);
-                            setMediaPromptText('');
+                            setShowMediaPanel(!showMediaPanel);
+                            setMediaType('video');
                           }}
-                          className="px-2 py-1 rounded text-[11px] font-semibold"
-                          style={{ backgroundColor: 'rgba(255,255,255,0.9)', color: '#e74c3c' }}
+                          className="outline-none focus:outline-none hover:opacity-70"
                         >
-                          Remove
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Media panel */}
-                  {showMediaPanel && (
-                    <div
-                      className="mx-4 mb-2 rounded-xl p-3"
-                      style={{ backgroundColor: '#F0F2F5', border: '1px solid #DADDE1' }}
-                    >
-                      <div
-                        className="flex items-center gap-1 mb-3 rounded-lg overflow-hidden"
-                        style={{ backgroundColor: '#FFFFFF' }}
-                      >
-                        <button
-                          onClick={() => setMediaType('image')}
-                          className="flex-1 py-2 text-[13px] font-semibold text-center"
-                          style={{
-                            backgroundColor: mediaType === 'image' ? '#1877F2' : 'transparent',
-                            color: mediaType === 'image' ? '#fff' : '#65676B',
-                          }}
-                        >
-                          Image
-                        </button>
-                        <button
-                          onClick={() => setMediaType('video')}
-                          className="flex-1 py-2 text-[13px] font-semibold text-center"
-                          style={{
-                            backgroundColor: mediaType === 'video' ? '#1877F2' : 'transparent',
-                            color: mediaType === 'video' ? '#fff' : '#65676B',
-                          }}
-                        >
-                          Video
-                        </button>
-                      </div>
-                      <textarea
-                        autoFocus
-                        value={mediaPromptText}
-                        onChange={(e) => setMediaPromptText(e.target.value)}
-                        placeholder={
-                          mediaType === 'video'
-                            ? 'Describe your video concept...'
-                            : 'Describe the image you want to create...'
-                        }
-                        className="w-full rounded-lg px-3 py-2 text-[14px] outline-none resize-none"
-                        style={{
-                          backgroundColor: '#FFFFFF',
-                          color: '#050505',
-                          border: '1px solid #DADDE1',
-                          minHeight: 50,
-                        }}
-                        rows={2}
-                        maxLength={500}
-                      />
-                      {mediaType === 'video' && (
-                        <div className="mt-2 flex gap-3">
-                          <div className="flex-1">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-[11px]" style={{ color: '#65676B' }}>
-                                Duration
-                              </span>
-                              <span className="text-[11px] font-bold" style={{ color: '#1877F2' }}>
-                                {videoDuration}s
-                              </span>
-                            </div>
-                            <input
-                              type="range"
-                              min={5}
-                              max={15}
-                              step={1}
-                              value={videoDuration}
-                              onChange={(e) => setVideoDuration(Number(e.target.value))}
-                              className="w-full accent-[#1877F2]"
-                              style={{ height: 4 }}
+                          <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                            <rect
+                              x="2"
+                              y="4"
+                              width="20"
+                              height="16"
+                              rx="2"
+                              stroke="#F44336"
+                              strokeWidth="2"
                             />
-                          </div>
-                          <div>
-                            <span className="text-[11px] block mb-1" style={{ color: '#65676B' }}>
-                              Orientation
-                            </span>
-                            <div className="flex gap-1">
-                              {(
-                                [
-                                  ['16:9', 'Landscape'],
-                                  ['9:16', 'Portrait'],
-                                  ['1:1', 'Square'],
-                                ] as const
-                              ).map(([ratio, label]) => (
-                                <button
-                                  key={ratio}
-                                  onClick={() => setVideoOrientation(ratio)}
-                                  className="px-2 py-1.5 rounded text-[10px] font-semibold"
-                                  style={{
-                                    backgroundColor:
-                                      videoOrientation === ratio ? '#1877F2' : '#E4E6EB',
-                                    color: videoOrientation === ratio ? '#fff' : '#65676B',
-                                  }}
-                                >
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      {mediaGenerating && (
-                        <div className="flex items-center gap-2 mt-2 px-1">
-                          <div
-                            className="w-4 h-4 border-2 border-t-transparent rounded-full animate-spin"
-                            style={{ borderColor: '#1877F2', borderTopColor: 'transparent' }}
-                          />
-                          <span className="text-[12px]" style={{ color: '#65676B' }}>
-                            {mediaType === 'video' ? 'Generating video...' : 'Generating image...'}
-                          </span>
-                        </div>
-                      )}
-                      {mediaPreviewUrl && (
-                        <div
-                          className="mt-2 rounded-lg overflow-hidden"
-                          style={{ border: '1px solid #DADDE1' }}
-                        >
-                          {mediaPreviewUrl.endsWith('.mp4') ? (
-                            <video
-                              src={mediaPreviewUrl}
-                              controls
-                              className="w-full max-h-[180px] object-contain"
-                              style={{ backgroundColor: '#F0F2F5' }}
-                            />
-                          ) : (
-                            <img
-                              src={mediaPreviewUrl}
-                              alt="Preview"
-                              className="w-full max-h-[180px] object-contain"
-                              style={{ backgroundColor: '#F0F2F5' }}
-                            />
-                          )}
-                        </div>
-                      )}
-                      <div className="flex items-center justify-between mt-2">
-                        <div className="flex gap-2">
-                          {mediaPreviewUrl && (
-                            <button
-                              onClick={() => {
-                                setMediaPreviewUrl(null);
-                                handleGeneratePreview();
-                              }}
-                              className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
-                              style={{ backgroundColor: '#E4E6EB', color: '#050505' }}
-                            >
-                              Regenerate
-                            </button>
-                          )}
-                          <button
-                            onClick={() => setShowMediaPanel(false)}
-                            className="text-[12px] font-semibold px-3 py-1.5 rounded-full"
-                            style={{ backgroundColor: '#1877F2', color: '#fff' }}
-                          >
-                            Done
-                          </button>
-                        </div>
-                        {!mediaPreviewUrl && !mediaGenerating && (
-                          <button
-                            disabled={!mediaPromptText.trim()}
-                            onClick={handleGeneratePreview}
-                            className="text-[12px] font-semibold px-3 py-1.5 rounded-full disabled:opacity-40"
-                            style={{ backgroundColor: '#1877F2', color: '#fff' }}
-                          >
-                            Generate
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Bottom toolbar */}
-                  <div
-                    className="flex items-center justify-between px-4 py-2.5"
-                    style={{ borderTop: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
-                  >
-                    <div className="flex items-center gap-4">
-                      <button
-                        onClick={() => {
-                          setShowMediaPanel(!showMediaPanel);
-                          setMediaType('image');
-                        }}
-                        className="outline-none focus:outline-none hover:opacity-70"
-                      >
+                            <polygon points="10 9 15 12 10 15" fill="#F44336" />
+                          </svg>
+                        </button>
                         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                          <rect
-                            x="3"
-                            y="3"
-                            width="18"
-                            height="18"
-                            rx="3"
-                            stroke="#45BD62"
-                            strokeWidth="2"
-                          />
-                          <circle cx="8.5" cy="8.5" r="1.5" fill="#45BD62" />
+                          <circle cx="12" cy="12" r="9" stroke="#F7B928" strokeWidth="2" />
                           <path
-                            d="M21 15l-5-5L5 21"
-                            stroke="#45BD62"
+                            d="M8 14s1.5 2 4 2 4-2 4-2"
+                            stroke="#F7B928"
                             strokeWidth="2"
                             strokeLinecap="round"
                           />
+                          <circle cx="9" cy="9" r="1" fill="#F7B928" />
+                          <circle cx="15" cy="9" r="1" fill="#F7B928" />
                         </svg>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setShowMediaPanel(!showMediaPanel);
-                          setMediaType('video');
-                        }}
-                        className="outline-none focus:outline-none hover:opacity-70"
-                      >
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                          <rect
-                            x="2"
-                            y="4"
-                            width="20"
-                            height="16"
-                            rx="2"
-                            stroke="#F44336"
-                            strokeWidth="2"
-                          />
-                          <polygon points="10 9 15 12 10 15" fill="#F44336" />
-                        </svg>
-                      </button>
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="9" stroke="#F7B928" strokeWidth="2" />
-                        <path
-                          d="M8 14s1.5 2 4 2 4-2 4-2"
-                          stroke="#F7B928"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                        />
-                        <circle cx="9" cy="9" r="1" fill="#F7B928" />
-                        <circle cx="15" cy="9" r="1" fill="#F7B928" />
-                      </svg>
+                      </div>
+                      <span className="text-[13px]" style={{ color: '#65676B' }}>
+                        {composeText.length}/{maxChars}
+                      </span>
                     </div>
-                    <span className="text-[13px]" style={{ color: '#65676B' }}>
-                      {composeText.length}/{maxChars}
-                    </span>
                   </div>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
       )}
