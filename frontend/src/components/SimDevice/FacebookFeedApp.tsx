@@ -503,7 +503,7 @@ export default function FacebookFeedApp() {
         if (newPost.platform !== 'facebook') return;
         const isOwnPost =
           currentUserIdRef.current &&
-          (newPost as Record<string, unknown>).user_id === currentUserIdRef.current;
+          (newPost as unknown as Record<string, unknown>).user_id === currentUserIdRef.current;
         if (newPost.reply_to_post_id) {
           if (!isOwnPost) {
             setPostReplies((prev) => {

@@ -360,7 +360,7 @@ export default function SocialFeedApp({
         if (newPost.platform && newPost.platform !== 'x_twitter') return;
         const isOwnPost =
           currentUserIdRef.current &&
-          (newPost as Record<string, unknown>).user_id === currentUserIdRef.current;
+          (newPost as unknown as Record<string, unknown>).user_id === currentUserIdRef.current;
 
         if (newPost.reply_to_post_id) {
           if (!isOwnPost) {
