@@ -6,6 +6,8 @@ import { supabase } from '../../lib/supabase';
 import FacebookMessengerView from './FacebookMessengerView';
 import FacebookGroupsView from './FacebookGroupsView';
 import FacebookEventsView from './FacebookEventsView';
+import OrgPageView from './OrgPageView';
+import PlayerActivityPanel from './PlayerActivityPanel';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -85,6 +87,9 @@ interface SocialPost {
   flagged_by_me?: boolean;
   post_format?: string;
   media_urls?: string[];
+  posted_by_display_name?: string;
+  is_branded_history?: boolean;
+  target_player_ids?: string[];
 }
 
 function formatCount(n: number): string {
@@ -117,6 +122,10 @@ export default function FacebookFeedApp() {
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
+  const [postingAsPage, setPostingAsPage] = useState(false);
+  const [orgPageInfo, setOrgPageInfo] = useState<{ page_name: string; page_handle: string } | null>(
+    null,
+  );
   const currentUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -124,6 +133,25 @@ export default function FacebookFeedApp() {
       currentUserIdRef.current = session?.user?.id || null;
     });
   }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers });
+        const json = await res.json();
+        const fbPage = (json.data || []).find(
+          (p: Record<string, string>) => p.platform === 'facebook',
+        );
+        if (fbPage)
+          setOrgPageInfo({ page_name: fbPage.page_name, page_handle: fbPage.page_handle });
+      } catch {
+        /* non-critical */
+      }
+    })();
+  }, [sessionId]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [showReactions, setShowReactions] = useState<string | null>(null);
@@ -152,7 +180,9 @@ export default function FacebookFeedApp() {
       metadata?: Record<string, unknown>;
     }>
   >([]);
-  const [activeView, setActiveView] = useState<'feed' | 'messenger' | 'groups' | 'events'>('feed');
+  const [activeView, setActiveView] = useState<
+    'feed' | 'messenger' | 'groups' | 'events' | 'page' | 'profile'
+  >('feed');
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showMessengerDropdown, setShowMessengerDropdown] = useState(false);
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
@@ -460,7 +490,16 @@ export default function FacebookFeedApp() {
         const { post_id, media_urls } = event.data as { post_id: string; media_urls: string[] };
         setPosts((prev) => prev.map((p) => (p.id === post_id ? { ...p, media_urls } : p)));
       } else if (event.type === 'social_post.created') {
-        const newPost = (event.data as { post: SocialPost }).post;
+        const evtData = event.data as { post: SocialPost; target_player_ids?: string[] };
+        const targetIds = evtData.target_player_ids;
+        if (
+          targetIds &&
+          Array.isArray(targetIds) &&
+          currentUserIdRef.current &&
+          !targetIds.includes(currentUserIdRef.current)
+        )
+          return;
+        const newPost = evtData.post;
         if (newPost.platform !== 'facebook') return;
         if (newPost.reply_to_post_id) {
           setPostReplies((prev) => {
@@ -505,21 +544,14 @@ export default function FacebookFeedApp() {
           post_format: selectedFormat,
           image_prompt: mediaPromptText || undefined,
           media_url: mediaPreviewUrl || undefined,
+          post_as_page: postingAsPage,
         }),
       });
       if (!postRes.ok) {
         console.error('Post failed:', postRes.status);
         return;
       }
-      const result = await postRes.json().catch(() => null);
-      const createdPost = result?.data as SocialPost | undefined;
-
-      if (createdPost) {
-        setPosts((prev) => {
-          if (prev.some((p) => p.id === createdPost.id)) return prev;
-          return [createdPost, ...prev];
-        });
-      }
+      await postRes.json().catch(() => null);
 
       setComposeText('');
       setMediaPromptText('');
@@ -528,6 +560,7 @@ export default function FacebookFeedApp() {
       setMediaGenerating(false);
       setComposing(false);
       setSelectedFormat('text');
+      setPostingAsPage(false);
     } catch {
       /* ignore */
     }
@@ -643,20 +676,7 @@ export default function FacebookFeedApp() {
         }),
       });
       if (postRes.ok) {
-        const result = await postRes.json().catch(() => null);
-        const createdPost = result?.data as SocialPost | undefined;
-        if (createdPost) {
-          setPostReplies((prev) => {
-            const existing = prev[postId] || [];
-            if (existing.some((r) => r.id === createdPost.id)) return prev;
-            return { ...prev, [postId]: [...existing, createdPost] };
-          });
-          setPosts((prev) =>
-            prev.map((p) =>
-              p.id === postId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
-            ),
-          );
-        }
+        await postRes.json().catch(() => null);
       }
       setCommentText((prev) => ({ ...prev, [postId]: '' }));
       setReplyTarget((prev) => ({ ...prev, [postId]: null }));
@@ -1319,6 +1339,10 @@ export default function FacebookFeedApp() {
       {activeView === 'messenger' && sessionId && <FacebookMessengerView sessionId={sessionId} />}
       {activeView === 'groups' && sessionId && <FacebookGroupsView sessionId={sessionId} />}
       {activeView === 'events' && sessionId && <FacebookEventsView sessionId={sessionId} />}
+      {activeView === 'page' && sessionId && (
+        <OrgPageView platform="facebook" onBack={() => setActiveView('feed')} />
+      )}
+      {activeView === 'profile' && <PlayerActivityPanel onBack={() => setActiveView('feed')} />}
 
       {/* Feed View with Sidebar */}
       {activeView === 'feed' && (
@@ -1339,6 +1363,22 @@ export default function FacebookFeedApp() {
                   ),
                   onClick: () => {},
                 },
+                ...(orgPageInfo
+                  ? [
+                      {
+                        label: orgPageInfo.page_name,
+                        icon: (
+                          <div
+                            className="w-5 h-5 rounded flex items-center justify-center text-white text-[10px] font-bold"
+                            style={{ backgroundColor: '#1877F2' }}
+                          >
+                            {orgPageInfo.page_name[0]}
+                          </div>
+                        ),
+                        onClick: () => setActiveView('page'),
+                      },
+                    ]
+                  : []),
                 {
                   label: 'Groups',
                   icon: (
@@ -1396,6 +1436,25 @@ export default function FacebookFeedApp() {
                   ),
                   onClick: () => {
                     setActiveView('messenger');
+                  },
+                },
+                {
+                  label: 'My Activity',
+                  icon: (
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="#65676B"
+                      strokeWidth="2"
+                    >
+                      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+                      <circle cx="12" cy="7" r="4" />
+                    </svg>
+                  ),
+                  onClick: () => {
+                    setActiveView('profile');
                   },
                 },
                 {
@@ -1736,10 +1795,27 @@ export default function FacebookFeedApp() {
                         }}
                       >
                         {/* Author Row */}
-                        <div className="flex items-center gap-2.5 px-3 pt-3 pb-1.5">
+                        <div
+                          className="flex items-center gap-2.5 px-3 pt-3 pb-1.5"
+                          onClick={
+                            post.author_type === 'official_account'
+                              ? () => setActiveView('page')
+                              : undefined
+                          }
+                          style={
+                            post.author_type === 'official_account'
+                              ? { cursor: 'pointer' }
+                              : undefined
+                          }
+                        >
                           <div
                             className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
-                            style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
+                            style={{
+                              backgroundColor:
+                                post.author_type === 'official_account'
+                                  ? '#1877F2'
+                                  : getAvatarColor(post.author_display_name),
+                            }}
                           >
                             {post.author_display_name.charAt(0).toUpperCase()}
                           </div>
@@ -1757,6 +1833,12 @@ export default function FacebookFeedApp() {
                                 </span>
                               )}
                             </div>
+                            {post.author_type === 'official_account' &&
+                              post.posted_by_display_name && (
+                                <div className="text-[11px]" style={{ color: '#65676B' }}>
+                                  Posted by {post.posted_by_display_name}
+                                </div>
+                              )}
                             <div
                               className="flex items-center gap-1 text-[13px]"
                               style={{ color: '#65676B' }}
@@ -2573,6 +2655,40 @@ export default function FacebookFeedApp() {
                     ))}
                   </div>
 
+                  {/* Post As Toggle */}
+                  {orgPageInfo && (
+                    <div
+                      className="px-4 py-2 flex items-center gap-2"
+                      style={{ backgroundColor: '#F0F2F5', borderBottom: '1px solid #E4E6EB' }}
+                    >
+                      <span className="text-[12px]" style={{ color: '#65676B' }}>
+                        Posting as:
+                      </span>
+                      <button
+                        onClick={() => setPostingAsPage(false)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                        style={{
+                          backgroundColor: !postingAsPage ? '#E7F3FF' : 'transparent',
+                          color: !postingAsPage ? '#1877F2' : '#65676B',
+                          border: !postingAsPage ? '1px solid #1877F2' : '1px solid #CED0D4',
+                        }}
+                      >
+                        You
+                      </button>
+                      <button
+                        onClick={() => setPostingAsPage(true)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                        style={{
+                          backgroundColor: postingAsPage ? '#E7F3FF' : 'transparent',
+                          color: postingAsPage ? '#1877F2' : '#65676B',
+                          border: postingAsPage ? '1px solid #1877F2' : '1px solid #CED0D4',
+                        }}
+                      >
+                        &#10003; {orgPageInfo.page_name}
+                      </button>
+                    </div>
+                  )}
+
                   {/* Compose Area */}
                   <div
                     className="flex-1 px-4 pb-2 overflow-y-auto"
@@ -2581,9 +2697,9 @@ export default function FacebookFeedApp() {
                     <div className="flex gap-3 pt-3">
                       <div
                         className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-                        style={{ backgroundColor: '#1877F2' }}
+                        style={{ backgroundColor: postingAsPage ? '#4267B2' : '#1877F2' }}
                       >
-                        Y
+                        {postingAsPage ? orgPageInfo?.page_name?.[0] || 'O' : 'Y'}
                       </div>
                       <div className="flex-1 relative">
                         <textarea
@@ -3001,6 +3117,24 @@ export default function FacebookFeedApp() {
                   strokeWidth="2"
                 >
                   <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                </svg>
+              ),
+            },
+            {
+              label: 'Page',
+              view: 'page' as const,
+              icon: (
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill={activeView === 'page' ? '#1877F2' : 'none'}
+                  stroke={activeView === 'page' ? '#1877F2' : '#65676B'}
+                  strokeWidth="2"
+                >
+                  <rect x="2" y="3" width="20" height="14" rx="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
                 </svg>
               ),
             },

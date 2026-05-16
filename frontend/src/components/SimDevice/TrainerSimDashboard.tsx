@@ -112,6 +112,8 @@ interface FeedPost {
   } | null;
   reply_to_post_id: string | null;
   is_flagged_by_player?: boolean;
+  target_player_ids?: string[];
+  posted_by_display_name?: string;
 }
 
 interface OrchestrationInject {
@@ -981,6 +983,14 @@ export default function TrainerSimDashboard() {
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[11px] font-semibold" style={{ color: '#94a3b8' }}>
                           @{p.author_handle}
+                          {p.posted_by_display_name && (
+                            <span
+                              className="text-[9px] font-normal ml-1"
+                              style={{ color: '#64748b' }}
+                            >
+                              (by {p.posted_by_display_name})
+                            </span>
+                          )}
                         </span>
                         <span className="text-[10px] font-bold" style={{ color: ageColor(age) }}>
                           {age}m ago
@@ -993,6 +1003,14 @@ export default function TrainerSimDashboard() {
                         {badges.map((b) => (
                           <Badge key={b.text} text={b.text} variant={b.variant} />
                         ))}
+                        {p.target_player_ids && p.target_player_ids.length > 0 && (
+                          <span
+                            className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                            style={{ backgroundColor: 'rgba(99,102,241,0.15)', color: '#818cf8' }}
+                          >
+                            Bubble
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -1265,11 +1283,23 @@ export default function TrainerSimDashboard() {
                         <span className="text-[10px]" style={{ color: '#475569' }}>
                           {timeLabel(p.created_at)}
                         </span>
-                        {badges.length > 0 && (
+                        {(badges.length > 0 ||
+                          (p.target_player_ids && p.target_player_ids.length > 0)) && (
                           <div className="flex gap-1 ml-auto">
                             {badges.map((b) => (
                               <Badge key={b.text} text={b.text} variant={b.variant} />
                             ))}
+                            {p.target_player_ids && p.target_player_ids.length > 0 && (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(99,102,241,0.15)',
+                                  color: '#818cf8',
+                                }}
+                              >
+                                Bubble
+                              </span>
+                            )}
                           </div>
                         )}
                       </div>

@@ -88,17 +88,28 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
       string
     > | null;
 
+    const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
+
     const enrichedData = (data || [])
       .filter((post) => {
-        if (!post.target_demographics) return true;
-        if (!playerDemographics) return true;
-        const target = post.target_demographics as Record<string, string | string[]>;
-        return Object.entries(target).every(([key, vals]) => {
-          const playerVal = playerDemographics[key];
-          if (!playerVal) return true;
-          if (Array.isArray(vals)) return vals.includes(playerVal);
-          return vals === playerVal;
-        });
+        // Trainers see everything (god-view)
+        if (isTrainerOrAdmin) return true;
+        // Per-player bubble targeting
+        if (post.target_player_ids) {
+          return (post.target_player_ids as string[]).includes(user.id);
+        }
+        // Demographic targeting (backward compat)
+        if (post.target_demographics) {
+          if (!playerDemographics) return true;
+          const target = post.target_demographics as Record<string, string | string[]>;
+          return Object.entries(target).every(([key, vals]) => {
+            const playerVal = playerDemographics[key];
+            if (!playerVal) return true;
+            if (Array.isArray(vals)) return vals.includes(playerVal);
+            return vals === playerVal;
+          });
+        }
+        return true;
       })
       .map((post) => ({
         ...post,
@@ -161,6 +172,7 @@ const createPostSchema = z.object({
         'personal_story',
       ])
       .default('text'),
+    post_as_page: z.boolean().optional().default(false),
   }),
 });
 
@@ -179,11 +191,11 @@ router.post(
         post_format,
         image_prompt,
         media_url,
+        post_as_page,
       } = req.body;
 
       const hashtags = content.match(/#\w+/g) || [];
 
-      // Resolve player display name: auth metadata > user_profiles > email > fallback
       let playerName = user.metadata?.full_name as string | undefined;
       if (!playerName) {
         const { data: profile } = await supabaseAdmin
@@ -193,10 +205,37 @@ router.post(
           .single();
         playerName = profile?.full_name || undefined;
       }
-      const displayName = playerName || user.email || 'Player';
-      const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+      const personalDisplayName = playerName || user.email || 'Player';
+      const personalHandle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
 
-      const initialViralityScore = reply_to_post_id ? 0 : 35 + Math.floor(Math.random() * 15);
+      let authorHandle = personalHandle;
+      let authorDisplayName = personalDisplayName;
+      let authorType = 'player';
+      let postedByUserId: string | null = null;
+      let postedByDisplayName: string | null = null;
+
+      if (post_as_page) {
+        const { data: orgPage } = await supabaseAdmin
+          .from('sim_org_pages')
+          .select('page_name, page_handle')
+          .eq('session_id', session_id)
+          .eq('platform', platform)
+          .single();
+
+        if (orgPage) {
+          authorHandle = orgPage.page_handle;
+          authorDisplayName = orgPage.page_name;
+          authorType = 'official_account';
+          postedByUserId = user.id;
+          postedByDisplayName = personalDisplayName;
+        }
+      }
+
+      const initialViralityScore = reply_to_post_id
+        ? 0
+        : post_as_page
+          ? 50 + Math.floor(Math.random() * 20)
+          : 35 + Math.floor(Math.random() * 15);
 
       const { data: post, error } = await supabaseAdmin
         .from('social_posts')
@@ -204,9 +243,9 @@ router.post(
           session_id,
           platform,
           user_id: user.id,
-          author_handle: handle,
-          author_display_name: displayName,
-          author_type: 'player',
+          author_handle: authorHandle,
+          author_display_name: authorDisplayName,
+          author_type: authorType,
           content,
           hashtags,
           reply_to_post_id: reply_to_post_id || null,
@@ -215,6 +254,9 @@ router.post(
           image_prompt: image_prompt || null,
           media_urls: media_url ? [media_url] : null,
           virality_score: initialViralityScore,
+          ...(postedByUserId
+            ? { posted_by_user_id: postedByUserId, posted_by_display_name: postedByDisplayName }
+            : {}),
         })
         .select()
         .single();
@@ -350,6 +392,7 @@ router.post(
             hateful_post_being_addressed: parentContent,
             research_guidelines: flatGuidelines.slice(0, 5),
             post_format: post_format || 'text',
+            is_official_page_post: post_as_page || false,
             elapsed_minutes: elapsedMinutes,
             image_prompt: image_prompt || undefined,
           });
@@ -1512,6 +1555,65 @@ router.get(
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /social/orchestration/session/:sessionId');
       return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Get org page info for a session
+router.get('/org-page/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('sim_org_pages')
+      .select('*')
+      .eq('session_id', sessionId);
+
+    if (error) {
+      return res.status(500).json({ error: 'Failed to fetch org pages' });
+    }
+
+    res.json({ data: data || [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/org-page/session/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get player's own activity for a session
+router.get(
+  '/my-activity/session/:sessionId',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+      const user = req.user!;
+
+      const [postsResult, actionsResult] = await Promise.all([
+        supabaseAdmin
+          .from('social_posts')
+          .select(
+            'id, content, platform, author_type, author_handle, author_display_name, post_format, created_at, like_count, reply_count, view_count, posted_by_display_name',
+          )
+          .eq('session_id', sessionId)
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false }),
+        supabaseAdmin
+          .from('player_actions')
+          .select('action_type, target_id, content, created_at')
+          .eq('session_id', sessionId)
+          .eq('player_id', user.id)
+          .in('action_type', ['post_liked', 'post_reposted', 'reply_posted', 'post_flagged'])
+          .order('created_at', { ascending: false })
+          .limit(50),
+      ]);
+
+      res.json({
+        posts: postsResult.data || [],
+        actions: actionsResult.data || [],
+      });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /social/my-activity');
+      res.status(500).json({ error: 'Internal server error' });
     }
   },
 );

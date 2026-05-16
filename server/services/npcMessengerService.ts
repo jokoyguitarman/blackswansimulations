@@ -85,6 +85,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const personas = (initialState.npc_personas || []) as NPCPersona[];
     if (personas.length === 0) return;
+    const orgName = String(initialState.org_name || '');
 
     // Fetch all session participants with their profiles
     const { data: participants } = await supabaseAdmin
@@ -145,7 +146,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
             role: 'system',
             content: `You are generating NPC direct messages to players during a crisis simulation. NPCs may privately DM players to create pressure, share tips, request comments, or express concern.
 
-Crisis context: ${String(scenario.description || '').substring(0, 400)}
+Crisis context: ${String(scenario.description || '').substring(0, 400)}${orgName ? `\nOrganization: ${orgName}` : ''}
 
 NPC personas:
 ${personaList}

@@ -23,6 +23,7 @@ export async function shouldCancelSocialInject(
       guidelines: Array<{ best_practice: string; if_violated: string; if_followed: string }>;
     }>;
   },
+  orgName?: string,
 ): Promise<SocialInjectCancellationResult> {
   if (!env.openAiApiKey) {
     return { cancel: false, cancel_reason: 'No API key' };
@@ -78,7 +79,7 @@ Return ONLY valid JSON:
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `SCHEDULED INJECT:\nTitle: ${inject.title}\nContent: ${inject.content}\nApp: ${(inject.delivery_config as Record<string, unknown>)?.app || 'social_feed'}\n\nTEAM ACTIONS:\n${actionsText}\n\nSENTIMENT: ${sentimentState.overall}/100 (${sentimentState.trend})\nPENDING RESPONSES: ${pendingResponseCount} posts still need response${
+            content: `SCHEDULED INJECT:\nTitle: ${inject.title}\nContent: ${inject.content}\nApp: ${(inject.delivery_config as Record<string, unknown>)?.app || 'social_feed'}${orgName ? `\nOrganization: ${orgName}` : ''}\n\nTEAM ACTIONS:\n${actionsText}\n\nSENTIMENT: ${sentimentState.overall}/100 (${sentimentState.trend})\nPENDING RESPONSES: ${pendingResponseCount} posts still need response${
               researchGuidelines?.per_team?.length
                 ? `\n\nBEST PRACTICE GUIDELINES (hidden rubric):\n${researchGuidelines.per_team
                     .flatMap((t) =>

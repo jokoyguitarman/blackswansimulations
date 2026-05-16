@@ -15,6 +15,8 @@ interface RegisteredNPC {
   display_name: string;
   personality: string;
   bias: string;
+  tier?: 'key' | 'background';
+  normal_interests?: string[];
 }
 
 const sessionNPCRegistry = new Map<string, Map<string, RegisteredNPC>>();
@@ -34,6 +36,14 @@ function getRegisteredNPCs(sessionId: string): RegisteredNPC[] {
   return Array.from(getRegistry(sessionId).values());
 }
 
+function getKeyNPCs(sessionId: string): RegisteredNPC[] {
+  return getRegisteredNPCs(sessionId).filter((n) => n.tier === 'key' || !n.tier);
+}
+
+function getBackgroundNPCs(sessionId: string): RegisteredNPC[] {
+  return getRegisteredNPCs(sessionId).filter((n) => n.tier === 'background');
+}
+
 function loadDesignedPersonas(initialState: Record<string, unknown>, sessionId: string): void {
   const personas = (initialState.npc_personas || []) as Array<Record<string, unknown>>;
   for (const p of personas) {
@@ -42,8 +52,199 @@ function loadDesignedPersonas(initialState: Record<string, unknown>, sessionId: 
       display_name: String(p.name || ''),
       personality: String(p.personality || ''),
       bias: String(p.bias || 'none'),
+      tier: (p.tier as 'key' | 'background') || 'key',
+      normal_interests: Array.isArray(p.normal_interests)
+        ? (p.normal_interests as string[]).map(String)
+        : [],
     });
   }
+}
+
+// ─── Player Bubble Assignment ────────────────────────────────────────────────
+
+const playerBubbles = new Map<string, Map<string, string[]>>();
+const playerCycleIndex = new Map<string, number>();
+
+function getPlayerBubble(sessionId: string, playerId: string): string[] {
+  return playerBubbles.get(sessionId)?.get(playerId) || [];
+}
+
+function getBubbleNPCs(sessionId: string, playerId: string): RegisteredNPC[] {
+  const handles = getPlayerBubble(sessionId, playerId);
+  const registry = getRegistry(sessionId);
+  return handles.map((h) => registry.get(h)).filter(Boolean) as RegisteredNPC[];
+}
+
+async function assignPlayerBubbles(sessionId: string): Promise<void> {
+  if (playerBubbles.has(sessionId) && (playerBubbles.get(sessionId)?.size ?? 0) > 0) return;
+
+  const { data: participants } = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id, demographics')
+    .eq('session_id', sessionId);
+
+  if (!participants || participants.length === 0) return;
+
+  const keyNpcs = getKeyNPCs(sessionId);
+  const bgNpcs = getBackgroundNPCs(sessionId);
+  const sessionBubbles = new Map<string, string[]>();
+
+  // Shared key NPCs that all players get (media + wildcard types)
+  const sharedKeyHandles = keyNpcs
+    .filter((n) => n.bias === 'none' || /media|journalist|news/i.test(n.personality))
+    .slice(0, 3)
+    .map((n) => n.handle);
+
+  for (const participant of participants) {
+    const playerId = String(participant.user_id);
+    const demo = (participant.demographics || {}) as Record<string, string>;
+    const bubble: string[] = [...sharedKeyHandles];
+
+    // Assign 3-5 key NPCs based on a hash of player demographics
+    const demoHash = simpleHash(
+      `${playerId}_${demo.race || ''}_${demo.age_bracket || ''}_${demo.gender || ''}`,
+    );
+    const availableKey = keyNpcs.filter((n) => !sharedKeyHandles.includes(n.handle));
+    const keyCount = 3 + (demoHash % 3);
+    for (let i = 0; i < Math.min(keyCount, availableKey.length); i++) {
+      const idx = (demoHash + i * 7) % availableKey.length;
+      if (!bubble.includes(availableKey[idx].handle)) {
+        bubble.push(availableKey[idx].handle);
+      }
+    }
+
+    // Assign 10-12 background NPCs using deterministic shuffle
+    const bgCount = 10 + (demoHash % 3);
+    const shuffled = [...bgNpcs].sort((a, b) => {
+      const ha = simpleHash(`${playerId}_${a.handle}`);
+      const hb = simpleHash(`${playerId}_${b.handle}`);
+      return ha - hb;
+    });
+    for (let i = 0; i < Math.min(bgCount, shuffled.length); i++) {
+      bubble.push(shuffled[i].handle);
+    }
+
+    sessionBubbles.set(playerId, bubble);
+  }
+
+  playerBubbles.set(sessionId, sessionBubbles);
+  logger.info(
+    {
+      sessionId,
+      players: sessionBubbles.size,
+      avgBubbleSize: Math.round(
+        [...sessionBubbles.values()].reduce((s, b) => s + b.length, 0) / sessionBubbles.size,
+      ),
+    },
+    'Player NPC bubbles assigned',
+  );
+}
+
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = (hash << 5) - hash + char;
+    hash = hash & hash;
+  }
+  return Math.abs(hash);
+}
+
+// ─── Branded History Seeding ─────────────────────────────────────────────────
+
+const seededSessions = new Set<string>();
+
+async function seedBrandedHistory(
+  sessionId: string,
+  initialState: Record<string, unknown>,
+  sessionStartTime: string,
+): Promise<void> {
+  if (seededSessions.has(sessionId)) return;
+
+  const orgPage = initialState.org_page as Record<string, unknown> | undefined;
+  if (!orgPage) {
+    seededSessions.add(sessionId);
+    return;
+  }
+
+  const { count } = await supabaseAdmin
+    .from('social_posts')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('is_branded_history', true);
+
+  if ((count || 0) > 0) {
+    seededSessions.add(sessionId);
+    return;
+  }
+
+  const fb = orgPage.facebook as Record<string, unknown> | undefined;
+  const tw = orgPage.x_twitter as Record<string, unknown> | undefined;
+  const history = (orgPage.branded_history || []) as Array<Record<string, unknown>>;
+
+  if (fb) {
+    await supabaseAdmin.from('sim_org_pages').upsert(
+      {
+        session_id: sessionId,
+        platform: 'facebook',
+        page_name: String(fb.page_name || 'Organization'),
+        page_handle: String(fb.page_handle || '@Organization'),
+        page_bio: String(fb.page_bio || ''),
+        follower_count: Number(fb.follower_count) || 50000,
+        verified: true,
+      },
+      { onConflict: 'session_id,platform' },
+    );
+  }
+
+  if (tw) {
+    await supabaseAdmin.from('sim_org_pages').upsert(
+      {
+        session_id: sessionId,
+        platform: 'x_twitter',
+        page_name: String(tw.page_name || 'Organization'),
+        page_handle: String(tw.page_handle || '@Org'),
+        page_bio: String(tw.page_bio || ''),
+        follower_count: Number(tw.follower_count) || 30000,
+        verified: true,
+      },
+      { onConflict: 'session_id,platform' },
+    );
+  }
+
+  const startTime = new Date(sessionStartTime).getTime();
+
+  for (const post of history) {
+    const platform = String(post.platform || 'facebook');
+    const pageConfig = platform === 'facebook' ? fb : tw;
+    if (!pageConfig) continue;
+
+    const daysAgo = Number(post.days_ago) || 7;
+    const backdatedTime = new Date(startTime - daysAgo * 24 * 60 * 60 * 1000);
+    const baseLikes = 50 + Math.floor(Math.random() * 200);
+
+    await supabaseAdmin.from('social_posts').insert({
+      session_id: sessionId,
+      platform,
+      author_handle: String(pageConfig.page_handle || '@Org'),
+      author_display_name: String(pageConfig.page_name || 'Organization'),
+      author_type: 'official_account',
+      content: String(post.content || ''),
+      post_format: String(post.post_format || 'text'),
+      sentiment: 'positive',
+      virality_score: 20 + Math.floor(Math.random() * 30),
+      content_flags: {},
+      like_count: baseLikes,
+      repost_count: Math.floor(baseLikes * 0.15),
+      reply_count: Math.floor(baseLikes * 0.05),
+      view_count: baseLikes * 5 + Math.floor(Math.random() * 1000),
+      is_branded_history: true,
+      created_at: backdatedTime.toISOString(),
+    });
+  }
+
+  seededSessions.add(sessionId);
+  logger.info({ sessionId, historyCount: history.length }, 'Branded history seeded');
 }
 
 async function callAI(
@@ -88,6 +289,7 @@ async function insertPost(
   replyToId?: string,
   platform: string = 'x_twitter',
   scenarioContext?: string,
+  targetPlayerIds?: string[],
 ): Promise<Record<string, unknown> | null> {
   const handle = String(post.author_handle || '@anon');
   const displayName = String(post.author_display_name || 'User');
@@ -100,7 +302,6 @@ async function insertPost(
     bias: String(post.bias || 'none'),
   });
 
-  // If the AI included an image_prompt, generate the image (non-blocking update after insert)
   const imagePrompt = String(post.image_prompt || '');
   const existingMedia = (post.media_urls as string[]) || [];
 
@@ -123,6 +324,9 @@ async function insertPost(
       repost_count: 0,
       reply_count: 0,
       view_count: 0,
+      ...(targetPlayerIds && targetPlayerIds.length > 0
+        ? { target_player_ids: targetPlayerIds }
+        : {}),
     })
     .select()
     .single();
@@ -144,11 +348,17 @@ async function insertPost(
       .eq('id', replyToId);
   }
 
-  getWebSocketService().broadcastToSession(sessionId, {
+  const postEvent = {
     type: 'social_post.created',
-    data: { post: inserted },
+    data: {
+      post: inserted,
+      ...(targetPlayerIds && targetPlayerIds.length > 0
+        ? { target_player_ids: targetPlayerIds }
+        : {}),
+    },
     timestamp: new Date().toISOString(),
-  });
+  };
+  getWebSocketService().broadcastToSession(sessionId, postEvent);
 
   // Generate media if the AI included an image_prompt (non-blocking)
   if (imagePrompt && inserted) {
@@ -213,7 +423,10 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
     if (!scenario) return;
 
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
+    const orgName = String(initialState.org_name || '');
     loadDesignedPersonas(initialState, sessionId);
+    await assignPlayerBubbles(sessionId);
+    await seedBrandedHistory(sessionId, initialState, session.start_time);
 
     const sentiment = await computeSessionSentiment(sessionId);
     const socialState = ((session.current_state || {}) as Record<string, unknown>).social_state as
@@ -231,8 +444,9 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
       .map((p) => `${String(p.author_handle)}: ${String(p.content).substring(0, 80)}`)
       .join('\n');
 
-    const knownNPCs = getRegisteredNPCs(sessionId);
-    const npcList = knownNPCs
+    // Use only key NPCs for shared posts (keeps prompt manageable)
+    const keyNPCsForPrompt = getKeyNPCs(sessionId);
+    const npcList = keyNPCsForPrompt
       .map(
         (n) =>
           `${n.handle} (${n.display_name}): ${n.personality || 'regular user'}, bias: ${n.bias}`,
@@ -242,7 +456,7 @@ export async function generateAmbientPosts(sessionId: string): Promise<void> {
     const result = await callAI(
       `You generate realistic social media posts for a crisis simulation. Make the feed feel ALIVE.
 
-THE CRISIS: ${String(scenario.description).substring(0, 300)}
+THE CRISIS: ${String(scenario.description).substring(0, 300)}${orgName ? `\nOrganization: ${orgName}` : ''}
 Current situation:
 - Overall sentiment: ${socialState?.sentiment_score ?? sentiment.overall}/100
 - Public trust: ${socialState?.public_trust ?? 50}/100
@@ -262,9 +476,8 @@ ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
 Recent feed:\n${recentContext || '(empty)'}
 
-Generate 4-6 posts. IMPORTANT: Use a DIFFERENT author for each post -- do NOT repeat the same persona. Rotate through the full NPC list. Mix:
-- 1-2 about the crisis (reactions, opinions, news sharing)
-- 0-1 normal life or tangentially related posts
+Generate 1-2 posts from major voices. IMPORTANT: Use a DIFFERENT author for each post. These are the KEY crisis posts that ALL players will see. Focus on major developments, breaking news, or high-impact reactions.
+Only crisis-related content in these shared posts.
 ${elapsedMinutes < 5 ? '- Early crisis: confused, alarmed, asking what happened' : ''}
 ${elapsedMinutes > 20 ? '- Ongoing: opinions forming, blame emerging, some calling for calm' : ''}
 ${sentiment.overall < 40 ? '- Sentiment critical: more fear/anger' : ''}
@@ -313,8 +526,17 @@ Return ONLY valid JSON:
       socialState,
     );
 
-    // Generate demographic-targeted echo chamber posts
+    // Generate demographic-targeted echo chamber posts (legacy)
     await generateEchoChamberPosts(sessionId, String(scenario.description || ''), elapsedMinutes);
+
+    // Generate per-player bubble posts (round-robin 2-3 players per tick)
+    await generatePlayerBubblePosts(
+      sessionId,
+      String(scenario.description || ''),
+      elapsedMinutes,
+      sentiment,
+      socialState,
+    );
 
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
@@ -522,6 +744,85 @@ Return ONLY valid JSON:
   } catch (err) {
     logger.warn({ err, sessionId }, 'Echo chamber post generation failed (non-critical)');
   }
+}
+
+// ─── Per-player bubble posts ────────────────────────────────────────────────
+
+async function generatePlayerBubblePosts(
+  sessionId: string,
+  crisisDescription: string,
+  elapsedMinutes: number,
+  sentiment: { overall: number },
+  socialState: Record<string, unknown> | undefined,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+
+  const sessionBubbles = playerBubbles.get(sessionId);
+  if (!sessionBubbles || sessionBubbles.size === 0) return;
+
+  const playerIds = Array.from(sessionBubbles.keys());
+  const cycleIdx = playerCycleIndex.get(sessionId) || 0;
+  const playersPerTick = Math.min(3, playerIds.length);
+
+  for (let i = 0; i < playersPerTick; i++) {
+    const idx = (cycleIdx + i) % playerIds.length;
+    const playerId = playerIds[idx];
+    const bubbleNpcs = getBubbleNPCs(sessionId, playerId);
+    if (bubbleNpcs.length === 0) continue;
+
+    const npcListStr = bubbleNpcs
+      .map((n) => {
+        const interests = n.normal_interests?.length
+          ? ` [interests: ${n.normal_interests.join(', ')}]`
+          : '';
+        return `${n.handle} (${n.display_name}): ${n.personality || 'regular user'}, bias: ${n.bias}${interests}`;
+      })
+      .join('\n');
+
+    const normalTopics = bubbleNpcs
+      .flatMap((n) => n.normal_interests || [])
+      .filter((v, i, a) => a.indexOf(v) === i)
+      .slice(0, 10);
+
+    const result = await callAI(
+      `You generate social media posts for a specific player's personalized feed in a crisis simulation. These posts should feel like what this person would naturally see in their social media bubble.
+
+THE CRISIS: ${crisisDescription.substring(0, 300)}
+Elapsed: ${elapsedMinutes}min. Sentiment: ${socialState?.sentiment_score ?? sentiment.overall}/100.
+
+NPCs IN THIS PLAYER'S BUBBLE:
+${npcListStr}
+
+CONTENT MIX — generate exactly 3 posts:
+- 2 posts should be crisis-related: reactions, opinions, news sharing, demands, or commentary about the crisis. Each from a different NPC.
+- 1 post should be NORMAL LIFE: an NPC posting about their regular interests (${normalTopics.join(', ')}) as if the crisis isn't the only thing happening. This makes the feed feel like real social media.
+
+For crisis posts, set content_flags as appropriate:
+- is_harmful_narrative, is_misinformation, is_inflammatory, incites_violence, is_organized_pressure
+Leave content_flags as {} for neutral, supportive, or normal life posts.
+
+Return ONLY valid JSON:
+{ "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "content_flags": {}, "image_prompt": "" }] }`,
+      `Generate bubble posts for player feed.`,
+      1500,
+      0.9,
+    );
+
+    const posts = ((result as Record<string, unknown>)?.posts as unknown[]) || [];
+    if (!Array.isArray(posts)) continue;
+
+    const platform = Math.random() < 0.6 ? 'x_twitter' : 'facebook';
+    const mediaCtx = crisisDescription.substring(0, 200);
+
+    for (const p of posts.slice(0, 3)) {
+      await new Promise((r) => setTimeout(r, 1000 + Math.floor(Math.random() * 3000)));
+      await insertPost(sessionId, p as Record<string, unknown>, undefined, platform, mediaCtx, [
+        playerId,
+      ]);
+    }
+  }
+
+  playerCycleIndex.set(sessionId, cycleIdx + playersPerTick);
 }
 
 // ─── Thread simulator (NPC-to-NPC conversations) ───────────────────────────

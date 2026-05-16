@@ -137,6 +137,8 @@ export async function gradePlayerContent(
     post_format?: string;
     elapsed_minutes?: number;
     image_prompt?: string;
+    is_official_page_post?: boolean;
+    org_name?: string;
   },
 ): Promise<ContentGrade> {
   if (!env.openAiApiKey) {
@@ -147,13 +149,17 @@ export async function gradePlayerContent(
   const rubric = FORMAT_RUBRICS[format] || FORMAT_RUBRICS.text;
 
   try {
+    const officialPageWarning = context.is_official_page_post
+      ? `\n\nCRITICAL: This is an OFFICIAL post from the organization's public page. Grade MORE HARSHLY -- this represents the brand voice. Tone must be professional, facts must be verified, and any misstep is amplified because it comes from the official account. Deduct extra points for: informal language, unverified claims, emotional tone, missing call-to-action, or anything that could be screenshotted and used against the organization.\n`
+      : '';
+
     const systemPrompt = `You are an expert evaluator for a crisis response team. Evaluate responses based on the specific crisis context provided below.
-You evaluate responses from a STAKEHOLDER AND PUBLIC PROTECTION perspective -- NOT whether the response "wins an argument."
+You evaluate responses from a STAKEHOLDER AND PUBLIC PROTECTION perspective -- NOT whether the response "wins an argument."${officialPageWarning}
 
 ${rubric}
 
 Context about the crisis:
-${context.crisis_description}
+${context.crisis_description}${context.org_name ? `\nOrganization: ${context.org_name}` : ''}
 
 Confirmed facts available:
 ${context.confirmed_facts.map((f) => '- ' + f).join('\\n')}

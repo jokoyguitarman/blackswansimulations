@@ -45,6 +45,7 @@ export async function triggerNPCReactions(
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const personas = (initialState.npc_personas || []) as NPCPersona[];
     if (personas.length === 0) return;
+    const orgName = String(initialState.org_name || '');
 
     const postFormat = String(playerPost.post_format || 'text');
     const isReply = !!playerPost.reply_to_post_id;
@@ -93,31 +94,57 @@ export async function triggerNPCReactions(
       }
     }
 
-    // Higher probability for thread replies -- NPCs should almost always respond in threads
     const probabilityBoost = isReply ? 2.0 : 1.0;
+    const isOfficialPagePost = String(playerPost.author_type) === 'official_account';
+    const isCompetitor = (p: NPCPersona) =>
+      /competitor|rival|competing|alternative/i.test(p.personality) || /competitive/i.test(p.bias);
 
     const reactingNPCs: Array<{ persona: NPCPersona; reactionType: string }> = [];
 
     for (const persona of personas) {
       const roll = Math.random();
 
-      if (persona.bias && persona.bias !== 'none') {
-        const threshold = (postFormat === 'humor_meme' ? 0.5 : 0.3) * probabilityBoost;
+      if (!isOfficialPagePost && !isReply) {
+        // Personal profile post: only public NPCs and biased NPCs react
+        // Media, politicians, influencers do NOT react to random people's posts
+        if (
+          persona.type === 'npc_media' ||
+          persona.type === 'npc_politician' ||
+          persona.type === 'npc_influencer'
+        ) {
+          continue;
+        }
+      }
+
+      if (isCompetitor(persona)) {
+        const threshold = isOfficialPagePost ? 0.7 : 0.15;
+        if (roll < Math.min(threshold * probabilityBoost, 0.9)) {
+          reactingNPCs.push({ persona, reactionType: 'position' });
+        }
+      } else if (persona.bias && persona.bias !== 'none') {
+        const threshold =
+          (postFormat === 'humor_meme' ? 0.5 : isOfficialPagePost ? 0.5 : 0.3) * probabilityBoost;
         if (roll < Math.min(threshold, 0.9)) {
           reactingNPCs.push({ persona, reactionType: 'attack' });
         }
       } else if (persona.type === 'npc_media') {
-        const threshold =
-          (postFormat === 'official_statement'
+        const grade = (playerPost.sop_compliance_score as Record<string, unknown>) || {};
+        const overall = Number(grade.overall) || 50;
+        const threshold = isOfficialPagePost
+          ? 0.85
+          : postFormat === 'official_statement'
             ? 0.7
             : postFormat === 'humor_meme' || postFormat === 'video_concept'
               ? 0.8
-              : 0.2) * probabilityBoost;
-        if (roll < Math.min(threshold, 0.9)) {
-          reactingNPCs.push({ persona, reactionType: 'cover' });
+              : 0.2;
+        if (roll < Math.min(threshold * probabilityBoost, 0.9)) {
+          reactingNPCs.push({
+            persona,
+            reactionType: overall > 60 ? 'cover' : overall < 35 ? 'attack' : 'cover',
+          });
         }
       } else if (
-        /supportive|community|interfaith|unity|advocate|defender|moderate|balanced|reasonable/i.test(
+        /supportive|community|advocate|defender|moderate|balanced|reasonable/i.test(
           persona.personality,
         )
       ) {
@@ -125,7 +152,7 @@ export async function triggerNPCReactions(
           reactingNPCs.push({ persona, reactionType: 'support' });
         }
       } else if (persona.type === 'npc_politician' || persona.type === 'npc_influencer') {
-        if (roll < Math.min(0.4 * probabilityBoost, 0.9)) {
+        if (roll < Math.min((isOfficialPagePost ? 0.6 : 0.4) * probabilityBoost, 0.9)) {
           const grade = (playerPost.sop_compliance_score as Record<string, unknown>) || {};
           const overall = Number(grade.overall) || 50;
           reactingNPCs.push({
@@ -136,7 +163,6 @@ export async function triggerNPCReactions(
       }
     }
 
-    // For thread replies, guarantee at least 1 NPC responds
     if (isReply && reactingNPCs.length === 0 && personas.length > 0) {
       const randomPersona = personas[Math.floor(Math.random() * personas.length)];
       reactingNPCs.push({
@@ -145,7 +171,8 @@ export async function triggerNPCReactions(
       });
     }
 
-    const selected = reactingNPCs.slice(0, Math.min(isReply ? 2 : 3, reactingNPCs.length));
+    const maxReactions = isOfficialPagePost ? 4 : isReply ? 2 : 3;
+    const selected = reactingNPCs.slice(0, Math.min(maxReactions, reactingNPCs.length));
     if (selected.length === 0) return;
 
     const npcContext = selected
@@ -177,13 +204,14 @@ Reaction types:
 - "cover": media-style coverage -- neutral to positive news angle about the response team's communication
 - "support": endorsing reply or repost with supportive commentary, OR just "like" the post
 - "neutral": ambiguous reaction that could go either way
+- "position": subtle competitive messaging -- highlight own values, imply superiority without directly attacking. Professional and strategic, not aggressive. Used by competitor brands.
 
 IMPORTANT RULES:
 - When replying, START the reply by tagging the player: "${String(playerPost.author_handle || '@player')} ..." so they get notified
 - Some NPCs can just LIKE the post instead of replying. Use action: "like" for this.
 - Supportive NPCs are more likely to like; hostile NPCs are more likely to reply attacking.
 
-Crisis context: ${String(scenario.description || '').substring(0, 300)}
+Crisis context: ${String(scenario.description || '').substring(0, 300)}${orgName ? `\nOrganization: ${orgName}` : ''}
 ${threadContext}
 
 Each reaction should be 1-3 sentences, feel like a real social media reply/post. Stay in character.${isReply ? ' Since this is a thread reply, respond DIRECTLY to what the player said -- argue, agree, counter, or react to their specific words.' : ''}

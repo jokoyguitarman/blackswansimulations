@@ -3,6 +3,8 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
+import OrgPageView from './OrgPageView';
+import PlayerActivityPanel from './PlayerActivityPanel';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -98,6 +100,9 @@ interface SocialPost {
   flagged_by_me?: boolean;
   post_format?: string;
   media_urls?: string[];
+  posted_by_display_name?: string;
+  is_branded_history?: boolean;
+  target_player_ids?: string[];
 }
 
 function formatCount(n: number): string {
@@ -117,6 +122,12 @@ export default function SocialFeedApp({
   const { isTrainer } = useRoleVisibility();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [postingAsPage, setPostingAsPage] = useState(false);
+  const [orgPageInfo, setOrgPageInfo] = useState<{ page_name: string; page_handle: string } | null>(
+    null,
+  );
+  const [overlayView, setOverlayView] = useState<'page' | 'profile' | null>(null);
+  const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const prevExternalFilter = useRef(externalFilter);
   const currentUserIdRef = useRef<string | null>(null);
 
@@ -125,6 +136,24 @@ export default function SocialFeedApp({
       currentUserIdRef.current = session?.user?.id || null;
     });
   }, []);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers });
+        const json = await res.json();
+        const twPage = (json.data || []).find(
+          (p: Record<string, string>) => p.platform === 'x_twitter',
+        );
+        if (twPage)
+          setOrgPageInfo({ page_name: twPage.page_name, page_handle: twPage.page_handle });
+      } catch {
+        /* non-critical */
+      }
+    })();
+  }, [sessionId]);
 
   useEffect(() => {
     if (externalFilter && externalFilter !== prevExternalFilter.current) {
@@ -318,7 +347,16 @@ export default function SocialFeedApp({
         const { post_id, media_urls } = event.data as { post_id: string; media_urls: string[] };
         setPosts((prev) => prev.map((p) => (p.id === post_id ? { ...p, media_urls } : p)));
       } else if (event.type === 'social_post.created') {
-        const newPost = (event.data as { post: SocialPost }).post;
+        const evtData = event.data as { post: SocialPost; target_player_ids?: string[] };
+        const targetIds = evtData.target_player_ids;
+        if (
+          targetIds &&
+          Array.isArray(targetIds) &&
+          currentUserIdRef.current &&
+          !targetIds.includes(currentUserIdRef.current)
+        )
+          return;
+        const newPost = evtData.post;
         if (newPost.platform && newPost.platform !== 'x_twitter') return;
 
         if (newPost.reply_to_post_id) {
@@ -375,6 +413,7 @@ export default function SocialFeedApp({
           post_format: replyingTo ? 'text' : selectedFormat,
           ...(mediaPromptText ? { image_prompt: mediaPromptText } : {}),
           ...(mediaPreviewUrl ? { media_url: mediaPreviewUrl } : {}),
+          post_as_page: postingAsPage,
         }),
       });
       if (!postRes.ok) {
@@ -382,28 +421,11 @@ export default function SocialFeedApp({
         console.error('Post failed:', postRes.status, errBody);
         return;
       }
-      const result = await postRes.json().catch(() => null);
-      const createdPost = result?.data as SocialPost | undefined;
+      // Don't optimistically add the post here -- the WebSocket `social_post.created`
+      // event will add it to avoid duplicates from both paths firing simultaneously.
+      await postRes.json().catch(() => null);
 
       const wasReplyingTo = replyingTo;
-      if (wasReplyingTo) {
-        const threadRootId = selectedPost?.id || wasReplyingTo.reply_to_post_id || wasReplyingTo.id;
-        setPosts((prev) =>
-          prev.map((p) =>
-            p.id === threadRootId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
-          ),
-        );
-        if (selectedPost) {
-          setSelectedPost((prev) =>
-            prev ? { ...prev, reply_count: (prev.reply_count || 0) + 1 } : prev,
-          );
-        }
-      } else if (createdPost) {
-        setPosts((prev) => {
-          if (prev.some((p) => p.id === createdPost.id)) return prev;
-          return [createdPost, ...prev];
-        });
-      }
 
       setComposeText('');
       setMediaPromptText('');
@@ -414,10 +436,10 @@ export default function SocialFeedApp({
       setComposing(false);
       setReplyingTo(null);
       setSelectedFormat('text');
+      setPostingAsPage(false);
 
-      // Re-fetch thread to show the new reply
       if (wasReplyingTo && selectedPost) {
-        setTimeout(() => openThread(selectedPost), 500);
+        setTimeout(() => openThread(selectedPost), 800);
       }
     } catch {
       /* ignore */
@@ -1320,6 +1342,13 @@ export default function SocialFeedApp({
     );
   }
 
+  if (overlayView === 'page') {
+    return <OrgPageView platform="x_twitter" onBack={() => setOverlayView(null)} />;
+  }
+  if (overlayView === 'profile') {
+    return <PlayerActivityPanel onBack={() => setOverlayView(null)} />;
+  }
+
   return (
     <div
       className="h-full flex flex-col overflow-hidden relative"
@@ -1328,14 +1357,54 @@ export default function SocialFeedApp({
       {/* Header */}
       <div className="flex-shrink-0" style={{ borderBottom: '1px solid #2F3336' }}>
         <div className="flex items-center pl-12 pr-4" style={{ height: 53, gap: 12 }}>
-          <button
-            onClick={() => navigate(`/sim/${sessionId}/device/home`)}
-            className="ios-btn-bounce w-8 h-8 flex items-center justify-center outline-none focus:outline-none flex-shrink-0"
-          >
-            <span className="text-[30px] font-bold leading-none" style={{ color: '#FFFFFF' }}>
-              &#8249;
-            </span>
-          </button>
+          <div className="relative flex-shrink-0">
+            <button
+              onClick={() => setShowAvatarMenu(!showAvatarMenu)}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-[12px]"
+              style={{ backgroundColor: '#1D9BF0' }}
+            >
+              Y
+            </button>
+            {showAvatarMenu && (
+              <div
+                className="absolute top-10 left-0 rounded-lg overflow-hidden z-50"
+                style={{ backgroundColor: '#16181C', border: '1px solid #2F3336', width: 180 }}
+              >
+                {orgPageInfo && (
+                  <button
+                    onClick={() => {
+                      setOverlayView('page');
+                      setShowAvatarMenu(false);
+                    }}
+                    className="w-full text-left px-3 py-2.5 text-[13px] hover:bg-white/5"
+                    style={{ color: '#E7E9EA', borderBottom: '1px solid #2F3336' }}
+                  >
+                    {orgPageInfo.page_name}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    setOverlayView('profile');
+                    setShowAvatarMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2.5 text-[13px] hover:bg-white/5"
+                  style={{ color: '#E7E9EA', borderBottom: '1px solid #2F3336' }}
+                >
+                  My Activity
+                </button>
+                <button
+                  onClick={() => {
+                    navigate(`/sim/${sessionId}/device/home`);
+                    setShowAvatarMenu(false);
+                  }}
+                  className="w-full text-left px-3 py-2.5 text-[13px] hover:bg-white/5"
+                  style={{ color: '#71767B' }}
+                >
+                  Back to Home
+                </button>
+              </div>
+            )}
+          </div>
           <div className="flex-1 flex justify-center">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none">
               <path
@@ -1649,6 +1718,11 @@ export default function SocialFeedApp({
                           {timeAgo(post.created_at)}
                         </span>
                       </div>
+                      {post.author_type === 'official_account' && post.posted_by_display_name && (
+                        <div className="text-[11px] mt-0.5" style={{ color: '#71767B' }}>
+                          Posted by {post.posted_by_display_name}
+                        </div>
+                      )}
 
                       {post.is_repost && (
                         <div
@@ -2298,13 +2372,46 @@ export default function SocialFeedApp({
               </div>
             )}
 
+            {orgPageInfo && !replyingTo && (
+              <div
+                className="px-4 py-2 flex items-center gap-2"
+                style={{ borderBottom: '1px solid #2F3336' }}
+              >
+                <span className="text-[12px]" style={{ color: '#71767B' }}>
+                  Posting as:
+                </span>
+                <button
+                  onClick={() => setPostingAsPage(false)}
+                  className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                  style={{
+                    backgroundColor: !postingAsPage ? '#1D9BF0' : 'transparent',
+                    color: !postingAsPage ? '#fff' : '#71767B',
+                    border: !postingAsPage ? '1px solid #1D9BF0' : '1px solid #333639',
+                  }}
+                >
+                  You
+                </button>
+                <button
+                  onClick={() => setPostingAsPage(true)}
+                  className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
+                  style={{
+                    backgroundColor: postingAsPage ? '#1D9BF0' : 'transparent',
+                    color: postingAsPage ? '#fff' : '#71767B',
+                    border: postingAsPage ? '1px solid #1D9BF0' : '1px solid #333639',
+                  }}
+                >
+                  {orgPageInfo.page_name}
+                </button>
+              </div>
+            )}
+
             <div className="flex-1 px-4 pb-2 overflow-y-auto">
               <div className="flex gap-3 pt-3">
                 <div
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
-                  style={{ backgroundColor: '#1D9BF0' }}
+                  style={{ backgroundColor: postingAsPage ? '#1D9BF0' : '#1D9BF0' }}
                 >
-                  Y
+                  {postingAsPage ? orgPageInfo?.page_name?.[0] || 'O' : 'Y'}
                 </div>
                 <div className="flex-1 relative">
                   <textarea

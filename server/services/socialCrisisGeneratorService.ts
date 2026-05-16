@@ -14,6 +14,8 @@ export interface NPCPersona {
   posting_pattern: string;
   specific_claims: string[];
   image_prompts?: string[];
+  tier?: 'key' | 'background';
+  normal_interests?: string[];
 }
 
 export interface FactSheetEntry {
@@ -150,6 +152,27 @@ export interface SOPDefinition {
   };
 }
 
+export interface OrgPagePlatformConfig {
+  page_name: string;
+  page_handle: string;
+  page_bio: string;
+  follower_count: number;
+}
+
+export interface BrandedHistoryPost {
+  content: string;
+  platform: 'facebook' | 'x_twitter';
+  post_format: string;
+  days_ago: number;
+  media_description?: string;
+}
+
+export interface OrgPageConfig {
+  facebook: OrgPagePlatformConfig;
+  x_twitter: OrgPagePlatformConfig;
+  branded_history: BrandedHistoryPost[];
+}
+
 export interface SocialCrisisPayload {
   scenario: {
     title: string;
@@ -172,6 +195,8 @@ export interface SocialCrisisPayload {
         narrative_control: string;
         escalation_risk: string;
       };
+      org_name?: string;
+      org_page?: OrgPageConfig;
       facebook_groups?: Array<{ name: string; group_type: string; member_count: number }>;
       dm_scenarios?: Array<{ trigger: string; delay_minutes: number; type: string }>;
       event_triggers?: Array<{ condition: string; event_type: string }>;
@@ -226,6 +251,10 @@ async function callAI(
   }
 }
 
+function orgNameLine(orgName?: string): string {
+  return orgName ? `\nOrganization under crisis: ${orgName}\n` : '';
+}
+
 // ─── Stage 1: NPCs + Fact Sheet + Communities ───────────────────────────────
 
 export async function generateNPCsAndFactSheet(
@@ -233,26 +262,24 @@ export async function generateNPCsAndFactSheet(
   context: string,
   country: string,
   location: string,
+  orgName?: string,
 ): Promise<{ personas: NPCPersona[]; factSheet: FactSheet; communities: string[] }> {
-  const result = await callAI(
+  // Call 1: Generate 18-20 key NPCs + fact sheet + communities
+  const keyResult = await callAI(
     `You are an expert social media crisis simulation designer. You are creating a CHARACTER BIBLE for a crisis response training exercise.
 
 IMPORTANT: First, carefully analyze the crisis description provided below. Identify the TYPE of crisis (e.g., product recall, corporate PR disaster, racial tension, religious incident, data breach, layoffs, environmental disaster, political scandal, etc.) and tailor ALL output to match the specific crisis dynamics. Do NOT assume the crisis is about racial or religious tension unless the description explicitly states so.
 
 Given the crisis event, generate:
 
-1. AFFECTED STAKEHOLDER GROUPS: 2-6 specific groups that will be most vocal and affected by this crisis. Name them concretely based on the crisis type. For example:
-   - Product recall: "affected customers", "consumer safety advocates", "company shareholders", "industry competitors"
-   - Corporate layoffs: "laid-off employees", "remaining workforce", "labor unions", "local community businesses"
-   - Racial tension: specific ethnic/religious communities by name
-   - Data breach: "affected users", "privacy advocates", "cybersecurity community", "regulators"
+1. AFFECTED STAKEHOLDER GROUPS: 2-6 specific groups that will be most vocal and affected by this crisis. Name them concretely based on the crisis type.
 
-2. NPC PERSONAS: 10-15 fictional social media accounts that will populate the simulation. These are the characters whose posts the response team will encounter. Create a diverse, realistic cast appropriate to the crisis:
-   - 4-6 HOSTILE/OUTRAGED personas: people spreading anger, misinformation, demands for accountability, calls for boycotts, or amplifying negative narratives. Each should have a distinct angle of attack relevant to this specific crisis.
-   - 2-3 FEAR/AMPLIFIER personas: scared people who share unverified info, amplify rumors, demand extreme action out of fear or uncertainty.
-   - 2-3 SUPPORTIVE/DEFENDER personas: voices of reason, industry experts, community advocates, or company defenders calling for calm and balanced perspective.
-   - 2 MEDIA personas: news outlets or journalists reporting facts and seeking statements.
-   - 1 WILDCARD: a politician, influencer, or public figure whose stance is ambiguous and can swing either way.
+2. KEY NPC PERSONAS: 18-20 fictional social media accounts that are the MAIN CHARACTERS driving the crisis narrative. Create a diverse, realistic cast appropriate to the crisis:
+   - 6-8 HOSTILE/OUTRAGED personas: people spreading anger, misinformation, demands for accountability, calls for boycotts, or amplifying negative narratives. Each should have a distinct angle of attack.
+   - 3-4 FEAR/AMPLIFIER personas: scared people who share unverified info, amplify rumors, demand extreme action.
+   - 3-4 SUPPORTIVE/DEFENDER personas: voices of reason, industry experts, community advocates, or defenders calling for calm.
+   - 3 MEDIA personas: news outlets or journalists reporting facts and seeking statements.
+   - 1-2 WILDCARD: politicians, influencers, or public figures whose stance is ambiguous.
 
    For EACH persona provide:
    - handle (e.g. @angry_citizen_42)
@@ -261,18 +288,14 @@ Given the crisis event, generate:
    - personality (2-3 sentence character description)
    - bias (what drives their perspective, or "none" for neutral)
    - follower_count (realistic number)
-   - backstory (2-3 sentences: who they are in real life, why they care about this crisis, what personal stake they have)
-   - posting_pattern (how they behave online: frequency, style, what triggers them to post more)
-   - specific_claims (array of 1-3 specific false claims, exaggerated narratives, or misleading angles THIS persona will push, or empty for factual/supportive personas)
-   - image_prompts (array of 0-2 image descriptions for posts this persona would share — fake evidence, leaked documents, protest photos, product failure images, etc. Leave empty for personas who mainly post text.)
+   - backstory (2-3 sentences)
+   - posting_pattern (how they behave online)
+   - specific_claims (array of 1-3 specific false claims or narratives, or empty for factual personas)
+   - image_prompts (array of 0-2 image descriptions for posts)
 
 3. FACT SHEET: The ground truth for the simulation.
    - confirmed_facts: 6-10 facts that official sources have confirmed
-   - unconfirmed_claims: 5-8 false or unverified claims circulating on social media, each with:
-     - claim: what people are saying
-     - status: FALSE or UNVERIFIED
-     - truth: the actual truth
-     - spread_by: array of NPC handles who spread this claim
+   - unconfirmed_claims: 5-8 false or unverified claims, each with claim, status, truth, spread_by
 
 Country: ${country}
 
@@ -285,19 +308,92 @@ Return ONLY valid JSON:
     "unconfirmed_claims": [{ "claim": "...", "status": "FALSE", "truth": "...", "spread_by": ["@handle1"] }]
   }
 }`,
-    `Crisis scenario: ${crisisType}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nDetailed context: ${context}`,
+    `Crisis scenario: ${crisisType}${orgNameLine(orgName)}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nDetailed context: ${context}`,
     8000,
     0.8,
   );
 
-  const personas = (result?.personas as NPCPersona[]) || [];
-  const factSheet = (result?.fact_sheet as FactSheet) || {
+  const keyPersonas = ((keyResult?.personas as NPCPersona[]) || []).map((p) => ({
+    ...p,
+    tier: 'key' as const,
+  }));
+  const factSheet = (keyResult?.fact_sheet as FactSheet) || {
     confirmed_facts: [],
     unconfirmed_claims: [],
   };
-  const communities = (result?.communities as string[]) || [];
+  const communities = (keyResult?.communities as string[]) || [];
 
-  return { personas, factSheet, communities };
+  // Calls 2 & 3: Generate 80 background NPCs in two batches of 40
+  const bgPrompt = (batchNum: number, existingHandles: string[]) =>
+    `You are generating BACKGROUND social media users for a crisis simulation. These are regular people who populate the feed with a mix of crisis reactions and normal life content. They make the simulated social media feel like a real platform.
+
+Crisis context: ${crisisType.substring(0, 300)}${orgNameLine(orgName)}Country: ${country}
+
+Generate exactly 40 unique background personas. Each should feel like a real social media user.
+${existingHandles.length > 0 ? `\nIMPORTANT: Do NOT reuse any of these handles: ${existingHandles.join(', ')}\n` : ''}
+For each persona provide:
+- handle (unique, realistic username)
+- name (culturally appropriate for ${country})
+- type: always "npc_public"
+- personality (1 sentence describing who they are)
+- bias (their general stance on the crisis: "angry", "sympathetic", "indifferent", "skeptical", "supportive", or "none")
+- follower_count (realistic, mostly 50-2000 for regular users)
+- normal_interests (array of 2-3 topics they normally post about when NOT talking about the crisis, e.g. "cooking", "football", "parenting", "fitness", "gaming", "photography", "music", "travel", "pets", "work life", "tech", "fashion")
+
+Return ONLY valid JSON:
+{ "personas": [{ "handle": "@user", "name": "Name", "type": "npc_public", "personality": "...", "bias": "...", "follower_count": 200, "normal_interests": ["cooking", "football"] }] }`;
+
+  const keyHandles = keyPersonas.map((p) => p.handle);
+
+  const [bg1Result, bg2Result] = await Promise.all([
+    callAI(
+      bgPrompt(1, keyHandles),
+      `Batch 1 of background users for: ${crisisType.substring(0, 200)}`,
+      6000,
+      0.9,
+    ),
+    callAI(
+      bgPrompt(2, keyHandles),
+      `Batch 2 of background users (different from batch 1) for: ${crisisType.substring(0, 200)}`,
+      6000,
+      0.9,
+    ),
+  ]);
+
+  const toBgPersona = (p: Record<string, unknown>): NPCPersona => ({
+    handle: String(p.handle || ''),
+    name: String(p.name || ''),
+    type: 'npc_public',
+    personality: String(p.personality || ''),
+    bias: String(p.bias || 'none'),
+    follower_count: Number(p.follower_count) || 200,
+    backstory: '',
+    posting_pattern: '',
+    specific_claims: [],
+    tier: 'background',
+    normal_interests: Array.isArray(p.normal_interests)
+      ? (p.normal_interests as string[]).map(String)
+      : [],
+  });
+
+  const bg1 = ((bg1Result?.personas as Array<Record<string, unknown>>) || []).map(toBgPersona);
+  const bg2 = ((bg2Result?.personas as Array<Record<string, unknown>>) || []).map(toBgPersona);
+
+  // Deduplicate handles across all batches
+  const usedHandles = new Set(keyHandles);
+  const deduped = [...bg1, ...bg2].filter((p) => {
+    if (usedHandles.has(p.handle)) return false;
+    usedHandles.add(p.handle);
+    return true;
+  });
+
+  const allPersonas = [...keyPersonas, ...deduped];
+  logger.info(
+    { key: keyPersonas.length, background: deduped.length, total: allPersonas.length },
+    'Tiered NPC generation complete',
+  );
+
+  return { personas: allPersonas, factSheet, communities };
 }
 
 // ─── Stage 2: Teams ─────────────────────────────────────────────────────────
@@ -307,6 +403,7 @@ export async function suggestSocialCrisisTeams(
   communities: string[],
   context: string,
   country: string,
+  orgName?: string,
 ): Promise<TeamDef[]> {
   const result = await callAI(
     `You are an expert in social media crisis response team structure. Given a crisis event, the affected stakeholder groups, and the country context, suggest 4-6 response teams that a crisis response organization would deploy.
@@ -315,7 +412,7 @@ Each team should have a clear, distinct role in the social media response effort
 
 Return ONLY valid JSON:
 { "teams": [{ "team_name": "...", "team_description": "...", "min_participants": 1, "max_participants": 4 }] }`,
-    `Crisis: ${crisisType}\nCountry: ${country}\nTargeted communities: ${communities.join(', ')}\nContext: ${context}`,
+    `Crisis: ${crisisType}${orgNameLine(orgName)}\nCountry: ${country}\nTargeted communities: ${communities.join(', ')}\nContext: ${context}`,
     8000,
   );
 
@@ -359,6 +456,7 @@ export async function generateTeamStoryline(
     country: string;
     context: string;
     duration: number;
+    orgName?: string;
   },
   npcs: NPCPersona[],
   factSheet: FactSheet,
@@ -406,7 +504,7 @@ ${factsContext}
 
 Return ONLY valid JSON:
 { "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "team_specific", "target_teams": ["${team.team_name}"], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", ... } }] }`,
-    `Crisis: ${crisisContext.crisisType} in ${crisisContext.location}, ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)} in ${crisisContext.location}, ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
     8000,
     0.8,
   );
@@ -427,6 +525,7 @@ export async function generateAllTeamStorylines(
     country: string;
     context: string;
     duration: number;
+    orgName?: string;
   },
   npcs: NPCPersona[],
   factSheet: FactSheet,
@@ -448,7 +547,13 @@ export async function generateAllTeamStorylines(
 // ─── Stage 3b: Unified Storyline (no teams) ─────────────────────────────────
 
 export async function generateUnifiedStoryline(
-  crisisContext: { crisisType: string; country: string; context: string; duration: number },
+  crisisContext: {
+    crisisType: string;
+    country: string;
+    context: string;
+    duration: number;
+    orgName?: string;
+  },
   npcs: NPCPersona[],
   factSheet: FactSheet,
   onProgress?: (msg: string) => void,
@@ -496,7 +601,7 @@ ${factsContext}
 
 Return ONLY valid JSON:
 { "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", ... } }] }`,
-    `Crisis: ${crisisContext.crisisType}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
     12000,
     0.8,
   );
@@ -517,6 +622,7 @@ export async function researchGeneralBestPractices(
   crisisType: string,
   context: string,
   onProgress?: (msg: string) => void,
+  orgName?: string,
 ): Promise<ResearchGuidelines> {
   onProgress?.('Researching crisis communication best practices...');
 
@@ -550,7 +656,7 @@ Return ONLY valid JSON:
     "detection_signals": ["..."]
   }]
 }`,
-      `Crisis: ${crisisType}\nContext: ${context}`,
+      `Crisis: ${crisisType}${orgNameLine(orgName)}\nContext: ${context}`,
       8000,
     ),
     callAI(
@@ -574,7 +680,7 @@ Return ONLY valid JSON:
   "timing_benchmarks": { "first_response_minutes": 30, "misinformation_debunk_minutes": 60 },
   "case_studies": [{ "name": "...", "summary": "...", "lessons": ["..."] }]
 }`,
-      `Crisis: ${crisisType}\nContext: ${context}`,
+      `Crisis: ${crisisType}${orgNameLine(orgName)}\nContext: ${context}`,
       8000,
     ),
   ]);
@@ -657,6 +763,7 @@ export async function researchPublicSentiment(
   crisisDescription: string,
   country: string,
   onProgress?: (msg: string) => void,
+  orgName?: string,
 ): Promise<PublicSentimentProfile> {
   onProgress?.('Analyzing crisis scenario to identify analogous real-world cases...');
 
@@ -699,7 +806,7 @@ Return ONLY valid JSON:
   "demographic_splits": [{ "group": "...", "likely_stance": "...", "intensity": 7, "key_concerns": ["..."] }],
   "cultural_factors": ["..."]
 }`,
-      `Crisis scenario: ${crisisDescription}\nCountry: ${country}`,
+      `Crisis scenario: ${crisisDescription}${orgNameLine(orgName)}\nCountry: ${country}`,
       10000,
       0.5,
     ),
@@ -737,7 +844,7 @@ Return ONLY valid JSON:
   },
   "counter_narrative_effectiveness": [{ "strategy": "...", "historical_success_rate": "medium", "timing_requirement": "within first 30 minutes", "risk": "..." }]
 }`,
-      `Crisis scenario: ${crisisDescription}\nCountry: ${country}`,
+      `Crisis scenario: ${crisisDescription}${orgNameLine(orgName)}\nCountry: ${country}`,
       8000,
       0.5,
     ),
@@ -806,6 +913,7 @@ export async function generateConvergenceLayer(
     country: string;
     context: string;
     duration: number;
+    orgName?: string;
   },
 ): Promise<{
   sharedInjects: SocialInject[];
@@ -880,7 +988,7 @@ Return ONLY valid JSON:
   "convergence_gates": [{ "title": "...", "content": "...", "type": "social_post", "severity": "critical", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 10 }],
   "dimension_labels": { "public_trust": "...", "community_safety": "...", "narrative_control": "...", "escalation_risk": "..." }
 }`,
-    `Crisis: ${crisisContext.crisisType} in ${crisisContext.location}, ${crisisContext.country}\nDuration: ${crisisContext.duration} minutes\nContext: ${crisisContext.context}`,
+    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)} in ${crisisContext.location}, ${crisisContext.country}\nDuration: ${crisisContext.duration} minutes\nContext: ${crisisContext.context}`,
     8000,
     0.8,
   );
@@ -975,7 +1083,7 @@ Return ONLY valid JSON:
     "detection_signals": ["player action or inaction that indicates this"]
   }]
 }`,
-    `Crisis: ${crisisType}\nContext: ${context}\nTeam's storyline includes: ${injectSummary}`,
+    `Crisis: ${crisisType}${orgNameLine(orgName)}\nContext: ${context}\nTeam's storyline includes: ${injectSummary}`,
     8000,
   );
 
@@ -1006,7 +1114,7 @@ Return ONLY valid JSON:
   "timing_benchmarks": { "first_response_minutes": 30, "misinformation_debunk_minutes": 60, ... },
   "case_studies": [{ "name": "...", "summary": "...", "lessons": ["..."] }]
 }`,
-    `Crisis: ${crisisType}\nContext: ${context}`,
+    `Crisis: ${crisisType}${orgNameLine(orgName)}\nContext: ${context}`,
     8000,
   );
 
@@ -1075,7 +1183,7 @@ Generate 10-15 benchmarks covering the full response lifecycle.
 
 Return ONLY valid JSON:
 { "benchmarks": [{ "action_id": "monitor_hate", "description": "Monitor and flag hate speech", "tier": 1, "team": "Social Media Monitoring", "doctrine_source": "UNESCO Handbook", "detection_action_type": "post_flagged", "timing_benchmark_minutes": 5, "sentiment_dimension": "narrative_control", "impact_if_done": 5, "impact_if_missed": -3, "consequence_if_done": "Monitoring team has identified key threats", "consequence_if_missed": "Hate speech is spreading unchecked" }] }`,
-    `Crisis: ${crisisType}\nContext: ${context}`,
+    `Crisis: ${crisisType}${orgNameLine(orgName)}\nContext: ${context}`,
     8000,
   );
 
@@ -1203,6 +1311,7 @@ export async function generateStrategyWindows(
     country: string;
     context: string;
     duration: number;
+    orgName?: string;
   },
   npcs: NPCPersona[],
   factSheet: FactSheet,
@@ -1248,13 +1357,88 @@ Return ONLY valid JSON:
     }
   ]
 }`,
-    `Crisis: ${crisisContext.crisisType} in ${crisisContext.location}, ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)} in ${crisisContext.location}, ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
     8000,
     0.8,
   );
 
   const windows = (result?.windows as StrategyWindow[]) || [];
   return windows;
+}
+
+// ─── Org Page Generation ────────────────────────────────────────────────────
+
+export async function generateOrgPageConfig(
+  crisisDescription: string,
+  country: string,
+  orgName?: string,
+  onProgress?: (msg: string) => void,
+): Promise<OrgPageConfig> {
+  onProgress?.('Generating organization page identity and branded history...');
+
+  const result = await callAI(
+    `You are creating the social media presence for the ORGANIZATION AT THE CENTER of a crisis simulation.
+${orgName ? `\nIMPORTANT: The organization's name is "${orgName}". Use this exact name as the basis for the Facebook page name, X/Twitter handle, and all branded content.\n` : ''}
+Based on the crisis description, generate:
+
+1. The organization's FACEBOOK PAGE identity:
+   - page_name: Official page name (e.g., "Meridian Pharmaceuticals", "NovaTech Solutions")
+   - page_handle: Facebook handle (e.g., "@MeridianPharma")
+   - page_bio: 1-2 sentence bio that sounds like a real company page
+   - follower_count: realistic number for this type of organization
+
+2. The organization's X/TWITTER account identity:
+   - page_name: Display name (often shorter than Facebook)
+   - page_handle: Twitter handle (e.g., "@MeridianPharma")
+   - page_bio: shorter bio suited for Twitter
+   - follower_count: realistic number
+
+3. BRANDED HISTORY: 10-20 pre-crisis posts that this organization would have published in the weeks before the crisis broke. These create a realistic page timeline. Mix of:
+   - Product/service announcements
+   - Corporate social responsibility posts
+   - Employee spotlights or team culture posts
+   - Industry thought leadership
+   - Customer testimonials or success stories
+   - Event announcements
+   - Seasonal/topical content
+
+   For each post provide:
+   - content: the post text (2-5 sentences, professional tone matching the org's voice)
+   - platform: "facebook" or "x_twitter" (roughly 60% facebook, 40% twitter)
+   - post_format: "text" for most, occasionally "infographic" or "video_concept"
+   - days_ago: how many days before the crisis (range from 1 to 30)
+   - media_description: optional description of an image/video attached (product photo, team photo, infographic, etc.)
+
+Country: ${country}
+
+Return ONLY valid JSON:
+{
+  "facebook": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 50000 },
+  "x_twitter": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 30000 },
+  "branded_history": [{ "content": "...", "platform": "facebook", "post_format": "text", "days_ago": 7, "media_description": "" }]
+}`,
+    `Crisis scenario: ${crisisDescription.substring(0, 500)}${orgNameLine(orgName)}\nCountry: ${country}`,
+    8000,
+    0.8,
+  );
+
+  onProgress?.('Organization page identity generated');
+
+  const fb = (result?.facebook as OrgPagePlatformConfig) || {
+    page_name: 'Organization Official',
+    page_handle: '@OrgOfficial',
+    page_bio: 'Official page',
+    follower_count: 50000,
+  };
+  const tw = (result?.x_twitter as OrgPagePlatformConfig) || {
+    page_name: 'Organization',
+    page_handle: '@Org',
+    page_bio: 'Official account',
+    follower_count: 30000,
+  };
+  const history = ((result?.branded_history as BrandedHistoryPost[]) || []).slice(0, 20);
+
+  return { facebook: fb, x_twitter: tw, branded_history: history };
 }
 
 // ─── Full Assembly ──────────────────────────────────────────────────────────
@@ -1281,6 +1465,8 @@ export function assemblePayload(
     narrative_control: string;
     escalation_risk: string;
   } | null,
+  orgPageConfig?: OrgPageConfig | null,
+  orgName?: string,
 ): SocialCrisisPayload {
   const allStoryInjects: SocialInject[] = storylineInjects || [];
   if (!storylineInjects) {
@@ -1339,6 +1525,8 @@ export function assemblePayload(
         affected_communities: communities,
         research_guidelines: research,
         ...(sentimentProfile ? { sentiment_profile: sentimentProfile } : {}),
+        ...(orgPageConfig ? { org_page: orgPageConfig } : {}),
+        ...(orgName ? { org_name: orgName } : {}),
         dimension_labels: dimensionLabels || {
           public_trust: 'Public Trust',
           community_safety: 'Stakeholder Confidence',

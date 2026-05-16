@@ -10,6 +10,8 @@ interface NPCPersona {
   personality: string;
   bias: string;
   follower_count: number;
+  tier?: 'key' | 'background';
+  normal_interests?: string[];
 }
 
 interface FactSheetEntry {
@@ -189,6 +191,7 @@ export const SocialCrisisWizard = () => {
   const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
 
   /* Step 1 — Scenario Setup (free-form) */
+  const [orgName, setOrgName] = useState('');
   const [country, setCountry] = useState('Singapore');
   const [context, setContext] = useState('');
   const [uploadedDocText, setUploadedDocText] = useState('');
@@ -227,6 +230,7 @@ export const SocialCrisisWizard = () => {
   } | null>(null);
   const [objectives, setObjectives] = useState<ObjectiveDef[]>([]);
   const [dimensionLabels, setDimensionLabels] = useState<Record<string, string> | null>(null);
+  const [orgPage, setOrgPage] = useState<Record<string, unknown> | null>(null);
   const [step4Loading, setStep4Loading] = useState(false);
   const [step4Error, setStep4Error] = useState<string | null>(null);
 
@@ -254,6 +258,7 @@ export const SocialCrisisWizard = () => {
     () => ({
       sim_mode: 'social_media',
       crisis_description: crisisDescription,
+      org_name: orgName,
       country,
       context,
       uploaded_doc_text: uploadedDocText,
@@ -268,10 +273,12 @@ export const SocialCrisisWizard = () => {
       objectives,
       sentiment_profile: sentimentProfile,
       dimension_labels: dimensionLabels,
+      org_page: orgPage,
       research,
     }),
     [
       crisisDescription,
+      orgName,
       country,
       context,
       uploadedDocText,
@@ -286,6 +293,7 @@ export const SocialCrisisWizard = () => {
       objectives,
       sentimentProfile,
       dimensionLabels,
+      orgPage,
       research,
     ],
   );
@@ -347,6 +355,7 @@ export const SocialCrisisWizard = () => {
         const savedStep = Number(draft.current_step) || 1;
         const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
 
+        if (input.org_name) setOrgName(String(input.org_name));
         if (input.country) setCountry(String(input.country));
         if (input.context) setContext(String(input.context));
         if (input.uploaded_doc_text) setUploadedDocText(String(input.uploaded_doc_text));
@@ -367,6 +376,8 @@ export const SocialCrisisWizard = () => {
           setSentimentProfile(input.sentiment_profile as PublicSentimentProfile);
         if (input.dimension_labels && typeof input.dimension_labels === 'object')
           setDimensionLabels(input.dimension_labels as Record<string, string>);
+        if (input.org_page && typeof input.org_page === 'object')
+          setOrgPage(input.org_page as Record<string, unknown>);
         if (input.research) setResearch(input.research as ResearchGuidelines);
 
         setStep(validStep);
@@ -501,6 +512,7 @@ export const SocialCrisisWizard = () => {
           crisis_type: crisisDescription,
           country,
           context: crisisDescription,
+          org_name: orgName || undefined,
         }),
       });
       if (!res.ok) {
@@ -576,6 +588,7 @@ export const SocialCrisisWizard = () => {
           crisis_type: crisisDescription,
           country,
           context: crisisDescription,
+          org_name: orgName || undefined,
           duration: 60,
           personas,
           fact_sheet: factSheet,
@@ -634,6 +647,7 @@ export const SocialCrisisWizard = () => {
           location: '',
           country,
           context: crisisDescription,
+          org_name: orgName || undefined,
           duration: 60,
           communities,
           personas,
@@ -660,6 +674,7 @@ export const SocialCrisisWizard = () => {
         if (Array.isArray(d.objectives)) setObjectives(d.objectives);
         const dl = d.dimensionLabels || d.dimension_labels;
         if (dl && typeof dl === 'object') setDimensionLabels(dl);
+        void generateOrgPage();
         setStep4Loading(false);
         return;
       }
@@ -690,6 +705,7 @@ export const SocialCrisisWizard = () => {
             if (Array.isArray(d.objectives)) setObjectives(d.objectives);
             const dl = d.dimensionLabels || d.dimension_labels;
             if (dl && typeof dl === 'object') setDimensionLabels(dl);
+            void generateOrgPage();
             setStep4Loading(false);
             return;
           }
@@ -709,6 +725,50 @@ export const SocialCrisisWizard = () => {
     setStep4Loading(false);
   }, [crisisDescription, country, communities, personas, factSheet]);
 
+  const generateOrgPage = useCallback(async () => {
+    if (!crisisDescription || orgPage) return;
+    try {
+      const headers = await authHeaders();
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-org-page'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          crisis_description: crisisDescription,
+          country,
+          org_name: orgName || undefined,
+        }),
+      });
+
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              if (msg.type === 'complete' && msg.org_page) {
+                setOrgPage(msg.org_page);
+              }
+            } catch {
+              /* skip */
+            }
+          }
+        }
+      }
+    } catch {
+      /* non-critical -- org page is optional */
+    }
+  }, [crisisDescription, country, orgPage]);
+
   const generateSentimentResearch = useCallback(async () => {
     if (!crisisDescription) return;
     setStep5Loading(true);
@@ -724,6 +784,7 @@ export const SocialCrisisWizard = () => {
         body: JSON.stringify({
           crisis_description: crisisDescription,
           country,
+          org_name: orgName || undefined,
         }),
       });
 
@@ -779,6 +840,7 @@ export const SocialCrisisWizard = () => {
         body: JSON.stringify({
           crisis_type: crisisDescription,
           context: crisisDescription,
+          org_name: orgName || undefined,
           sentiment_profile: sentimentProfile,
         }),
       });
@@ -836,6 +898,7 @@ export const SocialCrisisWizard = () => {
         body: JSON.stringify({
           narrative,
           crisis_type: crisisDescription,
+          org_name: orgName || undefined,
           objectives,
           country,
           personas,
@@ -847,6 +910,7 @@ export const SocialCrisisWizard = () => {
           research,
           sentiment_profile: sentimentProfile,
           dimension_labels: dimensionLabels,
+          org_page: orgPage,
           duration: 60,
         }),
       });
@@ -1138,6 +1202,24 @@ export const SocialCrisisWizard = () => {
         />
       </div>
 
+      <div className="mb-4">
+        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+          Organization Name (optional)
+        </label>
+        <input
+          type="text"
+          value={orgName}
+          onChange={(e) => setOrgName(e.target.value)}
+          placeholder="e.g., Meridian Technologies, Acme Corp"
+          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
+        />
+        <div className="mt-1">
+          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+            Leave blank to let the AI generate a company name
+          </span>
+        </div>
+      </div>
+
       {crisisDescription.length >= 50 && (
         <div className="mt-4 p-3 border border-green-400/30 rounded bg-green-900/10">
           <p className="text-[10px] terminal-text text-green-400">
@@ -1173,43 +1255,88 @@ export const SocialCrisisWizard = () => {
       ) : (
         <>
           <div className="mb-6">
-            <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-              NPC Personas ({personas.length})
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {personas.map((p, i) => (
-                <div key={i} className="border border-robotic-gray-200 rounded p-3">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-xs terminal-text text-cyan-400">{p.handle}</span>
-                    <span
-                      className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
-                        p.type === 'npc_media'
-                          ? 'bg-blue-900/30 text-blue-400'
-                          : p.type === 'npc_politician'
-                            ? 'bg-purple-900/30 text-purple-400'
-                            : p.type === 'npc_influencer'
-                              ? 'bg-pink-900/30 text-pink-400'
-                              : 'bg-robotic-gray-200/30 text-robotic-yellow/60'
-                      }`}
-                    >
-                      {p.type.replace('npc_', '')}
-                    </span>
+            {(() => {
+              const keyNpcs = personas.filter((p) => p.tier === 'key' || !p.tier);
+              const bgNpcs = personas.filter((p) => p.tier === 'background');
+              return (
+                <>
+                  <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                    Key Characters ({keyNpcs.length})
+                  </h3>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                    {keyNpcs.map((p, i) => (
+                      <div key={i} className="border border-robotic-gray-200 rounded p-3">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs terminal-text text-cyan-400">{p.handle}</span>
+                          <span
+                            className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
+                              p.type === 'npc_media'
+                                ? 'bg-blue-900/30 text-blue-400'
+                                : p.type === 'npc_politician'
+                                  ? 'bg-purple-900/30 text-purple-400'
+                                  : p.type === 'npc_influencer'
+                                    ? 'bg-pink-900/30 text-pink-400'
+                                    : 'bg-robotic-gray-200/30 text-robotic-yellow/60'
+                            }`}
+                          >
+                            {p.type.replace('npc_', '')}
+                          </span>
+                          <span className="text-[9px] terminal-text bg-cyan-900/30 text-cyan-400 px-1.5 py-0.5 rounded">
+                            KEY
+                          </span>
+                        </div>
+                        <div className="text-xs terminal-text font-bold mb-1">{p.name}</div>
+                        <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-1">
+                          {p.personality}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+                            Bias: {p.bias}
+                          </span>
+                          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+                            {p.follower_count.toLocaleString()} followers
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-xs terminal-text font-bold mb-1">{p.name}</div>
-                  <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-1">
-                    {p.personality}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[9px] terminal-text text-robotic-yellow/30">
-                      Bias: {p.bias}
-                    </span>
-                    <span className="text-[9px] terminal-text text-robotic-yellow/30">
-                      {p.follower_count.toLocaleString()} followers
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  {bgNpcs.length > 0 && (
+                    <details className="mb-4">
+                      <summary className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3 cursor-pointer hover:text-robotic-yellow/80">
+                        Background Characters ({bgNpcs.length}) — click to expand
+                      </summary>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
+                        {bgNpcs.map((p, i) => (
+                          <div key={i} className="border border-robotic-gray-200/50 rounded p-2">
+                            <div className="flex items-center gap-1 mb-1">
+                              <span className="text-[10px] terminal-text text-cyan-400/70">
+                                {p.handle}
+                              </span>
+                            </div>
+                            <div className="text-[10px] terminal-text font-bold">{p.name}</div>
+                            <div className="text-[9px] terminal-text text-robotic-yellow/40">
+                              {p.personality}
+                            </div>
+                            {p.normal_interests && p.normal_interests.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {p.normal_interests.map((interest, ii) => (
+                                  <span
+                                    key={ii}
+                                    className="text-[8px] terminal-text bg-robotic-gray-200/20 text-robotic-yellow/40 px-1 py-0.5 rounded"
+                                  >
+                                    {interest}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </>
+              );
+            })()}
           </div>
 
           {factSheet && (
@@ -1507,6 +1634,121 @@ export const SocialCrisisWizard = () => {
                 })}
               </div>
             </div>
+          )}
+
+          {/* Org Page Identity Preview */}
+          {orgPage ? (
+            <div className="mb-6">
+              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
+                Organization Page Identity
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {(
+                  orgPage as {
+                    facebook?: {
+                      page_name: string;
+                      page_handle: string;
+                      page_bio: string;
+                      follower_count: number;
+                    };
+                  }
+                ).facebook && (
+                  <div className="border border-robotic-gray-200 rounded p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
+                        {
+                          ((orgPage as { facebook: { page_name: string } }).facebook.page_name ||
+                            'O')[0]
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs terminal-text font-bold truncate">
+                          {(orgPage as { facebook: { page_name: string } }).facebook.page_name}
+                        </div>
+                        <div className="text-[10px] terminal-text text-cyan-400">
+                          {(orgPage as { facebook: { page_handle: string } }).facebook.page_handle}
+                        </div>
+                      </div>
+                      <span className="text-[9px] bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded flex-shrink-0">
+                        Facebook
+                      </span>
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/50">
+                      {(orgPage as { facebook: { page_bio: string } }).facebook.page_bio}
+                    </div>
+                    <div className="text-[9px] terminal-text text-robotic-yellow/30 mt-1">
+                      {(
+                        (orgPage as { facebook: { follower_count: number } }).facebook
+                          .follower_count || 0
+                      ).toLocaleString()}{' '}
+                      followers
+                    </div>
+                  </div>
+                )}
+                {(
+                  orgPage as {
+                    x_twitter?: {
+                      page_name: string;
+                      page_handle: string;
+                      page_bio: string;
+                      follower_count: number;
+                    };
+                  }
+                ).x_twitter && (
+                  <div className="border border-robotic-gray-200 rounded p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-white font-bold">
+                        {
+                          ((orgPage as { x_twitter: { page_name: string } }).x_twitter.page_name ||
+                            'O')[0]
+                        }
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs terminal-text font-bold truncate">
+                          {(orgPage as { x_twitter: { page_name: string } }).x_twitter.page_name}
+                        </div>
+                        <div className="text-[10px] terminal-text text-cyan-400">
+                          {
+                            (orgPage as { x_twitter: { page_handle: string } }).x_twitter
+                              .page_handle
+                          }
+                        </div>
+                      </div>
+                      <span className="text-[9px] bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded flex-shrink-0">
+                        X
+                      </span>
+                    </div>
+                    <div className="text-[10px] terminal-text text-robotic-yellow/50">
+                      {(orgPage as { x_twitter: { page_bio: string } }).x_twitter.page_bio}
+                    </div>
+                    <div className="text-[9px] terminal-text text-robotic-yellow/30 mt-1">
+                      {(
+                        (orgPage as { x_twitter: { follower_count: number } }).x_twitter
+                          .follower_count || 0
+                      ).toLocaleString()}{' '}
+                      followers
+                    </div>
+                  </div>
+                )}
+              </div>
+              {(orgPage as { branded_history?: unknown[] }).branded_history &&
+                (orgPage as { branded_history: unknown[] }).branded_history.length > 0 && (
+                  <div className="mt-2 p-2 border border-cyan-400/20 rounded bg-cyan-900/10">
+                    <p className="text-[10px] terminal-text text-cyan-400">
+                      {(orgPage as { branded_history: unknown[] }).branded_history.length}{' '}
+                      pre-crisis branded posts will appear on the page timeline when the session
+                      starts.
+                    </p>
+                  </div>
+                )}
+            </div>
+          ) : (
+            !step4Loading &&
+            (sharedInjects.length > 0 || convergenceGates.length > 0) && (
+              <div className="mb-6">
+                <Spinner text="Generating organization page identity..." />
+              </div>
+            )
           )}
 
           {sharedInjects.length > 0 && (

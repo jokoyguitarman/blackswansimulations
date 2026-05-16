@@ -14,6 +14,7 @@ import {
   researchBestPractices,
   researchGeneralBestPractices,
   researchPublicSentiment,
+  generateOrgPageConfig,
   buildSOPFromResearch,
   assemblePayload,
   type NPCPersona,
@@ -63,6 +64,7 @@ router.post(
         context: z.string().default(''),
         country: z.string().default('Singapore'),
         location: z.string().default(''),
+        org_name: z.string().optional(),
       }),
     }),
   ),
@@ -152,6 +154,7 @@ router.post(
         crisis_type: z.string(),
         country: z.string().default('Singapore'),
         context: z.string().default(''),
+        org_name: z.string().optional(),
         duration: z.number().default(60),
         personas: z.array(z.unknown()),
         fact_sheet: z.object({
@@ -202,6 +205,7 @@ router.post(
       body: z.object({
         crisis_type: z.string(),
         context: z.string().default(''),
+        org_name: z.string().optional(),
       }),
     }),
   ),
@@ -308,6 +312,7 @@ router.post(
         location: z.string(),
         country: z.string().default('Singapore'),
         context: z.string().default(''),
+        org_name: z.string().optional(),
         duration: z.number().default(60),
         team_storylines: z.record(z.string(), z.unknown()),
         personas: z.array(z.unknown()),
@@ -427,6 +432,7 @@ router.post(
       body: z.object({
         narrative: z.object({ title: z.string(), description: z.string(), briefing: z.string() }),
         crisis_type: z.string().optional().default(''),
+        org_name: z.string().optional(),
         teams: z
           .array(
             z.object({
@@ -460,6 +466,7 @@ router.post(
             escalation_risk: z.string(),
           })
           .optional(),
+        org_page: z.unknown().optional(),
         duration: z.number().default(60),
       }),
     }),
@@ -520,6 +527,10 @@ router.post(
           body.storyline_injects as SocialInject[] | undefined,
           body.sentiment_profile as PublicSentimentProfile | undefined,
           body.dimension_labels || null,
+          (body.org_page as
+            | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
+            | undefined) || null,
+          body.org_name || undefined,
         );
 
         if (body.country) {
@@ -663,6 +674,49 @@ router.post('/generate-factsheet', requireAuth, async (req: AuthenticatedRequest
   }
 });
 
+// Generate org page identity and branded history
+router.post(
+  '/generate-org-page',
+  requireAuth,
+  validate(
+    z.object({
+      body: z.object({
+        crisis_description: z.string(),
+        country: z.string().default('Singapore'),
+        org_name: z.string().optional(),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Transfer-Encoding', 'chunked');
+
+      const { crisis_description, country, org_name } = req.body;
+
+      const orgPage = await generateOrgPageConfig(
+        crisis_description,
+        country,
+        org_name,
+        (msg: string) => {
+          res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+        },
+      );
+
+      res.write(JSON.stringify({ type: 'complete', org_page: orgPage }) + '\n');
+      res.end();
+    } catch (err) {
+      logger.error({ err }, 'Failed to generate org page config');
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Org page generation failed' });
+      } else {
+        res.write(JSON.stringify({ type: 'error', message: 'Org page generation failed' }) + '\n');
+        res.end();
+      }
+    }
+  },
+);
+
 // Document upload: extract text from PDF, DOCX, or TXT
 router.post(
   '/upload-document',
@@ -721,6 +775,7 @@ router.post(
       body: z.object({
         crisis_description: z.string(),
         country: z.string().default('Singapore'),
+        org_name: z.string().optional(),
       }),
     }),
   ),
