@@ -213,10 +213,15 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         }),
       });
       if (res.ok) {
+        const json = await res.json().catch(() => null);
+        const threadId = json?.data?.thread_id;
         setShowCompose(false);
         setComposeRecipient('');
         setComposeText('');
-        fetchThreads();
+        await fetchThreads();
+        if (threadId) {
+          setSelectedThread(threadId);
+        }
       }
     } catch {
       /* ignore */

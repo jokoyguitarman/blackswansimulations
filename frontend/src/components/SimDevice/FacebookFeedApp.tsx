@@ -122,6 +122,7 @@ export default function FacebookFeedApp() {
   const [loading, setLoading] = useState(true);
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
+  const [sending, setSending] = useState(false);
   const [postingAsPage, setPostingAsPage] = useState(false);
   const [orgPageInfo, setOrgPageInfo] = useState<{ page_name: string; page_handle: string } | null>(
     null,
@@ -538,7 +539,8 @@ export default function FacebookFeedApp() {
   });
 
   async function handlePost() {
-    if (!composeText.trim() || !sessionId) return;
+    if (!composeText.trim() || !sessionId || sending) return;
+    setSending(true);
     try {
       const headers = await getAuthHeaders();
       const postRes = await fetch(apiUrl('/api/social/posts'), {
@@ -578,6 +580,7 @@ export default function FacebookFeedApp() {
     } catch {
       /* ignore */
     }
+    setSending(false);
   }
 
   async function handleGeneratePreview() {
@@ -674,7 +677,8 @@ export default function FacebookFeedApp() {
 
   async function handleComment(postId: string) {
     const text = commentText[postId]?.trim();
-    if (!text || !sessionId) return;
+    if (!text || !sessionId || sending) return;
+    setSending(true);
     const target = replyTarget[postId];
     const contentToSend = target ? `${target.handle}[${target.replyToId}] ${text}` : text;
     try {
@@ -710,6 +714,7 @@ export default function FacebookFeedApp() {
     } catch {
       /* ignore */
     }
+    setSending(false);
   }
 
   async function handleFlag(postId: string) {
@@ -756,13 +761,27 @@ export default function FacebookFeedApp() {
       >
         <div className="flex items-center px-3" style={{ height: 56 }}>
           {/* Left: Logo */}
-          <div className="flex items-center gap-2 flex-shrink-0" style={{ minWidth: 100 }}>
-            <span
-              className="text-[24px] font-extrabold italic"
-              style={{ color: '#1877F2', fontFamily: 'Georgia, serif', letterSpacing: '-0.5px' }}
-            >
-              fakebook
-            </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {isDesktopWidth ? (
+              <span
+                className="text-[24px] font-extrabold italic"
+                style={{ color: '#1877F2', fontFamily: 'Georgia, serif', letterSpacing: '-0.5px' }}
+              >
+                fakebook
+              </span>
+            ) : (
+              <div
+                className="w-9 h-9 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: '#1877F2' }}
+              >
+                <span
+                  className="text-[20px] font-extrabold italic text-white"
+                  style={{ fontFamily: 'Georgia, serif' }}
+                >
+                  f
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Center: Nav Tabs */}
