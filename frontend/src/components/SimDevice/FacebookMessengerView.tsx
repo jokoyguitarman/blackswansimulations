@@ -27,6 +27,8 @@ interface Thread {
   last_message: string;
   last_time: string;
   unread_count: number;
+  latest_message?: { content: string; created_at: string };
+  other_participant?: { handle: string; display_name: string };
 }
 
 interface Message {
@@ -125,8 +127,27 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
       );
       if (res.ok) {
         const json = await res.json();
-        const data = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
-        setThreads(data);
+        const raw = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
+        const normalized: Thread[] = raw.map((t: Record<string, unknown>) => ({
+          thread_id: String(t.thread_id || ''),
+          other_handle: String(
+            (t.other_participant as Record<string, string>)?.handle || t.other_handle || '',
+          ),
+          other_display_name: String(
+            (t.other_participant as Record<string, string>)?.display_name ||
+              t.other_display_name ||
+              '',
+          ),
+          other_type: String(t.other_type || 'npc_public'),
+          last_message: String(
+            (t.latest_message as Record<string, string>)?.content || t.last_message || '',
+          ),
+          last_time: String(
+            (t.latest_message as Record<string, string>)?.created_at || t.last_time || '',
+          ),
+          unread_count: Number(t.unread_count) || 0,
+        }));
+        setThreads(normalized);
       }
     } catch {
       // silently fail
