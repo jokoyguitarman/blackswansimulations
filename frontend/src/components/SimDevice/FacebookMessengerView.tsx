@@ -124,7 +124,8 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         { headers },
       );
       if (res.ok) {
-        const data = await res.json();
+        const json = await res.json();
+        const data = Array.isArray(json) ? json : Array.isArray(json.data) ? json.data : [];
         setThreads(data);
       }
     } catch {
@@ -140,7 +141,12 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
       const headers = await getAuthHeaders();
       const res = await fetch(apiUrl(`/api/social/messenger/thread/${threadId}`), { headers });
       if (res.ok) {
-        const data: Message[] = await res.json();
+        const json = await res.json();
+        const data: Message[] = Array.isArray(json)
+          ? json
+          : Array.isArray(json.data)
+            ? json.data
+            : [];
         setMessages(data);
         markUnreadAsRead(data);
       }
