@@ -94,7 +94,7 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       playerName = profile?.full_name || undefined;
     }
     const displayName = playerName || user.email || 'Player';
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
     const { data: event, error } = await supabaseAdmin
       .from('sim_events')
@@ -153,7 +153,7 @@ router.post('/:eventId/respond', requireAuth, async (req: AuthenticatedRequest, 
         .single();
       playerName = profile?.full_name || undefined;
     }
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
     // Fetch current response to compute count deltas
     const { data: existing } = await supabaseAdmin
@@ -232,7 +232,7 @@ router.post('/:eventId/discuss', requireAuth, async (req: AuthenticatedRequest, 
       playerName = profile?.full_name || undefined;
     }
     const displayName = playerName || user.email || 'Player';
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
     const { data: discussion, error } = await supabaseAdmin
       .from('sim_event_discussions')

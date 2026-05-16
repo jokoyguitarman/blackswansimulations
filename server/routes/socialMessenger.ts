@@ -24,13 +24,13 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
 
     const playerName =
       (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    const playerHandle = `@${playerName.replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const playerHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
     let query = supabaseAdmin
       .from('sim_direct_messages')
       .select('*')
       .eq('session_id', sessionId)
-      .or(`sender_handle.eq.${playerHandle},recipient_handle.eq.${playerHandle}`);
+      .or(`sender_handle.eq."${playerHandle}",recipient_handle.eq."${playerHandle}"`);
 
     if (platformFilter) {
       query = query.eq('platform', platformFilter);
@@ -144,7 +144,7 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const playerName =
       (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    const senderHandle = `@${playerName.replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const senderHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
     // Find existing thread between these two handles in this session
     const { data: existingThread } = await supabaseAdmin
@@ -244,7 +244,7 @@ router.get('/unread-count/:sessionId', requireAuth, async (req: AuthenticatedReq
 
     const playerName =
       (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    const playerHandle = `@${playerName.replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const playerHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
     let query = supabaseAdmin
       .from('sim_direct_messages')

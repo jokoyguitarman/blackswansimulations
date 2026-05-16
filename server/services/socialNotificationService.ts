@@ -28,7 +28,7 @@ async function findPlayerUserIdByHandle(sessionId: string, handle: string): Prom
     const { data: authUser } = await supabaseAdmin.auth.admin.getUserById(p.user_id);
     if (!authUser?.user) continue;
     const email = authUser.user.email || '';
-    const constructedHandle = `@${(email || p.user_id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const constructedHandle = `@${(email || p.user_id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
     if (constructedHandle === handle) return p.user_id;
   }
 

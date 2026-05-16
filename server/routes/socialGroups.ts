@@ -119,7 +119,7 @@ router.post('/:groupId/posts', requireAuth, async (req: AuthenticatedRequest, re
       playerName = profile?.full_name || undefined;
     }
     const displayName = playerName || user.email || 'Player';
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
     const { data: post, error } = await supabaseAdmin
       .from('sim_group_posts')

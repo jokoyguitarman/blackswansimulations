@@ -55,7 +55,7 @@ async function resolveRecipientUserId(
   for (const p of participants) {
     const profile = p.user as unknown as { full_name: string } | null;
     if (!profile?.full_name) continue;
-    const handle = `@${profile.full_name.replace(/[@.\s+]/g, '_').toLowerCase()}`;
+    const handle = `@${profile.full_name.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
     if (handle === recipientHandle) return p.user_id;
   }
 
@@ -101,7 +101,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
       return {
         user_id: p.user_id,
         name,
-        handle: `@${name.replace(/[@.\s+]/g, '_').toLowerCase()}`,
+        handle: `@${name.replace(/[@.\s+,]/g, '_').toLowerCase()}`,
       };
     });
 

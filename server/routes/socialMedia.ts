@@ -206,7 +206,7 @@ router.post(
         playerName = profile?.full_name || undefined;
       }
       const personalDisplayName = playerName || user.email || 'Player';
-      const personalHandle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`;
+      const personalHandle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
 
       let authorHandle = personalHandle;
       let authorDisplayName = personalDisplayName;
@@ -722,7 +722,7 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
       .insert({
         session_id: session_id || original.session_id,
         platform: original.platform,
-        author_handle: `@${((user.metadata?.full_name as string) || user.email || user.id.slice(0, 8)).replace(/[@.\s+]/g, '_').toLowerCase()}`,
+        author_handle: `@${((user.metadata?.full_name as string) || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`,
         author_display_name: (user.metadata?.full_name as string) || user.email || 'Player',
         author_type: 'player',
         content: original.content,
