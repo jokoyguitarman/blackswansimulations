@@ -1802,42 +1802,45 @@ export default function FacebookFeedApp() {
             {/* Page Mode Banner */}
             {pageMode && orgPageInfo && (
               <div
-                className="flex-shrink-0 flex items-center gap-2.5 px-4 py-2"
+                className="flex-shrink-0 flex items-center gap-2 px-3 py-1.5"
                 style={{ backgroundColor: '#E7F3FF', borderBottom: '1px solid #C2DBFE' }}
               >
                 {orgPageInfo.page_logo_url ? (
                   <img
                     src={orgPageInfo.page_logo_url}
                     alt={orgPageInfo.page_name}
-                    className="w-7 h-7 rounded object-cover"
+                    className="w-6 h-6 rounded object-cover flex-shrink-0"
                   />
                 ) : (
                   <div
-                    className="w-7 h-7 rounded flex items-center justify-center text-white text-[11px] font-bold"
+                    className="w-6 h-6 rounded flex items-center justify-center text-white text-[10px] font-bold flex-shrink-0"
                     style={{ backgroundColor: '#1877F2' }}
                   >
                     {orgPageInfo.page_name[0]}
                   </div>
                 )}
-                <span className="text-[13px] font-semibold flex-1" style={{ color: '#1877F2' }}>
-                  Managing as {orgPageInfo.page_name}
+                <span
+                  className="text-[12px] font-semibold flex-1 truncate"
+                  style={{ color: '#1877F2' }}
+                >
+                  {isDesktopWidth ? `Managing as ${orgPageInfo.page_name}` : orgPageInfo.page_name}
                 </span>
                 <button
                   onClick={() => setActiveView('page')}
-                  className="text-[12px] font-semibold px-2 py-1 rounded hover:bg-[#C2DBFE] transition-colors"
+                  className="text-[11px] font-semibold px-1.5 py-0.5 rounded hover:bg-[#C2DBFE] transition-colors flex-shrink-0"
                   style={{ color: '#1877F2' }}
                 >
-                  View Page
+                  {isDesktopWidth ? 'View Page' : 'Page'}
                 </button>
                 <button
                   onClick={() => {
                     setPageMode(false);
                     setPostingAsPage(false);
                   }}
-                  className="text-[12px] font-semibold px-2 py-1 rounded hover:bg-[#C2DBFE] transition-colors"
+                  className="text-[11px] font-semibold px-1.5 py-0.5 rounded hover:bg-[#C2DBFE] transition-colors flex-shrink-0"
                   style={{ color: '#65676B' }}
                 >
-                  Switch to Personal
+                  {isDesktopWidth ? 'Switch to Personal' : 'Exit'}
                 </button>
               </div>
             )}
@@ -3314,24 +3317,6 @@ export default function FacebookFeedApp() {
                 </svg>
               ),
             },
-            {
-              label: 'Page',
-              view: 'page' as const,
-              icon: (
-                <svg
-                  width="22"
-                  height="22"
-                  viewBox="0 0 24 24"
-                  fill={activeView === 'page' ? '#1877F2' : 'none'}
-                  stroke={activeView === 'page' ? '#1877F2' : '#65676B'}
-                  strokeWidth="2"
-                >
-                  <rect x="2" y="3" width="20" height="14" rx="2" />
-                  <line x1="8" y1="21" x2="16" y2="21" />
-                  <line x1="12" y1="17" x2="12" y2="21" />
-                </svg>
-              ),
-            },
           ].map((tab) => (
             <button
               key={tab.label}
@@ -3350,6 +3335,39 @@ export default function FacebookFeedApp() {
               </span>
             </button>
           ))}
+          {orgPageInfo && (
+            <button
+              onClick={() => {
+                setPageMode((prev) => {
+                  const next = !prev;
+                  setPostingAsPage(next);
+                  return next;
+                });
+                setActiveView('feed');
+                setShowNotifPanel(false);
+              }}
+              className="flex flex-col items-center py-1 px-3"
+            >
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill={pageMode ? '#1877F2' : 'none'}
+                stroke={pageMode ? '#1877F2' : '#65676B'}
+                strokeWidth="2"
+              >
+                <rect x="2" y="3" width="20" height="14" rx="2" />
+                <line x1="8" y1="21" x2="16" y2="21" />
+                <line x1="12" y1="17" x2="12" y2="21" />
+              </svg>
+              <span
+                className="text-[10px] mt-0.5"
+                style={{ color: pageMode ? '#1877F2' : '#65676B' }}
+              >
+                Page
+              </span>
+            </button>
+          )}
         </div>
       )}
 
