@@ -318,7 +318,7 @@ router.post(
         if (parentForNotif && parentForNotif.author_type === 'player') {
           void notifyPostReply(
             session_id,
-            (user.metadata?.full_name as string) || user.email || 'Player',
+            authorDisplayName,
             parentForNotif.author_handle,
             reply_to_post_id,
             content,
