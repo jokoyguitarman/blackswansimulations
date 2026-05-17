@@ -128,6 +128,7 @@ export default function FacebookFeedApp() {
   const [composeText, setComposeText] = useState('');
   const [sending, setSending] = useState(false);
   const [postingAsPage, setPostingAsPage] = useState(false);
+  const [pageMode, setPageMode] = useState(false);
   const [orgPageInfo, setOrgPageInfo] = useState<{
     page_name: string;
     page_handle: string;
@@ -721,6 +722,7 @@ export default function FacebookFeedApp() {
           content: contentToSend,
           reply_to_post_id: postId,
           platform: 'facebook',
+          post_as_page: pageMode,
         }),
       });
       if (postRes.ok) {
@@ -1419,8 +1421,14 @@ export default function FacebookFeedApp() {
                 ...(orgPageInfo
                   ? [
                       {
-                        label: orgPageInfo.page_name,
-                        icon: (
+                        label: pageMode ? `✓ ${orgPageInfo.page_name}` : orgPageInfo.page_name,
+                        icon: orgPageInfo.page_logo_url ? (
+                          <img
+                            src={orgPageInfo.page_logo_url}
+                            alt={orgPageInfo.page_name}
+                            className="w-5 h-5 rounded object-cover"
+                          />
+                        ) : (
                           <div
                             className="w-5 h-5 rounded flex items-center justify-center text-white text-[10px] font-bold"
                             style={{ backgroundColor: '#1877F2' }}
@@ -1428,7 +1436,14 @@ export default function FacebookFeedApp() {
                             {orgPageInfo.page_name[0]}
                           </div>
                         ),
-                        onClick: () => setActiveView('page'),
+                        onClick: () => {
+                          setPageMode((prev) => {
+                            const next = !prev;
+                            setPostingAsPage(next);
+                            return next;
+                          });
+                          setActiveView('feed');
+                        },
                       },
                     ]
                   : []),
@@ -1783,6 +1798,49 @@ export default function FacebookFeedApp() {
                 </button>
               </div>
             </div>
+
+            {/* Page Mode Banner */}
+            {pageMode && orgPageInfo && (
+              <div
+                className="flex-shrink-0 flex items-center gap-2.5 px-4 py-2"
+                style={{ backgroundColor: '#E7F3FF', borderBottom: '1px solid #C2DBFE' }}
+              >
+                {orgPageInfo.page_logo_url ? (
+                  <img
+                    src={orgPageInfo.page_logo_url}
+                    alt={orgPageInfo.page_name}
+                    className="w-7 h-7 rounded object-cover"
+                  />
+                ) : (
+                  <div
+                    className="w-7 h-7 rounded flex items-center justify-center text-white text-[11px] font-bold"
+                    style={{ backgroundColor: '#1877F2' }}
+                  >
+                    {orgPageInfo.page_name[0]}
+                  </div>
+                )}
+                <span className="text-[13px] font-semibold flex-1" style={{ color: '#1877F2' }}>
+                  Managing as {orgPageInfo.page_name}
+                </span>
+                <button
+                  onClick={() => setActiveView('page')}
+                  className="text-[12px] font-semibold px-2 py-1 rounded hover:bg-[#C2DBFE] transition-colors"
+                  style={{ color: '#1877F2' }}
+                >
+                  View Page
+                </button>
+                <button
+                  onClick={() => {
+                    setPageMode(false);
+                    setPostingAsPage(false);
+                  }}
+                  className="text-[12px] font-semibold px-2 py-1 rounded hover:bg-[#C2DBFE] transition-colors"
+                  style={{ color: '#65676B' }}
+                >
+                  Switch to Personal
+                </button>
+              </div>
+            )}
 
             {/* ── Feed ── */}
             <div className="flex-1 overflow-y-auto">
@@ -2588,12 +2646,22 @@ export default function FacebookFeedApp() {
                                   className="flex items-center gap-2 px-3 py-1.5 relative"
                                   style={{ backgroundColor: '#FFFFFF' }}
                                 >
-                                  <div
-                                    className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
-                                    style={{ backgroundColor: '#1877F2' }}
-                                  >
-                                    Y
-                                  </div>
+                                  {pageMode && orgPageInfo?.page_logo_url ? (
+                                    <img
+                                      src={orgPageInfo.page_logo_url}
+                                      alt={orgPageInfo.page_name}
+                                      className="w-6 h-6 rounded-full object-cover flex-shrink-0"
+                                    />
+                                  ) : (
+                                    <div
+                                      className="w-6 h-6 rounded-full flex items-center justify-center text-white font-bold text-[10px] flex-shrink-0"
+                                      style={{ backgroundColor: pageMode ? '#4267B2' : '#1877F2' }}
+                                    >
+                                      {pageMode
+                                        ? orgPageInfo?.page_name?.[0] || 'O'
+                                        : playerDisplayName.charAt(0).toUpperCase()}
+                                    </div>
+                                  )}
                                   <div
                                     className="flex-1 flex items-center rounded-full px-3 py-1 relative"
                                     style={{ backgroundColor: '#F0F2F5' }}
