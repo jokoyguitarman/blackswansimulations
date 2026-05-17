@@ -192,6 +192,8 @@ export const SocialCrisisWizard = () => {
 
   /* Step 1 — Scenario Setup (free-form) */
   const [orgName, setOrgName] = useState('');
+  const [brandLogoUrl, setBrandLogoUrl] = useState('');
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [country, setCountry] = useState('Singapore');
   const [context, setContext] = useState('');
   const [uploadedDocText, setUploadedDocText] = useState('');
@@ -259,6 +261,7 @@ export const SocialCrisisWizard = () => {
       sim_mode: 'social_media',
       crisis_description: crisisDescription,
       org_name: orgName,
+      brand_logo_url: brandLogoUrl,
       country,
       context,
       uploaded_doc_text: uploadedDocText,
@@ -356,6 +359,7 @@ export const SocialCrisisWizard = () => {
         const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
 
         if (input.org_name) setOrgName(String(input.org_name));
+        if (input.brand_logo_url) setBrandLogoUrl(String(input.brand_logo_url));
         if (input.country) setCountry(String(input.country));
         if (input.context) setContext(String(input.context));
         if (input.uploaded_doc_text) setUploadedDocText(String(input.uploaded_doc_text));
@@ -736,6 +740,7 @@ export const SocialCrisisWizard = () => {
           crisis_description: crisisDescription,
           country,
           org_name: orgName || undefined,
+          logo_url: brandLogoUrl || undefined,
         }),
       });
 
@@ -1220,6 +1225,69 @@ export const SocialCrisisWizard = () => {
         </div>
       </div>
 
+      <div className="mb-4">
+        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+          Brand Logo (optional)
+        </label>
+        <div className="flex items-center gap-3">
+          {brandLogoUrl && (
+            <img
+              src={brandLogoUrl}
+              alt="Brand logo"
+              className="w-12 h-12 rounded-lg object-cover border border-robotic-gray-200"
+            />
+          )}
+          <label className="cursor-pointer border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow hover:border-robotic-yellow/70 transition-colors">
+            {uploadingLogo ? 'Uploading...' : brandLogoUrl ? 'Change Logo' : 'Upload Logo'}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              className="hidden"
+              disabled={uploadingLogo}
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                setUploadingLogo(true);
+                try {
+                  const {
+                    data: { session },
+                  } = await supabase.auth.getSession();
+                  const formData = new FormData();
+                  formData.append('file', file);
+                  const res = await fetch(apiUrl('/api/social-crisis/upload-brand-logo'), {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${session?.access_token || ''}` },
+                    body: formData,
+                  });
+                  if (res.ok) {
+                    const json = await res.json();
+                    setBrandLogoUrl(json.url);
+                  }
+                } catch {
+                  /* ignore */
+                } finally {
+                  setUploadingLogo(false);
+                }
+              }}
+            />
+          </label>
+          {brandLogoUrl && (
+            <button
+              onClick={() => setBrandLogoUrl('')}
+              className="text-[10px] terminal-text text-red-400 hover:text-red-300"
+            >
+              Remove
+            </button>
+          )}
+        </div>
+        <div className="mt-1">
+          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+            Upload a logo for the brand&apos;s social media pages. If none is provided, the AI will
+            generate one.
+          </span>
+        </div>
+      </div>
+
       {crisisDescription.length >= 50 && (
         <div className="mt-4 p-3 border border-green-400/30 rounded bg-green-900/10">
           <p className="text-[10px] terminal-text text-green-400">
@@ -1655,12 +1723,24 @@ export const SocialCrisisWizard = () => {
                 ).facebook && (
                   <div className="border border-robotic-gray-200 rounded p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-                        {
-                          ((orgPage as { facebook: { page_name: string } }).facebook.page_name ||
-                            'O')[0]
-                        }
-                      </div>
+                      {(orgPage as { facebook: { page_logo_url?: string } }).facebook
+                        .page_logo_url ? (
+                        <img
+                          src={
+                            (orgPage as { facebook: { page_logo_url: string } }).facebook
+                              .page_logo_url
+                          }
+                          alt="Logo"
+                          className="w-10 h-10 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
+                          {
+                            ((orgPage as { facebook: { page_name: string } }).facebook.page_name ||
+                              'O')[0]
+                          }
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="text-xs terminal-text font-bold truncate">
                           {(orgPage as { facebook: { page_name: string } }).facebook.page_name}
@@ -1697,12 +1777,24 @@ export const SocialCrisisWizard = () => {
                 ).x_twitter && (
                   <div className="border border-robotic-gray-200 rounded p-4">
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-white font-bold">
-                        {
-                          ((orgPage as { x_twitter: { page_name: string } }).x_twitter.page_name ||
-                            'O')[0]
-                        }
-                      </div>
+                      {(orgPage as { x_twitter: { page_logo_url?: string } }).x_twitter
+                        .page_logo_url ? (
+                        <img
+                          src={
+                            (orgPage as { x_twitter: { page_logo_url: string } }).x_twitter
+                              .page_logo_url
+                          }
+                          alt="Logo"
+                          className="w-10 h-10 rounded-lg object-cover"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-white font-bold">
+                          {
+                            ((orgPage as { x_twitter: { page_name: string } }).x_twitter
+                              .page_name || 'O')[0]
+                          }
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="text-xs terminal-text font-bold truncate">
                           {(orgPage as { x_twitter: { page_name: string } }).x_twitter.page_name}

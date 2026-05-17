@@ -128,9 +128,11 @@ export default function FacebookFeedApp() {
   const [composeText, setComposeText] = useState('');
   const [sending, setSending] = useState(false);
   const [postingAsPage, setPostingAsPage] = useState(false);
-  const [orgPageInfo, setOrgPageInfo] = useState<{ page_name: string; page_handle: string } | null>(
-    null,
-  );
+  const [orgPageInfo, setOrgPageInfo] = useState<{
+    page_name: string;
+    page_handle: string;
+    page_logo_url?: string;
+  } | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   const [playerDisplayName, setPlayerDisplayName] = useState('Player');
 
@@ -164,7 +166,11 @@ export default function FacebookFeedApp() {
           (p: Record<string, string>) => p.platform === 'facebook',
         );
         if (fbPage)
-          setOrgPageInfo({ page_name: fbPage.page_name, page_handle: fbPage.page_handle });
+          setOrgPageInfo({
+            page_name: fbPage.page_name,
+            page_handle: fbPage.page_handle,
+            page_logo_url: fbPage.page_logo_url || '',
+          });
       } catch {
         /* non-critical */
       }
@@ -1882,17 +1888,26 @@ export default function FacebookFeedApp() {
                                 : undefined
                             }
                           >
-                            <div
-                              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
-                              style={{
-                                backgroundColor:
-                                  post.author_type === 'official_account'
-                                    ? '#1877F2'
-                                    : getAvatarColor(post.author_display_name),
-                              }}
-                            >
-                              {post.author_display_name.charAt(0).toUpperCase()}
-                            </div>
+                            {post.author_type === 'official_account' &&
+                            orgPageInfo?.page_logo_url ? (
+                              <img
+                                src={orgPageInfo.page_logo_url}
+                                alt={post.author_display_name}
+                                className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                              />
+                            ) : (
+                              <div
+                                className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
+                                style={{
+                                  backgroundColor:
+                                    post.author_type === 'official_account'
+                                      ? '#1877F2'
+                                      : getAvatarColor(post.author_display_name),
+                                }}
+                              >
+                                {post.author_display_name.charAt(0).toUpperCase()}
+                              </div>
+                            )}
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1">
                                 <span
@@ -2793,14 +2808,22 @@ export default function FacebookFeedApp() {
                       style={{ backgroundColor: '#FFFFFF' }}
                     >
                       <div className="flex gap-3 pt-3">
-                        <div
-                          className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
-                          style={{ backgroundColor: postingAsPage ? '#4267B2' : '#1877F2' }}
-                        >
-                          {postingAsPage
-                            ? orgPageInfo?.page_name?.[0] || 'O'
-                            : playerDisplayName.charAt(0).toUpperCase()}
-                        </div>
+                        {postingAsPage && orgPageInfo?.page_logo_url ? (
+                          <img
+                            src={orgPageInfo.page_logo_url}
+                            alt={orgPageInfo.page_name}
+                            className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                          />
+                        ) : (
+                          <div
+                            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
+                            style={{ backgroundColor: postingAsPage ? '#4267B2' : '#1877F2' }}
+                          >
+                            {postingAsPage
+                              ? orgPageInfo?.page_name?.[0] || 'O'
+                              : playerDisplayName.charAt(0).toUpperCase()}
+                          </div>
+                        )}
                         <div className="flex-1 relative">
                           <textarea
                             value={composeText}

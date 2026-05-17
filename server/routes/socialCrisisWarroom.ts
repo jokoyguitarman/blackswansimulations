@@ -684,6 +684,7 @@ router.post(
         crisis_description: z.string(),
         country: z.string().default('Singapore'),
         org_name: z.string().optional(),
+        logo_url: z.string().optional(),
       }),
     }),
   ),
@@ -692,7 +693,7 @@ router.post(
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
 
-      const { crisis_description, country, org_name } = req.body;
+      const { crisis_description, country, org_name, logo_url } = req.body;
 
       const orgPage = await generateOrgPageConfig(
         crisis_description,
@@ -701,6 +702,7 @@ router.post(
         (msg: string) => {
           res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
         },
+        logo_url,
       );
 
       res.write(JSON.stringify({ type: 'complete', org_page: orgPage }) + '\n');
@@ -713,6 +715,56 @@ router.post(
         res.write(JSON.stringify({ type: 'error', message: 'Org page generation failed' }) + '\n');
         res.end();
       }
+    }
+  },
+);
+
+// Brand logo upload: store in Supabase Storage and return public URL
+router.post(
+  '/upload-brand-logo',
+  requireAuth,
+  upload.single('file'),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const file = req.file;
+      if (!file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+
+      const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+      if (!allowedTypes.includes(file.mimetype)) {
+        return res.status(400).json({ error: 'Only PNG, JPG, WebP, and GIF images are accepted' });
+      }
+
+      const ext = file.originalname.split('.').pop() || 'png';
+      const fileName = `brand-logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+
+      const bucketName = 'sim-media';
+      const { error: bucketErr } = await supabaseAdmin.storage.getBucket(bucketName);
+      if (bucketErr) {
+        await supabaseAdmin.storage.createBucket(bucketName, {
+          public: true,
+          fileSizeLimit: 50 * 1024 * 1024,
+        });
+      }
+
+      const { error: uploadErr } = await supabaseAdmin.storage
+        .from(bucketName)
+        .upload(fileName, file.buffer, {
+          contentType: file.mimetype,
+          cacheControl: '3600',
+        });
+
+      if (uploadErr) {
+        logger.error({ error: uploadErr }, 'Failed to upload brand logo');
+        return res.status(500).json({ error: 'Failed to upload logo' });
+      }
+
+      const { data: urlData } = supabaseAdmin.storage.from(bucketName).getPublicUrl(fileName);
+      res.json({ url: urlData.publicUrl });
+    } catch (err) {
+      logger.error({ err }, 'Error in POST /upload-brand-logo');
+      res.status(500).json({ error: 'Internal server error' });
     }
   },
 );

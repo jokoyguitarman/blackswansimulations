@@ -124,9 +124,11 @@ export default function SocialFeedApp({
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [postingAsPage, setPostingAsPage] = useState(false);
-  const [orgPageInfo, setOrgPageInfo] = useState<{ page_name: string; page_handle: string } | null>(
-    null,
-  );
+  const [orgPageInfo, setOrgPageInfo] = useState<{
+    page_name: string;
+    page_handle: string;
+    page_logo_url?: string;
+  } | null>(null);
   const [overlayView, setOverlayView] = useState<'page' | 'profile' | null>(null);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const prevExternalFilter = useRef(externalFilter);
@@ -163,7 +165,11 @@ export default function SocialFeedApp({
           (p: Record<string, string>) => p.platform === 'x_twitter',
         );
         if (twPage)
-          setOrgPageInfo({ page_name: twPage.page_name, page_handle: twPage.page_handle });
+          setOrgPageInfo({
+            page_name: twPage.page_name,
+            page_handle: twPage.page_handle,
+            page_logo_url: twPage.page_logo_url || '',
+          });
       } catch {
         /* non-critical */
       }
@@ -2480,14 +2486,22 @@ export default function SocialFeedApp({
 
             <div className="flex-1 px-4 pb-2 overflow-y-auto">
               <div className="flex gap-3 pt-3">
-                <div
-                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
-                  style={{ backgroundColor: postingAsPage ? '#1D9BF0' : '#1D9BF0' }}
-                >
-                  {postingAsPage
-                    ? orgPageInfo?.page_name?.[0] || 'O'
-                    : playerDisplayName.charAt(0).toUpperCase()}
-                </div>
+                {postingAsPage && orgPageInfo?.page_logo_url ? (
+                  <img
+                    src={orgPageInfo.page_logo_url}
+                    alt={orgPageInfo.page_name}
+                    className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                    style={{ backgroundColor: '#1D9BF0' }}
+                  >
+                    {postingAsPage
+                      ? orgPageInfo?.page_name?.[0] || 'O'
+                      : playerDisplayName.charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div className="flex-1 relative">
                   <textarea
                     ref={composeRef}

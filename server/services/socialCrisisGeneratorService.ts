@@ -157,6 +157,7 @@ export interface OrgPagePlatformConfig {
   page_handle: string;
   page_bio: string;
   follower_count: number;
+  page_logo_url?: string;
 }
 
 export interface BrandedHistoryPost {
@@ -1376,6 +1377,7 @@ export async function generateOrgPageConfig(
   country: string,
   orgName?: string,
   onProgress?: (msg: string) => void,
+  logoUrl?: string,
 ): Promise<OrgPageConfig> {
   onProgress?.('Generating organization page identity and branded history...');
 
@@ -1440,6 +1442,28 @@ Return ONLY valid JSON:
     follower_count: 30000,
   };
   const history = ((result?.branded_history as BrandedHistoryPost[]) || []).slice(0, 20);
+
+  let resolvedLogoUrl = logoUrl || '';
+  if (!resolvedLogoUrl) {
+    try {
+      const { generatePostImage } = await import('./mediaGenerationService.js');
+      const brandName = orgName || fb.page_name || 'Organization';
+      onProgress?.('Generating brand logo...');
+      const generatedUrl = await generatePostImage(
+        `Professional company logo for "${brandName}". Clean, modern, suitable for a social media profile picture. Square format, centered icon or monogram on a solid background.`,
+        'social_media_photo',
+        `A ${country}-based organization involved in: ${crisisDescription.substring(0, 200)}`,
+      );
+      if (generatedUrl) resolvedLogoUrl = generatedUrl;
+    } catch {
+      // logo generation is non-critical
+    }
+  }
+
+  if (resolvedLogoUrl) {
+    fb.page_logo_url = resolvedLogoUrl;
+    tw.page_logo_url = resolvedLogoUrl;
+  }
 
   return { facebook: fb, x_twitter: tw, branded_history: history };
 }

@@ -19,6 +19,7 @@ interface OrgPage {
   page_handle: string;
   page_bio: string;
   follower_count: number;
+  page_logo_url?: string;
   verified: boolean;
   platform: string;
 }
@@ -174,15 +175,24 @@ export default function OrgPageView({
         {/* Page info */}
         <div className="px-4 pb-4">
           <div className="flex items-end gap-3 -mt-8">
-            <div
-              className="w-20 h-20 rounded-lg flex items-center justify-center text-white font-bold text-2xl border-4"
-              style={{
-                backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0',
-                borderColor: isFacebook ? '#FFFFFF' : '#16181C',
-              }}
-            >
-              {pageInfo.page_name.charAt(0)}
-            </div>
+            {pageInfo.page_logo_url ? (
+              <img
+                src={pageInfo.page_logo_url}
+                alt={pageInfo.page_name}
+                className="w-20 h-20 rounded-lg object-cover border-4"
+                style={{ borderColor: isFacebook ? '#FFFFFF' : '#16181C' }}
+              />
+            ) : (
+              <div
+                className="w-20 h-20 rounded-lg flex items-center justify-center text-white font-bold text-2xl border-4"
+                style={{
+                  backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0',
+                  borderColor: isFacebook ? '#FFFFFF' : '#16181C',
+                }}
+              >
+                {pageInfo.page_name.charAt(0)}
+              </div>
+            )}
             <div className="flex-1 pb-1">
               <div className="flex items-center gap-1.5">
                 <span
@@ -269,12 +279,20 @@ export default function OrgPageView({
             >
               <div className="p-3">
                 <div className="flex items-center gap-2.5 mb-2">
-                  <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold"
-                    style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
-                  >
-                    {pageInfo.page_name.charAt(0)}
-                  </div>
+                  {pageInfo.page_logo_url ? (
+                    <img
+                      src={pageInfo.page_logo_url}
+                      alt={pageInfo.page_name}
+                      className="w-10 h-10 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold"
+                      style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
+                    >
+                      {pageInfo.page_name.charAt(0)}
+                    </div>
+                  )}
                   <div>
                     <div className="flex items-center gap-1">
                       <span
