@@ -282,7 +282,9 @@ export default function FacebookFeedApp() {
       const result = await res.json();
       if (result.data) {
         const topLevel = (result.data as SocialPost[]).filter((p) => !p.reply_to_post_id);
-        const replies = (result.data as SocialPost[]).filter((p) => !!p.reply_to_post_id);
+        const replies = (result.data as SocialPost[])
+          .filter((p) => !!p.reply_to_post_id)
+          .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
         setPosts(topLevel);
         const replyMap: Record<string, SocialPost[]> = {};
         for (const r of replies) {
@@ -2402,7 +2404,13 @@ export default function FacebookFeedApp() {
                           {/* Inline Comments */}
                           {(() => {
                             const commentsExpanded = expandedComments.has(post.id);
-                            const visibleReplies = commentsExpanded ? replies : replies.slice(-2);
+                            const sortedReplies = [...replies].sort(
+                              (a, b) =>
+                                new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+                            );
+                            const visibleReplies = commentsExpanded
+                              ? sortedReplies
+                              : sortedReplies.slice(-2);
                             return (
                               <>
                                 {replies.length > 0 && (
