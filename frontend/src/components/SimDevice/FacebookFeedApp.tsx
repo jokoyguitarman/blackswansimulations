@@ -132,10 +132,24 @@ export default function FacebookFeedApp() {
     null,
   );
   const currentUserIdRef = useRef<string | null>(null);
+  const [playerDisplayName, setPlayerDisplayName] = useState('Player');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       currentUserIdRef.current = session?.user?.id || null;
+      const metaName = session?.user?.user_metadata?.full_name as string | undefined;
+      if (metaName) {
+        setPlayerDisplayName(metaName);
+      } else if (session?.user?.id) {
+        supabase
+          .from('user_profiles')
+          .select('full_name')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data?.full_name) setPlayerDisplayName(data.full_name);
+          });
+      }
     });
   }, []);
 
@@ -1732,7 +1746,7 @@ export default function FacebookFeedApp() {
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[15px] flex-shrink-0"
                   style={{ backgroundColor: '#1877F2' }}
                 >
-                  Y
+                  {playerDisplayName.charAt(0).toUpperCase()}
                 </div>
                 <button
                   onClick={() => setComposing(true)}
@@ -2783,7 +2797,9 @@ export default function FacebookFeedApp() {
                           className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0"
                           style={{ backgroundColor: postingAsPage ? '#4267B2' : '#1877F2' }}
                         >
-                          {postingAsPage ? orgPageInfo?.page_name?.[0] || 'O' : 'Y'}
+                          {postingAsPage
+                            ? orgPageInfo?.page_name?.[0] || 'O'
+                            : playerDisplayName.charAt(0).toUpperCase()}
                         </div>
                         <div className="flex-1 relative">
                           <textarea

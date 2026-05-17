@@ -131,10 +131,24 @@ export default function SocialFeedApp({
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const prevExternalFilter = useRef(externalFilter);
   const currentUserIdRef = useRef<string | null>(null);
+  const [playerDisplayName, setPlayerDisplayName] = useState('Player');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       currentUserIdRef.current = session?.user?.id || null;
+      const metaName = session?.user?.user_metadata?.full_name as string | undefined;
+      if (metaName) {
+        setPlayerDisplayName(metaName);
+      } else if (session?.user?.id) {
+        supabase
+          .from('user_profiles')
+          .select('full_name')
+          .eq('id', session.user.id)
+          .single()
+          .then(({ data }) => {
+            if (data?.full_name) setPlayerDisplayName(data.full_name);
+          });
+      }
     });
   }, []);
 
@@ -2470,7 +2484,9 @@ export default function SocialFeedApp({
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
                   style={{ backgroundColor: postingAsPage ? '#1D9BF0' : '#1D9BF0' }}
                 >
-                  {postingAsPage ? orgPageInfo?.page_name?.[0] || 'O' : 'Y'}
+                  {postingAsPage
+                    ? orgPageInfo?.page_name?.[0] || 'O'
+                    : playerDisplayName.charAt(0).toUpperCase()}
                 </div>
                 <div className="flex-1 relative">
                   <textarea
