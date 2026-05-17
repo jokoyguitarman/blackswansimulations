@@ -225,24 +225,56 @@ async function seedBrandedHistory(
     const backdatedTime = new Date(startTime - daysAgo * 24 * 60 * 60 * 1000);
     const baseLikes = 50 + Math.floor(Math.random() * 200);
 
-    await supabaseAdmin.from('social_posts').insert({
-      session_id: sessionId,
-      platform,
-      author_handle: String(pageConfig.page_handle || '@Org'),
-      author_display_name: String(pageConfig.page_name || 'Organization'),
-      author_type: 'official_account',
-      content: String(post.content || ''),
-      post_format: String(post.post_format || 'text'),
-      sentiment: 'positive',
-      virality_score: 20 + Math.floor(Math.random() * 30),
-      content_flags: {},
-      like_count: baseLikes,
-      repost_count: Math.floor(baseLikes * 0.15),
-      reply_count: Math.floor(baseLikes * 0.05),
-      view_count: baseLikes * 5 + Math.floor(Math.random() * 1000),
-      is_branded_history: true,
-      created_at: backdatedTime.toISOString(),
-    });
+    const { data: inserted } = await supabaseAdmin
+      .from('social_posts')
+      .insert({
+        session_id: sessionId,
+        platform,
+        author_handle: String(pageConfig.page_handle || '@Org'),
+        author_display_name: String(pageConfig.page_name || 'Organization'),
+        author_type: 'official_account',
+        content: String(post.content || ''),
+        post_format: String(post.post_format || 'text'),
+        sentiment: 'positive',
+        virality_score: 20 + Math.floor(Math.random() * 30),
+        content_flags: {},
+        like_count: baseLikes,
+        repost_count: Math.floor(baseLikes * 0.15),
+        reply_count: Math.floor(baseLikes * 0.05),
+        view_count: baseLikes * 5 + Math.floor(Math.random() * 1000),
+        is_branded_history: true,
+        created_at: backdatedTime.toISOString(),
+      })
+      .select('id')
+      .single();
+
+    const mediaDesc = String(post.media_description || '');
+    if (mediaDesc && inserted?.id) {
+      void (async () => {
+        try {
+          const postFormat = String(post.post_format || 'text');
+          const isVideo =
+            /video|clip|footage|recording/i.test(mediaDesc) || postFormat === 'video_concept';
+          let url: string | null = null;
+
+          if (isVideo) {
+            url = await generateVideoThumbnail(mediaDesc);
+          } else {
+            const style = postFormat === 'infographic' ? 'infographic' : 'social_media_photo';
+            url = await generatePostImage(mediaDesc, style);
+          }
+
+          if (url) {
+            await supabaseAdmin
+              .from('social_posts')
+              .update({ media_urls: [url] })
+              .eq('id', inserted.id);
+          }
+        } catch (err) {
+          logger.warn({ err, postId: inserted.id }, 'Branded history media generation failed');
+        }
+      })();
+    }
   }
 
   seededSessions.add(sessionId);
