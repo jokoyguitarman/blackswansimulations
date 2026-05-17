@@ -205,7 +205,6 @@ export default function SocialFeedApp({
   const [videoDuration, setVideoDuration] = useState(10);
   const [videoOrientation, setVideoOrientation] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
-  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [shareMenuPostId, setShareMenuPostId] = useState<string | null>(null);
   const [notifCount, setNotifCount] = useState(0);
   const [notifications, setNotifications] = useState<
@@ -651,14 +650,6 @@ export default function SocialFeedApp({
     }
   }
 
-  function handleCopyLink(postId: string, authorHandle: string) {
-    const postUrl = `https://z.com/${authorHandle.replace('@', '')}/status/${postId.slice(0, 8)}`;
-    navigator.clipboard.writeText(postUrl).then(() => {
-      setCopiedPostId(postId);
-      setTimeout(() => setCopiedPostId(null), 2000);
-    });
-  }
-
   function handleShareMenu(postId: string) {
     setShareMenuPostId((prev) => (prev === postId ? null : postId));
   }
@@ -958,10 +949,6 @@ export default function SocialFeedApp({
                     contentPreview={selectedPost.content}
                     onClose={() => setShareMenuPostId(null)}
                     onReposted={(repost) => handleReposted(selectedPost.id, repost)}
-                    onCopied={() => {
-                      setCopiedPostId(selectedPost.id);
-                      setTimeout(() => setCopiedPostId(null), 2000);
-                    }}
                   />
                 )}
               </div>
@@ -2162,10 +2149,6 @@ export default function SocialFeedApp({
                           contentPreview={post.content}
                           onClose={() => setShareMenuPostId(null)}
                           onReposted={(repost) => handleReposted(post.id, repost)}
-                          onCopied={() => {
-                            setCopiedPostId(post.id);
-                            setTimeout(() => setCopiedPostId(null), 2000);
-                          }}
                         />
                       )}
                     </div>

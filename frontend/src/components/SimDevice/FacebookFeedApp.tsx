@@ -185,7 +185,6 @@ export default function FacebookFeedApp() {
   const [replyTarget, setReplyTarget] = useState<
     Record<string, { handle: string; displayName: string; replyToId: string } | null>
   >({});
-  const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [shareMenuPostId, setShareMenuPostId] = useState<string | null>(null);
   const [showMediaPanel, setShowMediaPanel] = useState(false);
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
@@ -2336,10 +2335,6 @@ export default function FacebookFeedApp() {
                                   contentPreview={post.content}
                                   onClose={() => setShareMenuPostId(null)}
                                   onReposted={(repost) => handleReposted(post.id, repost)}
-                                  onCopied={() => {
-                                    setCopiedPostId(post.id);
-                                    setTimeout(() => setCopiedPostId(null), 2000);
-                                  }}
                                 />
                               )}
                             </div>
