@@ -531,18 +531,18 @@ export default function FacebookFeedApp() {
           currentUserIdRef.current &&
           (newPost as unknown as Record<string, unknown>).user_id === currentUserIdRef.current;
         if (newPost.reply_to_post_id) {
+          const pid = newPost.reply_to_post_id!;
+          setPostReplies((prev) => {
+            const existing = prev[pid] || [];
+            if (existing.some((r) => r.id === newPost.id)) return prev;
+            return { ...prev, [pid]: [...existing, newPost] };
+          });
           if (!isOwnPost) {
-            const pid = newPost.reply_to_post_id!;
-            setPostReplies((prev) => {
-              const existing = prev[pid] || [];
-              if (existing.some((r) => r.id === newPost.id)) return prev;
-              return { ...prev, [pid]: [...existing, newPost] };
-            });
             setPosts((prev) =>
               prev.map((p) => (p.id === pid ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p)),
             );
-            setExpandedComments((prev) => new Set([...prev, pid]));
           }
+          setExpandedComments((prev) => new Set([...prev, pid]));
         } else {
           if (!isOwnPost) {
             setPosts((prev) => {
@@ -2444,7 +2444,7 @@ export default function FacebookFeedApp() {
                                       for (const reply of visibleReplies) {
                                         const content = reply.content || '';
                                         const targetIdMatch =
-                                          content.match(/^@[\w._]+\[([^\]]+)\] /);
+                                          content.match(/^@[\w._-]+\[([^\]]+)\] /);
                                         if (targetIdMatch) {
                                           const targetId = targetIdMatch[1];
                                           if (replyIdSet.has(targetId)) {
@@ -2455,7 +2455,7 @@ export default function FacebookFeedApp() {
                                           parentComments.push(reply);
                                           continue;
                                         }
-                                        const handleMatch = content.match(/^@([\w._]+) /);
+                                        const handleMatch = content.match(/^@([\w._-]+) /);
                                         if (handleMatch) {
                                           const parentHandle = `@${handleMatch[1]}`;
                                           const matchingParent = [...parentComments]
@@ -2477,8 +2477,8 @@ export default function FacebookFeedApp() {
                                       ) => {
                                         const content = reply.content || '';
                                         const targetIdMatch =
-                                          content.match(/^@([\w._]+)\[([^\]]+)\] /);
-                                        const mentionMatch = content.match(/^@[\w._]+ /);
+                                          content.match(/^@([\w._-]+)\[([^\]]+)\] /);
+                                        const mentionMatch = content.match(/^@[\w._-]+ /);
                                         let displayContent: React.ReactNode = content;
                                         if (targetIdMatch) {
                                           const mentionedHandle = `@${targetIdMatch[1]}`;
