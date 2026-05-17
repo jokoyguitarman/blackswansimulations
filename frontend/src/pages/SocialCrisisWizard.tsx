@@ -1249,14 +1249,12 @@ export const SocialCrisisWizard = () => {
                 if (!file) return;
                 setUploadingLogo(true);
                 try {
-                  const {
-                    data: { session },
-                  } = await supabase.auth.getSession();
+                  const headers = await authHeadersMultipart();
                   const formData = new FormData();
                   formData.append('file', file);
-                  const res = await fetch(apiUrl('/api/social-crisis/upload-brand-logo'), {
+                  const res = await fetch(apiUrl('/api/warroom/social-crisis/upload-brand-logo'), {
                     method: 'POST',
-                    headers: { Authorization: `Bearer ${session?.access_token || ''}` },
+                    headers,
                     body: formData,
                   });
                   if (res.ok) {
