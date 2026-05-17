@@ -777,12 +777,20 @@ export default function SocialFeedApp({
           {/* Original Post (expanded) */}
           <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid #2F3336' }}>
             <div className="flex items-center gap-3 mb-3">
-              <div
-                className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[18px]"
-                style={{ backgroundColor: getAvatarColor(selectedPost.author_display_name) }}
-              >
-                {selectedPost.author_display_name.charAt(0).toUpperCase()}
-              </div>
+              {selectedPost.author_type === 'official_account' && orgPageInfo?.page_logo_url ? (
+                <img
+                  src={orgPageInfo.page_logo_url}
+                  alt={selectedPost.author_display_name}
+                  className="w-11 h-11 rounded-full object-cover"
+                />
+              ) : (
+                <div
+                  className="w-11 h-11 rounded-full flex items-center justify-center text-white font-bold text-[18px]"
+                  style={{ backgroundColor: getAvatarColor(selectedPost.author_display_name) }}
+                >
+                  {selectedPost.author_display_name.charAt(0).toUpperCase()}
+                </div>
+              )}
               <div>
                 <div className="flex items-center gap-1">
                   <span className="font-bold text-[15px]">{selectedPost.author_display_name}</span>
@@ -1760,12 +1768,20 @@ export default function SocialFeedApp({
                   )}
 
                   <div className="flex gap-3">
-                    <div
-                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
-                      style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
-                    >
-                      {post.author_display_name.charAt(0).toUpperCase()}
-                    </div>
+                    {post.author_type === 'official_account' && orgPageInfo?.page_logo_url ? (
+                      <img
+                        src={orgPageInfo.page_logo_url}
+                        alt={post.author_display_name}
+                        className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <div
+                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                        style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
+                      >
+                        {post.author_display_name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">
