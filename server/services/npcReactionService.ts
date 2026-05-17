@@ -284,7 +284,24 @@ Return ONLY valid JSON:
             }
 
             // Handle reply/repost/new_post actions
-            const replyContent = String(reaction.content || '');
+            let replyContent = String(reaction.content || '');
+
+            // For reply actions, ensure content uses @handle[commentId] format for proper threading
+            if (actionType === 'reply' || reaction.is_reply) {
+              const playerHandle = String(playerPost.author_handle || '@player');
+              const playerCommentId = String(playerPost.id);
+              const hasThreadTag = /^@[\w._-]+\[/.test(replyContent);
+              if (!hasThreadTag) {
+                const hasMention = replyContent.startsWith(playerHandle);
+                if (hasMention) {
+                  replyContent = `${playerHandle}[${playerCommentId}] ${replyContent.slice(playerHandle.length).trimStart()}`;
+                } else {
+                  replyContent = `${playerHandle}[${playerCommentId}] ${replyContent}`;
+                }
+              }
+            }
+
+            const topLevelPostId = String(playerPost.reply_to_post_id || playerPost.id);
 
             const { data: inserted, error } = await supabaseAdmin
               .from('social_posts')
@@ -296,9 +313,7 @@ Return ONLY valid JSON:
                 author_type: String(reaction.author_type || 'npc_public'),
                 content: replyContent,
                 reply_to_post_id:
-                  actionType === 'reply' || reaction.is_reply
-                    ? String(playerPost.reply_to_post_id || playerPost.id)
-                    : null,
+                  actionType === 'reply' || reaction.is_reply ? topLevelPostId : null,
                 sentiment: String(reaction.sentiment || 'neutral'),
                 hashtags: replyContent.match(/#\w+/g) || [],
                 like_count: 0,
@@ -317,25 +332,23 @@ Return ONLY valid JSON:
             }
 
             if (actionType === 'reply' || reaction.is_reply) {
-              const parentId = String(playerPost.reply_to_post_id || playerPost.id);
               const { data: parentRow } = await supabaseAdmin
                 .from('social_posts')
                 .select('reply_count')
-                .eq('id', parentId)
+                .eq('id', topLevelPostId)
                 .single();
               if (parentRow) {
                 await supabaseAdmin
                   .from('social_posts')
                   .update({ reply_count: ((parentRow.reply_count as number) || 0) + 1 })
-                  .eq('id', parentId);
+                  .eq('id', topLevelPostId);
               }
 
-              // Notify player about the NPC reply (use thread root as post_id, NPC reply as highlight)
               void notifyPostReply(
                 sessionId,
                 npcName,
-                playerHandle,
-                String(playerPost.reply_to_post_id || playerPost.id),
+                String(playerPost.author_handle || ''),
+                topLevelPostId,
                 replyContent,
                 postPlatform,
                 inserted.id,
