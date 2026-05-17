@@ -532,19 +532,16 @@ export default function FacebookFeedApp() {
           (newPost as unknown as Record<string, unknown>).user_id === currentUserIdRef.current;
         if (newPost.reply_to_post_id) {
           if (!isOwnPost) {
+            const pid = newPost.reply_to_post_id!;
             setPostReplies((prev) => {
-              const pid = newPost.reply_to_post_id!;
               const existing = prev[pid] || [];
               if (existing.some((r) => r.id === newPost.id)) return prev;
               return { ...prev, [pid]: [...existing, newPost] };
             });
             setPosts((prev) =>
-              prev.map((p) =>
-                p.id === newPost.reply_to_post_id
-                  ? { ...p, reply_count: (p.reply_count || 0) + 1 }
-                  : p,
-              ),
+              prev.map((p) => (p.id === pid ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p)),
             );
+            setExpandedComments((prev) => new Set([...prev, pid]));
           }
         } else {
           if (!isOwnPost) {
@@ -739,6 +736,7 @@ export default function FacebookFeedApp() {
               p.id === postId ? { ...p, reply_count: (p.reply_count || 0) + 1 } : p,
             ),
           );
+          setExpandedComments((prev) => new Set([...prev, postId]));
         }
       }
       setCommentText((prev) => ({ ...prev, [postId]: '' }));
@@ -2447,23 +2445,26 @@ export default function FacebookFeedApp() {
                                         const content = reply.content || '';
                                         const targetIdMatch =
                                           content.match(/^@[\w._]+\[([^\]]+)\] /);
-                                        if (targetIdMatch && replyIdSet.has(targetIdMatch[1])) {
+                                        if (targetIdMatch) {
                                           const targetId = targetIdMatch[1];
-                                          if (!childMap[targetId]) childMap[targetId] = [];
-                                          childMap[targetId].push(reply);
+                                          if (replyIdSet.has(targetId)) {
+                                            if (!childMap[targetId]) childMap[targetId] = [];
+                                            childMap[targetId].push(reply);
+                                            continue;
+                                          }
+                                          parentComments.push(reply);
                                           continue;
                                         }
                                         const handleMatch = content.match(/^@([\w._]+) /);
                                         if (handleMatch) {
                                           const parentHandle = `@${handleMatch[1]}`;
-                                          const matchingParents = parentComments.filter(
-                                            (p) => p.author_handle === parentHandle,
-                                          );
-                                          const parent =
-                                            matchingParents[matchingParents.length - 1];
-                                          if (parent) {
-                                            if (!childMap[parent.id]) childMap[parent.id] = [];
-                                            childMap[parent.id].push(reply);
+                                          const matchingParent = [...parentComments]
+                                            .reverse()
+                                            .find((p) => p.author_handle === parentHandle);
+                                          if (matchingParent) {
+                                            if (!childMap[matchingParent.id])
+                                              childMap[matchingParent.id] = [];
+                                            childMap[matchingParent.id].push(reply);
                                             continue;
                                           }
                                         }
