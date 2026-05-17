@@ -67,16 +67,22 @@ async function uploadToStorage(
 }
 
 // ---------------------------------------------------------------------------
-// Image Generation (Grok)
+// Image Generation (OpenAI GPT Image 2)
 // ---------------------------------------------------------------------------
+
+function getImageSize(style: string): string {
+  if (style === 'infographic') return '1024x1536';
+  if (style === 'meme') return '1024x1024';
+  return '1536x1024';
+}
 
 export async function generatePostImage(
   prompt: string,
   style: ImageStyle | string = 'meme',
   scenarioContext?: string,
 ): Promise<string | null> {
-  if (!env.xaiApiKey) {
-    logger.warn('No XAI_API_KEY for Grok image generation');
+  if (!env.openAiApiKey) {
+    logger.warn('No OPENAI_API_KEY for GPT Image generation');
     return null;
   }
 
@@ -87,18 +93,18 @@ export async function generatePostImage(
       : '';
     const fullPrompt = `${stylePrompt}\n\nSubject: ${prompt}${contextClause}\n\nIMPORTANT: This is for a crisis simulation training exercise. Do NOT include real people, real logos, or real brand names.`;
 
-    const response = await fetch(`${XAI_BASE}/images/generations`, {
+    const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.xaiApiKey}`,
+        Authorization: `Bearer ${env.openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'grok-imagine-image-quality',
+        model: 'gpt-image-2',
         prompt: fullPrompt,
         n: 1,
-        aspect_ratio: style === 'infographic' ? '3:4' : style === 'meme' ? '1:1' : '16:9',
-        resolution: '1k',
+        size: getImageSize(style),
+        quality: 'medium',
       }),
     });
 
@@ -106,7 +112,7 @@ export async function generatePostImage(
       const errBody = await response.text().catch(() => '');
       logger.warn(
         { status: response.status, body: errBody.substring(0, 300) },
-        'Grok image API error',
+        'GPT Image API error',
       );
       return null;
     }
@@ -115,37 +121,34 @@ export async function generatePostImage(
     const imageItem = data.data?.[0];
 
     if (!imageItem) {
-      logger.warn('Grok image API returned no data');
+      logger.warn('GPT Image API returned no data');
       return null;
     }
 
-    // Grok may return b64_json or a URL
-    if (imageItem.b64_json || imageItem.b64) {
-      const b64 = imageItem.b64_json || imageItem.b64;
-      const imageBuffer = Buffer.from(b64, 'base64');
+    if (imageItem.b64_json) {
+      const imageBuffer = Buffer.from(imageItem.b64_json, 'base64');
       const url = await uploadToStorage(imageBuffer, 'png', 'image/png');
-      logger.info({ style }, 'Generated and uploaded Grok image');
+      logger.info({ style }, 'Generated and uploaded GPT Image 2 image');
       return url;
     }
 
     if (imageItem.url) {
-      // Download the image from the URL and re-upload to our storage
       const imgResponse = await fetch(imageItem.url);
       if (!imgResponse.ok) {
-        logger.warn({ status: imgResponse.status }, 'Failed to download Grok image from URL');
+        logger.warn({ status: imgResponse.status }, 'Failed to download GPT image from URL');
         return null;
       }
       const arrayBuffer = await imgResponse.arrayBuffer();
       const imageBuffer = Buffer.from(arrayBuffer);
       const url = await uploadToStorage(imageBuffer, 'png', 'image/png');
-      logger.info({ style }, 'Downloaded and uploaded Grok image');
+      logger.info({ style }, 'Downloaded and uploaded GPT Image 2 image');
       return url;
     }
 
-    logger.warn({ keys: Object.keys(imageItem) }, 'Grok image API: unrecognized response format');
+    logger.warn({ keys: Object.keys(imageItem) }, 'GPT Image API: unrecognized response format');
     return null;
   } catch (err) {
-    logger.error({ err }, 'Grok image generation failed');
+    logger.error({ err }, 'GPT Image 2 generation failed');
     return null;
   }
 }

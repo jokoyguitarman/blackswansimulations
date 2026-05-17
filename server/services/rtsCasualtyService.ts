@@ -87,7 +87,7 @@ export async function generateCasualtySceneImage(
         Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
+        model: 'gpt-image-2',
         prompt,
         n: 1,
         size: '1792x1024',
@@ -144,7 +144,7 @@ export async function generateVictimImage(
         Authorization: `Bearer ${openAiApiKey}`,
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
+        model: 'gpt-image-2',
         prompt,
         n: 1,
         size: '1024x1024',
