@@ -147,7 +147,8 @@ router.get('/thread/:threadId', requireAuth, async (req: AuthenticatedRequest, r
 router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
-    const { session_id, recipient_handle, content, platform, send_as_page } = req.body;
+    const { session_id, recipient_handle, content, platform, send_as_page, shared_post_id } =
+      req.body;
 
     if (!session_id || !recipient_handle || !content) {
       return res
@@ -196,6 +197,28 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
 
     const threadId = existingThread?.thread_id || randomUUID();
 
+    let mediaUrls: unknown[] | null = null;
+    if (shared_post_id) {
+      const { data: sharedPost } = await supabaseAdmin
+        .from('social_posts')
+        .select('id, author_handle, author_display_name, content, platform')
+        .eq('id', shared_post_id)
+        .single();
+
+      if (sharedPost) {
+        mediaUrls = [
+          {
+            type: 'shared_post',
+            post_id: sharedPost.id,
+            author_handle: sharedPost.author_handle,
+            author_display_name: sharedPost.author_display_name,
+            content_preview: String(sharedPost.content || '').substring(0, 200),
+            platform: sharedPost.platform,
+          },
+        ];
+      }
+    }
+
     const { data: message, error } = await supabaseAdmin
       .from('sim_direct_messages')
       .insert({
@@ -207,7 +230,7 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
         recipient_handle,
         recipient_user_id: null,
         content,
-        media_urls: null,
+        media_urls: mediaUrls,
         is_read: false,
         platform: platform || 'facebook',
       })

@@ -8,6 +8,7 @@ import FacebookGroupsView from './FacebookGroupsView';
 import FacebookEventsView from './FacebookEventsView';
 import OrgPageView from './OrgPageView';
 import PlayerActivityPanel from './PlayerActivityPanel';
+import ShareMenu from './ShareMenu';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -78,6 +79,9 @@ interface SocialPost {
   requires_response: boolean;
   responded_at: string | null;
   is_repost: boolean;
+  original_post_id?: string;
+  original_author_handle?: string;
+  original_author_display_name?: string;
   created_at: string;
   platform: string;
   virality_score: number;
@@ -162,6 +166,7 @@ export default function FacebookFeedApp() {
     Record<string, { handle: string; displayName: string; replyToId: string } | null>
   >({});
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
+  const [shareMenuPostId, setShareMenuPostId] = useState<string | null>(null);
   const [showMediaPanel, setShowMediaPanel] = useState(false);
   const [mediaType, setMediaType] = useState<'image' | 'video'>('image');
   const [mediaPromptText, setMediaPromptText] = useState('');
@@ -667,12 +672,18 @@ export default function FacebookFeedApp() {
     setShowReactions(null);
   }
 
-  function handleShare(postId: string, authorHandle: string) {
-    const postUrl = `https://fakebook.sim/${authorHandle.replace('@', '')}/posts/${postId.slice(0, 8)}`;
-    navigator.clipboard.writeText(postUrl).then(() => {
-      setCopiedPostId(postId);
-      setTimeout(() => setCopiedPostId(null), 2000);
-    });
+  function handleShare(postId: string) {
+    setShareMenuPostId((prev) => (prev === postId ? null : postId));
+  }
+
+  function handleReposted(postId: string, repost: Record<string, unknown>) {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, repost_count: p.repost_count + 1 } : p)),
+    );
+    if (repost && repost.id) {
+      setPosts((prev) => [repost as unknown as SocialPost, ...prev]);
+    }
+    setShareMenuPostId(null);
   }
 
   async function handleComment(postId: string) {
@@ -1818,6 +1829,31 @@ export default function FacebookFeedApp() {
                             borderBottom: '1px solid #CED0D4',
                           }}
                         >
+                          {post.is_repost && (
+                            <div
+                              className="flex items-center gap-1.5 px-3 pt-2 pb-0.5"
+                              style={{ color: '#65676B', fontSize: 13 }}
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <path d="M17 1l4 4-4 4" />
+                                <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                                <path d="M7 23l-4-4 4-4" />
+                                <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                              </svg>
+                              <span className="font-semibold">{post.author_display_name}</span>
+                              <span>shared a post</span>
+                            </div>
+                          )}
+
                           {/* Author Row */}
                           <div
                             className="flex items-center gap-2.5 px-3 pt-3 pb-1.5"
@@ -2243,25 +2279,12 @@ export default function FacebookFeedApp() {
                               </svg>
                               <span className="text-[14px] font-semibold">Comment</span>
                             </button>
-                            <button
-                              onClick={() => handleShare(post.id, post.author_handle)}
-                              className="flex items-center justify-center gap-1.5 flex-1 py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                              style={{ color: copiedPostId === post.id ? '#22c55e' : '#65676B' }}
-                            >
-                              {copiedPostId === post.id ? (
-                                <svg
-                                  width="18"
-                                  height="18"
-                                  viewBox="0 0 24 24"
-                                  fill="none"
-                                  stroke="#22c55e"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                >
-                                  <polyline points="20 6 9 17 4 12" />
-                                </svg>
-                              ) : (
+                            <div style={{ position: 'relative', flex: 1 }}>
+                              <button
+                                onClick={() => handleShare(post.id)}
+                                className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
+                                style={{ color: '#65676B' }}
+                              >
                                 <svg
                                   width="18"
                                   height="18"
@@ -2272,11 +2295,25 @@ export default function FacebookFeedApp() {
                                 >
                                   <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8M16 6l-4-4-4 4M12 2v13" />
                                 </svg>
+                                <span className="text-[14px] font-semibold">Share</span>
+                              </button>
+                              {shareMenuPostId === post.id && (
+                                <ShareMenu
+                                  postId={post.id}
+                                  sessionId={sessionId!}
+                                  platform="facebook"
+                                  authorHandle={post.author_handle}
+                                  authorDisplayName={post.author_display_name}
+                                  contentPreview={post.content}
+                                  onClose={() => setShareMenuPostId(null)}
+                                  onReposted={(repost) => handleReposted(post.id, repost)}
+                                  onCopied={() => {
+                                    setCopiedPostId(post.id);
+                                    setTimeout(() => setCopiedPostId(null), 2000);
+                                  }}
+                                />
                               )}
-                              <span className="text-[14px] font-semibold">
-                                {copiedPostId === post.id ? 'Copied!' : 'Share'}
-                              </span>
-                            </button>
+                            </div>
                           </div>
 
                           {/* Inline Comments */}

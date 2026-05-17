@@ -5,6 +5,7 @@ import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
 import OrgPageView from './OrgPageView';
 import PlayerActivityPanel from './PlayerActivityPanel';
+import ShareMenu from './ShareMenu';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -185,6 +186,7 @@ export default function SocialFeedApp({
   const [videoOrientation, setVideoOrientation] = useState<'16:9' | '9:16' | '1:1'>('16:9');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
+  const [shareMenuPostId, setShareMenuPostId] = useState<string | null>(null);
   const [notifCount, setNotifCount] = useState(0);
   const [notifications, setNotifications] = useState<
     Array<{
@@ -637,6 +639,42 @@ export default function SocialFeedApp({
     });
   }
 
+  function handleShareMenu(postId: string) {
+    setShareMenuPostId((prev) => (prev === postId ? null : postId));
+  }
+
+  async function handleRepost(postId: string) {
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/posts/${postId}/repost`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ session_id: sessionId }),
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setPosts((prev) =>
+          prev.map((p) => (p.id === postId ? { ...p, repost_count: p.repost_count + 1 } : p)),
+        );
+        if (json.data?.id) {
+          setPosts((prev) => [json.data as SocialPost, ...prev]);
+        }
+      }
+    } catch {
+      // silently fail
+    }
+  }
+
+  function handleReposted(postId: string, repost: Record<string, unknown>) {
+    setPosts((prev) =>
+      prev.map((p) => (p.id === postId ? { ...p, repost_count: p.repost_count + 1 } : p)),
+    );
+    if (repost?.id) {
+      setPosts((prev) => [repost as unknown as SocialPost, ...prev]);
+    }
+    setShareMenuPostId(null);
+  }
+
   function timeAgo(dateStr: string): string {
     const diff = Date.now() - new Date(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
@@ -861,25 +899,12 @@ export default function SocialFeedApp({
                 </svg>
               </button>
               {/* Share */}
-              <button
-                onClick={() => handleCopyLink(selectedPost.id, selectedPost.author_handle)}
-                className="ios-btn-bounce p-2 transition-colors hover:text-[#1D9BF0]"
-                style={{ color: copiedPostId === selectedPost.id ? '#22c55e' : '#71767B' }}
-              >
-                {copiedPostId === selectedPost.id ? (
-                  <svg
-                    width="20"
-                    height="20"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                ) : (
+              <div style={{ position: 'relative' }}>
+                <button
+                  onClick={() => handleShareMenu(selectedPost.id)}
+                  className="ios-btn-bounce p-2 transition-colors hover:text-[#1D9BF0]"
+                  style={{ color: '#71767B' }}
+                >
                   <svg
                     width="20"
                     height="20"
@@ -894,8 +919,24 @@ export default function SocialFeedApp({
                     <polyline points="16 6 12 2 8 6" />
                     <line x1="12" y1="2" x2="12" y2="15" />
                   </svg>
+                </button>
+                {shareMenuPostId === selectedPost.id && (
+                  <ShareMenu
+                    postId={selectedPost.id}
+                    sessionId={sessionId!}
+                    platform="x_twitter"
+                    authorHandle={selectedPost.author_handle}
+                    authorDisplayName={selectedPost.author_display_name}
+                    contentPreview={selectedPost.content}
+                    onClose={() => setShareMenuPostId(null)}
+                    onReposted={(repost) => handleReposted(selectedPost.id, repost)}
+                    onCopied={() => {
+                      setCopiedPostId(selectedPost.id);
+                      setTimeout(() => setCopiedPostId(null), 2000);
+                    }}
+                  />
                 )}
-              </button>
+              </div>
             </div>
           </div>
 
@@ -1956,7 +1997,10 @@ export default function SocialFeedApp({
                       </span>
                     </button>
                     <button
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRepost(post.id);
+                      }}
                       className="flex items-center gap-1 group transition-colors hover:text-[#00BA7C]"
                     >
                       <div className="p-1 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
@@ -2047,28 +2091,15 @@ export default function SocialFeedApp({
                         </svg>
                       </div>
                     </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleCopyLink(post.id, post.author_handle);
-                      }}
-                      className="flex items-center group transition-colors hover:text-[#1D9BF0]"
-                    >
-                      <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
-                        {copiedPostId === post.id ? (
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="#22c55e"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        ) : (
+                    <div style={{ position: 'relative' }}>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleShareMenu(post.id);
+                        }}
+                        className="flex items-center group transition-colors hover:text-[#1D9BF0]"
+                      >
+                        <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
                           <svg
                             width="14"
                             height="14"
@@ -2083,9 +2114,25 @@ export default function SocialFeedApp({
                             <polyline points="16 6 12 2 8 6" />
                             <line x1="12" y1="2" x2="12" y2="15" />
                           </svg>
-                        )}
-                      </div>
-                    </button>
+                        </div>
+                      </button>
+                      {shareMenuPostId === post.id && (
+                        <ShareMenu
+                          postId={post.id}
+                          sessionId={sessionId!}
+                          platform="x_twitter"
+                          authorHandle={post.author_handle}
+                          authorDisplayName={post.author_display_name}
+                          contentPreview={post.content}
+                          onClose={() => setShareMenuPostId(null)}
+                          onReposted={(repost) => handleReposted(post.id, repost)}
+                          onCopied={() => {
+                            setCopiedPostId(post.id);
+                            setTimeout(() => setCopiedPostId(null), 2000);
+                          }}
+                        />
+                      )}
+                    </div>
                   </div>
                 </div>
               );

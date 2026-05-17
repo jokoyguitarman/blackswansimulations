@@ -742,7 +742,13 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
 
     await recordPlayerAction(original.session_id, user.id, 'post_reposted', postId, null);
 
-    res.status(201).json({ data: repost });
+    res.status(201).json({
+      data: {
+        ...repost,
+        original_author_handle: original.author_handle,
+        original_author_display_name: original.author_display_name,
+      },
+    });
   } catch (err) {
     logger.error({ error: err }, 'Error in POST /social/posts/:postId/repost');
     res.status(500).json({ error: 'Internal server error' });

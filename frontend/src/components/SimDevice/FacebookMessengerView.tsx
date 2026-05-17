@@ -33,6 +33,15 @@ interface Thread {
   other_participant?: { handle: string; display_name: string };
 }
 
+interface SharedPostCard {
+  type: 'shared_post';
+  post_id: string;
+  author_handle: string;
+  author_display_name: string;
+  content_preview: string;
+  platform: string;
+}
+
 interface Message {
   id: string;
   thread_id: string;
@@ -42,6 +51,7 @@ interface Message {
   content: string;
   created_at: string;
   is_read: boolean;
+  media_urls?: (string | SharedPostCard)[];
 }
 
 interface FacebookMessengerViewProps {
@@ -353,6 +363,40 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
                     borderBottomLeftRadius: isMine ? 18 : 4,
                   }}
                 >
+                  {msg.media_urls &&
+                    msg.media_urls.length > 0 &&
+                    (() => {
+                      const shared = (msg.media_urls as (string | SharedPostCard)[]).find(
+                        (m): m is SharedPostCard =>
+                          typeof m === 'object' && m !== null && m.type === 'shared_post',
+                      );
+                      if (shared) {
+                        return (
+                          <div
+                            style={{
+                              border: `1px solid ${isMine ? 'rgba(255,255,255,0.3)' : '#CED0D4'}`,
+                              borderRadius: 8,
+                              padding: '8px 10px',
+                              marginBottom: 4,
+                              backgroundColor: isMine ? 'rgba(255,255,255,0.1)' : '#FFFFFF',
+                            }}
+                          >
+                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>
+                              {shared.author_display_name}
+                            </div>
+                            <div style={{ fontSize: 12, opacity: 0.85, lineHeight: 1.3 }}>
+                              {shared.content_preview.length > 120
+                                ? shared.content_preview.slice(0, 120) + '...'
+                                : shared.content_preview}
+                            </div>
+                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 3 }}>
+                              {shared.platform === 'facebook' ? 'Fakebook' : 'Z'} post
+                            </div>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
                   <div style={styles.messageText}>{msg.content}</div>
                   <div
                     style={{
