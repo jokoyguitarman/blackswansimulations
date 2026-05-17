@@ -2440,7 +2440,9 @@ export default function FacebookFeedApp() {
                                       const replyIdSet = new Set(visibleReplies.map((r) => r.id));
                                       const parentComments: typeof visibleReplies = [];
                                       const childMap: Record<string, typeof visibleReplies> = {};
+                                      const parentOf = new Map<string, string>();
 
+                                      // Pass 1: classify each reply as parent or child
                                       for (const reply of visibleReplies) {
                                         const content = reply.content || '';
                                         const targetIdMatch =
@@ -2448,8 +2450,13 @@ export default function FacebookFeedApp() {
                                         if (targetIdMatch) {
                                           const targetId = targetIdMatch[1];
                                           if (replyIdSet.has(targetId)) {
-                                            if (!childMap[targetId]) childMap[targetId] = [];
-                                            childMap[targetId].push(reply);
+                                            // Flatten: if target is itself a child, use its parent instead
+                                            const resolvedParent =
+                                              parentOf.get(targetId) || targetId;
+                                            if (!childMap[resolvedParent])
+                                              childMap[resolvedParent] = [];
+                                            childMap[resolvedParent].push(reply);
+                                            parentOf.set(reply.id, resolvedParent);
                                             continue;
                                           }
                                           parentComments.push(reply);
@@ -2465,6 +2472,7 @@ export default function FacebookFeedApp() {
                                             if (!childMap[matchingParent.id])
                                               childMap[matchingParent.id] = [];
                                             childMap[matchingParent.id].push(reply);
+                                            parentOf.set(reply.id, matchingParent.id);
                                             continue;
                                           }
                                         }
