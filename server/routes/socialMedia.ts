@@ -36,6 +36,8 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
     const offset = (page - 1) * limit;
     const sortMode = (req.query.sort as string) || 'algorithm';
     const platformFilter = req.query.platform as string | undefined;
+    const authorTypeFilter = req.query.author_type as string | undefined;
+    const topLevelOnly = req.query.top_level_only === 'true';
 
     let postsQuery = supabaseAdmin
       .from('social_posts')
@@ -45,6 +47,14 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
 
     if (platformFilter) {
       postsQuery = postsQuery.eq('platform', platformFilter);
+    }
+
+    if (authorTypeFilter) {
+      postsQuery = postsQuery.eq('author_type', authorTypeFilter);
+    }
+
+    if (topLevelOnly) {
+      postsQuery = postsQuery.is('reply_to_post_id', null);
     }
 
     if (sortMode === 'chronological') {

@@ -80,7 +80,7 @@ export default function OrgPageView({
         fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers }),
         fetch(
           apiUrl(
-            `/api/social/posts/session/${sessionId}?platform=${platform}&limit=100&sort=chronological`,
+            `/api/social/posts/session/${sessionId}?platform=${platform}&limit=500&sort=chronological&author_type=official_account&top_level_only=true`,
           ),
           { headers },
         ),
@@ -93,9 +93,7 @@ export default function OrgPageView({
       if (targetPage) setPageInfo(targetPage);
 
       const postsJson = await postsRes.json();
-      const officialPosts = (
-        (postsJson.data || []) as (PagePost & { author_type?: string })[]
-      ).filter((p) => p.author_type === 'official_account') as PagePost[];
+      const officialPosts = (postsJson.data || []) as PagePost[];
       setPosts(
         officialPosts.sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
