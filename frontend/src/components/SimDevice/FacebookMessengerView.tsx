@@ -346,7 +346,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   });
 
   const filteredThreads = threads.filter((t) =>
-    inboxTab === 'page' ? t.is_org_page_thread : true,
+    inboxTab === 'page' ? t.is_org_page_thread : !t.is_org_page_thread,
   );
 
   const activeThread = threads.find((t) => t.thread_id === selectedThread);
