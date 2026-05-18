@@ -102,6 +102,8 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   const [composeText, setComposeText] = useState('');
   const [knownHandles, setKnownHandles] = useState<string[]>([]);
   const [inboxTab, setInboxTab] = useState<'personal' | 'page'>('personal');
+  const [playerHandle, setPlayerHandle] = useState('');
+  const [orgPageHandle, setOrgPageHandle] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -114,6 +116,44 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         const json = await res.json();
         if (Array.isArray(json.data))
           setKnownHandles(json.data.map((h: { handle: string }) => h.handle || String(h)));
+      } catch {
+        /* ignore */
+      }
+    })();
+    // Fetch player handle
+    (async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const metaName = session?.user?.user_metadata?.full_name as string | undefined;
+        let name = metaName || '';
+        if (!name && session?.user?.id) {
+          const { data } = await supabase
+            .from('user_profiles')
+            .select('full_name')
+            .eq('id', session.user.id)
+            .single();
+          name = data?.full_name || session?.user?.email || '';
+        }
+        if (!name) name = session?.user?.email || 'Player';
+        setPlayerHandle(`@${name.replace(/[@.\s+,]/g, '_').toLowerCase()}`);
+      } catch {
+        /* ignore */
+      }
+    })();
+    // Fetch org page handle
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers });
+        if (res.ok) {
+          const json = await res.json();
+          const fbPage = (json.data || []).find(
+            (p: Record<string, string>) => p.platform === 'facebook',
+          );
+          if (fbPage?.page_handle) setOrgPageHandle(fbPage.page_handle);
+        }
       } catch {
         /* ignore */
       }
@@ -306,7 +346,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   });
 
   const filteredThreads = threads.filter((t) =>
-    inboxTab === 'page' ? t.is_org_page_thread : !t.is_org_page_thread,
+    inboxTab === 'page' ? t.is_org_page_thread : true,
   );
 
   const activeThread = threads.find((t) => t.thread_id === selectedThread);
@@ -345,7 +385,11 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         <div style={styles.messagesContainer}>
           {loading && messages.length === 0 && <div style={styles.loadingText}>Loading...</div>}
           {messages.map((msg) => {
-            const isMine = msg.sender_type === 'player';
+            const viewingAsHandle =
+              inboxTab === 'page' && orgPageHandle ? orgPageHandle : playerHandle;
+            const isMine = viewingAsHandle
+              ? msg.sender_handle === viewingAsHandle
+              : msg.sender_type === 'player';
             return (
               <div
                 key={msg.id}
