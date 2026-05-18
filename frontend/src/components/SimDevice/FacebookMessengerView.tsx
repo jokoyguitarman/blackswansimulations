@@ -104,6 +104,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   const [inboxTab, setInboxTab] = useState<'personal' | 'page'>('personal');
   const [playerHandle, setPlayerHandle] = useState('');
   const [orgPageHandle, setOrgPageHandle] = useState('');
+  const [orgPageName, setOrgPageName] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -152,7 +153,10 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
           const fbPage = (json.data || []).find(
             (p: Record<string, string>) => p.platform === 'facebook',
           );
-          if (fbPage?.page_handle) setOrgPageHandle(fbPage.page_handle);
+          if (fbPage?.page_handle) {
+            setOrgPageHandle(fbPage.page_handle);
+            setOrgPageName(fbPage.page_name || fbPage.page_handle);
+          }
         }
       } catch {
         /* ignore */
@@ -345,9 +349,27 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
     },
   });
 
-  const filteredThreads = threads.filter((t) =>
-    inboxTab === 'page' ? t.is_org_page_thread : !t.is_org_page_thread,
-  );
+  const filteredThreads = threads
+    .filter((t) => {
+      if (inboxTab === 'page') return t.is_org_page_thread;
+      if (!t.is_org_page_thread) return true;
+      return t.other_handle === playerHandle;
+    })
+    .map((t) => {
+      if (
+        inboxTab === 'personal' &&
+        t.is_org_page_thread &&
+        t.other_handle === playerHandle &&
+        orgPageHandle
+      ) {
+        return {
+          ...t,
+          other_handle: orgPageHandle,
+          other_display_name: orgPageName || orgPageHandle,
+        };
+      }
+      return t;
+    });
 
   const activeThread = threads.find((t) => t.thread_id === selectedThread);
 
