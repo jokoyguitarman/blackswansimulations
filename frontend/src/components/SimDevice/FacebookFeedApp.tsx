@@ -388,7 +388,27 @@ export default function FacebookFeedApp() {
       );
       if (res.ok) {
         const json = await res.json();
-        setMessengerThreads(json.data || []);
+        const raw = Array.isArray(json.data) ? json.data : [];
+        setMessengerThreads(
+          raw.map((t: Record<string, unknown>) => ({
+            thread_id: String(t.thread_id || ''),
+            other_handle: String(
+              (t.other_participant as Record<string, string>)?.handle || t.other_handle || '',
+            ),
+            other_display_name: String(
+              (t.other_participant as Record<string, string>)?.display_name ||
+                t.other_display_name ||
+                '',
+            ),
+            last_message: String(
+              (t.latest_message as Record<string, string>)?.content || t.last_message || '',
+            ),
+            last_time: String(
+              (t.latest_message as Record<string, string>)?.created_at || t.last_time || '',
+            ),
+            unread_count: Number(t.unread_count) || 0,
+          })),
+        );
       }
     } catch {
       /* ignore */
