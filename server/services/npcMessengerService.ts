@@ -353,10 +353,15 @@ export async function triggerNPCDMReply(
 
     const { data: threadMessages } = await supabaseAdmin
       .from('sim_direct_messages')
-      .select('sender_handle, content')
+      .select('sender_handle, recipient_handle, content')
       .eq('thread_id', threadId)
       .order('created_at', { ascending: true })
       .limit(10);
+
+    const replyToHandle =
+      (threadMessages || []).find((m) => m.sender_handle !== npc.handle)?.sender_handle ||
+      (threadMessages || [])[0]?.recipient_handle ||
+      '';
 
     const conversationContext = (threadMessages || [])
       .map((m) => `${m.sender_handle}: ${String(m.content).substring(0, 150)}`)
@@ -417,7 +422,7 @@ Return ONLY valid JSON:
         sender_handle: npc.handle,
         sender_display_name: npc.name,
         sender_type: npc.type || 'npc_public',
-        recipient_handle: '',
+        recipient_handle: replyToHandle,
         content: replyText,
         platform: 'facebook',
       })
