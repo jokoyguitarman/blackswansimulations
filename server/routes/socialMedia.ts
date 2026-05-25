@@ -69,7 +69,7 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
       postsQuery,
       supabaseAdmin
         .from('social_post_likes')
-        .select('post_id, reaction_type')
+        .select('post_id, reaction_type, reacted_as')
         .eq('player_id', user.id),
       supabaseAdmin.from('social_post_flags').select('post_id').eq('player_id', user.id),
       supabaseAdmin
@@ -87,10 +87,19 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
       return res.status(500).json({ error: 'Failed to fetch social posts' });
     }
 
-    const likedPostIds = new Set((likesResult.data || []).map((l) => l.post_id));
+    const personalLikes = (likesResult.data || []).filter(
+      (l) => (l.reacted_as || 'personal') === 'personal',
+    );
+    const pageLikes = (likesResult.data || []).filter((l) => l.reacted_as === 'page');
+    const likedPostIds = new Set(personalLikes.map((l) => l.post_id));
     const reactionByPost = new Map<string, string>();
-    for (const l of likesResult.data || []) {
+    for (const l of personalLikes) {
       reactionByPost.set(l.post_id, String(l.reaction_type || 'like'));
+    }
+    const pageLikedPostIds = new Set(pageLikes.map((l) => l.post_id));
+    const pageReactionByPost = new Map<string, string>();
+    for (const l of pageLikes) {
+      pageReactionByPost.set(l.post_id, String(l.reaction_type || 'like'));
     }
     const flaggedPostIds = new Set((flagsResult.data || []).map((f) => f.post_id));
     const playerDemographics = (participantResult.data?.demographics || null) as Record<
@@ -125,6 +134,8 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
         ...post,
         liked_by_me: likedPostIds.has(post.id),
         my_reaction: reactionByPost.get(post.id) || null,
+        page_liked_by_me: pageLikedPostIds.has(post.id),
+        page_reaction: pageReactionByPost.get(post.id) || null,
         flagged_by_me: flaggedPostIds.has(post.id),
       }));
 
@@ -529,12 +540,15 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
     const user = req.user!;
     const { postId } = req.params;
     const reactionType = req.body?.reaction_type || 'like';
+    const postAsPage = req.body?.post_as_page || false;
+    const reactedAs = postAsPage ? 'page' : 'personal';
 
     const { data: existing } = await supabaseAdmin
       .from('social_post_likes')
       .select('id, reaction_type')
       .eq('post_id', postId)
       .eq('player_id', user.id)
+      .eq('reacted_as', reactedAs)
       .single();
 
     if (existing) {
@@ -544,12 +558,22 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
           .update({ reaction_type: reactionType })
           .eq('id', existing.id);
       }
-      return res.json({ success: true, updated: true, reaction_type: reactionType });
+      return res.json({
+        success: true,
+        updated: true,
+        reaction_type: reactionType,
+        reacted_as: reactedAs,
+      });
     }
 
     await supabaseAdmin
       .from('social_post_likes')
-      .insert({ post_id: postId, player_id: user.id, reaction_type: reactionType });
+      .insert({
+        post_id: postId,
+        player_id: user.id,
+        reaction_type: reactionType,
+        reacted_as: reactedAs,
+      });
 
     const { data: post } = await supabaseAdmin
       .from('social_posts')
@@ -595,12 +619,15 @@ router.delete('/posts/:postId/like', requireAuth, async (req: AuthenticatedReque
   try {
     const user = req.user!;
     const { postId } = req.params;
+    const postAsPage = req.body?.post_as_page || false;
+    const reactedAs = postAsPage ? 'page' : 'personal';
 
     const { data: existing } = await supabaseAdmin
       .from('social_post_likes')
       .select('id')
       .eq('post_id', postId)
       .eq('player_id', user.id)
+      .eq('reacted_as', reactedAs)
       .single();
 
     if (!existing) {

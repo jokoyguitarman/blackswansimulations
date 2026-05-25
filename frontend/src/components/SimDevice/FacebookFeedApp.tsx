@@ -88,6 +88,8 @@ interface SocialPost {
   reply_to_post_id: string | null;
   liked_by_me?: boolean;
   my_reaction?: string | null;
+  page_liked_by_me?: boolean;
+  page_reaction?: string | null;
   flagged_by_me?: boolean;
   post_format?: string;
   media_urls?: string[];
@@ -298,10 +300,11 @@ export default function FacebookFeedApp() {
           replyMap[pid].push(r);
         }
         setPostReplies(replyMap);
-        // Restore reactions from API data
+        // Restore reactions from API data (personal + page)
         const rxMap: Record<string, string> = {};
         for (const p of result.data as SocialPost[]) {
           if (p.my_reaction) rxMap[p.id] = p.my_reaction;
+          if (p.page_reaction) rxMap[`page:${p.id}`] = p.page_reaction;
         }
         setMyReactions(rxMap);
       }
@@ -687,13 +690,15 @@ export default function FacebookFeedApp() {
   }
 
   async function handleReaction(postId: string, reactionType: string = 'like') {
+    const rxKey = pageMode ? `page:${postId}` : postId;
     const post = posts.find((p) => p.id === postId);
-    const alreadyLiked = post?.liked_by_me;
+    const alreadyLiked = post ? (pageMode ? post.page_liked_by_me : post.liked_by_me) : false;
     if (post) {
       if (!alreadyLiked) {
+        const likedField = pageMode ? 'page_liked_by_me' : 'liked_by_me';
         setPosts((prev) =>
           prev.map((p) =>
-            p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
+            p.id === postId ? { ...p, like_count: p.like_count + 1, [likedField]: true } : p,
           ),
         );
       }
@@ -714,19 +719,24 @@ export default function FacebookFeedApp() {
         return updated;
       });
     }
-    setMyReactions((prev) => ({ ...prev, [postId]: reactionType }));
+    setMyReactions((prev) => ({ ...prev, [rxKey]: reactionType }));
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl(`/api/social/posts/${postId}/like`), {
         method: 'POST',
         headers,
-        body: JSON.stringify({ session_id: sessionId, reaction_type: reactionType }),
+        body: JSON.stringify({
+          session_id: sessionId,
+          reaction_type: reactionType,
+          post_as_page: pageMode,
+        }),
       });
     } catch {
       if (post && !alreadyLiked) {
+        const likedField = pageMode ? 'page_liked_by_me' : 'liked_by_me';
         setPosts((prev) =>
           prev.map((p) =>
-            p.id === postId ? { ...p, like_count: p.like_count - 1, liked_by_me: false } : p,
+            p.id === postId ? { ...p, like_count: p.like_count - 1, [likedField]: false } : p,
           ),
         );
       }
@@ -1937,8 +1947,9 @@ export default function FacebookFeedApp() {
                     })
                     .map((post) => {
                       const badge = getBadge(post.author_type);
+                      const postRxKey = pageMode ? `page:${post.id}` : post.id;
                       const postReactionEmoji =
-                        post.like_count > 0 ? getReactionEmoji(myReactions[post.id]) : '';
+                        post.like_count > 0 ? getReactionEmoji(myReactions[postRxKey]) : '';
                       const replies = postReplies[post.id] || [];
                       const isExpanded = expandedPosts.has(post.id);
                       const isLong = post.content.length > 200;
@@ -2301,7 +2312,8 @@ export default function FacebookFeedApp() {
                           >
                             <div className="relative flex-1">
                               {(() => {
-                                const myRx = myReactions[post.id];
+                                const rxKey = pageMode ? `page:${post.id}` : post.id;
+                                const myRx = myReactions[rxKey];
                                 const rxInfo = myRx ? REACTIONS.find((r) => r.type === myRx) : null;
                                 const rxColor =
                                   myRx === 'like'
@@ -2328,7 +2340,11 @@ export default function FacebookFeedApp() {
                                       );
                                     }}
                                     className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
-                                    style={{ color: post.liked_by_me ? rxColor : '#65676B' }}
+                                    style={{
+                                      color: (pageMode ? post.page_liked_by_me : post.liked_by_me)
+                                        ? rxColor
+                                        : '#65676B',
+                                    }}
                                   >
                                     {rxInfo ? (
                                       <span className="text-[18px] leading-none">
@@ -2609,7 +2625,10 @@ export default function FacebookFeedApp() {
                                               <div className="flex items-center gap-3 ml-3 mt-0.5">
                                                 <div className="relative">
                                                   {(() => {
-                                                    const cmtRx = myReactions[reply.id];
+                                                    const cmtRxKey = pageMode
+                                                      ? `page:${reply.id}`
+                                                      : reply.id;
+                                                    const cmtRx = myReactions[cmtRxKey];
                                                     const cmtRxInfo = cmtRx
                                                       ? REACTIONS.find((r) => r.type === cmtRx)
                                                       : null;
@@ -2728,7 +2747,11 @@ export default function FacebookFeedApp() {
                                                     className="text-[12px]"
                                                     style={{ color: '#65676B' }}
                                                   >
-                                                    {getReactionEmoji(myReactions[reply.id])}{' '}
+                                                    {getReactionEmoji(
+                                                      myReactions[
+                                                        pageMode ? `page:${reply.id}` : reply.id
+                                                      ],
+                                                    )}{' '}
                                                     {reply.like_count}
                                                   </span>
                                                 )}
