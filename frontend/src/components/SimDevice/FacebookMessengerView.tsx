@@ -106,6 +106,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   const [orgPageHandle, setOrgPageHandle] = useState('');
   const [orgPageName, setOrgPageName] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -171,7 +172,10 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
   }, [selectedThread]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTop = container.scrollHeight;
+    }
   }, [messages]);
 
   async function fetchThreads() {
@@ -371,7 +375,9 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
       return t;
     });
 
-  const activeThread = threads.find((t) => t.thread_id === selectedThread);
+  const activeThread =
+    filteredThreads.find((t) => t.thread_id === selectedThread) ||
+    threads.find((t) => t.thread_id === selectedThread);
 
   if (selectedThread && activeThread) {
     return (
@@ -404,7 +410,7 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         </div>
 
         {/* Messages */}
-        <div style={styles.messagesContainer}>
+        <div ref={messagesContainerRef} style={styles.messagesContainer}>
           {loading && messages.length === 0 && <div style={styles.loadingText}>Loading...</div>}
           {messages.map((msg) => {
             const viewingAsHandle =
@@ -722,6 +728,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     height: '100%',
+    overflow: 'hidden',
     backgroundColor: '#FFFFFF',
     fontFamily:
       '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
