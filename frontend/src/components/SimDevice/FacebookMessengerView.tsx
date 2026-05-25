@@ -242,7 +242,8 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
 
   async function markUnreadAsRead(msgs: Message[]) {
     const headers = await getAuthHeaders();
-    const unread = msgs.filter((m) => !m.is_read && m.sender_type !== 'player');
+    const viewingAs = inboxTab === 'page' && orgPageHandle ? orgPageHandle : playerHandle;
+    const unread = msgs.filter((m) => !m.is_read && (!viewingAs || m.sender_handle !== viewingAs));
     await Promise.all(
       unread.map((m) =>
         fetch(apiUrl(`/api/social/messenger/${m.id}/read`), {
