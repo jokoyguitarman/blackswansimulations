@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -33,16 +34,22 @@ interface SimEmail {
   priority: string;
   email_category: string;
   is_read: boolean;
+  thread_id: string | null;
+  replied_to_id: string | null;
   created_at: string;
 }
 
 export default function EmailApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const { isTrainer } = useRoleVisibility();
   const [emails, setEmails] = useState<SimEmail[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<SimEmail | null>(null);
   const [composing, setComposing] = useState(false);
+  const [replying, setReplying] = useState(false);
+  const [folder, setFolder] = useState<'inbox' | 'sent'>('inbox');
   const [replyData, setReplyData] = useState({ to: '', subject: '', body: '' });
+  const replyRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     loadEmails();
@@ -79,7 +86,7 @@ export default function EmailApp() {
   }
 
   async function sendEmail() {
-    if (!replyData.subject.trim() || !replyData.body.trim() || !sessionId) return;
+    if (!replyData.body.trim() || !sessionId) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl('/api/social/emails'), {
@@ -88,12 +95,13 @@ export default function EmailApp() {
         body: JSON.stringify({
           session_id: sessionId,
           to_addresses: [replyData.to || 'recipient@sim.local'],
-          subject: replyData.subject,
+          subject: replyData.subject || '(No Subject)',
           body_text: replyData.body,
           replied_to_id: selectedEmail?.id,
         }),
       });
       setComposing(false);
+      setReplying(false);
       setReplyData({ to: '', subject: '', body: '' });
       loadEmails();
     } catch {
@@ -164,10 +172,114 @@ export default function EmailApp() {
     }
   }
 
-  // Email Detail View
+  function getThreadEmails(email: SimEmail): SimEmail[] {
+    const threadId = email.thread_id || email.id;
+    return emails
+      .filter((e) => e.id === threadId || e.thread_id === threadId)
+      .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+  }
+
+  function openEmail(email: SimEmail) {
+    setSelectedEmail(email);
+    setReplying(false);
+    if (!email.is_read) markRead(email.id);
+  }
+
+  function startReply() {
+    if (!selectedEmail) return;
+    setReplying(true);
+    setReplyData({
+      to: selectedEmail.from_address,
+      subject: selectedEmail.subject.startsWith('RE:')
+        ? selectedEmail.subject
+        : `RE: ${selectedEmail.subject}`,
+      body: '',
+    });
+    setTimeout(() => replyRef.current?.focus(), 100);
+  }
+
+  const filteredEmails = emails.filter((e) =>
+    folder === 'inbox' ? e.direction === 'inbound' : e.direction === 'outbound',
+  );
+
+  // ─── Compose New Email View ─────────────────────────────────────────────────
+  if (composing && !selectedEmail) {
+    return (
+      <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
+        <div
+          className="flex items-center justify-between px-4 ios-blur-nav flex-shrink-0"
+          style={{
+            height: 44,
+            backgroundColor: 'rgba(242,242,247,0.92)',
+            borderBottom: '0.5px solid rgba(60,60,67,0.29)',
+            backdropFilter: 'blur(20px)',
+          }}
+        >
+          <button
+            onClick={() => {
+              setComposing(false);
+              setReplyData({ to: '', subject: '', body: '' });
+            }}
+            className="text-[17px] ios-btn-bounce"
+            style={{ color: '#007AFF' }}
+          >
+            Cancel
+          </button>
+          <span className="text-[17px] font-semibold" style={{ color: '#000000' }}>
+            New Message
+          </span>
+          <button onClick={sendEmail} className="ios-btn-bounce" style={{ color: '#007AFF' }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF">
+              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+            </svg>
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
+          <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
+            <div className="flex items-center px-4 py-2.5">
+              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+                To:
+              </span>
+              <input
+                value={replyData.to}
+                onChange={(e) => setReplyData({ ...replyData, to: e.target.value })}
+                className="flex-1 text-[15px] outline-none"
+                style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+              />
+            </div>
+          </div>
+          <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
+            <div className="flex items-center px-4 py-2.5">
+              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+                Subject:
+              </span>
+              <input
+                value={replyData.subject}
+                onChange={(e) => setReplyData({ ...replyData, subject: e.target.value })}
+                className="flex-1 text-[15px] outline-none"
+                style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+              />
+            </div>
+          </div>
+          <textarea
+            value={replyData.body}
+            onChange={(e) => setReplyData({ ...replyData, body: e.target.value })}
+            placeholder="Write your email..."
+            className="w-full px-4 py-3 text-[16px] outline-none resize-none min-h-[280px]"
+            style={{ color: '#000000', lineHeight: '1.5', backgroundColor: '#FFFFFF' }}
+            autoFocus
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Thread Detail + Inline Reply View ──────────────────────────────────────
   if (selectedEmail) {
-    const priorityBadge = getPriorityBadge(selectedEmail.priority);
+    const threadEmails = getThreadEmails(selectedEmail);
     const detailCategoryBadge = getCategoryBadge(selectedEmail.email_category);
+    const threadSubject = threadEmails[0]?.subject || selectedEmail.subject;
+
     return (
       <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
         {/* Nav Bar */}
@@ -181,7 +293,10 @@ export default function EmailApp() {
           }}
         >
           <button
-            onClick={() => setSelectedEmail(null)}
+            onClick={() => {
+              setSelectedEmail(null);
+              setReplying(false);
+            }}
             className="flex items-center gap-0.5 ios-btn-bounce"
             style={{ color: '#007AFF' }}
           >
@@ -194,28 +309,36 @@ export default function EmailApp() {
                 strokeLinejoin="round"
               />
             </svg>
-            <span className="text-[17px]">Inbox</span>
+            <span className="text-[17px]">{replying ? 'Cancel' : 'Inbox'}</span>
           </button>
           <div className="flex items-center gap-5" style={{ color: '#007AFF' }}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M12 20h9" />
-              <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-            </svg>
+            {replying ? (
+              <button onClick={sendEmail} className="ios-btn-bounce">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF">
+                  <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                </svg>
+              </button>
+            ) : (
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 20h9" />
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+              </svg>
+            )}
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {/* Category banner */}
-          {detailCategoryBadge && (
+          {/* Category banner (trainer only) */}
+          {isTrainer && detailCategoryBadge && (
             <div
               className="flex items-center gap-2 px-4 py-2"
               style={{ backgroundColor: detailCategoryBadge.bg }}
@@ -243,189 +366,142 @@ export default function EmailApp() {
             </div>
           )}
 
-          {/* Subject area */}
-          <div className="px-4 pt-5 pb-3">
-            <div className="flex items-start gap-2">
-              <h1
-                className="text-[22px] font-bold leading-tight flex-1"
-                style={{ color: '#000000' }}
-              >
-                {selectedEmail.subject}
-              </h1>
-              {priorityBadge && (
-                <span
-                  className="text-[13px] font-bold flex-shrink-0 mt-1"
-                  style={{ color: priorityBadge.text }}
-                >
-                  {priorityBadge.label}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Sender card */}
-          <div
-            className="flex items-center gap-3 px-4 py-3"
-            style={{ borderTop: '0.5px solid rgba(60,60,67,0.12)' }}
-          >
-            <div
-              className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-[16px]"
-              style={{ backgroundColor: getInitialsColor(selectedEmail.from_name) }}
-            >
-              {selectedEmail.from_name.charAt(0).toUpperCase()}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <p className="text-[15px] font-semibold" style={{ color: '#000000' }}>
-                  {selectedEmail.from_name}
+          {/* Inline Reply Compose (shown at top when replying) */}
+          {replying && (
+            <>
+              <div className="px-4 pt-4 pb-2">
+                <p className="text-[13px]" style={{ color: '#8E8E93' }}>
+                  To: {replyData.to}
                 </p>
-                <span className="text-[13px]" style={{ color: '#8E8E93' }}>
-                  {formatTime(selectedEmail.created_at)}
+              </div>
+              <div className="px-4 pb-3">
+                <textarea
+                  ref={replyRef}
+                  value={replyData.body}
+                  onChange={(e) => setReplyData({ ...replyData, body: e.target.value })}
+                  placeholder="Write your reply..."
+                  className="w-full text-[16px] outline-none resize-none min-h-[120px]"
+                  style={{ color: '#000000', lineHeight: '1.5', backgroundColor: '#FFFFFF' }}
+                />
+              </div>
+              <div
+                className="flex items-center justify-center px-4 py-2"
+                style={{
+                  borderTop: '0.5px solid rgba(60,60,67,0.12)',
+                  borderBottom: '0.5px solid rgba(60,60,67,0.12)',
+                }}
+              >
+                <span className="text-[12px]" style={{ color: '#8E8E93' }}>
+                  --- Original Message ---
                 </span>
               </div>
-              <p className="text-[13px] truncate" style={{ color: '#8E8E93' }}>
-                {selectedEmail.from_address}
-              </p>
-            </div>
+            </>
+          )}
+
+          {/* Subject area */}
+          <div className="px-4 pt-4 pb-3">
+            <h1 className="text-[22px] font-bold leading-tight" style={{ color: '#000000' }}>
+              {threadSubject}
+            </h1>
           </div>
 
-          {/* Body */}
-          <div className="px-4 py-5" style={{ borderTop: '0.5px solid rgba(60,60,67,0.12)' }}>
-            <p
-              className="text-[16px] leading-relaxed whitespace-pre-wrap"
-              style={{ color: '#1C1C1E' }}
-            >
-              {selectedEmail.body_text}
-            </p>
-          </div>
+          {/* Thread messages */}
+          {threadEmails.map((msg, idx) => {
+            const isOutbound = msg.direction === 'outbound';
+            return (
+              <div
+                key={msg.id}
+                className="px-4 py-3"
+                style={{
+                  borderTop: idx > 0 ? '0.5px solid rgba(60,60,67,0.12)' : undefined,
+                  backgroundColor: isOutbound ? '#F0F9FF' : '#FFFFFF',
+                  opacity: replying ? 0.7 : 1,
+                }}
+              >
+                <div className="flex items-center gap-3 mb-2">
+                  <div
+                    className="w-9 h-9 rounded-full flex items-center justify-center text-white font-semibold text-[14px]"
+                    style={{ backgroundColor: getInitialsColor(msg.from_name) }}
+                  >
+                    {msg.from_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[15px] font-semibold" style={{ color: '#000000' }}>
+                        {isOutbound ? 'You' : msg.from_name}
+                      </p>
+                      <span className="text-[13px]" style={{ color: '#8E8E93' }}>
+                        {formatTime(msg.created_at)}
+                      </span>
+                    </div>
+                    <p className="text-[12px] truncate" style={{ color: '#8E8E93' }}>
+                      {msg.from_address}
+                    </p>
+                  </div>
+                </div>
+                <p
+                  className="text-[15px] leading-relaxed whitespace-pre-wrap"
+                  style={{ color: '#1C1C1E' }}
+                >
+                  {msg.body_text}
+                </p>
+              </div>
+            );
+          })}
         </div>
 
-        {/* Reply toolbar */}
-        <div
-          className="flex items-center justify-center gap-6 px-4 py-3 flex-shrink-0"
-          style={{
-            borderTop: '0.5px solid rgba(60,60,67,0.29)',
-            backgroundColor: 'rgba(255,255,255,0.92)',
-          }}
-        >
-          <button
-            onClick={() => {
-              setComposing(true);
-              setReplyData({
-                to: selectedEmail.from_address,
-                subject: `RE: ${selectedEmail.subject}`,
-                body: '',
-              });
+        {/* Reply toolbar (hidden when already replying) */}
+        {!replying && (
+          <div
+            className="flex items-center justify-center gap-6 px-4 py-3 flex-shrink-0"
+            style={{
+              borderTop: '0.5px solid rgba(60,60,67,0.29)',
+              backgroundColor: 'rgba(255,255,255,0.92)',
             }}
-            className="flex items-center gap-2 ios-btn-bounce"
-            style={{ color: '#007AFF' }}
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            <button
+              onClick={startReply}
+              className="flex items-center gap-2 ios-btn-bounce"
+              style={{ color: '#007AFF' }}
             >
-              <polyline points="9 17 4 12 9 7" />
-              <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
-            </svg>
-            <span className="text-[15px]">Reply</span>
-          </button>
-          <button className="flex items-center gap-2 ios-btn-bounce" style={{ color: '#007AFF' }}>
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.8"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <polyline points="15 17 20 12 15 7" />
-              <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
-            </svg>
-            <span className="text-[15px]">Forward</span>
-          </button>
-        </div>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="9 17 4 12 9 7" />
+                <path d="M20 18v-2a4 4 0 0 0-4-4H4" />
+              </svg>
+              <span className="text-[15px]">Reply</span>
+            </button>
+            <button className="flex items-center gap-2 ios-btn-bounce" style={{ color: '#007AFF' }}>
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <polyline points="15 17 20 12 15 7" />
+                <path d="M4 18v-2a4 4 0 0 1 4-4h12" />
+              </svg>
+              <span className="text-[15px]">Forward</span>
+            </button>
+          </div>
+        )}
       </div>
     );
   }
 
-  // Compose View
-  if (composing) {
-    return (
-      <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
-        <div
-          className="flex items-center justify-between px-4 ios-blur-nav flex-shrink-0"
-          style={{
-            height: 44,
-            backgroundColor: 'rgba(242,242,247,0.92)',
-            borderBottom: '0.5px solid rgba(60,60,67,0.29)',
-            backdropFilter: 'blur(20px)',
-          }}
-        >
-          <button
-            onClick={() => setComposing(false)}
-            className="text-[17px] ios-btn-bounce"
-            style={{ color: '#007AFF' }}
-          >
-            Cancel
-          </button>
-          <span className="text-[17px] font-semibold" style={{ color: '#000000' }}>
-            New Message
-          </span>
-          <button onClick={sendEmail} className="ios-btn-bounce" style={{ color: '#007AFF' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF">
-              <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
-            </svg>
-          </button>
-        </div>
-        <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
-          <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
-            <div className="flex items-center px-4 py-2.5">
-              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
-                To:
-              </span>
-              <input
-                value={replyData.to}
-                onChange={(e) => setReplyData({ ...replyData, to: e.target.value })}
-                className="flex-1 text-[15px] outline-none"
-                style={{ color: '#000000' }}
-              />
-            </div>
-          </div>
-          <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
-            <div className="flex items-center px-4 py-2.5">
-              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
-                Subject:
-              </span>
-              <input
-                value={replyData.subject}
-                onChange={(e) => setReplyData({ ...replyData, subject: e.target.value })}
-                className="flex-1 text-[15px] outline-none"
-                style={{ color: '#000000' }}
-              />
-            </div>
-          </div>
-          <textarea
-            value={replyData.body}
-            onChange={(e) => setReplyData({ ...replyData, body: e.target.value })}
-            placeholder="Write your email..."
-            className="w-full px-4 py-3 text-[16px] outline-none resize-none min-h-[280px]"
-            style={{ color: '#000000', lineHeight: '1.5' }}
-            autoFocus
-          />
-        </div>
-      </div>
-    );
-  }
-
-  // Inbox List
+  // ─── Inbox / Sent List View ─────────────────────────────────────────────────
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: '#F2F2F7' }}>
       {/* Nav */}
@@ -455,7 +531,10 @@ export default function EmailApp() {
             <span className="text-[17px]">Back</span>
           </button>
           <button
-            onClick={() => setComposing(true)}
+            onClick={() => {
+              setComposing(true);
+              setReplyData({ to: '', subject: '', body: '' });
+            }}
             className="ios-btn-bounce"
             style={{ color: '#007AFF' }}
           >
@@ -476,14 +555,44 @@ export default function EmailApp() {
         </div>
         <div className="px-4 pb-2">
           <h1 className="text-[34px] font-bold tracking-tight" style={{ color: '#000000' }}>
-            Inbox
+            {folder === 'inbox' ? 'Inbox' : 'Sent'}
           </h1>
+        </div>
+        {/* Folder Toggle */}
+        <div className="px-4 pb-3">
+          <div
+            className="flex rounded-[9px] p-[2px]"
+            style={{ backgroundColor: 'rgba(118,118,128,0.12)' }}
+          >
+            <button
+              onClick={() => setFolder('inbox')}
+              className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all"
+              style={{
+                backgroundColor: folder === 'inbox' ? '#FFFFFF' : 'transparent',
+                color: folder === 'inbox' ? '#000000' : '#8E8E93',
+                boxShadow: folder === 'inbox' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              Inbox
+            </button>
+            <button
+              onClick={() => setFolder('sent')}
+              className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all"
+              style={{
+                backgroundColor: folder === 'sent' ? '#FFFFFF' : 'transparent',
+                color: folder === 'sent' ? '#000000' : '#8E8E93',
+                boxShadow: folder === 'sent' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              Sent
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Email List */}
       <div className="flex-1 overflow-y-auto">
-        {emails.length === 0 ? (
+        {filteredEmails.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2">
             <svg
               width="52"
@@ -497,10 +606,12 @@ export default function EmailApp() {
               <path d="M22 7l-10 7L2 7" />
             </svg>
             <p className="text-[17px] font-semibold" style={{ color: '#3C3C43' }}>
-              No Mail
+              {folder === 'inbox' ? 'No Mail' : 'No Sent Mail'}
             </p>
             <p className="text-[14px]" style={{ color: '#8E8E93' }}>
-              Emails will appear as the simulation runs.
+              {folder === 'inbox'
+                ? 'Emails will appear as the simulation runs.'
+                : 'Sent emails will appear here.'}
             </p>
           </div>
         ) : (
@@ -508,7 +619,7 @@ export default function EmailApp() {
             className="mt-3 mx-4 rounded-xl overflow-hidden"
             style={{ backgroundColor: '#FFFFFF' }}
           >
-            {emails.map((email, idx) => {
+            {filteredEmails.map((email, idx) => {
               const priorityBadge = getPriorityBadge(email.priority);
               const categoryBadge = getCategoryBadge(email.email_category);
               const senderName =
@@ -516,14 +627,11 @@ export default function EmailApp() {
               return (
                 <button
                   key={email.id}
-                  onClick={() => {
-                    setSelectedEmail(email);
-                    if (!email.is_read) markRead(email.id);
-                  }}
+                  onClick={() => openEmail(email)}
                   className="w-full text-left flex items-start gap-3 px-4 py-3 ios-btn-bounce active:bg-gray-50"
                   style={{
                     borderBottom:
-                      idx < emails.length - 1 ? '0.5px solid rgba(60,60,67,0.12)' : 'none',
+                      idx < filteredEmails.length - 1 ? '0.5px solid rgba(60,60,67,0.12)' : 'none',
                   }}
                 >
                   {/* Avatar */}
@@ -534,7 +642,7 @@ export default function EmailApp() {
                     >
                       {senderName.replace('To: ', '').charAt(0).toUpperCase()}
                     </div>
-                    {!email.is_read && (
+                    {!email.is_read && email.direction === 'inbound' && (
                       <div
                         className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-[10px] h-[10px] rounded-full"
                         style={{ backgroundColor: '#007AFF' }}
@@ -546,7 +654,7 @@ export default function EmailApp() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <span
-                        className={`text-[15px] truncate ${!email.is_read ? 'font-bold' : 'font-normal'}`}
+                        className={`text-[15px] truncate ${!email.is_read && email.direction === 'inbound' ? 'font-bold' : 'font-normal'}`}
                         style={{ color: '#000000' }}
                       >
                         {senderName}
@@ -566,7 +674,7 @@ export default function EmailApp() {
                         </svg>
                       </div>
                     </div>
-                    {categoryBadge && (
+                    {isTrainer && categoryBadge && (
                       <span
                         className="inline-block text-[10px] font-bold tracking-wide uppercase px-1.5 py-0.5 rounded mt-0.5"
                         style={{
@@ -587,7 +695,7 @@ export default function EmailApp() {
                         </span>
                       )}
                       <p
-                        className={`text-[14px] truncate ${!email.is_read ? 'font-medium' : ''}`}
+                        className={`text-[14px] truncate ${!email.is_read && email.direction === 'inbound' ? 'font-medium' : ''}`}
                         style={{ color: '#1C1C1E' }}
                       >
                         {email.subject}
@@ -606,7 +714,10 @@ export default function EmailApp() {
 
       {/* Compose FAB */}
       <button
-        onClick={() => setComposing(true)}
+        onClick={() => {
+          setComposing(true);
+          setReplyData({ to: '', subject: '', body: '' });
+        }}
         className="absolute ios-btn-bounce flex items-center justify-center"
         style={{
           bottom: 24,
