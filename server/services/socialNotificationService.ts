@@ -35,6 +35,10 @@ async function findPlayerUserIdByHandle(sessionId: string, handle: string): Prom
   return null;
 }
 
+function stripThreadTag(content: string): string {
+  return content.replace(/^@[\w._-]+\[[^\]]+\]\s*/, '');
+}
+
 export async function notifyPostReply(
   sessionId: string,
   replyAuthorName: string,
@@ -53,7 +57,7 @@ export async function notifyPostReply(
       user_id: userId,
       type: 'social_reply',
       title: `${replyAuthorName} replied to your post`,
-      message: replyContent.substring(0, 200),
+      message: stripThreadTag(replyContent).substring(0, 200),
       priority: 'medium',
       metadata: {
         post_id: parentPostId,
@@ -147,7 +151,7 @@ export async function notifyMention(
       user_id: userId,
       type: 'social_mention',
       title: `${mentionerName} mentioned you`,
-      message: postContent.substring(0, 200),
+      message: stripThreadTag(postContent).substring(0, 200),
       priority: 'medium',
       metadata: { platform, mentioner: mentionerName },
     });
