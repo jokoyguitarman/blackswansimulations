@@ -265,6 +265,13 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
     const thread = threads.find((t) => t.thread_id === selectedThread);
     if (!thread) return;
 
+    const isPageContext = inboxTab === 'page' && thread.is_org_page_thread;
+    const recipientHandle = isPageContext
+      ? thread.other_handle
+      : thread.is_org_page_thread
+        ? orgPageHandle || thread.other_handle
+        : thread.other_handle;
+
     setNewMessage('');
     try {
       const headers = await getAuthHeaders();
@@ -273,10 +280,10 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         headers,
         body: JSON.stringify({
           session_id: sessionId,
-          recipient_handle: thread.other_handle,
+          recipient_handle: recipientHandle,
           content,
           platform: 'facebook',
-          send_as_page: thread.is_org_page_thread || false,
+          send_as_page: isPageContext,
         }),
       });
       if (res.ok) {
