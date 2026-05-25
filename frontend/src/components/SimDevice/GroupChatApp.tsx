@@ -1,9 +1,23 @@
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ChatInterface } from '../Chat/ChatInterface';
+import { api } from '../../lib/api';
 
 export default function GroupChatApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [variant, setVariant] = useState<'terminal' | 'whatsapp'>('whatsapp');
+
+  useEffect(() => {
+    if (!sessionId) return;
+    api.sessions
+      .get(sessionId)
+      .then((res) => {
+        const session = (res.data ?? res) as Record<string, unknown>;
+        setVariant(session?.sim_mode === 'social_media' ? 'whatsapp' : 'terminal');
+      })
+      .catch(() => {});
+  }, [sessionId]);
 
   return (
     <div className="h-full flex flex-col" style={{ backgroundColor: '#0B141A' }}>
@@ -88,7 +102,7 @@ export default function GroupChatApp() {
           backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
         }}
       >
-        {sessionId && <ChatInterface sessionId={sessionId} />}
+        {sessionId && <ChatInterface sessionId={sessionId} variant={variant} />}
       </div>
     </div>
   );

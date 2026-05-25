@@ -13,6 +13,7 @@ interface Participant {
 interface VoiceCallPanelProps {
   sessionId: string;
   currentUserId: string;
+  variant?: 'terminal' | 'whatsapp';
 }
 
 function formatDuration(seconds: number): string {
@@ -21,12 +22,17 @@ function formatDuration(seconds: number): string {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 }
 
-export function VoiceCallPanel({ sessionId, currentUserId }: VoiceCallPanelProps) {
+export function VoiceCallPanel({
+  sessionId,
+  currentUserId,
+  variant = 'terminal',
+}: VoiceCallPanelProps) {
   const { state, initiateCall, endCall, toggleMute, localStream } = useWebRTC(currentUserId);
   const recorder = useCallRecorder();
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const isWA = variant === 'whatsapp';
 
   useEffect(() => {
     api.channels.getParticipants(sessionId).then((res) => {
@@ -79,45 +85,75 @@ export function VoiceCallPanel({ sessionId, currentUserId }: VoiceCallPanelProps
         <div className="flex items-center justify-between mb-3 px-1">
           <div className="flex items-center gap-2">
             <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs terminal-text text-red-400 uppercase tracking-wider">
-              Live Call — {formatDuration(recorder.duration)}
+            <span
+              className={
+                isWA
+                  ? 'text-xs text-red-400 font-medium'
+                  : 'text-xs terminal-text text-red-400 uppercase tracking-wider'
+              }
+            >
+              {isWA
+                ? `Live Call — ${formatDuration(recorder.duration)}`
+                : `Live Call — ${formatDuration(recorder.duration)}`}
             </span>
           </div>
           <div className="flex gap-2">
             <button
               onClick={toggleMute}
-              className={`px-3 py-1 text-xs terminal-text uppercase border transition-all ${
-                state.isMuted
-                  ? 'border-red-500 text-red-400 bg-red-500/10'
-                  : 'border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10'
-              }`}
+              className={
+                isWA
+                  ? `px-4 py-1.5 text-xs font-medium rounded-full transition-all ${state.isMuted ? 'bg-red-500/20 text-red-400 border border-red-500/40' : 'bg-wa-input text-wa-text hover:bg-[#3B4A54] border border-transparent'}`
+                  : `px-3 py-1 text-xs terminal-text uppercase border transition-all ${state.isMuted ? 'border-red-500 text-red-400 bg-red-500/10' : 'border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10'}`
+              }
             >
-              {state.isMuted ? '[UNMUTE]' : '[MUTE]'}
+              {isWA ? (state.isMuted ? 'Unmute' : 'Mute') : state.isMuted ? '[UNMUTE]' : '[MUTE]'}
             </button>
             <button
               onClick={handleEndCall}
-              className="px-3 py-1 text-xs terminal-text uppercase border border-red-500 text-red-400 hover:bg-red-500/10"
+              className={
+                isWA
+                  ? 'px-4 py-1.5 text-xs font-medium rounded-full bg-red-500 text-white hover:bg-red-600 transition-all'
+                  : 'px-3 py-1 text-xs terminal-text uppercase border border-red-500 text-red-400 hover:bg-red-500/10'
+              }
             >
-              [END CALL]
+              {isWA ? 'End Call' : '[END CALL]'}
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto space-y-2">
           {/* Local user */}
-          <div className="flex items-center gap-3 px-3 py-2 border border-robotic-yellow/20 rounded">
+          <div
+            className={
+              isWA
+                ? `flex items-center gap-3 px-4 py-3 rounded-xl ${state.isMuted ? 'bg-red-500/10 border border-red-500/20' : 'bg-wa-received border border-wa-teal/20'}`
+                : `flex items-center gap-3 px-3 py-2 border border-robotic-yellow/20 rounded`
+            }
+          >
             <div
-              className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                state.isMuted
-                  ? 'bg-red-900/50 text-red-400'
-                  : 'bg-robotic-yellow/20 text-robotic-yellow'
-              }`}
+              className={
+                isWA
+                  ? `w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${state.isMuted ? 'bg-red-500/20 text-red-400' : 'bg-wa-teal/20 text-wa-teal'}`
+                  : `w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${state.isMuted ? 'bg-red-900/50 text-red-400' : 'bg-robotic-yellow/20 text-robotic-yellow'}`
+              }
             >
               {state.isMuted ? '🔇' : '🎙'}
             </div>
             <div className="flex-1">
-              <div className="text-sm terminal-text text-robotic-yellow">You</div>
-              <div className="text-xs text-robotic-yellow/50">
+              <div
+                className={
+                  isWA
+                    ? 'text-sm text-wa-text font-medium'
+                    : 'text-sm terminal-text text-robotic-yellow'
+                }
+              >
+                You
+              </div>
+              <div
+                className={
+                  isWA ? 'text-xs text-wa-text-secondary' : 'text-xs text-robotic-yellow/50'
+                }
+              >
                 {state.isMuted ? 'Muted' : 'Speaking...'}
               </div>
             </div>
@@ -134,24 +170,36 @@ export function VoiceCallPanel({ sessionId, currentUserId }: VoiceCallPanelProps
               return (
                 <div
                   key={userId}
-                  className={`flex items-center gap-3 px-3 py-2 border rounded transition-all ${
-                    isSpeaking ? 'border-green-500/60 bg-green-500/5' : 'border-robotic-yellow/20'
-                  }`}
+                  className={
+                    isWA
+                      ? `flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${isSpeaking ? 'bg-wa-teal/10 border border-wa-teal/30' : 'bg-wa-received border border-transparent'}`
+                      : `flex items-center gap-3 px-3 py-2 border rounded transition-all ${isSpeaking ? 'border-green-500/60 bg-green-500/5' : 'border-robotic-yellow/20'}`
+                  }
                 >
                   <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                      isSpeaking
-                        ? 'bg-green-900/50 text-green-400'
-                        : hasStream
-                          ? 'bg-robotic-yellow/20 text-robotic-yellow'
-                          : 'bg-robotic-gray-200/20 text-robotic-gray-50'
-                    }`}
+                    className={
+                      isWA
+                        ? `w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold ${isSpeaking ? 'bg-wa-teal/20 text-wa-teal' : hasStream ? 'bg-wa-input text-wa-text' : 'bg-wa-input text-wa-text-secondary'}`
+                        : `w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${isSpeaking ? 'bg-green-900/50 text-green-400' : hasStream ? 'bg-robotic-yellow/20 text-robotic-yellow' : 'bg-robotic-gray-200/20 text-robotic-gray-50'}`
+                    }
                   >
                     {isSpeaking ? '🔊' : hasStream ? '🎧' : '⏳'}
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm terminal-text text-robotic-yellow">{name}</div>
-                    <div className="text-xs text-robotic-yellow/50">
+                    <div
+                      className={
+                        isWA
+                          ? 'text-sm text-wa-text font-medium'
+                          : 'text-sm terminal-text text-robotic-yellow'
+                      }
+                    >
+                      {name}
+                    </div>
+                    <div
+                      className={
+                        isWA ? 'text-xs text-wa-text-secondary' : 'text-xs text-robotic-yellow/50'
+                      }
+                    >
                       {isSpeaking ? 'Speaking' : hasStream ? 'Connected' : 'Connecting...'}
                     </div>
                   </div>
@@ -165,40 +213,72 @@ export function VoiceCallPanel({ sessionId, currentUserId }: VoiceCallPanelProps
 
   return (
     <div className="flex flex-col h-full">
-      <div className="text-xs terminal-text text-robotic-yellow/70 mb-3 uppercase tracking-wider">
+      <div
+        className={
+          isWA
+            ? 'text-xs text-wa-text-secondary mb-3'
+            : 'text-xs terminal-text text-robotic-yellow/70 mb-3 uppercase tracking-wider'
+        }
+      >
         Select participants to call
       </div>
 
       {error && (
-        <div className="text-xs text-red-400 mb-2 px-2 py-1 border border-red-500/30 rounded">
+        <div
+          className={
+            isWA
+              ? 'text-xs text-red-400 mb-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg'
+              : 'text-xs text-red-400 mb-2 px-2 py-1 border border-red-500/30 rounded'
+          }
+        >
           {error}
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto space-y-1 mb-3">
         {participants.length === 0 && (
-          <div className="text-xs text-robotic-yellow/40 text-center py-4">
+          <div
+            className={
+              isWA
+                ? 'text-xs text-wa-text-secondary text-center py-4'
+                : 'text-xs text-robotic-yellow/40 text-center py-4'
+            }
+          >
             No other participants in session
           </div>
         )}
         {participants.map((p) => (
           <label
             key={p.id}
-            className={`flex items-center gap-3 px-3 py-2 border rounded cursor-pointer transition-all ${
-              selected.has(p.id)
-                ? 'border-robotic-yellow bg-robotic-yellow/10'
-                : 'border-robotic-yellow/20 hover:border-robotic-yellow/40'
-            }`}
+            className={
+              isWA
+                ? `flex items-center gap-3 px-4 py-3 rounded-xl cursor-pointer transition-all ${selected.has(p.id) ? 'bg-wa-teal/10 border border-wa-teal/30' : 'bg-wa-received border border-transparent hover:bg-[#283840]'}`
+                : `flex items-center gap-3 px-3 py-2 border rounded cursor-pointer transition-all ${selected.has(p.id) ? 'border-robotic-yellow bg-robotic-yellow/10' : 'border-robotic-yellow/20 hover:border-robotic-yellow/40'}`
+            }
           >
             <input
               type="checkbox"
               checked={selected.has(p.id)}
               onChange={() => toggleSelect(p.id)}
-              className="accent-yellow-400"
+              className={isWA ? 'accent-[#00A884]' : 'accent-yellow-400'}
             />
             <div className="flex-1">
-              <div className="text-sm terminal-text text-robotic-yellow">{p.full_name}</div>
-              <div className="text-xs text-robotic-yellow/50">{p.team_name ?? p.role}</div>
+              <div
+                className={
+                  isWA
+                    ? 'text-sm text-wa-text font-medium'
+                    : 'text-sm terminal-text text-robotic-yellow'
+                }
+              >
+                {p.full_name}
+              </div>
+              <div
+                className={
+                  isWA ? 'text-xs text-wa-text-secondary' : 'text-xs text-robotic-yellow/50'
+                }
+              >
+                {p.team_name ?? p.role}
+              </div>
             </div>
           </label>
         ))}
@@ -207,13 +287,15 @@ export function VoiceCallPanel({ sessionId, currentUserId }: VoiceCallPanelProps
       <button
         onClick={handleInitiate}
         disabled={selected.size === 0}
-        className={`w-full py-2 text-sm terminal-text uppercase border transition-all ${
-          selected.size > 0
-            ? 'border-green-500 text-green-400 hover:bg-green-500/10'
-            : 'border-robotic-gray-200 text-robotic-gray-50 cursor-not-allowed opacity-50'
-        }`}
+        className={
+          isWA
+            ? `w-full py-3 text-sm font-medium rounded-full transition-all ${selected.size > 0 ? 'bg-wa-teal text-white hover:bg-wa-teal-light' : 'bg-wa-input text-wa-text-secondary cursor-not-allowed opacity-50'}`
+            : `w-full py-2 text-sm terminal-text uppercase border transition-all ${selected.size > 0 ? 'border-green-500 text-green-400 hover:bg-green-500/10' : 'border-robotic-gray-200 text-robotic-gray-50 cursor-not-allowed opacity-50'}`
+        }
       >
-        [CALL {selected.size > 0 ? `(${selected.size})` : ''}]
+        {isWA
+          ? `Call${selected.size > 0 ? ` (${selected.size})` : ''}`
+          : `[CALL ${selected.size > 0 ? `(${selected.size})` : ''}]`}
       </button>
     </div>
   );

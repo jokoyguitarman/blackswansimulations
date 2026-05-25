@@ -56,6 +56,7 @@ interface Message {
 
 interface ChatInterfaceProps {
   sessionId: string;
+  variant?: 'terminal' | 'whatsapp';
   /** Called after the user gets an Insider reply (so the map can refetch and show newly revealed POI pins). */
   onInsiderAsked?: () => void;
 }
@@ -111,7 +112,82 @@ interface InsiderMessage {
   created_at: string;
 }
 
-export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps) => {
+const WA_SENDER_COLORS = ['#06CF9C', '#53BDEB', '#FC7B92', '#FFB74D', '#B39DDB', '#25D366'];
+
+export const ChatInterface = ({
+  sessionId,
+  variant = 'terminal',
+  onInsiderAsked,
+}: ChatInterfaceProps) => {
+  const isWA = variant === 'whatsapp';
+
+  const s = {
+    container: isWA
+      ? 'h-full flex flex-col bg-wa-bg wa-chat-font p-3'
+      : 'military-border p-6 h-[600px] flex flex-col',
+    tabBar: isWA
+      ? 'mb-3 border-b border-wa-border pb-3'
+      : 'mb-4 border-b border-robotic-yellow/30 pb-4',
+    tabButton: (active: boolean) =>
+      isWA
+        ? `px-4 py-1.5 text-xs font-medium rounded-full transition-all ${active ? 'bg-wa-teal text-white' : 'bg-wa-input text-wa-text-secondary hover:bg-[#3B4A54]'}`
+        : `px-3 py-1 text-xs terminal-text uppercase border transition-all ${active ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-robotic-yellow/50'}`,
+    voiceTabButton: (active: boolean) =>
+      isWA
+        ? `px-4 py-1.5 text-xs font-medium rounded-full transition-all ${active ? 'bg-wa-teal text-white' : 'bg-wa-input text-wa-text-secondary hover:bg-[#3B4A54]'}`
+        : `px-3 py-1 text-xs terminal-text uppercase border transition-all ${active ? 'border-green-500 text-green-400 bg-green-500/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-500/50'}`,
+    channelButton: (active: boolean) =>
+      isWA
+        ? `px-3 py-1.5 text-xs rounded-full transition-all ${active ? 'bg-wa-teal/20 text-wa-teal border border-wa-teal/40' : 'bg-wa-input text-[#D1D7DB] hover:bg-[#3B4A54] border border-transparent'}`
+        : `px-4 py-2 text-xs terminal-text uppercase border transition-all ${active ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-robotic-yellow/50'}`,
+    dmButton: (active: boolean) =>
+      isWA
+        ? `px-3 py-1.5 text-xs rounded-full transition-all ${active ? 'bg-wa-teal/20 text-wa-teal border border-wa-teal/40' : 'bg-wa-input text-[#D1D7DB] hover:bg-[#3B4A54] border border-transparent'}`
+        : `px-4 py-2 text-xs terminal-text uppercase border transition-all ${active ? 'border-green-400 text-green-400 bg-green-400/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'}`,
+    messageBubble: (isOwn: boolean, isDM: boolean) =>
+      isWA
+        ? `max-w-[85%] px-3 py-2 rounded-lg text-sm ${isOwn ? 'ml-auto bg-wa-sent rounded-tr-none' : 'mr-auto bg-wa-received rounded-tl-none'}`
+        : `military-border p-3 ${isOwn ? 'ml-8' : 'mr-8'} ${isDM ? 'border-green-400/30' : ''}`,
+    senderName: (isDM: boolean, _senderIndex?: number) =>
+      isWA
+        ? 'text-xs font-medium'
+        : `text-xs terminal-text font-semibold ${isDM ? 'text-green-400' : 'text-robotic-yellow'}`,
+    messageText: (isDM: boolean) =>
+      isWA
+        ? 'text-sm text-wa-text'
+        : `text-sm terminal-text ${isDM ? 'text-green-400/90' : 'text-robotic-yellow/90'}`,
+    timestamp: (isDM: boolean) =>
+      isWA
+        ? 'text-[10px] text-wa-text-secondary'
+        : `text-xs terminal-text ${isDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`,
+    input: isWA
+      ? 'flex-1 px-4 py-2 bg-wa-input text-wa-text text-sm rounded-full border-none outline-none placeholder:text-wa-text-secondary focus:ring-1 focus:ring-wa-teal/50'
+      : 'flex-1 px-4 py-2 military-input terminal-text text-sm',
+    sendButton: isWA
+      ? 'w-10 h-10 rounded-full bg-wa-teal flex items-center justify-center hover:bg-wa-teal-light transition-colors flex-shrink-0'
+      : 'military-button px-6 py-2',
+    emptyText: (isDM: boolean) =>
+      isWA
+        ? 'text-sm text-wa-text-secondary text-center'
+        : `text-sm terminal-text ${isDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`,
+    loadingText: isWA
+      ? 'text-sm text-wa-text-secondary animate-pulse'
+      : 'text-sm terminal-text text-robotic-yellow/50 animate-pulse',
+    userListPanel: isWA
+      ? 'mt-3 p-3 bg-wa-header border border-wa-border rounded-lg max-h-40 overflow-y-auto'
+      : 'mt-3 p-3 bg-robotic-gray-200 border border-green-400/50 max-h-40 overflow-y-auto',
+    userListLabel: isWA
+      ? 'text-xs text-wa-text-secondary mb-2'
+      : 'text-xs terminal-text text-green-400 mb-2 uppercase',
+    userListItem: isWA
+      ? 'w-full text-left px-3 py-2 text-sm text-wa-text hover:bg-wa-input rounded-lg transition-colors'
+      : 'w-full text-left px-2 py-1 text-xs terminal-text hover:bg-green-400/10 border border-transparent hover:border-green-400/30',
+    newDmButton: isWA
+      ? 'px-3 py-1.5 text-xs font-medium rounded-full bg-wa-teal text-white hover:bg-wa-teal-light transition-colors'
+      : 'px-3 py-1 text-xs terminal-text uppercase border border-green-400 text-green-400 hover:bg-green-400/10',
+    dmHeader: isWA ? 'text-xs text-wa-teal mb-2' : 'text-xs terminal-text text-green-400 uppercase',
+  };
+
   const { user } = useAuth();
   const webrtc = useWebRTC(user?.id);
   const [channels, setChannels] = useState<Channel[]>([]);
@@ -1394,11 +1470,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
 
   if (loading) {
     return (
-      <div className="military-border p-6">
+      <div className={isWA ? 'p-6 bg-wa-bg wa-chat-font' : 'military-border p-6'}>
         <div className="text-center">
-          <div className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-            [LOADING_CHANNELS]
-          </div>
+          <div className={s.loadingText}>{isWA ? 'Loading...' : '[LOADING_CHANNELS]'}</div>
         </div>
       </div>
     );
@@ -1407,9 +1481,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
   const currentDM = selectedDM ? dmChannels.find((dm) => dm.id === selectedDM) : null;
 
   return (
-    <div className="military-border p-6 h-[600px] flex flex-col">
+    <div className={s.container}>
       {/* Tabs and Channels/DMs Sidebar */}
-      <div className="mb-4 border-b border-robotic-yellow/30 pb-4">
+      <div className={s.tabBar}>
         {/* View Mode Tabs */}
         <div className="flex gap-2 mb-3">
           <button
@@ -1420,13 +1494,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                 setSelectedChannel(channels[0].id);
               }
             }}
-            className={`px-3 py-1 text-xs terminal-text uppercase border transition-all ${
-              viewMode === 'channels'
-                ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10'
-                : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-robotic-yellow/50'
-            }`}
+            className={s.tabButton(viewMode === 'channels')}
           >
-            [CHANNELS]
+            {isWA ? 'Chats' : '[CHANNELS]'}
           </button>
           <button
             onClick={() => {
@@ -1434,13 +1504,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               setSelectedChannel(null);
               loadDMs();
             }}
-            className={`px-3 py-1 text-xs terminal-text uppercase border transition-all ${
-              viewMode === 'dms'
-                ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10'
-                : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-robotic-yellow/50'
-            }`}
+            className={s.tabButton(viewMode === 'dms')}
           >
-            [DIRECT MESSAGES]
+            {isWA ? 'DMs' : '[DIRECT MESSAGES]'}
           </button>
           <button
             onClick={() => {
@@ -1448,20 +1514,17 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               setSelectedChannel(null);
               setSelectedDM(null);
             }}
-            className={`px-3 py-1 text-xs terminal-text uppercase border transition-all ${
-              viewMode === 'voice'
-                ? 'border-green-500 text-green-400 bg-green-500/10'
-                : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-500/50'
-            }`}
+            className={s.voiceTabButton(viewMode === 'voice')}
           >
-            {webrtc.state.isInCall ? '🔴 ' : '🎙 '}[VOICE]
+            {isWA
+              ? webrtc.state.isInCall
+                ? 'In Call'
+                : 'Calls'
+              : `${webrtc.state.isInCall ? '🔴 ' : '🎙 '}[VOICE]`}
           </button>
           {viewMode === 'dms' && (
-            <button
-              onClick={() => setShowUserList(!showUserList)}
-              className="px-3 py-1 text-xs terminal-text uppercase border border-green-400 text-green-400 hover:bg-green-400/10"
-            >
-              [+ NEW DM]
+            <button onClick={() => setShowUserList(!showUserList)} className={s.newDmButton}>
+              {isWA ? '+ New' : '[+ NEW DM]'}
             </button>
           )}
         </div>
@@ -1473,13 +1536,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               <button
                 key={channel.id}
                 onClick={() => setSelectedChannel(channel.id)}
-                className={`px-4 py-2 text-xs terminal-text uppercase border transition-all ${
-                  selectedChannel === channel.id
-                    ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10'
-                    : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-robotic-yellow/50'
-                }`}
+                className={s.channelButton(selectedChannel === channel.id)}
               >
-                [{channel.name}]
+                {isWA ? channel.name : `[${channel.name}]`}
               </button>
             ))}
           {viewMode === 'dms' && (
@@ -1487,13 +1546,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               <button
                 key={INSIDER_DM_ID}
                 onClick={() => setSelectedDM(INSIDER_DM_ID)}
-                className={`px-4 py-2 text-xs terminal-text uppercase border transition-all ${
-                  selectedDM === INSIDER_DM_ID
-                    ? 'border-green-400 text-green-400 bg-green-400/10'
-                    : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'
-                }`}
+                className={s.dmButton(selectedDM === INSIDER_DM_ID)}
               >
-                [INSIDER]
+                {isWA ? 'Insider' : '[INSIDER]'}
               </button>
               {hospitals.map((h) => {
                 const dmId = toHospitalDMId(h.id);
@@ -1501,13 +1556,9 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                   <button
                     key={dmId}
                     onClick={() => setSelectedDM(dmId)}
-                    className={`px-4 py-2 text-xs terminal-text uppercase border transition-all ${
-                      selectedDM === dmId
-                        ? 'border-green-400 text-green-400 bg-green-400/10'
-                        : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'
-                    }`}
+                    className={s.dmButton(selectedDM === dmId)}
                   >
-                    [{h.label}]
+                    {isWA ? h.label : `[${h.label}]`}
                   </button>
                 );
               })}
@@ -1515,13 +1566,11 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                 <button
                   key={dm.id}
                   onClick={() => setSelectedDM(dm.id)}
-                  className={`px-4 py-2 text-xs terminal-text uppercase border transition-all ${
-                    selectedDM === dm.id
-                      ? 'border-green-400 text-green-400 bg-green-400/10'
-                      : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'
-                  }`}
+                  className={s.dmButton(selectedDM === dm.id)}
                 >
-                  [{dm.recipient?.full_name || 'Unknown'}]
+                  {isWA
+                    ? dm.recipient?.full_name || 'Unknown'
+                    : `[${dm.recipient?.full_name || 'Unknown'}]`}
                 </button>
               ))}
             </>
@@ -1530,8 +1579,8 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
 
         {/* User List for Starting DMs */}
         {showUserList && (
-          <div className="mt-3 p-3 bg-robotic-gray-200 border border-green-400/50 max-h-40 overflow-y-auto">
-            <p className="text-xs terminal-text text-green-400 mb-2 uppercase">[SELECT_USER]</p>
+          <div className={s.userListPanel}>
+            <p className={s.userListLabel}>{isWA ? 'Select a participant' : '[SELECT_USER]'}</p>
             <div className="space-y-1">
               {participants
                 .filter((participant) => participant.id !== user?.id)
@@ -1539,13 +1588,21 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                   <button
                     key={participant.id}
                     onClick={() => handleStartDM(participant.id)}
-                    className="w-full text-left px-2 py-1 text-xs terminal-text hover:bg-green-400/10 border border-transparent hover:border-green-400/30"
+                    className={s.userListItem}
                   >
-                    {participant.full_name} [{participant.team_name || participant.role}]
+                    {isWA
+                      ? `${participant.full_name} — ${participant.team_name || participant.role}`
+                      : `${participant.full_name} [${participant.team_name || participant.role}]`}
                   </button>
                 ))}
               {participants.filter((p) => p.id !== user?.id).length === 0 && (
-                <p className="text-xs terminal-text text-robotic-yellow/50">
+                <p
+                  className={
+                    isWA
+                      ? 'text-xs text-wa-text-secondary'
+                      : 'text-xs terminal-text text-robotic-yellow/50'
+                  }
+                >
                   No other participants
                 </p>
               )}
@@ -1563,81 +1620,100 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
           }
           onAccept={webrtc.acceptCall}
           onReject={webrtc.rejectCall}
+          variant={variant}
         />
       )}
 
       {/* Voice panel */}
       {viewMode === 'voice' && user && (
         <div className="flex-1 overflow-y-auto mb-4">
-          <VoiceCallPanel sessionId={sessionId} currentUserId={user.id} />
+          <VoiceCallPanel sessionId={sessionId} currentUserId={user.id} variant={variant} />
         </div>
       )}
 
       {/* Messages (hidden in voice mode) */}
       <div
-        className={`flex-1 overflow-y-auto mb-4 space-y-2 ${viewMode === 'voice' ? 'hidden' : ''}`}
+        className={`flex-1 overflow-y-auto mb-4 space-y-2 ${isWA ? 'wa-scrollbar' : ''} ${viewMode === 'voice' ? 'hidden' : ''}`}
       >
         {currentChannelId ? (
           <>
             {selectedDM === INSIDER_DM_ID && (
-              <div className="mb-3 pb-3 border-b border-green-400/30">
-                <p className="text-xs terminal-text text-green-400 uppercase">
-                  Direct Message with: Insider [trainer]
+              <div
+                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-green-400/30'}`}
+              >
+                <p className={s.dmHeader}>
+                  {isWA ? 'Insider' : 'Direct Message with: Insider [trainer]'}
                 </p>
               </div>
             )}
             {isHospitalDM(selectedDM) && (
-              <div className="mb-3 pb-3 border-b border-green-400/30">
-                <p className="text-xs terminal-text text-green-400 uppercase">
-                  Direct Message with:{' '}
-                  {hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital'}
+              <div
+                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-green-400/30'}`}
+              >
+                <p className={s.dmHeader}>
+                  {isWA
+                    ? (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ??
+                      'Hospital')
+                    : `Direct Message with: ${hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital'}`}
                 </p>
               </div>
             )}
             {currentDM && selectedDM !== INSIDER_DM_ID && !isHospitalDM(selectedDM) && (
-              <div className="mb-3 pb-3 border-b border-green-400/30">
-                <p className="text-xs terminal-text text-green-400 uppercase">
-                  Direct Message with: {currentDM.recipient?.full_name || 'Unknown'} [
-                  {currentDM.recipient?.team_name || currentDM.recipient?.role || 'UNKNOWN'}]
+              <div
+                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-green-400/30'}`}
+              >
+                <p className={s.dmHeader}>
+                  {isWA
+                    ? currentDM.recipient?.full_name || 'Unknown'
+                    : `Direct Message with: ${currentDM.recipient?.full_name || 'Unknown'} [${currentDM.recipient?.team_name || currentDM.recipient?.role || 'UNKNOWN'}]`}
                 </p>
               </div>
             )}
             {selectedDM === INSIDER_DM_ID ? (
               <>
                 {insiderMessages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`military-border p-3 ${msg.role === 'user' ? 'ml-8' : 'mr-8'} border-green-400/30`}
-                  >
+                  <div key={msg.id} className={s.messageBubble(msg.role === 'user', true)}>
                     <div className="flex justify-between items-start mb-1">
-                      <span className="text-xs terminal-text font-semibold text-green-400">
-                        {msg.role === 'user' ? user?.displayName || 'You' : 'Insider'} [
-                        {msg.role === 'user'
-                          ? participants.find((p) => p.id === user?.id)?.team_name ||
-                            user?.role ||
-                            'unknown'
-                          : 'trainer'}
-                        ]
+                      <span
+                        className={s.senderName(true)}
+                        style={
+                          isWA ? { color: msg.role === 'user' ? '#53BDEB' : '#06CF9C' } : undefined
+                        }
+                      >
+                        {isWA
+                          ? msg.role === 'user'
+                            ? user?.displayName || 'You'
+                            : 'Insider'
+                          : `${msg.role === 'user' ? user?.displayName || 'You' : 'Insider'} [${msg.role === 'user' ? participants.find((p) => p.id === user?.id)?.team_name || user?.role || 'unknown' : 'trainer'}]`}
                       </span>
-                      <span className="text-xs terminal-text text-green-400/50">
+                      <span className={s.timestamp(true)}>
                         {new Date(msg.created_at).toLocaleTimeString()}
                       </span>
                     </div>
-                    <p className="text-sm terminal-text text-green-400/90 whitespace-pre-wrap">
+                    <p className={`${s.messageText(true)} whitespace-pre-wrap`}>
                       <ContentWithLinks content={msg.content} />
                     </p>
                   </div>
                 ))}
                 {insiderLoading && (
-                  <div className="mr-8 military-border p-3 border-green-400/30">
-                    <p className="text-xs terminal-text text-green-400/50">Insider is typing...</p>
+                  <div className={s.messageBubble(false, true)}>
+                    <p
+                      className={
+                        isWA
+                          ? 'text-xs text-wa-text-secondary'
+                          : 'text-xs terminal-text text-green-400/50'
+                      }
+                    >
+                      {isWA ? 'Insider is typing...' : 'Insider is typing...'}
+                    </p>
                   </div>
                 )}
                 {insiderMessages.length === 0 && !insiderLoading && (
                   <div className="text-center py-8">
-                    <p className="text-sm terminal-text text-green-400/50">
-                      [ASK_INSIDER] Ask about map, layout, hospitals, police, fire stations, routes,
-                      etc.
+                    <p className={s.emptyText(true)}>
+                      {isWA
+                        ? 'Ask the Insider about the scenario, map, hospitals, routes...'
+                        : '[ASK_INSIDER] Ask about map, layout, hospitals, police, fire stations, routes, etc.'}
                     </p>
                   </div>
                 )}
@@ -1647,37 +1723,42 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               <>
                 {(hospitalMessagesByHospitalId[getHospitalIdFromDM(selectedDM) ?? ''] ?? []).map(
                   (msg) => (
-                    <div
-                      key={msg.id}
-                      className={`military-border p-3 ${msg.role === 'user' ? 'ml-8' : 'mr-8'} border-green-400/30`}
-                    >
+                    <div key={msg.id} className={s.messageBubble(msg.role === 'user', true)}>
                       <div className="flex justify-between items-start mb-1">
-                        <span className="text-xs terminal-text font-semibold text-green-400">
-                          {msg.role === 'user'
-                            ? user?.displayName || 'You'
-                            : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ??
-                              'Hospital')}{' '}
-                          [
-                          {msg.role === 'user'
-                            ? participants.find((p) => p.id === user?.id)?.team_name ||
-                              user?.role ||
-                              'unknown'
-                            : 'hospital'}
-                          ]
+                        <span
+                          className={s.senderName(true)}
+                          style={
+                            isWA
+                              ? { color: msg.role === 'user' ? '#53BDEB' : '#06CF9C' }
+                              : undefined
+                          }
+                        >
+                          {isWA
+                            ? msg.role === 'user'
+                              ? user?.displayName || 'You'
+                              : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)
+                                  ?.label ?? 'Hospital')
+                            : `${msg.role === 'user' ? user?.displayName || 'You' : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital')} [${msg.role === 'user' ? participants.find((p) => p.id === user?.id)?.team_name || user?.role || 'unknown' : 'hospital'}]`}
                         </span>
-                        <span className="text-xs terminal-text text-green-400/50">
+                        <span className={s.timestamp(true)}>
                           {new Date(msg.created_at).toLocaleTimeString()}
                         </span>
                       </div>
-                      <p className="text-sm terminal-text text-green-400/90 whitespace-pre-wrap">
+                      <p className={`${s.messageText(true)} whitespace-pre-wrap`}>
                         <ContentWithLinks content={msg.content} />
                       </p>
                     </div>
                   ),
                 )}
                 {hospitalLoading && (
-                  <div className="mr-8 military-border p-3 border-green-400/30">
-                    <p className="text-xs terminal-text text-green-400/50">
+                  <div className={s.messageBubble(false, true)}>
+                    <p
+                      className={
+                        isWA
+                          ? 'text-xs text-wa-text-secondary'
+                          : 'text-xs terminal-text text-green-400/50'
+                      }
+                    >
                       Hospital is responding...
                     </p>
                   </div>
@@ -1686,7 +1767,7 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                   .length === 0 &&
                   !hospitalLoading && (
                     <div className="text-center py-8">
-                      <p className="text-sm terminal-text text-green-400/50">
+                      <p className={s.emptyText(true)}>
                         Ask about capacity, availability, or whether they can take patients.
                       </p>
                     </div>
@@ -1695,36 +1776,37 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
               </>
             ) : (
               <>
-                {messages.map((message) => {
-                  // Determine if message is from current user
-                  // Check sender.id first, then fall back to sender_id if sender is undefined
+                {messages.map((message, msgIndex) => {
                   const isCurrentUser =
                     message.sender?.id === user?.id ||
                     (message.sender_id && message.sender_id === user?.id);
 
+                  const senderColor =
+                    isWA && !isCurrentUser
+                      ? WA_SENDER_COLORS[msgIndex % WA_SENDER_COLORS.length]
+                      : undefined;
+
                   return (
                     <div
                       key={message.id}
-                      className={`military-border p-3 ${
-                        isCurrentUser ? 'ml-8' : 'mr-8'
-                      } ${selectedDM ? 'border-green-400/30' : ''}`}
+                      className={s.messageBubble(!!isCurrentUser, !!selectedDM)}
                     >
                       <div className="flex justify-between items-start mb-1">
                         <span
-                          className={`text-xs terminal-text font-semibold ${selectedDM ? 'text-green-400' : 'text-robotic-yellow'}`}
+                          className={s.senderName(!!selectedDM)}
+                          style={
+                            isWA ? { color: isCurrentUser ? '#E9EDEF' : senderColor } : undefined
+                          }
                         >
-                          {message.sender?.full_name || 'Unknown'} [
-                          {message.sender?.team_name || message.sender?.role || 'UNKNOWN'}]
+                          {isWA
+                            ? message.sender?.full_name || 'Unknown'
+                            : `${message.sender?.full_name || 'Unknown'} [${message.sender?.team_name || message.sender?.role || 'UNKNOWN'}]`}
                         </span>
-                        <span
-                          className={`text-xs terminal-text ${selectedDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`}
-                        >
+                        <span className={s.timestamp(!!selectedDM)}>
                           {new Date(message.created_at).toLocaleTimeString()}
                         </span>
                       </div>
-                      <p
-                        className={`text-sm terminal-text ${selectedDM ? 'text-green-400/90' : 'text-robotic-yellow/90'}`}
-                      >
+                      <p className={s.messageText(!!selectedDM)}>
                         {message.message_type === 'voice_transcript' && (
                           <span className="mr-1" title="Voice transcript">
                             🎙
@@ -1739,10 +1821,8 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
                 })}
                 {messages.length === 0 && (
                   <div className="text-center py-8">
-                    <p
-                      className={`text-sm terminal-text ${selectedDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`}
-                    >
-                      [NO_MESSAGES] No messages yet
+                    <p className={s.emptyText(!!selectedDM)}>
+                      {isWA ? 'No messages yet' : '[NO_MESSAGES] No messages yet'}
                     </p>
                   </div>
                 )}
@@ -1752,10 +1832,14 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
           </>
         ) : (
           <div className="text-center py-8">
-            <p className="text-sm terminal-text text-robotic-yellow/50">
-              {viewMode === 'channels'
-                ? '[SELECT_CHANNEL] Select a channel'
-                : '[SELECT_DM] Select a conversation or start a new DM'}
+            <p className={s.emptyText(false)}>
+              {isWA
+                ? viewMode === 'channels'
+                  ? 'Select a chat to start messaging'
+                  : 'Select a conversation or start a new DM'
+                : viewMode === 'channels'
+                  ? '[SELECT_CHANNEL] Select a channel'
+                  : '[SELECT_DM] Select a conversation or start a new DM'}
             </p>
           </div>
         )}
@@ -1763,17 +1847,30 @@ export const ChatInterface = ({ sessionId, onInsiderAsked }: ChatInterfaceProps)
 
       {/* Message Input (hidden in voice mode) */}
       {currentChannelId && viewMode !== 'voice' && (
-        <form onSubmit={(e) => handleSendMessage(e)} className="flex gap-2">
+        <form
+          onSubmit={(e) => handleSendMessage(e)}
+          className={`flex gap-2 ${isWA ? 'items-center' : ''}`}
+        >
           <input
             type="text"
             value={messageInput}
             onChange={(e) => setMessageInput(e.target.value)}
-            placeholder="Type or speak a message..."
-            className="flex-1 px-4 py-2 military-input terminal-text text-sm"
+            placeholder={isWA ? 'Type a message' : 'Type or speak a message...'}
+            className={s.input}
           />
-          <VoiceMicButton autoSend onTranscript={(text) => handleSendMessage(undefined, text)} />
-          <button type="submit" className="military-button px-6 py-2">
-            [SEND]
+          <VoiceMicButton
+            autoSend
+            onTranscript={(text) => handleSendMessage(undefined, text)}
+            variant={variant}
+          />
+          <button type="submit" className={s.sendButton}>
+            {isWA ? (
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+              </svg>
+            ) : (
+              '[SEND]'
+            )}
           </button>
         </form>
       )}

@@ -17,6 +17,18 @@ export default {
           300: '#1a1a1a',
           400: '#0f0f0f',
         },
+        wa: {
+          bg: '#0B141A',
+          header: '#1F2C34',
+          sent: '#005C4B',
+          received: '#202C33',
+          input: '#2A3942',
+          teal: '#00A884',
+          'teal-light': '#06CF9C',
+          text: '#E9EDEF',
+          'text-secondary': '#8696A0',
+          border: '#86969626',
+        },
       },
       backgroundImage: {
         'gradient-robotic': 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%)',

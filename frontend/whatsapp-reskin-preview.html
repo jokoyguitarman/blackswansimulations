@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TeamChat WhatsApp Reskin - Design Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #111;
+      color: #E9EDEF;
+      padding: 40px;
+      line-height: 1.5;
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: #fff;
+    }
+
+    h2 {
+      font-size: 22px;
+      font-weight: 600;
+      margin-bottom: 16px;
+      color: #E9EDEF;
+      border-bottom: 1px solid rgba(134,150,160,0.2);
+      padding-bottom: 8px;
+    }
+
+    h3 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: #8696A0;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .subtitle {
+      color: #8696A0;
+      font-size: 14px;
+      margin-bottom: 40px;
+    }
+
+    section {
+      margin-bottom: 60px;
+    }
+
+    /* ─── Color Palette ─── */
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      gap: 12px;
+    }
+
+    .color-swatch {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid rgba(134,150,160,0.15);
+    }
+
+    .color-swatch .preview {
+      height: 80px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .color-swatch .label {
+      padding: 10px 12px;
+      background: #1F2C34;
+      font-size: 12px;
+    }
+
+    .color-swatch .label .name {
+      font-weight: 600;
+      color: #E9EDEF;
+      margin-bottom: 2px;
+    }
+
+    .color-swatch .label .hex {
+      color: #8696A0;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 11px;
+    }
+
+    /* ─── Font Section ─── */
+    .font-samples {
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    .font-sample {
+      background: #1F2C34;
+      border-radius: 12px;
+      padding: 24px;
+      border: 1px solid rgba(134,150,160,0.15);
+    }
+
+    .font-sample .font-label {
+      font-size: 11px;
+      color: #8696A0;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 12px;
+    }
+
+    .font-wa {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    .font-terminal {
+      font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    }
+
+    /* ─── Icons ─── */
+    .icon-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 16px;
+    }
+
+    .icon-card {
+      background: #1F2C34;
+      border-radius: 12px;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      border: 1px solid rgba(134,150,160,0.15);
+    }
+
+    .icon-card svg {
+      width: 28px;
+      height: 28px;
+    }
+
+    .icon-card .icon-name {
+      font-size: 11px;
+      color: #8696A0;
+      text-align: center;
+    }
+
+    /* ─── Comparison ─── */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .comparison { grid-template-columns: 1fr; }
+    }
+
+    .comparison-card {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(134,150,160,0.15);
+    }
+
+    .comparison-card .card-header {
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* ─── Chat Mockup ─── */
+    .phone-frame {
+      width: 375px;
+      margin: 0 auto;
+      border-radius: 40px;
+      overflow: hidden;
+      border: 8px solid #333;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+    }
+
+    .wa-header {
+      background: #1F2C34;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .wa-header .back-btn {
+      color: #00A884;
+    }
+
+    .wa-header .avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #00A884;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .wa-header .info {
+      flex: 1;
+    }
+
+    .wa-header .info .name {
+      font-size: 15px;
+      font-weight: 600;
+      color: #E9EDEF;
+    }
+
+    .wa-header .info .status {
+      font-size: 12px;
+      color: #8696A0;
+    }
+
+    .wa-header .actions {
+      display: flex;
+      gap: 16px;
+    }
+
+    .wa-tabs {
+      background: #1F2C34;
+      padding: 8px 12px;
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid rgba(134,150,160,0.1);
+    }
+
+    .wa-tab {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .wa-tab.active {
+      background: #00A884;
+      color: #fff;
+    }
+
+    .wa-tab.inactive {
+      background: #2A3942;
+      color: #8696A0;
+    }
+
+    .wa-channels {
+      background: #1F2C34;
+      padding: 8px 12px 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid rgba(134,150,160,0.1);
+    }
+
+    .wa-channel-chip {
+      padding: 5px 12px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .wa-channel-chip.active {
+      background: rgba(0,168,132,0.15);
+      color: #00A884;
+      border: 1px solid rgba(0,168,132,0.3);
+    }
+
+    .wa-channel-chip.inactive {
+      background: #2A3942;
+      color: #D1D7DB;
+      border: 1px solid transparent;
+    }
+
+    .wa-messages {
+      background: #0B141A;
+      padding: 16px 12px;
+      min-height: 340px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+
+    .wa-bubble {
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+      position: relative;
+    }
+
+    .wa-bubble.sent {
+      align-self: flex-end;
+      background: #005C4B;
+      border-top-right-radius: 0;
+      color: #E9EDEF;
+    }
+
+    .wa-bubble.received {
+      align-self: flex-start;
+      background: #202C33;
+      border-top-left-radius: 0;
+      color: #E9EDEF;
+    }
+
+    .wa-bubble .sender {
+      font-size: 11px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .wa-bubble .sender.teal { color: #06CF9C; }
+    .wa-bubble .sender.blue { color: #53BDEB; }
+    .wa-bubble .sender.pink { color: #FC7B92; }
+    .wa-bubble .sender.orange { color: #FFB74D; }
+
+    .wa-bubble .time {
+      font-size: 10px;
+      color: rgba(233,237,239,0.5);
+      text-align: right;
+      margin-top: 4px;
+    }
+
+    .wa-bubble .time .ticks {
+      color: #53BDEB;
+      margin-left: 4px;
+    }
+
+    .wa-input-area {
+      background: #1F2C34;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .wa-input-field {
+      flex: 1;
+      background: #2A3942;
+      border: none;
+      border-radius: 20px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #E9EDEF;
+      outline: none;
+    }
+
+    .wa-input-field::placeholder {
+      color: #8696A0;
+    }
+
+    .wa-mic-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #2A3942;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+    }
+
+    .wa-send-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #00A884;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: none;
+      cursor: pointer;
+    }
+
+    /* ─── Terminal Mockup (for comparison) ─── */
+    .terminal-container {
+      background: linear-gradient(135deg, rgba(26,26,26,0.95), rgba(45,45,45,0.95));
+      border: 1px solid;
+      border-image: linear-gradient(135deg, #FFB800, #FF6B35, #FFB800) 1;
+      box-shadow: 0 0 20px rgba(255,184,0,0.2), inset 0 0 20px rgba(255,184,0,0.05);
+      padding: 24px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .terminal-tab {
+      padding: 4px 12px;
+      font-size: 11px;
+      text-transform: uppercase;
+      border: 1px solid;
+      color: #FFB800;
+      font-family: 'JetBrains Mono', monospace;
+      text-shadow: 0 0 10px rgba(255,184,0,0.6);
+    }
+
+    .terminal-tab.active {
+      border-color: #FFB800;
+      background: rgba(255,184,0,0.1);
+    }
+
+    .terminal-tab.inactive {
+      border-color: #4a4a4a;
+      color: #4a4a4a;
+    }
+
+    .terminal-message {
+      border: 1px solid;
+      border-image: linear-gradient(135deg, #FFB800, #FF6B35, #FFB800) 1;
+      background: linear-gradient(135deg, rgba(26,26,26,0.95), rgba(45,45,45,0.95));
+      padding: 12px;
+      margin-bottom: 8px;
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .terminal-message .sender {
+      font-size: 11px;
+      color: #FFB800;
+      font-weight: 600;
+      text-shadow: 0 0 10px rgba(255,184,0,0.6);
+    }
+
+    .terminal-message .body {
+      font-size: 12px;
+      color: rgba(255,184,0,0.9);
+      text-shadow: 0 0 10px rgba(255,184,0,0.3);
+      margin-top: 4px;
+    }
+
+    .terminal-message .time {
+      font-size: 10px;
+      color: rgba(255,184,0,0.4);
+      text-align: right;
+      margin-top: 4px;
+    }
+
+    .terminal-input {
+      background: linear-gradient(135deg, #1a1a1a, #2d2d2d);
+      border: 1px solid rgba(255,184,0,0.3);
+      color: #FFB800;
+      font-family: 'JetBrains Mono', monospace;
+      padding: 8px 12px;
+      font-size: 12px;
+      flex: 1;
+    }
+
+    .terminal-send-btn {
+      background: linear-gradient(135deg, #FFB800, #FF6B35);
+      color: #0f0f0f;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      padding: 8px 16px;
+      font-size: 11px;
+      border: 1px solid rgba(255,184,0,0.5);
+    }
+
+    /* ─── Voice Panel Mockup ─── */
+    .wa-voice-panel {
+      background: #0B141A;
+      padding: 16px;
+    }
+
+    .wa-voice-header {
+      font-size: 13px;
+      color: #8696A0;
+      margin-bottom: 12px;
+    }
+
+    .wa-participant-card {
+      background: #202C33;
+      border-radius: 10px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .wa-participant-card .p-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: #2A3942;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+    }
+
+    .wa-participant-card .p-info {
+      flex: 1;
+    }
+
+    .wa-participant-card .p-name {
+      font-size: 14px;
+      color: #E9EDEF;
+      font-weight: 500;
+    }
+
+    .wa-participant-card .p-role {
+      font-size: 11px;
+      color: #8696A0;
+    }
+
+    .wa-call-btn {
+      width: 100%;
+      padding: 12px;
+      border-radius: 24px;
+      background: #00A884;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      margin-top: 16px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    /* ─── Incoming Call Toast ─── */
+    .wa-call-toast {
+      background: #1F2C34;
+      border: 1px solid #00A884;
+      border-radius: 16px;
+      padding: 16px;
+      width: 300px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    }
+
+    .wa-call-toast .toast-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+
+    .wa-call-toast .toast-avatar {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: #00A884;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+    }
+
+    .wa-call-toast .toast-info .toast-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #E9EDEF;
+    }
+
+    .wa-call-toast .toast-info .toast-caller {
+      font-size: 12px;
+      color: #8696A0;
+    }
+
+    .wa-call-toast .toast-actions {
+      display: flex;
+      gap: 10px;
+    }
+
+    .wa-call-toast .toast-btn {
+      flex: 1;
+      padding: 10px;
+      border-radius: 24px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+    }
+
+    .wa-call-toast .toast-btn.accept {
+      background: #00A884;
+      color: #fff;
+    }
+
+    .wa-call-toast .toast-btn.reject {
+      background: #E53935;
+      color: #fff;
+    }
+
+    /* ─── Utility ─── */
+    .section-divider {
+      height: 1px;
+      background: rgba(134,150,160,0.15);
+      margin: 60px 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 10px;
+      font-weight: 600;
+      margin-left: 8px;
+    }
+
+    .badge-new { background: #00A884; color: #fff; }
+    .badge-current { background: #FF6B35; color: #fff; }
+  </style>
+</head>
+<body>
+
+  <h1>TeamChat WhatsApp Reskin <span class="badge badge-new">NEW</span></h1>
+  <p class="subtitle">Visual design reference for the conditional WhatsApp skin applied when sim_mode = 'social_media'</p>
+
+  <!-- ═══════════ SECTION: COLOR PALETTE ═══════════ -->
+  <section>
+    <h2>Color Palette</h2>
+    <h3>WhatsApp Dark Mode Colors (New)</h3>
+    <div class="color-grid">
+      <div class="color-swatch">
+        <div class="preview" style="background: #0B141A; color: #8696A0;">Chat BG</div>
+        <div class="label"><div class="name">wa-bg</div><div class="hex">#0B141A</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #1F2C34; color: #8696A0;">Header / Input Area</div>
+        <div class="label"><div class="name">wa-header</div><div class="hex">#1F2C34</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #005C4B; color: #E9EDEF;">Sent Bubble</div>
+        <div class="label"><div class="name">wa-sent</div><div class="hex">#005C4B</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #202C33; color: #E9EDEF;">Received Bubble</div>
+        <div class="label"><div class="name">wa-received</div><div class="hex">#202C33</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #2A3942; color: #8696A0;">Input Field</div>
+        <div class="label"><div class="name">wa-input</div><div class="hex">#2A3942</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #00A884; color: #fff;">Primary Teal</div>
+        <div class="label"><div class="name">wa-teal</div><div class="hex">#00A884</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #06CF9C; color: #0B141A;">Teal Light</div>
+        <div class="label"><div class="name">wa-teal-light</div><div class="hex">#06CF9C</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #E9EDEF; color: #0B141A;">Primary Text</div>
+        <div class="label"><div class="name">wa-text</div><div class="hex">#E9EDEF</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #8696A0; color: #0B141A;">Secondary Text</div>
+        <div class="label"><div class="name">wa-text-secondary</div><div class="hex">#8696A0</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #53BDEB; color: #0B141A;">Blue (links/ticks)</div>
+        <div class="label"><div class="name">wa-blue</div><div class="hex">#53BDEB</div></div>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 32px;">Sender Name Colors (Rotating)</h3>
+    <div class="color-grid">
+      <div class="color-swatch">
+        <div class="preview" style="background: #202C33; color: #06CF9C; font-weight: 600;">Sender A</div>
+        <div class="label"><div class="name">Teal Green</div><div class="hex">#06CF9C</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #202C33; color: #53BDEB; font-weight: 600;">Sender B</div>
+        <div class="label"><div class="name">Sky Blue</div><div class="hex">#53BDEB</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #202C33; color: #FC7B92; font-weight: 600;">Sender C</div>
+        <div class="label"><div class="name">Pink</div><div class="hex">#FC7B92</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #202C33; color: #FFB74D; font-weight: 600;">Sender D</div>
+        <div class="label"><div class="name">Orange</div><div class="hex">#FFB74D</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #202C33; color: #B39DDB; font-weight: 600;">Sender E</div>
+        <div class="label"><div class="name">Purple</div><div class="hex">#B39DDB</div></div>
+      </div>
+    </div>
+
+    <h3 style="margin-top: 32px;">Terminal/Military Colors (Current - Retained for Field Ops)</h3>
+    <div class="color-grid">
+      <div class="color-swatch">
+        <div class="preview" style="background: #0f0f0f; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6); font-family: monospace;">Terminal</div>
+        <div class="label"><div class="name">robotic-dark</div><div class="hex">#0f0f0f</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: #1a1a1a; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6); font-family: monospace;">Borders</div>
+        <div class="label"><div class="name">robotic-yellow</div><div class="hex">#FFB800</div></div>
+      </div>
+      <div class="color-swatch">
+        <div class="preview" style="background: linear-gradient(135deg, #FFB800, #FF6B35); color: #0f0f0f; font-weight: 700; font-family: monospace;">[SEND]</div>
+        <div class="label"><div class="name">robotic-orange</div><div class="hex">#FF6B35</div></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: TYPOGRAPHY ═══════════ -->
+  <section>
+    <h2>Typography</h2>
+    <div class="font-samples">
+      <div class="font-sample">
+        <div class="font-label">WhatsApp Mode (New) — System Sans-Serif</div>
+        <p class="font-wa" style="font-size: 15px; font-weight: 600; color: #E9EDEF; margin-bottom: 8px;">Crisis Response Team</p>
+        <p class="font-wa" style="font-size: 13px; color: #E9EDEF; margin-bottom: 8px;">Has anyone seen the latest statement from the CEO? We need to coordinate our response before the press conference at 3pm.</p>
+        <p class="font-wa" style="font-size: 11px; font-weight: 600; color: #06CF9C; margin-bottom: 4px;">Sarah Chen</p>
+        <p class="font-wa" style="font-size: 10px; color: #8696A0;">2:45 PM</p>
+      </div>
+
+      <div class="font-sample" style="background: linear-gradient(135deg, rgba(26,26,26,0.95), rgba(45,45,45,0.95)); border-image: linear-gradient(135deg, #FFB800, #FF6B35, #FFB800) 1; border-style: solid; border-width: 1px;">
+        <div class="font-label" style="color: rgba(255,184,0,0.5);">Terminal Mode (Current) — JetBrains Mono</div>
+        <p class="font-terminal" style="font-size: 14px; font-weight: 600; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6); margin-bottom: 8px;">Crisis Response Team</p>
+        <p class="font-terminal" style="font-size: 12px; color: rgba(255,184,0,0.9); text-shadow: 0 0 10px rgba(255,184,0,0.3); margin-bottom: 8px;">Has anyone seen the latest statement from the CEO? We need to coordinate our response before the press conference at 3pm.</p>
+        <p class="font-terminal" style="font-size: 11px; font-weight: 600; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6); margin-bottom: 4px;">Sarah Chen [COMMS]</p>
+        <p class="font-terminal" style="font-size: 10px; color: rgba(255,184,0,0.4);">14:45:00</p>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: ICONS ═══════════ -->
+  <section>
+    <h2>Icons</h2>
+    <h3>WhatsApp Mode Icons</h3>
+    <div class="icon-grid">
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="#8696A0"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        <div class="icon-name">Send</div>
+      </div>
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="#8696A0"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+        <div class="icon-name">Microphone</div>
+      </div>
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+        <div class="icon-name">Call</div>
+      </div>
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="#8696A0"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+        <div class="icon-name">Double Tick</div>
+      </div>
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="#8696A0"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+        <div class="icon-name">Group</div>
+      </div>
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="2"><path d="M10 2L2 10l8 8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div class="icon-name">Back</div>
+      </div>
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="#E53935"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm3.36 12.3a.996.996 0 11-1.41 1.41L12 13.41l-1.95 1.95a.996.996 0 11-1.41-1.41L10.59 12l-1.95-1.95a.996.996 0 111.41-1.41L12 10.59l1.95-1.95a.996.996 0 111.41 1.41L13.41 12l1.95 1.95z"/></svg>
+        <div class="icon-name">End Call</div>
+      </div>
+      <div class="icon-card">
+        <svg viewBox="0 0 24 24" fill="#00A884"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/></svg>
+        <div class="icon-name">Accept Call</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: SIDE BY SIDE COMPARISON ═══════════ -->
+  <section>
+    <h2>Side-by-Side Comparison</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">Left: New WhatsApp skin (social_media mode) | Right: Current terminal skin (field_ops mode)</p>
+
+    <div class="comparison">
+      <!-- WhatsApp Version -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: #00A884; color: #fff;">
+          WhatsApp Mode <span class="badge badge-new">NEW</span>
+        </div>
+        <div>
+          <!-- Header -->
+          <div class="wa-header">
+            <div class="back-btn">
+              <svg width="12" height="20" viewBox="0 0 12 20" fill="none"><path d="M10 2L2 10l8 8" stroke="#00A884" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="avatar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">Crisis Response Team</div>
+              <div class="status">8 members, 3 online</div>
+            </div>
+            <div class="actions">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8696A0" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <div class="wa-tabs">
+            <div class="wa-tab active">Chats</div>
+            <div class="wa-tab inactive">DMs</div>
+            <div class="wa-tab inactive">Calls</div>
+          </div>
+
+          <!-- Channel chips -->
+          <div class="wa-channels">
+            <div class="wa-channel-chip active">Command Channel</div>
+            <div class="wa-channel-chip inactive">All Teams</div>
+            <div class="wa-channel-chip inactive">Public</div>
+          </div>
+
+          <!-- Messages -->
+          <div class="wa-messages">
+            <div class="wa-bubble received">
+              <div class="sender teal">Sarah Chen</div>
+              <div>Has anyone seen the latest statement from the CEO? We need to coordinate our response before the press conference at 3pm.</div>
+              <div class="time">2:45 PM</div>
+            </div>
+            <div class="wa-bubble received">
+              <div class="sender blue">Marcus Lee</div>
+              <div>I'm drafting talking points now. The key issue is the viral video from this morning.</div>
+              <div class="time">2:46 PM</div>
+            </div>
+            <div class="wa-bubble sent">
+              <div>Agreed. Let's focus on acknowledging the concern and outlining next steps. I'll share the draft in 10 mins.</div>
+              <div class="time">2:47 PM <span class="ticks">&#10003;&#10003;</span></div>
+            </div>
+            <div class="wa-bubble received">
+              <div class="sender pink">Priya Sharma</div>
+              <div>Legal team flagged that we shouldn't use the word "recall" yet. Stick with "product review" for now.</div>
+              <div class="time">2:48 PM</div>
+            </div>
+            <div class="wa-bubble sent">
+              <div>Got it. Updating the draft now.</div>
+              <div class="time">2:49 PM <span class="ticks">&#10003;&#10003;</span></div>
+            </div>
+          </div>
+
+          <!-- Input -->
+          <div class="wa-input-area">
+            <div class="wa-mic-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="#8696A0"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+            </div>
+            <input class="wa-input-field" placeholder="Type a message" readonly>
+            <div class="wa-send-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Terminal Version -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: linear-gradient(135deg, #FFB800, #FF6B35); color: #0f0f0f;">
+          Terminal Mode <span class="badge badge-current">CURRENT</span>
+        </div>
+        <div style="background: #0f0f0f; padding: 16px;">
+          <div class="terminal-container">
+            <!-- Tabs -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid rgba(255,184,0,0.2);">
+              <div class="terminal-tab active">[CHANNELS]</div>
+              <div class="terminal-tab inactive">[DIRECT MESSAGES]</div>
+              <div class="terminal-tab inactive">[VOICE]</div>
+            </div>
+
+            <!-- Channel buttons -->
+            <div style="display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap;">
+              <div class="terminal-tab active">[Command Channel]</div>
+              <div class="terminal-tab inactive">[All Teams]</div>
+              <div class="terminal-tab inactive">[Public]</div>
+            </div>
+
+            <!-- Messages -->
+            <div style="margin-bottom: 16px;">
+              <div class="terminal-message" style="margin-right: 32px;">
+                <div class="sender">Sarah Chen [COMMS]</div>
+                <div class="body">Has anyone seen the latest statement from the CEO? We need to coordinate our response before the press conference at 3pm.</div>
+                <div class="time">14:45:00</div>
+              </div>
+              <div class="terminal-message" style="margin-right: 32px;">
+                <div class="sender">Marcus Lee [LEGAL]</div>
+                <div class="body">I'm drafting talking points now. The key issue is the viral video from this morning.</div>
+                <div class="time">14:46:00</div>
+              </div>
+              <div class="terminal-message" style="margin-left: 32px;">
+                <div class="sender">You [OPS]</div>
+                <div class="body">Agreed. Let's focus on acknowledging the concern and outlining next steps. I'll share the draft in 10 mins.</div>
+                <div class="time">14:47:00</div>
+              </div>
+            </div>
+
+            <!-- Input -->
+            <div style="display: flex; gap: 8px;">
+              <input class="terminal-input" placeholder="Type or speak a message..." readonly>
+              <div class="terminal-send-btn">[SEND]</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: VOICE PANEL ═══════════ -->
+  <section>
+    <h2>Voice / Calls Panel</h2>
+    <div class="comparison">
+      <!-- WhatsApp Voice -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: #00A884; color: #fff;">WhatsApp Mode — Calls Tab</div>
+        <div class="wa-voice-panel">
+          <div class="wa-voice-header">Select participants to call</div>
+          <div class="wa-participant-card" style="border: 1px solid rgba(0,168,132,0.3); background: rgba(0,168,132,0.08);">
+            <div class="p-avatar" style="background: rgba(0,168,132,0.2);">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#00A884"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            </div>
+            <div class="p-info">
+              <div class="p-name">Sarah Chen</div>
+              <div class="p-role">Communications Team</div>
+            </div>
+            <div style="color: #00A884; font-size: 12px;">&#10003;</div>
+          </div>
+          <div class="wa-participant-card">
+            <div class="p-avatar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#8696A0"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            </div>
+            <div class="p-info">
+              <div class="p-name">Marcus Lee</div>
+              <div class="p-role">Legal Team</div>
+            </div>
+          </div>
+          <div class="wa-participant-card">
+            <div class="p-avatar">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="#8696A0"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            </div>
+            <div class="p-info">
+              <div class="p-name">Priya Sharma</div>
+              <div class="p-role">PR Team</div>
+            </div>
+          </div>
+          <button class="wa-call-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+            Call (1)
+          </button>
+        </div>
+      </div>
+
+      <!-- Terminal Voice -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: linear-gradient(135deg, #FFB800, #FF6B35); color: #0f0f0f;">Terminal Mode — Voice Tab</div>
+        <div style="background: #0f0f0f; padding: 16px;">
+          <div class="terminal-container">
+            <div style="font-size: 11px; color: rgba(255,184,0,0.6); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; font-family: 'JetBrains Mono', monospace;">Select participants to call</div>
+            <div style="border: 1px solid #FFB800; background: rgba(255,184,0,0.1); padding: 8px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace;">
+              <input type="checkbox" checked style="accent-color: #FFB800;">
+              <div>
+                <div style="font-size: 12px; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6);">Sarah Chen</div>
+                <div style="font-size: 10px; color: rgba(255,184,0,0.5);">Communications Team</div>
+              </div>
+            </div>
+            <div style="border: 1px solid rgba(255,184,0,0.2); padding: 8px 12px; margin-bottom: 6px; display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace;">
+              <input type="checkbox" style="accent-color: #FFB800;">
+              <div>
+                <div style="font-size: 12px; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6);">Marcus Lee</div>
+                <div style="font-size: 10px; color: rgba(255,184,0,0.5);">Legal Team</div>
+              </div>
+            </div>
+            <div style="border: 1px solid rgba(255,184,0,0.2); padding: 8px 12px; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; font-family: 'JetBrains Mono', monospace;">
+              <input type="checkbox" style="accent-color: #FFB800;">
+              <div>
+                <div style="font-size: 12px; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6);">Priya Sharma</div>
+                <div style="font-size: 10px; color: rgba(255,184,0,0.5);">PR Team</div>
+              </div>
+            </div>
+            <div style="border: 1px solid #4CAF50; color: #4CAF50; text-align: center; padding: 8px; font-family: 'JetBrains Mono', monospace; font-size: 11px; text-transform: uppercase;">[CALL (1)]</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: INCOMING CALL TOAST ═══════════ -->
+  <section>
+    <h2>Incoming Call Toast</h2>
+    <div class="comparison">
+      <div class="comparison-card">
+        <div class="card-header" style="background: #00A884; color: #fff;">WhatsApp Mode</div>
+        <div style="background: #0B141A; padding: 32px; display: flex; justify-content: center;">
+          <div class="wa-call-toast">
+            <div class="toast-header">
+              <div class="toast-avatar">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="white"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+              </div>
+              <div class="toast-info">
+                <div class="toast-title">Incoming Voice Call</div>
+                <div class="toast-caller">Sarah Chen</div>
+              </div>
+              <div style="font-size: 12px; color: #8696A0;">28s</div>
+            </div>
+            <div class="toast-actions">
+              <button class="toast-btn accept">Accept</button>
+              <button class="toast-btn reject">Decline</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="comparison-card">
+        <div class="card-header" style="background: linear-gradient(135deg, #FFB800, #FF6B35); color: #0f0f0f;">Terminal Mode</div>
+        <div style="background: #0f0f0f; padding: 32px; display: flex; justify-content: center;">
+          <div style="background: rgba(0,0,0,0.95); border: 2px solid #4CAF50; border-radius: 8px; padding: 16px; min-width: 280px; box-shadow: 0 0 20px rgba(76,175,80,0.2);">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <div style="width: 40px; height: 40px; border-radius: 50%; background: rgba(76,175,80,0.2); display: flex; align-items: center; justify-content: center; font-size: 18px;">&#128222;</div>
+              <div style="flex: 1;">
+                <div style="font-size: 12px; font-family: 'JetBrains Mono', monospace; color: #4CAF50; text-shadow: 0 0 10px rgba(76,175,80,0.6);">Incoming Voice Call</div>
+                <div style="font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #FFB800; text-shadow: 0 0 10px rgba(255,184,0,0.6);">Sarah Chen</div>
+              </div>
+              <div style="font-size: 10px; font-family: 'JetBrains Mono', monospace; color: rgba(255,184,0,0.5);">28s</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <div style="flex: 1; text-align: center; padding: 8px; font-size: 11px; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; border: 1px solid #4CAF50; color: #4CAF50; border-radius: 4px;">[ACCEPT]</div>
+              <div style="flex: 1; text-align: center; padding: 8px; font-size: 11px; font-family: 'JetBrains Mono', monospace; text-transform: uppercase; border: 1px solid #E53935; color: #E53935; border-radius: 4px;">[REJECT]</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: FULL MOCKUP ═══════════ -->
+  <section>
+    <h2>Full Chat Module Mockup (WhatsApp Mode)</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">How the TeamChat will look inside the phone frame for social media crisis scenarios</p>
+
+    <div style="display: flex; justify-content: center;">
+      <div class="phone-frame">
+        <!-- Status bar -->
+        <div style="background: #1F2C34; padding: 8px 24px; display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 14px; font-weight: 600;">9:41</span>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="white"><rect x="0" y="8" width="3" height="3" rx="0.5"/><rect x="4" y="5" width="3" height="6" rx="0.5"/><rect x="8" y="2" width="3" height="9" rx="0.5"/><rect x="12" y="0" width="3" height="11" rx="0.5" opacity="0.3"/></svg>
+            <span style="font-size: 11px; font-weight: 600;">5G</span>
+            <svg width="24" height="12" viewBox="0 0 27 13"><rect x="0" y="0.5" width="23" height="12" rx="3.5" stroke="white" stroke-opacity="0.35" fill="none"/><rect x="1.5" y="2" width="17" height="9" rx="2" fill="#34C759"/></svg>
+          </div>
+        </div>
+
+        <!-- WhatsApp Header -->
+        <div class="wa-header">
+          <div class="back-btn">
+            <svg width="10" height="16" viewBox="0 0 12 20" fill="none"><path d="M10 2L2 10l8 8" stroke="#E9EDEF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </div>
+          <div class="avatar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          </div>
+          <div class="info">
+            <div class="name">Crisis Response Team</div>
+            <div class="status">8 members, 3 online</div>
+          </div>
+          <div class="actions">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(233,237,239,0.7)" stroke-width="2" stroke-linecap="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.362 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.338 1.85.573 2.81.7A2 2 0 0122 16.92z"/></svg>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(233,237,239,0.7)" stroke-width="2"><circle cx="12" cy="5" r="1" fill="rgba(233,237,239,0.7)"/><circle cx="12" cy="12" r="1" fill="rgba(233,237,239,0.7)"/><circle cx="12" cy="19" r="1" fill="rgba(233,237,239,0.7)"/></svg>
+          </div>
+        </div>
+
+        <!-- Tabs -->
+        <div class="wa-tabs">
+          <div class="wa-tab active">Chats</div>
+          <div class="wa-tab inactive">DMs</div>
+          <div class="wa-tab inactive">Calls</div>
+        </div>
+
+        <!-- Channels -->
+        <div class="wa-channels">
+          <div class="wa-channel-chip active">Command</div>
+          <div class="wa-channel-chip inactive">All Teams</div>
+          <div class="wa-channel-chip inactive">Public</div>
+          <div class="wa-channel-chip inactive">Trainer</div>
+        </div>
+
+        <!-- Messages -->
+        <div class="wa-messages" style="min-height: 380px;">
+          <div style="text-align: center; margin-bottom: 12px;">
+            <span style="background: #1F2C34; color: #8696A0; font-size: 11px; padding: 4px 12px; border-radius: 6px;">Today</span>
+          </div>
+
+          <div class="wa-bubble received">
+            <div class="sender teal">Sarah Chen</div>
+            <div>The hashtag #BoycottAcmeCorp is now trending at #3 nationally. We need to respond ASAP.</div>
+            <div class="time">2:30 PM</div>
+          </div>
+
+          <div class="wa-bubble received">
+            <div class="sender blue">Marcus Lee</div>
+            <div>Legal says we can acknowledge the situation but cannot confirm or deny the allegations at this time.</div>
+            <div class="time">2:32 PM</div>
+          </div>
+
+          <div class="wa-bubble received">
+            <div class="sender pink">Priya Sharma</div>
+            <div>I've prepared three draft responses. Sending to Command Channel for approval.</div>
+            <div class="time">2:33 PM</div>
+          </div>
+
+          <div class="wa-bubble sent">
+            <div>Let's go with Option B - the empathetic tone. Can we get CEO sign-off within 20 minutes?</div>
+            <div class="time">2:35 PM <span class="ticks">&#10003;&#10003;</span></div>
+          </div>
+
+          <div class="wa-bubble received">
+            <div class="sender orange">David Park</div>
+            <div>CEO is in a meeting until 3pm. I'll escalate to the COO for interim approval.</div>
+            <div class="time">2:36 PM</div>
+          </div>
+
+          <div class="wa-bubble sent">
+            <div>Good call. Also, has anyone checked our Facebook page? The comment section on our last post is getting hostile.</div>
+            <div class="time">2:37 PM <span class="ticks">&#10003;&#10003;</span></div>
+          </div>
+
+          <div class="wa-bubble received">
+            <div class="sender teal">Sarah Chen</div>
+            <div>On it. I'll prepare a moderation strategy and share it in the next 5 minutes.</div>
+            <div class="time">2:38 PM</div>
+          </div>
+        </div>
+
+        <!-- Input Area -->
+        <div class="wa-input-area">
+          <div class="wa-mic-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="#8696A0"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/><path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+          </div>
+          <input class="wa-input-field" placeholder="Type a message" readonly>
+          <div class="wa-send-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </div>
+        </div>
+
+        <!-- Home indicator -->
+        <div style="background: #1F2C34; padding: 8px 0; display: flex; justify-content: center;">
+          <div style="width: 134px; height: 5px; background: rgba(255,255,255,0.3); border-radius: 3px;"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: DM VIEW ═══════════ -->
+  <section>
+    <h2>Direct Messages View (WhatsApp Mode)</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">The DMs tab with Insider, Hospital, and participant conversations</p>
+
+    <div style="max-width: 375px; margin: 0 auto; border-radius: 16px; overflow: hidden; border: 1px solid rgba(134,150,160,0.15);">
+      <!-- Tabs showing DMs active -->
+      <div class="wa-tabs">
+        <div class="wa-tab inactive">Chats</div>
+        <div class="wa-tab active">DMs</div>
+        <div class="wa-tab inactive">Calls</div>
+        <div style="margin-left: auto; padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 500; background: #00A884; color: #fff; cursor: pointer;">+ New</div>
+      </div>
+
+      <!-- DM Chips -->
+      <div class="wa-channels">
+        <div class="wa-channel-chip active" style="background: rgba(0,168,132,0.15); color: #00A884; border: 1px solid rgba(0,168,132,0.3);">Insider</div>
+        <div class="wa-channel-chip inactive">City Hospital</div>
+        <div class="wa-channel-chip inactive">Sarah Chen</div>
+        <div class="wa-channel-chip inactive">Marcus Lee</div>
+      </div>
+
+      <!-- Insider Chat -->
+      <div class="wa-messages" style="min-height: 240px;">
+        <div style="text-align: center; margin-bottom: 12px;">
+          <span style="background: #1F2C34; color: #8696A0; font-size: 11px; padding: 4px 12px; border-radius: 6px;">Ask the Insider about the scenario</span>
+        </div>
+
+        <div class="wa-bubble sent">
+          <div>What routes are available from the city center to the hospital?</div>
+          <div class="time">2:40 PM <span class="ticks">&#10003;&#10003;</span></div>
+        </div>
+
+        <div class="wa-bubble received">
+          <div class="sender teal">Insider</div>
+          <div>There are 3 main routes: Highway 101 (fastest, 12 min), Elm Street (moderate traffic, 18 min), and River Road (scenic, 25 min). Highway 101 currently has construction near exit 5.</div>
+          <div class="time">2:40 PM</div>
+        </div>
+
+        <div class="wa-bubble sent">
+          <div>Are there any police stations near the incident site?</div>
+          <div class="time">2:42 PM <span class="ticks">&#10003;&#10003;</span></div>
+        </div>
+
+        <div class="wa-bubble received">
+          <div class="sender teal">Insider</div>
+          <div>Yes, Central Police Station is 2.3km northeast of the incident site. There's also a patrol unit typically stationed at Market Square, about 800m away.</div>
+          <div class="time">2:42 PM</div>
+        </div>
+      </div>
+
+      <div class="wa-input-area">
+        <input class="wa-input-field" placeholder="Ask the Insider..." readonly>
+        <div class="wa-send-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: COMPONENT MAPPING ═══════════ -->
+  <section>
+    <h2>Component &amp; Class Mapping Summary</h2>
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+          <tr style="border-bottom: 2px solid rgba(134,150,160,0.3);">
+            <th style="text-align: left; padding: 12px 16px; color: #8696A0;">Element</th>
+            <th style="text-align: left; padding: 12px 16px; color: #FF6B35;">Terminal (field_ops)</th>
+            <th style="text-align: left; padding: 12px 16px; color: #00A884;">WhatsApp (social_media)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Container</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">military-border p-6 h-[600px]</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">h-full flex flex-col bg-wa-bg wa-chat-font p-3</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Tab Button</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">terminal-text uppercase border-robotic-yellow</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">rounded-full bg-wa-teal text-white</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Channel Chip</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">[Channel Name] uppercase border</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">Channel Name rounded-2xl bg-wa-input</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Message Bubble</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">military-border p-3 ml-8/mr-8</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">rounded-lg bg-wa-sent / bg-wa-received</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Text Font</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">JetBrains Mono + text-shadow glow</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">System sans-serif, no glow</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Input Field</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">military-input (orange border)</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">rounded-full bg-wa-input text-wa-text</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Send Button</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">military-button [SEND]</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">rounded-full bg-wa-teal (arrow SVG)</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <td style="padding: 10px 16px;">Sender Name</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">Name [TEAM] text-robotic-yellow</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">Name (colored, rotating palette)</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 16px;">Empty State</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #FF6B35;">[NO_MESSAGES] No messages yet</td>
+            <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; color: #00A884;">No messages yet</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</body>
+</html>
