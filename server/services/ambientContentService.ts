@@ -60,6 +60,65 @@ function loadDesignedPersonas(initialState: Record<string, unknown>, sessionId: 
   }
 }
 
+// ─── Reaction Distribution ──────────────────────────────────────────────────
+
+function getReactionSummary(sentiment: string, likeCount: number): string[] {
+  if (likeCount === 0) return [];
+  const distributions: Record<string, [string, number][]> = {
+    positive: [
+      ['like', 0.6],
+      ['love', 0.25],
+      ['wow', 0.1],
+      ['haha', 0.05],
+    ],
+    supportive: [
+      ['like', 0.5],
+      ['love', 0.35],
+      ['wow', 0.1],
+      ['haha', 0.05],
+    ],
+    negative: [
+      ['angry', 0.5],
+      ['sad', 0.2],
+      ['wow', 0.15],
+      ['like', 0.1],
+      ['haha', 0.05],
+    ],
+    hateful: [
+      ['angry', 0.6],
+      ['sad', 0.15],
+      ['wow', 0.1],
+      ['like', 0.1],
+      ['haha', 0.05],
+    ],
+    inflammatory: [
+      ['angry', 0.45],
+      ['wow', 0.2],
+      ['sad', 0.15],
+      ['haha', 0.1],
+      ['like', 0.1],
+    ],
+    neutral: [
+      ['like', 0.7],
+      ['wow', 0.15],
+      ['love', 0.1],
+      ['sad', 0.05],
+    ],
+    humorous: [
+      ['haha', 0.6],
+      ['like', 0.25],
+      ['love', 0.1],
+      ['wow', 0.05],
+    ],
+  };
+  const dist = distributions[sentiment] || distributions.neutral;
+  const types: string[] = [];
+  for (const [type, weight] of dist) {
+    if (Math.floor(likeCount * weight) >= 1) types.push(type);
+  }
+  return types.length > 0 ? types : ['like'];
+}
+
 // ─── Player Bubble Assignment ────────────────────────────────────────────────
 
 const playerBubbles = new Map<string, Map<string, string[]>>();
@@ -242,6 +301,7 @@ async function seedBrandedHistory(
         repost_count: Math.floor(baseLikes * 0.15),
         reply_count: Math.floor(baseLikes * 0.05),
         view_count: baseLikes * 5 + Math.floor(Math.random() * 1000),
+        reaction_summary: getReactionSummary('positive', baseLikes),
         is_branded_history: true,
         created_at: backdatedTime.toISOString(),
       })
@@ -279,6 +339,110 @@ async function seedBrandedHistory(
 
   seededSessions.add(sessionId);
   logger.info({ sessionId, historyCount: history.length }, 'Branded history seeded');
+
+  // Seed comments on branded history posts (non-blocking)
+  const seededPostIds = history
+    .map((_, i) => i)
+    .filter((i) => {
+      const platform = String(history[i].platform || 'facebook');
+      return platform === 'facebook' ? !!fb : !!tw;
+    });
+  if (seededPostIds.length > 0) {
+    void seedBrandedComments(sessionId, initialState);
+  }
+}
+
+async function seedBrandedComments(
+  sessionId: string,
+  initialState: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const personas = (initialState.npc_personas || []) as Array<Record<string, unknown>>;
+    if (personas.length === 0) return;
+
+    const { data: brandedPosts } = await supabaseAdmin
+      .from('social_posts')
+      .select('id, content, platform, author_display_name, created_at, sentiment')
+      .eq('session_id', sessionId)
+      .eq('is_branded_history', true)
+      .order('created_at', { ascending: true })
+      .limit(20);
+
+    if (!brandedPosts || brandedPosts.length === 0) return;
+
+    const npcList = personas
+      .slice(0, 15)
+      .map((p) => `${p.handle} (${p.name}): ${String(p.personality || '').substring(0, 60)}`)
+      .join('\n');
+
+    const postSummaries = brandedPosts
+      .map(
+        (p, i) =>
+          `Post ${i + 1} [${p.id}] by ${p.author_display_name}: "${String(p.content).substring(0, 100)}"`,
+      )
+      .join('\n');
+
+    const result = await callAI(
+      `Generate realistic comments on these pre-crisis social media posts from a company page. These are normal brand posts before any crisis hit.
+
+POSTS:
+${postSummaries}
+
+AVAILABLE NPC COMMENTERS:
+${npcList}
+
+For EACH post, generate 2-4 comments. Comments should feel natural:
+- Supportive customers praising products/services
+- Questions about availability, pricing, or details
+- Casual reactions ("Nice!", "Love this!", "When is this available?")
+- Occasional skeptic or competitor mention
+- 1-2 sentences each, casual social media tone
+
+Return ONLY valid JSON:
+{ "comments": [{ "post_id": "exact_post_id_from_above", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "content": "comment text", "sentiment": "supportive|neutral|negative" }] }`,
+      'Generate branded history comments.',
+      4000,
+      0.9,
+    );
+
+    const comments = (result?.comments as Array<Record<string, unknown>>) || [];
+    const commentCounts: Record<string, number> = {};
+
+    for (const comment of comments) {
+      const postId = String(comment.post_id || '');
+      const parentPost = brandedPosts.find((p) => p.id === postId);
+      if (!parentPost) continue;
+
+      const backdateOffset = Math.floor(Math.random() * 3600000 * 6);
+      const commentTime = new Date(new Date(parentPost.created_at).getTime() + backdateOffset);
+
+      await supabaseAdmin.from('social_posts').insert({
+        session_id: sessionId,
+        platform: parentPost.platform,
+        author_handle: String(comment.author_handle || '@user'),
+        author_display_name: String(comment.author_display_name || 'User'),
+        author_type: 'npc_public',
+        content: String(comment.content || ''),
+        reply_to_post_id: postId,
+        sentiment: String(comment.sentiment || 'neutral'),
+        virality_score: 0,
+        content_flags: {},
+        like_count: Math.floor(Math.random() * 5),
+        reaction_summary: Math.random() < 0.5 ? ['like'] : [],
+        created_at: commentTime.toISOString(),
+      });
+
+      commentCounts[postId] = (commentCounts[postId] || 0) + 1;
+    }
+
+    for (const [postId, count] of Object.entries(commentCounts)) {
+      await supabaseAdmin.from('social_posts').update({ reply_count: count }).eq('id', postId);
+    }
+
+    logger.info({ sessionId, commentCount: comments.length }, 'Branded history comments seeded');
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'Branded history comment seeding failed (non-critical)');
+  }
 }
 
 async function callAI(
@@ -575,12 +739,11 @@ Return ONLY valid JSON:
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
-
-    if (Math.random() < 0.5) {
-      await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
-    }
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
 
     // Generate group activity and events
     await generateGroupActivity(
@@ -886,12 +1049,31 @@ async function simulateThreadActivity(
     .order('created_at', { ascending: false })
     .limit(5);
 
-  const [{ data: postsWithReplies }, { data: postsWithoutReplies }] = await Promise.all([
-    queryWith,
-    queryWithout,
-  ]);
+  const recentCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const queryRecent = supabaseAdmin
+    .from('social_posts')
+    .select('id, content, author_handle, author_display_name, reply_count, platform')
+    .eq('session_id', sessionId)
+    .eq('platform', platform)
+    .is('reply_to_post_id', null)
+    .gte('created_at', recentCutoff)
+    .lt('reply_count', 3)
+    .order('created_at', { ascending: false })
+    .limit(3);
 
-  const candidates = [...(postsWithReplies || []), ...(postsWithoutReplies || [])];
+  const [{ data: postsWithReplies }, { data: postsWithoutReplies }, { data: recentPosts }] =
+    await Promise.all([queryWith, queryWithout, queryRecent]);
+
+  const seenIds = new Set<string>();
+  const candidates = [
+    ...(recentPosts || []),
+    ...(postsWithReplies || []),
+    ...(postsWithoutReplies || []),
+  ].filter((p) => {
+    if (seenIds.has(p.id as string)) return false;
+    seenIds.add(p.id as string);
+    return true;
+  });
   if (candidates.length === 0) return;
 
   const targetPost = candidates[Math.floor(Math.random() * candidates.length)];
@@ -911,9 +1093,10 @@ async function simulateThreadActivity(
   }
 
   const threadContext = [
-    `ORIGINAL POST by ${String(targetPost.author_handle)}: "${String(targetPost.content).substring(0, 200)}"`,
+    `ORIGINAL POST [${targetPost.id}] by ${String(targetPost.author_handle)}: "${String(targetPost.content).substring(0, 200)}"`,
     ...(existingReplies || []).map(
-      (r) => `  REPLY by ${String(r.author_handle)}: "${String(r.content).substring(0, 150)}"`,
+      (r) =>
+        `  REPLY [${r.id}] by ${String(r.author_handle)}: "${String(r.content).substring(0, 150)}"`,
     ),
   ].join('\n');
 
@@ -929,8 +1112,12 @@ async function simulateThreadActivity(
     .map((n) => `${n.handle} (${n.display_name}): ${n.personality}`)
     .join('\n');
 
+  const isNormalLifePost = !/crisis|recall|scandal|outbreak|incident|emergency|breaking/i.test(
+    String(targetPost.content),
+  );
+
   const result = await callAI(
-    `You are simulating a social media comment thread during a crisis.
+    `You are simulating a social media comment thread during a crisis simulation.
 
 THREAD SO FAR:
 ${threadContext}
@@ -944,10 +1131,16 @@ Generate 2-3 new replies to continue this thread. Rules:
 - 70% chance: pick someone ALREADY in the thread to reply again (stay in character!)
 - 30% chance: introduce ONE new commenter (either from known users or create a new one)
 - If a user is already in the thread, you MUST use their EXACT handle and display name
-- Replies can be to the original post OR to another reply (arguments, agreements, corrections)
+- Replies can be to the original post OR to another reply
 - Characters should stay consistent with their personality and bias
 - Make it feel like a real argument/discussion -- people interrupt each other, quote each other, get emotional
 - 1-2 sentences per reply
+${isNormalLifePost ? '- This is a NORMAL LIFE post (not crisis-related). Keep comments casual and on-topic (e.g. food opinions, sports banter, daily life chatter).' : ''}
+
+THREADING FORMAT:
+- When replying to the ORIGINAL POST, just write the reply text normally
+- When replying to ANOTHER REPLY in the thread, start your reply with: @their_handle[their_reply_id] your reply text
+- Use the exact reply IDs from the thread above
 
 Crisis context: ${crisisDescription.substring(0, 200)}
 

@@ -91,6 +91,7 @@ interface SocialPost {
   page_liked_by_me?: boolean;
   page_reaction?: string | null;
   reaction_types?: string[];
+  reaction_summary?: string[];
   flagged_by_me?: boolean;
   post_format?: string;
   media_urls?: string[];
@@ -1957,7 +1958,14 @@ export default function FacebookFeedApp() {
                     })
                     .map((post) => {
                       const badge = getBadge(post.author_type);
-                      const postReactionTypes = post.reaction_types || [];
+                      const postReactionTypes =
+                        post.reaction_types && post.reaction_types.length > 0
+                          ? post.reaction_types
+                          : post.reaction_summary && post.reaction_summary.length > 0
+                            ? post.reaction_summary
+                            : post.like_count > 0
+                              ? ['like']
+                              : [];
                       const replies = postReplies[post.id] || [];
                       const isExpanded = expandedPosts.has(post.id);
                       const isLong = post.content.length > 200;

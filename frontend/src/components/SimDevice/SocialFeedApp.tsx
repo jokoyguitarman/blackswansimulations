@@ -104,6 +104,8 @@ interface SocialPost {
   posted_by_display_name?: string;
   is_branded_history?: boolean;
   target_player_ids?: string[];
+  reaction_types?: string[];
+  reaction_summary?: string[];
 }
 
 function formatCount(n: number): string {
