@@ -109,11 +109,16 @@ function getAvatarColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
-function getReactionEmojis(likeCount: number): string[] {
-  if (likeCount === 0) return [];
-  if (likeCount < 10) return ['👍'];
-  if (likeCount < 50) return ['👍', '❤️'];
-  return ['👍', '❤️', '😮'];
+function getReactionEmoji(reactionType: string | undefined): string {
+  const map: Record<string, string> = {
+    like: '👍',
+    love: '❤️',
+    haha: '😂',
+    wow: '😮',
+    angry: '😡',
+    sad: '😢',
+  };
+  return map[reactionType || ''] || '👍';
 }
 
 export default function FacebookFeedApp() {
@@ -684,12 +689,30 @@ export default function FacebookFeedApp() {
   async function handleReaction(postId: string, reactionType: string = 'like') {
     const post = posts.find((p) => p.id === postId);
     const alreadyLiked = post?.liked_by_me;
-    if (!alreadyLiked) {
-      setPosts((prev) =>
-        prev.map((p) =>
-          p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
-        ),
-      );
+    if (post) {
+      if (!alreadyLiked) {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === postId ? { ...p, like_count: p.like_count + 1, liked_by_me: true } : p,
+          ),
+        );
+      }
+    } else {
+      setPostReplies((prev) => {
+        const updated: Record<string, SocialPost[]> = {};
+        for (const [pid, replies] of Object.entries(prev)) {
+          updated[pid] = replies.map((r) =>
+            r.id === postId
+              ? {
+                  ...r,
+                  like_count: (r.like_count || 0) + (r.liked_by_me ? 0 : 1),
+                  liked_by_me: true,
+                }
+              : r,
+          );
+        }
+        return updated;
+      });
     }
     setMyReactions((prev) => ({ ...prev, [postId]: reactionType }));
     try {
@@ -700,7 +723,7 @@ export default function FacebookFeedApp() {
         body: JSON.stringify({ session_id: sessionId, reaction_type: reactionType }),
       });
     } catch {
-      if (!alreadyLiked) {
+      if (post && !alreadyLiked) {
         setPosts((prev) =>
           prev.map((p) =>
             p.id === postId ? { ...p, like_count: p.like_count - 1, liked_by_me: false } : p,
@@ -1914,7 +1937,8 @@ export default function FacebookFeedApp() {
                     })
                     .map((post) => {
                       const badge = getBadge(post.author_type);
-                      const reactionEmojis = getReactionEmojis(post.like_count);
+                      const postReactionEmoji =
+                        post.like_count > 0 ? getReactionEmoji(myReactions[post.id]) : '';
                       const replies = postReplies[post.id] || [];
                       const isExpanded = expandedPosts.has(post.id);
                       const isLong = post.content.length > 200;
@@ -2237,14 +2261,8 @@ export default function FacebookFeedApp() {
                             style={{ borderBottom: '1px solid #CED0D4' }}
                           >
                             <div className="flex items-center gap-1">
-                              {reactionEmojis.length > 0 && (
-                                <div className="flex -space-x-0.5">
-                                  {reactionEmojis.map((emoji, i) => (
-                                    <span key={i} className="text-[14px]">
-                                      {emoji}
-                                    </span>
-                                  ))}
-                                </div>
+                              {postReactionEmoji && (
+                                <span className="text-[14px]">{postReactionEmoji}</span>
                               )}
                               {post.like_count > 0 && (
                                 <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
@@ -2589,17 +2607,88 @@ export default function FacebookFeedApp() {
                                                 </p>
                                               </div>
                                               <div className="flex items-center gap-3 ml-3 mt-0.5">
-                                                <button
-                                                  onClick={() => handleReaction(reply.id, 'like')}
-                                                  className="text-[12px] font-semibold hover:underline"
-                                                  style={{
-                                                    color: reply.liked_by_me
-                                                      ? '#1877F2'
-                                                      : '#65676B',
-                                                  }}
-                                                >
-                                                  Like
-                                                </button>
+                                                <div className="relative">
+                                                  {(() => {
+                                                    const cmtRx = myReactions[reply.id];
+                                                    const cmtRxInfo = cmtRx
+                                                      ? REACTIONS.find((r) => r.type === cmtRx)
+                                                      : null;
+                                                    const cmtRxColor =
+                                                      cmtRx === 'like'
+                                                        ? '#1877F2'
+                                                        : cmtRx === 'love'
+                                                          ? '#F33E58'
+                                                          : cmtRx === 'angry'
+                                                            ? '#E9710F'
+                                                            : cmtRx
+                                                              ? '#F7B928'
+                                                              : '#65676B';
+                                                    return (
+                                                      <button
+                                                        onClick={() =>
+                                                          handleReaction(reply.id, 'like')
+                                                        }
+                                                        onMouseEnter={() => {
+                                                          if (reactionTimeoutRef.current)
+                                                            clearTimeout(
+                                                              reactionTimeoutRef.current,
+                                                            );
+                                                          setShowReactions(reply.id);
+                                                        }}
+                                                        onMouseLeave={() => {
+                                                          reactionTimeoutRef.current = setTimeout(
+                                                            () => setShowReactions(null),
+                                                            600,
+                                                          );
+                                                        }}
+                                                        className="text-[12px] font-semibold hover:underline"
+                                                        style={{
+                                                          color: reply.liked_by_me
+                                                            ? cmtRxColor
+                                                            : '#65676B',
+                                                        }}
+                                                      >
+                                                        {cmtRxInfo
+                                                          ? `${cmtRxInfo.emoji} ${cmtRxInfo.type.charAt(0).toUpperCase() + cmtRxInfo.type.slice(1)}`
+                                                          : 'Like'}
+                                                      </button>
+                                                    );
+                                                  })()}
+                                                  {showReactions === reply.id && (
+                                                    <div
+                                                      className="absolute bottom-full left-0 mb-1 flex gap-1 px-2 py-1.5 rounded-full z-50"
+                                                      style={{
+                                                        backgroundColor: '#FFFFFF',
+                                                        boxShadow: '0 2px 12px rgba(0,0,0,0.15)',
+                                                      }}
+                                                      onMouseEnter={() => {
+                                                        if (reactionTimeoutRef.current)
+                                                          clearTimeout(reactionTimeoutRef.current);
+                                                        setShowReactions(reply.id);
+                                                      }}
+                                                      onMouseLeave={() => {
+                                                        reactionTimeoutRef.current = setTimeout(
+                                                          () => setShowReactions(null),
+                                                          300,
+                                                        );
+                                                      }}
+                                                    >
+                                                      {REACTIONS.map((r) => (
+                                                        <button
+                                                          key={r.type}
+                                                          onClick={() =>
+                                                            handleReaction(reply.id, r.type)
+                                                          }
+                                                          className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
+                                                          style={{ fontSize: 22, lineHeight: 1 }}
+                                                          title={r.type}
+                                                        >
+                                                          {r.emoji}
+                                                        </button>
+                                                      ))}
+                                                    </div>
+                                                  )}
+                                                </div>
                                                 <button
                                                   onClick={() => {
                                                     setReplyTarget((prev) => ({
@@ -2639,7 +2728,8 @@ export default function FacebookFeedApp() {
                                                     className="text-[12px]"
                                                     style={{ color: '#65676B' }}
                                                   >
-                                                    👍 {reply.like_count}
+                                                    {getReactionEmoji(myReactions[reply.id])}{' '}
+                                                    {reply.like_count}
                                                   </span>
                                                 )}
                                               </div>
