@@ -252,11 +252,9 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
         }),
       ),
     );
-    if (unread.length > 0) {
-      setThreads((prev) =>
-        prev.map((t) => (t.thread_id === selectedThread ? { ...t, unread_count: 0 } : t)),
-      );
-    }
+    setThreads((prev) =>
+      prev.map((t) => (t.thread_id === selectedThread ? { ...t, unread_count: 0 } : t)),
+    );
   }
 
   async function handleSend() {
