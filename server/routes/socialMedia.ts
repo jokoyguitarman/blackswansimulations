@@ -109,35 +109,52 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
 
     const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
 
-    const enrichedData = (data || [])
-      .filter((post) => {
-        // Trainers see everything (god-view)
-        if (isTrainerOrAdmin) return true;
-        // Per-player bubble targeting
-        if (post.target_player_ids) {
-          return (post.target_player_ids as string[]).includes(user.id);
+    const filteredData = (data || []).filter((post) => {
+      if (isTrainerOrAdmin) return true;
+      if (post.target_player_ids) {
+        return (post.target_player_ids as string[]).includes(user.id);
+      }
+      if (post.target_demographics) {
+        if (!playerDemographics) return true;
+        const target = post.target_demographics as Record<string, string | string[]>;
+        return Object.entries(target).every(([key, vals]) => {
+          const playerVal = playerDemographics[key];
+          if (!playerVal) return true;
+          if (Array.isArray(vals)) return vals.includes(playerVal);
+          return vals === playerVal;
+        });
+      }
+      return true;
+    });
+
+    const postIds = filteredData.map((p) => p.id);
+    const reactionTypesMap = new Map<string, string[]>();
+    if (postIds.length > 0) {
+      const { data: allReactions } = await supabaseAdmin
+        .from('social_post_likes')
+        .select('post_id, reaction_type')
+        .in('post_id', postIds);
+      for (const r of allReactions || []) {
+        const pid = r.post_id as string;
+        const rt = String(r.reaction_type || 'like');
+        const existing = reactionTypesMap.get(pid);
+        if (!existing) {
+          reactionTypesMap.set(pid, [rt]);
+        } else if (!existing.includes(rt)) {
+          existing.push(rt);
         }
-        // Demographic targeting (backward compat)
-        if (post.target_demographics) {
-          if (!playerDemographics) return true;
-          const target = post.target_demographics as Record<string, string | string[]>;
-          return Object.entries(target).every(([key, vals]) => {
-            const playerVal = playerDemographics[key];
-            if (!playerVal) return true;
-            if (Array.isArray(vals)) return vals.includes(playerVal);
-            return vals === playerVal;
-          });
-        }
-        return true;
-      })
-      .map((post) => ({
-        ...post,
-        liked_by_me: likedPostIds.has(post.id),
-        my_reaction: reactionByPost.get(post.id) || null,
-        page_liked_by_me: pageLikedPostIds.has(post.id),
-        page_reaction: pageReactionByPost.get(post.id) || null,
-        flagged_by_me: flaggedPostIds.has(post.id),
-      }));
+      }
+    }
+
+    const enrichedData = filteredData.map((post) => ({
+      ...post,
+      liked_by_me: likedPostIds.has(post.id),
+      my_reaction: reactionByPost.get(post.id) || null,
+      page_liked_by_me: pageLikedPostIds.has(post.id),
+      page_reaction: pageReactionByPost.get(post.id) || null,
+      reaction_types: reactionTypesMap.get(post.id) || [],
+      flagged_by_me: flaggedPostIds.has(post.id),
+    }));
 
     res.json({ data: enrichedData, count, page, limit });
   } catch (err) {
@@ -566,14 +583,12 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
       });
     }
 
-    await supabaseAdmin
-      .from('social_post_likes')
-      .insert({
-        post_id: postId,
-        player_id: user.id,
-        reaction_type: reactionType,
-        reacted_as: reactedAs,
-      });
+    await supabaseAdmin.from('social_post_likes').insert({
+      post_id: postId,
+      player_id: user.id,
+      reaction_type: reactionType,
+      reacted_as: reactedAs,
+    });
 
     const { data: post } = await supabaseAdmin
       .from('social_posts')

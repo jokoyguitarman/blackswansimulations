@@ -90,6 +90,7 @@ interface SocialPost {
   my_reaction?: string | null;
   page_liked_by_me?: boolean;
   page_reaction?: string | null;
+  reaction_types?: string[];
   flagged_by_me?: boolean;
   post_format?: string;
   media_urls?: string[];
@@ -698,7 +699,16 @@ export default function FacebookFeedApp() {
         const likedField = pageMode ? 'page_liked_by_me' : 'liked_by_me';
         setPosts((prev) =>
           prev.map((p) =>
-            p.id === postId ? { ...p, like_count: p.like_count + 1, [likedField]: true } : p,
+            p.id === postId
+              ? {
+                  ...p,
+                  like_count: p.like_count + 1,
+                  [likedField]: true,
+                  reaction_types: (p.reaction_types || []).includes(reactionType)
+                    ? p.reaction_types
+                    : [...(p.reaction_types || []), reactionType],
+                }
+              : p,
           ),
         );
       }
@@ -1947,9 +1957,7 @@ export default function FacebookFeedApp() {
                     })
                     .map((post) => {
                       const badge = getBadge(post.author_type);
-                      const postRxKey = pageMode ? `page:${post.id}` : post.id;
-                      const postReactionEmoji =
-                        post.like_count > 0 ? getReactionEmoji(myReactions[postRxKey]) : '';
+                      const postReactionTypes = post.reaction_types || [];
                       const replies = postReplies[post.id] || [];
                       const isExpanded = expandedPosts.has(post.id);
                       const isLong = post.content.length > 200;
@@ -2272,8 +2280,14 @@ export default function FacebookFeedApp() {
                             style={{ borderBottom: '1px solid #CED0D4' }}
                           >
                             <div className="flex items-center gap-1">
-                              {postReactionEmoji && (
-                                <span className="text-[14px]">{postReactionEmoji}</span>
+                              {postReactionTypes.length > 0 && (
+                                <div className="flex -space-x-0.5">
+                                  {postReactionTypes.slice(0, 3).map((rt) => (
+                                    <span key={rt} className="text-[14px]">
+                                      {getReactionEmoji(rt)}
+                                    </span>
+                                  ))}
+                                </div>
                               )}
                               {post.like_count > 0 && (
                                 <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
