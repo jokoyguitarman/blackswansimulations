@@ -1309,6 +1309,7 @@ export default function FacebookFeedApp() {
                     onClick={() => {
                       if (!notif.read) markNotifRead(notif.id);
                       setShowNotifPanel(false);
+                      setActiveView('feed');
                       const postId = notif.metadata?.post_id as string | undefined;
                       const highlightId = notif.metadata?.highlight_post_id as string | undefined;
                       if (postId) {
@@ -1331,7 +1332,7 @@ export default function FacebookFeedApp() {
                               .getElementById(`fb-post-${postId}`)
                               ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
                           }
-                        }, 200);
+                        }, 500);
                       }
                     }}
                     className="flex items-start gap-3 w-full text-left px-4 py-3 hover:bg-[#F2F3F5] transition-colors"
