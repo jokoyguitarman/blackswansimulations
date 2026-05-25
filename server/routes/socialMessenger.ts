@@ -231,7 +231,7 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
         recipient_user_id: null,
         content,
         media_urls: mediaUrls,
-        is_read: true,
+        is_read: false,
         platform: platform || 'facebook',
       })
       .select()

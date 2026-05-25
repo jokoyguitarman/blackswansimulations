@@ -27,9 +27,10 @@ interface Thread {
   other_type: string;
   last_message: string;
   last_time: string;
+  last_sender_handle: string;
   unread_count: number;
   is_org_page_thread: boolean;
-  latest_message?: { content: string; created_at: string };
+  latest_message?: { content: string; created_at: string; sender_handle?: string };
   other_participant?: { handle: string; display_name: string };
 }
 
@@ -206,6 +207,9 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
           last_time: String(
             (t.latest_message as Record<string, string>)?.created_at || t.last_time || '',
           ),
+          last_sender_handle: String(
+            (t.latest_message as Record<string, string>)?.sender_handle || '',
+          ),
           unread_count: Number(t.unread_count) || 0,
           is_org_page_thread: !!t.is_org_page_thread,
         }));
@@ -359,6 +363,8 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
     },
   });
 
+  const viewingAsHandle = inboxTab === 'page' && orgPageHandle ? orgPageHandle : playerHandle;
+
   const filteredThreads = threads
     .filter((t) => {
       if (inboxTab === 'page') return t.is_org_page_thread;
@@ -366,19 +372,23 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
       return t.other_handle === playerHandle;
     })
     .map((t) => {
+      let thread = t;
       if (
         inboxTab === 'personal' &&
         t.is_org_page_thread &&
         t.other_handle === playerHandle &&
         orgPageHandle
       ) {
-        return {
+        thread = {
           ...t,
           other_handle: orgPageHandle,
           other_display_name: orgPageName || orgPageHandle,
         };
       }
-      return t;
+      if (viewingAsHandle && thread.last_sender_handle === viewingAsHandle) {
+        thread = { ...thread, unread_count: 0 };
+      }
+      return thread;
     });
 
   const activeThread =
