@@ -210,6 +210,7 @@ export const ChatInterface = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const optimisticMessageIdRef = useRef<string | null>(null);
   const optimisticMessageContentRef = useRef<string | null>(null);
+  const optimisticRealIdRef = useRef<string | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Queue messages for channels that aren't currently selected
   const [_queuedMessages, setQueuedMessages] = useState<Map<string, Message[]>>(new Map());
@@ -327,13 +328,13 @@ export const ChatInterface = ({
         currentUserId: user?.id,
       });
 
-      // Check if this matches our optimistic message (by content and sender)
-      // The optimistic message has a temp ID, but the real message has a UUID
-      // So we match by content + sender + recent timestamp instead
+      // Check if this matches our optimistic message
+      // Match by: (a) real message ID from API response, OR (b) content + sender
       const isOptimisticMatch =
-        optimisticMessageContentRef.current &&
-        optimisticMessageContentRef.current === payload.content &&
-        (payload.sender_id === user?.id || !user?.id);
+        (optimisticRealIdRef.current && optimisticRealIdRef.current === payload.id) ||
+        (optimisticMessageContentRef.current &&
+          optimisticMessageContentRef.current === payload.content &&
+          (payload.sender_id === user?.id || !user?.id));
 
       if (isOptimisticMatch) {
         console.log('[ChatInterface] Realtime message matches optimistic message, replacing:', {
@@ -448,6 +449,7 @@ export const ChatInterface = ({
         // Clear optimistic tracking IMMEDIATELY to prevent further duplicates
         optimisticMessageIdRef.current = null;
         optimisticMessageContentRef.current = null;
+        optimisticRealIdRef.current = null;
 
         // Clear timeout since Realtime arrived successfully
         if (timeoutRef.current) {
@@ -732,6 +734,19 @@ export const ChatInterface = ({
           });
 
           setMessages((prev) => {
+            // If this message ID matches the known real ID of our optimistic message,
+            // replace the temp message directly (most reliable path)
+            if (optimisticRealIdRef.current === message.id) {
+              const filtered = prev.filter(
+                (m) => !m.id.startsWith('temp-') || m.content !== message.content,
+              );
+              const exists = filtered.some((m) => m.id === message.id);
+              optimisticRealIdRef.current = null;
+              optimisticMessageContentRef.current = null;
+              optimisticMessageIdRef.current = null;
+              return exists ? filtered : [...filtered, message];
+            }
+
             // Check if message already exists by ID (prevent duplicates)
             const existingMessage = prev.find((m) => m.id === message.id);
             if (existingMessage) {
@@ -761,14 +776,11 @@ export const ChatInterface = ({
             const filtered = prev.filter((m) => {
               if (m.id.startsWith('temp-')) {
                 const contentMatch = m.content === message.content;
-                // Broad sender matching: check all possible id locations
                 const senderMatch =
                   m.sender?.id === message.sender_id ||
                   m.sender_id === message.sender_id ||
                   m.sender?.id === message.sender?.id ||
-                  // Fallback: if the optimistic message is from current user AND the realtime message is too
                   (m.sender_id === user?.id && message.sender_id === user?.id) ||
-                  // Last resort: content alone for temp messages from this user
                   (contentMatch && m.sender_id === user?.id);
 
                 if (contentMatch && senderMatch) {
@@ -1410,8 +1422,10 @@ export const ChatInterface = ({
 
     try {
       const result = await api.channels.sendMessage(channelId, messageContent);
+      const realMessageId = (result.data as { id?: string })?.id || null;
+      optimisticRealIdRef.current = realMessageId;
       console.log('[ChatInterface] Message sent successfully, waiting for Realtime:', {
-        messageId: (result.data as { id?: string })?.id,
+        messageId: realMessageId,
         tempId,
         content: messageContent,
       });
@@ -1431,6 +1445,7 @@ export const ChatInterface = ({
           loadMessages();
           optimisticMessageIdRef.current = null;
           optimisticMessageContentRef.current = null;
+          optimisticRealIdRef.current = null;
         }
         timeoutRef.current = null;
       }, 5000); // 5 seconds should be plenty - Realtime usually arrives in <1 second
@@ -1445,6 +1460,7 @@ export const ChatInterface = ({
       setMessages((prev) => prev.filter((m) => m.id !== tempId));
       optimisticMessageIdRef.current = null;
       optimisticMessageContentRef.current = null;
+      optimisticRealIdRef.current = null;
       alert('Failed to send message');
       // Restore input
       setMessageInput(messageContent);
