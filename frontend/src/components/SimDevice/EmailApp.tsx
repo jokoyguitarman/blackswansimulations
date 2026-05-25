@@ -31,6 +31,7 @@ interface SimEmail {
   body_text: string;
   body_html: string;
   priority: string;
+  email_category: string;
   is_read: boolean;
   created_at: string;
 }
@@ -138,9 +139,35 @@ export default function EmailApp() {
     return colors[Math.abs(hash) % colors.length];
   }
 
+  function getCategoryBadge(category: string): { bg: string; text: string; label: string } | null {
+    switch (category) {
+      case 'holding_statement':
+        return { bg: '#FFE5E5', text: '#CC1100', label: 'HOLDING STATEMENT' };
+      case 'communication_boundaries':
+        return { bg: '#FFF3E0', text: '#CC7700', label: 'DIRECTIVE' };
+      case 'approval_chain':
+        return { bg: '#F3E8FF', text: '#7C3AED', label: 'APPROVAL REQUIRED' };
+      case 'legal_advisory':
+        return { bg: '#FDE8E8', text: '#991B1B', label: 'LEGAL' };
+      case 'stakeholder_priority':
+        return { bg: '#DBEAFE', text: '#1D4ED8', label: 'PRIORITY MATRIX' };
+      case 'sitrep_request':
+        return { bg: '#D1FAE5', text: '#047857', label: 'SITREP' };
+      case 'resource_authorization':
+        return { bg: '#DCFCE7', text: '#15803D', label: 'AUTHORIZATION' };
+      case 'stand_down_pivot':
+        return { bg: '#FFE5E5', text: '#CC1100', label: 'ACTION REQUIRED' };
+      case 'messaging_framework':
+        return { bg: '#DBEAFE', text: '#1D4ED8', label: 'KEY MESSAGES' };
+      default:
+        return null;
+    }
+  }
+
   // Email Detail View
   if (selectedEmail) {
     const priorityBadge = getPriorityBadge(selectedEmail.priority);
+    const detailCategoryBadge = getCategoryBadge(selectedEmail.email_category);
     return (
       <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
         {/* Nav Bar */}
@@ -187,6 +214,35 @@ export default function EmailApp() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
+          {/* Category banner */}
+          {detailCategoryBadge && (
+            <div
+              className="flex items-center gap-2 px-4 py-2"
+              style={{ backgroundColor: detailCategoryBadge.bg }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={detailCategoryBadge.text}
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                <line x1="12" y1="9" x2="12" y2="13" />
+                <line x1="12" y1="17" x2="12.01" y2="17" />
+              </svg>
+              <span
+                className="text-[12px] font-bold tracking-wide uppercase"
+                style={{ color: detailCategoryBadge.text }}
+              >
+                {detailCategoryBadge.label}
+              </span>
+            </div>
+          )}
+
           {/* Subject area */}
           <div className="px-4 pt-5 pb-3">
             <div className="flex items-start gap-2">
@@ -454,6 +510,7 @@ export default function EmailApp() {
           >
             {emails.map((email, idx) => {
               const priorityBadge = getPriorityBadge(email.priority);
+              const categoryBadge = getCategoryBadge(email.email_category);
               const senderName =
                 email.direction === 'inbound' ? email.from_name : `To: ${email.to_addresses[0]}`;
               return (
@@ -509,6 +566,17 @@ export default function EmailApp() {
                         </svg>
                       </div>
                     </div>
+                    {categoryBadge && (
+                      <span
+                        className="inline-block text-[10px] font-bold tracking-wide uppercase px-1.5 py-0.5 rounded mt-0.5"
+                        style={{
+                          backgroundColor: categoryBadge.bg,
+                          color: categoryBadge.text,
+                        }}
+                      >
+                        {categoryBadge.label}
+                      </span>
+                    )}
                     <div className="flex items-center gap-1.5 mt-0.5">
                       {priorityBadge && (
                         <span

@@ -18,6 +18,7 @@ export interface DeliveryConfig {
   from_address?: string;
   from_name?: string;
   priority?: string;
+  email_category?: string;
   // News-specific
   outlet_name?: string;
   headline?: string;
@@ -275,6 +276,24 @@ Return ONLY valid JSON:
   }
 }
 
+const VALID_EMAIL_CATEGORIES = new Set([
+  'general',
+  'holding_statement',
+  'communication_boundaries',
+  'approval_chain',
+  'legal_advisory',
+  'stakeholder_priority',
+  'resource_authorization',
+  'sitrep_request',
+  'stand_down_pivot',
+  'messaging_framework',
+]);
+
+function sanitizeEmailCategory(category: string | undefined | null): string {
+  if (category && VALID_EMAIL_CATEGORIES.has(category)) return category;
+  return 'general';
+}
+
 async function routeToEmail(
   sessionId: string,
   injectId: string,
@@ -302,6 +321,7 @@ async function routeToEmail(
       body_html: `<p>${bodyText.replace(/\n/g, '</p><p>')}</p>`,
       body_text: bodyText,
       priority: config.priority || 'normal',
+      email_category: sanitizeEmailCategory(config.email_category),
     })
     .select()
     .single();
