@@ -333,7 +333,7 @@ export const ChatInterface = ({
       const isOptimisticMatch =
         optimisticMessageContentRef.current &&
         optimisticMessageContentRef.current === payload.content &&
-        payload.sender_id === user?.id;
+        (payload.sender_id === user?.id || !user?.id);
 
       if (isOptimisticMatch) {
         console.log('[ChatInterface] Realtime message matches optimistic message, replacing:', {
@@ -735,62 +735,49 @@ export const ChatInterface = ({
             // Check if message already exists by ID (prevent duplicates)
             const existingMessage = prev.find((m) => m.id === message.id);
             if (existingMessage) {
-              // If message exists but sender info is missing, update it
               if (!existingMessage.sender && message.sender) {
-                console.log(
-                  '[ChatInterface] Updating existing message with sender info:',
-                  message.id,
-                );
                 return prev.map((m) =>
                   m.id === message.id
                     ? { ...m, sender: message.sender, sender_id: message.sender_id }
                     : m,
                 );
               }
-              console.log('[ChatInterface] Message already exists by ID, skipping:', message.id);
               return prev;
             }
 
-            // Also check for optimistic message with same content and sender
-            // Remove optimistic messages with matching content and sender (check multiple ways)
+            // Check for duplicate content+sender+timestamp (catches near-simultaneous dupes)
+            const hasDuplicateContent = prev.some(
+              (m) =>
+                !m.id.startsWith('temp-') &&
+                m.content === message.content &&
+                m.sender_id === message.sender_id &&
+                m.created_at === message.created_at,
+            );
+            if (hasDuplicateContent) {
+              return prev;
+            }
+
+            // Remove optimistic messages with matching content and sender
             const filtered = prev.filter((m) => {
               if (m.id.startsWith('temp-')) {
-                // Match by content + sender_id (most reliable)
                 const contentMatch = m.content === message.content;
+                // Broad sender matching: check all possible id locations
                 const senderMatch =
                   m.sender?.id === message.sender_id ||
                   m.sender_id === message.sender_id ||
-                  m.sender?.id === message.sender?.id;
+                  m.sender?.id === message.sender?.id ||
+                  // Fallback: if the optimistic message is from current user AND the realtime message is too
+                  (m.sender_id === user?.id && message.sender_id === user?.id) ||
+                  // Last resort: content alone for temp messages from this user
+                  (contentMatch && m.sender_id === user?.id);
 
                 if (contentMatch && senderMatch) {
-                  console.log(
-                    '[ChatInterface] Removing optimistic message that matches Realtime message:',
-                    {
-                      optimisticId: m.id,
-                      realId: message.id,
-                      content: m.content,
-                    },
-                  );
-                  return false;
-                }
-
-                // Also remove if content matches and it's from current user (optimistic messages are always from current user)
-                if (contentMatch && message.sender_id === user?.id && m.sender_id === user?.id) {
-                  console.log(
-                    '[ChatInterface] Removing optimistic message (content + user match):',
-                    m.id,
-                  );
                   return false;
                 }
               }
               return true;
             });
 
-            console.log('[ChatInterface] Adding message to current channel:', {
-              messageId: message.id,
-              senderName: message.sender?.full_name || 'Unknown',
-              totalMessages: filtered.length + 1,
-            });
             return [...filtered, message];
           });
 
