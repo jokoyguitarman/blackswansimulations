@@ -12,6 +12,22 @@ interface WatchdogSessionState {
   previousIssues: Set<string>;
 }
 
+interface NewsArticle {
+  outlet_name: string;
+  headline: string;
+  subheadline?: string;
+  body: string;
+  category: string;
+}
+
+interface NpcReaction {
+  author_handle: string;
+  author_display_name: string;
+  content: string;
+  platform: string;
+  sentiment: string;
+}
+
 interface WatchdogResult {
   issue_found: boolean;
   issue_type: string;
@@ -20,6 +36,8 @@ interface WatchdogResult {
   persona: 'legal_analyst' | 'fact_checker' | 'investigative_journalist';
   severity: 'low' | 'medium' | 'high';
   reasoning: string;
+  news_articles?: NewsArticle[];
+  npc_reactions?: NpcReaction[];
 }
 
 interface FactSheet {
@@ -71,10 +89,13 @@ IMPORTANT CALIBRATION:
 - Omissions must reference specific confirmed facts that the public would expect to hear about.
 - Do NOT flag routine professional statements, empathetic language, or standard crisis responses.
 
-If you find an issue, write a challenging social media post (2-4 sentences) from one of these personas:
-- legal_analyst: Highlights liability risks with legal terminology
-- fact_checker: Spots contradictions and quotes both statements side by side
-- investigative_journalist: Points out omissions, asks probing questions
+If you find an issue:
+1. Write a challenging social media post (2-4 sentences) from one of these personas:
+   - legal_analyst: Highlights liability risks with legal terminology
+   - fact_checker: Spots contradictions and quotes both statements side by side
+   - investigative_journalist: Points out omissions, asks probing questions
+2. Generate 1-2 news articles covering the inconsistency/issue (breaking news + optional analysis)
+3. Generate 2-3 NPC social media reactions from outraged citizens, legal commentators, or media watchdogs
 
 If the statements are factually sound, legally safe, and internally consistent, set issue_found to false.
 
@@ -86,8 +107,28 @@ Return ONLY valid JSON:
   "challenge_post": "The challenging social media post 2-4 sentences (empty string if none)",
   "persona": "legal_analyst|fact_checker|investigative_journalist",
   "severity": "low|medium|high",
-  "reasoning": "Detailed explanation of why this is problematic (empty string if none)"
-}`;
+  "reasoning": "Detailed explanation of why this is problematic (empty string if none)",
+  "news_articles": [
+    {
+      "outlet_name": "News outlet name",
+      "headline": "Sensational headline about the inconsistency",
+      "subheadline": "Optional subheadline",
+      "body": "Full news article (3-5 paragraphs, professional news style, quote the contradicting statements, include expert commentary)",
+      "category": "breaking or analysis"
+    }
+  ],
+  "npc_reactions": [
+    {
+      "author_handle": "@handle",
+      "author_display_name": "Display Name",
+      "content": "Outraged or concerned reaction (1-2 sentences)",
+      "platform": "x_twitter or facebook",
+      "sentiment": "negative or inflammatory"
+    }
+  ]
+}
+
+When issue_found is false, omit or leave news_articles and npc_reactions as empty arrays.`;
 
 class StatementWatchdogService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
@@ -274,7 +315,7 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
       // Find the most relevant new statement to reply to
       const targetPost = newStatements[newStatements.length - 1];
 
-      await this.createChallengePost(sessionId, result, targetPost?.id || null);
+      await this.createChallengeCascade(sessionId, result, targetPost?.id || null);
 
       const currentState = this.sessionStates.get(sessionId);
       const previousIssues = currentState?.previousIssues || new Set<string>();
@@ -353,7 +394,7 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
     }
   }
 
-  private async createChallengePost(
+  private async createChallengeCascade(
     sessionId: string,
     result: WatchdogResult,
     replyToPostId: string | null,
@@ -361,10 +402,10 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
     const persona = NPC_PERSONAS[result.persona] || NPC_PERSONAS.fact_checker;
     const viralityScore = result.severity === 'high' ? 75 : result.severity === 'medium' ? 50 : 30;
     const likeCount = Math.floor(Math.random() * 150) + 30;
-
     const hashtags = this.getHashtags(result.issue_type);
 
-    const { data: post, error } = await supabaseAdmin
+    // 1. Post challenge on X/Twitter (immediate)
+    const { data: xPost } = await supabaseAdmin
       .from('social_posts')
       .insert({
         session_id: sessionId,
@@ -390,18 +431,128 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
       .select()
       .single();
 
-    if (error) {
-      logger.error({ error, sessionId }, 'Failed to create watchdog challenge post');
-      return;
-    }
-
-    if (post) {
+    if (xPost) {
       getWebSocketService().broadcastToSession(sessionId, {
         type: 'social_post.created',
-        data: { post },
+        data: { post: xPost },
         timestamp: new Date().toISOString(),
       });
     }
+
+    // 2. Cross-post to Facebook (10s delay)
+    setTimeout(async () => {
+      try {
+        const { data: fbPost } = await supabaseAdmin
+          .from('social_posts')
+          .insert({
+            session_id: sessionId,
+            platform: 'facebook',
+            author_handle: persona.handle,
+            author_display_name: persona.displayName,
+            author_type: persona.authorType,
+            content: `${result.challenge_post}\n\n${hashtags.join(' ')}`,
+            sentiment: 'negative',
+            virality_score: viralityScore,
+            content_flags: { watchdog: true, issue_type: result.issue_type },
+            requires_response: true,
+            like_count: Math.floor(likeCount * 1.2),
+            repost_count: Math.floor(likeCount * 0.3),
+            view_count: Math.floor(likeCount * 25),
+            hashtags,
+          })
+          .select()
+          .single();
+
+        if (fbPost) {
+          getWebSocketService().broadcastToSession(sessionId, {
+            type: 'social_post.created',
+            data: { post: fbPost },
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, sessionId }, 'Watchdog: failed to cross-post to Facebook');
+      }
+    }, 10_000);
+
+    // 3. Insert news articles (staggered 30-120s)
+    const articles = result.news_articles || [];
+    for (let i = 0; i < articles.length; i++) {
+      const article = articles[i];
+      const articleDelay = (30 + i * 50) * 1000 + Math.floor(Math.random() * 30_000);
+
+      setTimeout(async () => {
+        try {
+          await supabaseAdmin.from('sim_news_articles').insert({
+            session_id: sessionId,
+            outlet_name: article.outlet_name || 'News Wire',
+            headline: article.headline,
+            subheadline: article.subheadline || null,
+            body: article.body,
+            category: article.category || 'breaking',
+          });
+
+          logger.info(
+            { sessionId, headline: article.headline },
+            'Statement watchdog: news article published',
+          );
+        } catch (err) {
+          logger.warn({ err, sessionId }, 'Watchdog: failed to insert news article');
+        }
+      }, articleDelay);
+    }
+
+    // 4. NPC reactions (staggered 20-70s)
+    const reactions = result.npc_reactions || [];
+    for (let i = 0; i < reactions.length; i++) {
+      const reaction = reactions[i];
+      const reactionDelay = (20 + i * 15) * 1000 + Math.floor(Math.random() * 15_000);
+
+      setTimeout(async () => {
+        try {
+          const isReply = xPost && reaction.platform === 'x_twitter' && Math.random() > 0.4;
+
+          const { data: reactionPost } = await supabaseAdmin
+            .from('social_posts')
+            .insert({
+              session_id: sessionId,
+              platform: reaction.platform || 'x_twitter',
+              author_handle: reaction.author_handle,
+              author_display_name: reaction.author_display_name,
+              author_type: 'npc_public',
+              content: reaction.content,
+              sentiment: reaction.sentiment || 'negative',
+              virality_score: Math.floor(Math.random() * 25) + 10,
+              reply_to_post_id: isReply ? xPost.id : null,
+              like_count: Math.floor(Math.random() * 40) + 5,
+              repost_count: Math.floor(Math.random() * 15),
+              view_count: Math.floor(Math.random() * 800) + 100,
+            })
+            .select()
+            .single();
+
+          if (reactionPost) {
+            getWebSocketService().broadcastToSession(sessionId, {
+              type: 'social_post.created',
+              data: { post: reactionPost },
+              timestamp: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, sessionId }, 'Watchdog: failed to insert NPC reaction');
+        }
+      }, reactionDelay);
+    }
+
+    logger.info(
+      {
+        sessionId,
+        persona: result.persona,
+        articlesCount: articles.length,
+        reactionsCount: reactions.length,
+      },
+      'Statement watchdog: challenge cascade initiated',
+    );
   }
 
   private getHashtags(issueType: string): string[] {
