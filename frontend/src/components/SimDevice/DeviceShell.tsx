@@ -36,11 +36,16 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
   const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   if (event.type === 'notification.created') {
-    const notif = (event.data?.notification || {}) as Record<string, unknown>;
-    const notifType = String(notif.type || '');
+    // Handle two data formats:
+    // 1. notificationService: { notification: { id, type, title, message, ... } }
+    // 2. socialNotificationService: { user_id, notification_type, title, platform, ... }
+    const raw = (event.data || {}) as Record<string, unknown>;
+    const notif = (raw.notification || raw) as Record<string, unknown>;
+    const notifType = String(notif.type || notif.notification_type || '');
     const dbId = String(notif.id || '') || null;
     const title = String(notif.title || 'Notification');
     const message = String(notif.message || '');
+    const platform = String(notif.platform || '');
 
     let appId = 'home';
     let appName = 'System';
@@ -52,6 +57,16 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
       appName = 'TeamChat';
       appIcon = '/icons/icon-chat.png';
       route = `/sim/${sessionId}/device/chat`;
+    } else if (
+      notifType === 'social_reply' ||
+      notifType === 'social_like' ||
+      notifType === 'social_mention' ||
+      notifType === 'social_repost'
+    ) {
+      appId = platform === 'facebook' ? 'facebook' : 'social';
+      appName = platform === 'facebook' ? 'Fakebook' : 'Z';
+      appIcon = platform === 'facebook' ? '/icons/icon-facebook.png' : '/icons/icon-social.png';
+      route = `/sim/${sessionId}/device/${platform === 'facebook' ? 'facebook' : 'social'}`;
     } else if (notifType === 'inject_published') {
       appId = 'news';
       appName = 'News';
