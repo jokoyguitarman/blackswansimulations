@@ -46,6 +46,14 @@ async function findPlayerUserIdByHandle(sessionId: string, handle: string): Prom
   return null;
 }
 
+async function findAllSessionParticipantIds(sessionId: string): Promise<string[]> {
+  const { data: participants } = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id')
+    .eq('session_id', sessionId);
+  return (participants || []).map((p) => p.user_id as string);
+}
+
 function stripThreadTag(content: string): string {
   return content.replace(/^@[\w._-]+\[[^\]]+\]\s*/, '');
 }
@@ -61,46 +69,57 @@ export async function notifyPostReply(
   isPageNotification: boolean = false,
 ): Promise<void> {
   try {
-    const userId = await findPlayerUserIdByHandle(sessionId, parentAuthorHandle);
-    if (!userId) return;
+    const userIds = isPageNotification
+      ? await findAllSessionParticipantIds(sessionId)
+      : ([await findPlayerUserIdByHandle(sessionId, parentAuthorHandle)].filter(
+          Boolean,
+        ) as string[]);
+    if (userIds.length === 0) return;
 
-    const { error } = await supabaseAdmin.from('notifications').insert({
+    const title = `${replyAuthorName} replied to your post`;
+    const message = stripThreadTag(replyContent).substring(0, 200);
+    const metadata = {
+      post_id: parentPostId,
+      highlight_post_id: highlightPostId || null,
+      platform,
+      replier: replyAuthorName,
+      is_page_notification: isPageNotification,
+    };
+
+    const rows = userIds.map((uid) => ({
       session_id: sessionId,
-      user_id: userId,
+      user_id: uid,
       type: 'social_reply',
-      title: `${replyAuthorName} replied to your post`,
-      message: stripThreadTag(replyContent).substring(0, 200),
+      title,
+      message,
       priority: 'medium',
-      metadata: {
-        post_id: parentPostId,
-        highlight_post_id: highlightPostId || null,
-        platform,
-        replier: replyAuthorName,
-        is_page_notification: isPageNotification,
-      },
-    });
+      metadata,
+    }));
 
+    const { error } = await supabaseAdmin.from('notifications').insert(rows);
     if (error) {
       logger.warn({ error }, 'Failed to create reply notification');
       return;
     }
 
-    getWebSocketService().broadcastToSession(sessionId, {
-      type: 'notification.created',
-      data: {
-        user_id: userId,
-        notification_type: 'social_reply',
-        platform,
-        title: `${replyAuthorName} replied to your post`,
-        metadata: {
-          post_id: parentPostId,
-          highlight_post_id: highlightPostId || null,
+    for (const uid of userIds) {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'notification.created',
+        data: {
+          user_id: uid,
+          notification_type: 'social_reply',
           platform,
-          is_page_notification: isPageNotification,
+          title,
+          metadata: {
+            post_id: parentPostId,
+            highlight_post_id: highlightPostId || null,
+            platform,
+            is_page_notification: isPageNotification,
+          },
         },
-      },
-      timestamp: new Date().toISOString(),
-    });
+        timestamp: new Date().toISOString(),
+      });
+    }
   } catch (err) {
     logger.warn({ err }, 'Reply notification failed');
   }
@@ -115,8 +134,10 @@ export async function notifyPostLike(
   isPageNotification: boolean = false,
 ): Promise<void> {
   try {
-    const userId = await findPlayerUserIdByHandle(sessionId, postAuthorHandle);
-    if (!userId) return;
+    const userIds = isPageNotification
+      ? await findAllSessionParticipantIds(sessionId)
+      : ([await findPlayerUserIdByHandle(sessionId, postAuthorHandle)].filter(Boolean) as string[]);
+    if (userIds.length === 0) return;
 
     const reactionLabel =
       reactionType === 'like'
@@ -125,37 +146,43 @@ export async function notifyPostLike(
           ? 'loved'
           : `reacted ${reactionType} to`;
 
-    const { error } = await supabaseAdmin.from('notifications').insert({
-      session_id: sessionId,
-      user_id: userId,
-      type: 'social_like',
-      title: `${likerName} ${reactionLabel} your post`,
-      message: `${likerName} ${reactionLabel} your post`,
-      priority: 'low',
-      metadata: {
-        platform,
-        liker: likerName,
-        reaction_type: reactionType,
-        is_page_notification: isPageNotification,
-      },
-    });
+    const title = `${likerName} ${reactionLabel} your post`;
+    const metadata = {
+      platform,
+      liker: likerName,
+      reaction_type: reactionType,
+      is_page_notification: isPageNotification,
+    };
 
+    const rows = userIds.map((uid) => ({
+      session_id: sessionId,
+      user_id: uid,
+      type: 'social_like',
+      title,
+      message: title,
+      priority: 'low',
+      metadata,
+    }));
+
+    const { error } = await supabaseAdmin.from('notifications').insert(rows);
     if (error) {
       logger.warn({ error }, 'Failed to create like notification');
       return;
     }
 
-    getWebSocketService().broadcastToSession(sessionId, {
-      type: 'notification.created',
-      data: {
-        user_id: userId,
-        notification_type: 'social_like',
-        platform,
-        title: `${likerName} ${reactionLabel} your post`,
-        metadata: { is_page_notification: isPageNotification },
-      },
-      timestamp: new Date().toISOString(),
-    });
+    for (const uid of userIds) {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'notification.created',
+        data: {
+          user_id: uid,
+          notification_type: 'social_like',
+          platform,
+          title,
+          metadata: { is_page_notification: isPageNotification },
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
   } catch (err) {
     logger.warn({ err }, 'Like notification failed');
   }
@@ -170,35 +197,48 @@ export async function notifyMention(
   isPageNotification: boolean = false,
 ): Promise<void> {
   try {
-    const userId = await findPlayerUserIdByHandle(sessionId, mentionedHandle);
-    if (!userId) return;
+    const userIds = isPageNotification
+      ? await findAllSessionParticipantIds(sessionId)
+      : ([await findPlayerUserIdByHandle(sessionId, mentionedHandle)].filter(Boolean) as string[]);
+    if (userIds.length === 0) return;
 
-    const { error } = await supabaseAdmin.from('notifications').insert({
+    const title = `${mentionerName} mentioned you`;
+    const message = stripThreadTag(postContent).substring(0, 200);
+    const metadata = {
+      platform,
+      mentioner: mentionerName,
+      is_page_notification: isPageNotification,
+    };
+
+    const rows = userIds.map((uid) => ({
       session_id: sessionId,
-      user_id: userId,
+      user_id: uid,
       type: 'social_mention',
-      title: `${mentionerName} mentioned you`,
-      message: stripThreadTag(postContent).substring(0, 200),
+      title,
+      message,
       priority: 'medium',
-      metadata: { platform, mentioner: mentionerName, is_page_notification: isPageNotification },
-    });
+      metadata,
+    }));
 
+    const { error } = await supabaseAdmin.from('notifications').insert(rows);
     if (error) {
       logger.warn({ error }, 'Failed to create mention notification');
       return;
     }
 
-    getWebSocketService().broadcastToSession(sessionId, {
-      type: 'notification.created',
-      data: {
-        user_id: userId,
-        notification_type: 'social_mention',
-        platform,
-        title: `${mentionerName} mentioned you`,
-        metadata: { is_page_notification: isPageNotification },
-      },
-      timestamp: new Date().toISOString(),
-    });
+    for (const uid of userIds) {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'notification.created',
+        data: {
+          user_id: uid,
+          notification_type: 'social_mention',
+          platform,
+          title,
+          metadata: { is_page_notification: isPageNotification },
+        },
+        timestamp: new Date().toISOString(),
+      });
+    }
   } catch (err) {
     logger.warn({ err }, 'Mention notification failed');
   }

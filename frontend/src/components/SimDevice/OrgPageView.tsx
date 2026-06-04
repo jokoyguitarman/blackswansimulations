@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { usePageMode } from '../../contexts/PageModeContext';
 
@@ -113,6 +113,9 @@ export default function OrgPageView({
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
+  const [likedCommentIds, setLikedCommentIds] = useState<Set<string>>(new Set());
+  const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
+  const commentInputRef = useRef<HTMLInputElement>(null);
 
   const loadPage = useCallback(async () => {
     if (!sessionId) return;
@@ -177,6 +180,8 @@ export default function OrgPageView({
     setComments([]);
     setLoadingComments(true);
     setCommentInput('');
+    setReplyingToComment(null);
+    setLikedCommentIds(new Set());
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(apiUrl(`/api/social/posts/${post.id}`), { headers });
@@ -200,15 +205,50 @@ export default function OrgPageView({
           content: commentInput,
           platform,
           post_as_page: true,
-          reply_to_post_id: selectedPost.id,
+          reply_to_post_id: replyingToComment ? replyingToComment.id : selectedPost.id,
         }),
       });
       setCommentInput('');
-      // Refresh comments
+      setReplyingToComment(null);
       setTimeout(() => openComments(selectedPost), 800);
     } catch {
       /* ignore */
     }
+  }
+
+  async function handleLikeComment(commentId: string) {
+    if (!sessionId || likedCommentIds.has(commentId)) return;
+    setLikedCommentIds((prev) => new Set([...prev, commentId]));
+    setComments((prev) =>
+      prev.map((c) => (c.id === commentId ? { ...c, like_count: c.like_count + 1 } : c)),
+    );
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl(`/api/social/posts/${commentId}/like`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          reaction_type: 'like',
+          post_as_page: true,
+        }),
+      });
+    } catch {
+      setLikedCommentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(commentId);
+        return next;
+      });
+      setComments((prev) =>
+        prev.map((c) => (c.id === commentId ? { ...c, like_count: c.like_count - 1 } : c)),
+      );
+    }
+  }
+
+  function startReplyToComment(comment: Comment) {
+    setReplyingToComment(comment);
+    setCommentInput(`@${comment.author_handle} `);
+    setTimeout(() => commentInputRef.current?.focus(), 50);
   }
 
   const isFacebook = platform === 'facebook';
@@ -377,14 +417,38 @@ export default function OrgPageView({
                     >
                       {stripThreadTag(comment.content)}
                     </p>
-                    {comment.like_count > 0 && (
-                      <span
-                        className="text-[11px] mt-1 inline-block"
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <button
+                        onClick={() => handleLikeComment(comment.id)}
+                        className="text-[12px] font-semibold"
+                        style={{
+                          color: likedCommentIds.has(comment.id)
+                            ? isFacebook
+                              ? '#1877F2'
+                              : '#1D9BF0'
+                            : isFacebook
+                              ? '#65676B'
+                              : '#71767B',
+                        }}
+                      >
+                        Like
+                      </button>
+                      <button
+                        onClick={() => startReplyToComment(comment)}
+                        className="text-[12px] font-semibold"
                         style={{ color: isFacebook ? '#65676B' : '#71767B' }}
                       >
-                        {formatCount(comment.like_count)} likes
-                      </span>
-                    )}
+                        Reply
+                      </button>
+                      {comment.like_count > 0 && (
+                        <span
+                          className="text-[11px] ml-auto"
+                          style={{ color: isFacebook ? '#65676B' : '#71767B' }}
+                        >
+                          {formatCount(comment.like_count)} likes
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -394,37 +458,61 @@ export default function OrgPageView({
 
         {/* Comment compose input */}
         <div
-          className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+          className="flex-shrink-0"
           style={{
             backgroundColor: isFacebook ? '#FFFFFF' : '#16181C',
             borderTop: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
           }}
         >
-          <input
-            type="text"
-            value={commentInput}
-            onChange={(e) => setCommentInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handlePostComment();
+          {replyingToComment && (
+            <div className="flex items-center justify-between px-4 pt-2 pb-1">
+              <span className="text-[12px]" style={{ color: isFacebook ? '#65676B' : '#71767B' }}>
+                Replying to {replyingToComment.author_display_name}
+              </span>
+              <button
+                onClick={() => {
+                  setReplyingToComment(null);
+                  setCommentInput('');
+                }}
+                className="text-[12px] font-semibold"
+                style={{ color: isFacebook ? '#1877F2' : '#1D9BF0' }}
+              >
+                Cancel
+              </button>
+            </div>
+          )}
+          <div className="flex items-center gap-2 px-4 py-3">
+            <input
+              ref={commentInputRef}
+              type="text"
+              value={commentInput}
+              onChange={(e) => setCommentInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handlePostComment();
+                }
+              }}
+              placeholder={
+                replyingToComment
+                  ? `Reply as ${pageInfo.page_name}...`
+                  : `Comment as ${pageInfo.page_name}...`
               }
-            }}
-            placeholder={`Comment as ${pageInfo.page_name}...`}
-            className="flex-1 px-3 py-2 rounded-full text-[14px] outline-none"
-            style={{
-              backgroundColor: isFacebook ? '#F0F2F5' : '#2F3336',
-              color: isFacebook ? '#050505' : '#E7E9EA',
-            }}
-          />
-          <button
-            onClick={handlePostComment}
-            disabled={!commentInput.trim()}
-            className="px-3 py-2 rounded-full text-[13px] font-semibold text-white disabled:opacity-40"
-            style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
-          >
-            Post
-          </button>
+              className="flex-1 px-3 py-2 rounded-full text-[14px] outline-none"
+              style={{
+                backgroundColor: isFacebook ? '#F0F2F5' : '#2F3336',
+                color: isFacebook ? '#050505' : '#E7E9EA',
+              }}
+            />
+            <button
+              onClick={handlePostComment}
+              disabled={!commentInput.trim()}
+              className="px-3 py-2 rounded-full text-[13px] font-semibold text-white disabled:opacity-40"
+              style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
+            >
+              Post
+            </button>
+          </div>
         </div>
       </div>
     );
