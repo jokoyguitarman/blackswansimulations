@@ -150,11 +150,6 @@ export default function FacebookFeedApp() {
   const [playerDisplayName, setPlayerDisplayName] = useState('Player');
 
   useEffect(() => {
-    setIsPageMode(pageMode || activeView === 'page');
-    return () => setIsPageMode(false);
-  }, [pageMode, activeView, setIsPageMode]);
-
-  useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       currentUserIdRef.current = session?.user?.id || null;
       const metaName = session?.user?.user_metadata?.full_name as string | undefined;
@@ -226,6 +221,12 @@ export default function FacebookFeedApp() {
   const [activeView, setActiveView] = useState<
     'feed' | 'messenger' | 'groups' | 'events' | 'page' | 'profile'
   >('feed');
+
+  useEffect(() => {
+    setIsPageMode(pageMode || activeView === 'page');
+    return () => setIsPageMode(false);
+  }, [pageMode, activeView, setIsPageMode]);
+
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const [showMessengerDropdown, setShowMessengerDropdown] = useState(false);
   const [showNewMessageModal, setShowNewMessageModal] = useState(false);
