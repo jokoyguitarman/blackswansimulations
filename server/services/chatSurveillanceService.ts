@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
+import { randomUUID } from 'crypto';
 
 interface SessionScanState {
   lastScanAt: Date;
@@ -22,6 +23,7 @@ const SCAN_INTERVAL_MS = 90_000;
 const COOLDOWN_MS = 5 * 60_000;
 const MIN_MESSAGES_TO_SCAN = 3;
 const MAX_POSTS_PER_SESSION = 4;
+const BUCKET_NAME = 'sim-media';
 
 const SYSTEM_PROMPT = `You are a ruthless investigative journalist monitoring leaked internal communications of a crisis response team. Your job is to find ANYTHING that could be spun as scandalous, unprofessional, or damaging if published.
 
@@ -35,18 +37,19 @@ Look for:
 - Personal opinions that could be taken out of context
 - Sexist, racist, or otherwise inappropriate remarks
 - Evidence of cover-ups or information suppression
+- Careless, flippant, or tone-deaf remarks about victims or affected parties
 
-IMPORTANT: Only flag genuinely spinnable content. Normal professional discussion about the crisis (even if it mentions challenges or uncertainties) is NOT scandalous. You need something that a real tabloid journalist would actually run with.
+IMPORTANT: Only flag genuinely spinnable content. Normal professional discussion about the crisis (even if it mentions challenges or uncertainties) is NOT scandalous. You need something that a real tabloid journalist would actually run with. Think TMZ, not Reuters.
 
-If you find something spinnable, write a sensational social media post about it (1-3 sentences, written as a journalist breaking news). If nothing is worth reporting, set scandal_found to false.
+If you find something spinnable, write a sensational social media post about it (2-4 sentences, written as a journalist breaking exclusive leaked information). Include enough detail to be damaging but frame it dramatically. If nothing is worth reporting, set scandal_found to false.
 
 Return ONLY valid JSON:
 {
   "scandal_found": true or false,
-  "source_quote": "the exact quote or paraphrase being spun (empty string if none)",
-  "spin_post": "The sensational post text (empty string if none)",
+  "source_quote": "the exact verbatim quote(s) from the transcript that you are spinning (include 1-3 lines for context)",
+  "spin_post": "Your sensational breaking news post (2-4 sentences, dramatic journalist voice)",
   "severity": "low or medium or high",
-  "reasoning": "brief note on why this is spinnable (empty string if none)"
+  "reasoning": "detailed explanation of why this is damaging and how it contradicts the team's public messaging or professional standards"
 }`;
 
 class ChatSurveillanceService {
@@ -70,7 +73,7 @@ class ChatSurveillanceService {
       this.scanActiveSessions();
     }, SCAN_INTERVAL_MS);
 
-    logger.info('ChatSurveillanceService started (every 90s, social_media sessions only)');
+    logger.info('ChatSurveillanceService started (every 90s, social_media sessions only, GPT-5.2)');
   }
 
   stop(): void {
@@ -163,13 +166,13 @@ class ChatSurveillanceService {
       })
       .join('\n');
 
-    const userPrompt = `Crisis scenario: ${crisisContext.substring(0, 500)}
+    const userPrompt = `Crisis scenario: ${crisisContext.substring(0, 1000)}
 
 Here are the latest internal team communications (leaked):
 
 ${transcript}
 
-Analyze these communications. Is there anything that could be spun as scandalous or damaging if leaked to the press?`;
+Analyze these communications thoroughly. Is there anything that could be spun as scandalous or damaging if leaked to the press? Consider the context of the crisis and how any remark might look when taken out of context by a hostile media outlet.`;
 
     const result = await this.callAI(userPrompt);
 
@@ -217,13 +220,13 @@ Analyze these communications. Is there anything that could be spun as scandalous
           Authorization: `Bearer ${env.openAiApiKey}`,
         },
         body: JSON.stringify({
-          model: 'gpt-4o-mini',
+          model: 'gpt-5.2',
           messages: [
             { role: 'system', content: SYSTEM_PROMPT },
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.7,
-          max_completion_tokens: 500,
+          max_completion_tokens: 10000,
           response_format: { type: 'json_object' },
         }),
       });
@@ -244,11 +247,88 @@ Analyze these communications. Is there anything that could be spun as scandalous
     }
   }
 
+  private async generateLeakScreenshot(): Promise<string | null> {
+    if (!env.openAiApiKey) return null;
+    try {
+      const imagePrompt = `A realistic screenshot of a leaked group chat conversation on a messaging app (similar to WhatsApp or Telegram, dark mode). The screen shows several chat bubbles with the following conversation visible as blurred/partially readable text. The screenshot has a slight camera-photo quality as if someone took a photo of their phone screen with another phone. The image should look like authentic leaked internal communications being shared by a whistleblower. Include typical messaging app UI elements (timestamps, read receipts, profile icons). Dark background. The messages should appear as green and grey chat bubbles with small text that suggests a team discussion. Do NOT include any readable real names or explicit text - make the text slightly blurred as if photographed from an angle.`;
+
+      const response = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${env.openAiApiKey}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-image-2',
+          prompt: imagePrompt,
+          n: 1,
+          size: '1024x1536',
+          quality: 'medium',
+        }),
+      });
+
+      if (!response.ok) {
+        logger.warn({ status: response.status }, 'Chat surveillance image generation failed');
+        return null;
+      }
+
+      const data = await response.json();
+      const imageItem = data.data?.[0];
+      if (!imageItem) return null;
+
+      let imageBuffer: Buffer | null = null;
+
+      if (imageItem.b64_json) {
+        imageBuffer = Buffer.from(imageItem.b64_json, 'base64');
+      } else if (imageItem.url) {
+        const imgResponse = await fetch(imageItem.url);
+        if (imgResponse.ok) {
+          const arrayBuffer = await imgResponse.arrayBuffer();
+          imageBuffer = Buffer.from(arrayBuffer);
+        }
+      }
+
+      if (!imageBuffer) return null;
+
+      // Upload to Supabase storage
+      const fileName = `${randomUUID()}.png`;
+      const filePath = `generated/${fileName}`;
+
+      const { error: bucketError } = await supabaseAdmin.storage.getBucket(BUCKET_NAME);
+      if (bucketError) {
+        await supabaseAdmin.storage.createBucket(BUCKET_NAME, {
+          public: true,
+          fileSizeLimit: 50 * 1024 * 1024,
+        });
+      }
+
+      const { error: uploadError } = await supabaseAdmin.storage
+        .from(BUCKET_NAME)
+        .upload(filePath, imageBuffer, { contentType: 'image/png', upsert: false });
+
+      if (uploadError) {
+        logger.warn({ error: uploadError }, 'Failed to upload leak screenshot');
+        return null;
+      }
+
+      const { data: urlData } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(filePath);
+      return urlData?.publicUrl || null;
+    } catch (err) {
+      logger.error({ error: err }, 'Chat surveillance image generation error');
+      return null;
+    }
+  }
+
   private async createScandalPost(sessionId: string, result: ScandalResult): Promise<void> {
     const viralityScore = result.severity === 'high' ? 80 : result.severity === 'medium' ? 50 : 30;
     const likeCount = Math.floor(Math.random() * 200) + 50;
 
+    // Generate a "screenshot" of the leaked conversation
+    const screenshotUrl = await this.generateLeakScreenshot();
+
     const postContent = `LEAKED: ${result.spin_post}\n\n(Source: anonymous insider within the crisis response team)\n\n#leaked #crisis #breaking`;
+
+    const mediaUrls = screenshotUrl ? [screenshotUrl] : [];
 
     const { data: post, error } = await supabaseAdmin
       .from('social_posts')
@@ -267,6 +347,7 @@ Analyze these communications. Is there anything that could be spun as scandalous
         repost_count: Math.floor(likeCount * 0.4),
         view_count: Math.floor(likeCount * 25),
         hashtags: ['#leaked', '#crisis', '#breaking'],
+        media_urls: mediaUrls,
       })
       .select()
       .single();
