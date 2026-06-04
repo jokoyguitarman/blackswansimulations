@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { NotificationBanner, type NotificationItem } from './NotificationBanner';
 import { NotificationCenter } from './NotificationCenter';
@@ -130,6 +131,7 @@ export default function DeviceShell() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const { user } = useAuth();
   const [time, setTime] = useState(new Date());
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -185,14 +187,17 @@ export default function DeviceShell() {
   // WebSocket listener for live notifications
   useWebSocket({
     sessionId: sessionId || '',
-    eventTypes: ['notification.created', 'sim_email.received', 'inject.published'],
+    eventTypes: ['notification.created', 'sim_email.received'],
     onEvent: useCallback(
       (event: WSEvent) => {
         if (!sessionId) return;
 
-        // Dedup: for notification.created, use the DB id
+        // For notification.created: only show if it's meant for THIS user
         if (event.type === 'notification.created') {
-          const notif = (event.data?.notification || {}) as Record<string, unknown>;
+          const notif = (event.data?.notification || event.data || {}) as Record<string, unknown>;
+          const targetUserId = String(notif.user_id || '');
+          if (targetUserId && user?.id && targetUserId !== user.id) return;
+
           const dbId = String(notif.id || '');
           if (dbId && processedIdsRef.current.has(dbId)) return;
           if (dbId) processedIdsRef.current.add(dbId);
@@ -207,7 +212,7 @@ export default function DeviceShell() {
 
         setBannerQueue((prev) => [...prev, item]);
       },
-      [sessionId],
+      [sessionId, user?.id],
     ),
     enabled: !!sessionId,
   });

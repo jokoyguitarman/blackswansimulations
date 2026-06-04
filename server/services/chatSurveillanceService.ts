@@ -95,7 +95,17 @@ class ChatSurveillanceService {
         .eq('sim_mode', 'social_media')
         .not('start_time', 'is', null);
 
-      if (error || !sessions || sessions.length === 0) return;
+      if (error) {
+        logger.error({ error }, 'Chat surveillance: failed to query sessions');
+        return;
+      }
+
+      if (!sessions || sessions.length === 0) {
+        logger.debug('Chat surveillance: no active social_media sessions found');
+        return;
+      }
+
+      logger.info({ count: sessions.length }, 'Chat surveillance: scanning active sessions');
 
       for (const session of sessions) {
         try {
@@ -131,12 +141,26 @@ class ChatSurveillanceService {
       .order('created_at', { ascending: true })
       .limit(50);
 
-    if (msgError || !messages || messages.length < MIN_MESSAGES_TO_SCAN) {
+    if (msgError) {
+      logger.error({ error: msgError, sessionId }, 'Chat surveillance: message query failed');
+      return;
+    }
+
+    if (!messages || messages.length < MIN_MESSAGES_TO_SCAN) {
+      logger.debug(
+        { sessionId, messageCount: messages?.length || 0, sinceTimestamp },
+        'Chat surveillance: not enough messages to scan',
+      );
       if (messages && messages.length > 0) {
         this.updateState(sessionId, messages[messages.length - 1].created_at, state);
       }
       return;
     }
+
+    logger.info(
+      { sessionId, messageCount: messages.length },
+      'Chat surveillance: analyzing messages',
+    );
 
     const senderIds = [...new Set(messages.map((m) => m.sender_id))];
     const { data: participants } = await supabaseAdmin
