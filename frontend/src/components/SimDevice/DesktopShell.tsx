@@ -4,7 +4,6 @@ import FacebookFeedApp from './FacebookFeedApp';
 import EmailApp from './EmailApp';
 import NewsApp from './NewsApp';
 import GroupChatApp from './GroupChatApp';
-import FactCheckBrowser from './FactCheckBrowser';
 import DraftPadApp from './DraftPadApp';
 import ZDesktopLayout from './ZDesktopLayout';
 
@@ -69,14 +68,6 @@ const APP_REGISTRY: Record<
     iconImg: '/icons/icon-chat.png',
     component: GroupChatApp,
     defaultWidth: 420,
-    defaultHeight: 550,
-  },
-  browser: {
-    title: 'FactCheck',
-    icon: '🔍',
-    iconImg: '/icons/icon-factcheck.png',
-    component: FactCheckBrowser,
-    defaultWidth: 600,
     defaultHeight: 550,
   },
   drafts: {

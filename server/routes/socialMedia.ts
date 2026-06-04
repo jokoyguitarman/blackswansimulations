@@ -851,7 +851,7 @@ router.post('/emails/:emailId/read', requireAuth, async (req: AuthenticatedReque
 
     const { data: email } = await supabaseAdmin
       .from('sim_emails')
-      .select('session_id')
+      .select('session_id, email_category')
       .eq('id', emailId)
       .single();
 
@@ -860,6 +860,18 @@ router.post('/emails/:emailId/read', requireAuth, async (req: AuthenticatedReque
     await supabaseAdmin.from('sim_emails').update({ is_read: true }).eq('id', emailId);
 
     await recordPlayerAction(email.session_id, user.id, 'email_read', emailId, null);
+
+    if (email.email_category === 'verified_facts') {
+      await recordPlayerAction(
+        email.session_id,
+        user.id,
+        'fact_checked',
+        emailId,
+        null,
+        {},
+        'fact_check',
+      );
+    }
 
     res.json({ success: true });
   } catch (err) {

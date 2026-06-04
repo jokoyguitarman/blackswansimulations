@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuth } from '../../contexts/AuthContext';
-import { PageModeProvider, usePageMode } from '../../contexts/PageModeContext';
+import { PageModeProvider } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
 import { NotificationBanner, type NotificationItem } from './NotificationBanner';
 import { NotificationCenter } from './NotificationCenter';
@@ -165,7 +165,6 @@ function DeviceShellInner() {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
-  const { isPageMode } = usePageMode();
   const [time, setTime] = useState(new Date());
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -332,14 +331,6 @@ function DeviceShellInner() {
     setCenterExpanded(false);
   }, [sessionId]);
 
-  const filteredNotifications = useMemo(
-    () =>
-      notifications.filter((n) =>
-        isPageMode ? n.isPageNotification === true : n.isPageNotification !== true,
-      ),
-    [notifications, isPageMode],
-  );
-
   const hours = time.getHours();
   const minutes = time.getMinutes().toString().padStart(2, '0');
   const timeStr = `${hours}:${minutes}`;
@@ -472,7 +463,7 @@ function DeviceShellInner() {
           {/* Notification Center (pill + expandable list) */}
           {!activeBanner && (
             <NotificationCenter
-              notifications={filteredNotifications}
+              notifications={notifications}
               expanded={centerExpanded}
               onToggle={() => setCenterExpanded((e) => !e)}
               onTap={handleCenterTap}

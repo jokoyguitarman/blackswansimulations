@@ -314,7 +314,6 @@ export default function HomeScreen() {
       path: 'news',
       badge: badges.news,
     },
-    { id: 'browser', label: 'FactCheck', icon: '/icons/icon-factcheck.png', path: 'browser' },
     { id: 'drafts', label: 'DraftPad', icon: '/icons/icon-drafts.png', path: 'drafts' },
   ];
 

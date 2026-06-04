@@ -282,10 +282,12 @@ export default function SocialFeedApp({
           const json = await res.json();
           const all = json.data || [];
           const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+          const inPageMode = overlayView === 'page';
           const zCount = all.filter(
             (n: { type: string; metadata?: Record<string, unknown> }) =>
               socialTypes.includes(n.type) &&
-              (!n.metadata?.platform || n.metadata.platform === 'x_twitter'),
+              (!n.metadata?.platform || n.metadata.platform === 'x_twitter') &&
+              (!inPageMode || n.metadata?.is_page_notification === true),
           ).length;
           setNotifCount(zCount);
         }
@@ -296,7 +298,7 @@ export default function SocialFeedApp({
     fetchCount();
     const interval = setInterval(fetchCount, 15000);
     return () => clearInterval(interval);
-  }, [sessionId]);
+  }, [sessionId, overlayView]);
 
   async function fetchNotifications() {
     if (!sessionId) return;
@@ -310,13 +312,15 @@ export default function SocialFeedApp({
         const all = json.data || [];
         setNotifications(all);
         const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+        const inPageMode = overlayView === 'page';
         const isZNotif = (n: {
           type: string;
           read?: boolean;
           metadata?: Record<string, unknown>;
         }) =>
           socialTypes.includes(n.type) &&
-          (!n.metadata?.platform || n.metadata.platform === 'x_twitter');
+          (!n.metadata?.platform || n.metadata.platform === 'x_twitter') &&
+          (!inPageMode || n.metadata?.is_page_notification === true);
         const unreadSocial = all.filter(
           (n: { type: string; read: boolean; metadata?: Record<string, unknown> }) =>
             isZNotif(n) && !n.read,
@@ -2244,10 +2248,12 @@ export default function SocialFeedApp({
                 'social_mention',
                 'social_repost',
               ];
+              const inPageMode = overlayView === 'page';
               const socialNotifs = notifications.filter(
                 (n) =>
                   socialTypes.includes(n.type) &&
-                  (!n.metadata?.platform || n.metadata.platform === 'x_twitter'),
+                  (!n.metadata?.platform || n.metadata.platform === 'x_twitter') &&
+                  (!inPageMode || n.metadata?.is_page_notification === true),
               );
               return socialNotifs.length === 0 ? (
                 <div className="flex items-center justify-center py-8">

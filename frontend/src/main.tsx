@@ -26,7 +26,6 @@ import FacebookFeedApp from './components/SimDevice/FacebookFeedApp';
 import GroupChatApp from './components/SimDevice/GroupChatApp';
 import EmailApp from './components/SimDevice/EmailApp';
 import NewsApp from './components/SimDevice/NewsApp';
-import FactCheckBrowser from './components/SimDevice/FactCheckBrowser';
 import DraftPadApp from './components/SimDevice/DraftPadApp';
 import TrainerSimDashboard from './components/SimDevice/TrainerSimDashboard';
 import DesktopShell from './components/SimDevice/DesktopShell';
@@ -169,7 +168,6 @@ const App = () => {
               <Route path="chat" element={<GroupChatApp />} />
               <Route path="email" element={<EmailApp />} />
               <Route path="news" element={<NewsApp />} />
-              <Route path="browser" element={<FactCheckBrowser />} />
               <Route path="drafts" element={<DraftPadApp />} />
             </Route>
             <Route

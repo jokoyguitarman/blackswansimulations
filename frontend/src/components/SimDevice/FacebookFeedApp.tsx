@@ -371,9 +371,12 @@ export default function FacebookFeedApp() {
           const json = await res.json();
           const all = json.data || [];
           const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+          const inPageMode = pageMode || activeView === 'page';
           const fbCount = all.filter(
             (n: { type: string; metadata?: Record<string, unknown> }) =>
-              socialTypes.includes(n.type) && n.metadata?.platform === 'facebook',
+              socialTypes.includes(n.type) &&
+              n.metadata?.platform === 'facebook' &&
+              (!inPageMode || n.metadata?.is_page_notification === true),
           ).length;
           setNotifCount(fbCount);
         }
@@ -384,7 +387,7 @@ export default function FacebookFeedApp() {
     fetchCount();
     const interval = setInterval(fetchCount, 15000);
     return () => clearInterval(interval);
-  }, [sessionId]);
+  }, [sessionId, pageMode, activeView]);
 
   async function fetchNotifications() {
     if (!sessionId) return;
@@ -398,9 +401,13 @@ export default function FacebookFeedApp() {
         const all = json.data || [];
         setNotifications(all);
         const socialTypes = ['social_like', 'social_reply', 'social_mention', 'social_repost'];
+        const inPageMode = pageMode || activeView === 'page';
         const unreadSocial = all.filter(
           (n: { type: string; read: boolean; metadata?: Record<string, unknown> }) =>
-            socialTypes.includes(n.type) && n.metadata?.platform === 'facebook' && !n.read,
+            socialTypes.includes(n.type) &&
+            n.metadata?.platform === 'facebook' &&
+            !n.read &&
+            (!inPageMode || n.metadata?.is_page_notification === true),
         ).length;
         setNotifCount(unreadSocial);
       }
@@ -1358,8 +1365,12 @@ export default function FacebookFeedApp() {
                 'social_mention',
                 'social_repost',
               ];
+              const inPageMode = pageMode || activeView === 'page';
               const fbNotifs = notifications.filter(
-                (n) => socialTypes.includes(n.type) && n.metadata?.platform === 'facebook',
+                (n) =>
+                  socialTypes.includes(n.type) &&
+                  n.metadata?.platform === 'facebook' &&
+                  (!inPageMode || n.metadata?.is_page_notification === true),
               );
               return fbNotifs.length === 0 ? (
                 <div className="flex items-center justify-center py-8">
