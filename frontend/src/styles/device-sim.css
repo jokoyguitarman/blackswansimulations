@@ -112,7 +112,20 @@
   to { transform: translateY(0); opacity: 1; }
 }
 
+@keyframes notificationSlideOut {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-100%); opacity: 0; }
+}
+
 .ios-notification-banner {
+  animation: notificationSlideIn 0.3s ease-out;
+}
+
+.ios-notification-dismiss {
+  animation: notificationSlideOut 0.2s ease-in forwards;
+}
+
+.notification-center-overlay {
   animation: notificationSlideIn 0.3s ease-out;
 }
 

@@ -1,6 +1,130 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useWebSocket } from '../../hooks/useWebSocket';
+import { supabase } from '../../lib/supabase';
+import { NotificationBanner, type NotificationItem } from './NotificationBanner';
+import { NotificationCenter } from './NotificationCenter';
 import '../../styles/device-sim.css';
+
+const API_BASE_URL = import.meta.env.VITE_API_URL || '';
+
+function apiUrl(path: string): string {
+  const cleanPath = path.startsWith('/') ? path : `/${path}`;
+  if (API_BASE_URL) return `${API_BASE_URL.replace(/\/$/, '')}${cleanPath}`;
+  return cleanPath;
+}
+
+async function getAuthHeaders() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${session?.access_token || ''}`,
+  };
+}
+
+interface WSEvent {
+  type: string;
+  data?: Record<string, unknown>;
+  timestamp?: string;
+}
+
+function mapEventToNotification(event: WSEvent, sessionId: string): NotificationItem | null {
+  const ts = event.timestamp || new Date().toISOString();
+  const id = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  if (event.type === 'notification.created') {
+    const notif = (event.data?.notification || {}) as Record<string, unknown>;
+    const notifType = String(notif.type || '');
+    const dbId = String(notif.id || '') || null;
+    const title = String(notif.title || 'Notification');
+    const message = String(notif.message || '');
+
+    let appId = 'home';
+    let appName = 'System';
+    let appIcon = '/icons/icon-chat.png';
+    let route = `/sim/${sessionId}/device/home`;
+
+    if (notifType === 'chat_message') {
+      appId = 'chat';
+      appName = 'TeamChat';
+      appIcon = '/icons/icon-chat.png';
+      route = `/sim/${sessionId}/device/chat`;
+    } else if (notifType === 'inject_published') {
+      appId = 'news';
+      appName = 'News';
+      appIcon = '/icons/icon-news.png';
+      route = `/sim/${sessionId}/device/news`;
+    } else if (
+      notifType === 'decision_approval_required' ||
+      notifType === 'decision_approved' ||
+      notifType === 'decision_rejected'
+    ) {
+      appId = 'home';
+      appName = 'Decisions';
+      appIcon = '/icons/icon-chat.png';
+      route = `/sim/${sessionId}/device/home`;
+    } else if (notifType === 'incident_reported' || notifType === 'incident_assigned') {
+      appId = 'home';
+      appName = 'Incidents';
+      appIcon = '/icons/icon-news.png';
+      route = `/sim/${sessionId}/device/home`;
+    } else if (notifType === 'system_alert') {
+      appId = 'home';
+      appName = 'System';
+      appIcon = '/icons/icon-news.png';
+      route = `/sim/${sessionId}/device/home`;
+    }
+
+    return {
+      id: dbId || id,
+      dbId,
+      appId,
+      appIcon,
+      appName,
+      title,
+      body: message,
+      timestamp: String(notif.created_at || ts),
+      route,
+    };
+  }
+
+  if (event.type === 'sim_email.received') {
+    const email = (event.data?.email || {}) as Record<string, unknown>;
+    const fromName = String(email.from_name || 'Unknown');
+    const subject = String(email.subject || 'New email');
+    return {
+      id,
+      dbId: null,
+      appId: 'email',
+      appIcon: '/icons/icon-mail.png',
+      appName: 'Mail',
+      title: fromName,
+      body: subject,
+      timestamp: ts,
+      route: `/sim/${sessionId}/device/email`,
+    };
+  }
+
+  if (event.type === 'inject.published') {
+    const inject = (event.data?.inject || {}) as Record<string, unknown>;
+    const title = String(inject.title || 'Breaking News');
+    return {
+      id,
+      dbId: null,
+      appId: 'news',
+      appIcon: '/icons/icon-news.png',
+      appName: 'News',
+      title: 'Breaking',
+      body: title,
+      timestamp: ts,
+      route: `/sim/${sessionId}/device/news`,
+    };
+  }
+
+  return null;
+}
 
 export default function DeviceShell() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -8,10 +132,166 @@ export default function DeviceShell() {
   const location = useLocation();
   const [time, setTime] = useState(new Date());
 
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [bannerQueue, setBannerQueue] = useState<NotificationItem[]>([]);
+  const [activeBanner, setActiveBanner] = useState<NotificationItem | null>(null);
+  const [centerExpanded, setCenterExpanded] = useState(false);
+  const processedIdsRef = useRef<Set<string>>(new Set());
+  const initialFetchDoneRef = useRef(false);
+
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
+
+  // Fetch existing unread notifications on mount
+  useEffect(() => {
+    if (!sessionId || initialFetchDoneRef.current) return;
+    initialFetchDoneRef.current = true;
+
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(
+          apiUrl(`/api/notifications?session_id=${sessionId}&read=false&limit=50`),
+          { headers },
+        );
+        if (!res.ok) return;
+        const result = await res.json();
+        const data = (result.data || []) as Array<Record<string, unknown>>;
+
+        const items: NotificationItem[] = [];
+        for (const row of data) {
+          const notifId = String(row.id || '');
+          processedIdsRef.current.add(notifId);
+
+          const mapped = mapEventToNotification(
+            {
+              type: 'notification.created',
+              data: { notification: row },
+              timestamp: String(row.created_at || ''),
+            },
+            sessionId,
+          );
+          if (mapped) items.push(mapped);
+        }
+        setNotifications(items);
+      } catch {
+        /* ignore */
+      }
+    })();
+  }, [sessionId]);
+
+  // WebSocket listener for live notifications
+  useWebSocket({
+    sessionId: sessionId || '',
+    eventTypes: ['notification.created', 'sim_email.received', 'inject.published'],
+    onEvent: useCallback(
+      (event: WSEvent) => {
+        if (!sessionId) return;
+
+        // Dedup: for notification.created, use the DB id
+        if (event.type === 'notification.created') {
+          const notif = (event.data?.notification || {}) as Record<string, unknown>;
+          const dbId = String(notif.id || '');
+          if (dbId && processedIdsRef.current.has(dbId)) return;
+          if (dbId) processedIdsRef.current.add(dbId);
+        }
+
+        const item = mapEventToNotification(event, sessionId);
+        if (!item) return;
+
+        // Don't show banner if user is already on the target app
+        const currentPath = window.location.pathname;
+        if (item.route && currentPath.endsWith(item.appId)) return;
+
+        setBannerQueue((prev) => [...prev, item]);
+      },
+      [sessionId],
+    ),
+    enabled: !!sessionId,
+  });
+
+  // Process banner queue: show next banner when none is active
+  useEffect(() => {
+    if (activeBanner || bannerQueue.length === 0) return;
+    const [next, ...rest] = bannerQueue;
+    setActiveBanner(next);
+    setBannerQueue(rest);
+  }, [activeBanner, bannerQueue]);
+
+  const handleBannerDismiss = useCallback(() => {
+    if (activeBanner) {
+      // Move to notification center if it has a dbId (persisted)
+      if (activeBanner.dbId) {
+        setNotifications((prev) => {
+          if (prev.some((n) => n.id === activeBanner.id)) return prev;
+          return [activeBanner, ...prev];
+        });
+      }
+    }
+    setActiveBanner(null);
+  }, [activeBanner]);
+
+  const handleBannerTap = useCallback(
+    async (notification: NotificationItem) => {
+      // Mark as read server-side
+      if (notification.dbId) {
+        try {
+          const headers = await getAuthHeaders();
+          await fetch(apiUrl(`/api/notifications/${notification.dbId}/read`), {
+            method: 'POST',
+            headers,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      setActiveBanner(null);
+      setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+      navigate(notification.route);
+    },
+    [navigate],
+  );
+
+  const handleCenterTap = useCallback(
+    async (notification: NotificationItem) => {
+      if (notification.dbId) {
+        try {
+          const headers = await getAuthHeaders();
+          await fetch(apiUrl(`/api/notifications/${notification.dbId}/read`), {
+            method: 'POST',
+            headers,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
+      setCenterExpanded(false);
+      navigate(notification.route);
+    },
+    [navigate],
+  );
+
+  const handleClearAll = useCallback(async () => {
+    if (sessionId) {
+      try {
+        const headers = await getAuthHeaders();
+        await fetch(apiUrl('/api/notifications/read-all'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+      } catch {
+        /* ignore */
+      }
+    }
+    setNotifications([]);
+    setCenterExpanded(false);
+  }, [sessionId]);
 
   const hours = time.getHours();
   const minutes = time.getMinutes().toString().padStart(2, '0');
@@ -29,12 +309,10 @@ export default function DeviceShell() {
           xmlns="http://www.w3.org/2000/svg"
           style={{ position: 'absolute', top: -15, left: -18.5, pointerEvents: 'none' }}
         >
-          {/* Body */}
           <path
             d="M2 73C2 32.68 34.68 0 75 0H357C397.32 0 430 32.68 430 73V809C430 849.32 397.32 882 357 882H75C34.68 882 2 849.32 2 809V73Z"
             fill="#404040"
           />
-          {/* Volume buttons */}
           <path
             d="M0 171C0 170.45 0.45 170 1 170H3V204H1C0.45 204 0 203.55 0 203V171Z"
             fill="#4a4a4a"
@@ -47,24 +325,19 @@ export default function DeviceShell() {
             d="M1 319C1 318.45 1.45 318 2 318H3.5V385H2C1.45 385 1 384.55 1 384V319Z"
             fill="#4a4a4a"
           />
-          {/* Power button */}
           <path
             d="M430 279H432C432.55 279 433 279.45 433 280V384C433 384.55 432.55 385 432 385H430V279Z"
             fill="#4a4a4a"
           />
-          {/* Inner bezel */}
           <path
             d="M6 74C6 35.34 37.34 4 76 4H356C394.66 4 426 35.34 426 74V808C426 846.66 394.66 878 356 878H76C37.34 878 6 846.66 6 808V74Z"
             fill="#1C1C1E"
           />
-          {/* Screen border */}
           <rect x="21" y="19" width="390" height="844" rx="55" ry="55" fill="#000000" />
-          {/* Dynamic Island */}
           <path
             d="M154 48.5C154 38.28 162.28 30 172.5 30H259.5C269.72 30 278 38.28 278 48.5C278 58.72 269.72 67 259.5 67H172.5C162.28 67 154 58.72 154 48.5Z"
             fill="#1C1C1E"
           />
-          {/* Camera lens */}
           <circle cx="259.5" cy="48.5" r="5.5" fill="#2C2C2E" />
           <circle cx="259.5" cy="48.5" r="3.5" fill="#1C1C1E" />
         </svg>
@@ -88,7 +361,6 @@ export default function DeviceShell() {
           >
             <span className="text-[15px] font-semibold tracking-tight">{timeStr}</span>
             <div className="flex items-center gap-[5px]">
-              {/* Signal bars */}
               <svg width="17" height="12" viewBox="0 0 17 12" fill="white">
                 <rect x="0" y="9" width="3" height="3" rx="0.5" opacity="1" />
                 <rect x="4.5" y="6" width="3" height="6" rx="0.5" opacity="1" />
@@ -96,7 +368,6 @@ export default function DeviceShell() {
                 <rect x="13.5" y="0" width="3" height="12" rx="0.5" opacity="0.3" />
               </svg>
               <span className="text-[12px] font-semibold ml-0.5">5G</span>
-              {/* WiFi */}
               <svg width="16" height="12" viewBox="0 0 16 12" fill="white" className="ml-0.5">
                 <path d="M8 11.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3z" />
                 <path
@@ -114,7 +385,6 @@ export default function DeviceShell() {
                   strokeLinecap="round"
                 />
               </svg>
-              {/* Battery */}
               <svg width="27" height="13" viewBox="0 0 27 13" className="ml-1">
                 <rect
                   x="0"
@@ -144,6 +414,24 @@ export default function DeviceShell() {
           >
             <Outlet />
           </div>
+
+          {/* Notification Banner (overlays everything) */}
+          <NotificationBanner
+            notification={activeBanner}
+            onDismiss={handleBannerDismiss}
+            onTap={handleBannerTap}
+          />
+
+          {/* Notification Center (pill + expandable list) */}
+          {!activeBanner && (
+            <NotificationCenter
+              notifications={notifications}
+              expanded={centerExpanded}
+              onToggle={() => setCenterExpanded((e) => !e)}
+              onTap={handleCenterTap}
+              onClear={handleClearAll}
+            />
+          )}
 
           {/* Home Indicator */}
           <div
