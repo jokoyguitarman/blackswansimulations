@@ -38,6 +38,16 @@ interface PagePost {
   is_branded_history?: boolean;
 }
 
+interface Comment {
+  id: string;
+  content: string;
+  author_handle: string;
+  author_display_name: string;
+  author_type: string;
+  created_at: string;
+  like_count: number;
+}
+
 function formatCount(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
@@ -59,6 +69,22 @@ function timeAgo(dateStr: string): string {
   return `${days}d`;
 }
 
+function getAvatarColor(name: string): string {
+  const colors = [
+    '#007AFF',
+    '#34C759',
+    '#FF9500',
+    '#FF3B30',
+    '#5856D6',
+    '#AF52DE',
+    '#FF2D55',
+    '#5AC8FA',
+  ];
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+  return colors[Math.abs(hash) % colors.length];
+}
+
 export default function OrgPageView({
   platform = 'facebook',
   onBack,
@@ -71,6 +97,11 @@ export default function OrgPageView({
   const [posts, setPosts] = useState<PagePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [composeText, setComposeText] = useState('');
+
+  const [selectedPost, setSelectedPost] = useState<PagePost | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentInput, setCommentInput] = useState('');
 
   const loadPage = useCallback(async () => {
     if (!sessionId) return;
@@ -130,6 +161,45 @@ export default function OrgPageView({
     }
   }
 
+  async function openComments(post: PagePost) {
+    setSelectedPost(post);
+    setComments([]);
+    setLoadingComments(true);
+    setCommentInput('');
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/posts/${post.id}`), { headers });
+      const result = await res.json();
+      setComments(result.data?.replies || []);
+    } catch {
+      /* ignore */
+    }
+    setLoadingComments(false);
+  }
+
+  async function handlePostComment() {
+    if (!commentInput.trim() || !sessionId || !selectedPost) return;
+    try {
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl('/api/social/posts'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          content: commentInput,
+          platform,
+          post_as_page: true,
+          reply_to_post_id: selectedPost.id,
+        }),
+      });
+      setCommentInput('');
+      // Refresh comments
+      setTimeout(() => openComments(selectedPost), 800);
+    } catch {
+      /* ignore */
+    }
+  }
+
   const isFacebook = platform === 'facebook';
 
   if (loading) {
@@ -153,6 +223,203 @@ export default function OrgPageView({
     );
   }
 
+  // ─── Comments Thread Panel ───────────────────────────────────────────────────
+  if (selectedPost) {
+    return (
+      <div
+        className="h-full flex flex-col"
+        style={{ backgroundColor: isFacebook ? '#F0F2F5' : '#000' }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-4 flex-shrink-0"
+          style={{
+            height: 48,
+            backgroundColor: isFacebook ? '#FFFFFF' : '#16181C',
+            borderBottom: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
+          }}
+        >
+          <button
+            onClick={() => setSelectedPost(null)}
+            className="flex items-center gap-1 text-[15px] font-medium"
+            style={{ color: isFacebook ? '#1877F2' : '#1D9BF0' }}
+          >
+            <span>&larr;</span> Back
+          </button>
+          <span className="text-[13px]" style={{ color: isFacebook ? '#65676B' : '#71767B' }}>
+            {comments.length} comment{comments.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Original post */}
+          <div
+            className="p-4"
+            style={{
+              backgroundColor: isFacebook ? '#FFFFFF' : '#16181C',
+              borderBottom: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
+            }}
+          >
+            <div className="flex items-center gap-2.5 mb-2">
+              {pageInfo.page_logo_url ? (
+                <img
+                  src={pageInfo.page_logo_url}
+                  alt={pageInfo.page_name}
+                  className="w-10 h-10 rounded-lg object-cover"
+                />
+              ) : (
+                <div
+                  className="w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold"
+                  style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
+                >
+                  {pageInfo.page_name.charAt(0)}
+                </div>
+              )}
+              <div>
+                <div className="flex items-center gap-1">
+                  <span
+                    className="font-semibold text-[14px]"
+                    style={{ color: isFacebook ? '#050505' : '#E7E9EA' }}
+                  >
+                    {pageInfo.page_name}
+                  </span>
+                  <span style={{ color: isFacebook ? '#1877F2' : '#1D9BF0' }}>&#10003;</span>
+                </div>
+                <span className="text-[12px]" style={{ color: isFacebook ? '#65676B' : '#71767B' }}>
+                  {timeAgo(selectedPost.created_at)}
+                </span>
+              </div>
+            </div>
+            <p
+              className="text-[15px] leading-relaxed whitespace-pre-wrap"
+              style={{ color: isFacebook ? '#050505' : '#E7E9EA' }}
+            >
+              {selectedPost.content}
+            </p>
+            {selectedPost.media_urls && selectedPost.media_urls.length > 0 && (
+              <div className="mt-2">
+                <img
+                  src={selectedPost.media_urls[0]}
+                  alt=""
+                  className="w-full rounded-lg"
+                  style={{ maxHeight: 200, objectFit: 'cover' }}
+                />
+              </div>
+            )}
+            <div
+              className="flex items-center gap-4 mt-3 pt-2 text-[13px]"
+              style={{
+                borderTop: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
+                color: isFacebook ? '#65676B' : '#71767B',
+              }}
+            >
+              <span>{formatCount(selectedPost.like_count)} likes</span>
+              <span>{formatCount(selectedPost.reply_count)} comments</span>
+              <span>{formatCount(selectedPost.view_count)} views</span>
+            </div>
+          </div>
+
+          {/* Comments list */}
+          {loadingComments ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="w-5 h-5 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+            </div>
+          ) : comments.length === 0 ? (
+            <div className="py-8 text-center">
+              <p className="text-[14px]" style={{ color: isFacebook ? '#65676B' : '#71767B' }}>
+                No comments yet. Be the first to comment.
+              </p>
+            </div>
+          ) : (
+            <div className="py-2">
+              {comments.map((comment) => (
+                <div
+                  key={comment.id}
+                  className="px-4 py-3 flex gap-3"
+                  style={{ borderBottom: `0.5px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}` }}
+                >
+                  <div
+                    className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white font-semibold text-[12px]"
+                    style={{ backgroundColor: getAvatarColor(comment.author_display_name) }}
+                  >
+                    {comment.author_display_name.charAt(0).toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="text-[13px] font-semibold"
+                        style={{ color: isFacebook ? '#050505' : '#E7E9EA' }}
+                      >
+                        {comment.author_display_name}
+                      </span>
+                      <span
+                        className="text-[11px]"
+                        style={{ color: isFacebook ? '#65676B' : '#71767B' }}
+                      >
+                        {timeAgo(comment.created_at)}
+                      </span>
+                    </div>
+                    <p
+                      className="text-[14px] mt-0.5 whitespace-pre-wrap"
+                      style={{ color: isFacebook ? '#050505' : '#E7E9EA' }}
+                    >
+                      {comment.content}
+                    </p>
+                    {comment.like_count > 0 && (
+                      <span
+                        className="text-[11px] mt-1 inline-block"
+                        style={{ color: isFacebook ? '#65676B' : '#71767B' }}
+                      >
+                        {formatCount(comment.like_count)} likes
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Comment compose input */}
+        <div
+          className="flex items-center gap-2 px-4 py-3 flex-shrink-0"
+          style={{
+            backgroundColor: isFacebook ? '#FFFFFF' : '#16181C',
+            borderTop: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
+          }}
+        >
+          <input
+            type="text"
+            value={commentInput}
+            onChange={(e) => setCommentInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                handlePostComment();
+              }
+            }}
+            placeholder={`Comment as ${pageInfo.page_name}...`}
+            className="flex-1 px-3 py-2 rounded-full text-[14px] outline-none"
+            style={{
+              backgroundColor: isFacebook ? '#F0F2F5' : '#2F3336',
+              color: isFacebook ? '#050505' : '#E7E9EA',
+            }}
+          />
+          <button
+            onClick={handlePostComment}
+            disabled={!commentInput.trim()}
+            className="px-3 py-2 rounded-full text-[13px] font-semibold text-white disabled:opacity-40"
+            style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
+          >
+            Post
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Main Page View ──────────────────────────────────────────────────────────
   return (
     <div
       className="h-full overflow-y-auto"
@@ -160,7 +427,6 @@ export default function OrgPageView({
     >
       {/* Page Header */}
       <div className="relative" style={{ backgroundColor: isFacebook ? '#FFFFFF' : '#16181C' }}>
-        {/* Cover area */}
         <div
           className="h-32"
           style={{
@@ -170,7 +436,6 @@ export default function OrgPageView({
           }}
         />
 
-        {/* Page info */}
         <div className="px-4 pb-4">
           <div className="flex items-end gap-3 -mt-8">
             {pageInfo.page_logo_url ? (
@@ -351,7 +616,13 @@ export default function OrgPageView({
                 }}
               >
                 <span>{formatCount(post.like_count)} likes</span>
-                <span>{formatCount(post.reply_count)} comments</span>
+                <button
+                  onClick={() => openComments(post)}
+                  className="hover:underline"
+                  style={{ color: isFacebook ? '#65676B' : '#71767B' }}
+                >
+                  {formatCount(post.reply_count)} comments
+                </button>
                 <span>{formatCount(post.view_count)} views</span>
               </div>
             </div>
