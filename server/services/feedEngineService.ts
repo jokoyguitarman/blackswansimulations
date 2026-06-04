@@ -276,7 +276,7 @@ Return ONLY valid JSON:
   }
 }
 
-const VALID_EMAIL_CATEGORIES = new Set([
+export const VALID_EMAIL_CATEGORIES = new Set([
   'general',
   'holding_statement',
   'communication_boundaries',
@@ -289,7 +289,7 @@ const VALID_EMAIL_CATEGORIES = new Set([
   'messaging_framework',
 ]);
 
-function sanitizeEmailCategory(category: string | undefined | null): string {
+export function sanitizeEmailCategory(category: string | undefined | null): string {
   if (category && VALID_EMAIL_CATEGORIES.has(category)) return category;
   return 'general';
 }

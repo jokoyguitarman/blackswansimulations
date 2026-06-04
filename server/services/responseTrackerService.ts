@@ -55,27 +55,6 @@ export async function checkResponseDeadlines(sessionId: string): Promise<void> {
       });
     }
   }
-
-  const { data: pendingEmails } = await supabaseAdmin
-    .from('sim_emails')
-    .select('id, inject_id, created_at')
-    .eq('session_id', sessionId)
-    .eq('direction', 'inbound')
-    .eq('is_read', false);
-
-  if (pendingEmails && pendingEmails.length > 0) {
-    for (const email of pendingEmails) {
-      const createdAt = new Date(email.created_at);
-      const unreadMinutes = (now.getTime() - createdAt.getTime()) / 60000;
-      if (unreadMinutes > 15) {
-        getWebSocketService().broadcastToSession(sessionId, {
-          type: 'email.unread_warning',
-          data: { email_id: email.id, unread_minutes: Math.round(unreadMinutes) },
-          timestamp: now.toISOString(),
-        });
-      }
-    }
-  }
 }
 
 export async function markPostResponded(

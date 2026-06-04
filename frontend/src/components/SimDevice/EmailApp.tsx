@@ -50,6 +50,10 @@ export default function EmailApp() {
   const [folder, setFolder] = useState<'inbox' | 'sent'>('inbox');
   const [replyData, setReplyData] = useState({ to: '', subject: '', body: '' });
   const replyRef = useRef<HTMLTextAreaElement>(null);
+  const [contacts, setContacts] = useState<
+    Array<{ address: string; name: string; source: string }>
+  >([]);
+  const [showContactDropdown, setShowContactDropdown] = useState(false);
 
   useEffect(() => {
     loadEmails();
@@ -75,6 +79,20 @@ export default function EmailApp() {
     }
   }
 
+  async function loadContacts() {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/emails/contacts/session/${sessionId}`), {
+        headers,
+      });
+      const result = await res.json();
+      if (result.data) setContacts(result.data);
+    } catch {
+      /* ignore */
+    }
+  }
+
   async function markRead(emailId: string) {
     try {
       const headers = await getAuthHeaders();
@@ -86,7 +104,7 @@ export default function EmailApp() {
   }
 
   async function sendEmail() {
-    if (!replyData.body.trim() || !sessionId) return;
+    if (!replyData.body.trim() || !replyData.to.trim() || !sessionId) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl('/api/social/emails'), {
@@ -94,7 +112,7 @@ export default function EmailApp() {
         headers,
         body: JSON.stringify({
           session_id: sessionId,
-          to_addresses: [replyData.to || 'recipient@sim.local'],
+          to_addresses: [replyData.to],
           subject: replyData.subject || '(No Subject)',
           body_text: replyData.body,
           replied_to_id: selectedEmail?.id,
@@ -235,18 +253,91 @@ export default function EmailApp() {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
-          <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
+          <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)', position: 'relative' }}>
             <div className="flex items-center px-4 py-2.5">
               <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
                 To:
               </span>
               <input
                 value={replyData.to}
-                onChange={(e) => setReplyData({ ...replyData, to: e.target.value })}
+                onChange={(e) => {
+                  setReplyData({ ...replyData, to: e.target.value });
+                  setShowContactDropdown(e.target.value.length > 0);
+                }}
+                onFocus={() => {
+                  if (replyData.to.length > 0 || contacts.length > 0) setShowContactDropdown(true);
+                }}
+                onBlur={() => setTimeout(() => setShowContactDropdown(false), 200)}
+                placeholder="Recipient email address"
                 className="flex-1 text-[15px] outline-none"
                 style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+                autoFocus
               />
             </div>
+            {showContactDropdown &&
+              (() => {
+                const query = replyData.to.toLowerCase();
+                const filtered = query
+                  ? contacts.filter(
+                      (c) =>
+                        c.name.toLowerCase().includes(query) ||
+                        c.address.toLowerCase().includes(query),
+                    )
+                  : contacts;
+                if (filtered.length === 0) return null;
+                return (
+                  <div
+                    className="absolute left-0 right-0 z-50 mx-4 rounded-lg overflow-hidden"
+                    style={{
+                      top: '100%',
+                      backgroundColor: '#FFFFFF',
+                      boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                      border: '0.5px solid rgba(60,60,67,0.18)',
+                      maxHeight: 200,
+                      overflowY: 'auto',
+                    }}
+                  >
+                    {filtered.slice(0, 8).map((contact, i) => (
+                      <button
+                        key={contact.address}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setReplyData({ ...replyData, to: contact.address });
+                          setShowContactDropdown(false);
+                        }}
+                        className="w-full text-left flex items-center justify-between px-3 py-2.5 active:bg-gray-50"
+                        style={{
+                          borderBottom:
+                            i < filtered.length - 1 && i < 7
+                              ? '0.5px solid rgba(60,60,67,0.1)'
+                              : 'none',
+                        }}
+                      >
+                        <span
+                          className="text-[14px] font-medium truncate"
+                          style={{ color: '#000' }}
+                        >
+                          {contact.name}
+                        </span>
+                        <span
+                          className="text-[12px] ml-2 flex-shrink-0"
+                          style={{ color: '#8E8E93' }}
+                        >
+                          {contact.address}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            {replyData.to.length > 0 &&
+              !contacts.some((c) => c.address.toLowerCase() === replyData.to.toLowerCase()) && (
+                <div className="px-4 pb-1">
+                  <span className="text-[11px]" style={{ color: '#8E8E93' }}>
+                    Unknown recipient — may not respond
+                  </span>
+                </div>
+              )}
           </div>
           <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
             <div className="flex items-center px-4 py-2.5">
@@ -534,6 +625,7 @@ export default function EmailApp() {
             onClick={() => {
               setComposing(true);
               setReplyData({ to: '', subject: '', body: '' });
+              loadContacts();
             }}
             className="ios-btn-bounce"
             style={{ color: '#007AFF' }}
@@ -717,6 +809,7 @@ export default function EmailApp() {
         onClick={() => {
           setComposing(true);
           setReplyData({ to: '', subject: '', body: '' });
+          loadContacts();
         }}
         className="absolute ios-btn-bounce flex items-center justify-center"
         style={{

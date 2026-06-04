@@ -22,6 +22,7 @@ import {
   evaluateConditionKey,
   type EvaluationContext,
 } from '../services/conditionEvaluatorService.js';
+import { deriveEmailAddress } from '../services/npcEmailReplyService.js';
 
 const router = Router();
 
@@ -872,6 +873,18 @@ router.post(
       const { session_id, to_addresses, cc_addresses, subject, body_text, replied_to_id } =
         req.body;
 
+      // Resolve root thread_id: look up the parent's thread_id so
+      // multi-reply chains all share the same root thread_id.
+      let resolvedThreadId: string | null = null;
+      if (replied_to_id) {
+        const { data: parentEmail } = await supabaseAdmin
+          .from('sim_emails')
+          .select('thread_id')
+          .eq('id', replied_to_id)
+          .single();
+        resolvedThreadId = parentEmail?.thread_id || replied_to_id;
+      }
+
       const { data: email, error } = await supabaseAdmin
         .from('sim_emails')
         .insert({
@@ -885,7 +898,7 @@ router.post(
           body_html: `<p>${body_text.replace(/\n/g, '</p><p>')}</p>`,
           body_text,
           replied_to_id: replied_to_id || null,
-          thread_id: replied_to_id || null,
+          thread_id: resolvedThreadId,
           sent_by_player_id: user.id,
         })
         .select()
@@ -909,9 +922,121 @@ router.post(
         timestamp: new Date().toISOString(),
       });
 
+      // Trigger NPC reply if the email is to an NPC (non-blocking)
+      void (async () => {
+        try {
+          const { triggerNPCEmailReply } = await import('../services/npcEmailReplyService.js');
+          const delay = 5000 + Math.floor(Math.random() * 10000);
+          setTimeout(() => {
+            void triggerNPCEmailReply(session_id, {
+              id: email.id,
+              to_addresses,
+              subject,
+              body_text,
+              from_name: (user.metadata?.full_name as string) || user.email || 'Player',
+              from_address: email.from_address,
+              replied_to_id: replied_to_id || null,
+              thread_id: resolvedThreadId,
+            });
+          }, delay);
+        } catch {
+          /* non-critical */
+        }
+      })();
+
       res.status(201).json({ data: email });
     } catch (err) {
       logger.error({ error: err }, 'Error in POST /social/emails');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// ─── Email Contacts ──────────────────────────────────────────────────────────
+
+router.get(
+  '/emails/contacts/session/:sessionId',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+
+      // 1. Get unique inbound email senders (most recent first)
+      const { data: inboundSenders } = await supabaseAdmin
+        .from('sim_emails')
+        .select('from_address, from_name')
+        .eq('session_id', sessionId)
+        .eq('direction', 'inbound')
+        .order('created_at', { ascending: false });
+
+      const contacts: Array<{
+        address: string;
+        name: string;
+        source: string;
+      }> = [];
+      const seenAddresses = new Set<string>();
+
+      for (const sender of inboundSenders || []) {
+        const addr = (sender.from_address as string).toLowerCase();
+        if (!seenAddresses.has(addr) && addr !== 'system@sim.local') {
+          seenAddresses.add(addr);
+          contacts.push({
+            address: sender.from_address as string,
+            name: sender.from_name as string,
+            source: 'previous',
+          });
+        }
+      }
+
+      // 2. Get key NPC personas and derive email addresses
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('scenario_id')
+        .eq('id', sessionId)
+        .single();
+
+      if (session?.scenario_id) {
+        const { data: scenario } = await supabaseAdmin
+          .from('scenarios')
+          .select('initial_state')
+          .eq('id', session.scenario_id)
+          .single();
+
+        if (scenario?.initial_state) {
+          const initialState = scenario.initial_state as Record<string, unknown>;
+          const personas = (initialState.npc_personas || []) as Array<{
+            handle: string;
+            name: string;
+            type: string;
+            tier?: string;
+          }>;
+
+          const keyPersonas = personas.filter(
+            (p) =>
+              p.tier === 'key' ||
+              p.type === 'npc_media' ||
+              p.type === 'npc_politician' ||
+              p.type === 'npc_influencer',
+          );
+
+          for (const persona of keyPersonas) {
+            const derivedAddress = deriveEmailAddress(persona);
+
+            if (!seenAddresses.has(derivedAddress.toLowerCase())) {
+              seenAddresses.add(derivedAddress.toLowerCase());
+              contacts.push({
+                address: derivedAddress,
+                name: persona.name,
+                source: 'npc',
+              });
+            }
+          }
+        }
+      }
+
+      res.json({ data: contacts });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /social/emails/contacts/session/:sessionId');
       res.status(500).json({ error: 'Internal server error' });
     }
   },

@@ -199,8 +199,6 @@ export interface SocialCrisisPayload {
       org_name?: string;
       org_page?: OrgPageConfig;
       facebook_groups?: Array<{ name: string; group_type: string; member_count: number }>;
-      dm_scenarios?: Array<{ trigger: string; delay_minutes: number; type: string }>;
-      event_triggers?: Array<{ condition: string; event_type: string }>;
     };
   };
   teams: TeamDef[];
@@ -1589,16 +1587,6 @@ export function assemblePayload(
           group_type: i === 0 ? 'community' : i === 1 ? 'neighborhood' : 'official',
           member_count: 200 + Math.floor(Math.random() * 2000),
         })),
-        dm_scenarios: [
-          { trigger: 'session_start', delay_minutes: 2, type: 'journalist_inquiry' },
-          { trigger: 'escalation_high', delay_minutes: 0, type: 'community_leader_plea' },
-          { trigger: 'player_good_response', delay_minutes: 1, type: 'supportive_dm' },
-        ],
-        event_triggers: [
-          { condition: 'escalation_risk > 60', event_type: 'protest' },
-          { condition: 'narrative_control > 60', event_type: 'solidarity' },
-          { condition: 'elapsed_minutes > 15', event_type: 'vigil' },
-        ],
       },
     },
     teams,
