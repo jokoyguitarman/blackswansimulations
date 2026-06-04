@@ -336,6 +336,19 @@ export default function FacebookFeedApp() {
     if (location.pathname.includes('/facebook')) loadPosts();
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-expand comments when ?post= query param is present (from push notification)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const postId = params.get('post');
+    if (!postId || posts.length === 0) return;
+    setActiveView('feed');
+    setExpandedComments((prev) => new Set([...prev, postId]));
+    setTimeout(() => {
+      const el = document.getElementById(`fb-post-${postId}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 300);
+  }, [location.search, posts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Poll notification count
   // Poll notification count (Facebook platform only)
   useEffect(() => {

@@ -63,10 +63,15 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
       notifType === 'social_mention' ||
       notifType === 'social_repost'
     ) {
+      const metadata = (notif.metadata || {}) as Record<string, unknown>;
+      const postId = String(metadata.post_id || metadata.highlight_post_id || '');
       appId = platform === 'facebook' ? 'facebook' : 'social';
       appName = platform === 'facebook' ? 'Fakebook' : 'Z';
       appIcon = platform === 'facebook' ? '/icons/icon-facebook.png' : '/icons/icon-social.png';
-      route = `/sim/${sessionId}/device/${platform === 'facebook' ? 'facebook' : 'social'}`;
+      const appPath = platform === 'facebook' ? 'facebook' : 'social';
+      route = postId
+        ? `/sim/${sessionId}/device/${appPath}?post=${postId}`
+        : `/sim/${sessionId}/device/${appPath}`;
     } else if (notifType === 'inject_published') {
       appId = 'news';
       appName = 'News';

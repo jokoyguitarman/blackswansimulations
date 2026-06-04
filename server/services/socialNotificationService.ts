@@ -79,6 +79,11 @@ export async function notifyPostReply(
         notification_type: 'social_reply',
         platform,
         title: `${replyAuthorName} replied to your post`,
+        metadata: {
+          post_id: parentPostId,
+          highlight_post_id: highlightPostId || null,
+          platform,
+        },
       },
       timestamp: new Date().toISOString(),
     });

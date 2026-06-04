@@ -614,12 +614,15 @@ export default function SocialFeedApp({
     }
   }, [threadReplies, highlightReplyId]);
 
-  // Open thread when openPostId prop is set
+  // Open thread when openPostId prop is set or ?post= query param exists
+  const urlPostId = new URLSearchParams(location.search).get('post');
+  const effectiveOpenPostId = openPostId || urlPostId;
+
   useEffect(() => {
-    if (!openPostId || posts.length === 0) return;
-    const post = posts.find((p) => p.id === openPostId);
+    if (!effectiveOpenPostId || posts.length === 0) return;
+    const post = posts.find((p) => p.id === effectiveOpenPostId);
     if (post) openThread(post);
-  }, [openPostId, posts.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [effectiveOpenPostId, posts.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Open compose when triggered externally
   useEffect(() => {
