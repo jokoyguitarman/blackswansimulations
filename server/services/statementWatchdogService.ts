@@ -432,6 +432,19 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
       .single();
 
     if (xPost) {
+      // Increment reply_count on the player's post that's being challenged
+      if (replyToPostId) {
+        const { data: targetPost } = await supabaseAdmin
+          .from('social_posts')
+          .select('reply_count')
+          .eq('id', replyToPostId)
+          .single();
+        await supabaseAdmin
+          .from('social_posts')
+          .update({ reply_count: ((targetPost?.reply_count as number) || 0) + 1 })
+          .eq('id', replyToPostId);
+      }
+
       getWebSocketService().broadcastToSession(sessionId, {
         type: 'social_post.created',
         data: { post: xPost },
@@ -532,6 +545,19 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
             .single();
 
           if (reactionPost) {
+            // Increment reply_count on parent if this is a reply
+            if (isReply && xPost) {
+              const { data: parent } = await supabaseAdmin
+                .from('social_posts')
+                .select('reply_count')
+                .eq('id', xPost.id)
+                .single();
+              await supabaseAdmin
+                .from('social_posts')
+                .update({ reply_count: ((parent?.reply_count as number) || 0) + 1 })
+                .eq('id', xPost.id);
+            }
+
             getWebSocketService().broadcastToSession(sessionId, {
               type: 'social_post.created',
               data: { post: reactionPost },

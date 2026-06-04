@@ -523,6 +523,19 @@ Analyze these communications thoroughly. Is there anything that could be spun as
             .single();
 
           if (reactionPost) {
+            // Increment reply_count on parent if this is a reply
+            if (isReply && xPost) {
+              const { data: parent } = await supabaseAdmin
+                .from('social_posts')
+                .select('reply_count')
+                .eq('id', xPost.id)
+                .single();
+              await supabaseAdmin
+                .from('social_posts')
+                .update({ reply_count: ((parent?.reply_count as number) || 0) + 1 })
+                .eq('id', xPost.id);
+            }
+
             getWebSocketService().broadcastToSession(sessionId, {
               type: 'social_post.created',
               data: { post: reactionPost },
