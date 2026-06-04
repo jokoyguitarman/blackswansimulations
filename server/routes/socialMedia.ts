@@ -926,7 +926,7 @@ router.post(
       void (async () => {
         try {
           const { triggerNPCEmailReply } = await import('../services/npcEmailReplyService.js');
-          const delay = 5000 + Math.floor(Math.random() * 10000);
+          const delay = 2000 + Math.floor(Math.random() * 3000);
           setTimeout(() => {
             void triggerNPCEmailReply(session_id, {
               id: email.id,

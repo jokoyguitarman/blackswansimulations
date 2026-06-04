@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Email App UX Overhaul - Design Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #333;
+      padding: 40px;
+      line-height: 1.5;
+    }
+
+    h1 { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    h2 { font-size: 22px; font-weight: 600; color: #E9EDEF; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
+    h3 { font-size: 16px; font-weight: 600; color: #8E8E93; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .subtitle { color: #8696A0; font-size: 14px; margin-bottom: 40px; }
+    section { margin-bottom: 60px; }
+    .section-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 60px 0; }
+
+    /* ─── Process Diagrams ─── */
+    .diagram-container {
+      background: #fff;
+      border-radius: 16px;
+      padding: 32px;
+      margin-bottom: 24px;
+    }
+
+    .flow-diagram {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 20px;
+    }
+
+    .flow-node {
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      text-align: center;
+      min-width: 120px;
+    }
+
+    .flow-node.db { background: #DBEAFE; color: #1D4ED8; border: 2px solid #93C5FD; }
+    .flow-node.api { background: #D1FAE5; color: #047857; border: 2px solid #6EE7B7; }
+    .flow-node.frontend { background: #FEF3C7; color: #92400E; border: 2px solid #FCD34D; }
+    .flow-node.state { background: #EDE9FE; color: #6D28D9; border: 2px solid #C4B5FD; }
+    .flow-node.bug { background: #FEE2E2; color: #DC2626; border: 2px solid #FCA5A5; }
+    .flow-node.fix { background: #D1FAE5; color: #047857; border: 2px solid #6EE7B7; }
+
+    .flow-arrow {
+      font-size: 20px;
+      color: #9CA3AF;
+    }
+
+    .flow-arrow-down {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      color: #9CA3AF;
+      font-size: 12px;
+      gap: 2px;
+    }
+
+    .flow-label {
+      font-size: 10px;
+      color: #6B7280;
+      text-align: center;
+      max-width: 100px;
+    }
+
+    /* ─── Bug Diagrams ─── */
+    .bug-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 16px;
+      background: #FEF2F2;
+      border-radius: 12px;
+      border: 1px solid #FECACA;
+      margin-bottom: 16px;
+    }
+
+    .fix-flow {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 16px;
+      background: #F0FDF4;
+      border-radius: 12px;
+      border: 1px solid #BBF7D0;
+    }
+
+    .flow-step {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 13px;
+    }
+
+    .flow-step .num {
+      width: 24px;
+      height: 24px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .bug-flow .num { background: #FCA5A5; color: #7F1D1D; }
+    .fix-flow .num { background: #86EFAC; color: #14532D; }
+
+    /* ─── Phone Frame ─── */
+    .phone-frame {
+      width: 375px;
+      height: 750px;
+      border-radius: 40px;
+      overflow: hidden;
+      border: 8px solid #333;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.5);
+      margin: 0 auto;
+      position: relative;
+      background: #F2F2F7;
+    }
+
+    .phone-frame-small {
+      width: 340px;
+      height: 680px;
+      border-radius: 36px;
+      overflow: hidden;
+      border: 7px solid #333;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      background: #F2F2F7;
+    }
+
+    .phone-status-bar {
+      height: 50px;
+      padding: 14px 24px 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 14px;
+      font-weight: 600;
+      background: rgba(242,242,247,0.92);
+    }
+
+    /* ─── iOS Mail Styles ─── */
+    .mail-nav {
+      padding: 0 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 44px;
+      background: rgba(242,242,247,0.92);
+      border-bottom: 0.5px solid rgba(60,60,67,0.29);
+    }
+
+    .mail-nav .back { color: #007AFF; font-size: 17px; display: flex; align-items: center; gap: 2px; }
+    .mail-nav .back svg { width: 10px; height: 16px; }
+    .mail-nav .action { color: #007AFF; }
+
+    .mail-title {
+      padding: 4px 16px 12px;
+      background: rgba(242,242,247,0.92);
+    }
+
+    .mail-title h1 {
+      font-size: 34px;
+      font-weight: 700;
+      color: #000;
+      letter-spacing: -0.5px;
+    }
+
+    .folder-toggle {
+      display: flex;
+      margin: 0 16px 12px;
+      background: rgba(118,118,128,0.12);
+      border-radius: 8px;
+      padding: 2px;
+    }
+
+    .folder-toggle button {
+      flex: 1;
+      padding: 6px 16px;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 600;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .folder-toggle button.active {
+      background: #fff;
+      color: #000;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    .folder-toggle button.inactive {
+      background: transparent;
+      color: #8E8E93;
+    }
+
+    .mail-list {
+      margin: 0 16px;
+      background: #fff;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+
+    .mail-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      border-bottom: 0.5px solid rgba(60,60,67,0.12);
+    }
+
+    .mail-item:last-child { border-bottom: none; }
+
+    .mail-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-weight: 600;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .mail-content { flex: 1; min-width: 0; }
+    .mail-content .sender { font-size: 15px; font-weight: 600; color: #000; }
+    .mail-content .subject { font-size: 14px; color: #1C1C1E; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mail-content .preview { font-size: 13px; color: #8E8E93; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .mail-meta { font-size: 13px; color: #8E8E93; white-space: nowrap; }
+
+    .unread-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #007AFF;
+      position: absolute;
+      left: 4px;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+
+    /* ─── Thread View ─── */
+    .thread-subject {
+      padding: 20px 16px 12px;
+      font-size: 22px;
+      font-weight: 700;
+      color: #000;
+      line-height: 1.3;
+    }
+
+    .thread-message {
+      padding: 12px 16px;
+      border-top: 0.5px solid rgba(60,60,67,0.12);
+    }
+
+    .thread-message .msg-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .thread-message .msg-sender {
+      font-size: 15px;
+      font-weight: 600;
+      color: #000;
+    }
+
+    .thread-message .msg-email {
+      font-size: 13px;
+      color: #8E8E93;
+    }
+
+    .thread-message .msg-time {
+      font-size: 13px;
+      color: #8E8E93;
+      margin-left: auto;
+    }
+
+    .thread-message .msg-body {
+      font-size: 15px;
+      color: #1C1C1E;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .thread-message.quoted {
+      background: #F9FAFB;
+      border-left: 3px solid #E5E7EB;
+      margin-left: 8px;
+      opacity: 0.85;
+    }
+
+    .reply-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 12px 16px;
+      border-top: 0.5px solid rgba(60,60,67,0.29);
+      background: rgba(255,255,255,0.92);
+    }
+
+    .reply-toolbar button {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #007AFF;
+      font-size: 15px;
+      border: none;
+      background: none;
+      cursor: pointer;
+    }
+
+    /* ─── Reply Compose ─── */
+    .reply-compose {
+      padding: 12px 16px;
+      border-bottom: 0.5px solid rgba(60,60,67,0.12);
+      background: #fff;
+    }
+
+    .reply-compose textarea {
+      width: 100%;
+      min-height: 100px;
+      border: none;
+      outline: none;
+      font-size: 16px;
+      color: #000;
+      resize: none;
+      font-family: inherit;
+      line-height: 1.5;
+      background: #fff;
+    }
+
+    .reply-compose textarea::placeholder {
+      color: #C7C7CC;
+    }
+
+    .reply-separator {
+      padding: 8px 16px;
+      font-size: 12px;
+      color: #8E8E93;
+      border-top: 0.5px solid rgba(60,60,67,0.12);
+      text-align: center;
+    }
+
+    /* ─── Compose New ─── */
+    .compose-field {
+      display: flex;
+      align-items: center;
+      padding: 10px 16px;
+      border-bottom: 0.5px solid rgba(60,60,67,0.12);
+    }
+
+    .compose-field label {
+      font-size: 15px;
+      color: #8E8E93;
+      width: 64px;
+      flex-shrink: 0;
+    }
+
+    .compose-field input {
+      flex: 1;
+      font-size: 15px;
+      border: none;
+      outline: none;
+      color: #000;
+      background: #fff;
+    }
+
+    /* ─── Comparison Grid ─── */
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 900px) {
+      .comparison { grid-template-columns: 1fr; }
+    }
+
+    .comparison-card {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .comparison-card .card-header {
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #fff;
+    }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-left: 8px; }
+    .badge-bug { background: #EF4444; color: #fff; }
+    .badge-fix { background: #10B981; color: #fff; }
+
+    /* ─── FAB ─── */
+    .fab {
+      position: absolute;
+      bottom: 20px;
+      right: 16px;
+      width: 52px;
+      height: 52px;
+      border-radius: 26px;
+      background: #007AFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0,122,255,0.35);
+    }
+
+    .category-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      padding: 2px 6px;
+      border-radius: 3px;
+      margin-top: 2px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Email App UX Overhaul</h1>
+  <p class="subtitle">Visual design reference and process diagrams for all five fixes</p>
+
+  <!-- ═══════════ SECTION: PROCESS DIAGRAMS ═══════════ -->
+  <section>
+    <h2>Process Diagrams</h2>
+
+    <h3>Current Architecture (Data Flow)</h3>
+    <div class="diagram-container">
+      <div class="flow-diagram">
+        <div class="flow-node db">
+          sim_emails<br>
+          <small>direction, thread_id, replied_to_id</small>
+        </div>
+        <div class="flow-arrow-down">
+          <span>&rarr;</span>
+          <span class="flow-label">GET /api/social/emails/session/:id</span>
+        </div>
+        <div class="flow-node api">
+          API returns ALL emails<br>
+          <small>(inbound + outbound)</small>
+        </div>
+        <div class="flow-arrow">&rarr;</div>
+        <div class="flow-node frontend">
+          EmailApp.tsx<br>
+          <small>renders flat list</small>
+        </div>
+      </div>
+    </div>
+
+    <h3>Bug 1: Sent Emails in Inbox</h3>
+    <div class="diagram-container">
+      <div class="bug-flow">
+        <div class="flow-step"><div class="num">1</div> Player sends reply (POST /api/social/emails)</div>
+        <div class="flow-step"><div class="num">2</div> Server inserts with direction = 'outbound'</div>
+        <div class="flow-step"><div class="num">3</div> WebSocket fires sim_email.sent</div>
+        <div class="flow-step"><div class="num">4</div> Frontend calls loadEmails() -- fetches ALL</div>
+        <div class="flow-step"><div class="num">5</div> Outbound email appears in Inbox list (BUG)</div>
+      </div>
+      <div class="fix-flow">
+        <div class="flow-step"><div class="num">1</div> Add folder state: 'inbox' | 'sent'</div>
+        <div class="flow-step"><div class="num">2</div> Filter: inbox shows direction=inbound only</div>
+        <div class="flow-step"><div class="num">3</div> Sent folder shows direction=outbound only</div>
+        <div class="flow-step"><div class="num">4</div> iOS-style segmented toggle to switch</div>
+      </div>
+    </div>
+
+    <h3>Bug 3: Reply Button Does Nothing</h3>
+    <div class="diagram-container">
+      <div class="bug-flow">
+        <div class="flow-step"><div class="num">1</div> User taps Reply button</div>
+        <div class="flow-step"><div class="num">2</div> Sets composing=true, keeps selectedEmail set</div>
+        <div class="flow-step"><div class="num">3</div> Render: if(selectedEmail) wins -- shows detail again</div>
+        <div class="flow-step"><div class="num">4</div> Compose view never renders (BUG)</div>
+      </div>
+      <div class="fix-flow">
+        <div class="flow-step"><div class="num">1</div> Add separate 'replying' state</div>
+        <div class="flow-step"><div class="num">2</div> Reply button sets replying=true</div>
+        <div class="flow-step"><div class="num">3</div> Detail view renders inline reply compose when replying</div>
+        <div class="flow-step"><div class="num">4</div> Thread shown below as quoted context</div>
+      </div>
+    </div>
+
+    <h3>Threading Model</h3>
+    <div class="diagram-container">
+      <div class="flow-diagram" style="flex-direction: column; gap: 16px;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="flow-node db" style="min-width: 200px;">
+            Original Email (inbound)<br>
+            <small>id: abc123, thread_id: NULL</small>
+          </div>
+        </div>
+        <div style="font-size: 20px; color: #9CA3AF;">&darr; <small style="font-size: 11px;">player replies</small></div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="flow-node state" style="min-width: 200px;">
+            Player Reply (outbound)<br>
+            <small>replied_to_id: abc123, thread_id: abc123</small>
+          </div>
+        </div>
+        <div style="font-size: 20px; color: #9CA3AF;">&darr; <small style="font-size: 11px;">NPC replies back</small></div>
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="flow-node api" style="min-width: 200px;">
+            NPC Reply (inbound)<br>
+            <small>replied_to_id: def456, thread_id: abc123</small>
+          </div>
+        </div>
+      </div>
+      <p style="text-align: center; margin-top: 16px; font-size: 13px; color: #6B7280;">
+        Thread query: WHERE id = threadId OR thread_id = threadId, sorted by created_at ASC
+      </p>
+    </div>
+
+    <h3>Render Logic (Fixed)</h3>
+    <div class="diagram-container">
+      <div class="flow-diagram" style="flex-direction: column; gap: 8px; align-items: flex-start; padding: 16px;">
+        <code style="font-size: 13px; color: #6B7280;">// New render priority order:</code>
+        <code style="font-size: 13px; color: #1F2937;">if (composing) return &lt;ComposeNewEmail /&gt;</code>
+        <code style="font-size: 13px; color: #1F2937;">if (selectedEmail &amp;&amp; replying) return &lt;ThreadView + InlineReply /&gt;</code>
+        <code style="font-size: 13px; color: #1F2937;">if (selectedEmail) return &lt;ThreadDetailView /&gt;</code>
+        <code style="font-size: 13px; color: #1F2937;">return &lt;InboxOrSentList /&gt;</code>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: INBOX LIST ═══════════ -->
+  <section>
+    <h2>Planned Look: Inbox List with Folder Toggle</h2>
+
+    <div style="display: flex; justify-content: center;">
+      <div class="phone-frame">
+        <div class="phone-status-bar">
+          <span>9:41</span>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="#000"><rect x="0" y="8" width="3" height="3" rx="0.5"/><rect x="4" y="5" width="3" height="6" rx="0.5"/><rect x="8" y="2" width="3" height="9" rx="0.5"/><rect x="12" y="0" width="3" height="11" rx="0.5" opacity="0.3"/></svg>
+            <span style="font-size: 12px; font-weight: 600;">5G</span>
+          </div>
+        </div>
+
+        <div class="mail-nav">
+          <span class="back">
+            <svg viewBox="0 0 12 20" fill="none"><path d="M10 2L2 10l8 8" stroke="#007AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Back
+          </span>
+          <span class="action">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007AFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </span>
+        </div>
+
+        <div class="mail-title"><h1 style="font-size: 34px;">Inbox</h1></div>
+
+        <!-- Folder Toggle -->
+        <div class="folder-toggle">
+          <button class="active">Inbox</button>
+          <button class="inactive">Sent</button>
+        </div>
+
+        <!-- Email List -->
+        <div style="flex: 1; overflow-y: auto; padding-bottom: 80px;">
+          <div class="mail-list">
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #34C759;">S</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">System</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <span class="category-badge" style="background: #FFE5E5; color: #CC1100;">HOLDING STATEMENT</span>
+                <p class="subject">Journalist request: confirm scope, lots, P...</p>
+                <p class="preview">Hi, this is Carmi Lopez (business desk). We're...</p>
+              </div>
+            </div>
+
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #5856D6;">C</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">CEO Office</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <span class="category-badge" style="background: #F3E8FF; color: #7C3AED;">APPROVAL REQUIRED</span>
+                <p class="subject">RE: Holding statement draft for approval</p>
+                <p class="preview">Please review and approve the attached draft...</p>
+              </div>
+            </div>
+
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #FF9500;">R</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">Retail Partners</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <p class="subject">Retail partner asks for guidance: should...</p>
+                <p class="preview">Good day. We are receiving customer compl...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FAB -->
+        <div class="fab">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: THREAD VIEW ═══════════ -->
+  <section>
+    <h2>Planned Look: Thread Detail View</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">Shows full conversation thread chronologically when opening an email</p>
+
+    <div style="display: flex; justify-content: center;">
+      <div class="phone-frame">
+        <div class="phone-status-bar">
+          <span>20:33</span>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="#000"><rect x="0" y="8" width="3" height="3" rx="0.5"/><rect x="4" y="5" width="3" height="6" rx="0.5"/><rect x="8" y="2" width="3" height="9" rx="0.5"/><rect x="12" y="0" width="3" height="11" rx="0.5"/></svg>
+            <span style="font-size: 12px; font-weight: 600;">5G</span>
+          </div>
+        </div>
+
+        <div class="mail-nav">
+          <span class="back">
+            <svg viewBox="0 0 12 20" fill="none" style="width:10px;height:16px;"><path d="M10 2L2 10l8 8" stroke="#007AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Inbox
+          </span>
+          <span class="action">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007AFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </span>
+        </div>
+
+        <div style="flex: 1; overflow-y: auto; background: #fff;">
+          <!-- Subject -->
+          <div class="thread-subject">RE: Journalist request: confirm scope, lots, PH safety assurance</div>
+
+          <!-- Message 1: Original inbound -->
+          <div class="thread-message">
+            <div class="msg-header">
+              <div class="mail-avatar" style="background: #34C759; width: 36px; height: 36px; font-size: 14px;">S</div>
+              <div>
+                <div class="msg-sender">System</div>
+                <div class="msg-email">system@sim.local</div>
+              </div>
+              <span class="msg-time">May 17</span>
+            </div>
+            <div class="msg-body">Hi, this is Carmi Lopez (business desk). We're working on a story about the product recall. Could you confirm the scope of affected lots and provide a statement on PH safety assurance protocols?
+
+Please respond by EOD if possible. Thank you.</div>
+          </div>
+
+          <!-- Message 2: Player reply -->
+          <div class="thread-message" style="background: #F0F9FF;">
+            <div class="msg-header">
+              <div class="mail-avatar" style="background: #FF2D55; width: 36px; height: 36px; font-size: 14px;">P</div>
+              <div>
+                <div class="msg-sender">Participant, 1</div>
+                <div class="msg-email">katigayunanfoodcorp@crisisresponse.sim</div>
+              </div>
+              <span class="msg-time">07:55 PM</span>
+            </div>
+            <div class="msg-body">Thank you for reaching out. We are currently gathering the information and will provide a comprehensive statement within the hour.
+
+Please hold off on publication until we can confirm the details.</div>
+          </div>
+        </div>
+
+        <!-- Reply Toolbar -->
+        <div class="reply-toolbar">
+          <button>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+            Reply
+          </button>
+          <button>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+            Forward
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: INLINE REPLY ═══════════ -->
+  <section>
+    <h2>Planned Look: Inline Reply (after tapping Reply)</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">Reply textarea at top, original thread quoted below -- just like real email apps</p>
+
+    <div style="display: flex; justify-content: center;">
+      <div class="phone-frame">
+        <div class="phone-status-bar">
+          <span>20:35</span>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="#000"><rect x="0" y="8" width="3" height="3" rx="0.5"/><rect x="4" y="5" width="3" height="6" rx="0.5"/><rect x="8" y="2" width="3" height="9" rx="0.5"/><rect x="12" y="0" width="3" height="11" rx="0.5"/></svg>
+            <span style="font-size: 12px; font-weight: 600;">5G</span>
+          </div>
+        </div>
+
+        <div class="mail-nav">
+          <span class="back">
+            <svg viewBox="0 0 12 20" fill="none" style="width:10px;height:16px;"><path d="M10 2L2 10l8 8" stroke="#007AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Cancel
+          </span>
+          <span class="action">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </span>
+        </div>
+
+        <div style="flex: 1; overflow-y: auto; background: #fff;">
+          <!-- Reply Compose Area -->
+          <div class="reply-compose">
+            <div style="font-size: 13px; color: #8E8E93; margin-bottom: 8px;">
+              To: system@sim.local
+            </div>
+            <textarea placeholder="Write your reply...">We have confirmed that the affected lots are limited to batch numbers KFC-2024-A through KFC-2024-F. Our safety team has completed their assessment and can provide full documentation.</textarea>
+          </div>
+
+          <!-- Separator -->
+          <div class="reply-separator">--- Original Message ---</div>
+
+          <!-- Quoted Thread -->
+          <div class="thread-message quoted">
+            <div class="msg-header">
+              <div class="mail-avatar" style="background: #34C759; width: 32px; height: 32px; font-size: 12px;">S</div>
+              <div>
+                <div class="msg-sender" style="font-size: 13px;">System</div>
+                <div class="msg-email" style="font-size: 11px;">system@sim.local</div>
+              </div>
+              <span class="msg-time" style="font-size: 11px;">May 17</span>
+            </div>
+            <div class="msg-body" style="font-size: 13px; color: #6B7280;">Hi, this is Carmi Lopez (business desk). We're working on a story about the product recall. Could you confirm the scope of affected lots and provide a statement on PH safety assurance protocols?
+
+Please respond by EOD if possible.</div>
+          </div>
+
+          <div class="thread-message quoted" style="background: #F0F9FF; border-left-color: #93C5FD;">
+            <div class="msg-header">
+              <div class="mail-avatar" style="background: #FF2D55; width: 32px; height: 32px; font-size: 12px;">P</div>
+              <div>
+                <div class="msg-sender" style="font-size: 13px;">You</div>
+                <div class="msg-email" style="font-size: 11px;">katigayunanfoodcorp@crisisresponse.sim</div>
+              </div>
+              <span class="msg-time" style="font-size: 11px;">07:55 PM</span>
+            </div>
+            <div class="msg-body" style="font-size: 13px; color: #6B7280;">Thank you for reaching out. We are currently gathering the information...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: COMPOSE NEW ═══════════ -->
+  <section>
+    <h2>Planned Look: Compose New Email (Fixed Styling)</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">White input backgrounds, consistent with the mail app's iOS aesthetic</p>
+
+    <div style="display: flex; justify-content: center;">
+      <div class="phone-frame-small">
+        <div class="phone-status-bar" style="background: rgba(242,242,247,0.92);">
+          <span>20:36</span>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="#000"><rect x="0" y="8" width="3" height="3" rx="0.5"/><rect x="4" y="5" width="3" height="6" rx="0.5"/><rect x="8" y="2" width="3" height="9" rx="0.5"/><rect x="12" y="0" width="3" height="11" rx="0.5"/></svg>
+            <span style="font-size: 12px; font-weight: 600;">5G</span>
+          </div>
+        </div>
+
+        <div class="mail-nav" style="background: rgba(242,242,247,0.92);">
+          <span class="back">Cancel</span>
+          <span style="font-size: 17px; font-weight: 600; color: #000;">New Message</span>
+          <span class="action">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </span>
+        </div>
+
+        <div style="flex: 1; overflow-y: auto; background: #fff;">
+          <div class="compose-field">
+            <label>To:</label>
+            <input value="carmi.lopez@news.sim" readonly style="color: #007AFF;">
+          </div>
+          <div class="compose-field">
+            <label>Subject:</label>
+            <input value="RE: Journalist request: confirm scope, lots" readonly>
+          </div>
+          <div style="padding: 12px 16px;">
+            <textarea placeholder="Write your email..." style="width: 100%; min-height: 240px; border: none; outline: none; font-size: 16px; color: #000; resize: none; font-family: inherit; line-height: 1.5; background: #fff;"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: SENT FOLDER ═══════════ -->
+  <section>
+    <h2>Planned Look: Sent Folder</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">Shows outbound emails only, with "To:" prefix on recipients</p>
+
+    <div style="display: flex; justify-content: center;">
+      <div class="phone-frame-small">
+        <div class="phone-status-bar" style="background: rgba(242,242,247,0.92);">
+          <span>20:40</span>
+          <div style="display: flex; align-items: center; gap: 5px;">
+            <svg width="16" height="11" viewBox="0 0 16 11" fill="#000"><rect x="0" y="8" width="3" height="3" rx="0.5"/><rect x="4" y="5" width="3" height="6" rx="0.5"/><rect x="8" y="2" width="3" height="9" rx="0.5"/><rect x="12" y="0" width="3" height="11" rx="0.5"/></svg>
+            <span style="font-size: 12px; font-weight: 600;">5G</span>
+          </div>
+        </div>
+
+        <div class="mail-nav" style="background: rgba(242,242,247,0.92);">
+          <span class="back">
+            <svg viewBox="0 0 12 20" fill="none" style="width:10px;height:16px;"><path d="M10 2L2 10l8 8" stroke="#007AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Back
+          </span>
+          <span class="action">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#007AFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+          </span>
+        </div>
+
+        <div class="mail-title"><h1 style="font-size: 34px;">Sent</h1></div>
+
+        <div class="folder-toggle">
+          <button class="inactive">Inbox</button>
+          <button class="active">Sent</button>
+        </div>
+
+        <div style="flex: 1; overflow-y: auto;">
+          <div class="mail-list">
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #007AFF;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">To: system@sim.local</span>
+                  <span class="mail-meta">07:55 PM ></span>
+                </div>
+                <p class="subject">RE: Journalist request: confirm scope, lots...</p>
+                <p class="preview">Thank you for reaching out. We are currently...</p>
+              </div>
+            </div>
+
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #007AFF;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              </div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">To: ceo@katigayunan.sim</span>
+                  <span class="mail-meta">07:30 PM ></span>
+                </div>
+                <p class="subject">Status update: media inquiries received</p>
+                <p class="preview">Sir, we have received 3 media inquiries so far...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: SUMMARY TABLE ═══════════ -->
+  <section>
+    <h2>Implementation Summary</h2>
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 13px; background: rgba(255,255,255,0.05); border-radius: 12px; overflow: hidden;">
+        <thead>
+          <tr style="border-bottom: 2px solid rgba(255,255,255,0.1);">
+            <th style="text-align: left; padding: 14px 16px; color: #8E8E93;">Issue</th>
+            <th style="text-align: left; padding: 14px 16px; color: #EF4444;">Current (Bug)</th>
+            <th style="text-align: left; padding: 14px 16px; color: #10B981;">Planned (Fix)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <td style="padding: 12px 16px; color: #E9EDEF;">Folder structure</td>
+            <td style="padding: 12px 16px; color: #FCA5A5;">Single list, all emails mixed</td>
+            <td style="padding: 12px 16px; color: #86EFAC;">Inbox/Sent toggle, filtered by direction</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <td style="padding: 12px 16px; color: #E9EDEF;">Email threading</td>
+            <td style="padding: 12px 16px; color: #FCA5A5;">Single message only</td>
+            <td style="padding: 12px 16px; color: #86EFAC;">Full thread via thread_id grouping</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <td style="padding: 12px 16px; color: #E9EDEF;">Reply button</td>
+            <td style="padding: 12px 16px; color: #FCA5A5;">Does nothing (render priority bug)</td>
+            <td style="padding: 12px 16px; color: #86EFAC;">Opens inline reply within thread view</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <td style="padding: 12px 16px; color: #E9EDEF;">Reply UX</td>
+            <td style="padding: 12px 16px; color: #FCA5A5;">Blank "New Message" screen</td>
+            <td style="padding: 12px 16px; color: #86EFAC;">Inline compose + quoted thread below</td>
+          </tr>
+          <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+            <td style="padding: 12px 16px; color: #E9EDEF;">Compose styling</td>
+            <td style="padding: 12px 16px; color: #FCA5A5;">Grey inputs, doesn't match iOS aesthetic</td>
+            <td style="padding: 12px 16px; color: #86EFAC;">White inputs, consistent iOS Mail style</td>
+          </tr>
+          <tr>
+            <td style="padding: 12px 16px; color: #E9EDEF;">Category badges</td>
+            <td style="padding: 12px 16px; color: #FCA5A5;">Visible to all users (players see scoring metadata)</td>
+            <td style="padding: 12px 16px; color: #86EFAC;">Hidden from players, trainer-only visibility</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: CATEGORY BADGE VISIBILITY ═══════════ -->
+  <section>
+    <h2>Fix 6: Category Badges -- Trainer Only</h2>
+    <p class="subtitle" style="margin-bottom: 24px;">Category badges are scoring/training metadata. Players should not see them -- only trainers and the AI scoring system should use them.</p>
+
+    <div class="comparison">
+      <!-- Player View -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: #007AFF; color: #fff;">
+          Player View (categories hidden)
+        </div>
+        <div style="background: #fff; padding: 0;">
+          <div class="mail-list" style="margin: 0; border-radius: 0;">
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #34C759;">S</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">System</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <p class="subject">Journalist request: confirm scope, lots, P...</p>
+                <p class="preview">Hi, this is Carmi Lopez (business desk). We're...</p>
+              </div>
+            </div>
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #5856D6;">C</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">CEO Office</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <p class="subject">RE: Holding statement draft for approval</p>
+                <p class="preview">Please review and approve the attached draft...</p>
+              </div>
+            </div>
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #FF2D55;">L</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">Legal Department</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <p class="subject">Advisory: product liability exposure</p>
+                <p class="preview">Based on our initial review of the situation...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trainer View -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: #FF9500; color: #fff;">
+          Trainer View (categories visible)
+        </div>
+        <div style="background: #fff; padding: 0;">
+          <div class="mail-list" style="margin: 0; border-radius: 0;">
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #34C759;">S</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">System</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <span class="category-badge" style="background: #FFE5E5; color: #CC1100;">HOLDING STATEMENT</span>
+                <p class="subject">Journalist request: confirm scope, lots, P...</p>
+                <p class="preview">Hi, this is Carmi Lopez (business desk). We're...</p>
+              </div>
+            </div>
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #5856D6;">C</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">CEO Office</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <span class="category-badge" style="background: #F3E8FF; color: #7C3AED;">APPROVAL REQUIRED</span>
+                <p class="subject">RE: Holding statement draft for approval</p>
+                <p class="preview">Please review and approve the attached draft...</p>
+              </div>
+            </div>
+            <div class="mail-item">
+              <div class="mail-avatar" style="background: #FF2D55;">L</div>
+              <div class="mail-content">
+                <div style="display: flex; justify-content: space-between;">
+                  <span class="sender">Legal Department</span>
+                  <span class="mail-meta">May 17 ></span>
+                </div>
+                <span class="category-badge" style="background: #FDE8E8; color: #991B1B;">LEGAL</span>
+                <p class="subject">Advisory: product liability exposure</p>
+                <p class="preview">Based on our initial review of the situation...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="diagram-container" style="margin-top: 24px;">
+      <h3 style="color: #374151; margin-bottom: 12px;">Implementation</h3>
+      <div class="fix-flow">
+        <div class="flow-step"><div class="num">1</div> Import useRoleVisibility hook (already used in HomeScreen, SocialFeedApp)</div>
+        <div class="flow-step"><div class="num">2</div> Extract isTrainer from the hook</div>
+        <div class="flow-step"><div class="num">3</div> Wrap inbox list badge: {isTrainer && categoryBadge && (...)}</div>
+        <div class="flow-step"><div class="num">4</div> Wrap detail view banner: {isTrainer && detailCategoryBadge && (...)}</div>
+        <div class="flow-step"><div class="num">5</div> email_category data stays in DB for AI scoring -- only visual badge hidden</div>
+      </div>
+    </div>
+  </section>
+
+</body>
+</html>

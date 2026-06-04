@@ -740,6 +740,10 @@ Return ONLY valid JSON:
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'x_twitter');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
+    await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
     await simulateThreadActivity(sessionId, String(scenario.description || ''), 'facebook');
@@ -1049,7 +1053,7 @@ async function simulateThreadActivity(
     .order('created_at', { ascending: false })
     .limit(5);
 
-  const recentCutoff = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const recentCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const queryRecent = supabaseAdmin
     .from('social_posts')
     .select('id, content, author_handle, author_display_name, reply_count, platform')
@@ -1057,7 +1061,7 @@ async function simulateThreadActivity(
     .eq('platform', platform)
     .is('reply_to_post_id', null)
     .gte('created_at', recentCutoff)
-    .lt('reply_count', 3)
+    .lt('reply_count', 5)
     .order('created_at', { ascending: false })
     .limit(3);
 
@@ -1127,7 +1131,7 @@ ${participantList}
 
 ${knownNPCs ? `OTHER KNOWN USERS WHO COULD JOIN:\n${knownNPCs}\n` : ''}
 
-Generate 2-3 new replies to continue this thread. Rules:
+Generate 3-5 new replies to continue this thread. Rules:
 - 70% chance: pick someone ALREADY in the thread to reply again (stay in character!)
 - 30% chance: introduce ONE new commenter (either from known users or create a new one)
 - If a user is already in the thread, you MUST use their EXACT handle and display name
@@ -1153,7 +1157,7 @@ Return ONLY valid JSON:
   const replies = (result?.replies as Array<Record<string, unknown>>) || [];
 
   for (let i = 0; i < replies.length; i++) {
-    if (i > 0) await new Promise((r) => setTimeout(r, 1000 + Math.floor(Math.random() * 3000)));
+    if (i > 0) await new Promise((r) => setTimeout(r, 500 + Math.floor(Math.random() * 1500)));
     const reply = replies[i];
     await insertPost(
       sessionId,

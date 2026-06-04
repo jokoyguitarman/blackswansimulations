@@ -115,7 +115,7 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
       .select('id', { count: 'exact', head: true })
       .eq('session_id', sessionId);
 
-    if ((existingCount || 0) > 40) {
+    if ((existingCount || 0) > 100) {
       logger.debug({ sessionId, existingCount }, 'NPC DM limit reached, skipping');
       return;
     }
@@ -166,7 +166,7 @@ ${orgPageHandle ? `- Journalists, media outlets, regulators, affected customers,
 - recipient_handle must be ${orgPageHandle ? `either "${orgPageHandle}" (org page) or ` : ''}one of the player handles listed.
 
 RULES:
-- Only generate 1-3 messages total (or 0 if the situation doesn't warrant it).
+- Generate 2-5 messages total (or 0 if the situation doesn't warrant it).
 - Each message should be 1-3 sentences and feel authentic to the sender's personality.
 - Messages should create meaningful decision pressure.
 - sender_handle and sender_display_name must match an NPC from the persona list.

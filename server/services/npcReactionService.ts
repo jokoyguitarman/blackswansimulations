@@ -117,27 +117,27 @@ export async function triggerNPCReactions(
       }
 
       if (isCompetitor(persona)) {
-        const threshold = isOfficialPagePost ? 0.7 : 0.15;
-        if (roll < Math.min(threshold * probabilityBoost, 0.9)) {
+        const threshold = isOfficialPagePost ? 0.9 : 0.5;
+        if (roll < Math.min(threshold * probabilityBoost, 0.95)) {
           reactingNPCs.push({ persona, reactionType: 'position' });
         }
       } else if (persona.bias && persona.bias !== 'none') {
         const threshold =
-          (postFormat === 'humor_meme' ? 0.5 : isOfficialPagePost ? 0.5 : 0.3) * probabilityBoost;
-        if (roll < Math.min(threshold, 0.9)) {
+          (postFormat === 'humor_meme' ? 0.8 : isOfficialPagePost ? 0.8 : 0.7) * probabilityBoost;
+        if (roll < Math.min(threshold, 0.95)) {
           reactingNPCs.push({ persona, reactionType: 'attack' });
         }
       } else if (persona.type === 'npc_media') {
         const grade = (playerPost.sop_compliance_score as Record<string, unknown>) || {};
         const overall = Number(grade.overall) || 50;
         const threshold = isOfficialPagePost
-          ? 0.85
+          ? 0.9
           : postFormat === 'official_statement'
-            ? 0.7
+            ? 0.85
             : postFormat === 'humor_meme' || postFormat === 'video_concept'
-              ? 0.8
-              : 0.2;
-        if (roll < Math.min(threshold * probabilityBoost, 0.9)) {
+              ? 0.85
+              : 0.5;
+        if (roll < Math.min(threshold * probabilityBoost, 0.95)) {
           reactingNPCs.push({
             persona,
             reactionType: overall > 60 ? 'cover' : overall < 35 ? 'attack' : 'cover',
@@ -148,11 +148,11 @@ export async function triggerNPCReactions(
           persona.personality,
         )
       ) {
-        if (roll < Math.min(0.6 * probabilityBoost, 0.9)) {
+        if (roll < Math.min(0.85 * probabilityBoost, 0.95)) {
           reactingNPCs.push({ persona, reactionType: 'support' });
         }
       } else if (persona.type === 'npc_politician' || persona.type === 'npc_influencer') {
-        if (roll < Math.min((isOfficialPagePost ? 0.6 : 0.4) * probabilityBoost, 0.9)) {
+        if (roll < Math.min((isOfficialPagePost ? 0.85 : 0.7) * probabilityBoost, 0.95)) {
           const grade = (playerPost.sop_compliance_score as Record<string, unknown>) || {};
           const overall = Number(grade.overall) || 50;
           reactingNPCs.push({
@@ -171,7 +171,7 @@ export async function triggerNPCReactions(
       });
     }
 
-    const maxReactions = isOfficialPagePost ? 4 : isReply ? 2 : 3;
+    const maxReactions = isOfficialPagePost ? 8 : isReply ? 5 : 6;
     const selected = reactingNPCs.slice(0, Math.min(maxReactions, reactingNPCs.length));
     if (selected.length === 0) return;
 
@@ -225,7 +225,7 @@ Return ONLY valid JSON:
             content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"${playerPost.image_prompt ? `\n\n[Attached media: ${String(playerPost.image_prompt)}]` : ''}`,
           },
         ],
-        temperature: 0.85,
+        temperature: 0.95,
         max_completion_tokens: 1500,
         response_format: { type: 'json_object' },
       }),
@@ -246,8 +246,8 @@ Return ONLY valid JSON:
     for (let i = 0; i < reactions.length; i++) {
       // Thread replies get faster responses (10-30s), top-level posts get 30s-3min
       const delay = isReply
-        ? 10000 + Math.floor(Math.random() * 20000)
-        : 30000 + Math.floor(Math.random() * 150000);
+        ? 3000 + Math.floor(Math.random() * 7000)
+        : 5000 + Math.floor(Math.random() * 25000);
       setTimeout(
         async () => {
           try {

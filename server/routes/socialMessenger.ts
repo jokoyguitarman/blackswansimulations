@@ -269,7 +269,7 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
             []) as Array<{ handle: string }>;
           const isNPC = personas.some((p) => p.handle === recipient_handle);
           if (isNPC) {
-            const delay = 10000 + Math.floor(Math.random() * 20000);
+            const delay = 3000 + Math.floor(Math.random() * 7000);
             setTimeout(() => {
               void triggerNPCDMReply(session_id, threadId, recipient_handle, content);
             }, delay);

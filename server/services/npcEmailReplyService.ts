@@ -139,8 +139,8 @@ export async function triggerNPCEmailReply(
       .is('inject_id', null)
       .or(`thread_id.eq.${threadId},replied_to_id.eq.${threadId}`);
 
-    if ((threadNpcCount || 0) >= 3) {
-      logger.debug({ threadId }, 'NPC email thread reply limit reached (3), skipping');
+    if ((threadNpcCount || 0) >= 6) {
+      logger.debug({ threadId }, 'NPC email thread reply limit reached (6), skipping');
       return;
     }
 
@@ -155,8 +155,8 @@ export async function triggerNPCEmailReply(
       .is('sent_by_player_id', null)
       .gte('created_at', fiveMinAgo);
 
-    if ((recentNpcCount || 0) >= 5) {
-      logger.debug({ sessionId }, 'NPC email session rate limit reached (5/5min), skipping');
+    if ((recentNpcCount || 0) >= 10) {
+      logger.debug({ sessionId }, 'NPC email session rate limit reached (10/5min), skipping');
       return;
     }
 
@@ -328,13 +328,13 @@ RULES:
 - Keep the reply realistic: 2-6 sentences for quick replies, longer for substantive responses.
 - Determine if this email even warrants a reply (a "thank you" or FYI email might not need one).
 - Assign an email_category if your reply is a directive. Valid categories: "general", "holding_statement", "communication_boundaries", "approval_chain", "legal_advisory", "stakeholder_priority", "sitrep_request", "resource_authorization", "messaging_framework", "stand_down_pivot".
-- Assign a delay_seconds (30-300) based on how busy this person would realistically be. Executives: 120-300s. Community leaders: 60-180s. Media: 30-120s.
+- Assign a delay_seconds (10-90) based on how busy this person would realistically be. Executives: 30-90s. Community leaders: 15-60s. Media: 10-30s.
 - Do NOT contradict confirmed facts from the fact sheet.
 
 Return ONLY valid JSON:
 {
   "should_reply": true,
-  "delay_seconds": 120,
+  "delay_seconds": 30,
   "from_name": "Respondent Name",
   "from_address": "respondent@example.com",
   "subject": "RE: ...",
@@ -388,7 +388,7 @@ Return ONLY valid JSON:
     const replyFromName = respondentName || String(parsed.from_name || 'System');
     const replyFromAddress = respondentAddress || String(parsed.from_address || toAddress);
     const replySubject = String(parsed.subject || `RE: ${playerEmail.subject}`);
-    const delayMs = Math.max(30, Math.min(300, Number(parsed.delay_seconds) || 120)) * 1000;
+    const delayMs = Math.max(10, Math.min(90, Number(parsed.delay_seconds) || 30)) * 1000;
 
     // Schedule delayed delivery
     setTimeout(async () => {
