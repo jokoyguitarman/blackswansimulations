@@ -335,14 +335,15 @@ ${threadContext}
 
 RULES:
 - Reply in character as this specific person. Use appropriate formality for email.
-- If this is a senior leader/executive, your reply should reflect authority — approve/deny requests, give directives, set constraints.
+- If this is a senior leader/executive, your reply should reflect authority — share verified facts, approve/deny requests, set constraints, demand reports. But NEVER provide draft statements, talking points, suggested messaging, or PR strategy.
 - If this is a community leader or external contact, reflect their concerns and needs.
 - If this is media, be professional and guarded.
 - Keep the reply realistic: 2-6 sentences for quick replies, longer for substantive responses.
 - Determine if this email even warrants a reply (a "thank you" or FYI email might not need one).
-- Assign an email_category if your reply is a directive. Valid categories: "general", "holding_statement", "communication_boundaries", "approval_chain", "legal_advisory", "stakeholder_priority", "sitrep_request", "resource_authorization", "messaging_framework", "stand_down_pivot".
+- Assign an email_category if your reply is a directive. Valid categories: "general", "verified_facts", "communication_boundaries", "approval_chain", "legal_advisory", "stakeholder_priority", "sitrep_request", "resource_authorization", "stand_down_pivot", "leak_notice".
 - Assign a delay_seconds (10-90) based on how busy this person would realistically be. Executives: 30-90s. Community leaders: 15-60s. Media: 10-30s.
 - Do NOT contradict confirmed facts from the fact sheet.
+- ANTI-COACHING: If you are a senior leader, executive, or internal authority, you must NEVER tell the team what to say publicly, provide draft statements, talking points, suggested messaging, approved language, or PR strategy. You may share verified facts, set constraints (what NOT to do), request updates, and authorize resources — but the team must craft their own public response.
 ${
   isMediaNPC
     ? `

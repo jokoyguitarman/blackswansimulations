@@ -315,13 +315,13 @@
     {
       "timing": "T+5",
       "type": "email_inbound",
-      "template": "Subject: URGENT - Approved Holding Statement & Immediate Priorities\n\nTeam,\n\nI am activating Protocol 3 (Racial Incident Response) effective immediately.\n\nAPPROVED HOLDING STATEMENT — Use ONLY this language for ALL public-facing communications until further notice:\n\n\"We are aware of the incident at Raffles Place MRT and are working closely with the Singapore Police Force and SCDF. Our thoughts are with those affected. We urge the public to rely on official sources for information and to refrain from spreading unverified claims. We will provide a full update within the hour.\"\n\nDo NOT deviate from this statement. Do NOT add commentary, speculation, or additional details.\n\nImmediate priorities:\n1. Monitor and flag hate speech — document but do not engage directly\n2. Verify all facts with SPF/SCDF before using in any response\n3. Begin drafting counter-narrative for my approval\n4. Coordinate with community leaders — initial outreach only, no commitments\n\nI need a situation assessment in the following format within 15 minutes:\n(1) What we know (2) What we don't know (3) Actions taken (4) Resources needed (5) Next update time\n\nRegards,\nDirector, Office of Harmony",
+      "template": "Subject: URGENT - Verified Facts & Situation Update\n\nTeam,\n\nI am activating Protocol 3 (Racial Incident Response) effective immediately.\n\nVERIFIED FACTS (as of 0900hrs):\n- Explosion occurred at 08:42 at Raffles Place MRT station\n- 12 people injured, 2 in critical condition at SGH\n- Singapore Police Force investigating; no arrests made\n- MRT services suspended on East-West Line between Tanjong Pagar and City Hall\n- SCDF deployed 5 emergency vehicles to the scene\n- Police have cordoned off the area within a 200m radius\n- NO confirmed information on the cause or perpetrator at this time\n\nImmediate priorities:\n1. Monitor and flag hate speech — document but do not engage directly\n2. Verify all facts with SPF/SCDF before using in any response\n3. Coordinate with community leaders — initial outreach only, no commitments\n\nI need a situation assessment in the following format within 15 minutes:\n(1) What we know (2) What we don't know (3) Actions taken (4) Resources needed (5) Next update time\n\nRegards,\nDirector, Office of Harmony",
       "delivery_config": {
         "app": "email",
         "from_address": "director@harmony.gov.sg",
         "from_name": "Director, Office of Harmony",
         "priority": "urgent",
-        "email_category": "holding_statement"
+        "email_category": "verified_facts"
       },
       "severity": "critical"
     },

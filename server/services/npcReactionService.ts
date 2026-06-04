@@ -264,7 +264,14 @@ Return ONLY valid JSON:
                 .eq('id', playerPost.id);
 
               // Notify player about the NPC like
-              void notifyPostLike(sessionId, playerHandle, npcName, 'like', postPlatform);
+              void notifyPostLike(
+                sessionId,
+                playerHandle,
+                npcName,
+                'like',
+                postPlatform,
+                isOfficialPagePost,
+              );
 
               getWebSocketService().broadcastToSession(sessionId, {
                 type: 'social_posts.engagement_update',
@@ -352,6 +359,7 @@ Return ONLY valid JSON:
                 replyContent,
                 postPlatform,
                 inserted.id,
+                isOfficialPagePost,
               );
             }
 
@@ -359,7 +367,14 @@ Return ONLY valid JSON:
             const mentions = extractMentions(replyContent);
             for (const mentionedHandle of mentions) {
               if (mentionedHandle !== npcHandle) {
-                void notifyMention(sessionId, mentionedHandle, npcName, replyContent, postPlatform);
+                void notifyMention(
+                  sessionId,
+                  mentionedHandle,
+                  npcName,
+                  replyContent,
+                  postPlatform,
+                  isOfficialPagePost,
+                );
               }
             }
 

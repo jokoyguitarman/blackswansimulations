@@ -10,6 +10,7 @@ export interface NotificationItem {
   body: string;
   timestamp: string;
   route: string;
+  isPageNotification?: boolean;
 }
 
 interface NotificationBannerProps {

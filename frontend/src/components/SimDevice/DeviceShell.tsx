@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuth } from '../../contexts/AuthContext';
+import { PageModeProvider, usePageMode } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
 import { NotificationBanner, type NotificationItem } from './NotificationBanner';
 import { NotificationCenter } from './NotificationCenter';
@@ -46,6 +47,9 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
     const title = String(notif.title || 'Notification');
     const message = String(notif.message || '');
     const platform = String(notif.platform || '');
+
+    const topMetadata = (notif.metadata || {}) as Record<string, unknown>;
+    const isPageNotification = !!topMetadata.is_page_notification;
 
     let appId = 'home';
     let appName = 'System';
@@ -108,6 +112,7 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
       body: message,
       timestamp: String(notif.created_at || ts),
       route,
+      isPageNotification,
     };
   }
 
@@ -148,10 +153,19 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
 }
 
 export default function DeviceShell() {
+  return (
+    <PageModeProvider>
+      <DeviceShellInner />
+    </PageModeProvider>
+  );
+}
+
+function DeviceShellInner() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuth();
+  const { isPageMode } = usePageMode();
   const [time, setTime] = useState(new Date());
 
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
@@ -318,6 +332,14 @@ export default function DeviceShell() {
     setCenterExpanded(false);
   }, [sessionId]);
 
+  const filteredNotifications = useMemo(
+    () =>
+      notifications.filter((n) =>
+        isPageMode ? n.isPageNotification === true : n.isPageNotification !== true,
+      ),
+    [notifications, isPageMode],
+  );
+
   const hours = time.getHours();
   const minutes = time.getMinutes().toString().padStart(2, '0');
   const timeStr = `${hours}:${minutes}`;
@@ -450,7 +472,7 @@ export default function DeviceShell() {
           {/* Notification Center (pill + expandable list) */}
           {!activeBanner && (
             <NotificationCenter
-              notifications={notifications}
+              notifications={filteredNotifications}
               expanded={centerExpanded}
               onToggle={() => setCenterExpanded((e) => !e)}
               onTap={handleCenterTap}

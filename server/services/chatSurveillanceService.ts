@@ -27,6 +27,16 @@ interface NpcReaction {
   sentiment: string;
 }
 
+interface LeakEmail {
+  from_name: string;
+  from_address: string;
+  subject: string;
+  body: string;
+  email_category: string;
+  priority: string;
+  delay_seconds: number;
+}
+
 interface ScandalResult {
   scandal_found: boolean;
   source_quote: string;
@@ -35,6 +45,7 @@ interface ScandalResult {
   reasoning: string;
   news_articles?: NewsArticle[];
   npc_reactions?: NpcReaction[];
+  leak_emails?: LeakEmail[];
 }
 
 const SCAN_INTERVAL_MS = 90_000;
@@ -63,6 +74,9 @@ If you find something spinnable:
 1. Write a sensational social media post (2-4 sentences, dramatic journalist voice)
 2. Generate 1-2 news articles about the leak (breaking news + optional analysis piece)
 3. Generate 2-3 NPC social media reactions from outraged citizens, media commentators, or activists
+4. Generate 2 leak-triggered EMAILS:
+   - Email 1 (C-suite internal notice): From a senior executive (CEO, Director, General Counsel) to the crisis team. Acknowledge that internal communications have been leaked. Reference the specific leaked content. Demand an immediate damage assessment and SitRep. Do NOT tell the team what to say or how to respond publicly — only state what happened and what you need from them. Use email_category "leak_notice", priority "urgent", delay_seconds 30.
+   - Email 2 (Media inquiry): From a journalist or media outlet requesting official comment on the leaked content. Quote the specific leaked material. State a publication deadline. Be professional but firm. Use email_category "general", priority "high", delay_seconds 75.
 
 If nothing is worth reporting, set scandal_found to false.
 
@@ -90,10 +104,21 @@ Return ONLY valid JSON:
       "platform": "x_twitter or facebook",
       "sentiment": "negative or hateful or inflammatory"
     }
+  ],
+  "leak_emails": [
+    {
+      "from_name": "Title, Name",
+      "from_address": "email@domain.com",
+      "subject": "Email subject line",
+      "body": "Full email body text",
+      "email_category": "leak_notice or general",
+      "priority": "urgent or high or normal",
+      "delay_seconds": 30
+    }
   ]
 }
 
-When scandal_found is false, omit news_articles and npc_reactions or set them to empty arrays.`;
+When scandal_found is false, omit news_articles, npc_reactions, and leak_emails or set them to empty arrays.`;
 
 class ChatSurveillanceService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
@@ -548,11 +573,76 @@ Analyze these communications thoroughly. Is there anything that could be spun as
       }, reactionDelay);
     }
 
+    // 6. Send leak-triggered emails (C-suite notice + media inquiry)
+    const leakEmails = result.leak_emails || [];
+    for (const leakEmail of leakEmails) {
+      const emailDelay = Math.max(10, Math.min(120, leakEmail.delay_seconds || 30)) * 1000;
+
+      setTimeout(async () => {
+        try {
+          const validCategories = new Set([
+            'general',
+            'verified_facts',
+            'communication_boundaries',
+            'approval_chain',
+            'legal_advisory',
+            'stakeholder_priority',
+            'resource_authorization',
+            'sitrep_request',
+            'stand_down_pivot',
+            'leak_notice',
+          ]);
+          const category = validCategories.has(leakEmail.email_category)
+            ? leakEmail.email_category
+            : 'general';
+
+          const validPriorities = new Set(['low', 'normal', 'high', 'urgent']);
+          const priority = validPriorities.has(leakEmail.priority) ? leakEmail.priority : 'high';
+
+          const { data: inserted, error: emailErr } = await supabaseAdmin
+            .from('sim_emails')
+            .insert({
+              session_id: sessionId,
+              direction: 'inbound',
+              from_address: leakEmail.from_address || 'leadership@crisis.sim',
+              from_name: leakEmail.from_name || 'Senior Leadership',
+              to_addresses: ['team@crisisresponse.sim'],
+              subject: leakEmail.subject || 'URGENT: Internal Communications Leak',
+              body_html: `<p>${(leakEmail.body || '').replace(/\n/g, '</p><p>')}</p>`,
+              body_text: leakEmail.body || '',
+              priority,
+              email_category: category,
+            })
+            .select()
+            .single();
+
+          if (emailErr) {
+            logger.warn({ error: emailErr, sessionId }, 'Failed to insert leak email');
+            return;
+          }
+
+          getWebSocketService().broadcastToSession(sessionId, {
+            type: 'sim_email.received',
+            data: { email: inserted },
+            timestamp: new Date().toISOString(),
+          });
+
+          logger.info(
+            { sessionId, from: leakEmail.from_name, category },
+            'Chat surveillance: leak email delivered',
+          );
+        } catch (err) {
+          logger.warn({ err, sessionId }, 'Failed to deliver leak email');
+        }
+      }, emailDelay);
+    }
+
     logger.info(
       {
         sessionId,
         articlesCount: articles.length,
         reactionsCount: reactions.length,
+        leakEmailsCount: leakEmails.length,
         hasImage: !!imageUrl,
       },
       'Chat surveillance: scandal cascade initiated',

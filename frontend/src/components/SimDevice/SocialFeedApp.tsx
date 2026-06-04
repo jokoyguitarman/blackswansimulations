@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { usePageMode } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
 import OrgPageView from './OrgPageView';
 import PlayerActivityPanel from './PlayerActivityPanel';
@@ -127,6 +128,7 @@ export default function SocialFeedApp({
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [postingAsPage, setPostingAsPage] = useState(false);
+  const { setIsPageMode } = usePageMode();
   const [orgPageInfo, setOrgPageInfo] = useState<{
     page_name: string;
     page_handle: string;
@@ -137,6 +139,11 @@ export default function SocialFeedApp({
   const prevExternalFilter = useRef(externalFilter);
   const currentUserIdRef = useRef<string | null>(null);
   const [playerDisplayName, setPlayerDisplayName] = useState('Player');
+
+  useEffect(() => {
+    setIsPageMode(overlayView === 'page');
+    return () => setIsPageMode(false);
+  }, [overlayView, setIsPageMode]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

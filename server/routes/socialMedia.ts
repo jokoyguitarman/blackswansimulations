@@ -358,7 +358,12 @@ router.post(
           .select('author_handle, author_type, platform')
           .eq('id', reply_to_post_id)
           .single();
-        if (parentForNotif && parentForNotif.author_type === 'player') {
+        if (
+          parentForNotif &&
+          (parentForNotif.author_type === 'player' ||
+            parentForNotif.author_type === 'official_account')
+        ) {
+          const isPageNotif = parentForNotif.author_type === 'official_account';
           void notifyPostReply(
             session_id,
             authorDisplayName,
@@ -366,6 +371,8 @@ router.post(
             reply_to_post_id,
             content,
             parentForNotif.platform || platform,
+            undefined,
+            isPageNotif,
           );
         }
 
@@ -617,13 +624,18 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
         .select('author_handle, author_type, platform')
         .eq('id', postId)
         .single();
-      if (likedPost && likedPost.author_type === 'player') {
+      if (
+        likedPost &&
+        (likedPost.author_type === 'player' || likedPost.author_type === 'official_account')
+      ) {
+        const isPageNotif = likedPost.author_type === 'official_account';
         void notifyPostLike(
           post.session_id,
           likedPost.author_handle,
           (user.metadata?.full_name as string) || user.email || 'Player',
           reactionType,
           likedPost.platform || 'x_twitter',
+          isPageNotif,
         );
       }
     }

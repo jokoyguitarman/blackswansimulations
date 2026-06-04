@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { usePageMode } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
 import FacebookMessengerView from './FacebookMessengerView';
 import FacebookGroupsView from './FacebookGroupsView';
@@ -139,6 +140,7 @@ export default function FacebookFeedApp() {
   const [sending, setSending] = useState(false);
   const [postingAsPage, setPostingAsPage] = useState(false);
   const [pageMode, setPageMode] = useState(false);
+  const { setIsPageMode } = usePageMode();
   const [orgPageInfo, setOrgPageInfo] = useState<{
     page_name: string;
     page_handle: string;
@@ -146,6 +148,11 @@ export default function FacebookFeedApp() {
   } | null>(null);
   const currentUserIdRef = useRef<string | null>(null);
   const [playerDisplayName, setPlayerDisplayName] = useState('Player');
+
+  useEffect(() => {
+    setIsPageMode(pageMode || activeView === 'page');
+    return () => setIsPageMode(false);
+  }, [pageMode, activeView, setIsPageMode]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {

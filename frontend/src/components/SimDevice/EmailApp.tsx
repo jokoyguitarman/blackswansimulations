@@ -302,8 +302,8 @@ export default function EmailApp() {
 
   function getCategoryBadge(category: string): { bg: string; text: string; label: string } | null {
     switch (category) {
-      case 'holding_statement':
-        return { bg: '#FFE5E5', text: '#CC1100', label: 'HOLDING STATEMENT' };
+      case 'verified_facts':
+        return { bg: '#DBEAFE', text: '#1D4ED8', label: 'VERIFIED FACTS' };
       case 'communication_boundaries':
         return { bg: '#FFF3E0', text: '#CC7700', label: 'DIRECTIVE' };
       case 'approval_chain':
@@ -318,8 +318,8 @@ export default function EmailApp() {
         return { bg: '#DCFCE7', text: '#15803D', label: 'AUTHORIZATION' };
       case 'stand_down_pivot':
         return { bg: '#FFE5E5', text: '#CC1100', label: 'ACTION REQUIRED' };
-      case 'messaging_framework':
-        return { bg: '#DBEAFE', text: '#1D4ED8', label: 'KEY MESSAGES' };
+      case 'leak_notice':
+        return { bg: '#FFE5E5', text: '#CC1100', label: 'LEAK ALERT' };
       default:
         return null;
     }

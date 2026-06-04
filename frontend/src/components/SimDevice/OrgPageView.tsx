@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import { usePageMode } from '../../contexts/PageModeContext';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string) {
@@ -97,10 +98,16 @@ export default function OrgPageView({
   onBack?: () => void;
 }) {
   const { sessionId } = useParams<{ sessionId: string }>();
+  const { setIsPageMode } = usePageMode();
   const [pageInfo, setPageInfo] = useState<OrgPage | null>(null);
   const [posts, setPosts] = useState<PagePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [composeText, setComposeText] = useState('');
+
+  useEffect(() => {
+    setIsPageMode(true);
+    return () => setIsPageMode(false);
+  }, [setIsPageMode]);
 
   const [selectedPost, setSelectedPost] = useState<PagePost | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);

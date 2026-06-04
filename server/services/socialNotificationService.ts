@@ -16,6 +16,19 @@ async function findPlayerUserIdByHandle(sessionId: string, handle: string): Prom
 
   if (playerPost?.user_id) return playerPost.user_id as string;
 
+  // Page post lookup: official_account posts store the real user in posted_by_user_id
+  const { data: pagePost } = await supabaseAdmin
+    .from('social_posts')
+    .select('posted_by_user_id')
+    .eq('session_id', sessionId)
+    .eq('author_handle', handle)
+    .eq('author_type', 'official_account')
+    .not('posted_by_user_id', 'is', null)
+    .limit(1)
+    .single();
+
+  if (pagePost?.posted_by_user_id) return pagePost.posted_by_user_id as string;
+
   // Fallback: check session_participants
   const { data: participants } = await supabaseAdmin
     .from('session_participants')
@@ -47,6 +60,7 @@ export async function notifyPostReply(
   replyContent: string,
   platform: string = 'x_twitter',
   highlightPostId?: string,
+  isPageNotification: boolean = false,
 ): Promise<void> {
   try {
     const userId = await findPlayerUserIdByHandle(sessionId, parentAuthorHandle);
@@ -64,6 +78,7 @@ export async function notifyPostReply(
         highlight_post_id: highlightPostId || null,
         platform,
         replier: replyAuthorName,
+        is_page_notification: isPageNotification,
       },
     });
 
@@ -83,6 +98,7 @@ export async function notifyPostReply(
           post_id: parentPostId,
           highlight_post_id: highlightPostId || null,
           platform,
+          is_page_notification: isPageNotification,
         },
       },
       timestamp: new Date().toISOString(),
@@ -98,6 +114,7 @@ export async function notifyPostLike(
   likerName: string,
   reactionType: string = 'like',
   platform: string = 'x_twitter',
+  isPageNotification: boolean = false,
 ): Promise<void> {
   try {
     const userId = await findPlayerUserIdByHandle(sessionId, postAuthorHandle);
@@ -117,7 +134,12 @@ export async function notifyPostLike(
       title: `${likerName} ${reactionLabel} your post`,
       message: `${likerName} ${reactionLabel} your post`,
       priority: 'low',
-      metadata: { platform, liker: likerName, reaction_type: reactionType },
+      metadata: {
+        platform,
+        liker: likerName,
+        reaction_type: reactionType,
+        is_page_notification: isPageNotification,
+      },
     });
 
     if (error) {
@@ -132,6 +154,7 @@ export async function notifyPostLike(
         notification_type: 'social_like',
         platform,
         title: `${likerName} ${reactionLabel} your post`,
+        metadata: { is_page_notification: isPageNotification },
       },
       timestamp: new Date().toISOString(),
     });
@@ -146,6 +169,7 @@ export async function notifyMention(
   mentionerName: string,
   postContent: string,
   platform: string = 'x_twitter',
+  isPageNotification: boolean = false,
 ): Promise<void> {
   try {
     const userId = await findPlayerUserIdByHandle(sessionId, mentionedHandle);
@@ -158,7 +182,7 @@ export async function notifyMention(
       title: `${mentionerName} mentioned you`,
       message: stripThreadTag(postContent).substring(0, 200),
       priority: 'medium',
-      metadata: { platform, mentioner: mentionerName },
+      metadata: { platform, mentioner: mentionerName, is_page_notification: isPageNotification },
     });
 
     if (error) {
@@ -173,6 +197,7 @@ export async function notifyMention(
         notification_type: 'social_mention',
         platform,
         title: `${mentionerName} mentioned you`,
+        metadata: { is_page_notification: isPageNotification },
       },
       timestamp: new Date().toISOString(),
     });

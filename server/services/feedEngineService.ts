@@ -278,7 +278,7 @@ Return ONLY valid JSON:
 
 export const VALID_EMAIL_CATEGORIES = new Set([
   'general',
-  'holding_statement',
+  'verified_facts',
   'communication_boundaries',
   'approval_chain',
   'legal_advisory',
@@ -286,7 +286,7 @@ export const VALID_EMAIL_CATEGORIES = new Set([
   'resource_authorization',
   'sitrep_request',
   'stand_down_pivot',
-  'messaging_framework',
+  'leak_notice',
 ]);
 
 export function sanitizeEmailCategory(category: string | undefined | null): string {
