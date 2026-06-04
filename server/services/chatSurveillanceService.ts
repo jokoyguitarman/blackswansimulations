@@ -90,7 +90,7 @@ class ChatSurveillanceService {
     try {
       const { data: sessions, error } = await supabaseAdmin
         .from('sessions')
-        .select('id, scenario_id, sim_mode')
+        .select('id, scenario_id, sim_mode, start_time')
         .eq('status', 'in_progress')
         .eq('sim_mode', 'social_media')
         .not('start_time', 'is', null);
@@ -109,7 +109,7 @@ class ChatSurveillanceService {
 
       for (const session of sessions) {
         try {
-          await this.scanSession(session.id, session.scenario_id);
+          await this.scanSession(session.id, session.scenario_id, session.start_time as string);
         } catch (err) {
           logger.error(
             { error: err, sessionId: session.id },
@@ -122,7 +122,11 @@ class ChatSurveillanceService {
     }
   }
 
-  private async scanSession(sessionId: string, scenarioId: string | null): Promise<void> {
+  private async scanSession(
+    sessionId: string,
+    scenarioId: string | null,
+    startTime: string,
+  ): Promise<void> {
     const state = this.sessionStates.get(sessionId);
 
     if (state) {
@@ -130,8 +134,8 @@ class ChatSurveillanceService {
       if (Date.now() < state.cooldownUntil.getTime()) return;
     }
 
-    const sinceTimestamp =
-      state?.lastMessageTimestamp || new Date(Date.now() - 5 * 60_000).toISOString();
+    // On first scan (no prior state), look back to the session start to catch all messages
+    const sinceTimestamp = state?.lastMessageTimestamp || startTime;
 
     const { data: messages, error: msgError } = await supabaseAdmin
       .from('chat_messages')
