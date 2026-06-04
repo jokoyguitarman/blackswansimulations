@@ -39,6 +39,32 @@ interface SimEmail {
   created_at: string;
 }
 
+interface EmailDraft {
+  id: string;
+  to: string;
+  subject: string;
+  body: string;
+  replyToId?: string;
+  savedAt: string;
+}
+
+function getDraftsKey(sessionId: string): string {
+  return `email_drafts_${sessionId}`;
+}
+
+function loadDrafts(sessionId: string): EmailDraft[] {
+  try {
+    const raw = localStorage.getItem(getDraftsKey(sessionId));
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDrafts(sessionId: string, drafts: EmailDraft[]): void {
+  localStorage.setItem(getDraftsKey(sessionId), JSON.stringify(drafts));
+}
+
 export default function EmailApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -47,13 +73,65 @@ export default function EmailApp() {
   const [selectedEmail, setSelectedEmail] = useState<SimEmail | null>(null);
   const [composing, setComposing] = useState(false);
   const [replying, setReplying] = useState(false);
-  const [folder, setFolder] = useState<'inbox' | 'sent'>('inbox');
+  const [folder, setFolder] = useState<'inbox' | 'sent' | 'drafts'>('inbox');
   const [replyData, setReplyData] = useState({ to: '', subject: '', body: '' });
+  const [drafts, setDrafts] = useState<EmailDraft[]>([]);
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const [contacts, setContacts] = useState<
     Array<{ address: string; name: string; source: string }>
   >([]);
   const [showContactDropdown, setShowContactDropdown] = useState(false);
+
+  // Load drafts from localStorage on mount
+  useEffect(() => {
+    if (sessionId) setDrafts(loadDrafts(sessionId));
+  }, [sessionId]);
+
+  function saveDraft() {
+    if (!sessionId) return;
+    if (!replyData.to && !replyData.subject && !replyData.body) return;
+
+    const updated = [...drafts];
+    if (editingDraftId) {
+      const idx = updated.findIndex((d) => d.id === editingDraftId);
+      if (idx >= 0) {
+        updated[idx] = {
+          ...updated[idx],
+          to: replyData.to,
+          subject: replyData.subject,
+          body: replyData.body,
+          savedAt: new Date().toISOString(),
+        };
+      }
+    } else {
+      updated.unshift({
+        id: `draft-${Date.now()}`,
+        to: replyData.to,
+        subject: replyData.subject,
+        body: replyData.body,
+        replyToId: selectedEmail?.id,
+        savedAt: new Date().toISOString(),
+      });
+    }
+    setDrafts(updated);
+    saveDrafts(sessionId, updated);
+    setEditingDraftId(null);
+  }
+
+  function deleteDraft(draftId: string) {
+    if (!sessionId) return;
+    const updated = drafts.filter((d) => d.id !== draftId);
+    setDrafts(updated);
+    saveDrafts(sessionId, updated);
+  }
+
+  function openDraft(draft: EmailDraft) {
+    setReplyData({ to: draft.to, subject: draft.subject, body: draft.body });
+    setEditingDraftId(draft.id);
+    setComposing(true);
+    setSelectedEmail(null);
+  }
 
   useEffect(() => {
     loadEmails();
@@ -121,6 +199,10 @@ export default function EmailApp() {
       setComposing(false);
       setReplying(false);
       setReplyData({ to: '', subject: '', body: '' });
+      if (editingDraftId) {
+        deleteDraft(editingDraftId);
+        setEditingDraftId(null);
+      }
       loadEmails();
     } catch {
       /* ignore */
@@ -235,8 +317,12 @@ export default function EmailApp() {
         >
           <button
             onClick={() => {
+              if (replyData.to || replyData.subject || replyData.body) {
+                saveDraft();
+              }
               setComposing(false);
               setReplyData({ to: '', subject: '', body: '' });
+              setEditingDraftId(null);
             }}
             className="text-[17px] ios-btn-bounce"
             style={{ color: '#007AFF' }}
@@ -647,7 +733,7 @@ export default function EmailApp() {
         </div>
         <div className="px-4 pb-2">
           <h1 className="text-[34px] font-bold tracking-tight" style={{ color: '#000000' }}>
-            {folder === 'inbox' ? 'Inbox' : 'Sent'}
+            {folder === 'inbox' ? 'Inbox' : folder === 'sent' ? 'Sent' : 'Drafts'}
           </h1>
         </div>
         {/* Folder Toggle */}
@@ -678,13 +764,106 @@ export default function EmailApp() {
             >
               Sent
             </button>
+            <button
+              onClick={() => setFolder('drafts')}
+              className="flex-1 py-[6px] text-[13px] font-semibold rounded-[7px] transition-all relative"
+              style={{
+                backgroundColor: folder === 'drafts' ? '#FFFFFF' : 'transparent',
+                color: folder === 'drafts' ? '#000000' : '#8E8E93',
+                boxShadow: folder === 'drafts' ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+              }}
+            >
+              Drafts{drafts.length > 0 && ` (${drafts.length})`}
+            </button>
           </div>
         </div>
       </div>
 
       {/* Email List */}
       <div className="flex-1 overflow-y-auto">
-        {filteredEmails.length === 0 ? (
+        {folder === 'drafts' ? (
+          drafts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-48 gap-2">
+              <svg
+                width="52"
+                height="52"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#C7C7CC"
+                strokeWidth="0.8"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              <p className="text-[17px] font-semibold" style={{ color: '#3C3C43' }}>
+                No Drafts
+              </p>
+              <p className="text-[14px]" style={{ color: '#8E8E93' }}>
+                Unsent emails will be saved here.
+              </p>
+            </div>
+          ) : (
+            <div
+              className="mt-3 mx-4 rounded-xl overflow-hidden"
+              style={{ backgroundColor: '#FFFFFF' }}
+            >
+              {drafts.map((draft, idx) => (
+                <div
+                  key={draft.id}
+                  className="flex items-start gap-3 px-4 py-3"
+                  style={{
+                    borderBottom:
+                      idx < drafts.length - 1 ? '0.5px solid rgba(60,60,67,0.12)' : 'none',
+                  }}
+                >
+                  <button onClick={() => openDraft(draft)} className="flex-1 text-left min-w-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className="text-[15px] font-semibold truncate"
+                        style={{ color: '#000000' }}
+                      >
+                        {draft.to || '(No recipient)'}
+                      </span>
+                      <span className="text-[13px] flex-shrink-0" style={{ color: '#8E8E93' }}>
+                        {new Date(draft.savedAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-[14px] truncate mt-0.5" style={{ color: '#1C1C1E' }}>
+                      {draft.subject || '(No subject)'}
+                    </p>
+                    <p className="text-[13px] truncate mt-0.5" style={{ color: '#8E8E93' }}>
+                      {draft.body || '(Empty)'}
+                    </p>
+                  </button>
+                  <button
+                    onClick={() => deleteDraft(draft.id)}
+                    className="flex-shrink-0 mt-1 ios-btn-bounce"
+                    style={{ color: '#FF3B30' }}
+                  >
+                    <svg
+                      width="18"
+                      height="18"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <polyline points="3 6 5 6 21 6" />
+                      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        ) : filteredEmails.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-2">
             <svg
               width="52"
