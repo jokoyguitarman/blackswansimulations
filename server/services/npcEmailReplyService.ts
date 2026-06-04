@@ -215,6 +215,8 @@ export async function triggerNPCEmailReply(
     let respondentAddress: string | null = null;
     let respondentPersonality = '';
     let respondentRole = '';
+    let respondentType = '';
+    let respondentHandle = '';
     let useAiFallback = false;
 
     // Step 1: exact match against sender registry
@@ -233,6 +235,8 @@ export async function triggerNPCEmailReply(
         respondentAddress = deriveEmailAddress(fuzzyMatch);
         respondentPersonality = fuzzyMatch.personality;
         respondentRole = `${fuzzyMatch.name} (${fuzzyMatch.type.replace('npc_', '')})`;
+        respondentType = fuzzyMatch.type;
+        respondentHandle = fuzzyMatch.handle;
       }
     }
 
@@ -251,8 +255,17 @@ export async function triggerNPCEmailReply(
       );
       if (matchedPersona) {
         respondentPersonality = matchedPersona.personality;
+        if (!respondentType) respondentType = matchedPersona.type;
+        if (!respondentHandle) respondentHandle = matchedPersona.handle;
       }
     }
+
+    // Detect if recipient is media (for publication capability)
+    const isMediaNPC =
+      respondentType === 'npc_media' ||
+      toAddress.includes('@media.') ||
+      toAddress.includes('@news.') ||
+      toAddress.includes('@press.');
 
     // Load thread context
     let threadContext = '';
@@ -330,7 +343,23 @@ RULES:
 - Assign an email_category if your reply is a directive. Valid categories: "general", "holding_statement", "communication_boundaries", "approval_chain", "legal_advisory", "stakeholder_priority", "sitrep_request", "resource_authorization", "messaging_framework", "stand_down_pivot".
 - Assign a delay_seconds (10-90) based on how busy this person would realistically be. Executives: 30-90s. Community leaders: 15-60s. Media: 10-30s.
 - Do NOT contradict confirmed facts from the fact sheet.
-
+${
+  isMediaNPC
+    ? `
+MEDIA/JOURNALIST PUBLICATION RULES:
+- You are a journalist who can PUBLISH articles based on information from sources.
+- If the player is providing you with information, a press release, or asking you to cover something:
+  - If the information is vague or unverified, ask clarifying questions (who confirmed this? what is the timeline? can you provide official documentation or quotes?)
+  - If you have enough solid, newsworthy information to write a story, set "should_publish" to true
+  - You should typically require at least 2 email exchanges before publishing unless the info is extremely clear and newsworthy on first contact
+  - Be skeptical -- ask for specifics, timelines, official confirmation, quotable statements
+  - When publishing, write a professional news article with headline, subheadline, and body
+  - Quote the source appropriately: "a spokesperson for [org]", "according to the crisis response team", etc.
+  - Your reply email should mention that the story will be published shortly
+- If the player is just asking a question (not providing info for publication), respond normally without publishing.
+`
+    : ''
+}
 Return ONLY valid JSON:
 {
   "should_reply": true,
@@ -340,7 +369,18 @@ Return ONLY valid JSON:
   "subject": "RE: ...",
   "body": "Reply text here...",
   "email_category": "general",
-  "priority": "normal"
+  "priority": "normal"${
+    isMediaNPC
+      ? `,
+  "should_publish": false,
+  "article": {
+    "headline": "Headline if publishing",
+    "subheadline": "Optional subheadline",
+    "body": "Full news article body text if publishing",
+    "category": "breaking|developing|analysis"
+  }`
+      : ''
+  }
 }`,
           },
           {
@@ -349,7 +389,7 @@ Return ONLY valid JSON:
           },
         ],
         temperature: 0.8,
-        max_completion_tokens: 1000,
+        max_completion_tokens: isMediaNPC ? 4000 : 1000,
         response_format: { type: 'json_object' },
       }),
     });
@@ -440,6 +480,84 @@ Return ONLY valid JSON:
           },
           'NPC email reply delivered',
         );
+
+        // Media publication: if the journalist decided to publish, create article + social post
+        if (isMediaNPC && parsed.should_publish && parsed.article) {
+          const articleData = parsed.article as Record<string, unknown>;
+          const headline = String(articleData.headline || '');
+          const articleBody = String(articleData.body || '');
+
+          if (headline && articleBody) {
+            const publishDelay = (60 + Math.floor(Math.random() * 120)) * 1000;
+
+            setTimeout(async () => {
+              try {
+                const { data: article, error: articleError } = await supabaseAdmin
+                  .from('sim_news_articles')
+                  .insert({
+                    session_id: sessionId,
+                    outlet_name: replyFromName || 'News Wire',
+                    headline,
+                    subheadline: String(articleData.subheadline || '') || null,
+                    body: articleBody,
+                    category: String(articleData.category || 'breaking'),
+                  })
+                  .select()
+                  .single();
+
+                if (articleError) {
+                  logger.warn(
+                    { error: articleError, sessionId },
+                    'Failed to create media publication article',
+                  );
+                  return;
+                }
+
+                // Journalist shares article on social media
+                const socialContent = `BREAKING: ${headline}\n\n${articleBody.substring(0, 200)}...\n\nFull story available.`;
+                const { data: post, error: postError } = await supabaseAdmin
+                  .from('social_posts')
+                  .insert({
+                    session_id: sessionId,
+                    platform: 'x_twitter',
+                    author_handle: respondentHandle || '@NewsWire',
+                    author_display_name: replyFromName || 'News Wire',
+                    author_type: 'npc_media',
+                    content: socialContent,
+                    sentiment: 'neutral',
+                    virality_score: 60,
+                    requires_response: false,
+                    like_count: Math.floor(Math.random() * 100) + 20,
+                    repost_count: Math.floor(Math.random() * 50) + 10,
+                    view_count: Math.floor(Math.random() * 3000) + 500,
+                    hashtags: ['#breaking', '#news'],
+                  })
+                  .select()
+                  .single();
+
+                if (!postError && post) {
+                  getWebSocketService().broadcastToSession(sessionId, {
+                    type: 'social_post.created',
+                    data: { post },
+                    timestamp: new Date().toISOString(),
+                  });
+                }
+
+                logger.info(
+                  { sessionId, articleId: article?.id, headline, journalist: replyFromName },
+                  'Media NPC published article from player email exchange',
+                );
+              } catch (pubErr) {
+                logger.warn({ err: pubErr, sessionId }, 'Media publication failed');
+              }
+            }, publishDelay);
+
+            logger.info(
+              { sessionId, headline, publishDelayMs: publishDelay, journalist: replyFromName },
+              'Media NPC article publication scheduled',
+            );
+          }
+        }
       } catch (insertErr) {
         logger.warn(
           { err: insertErr, sessionId, playerEmailId: playerEmail.id },
