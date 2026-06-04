@@ -11,12 +11,30 @@ interface SessionScanState {
   totalPostsCreated: number;
 }
 
+interface NewsArticle {
+  outlet_name: string;
+  headline: string;
+  subheadline?: string;
+  body: string;
+  category: string;
+}
+
+interface NpcReaction {
+  author_handle: string;
+  author_display_name: string;
+  content: string;
+  platform: string;
+  sentiment: string;
+}
+
 interface ScandalResult {
   scandal_found: boolean;
   source_quote: string;
   spin_post: string;
   severity: 'low' | 'medium' | 'high';
   reasoning: string;
+  news_articles?: NewsArticle[];
+  npc_reactions?: NpcReaction[];
 }
 
 const SCAN_INTERVAL_MS = 90_000;
@@ -41,16 +59,41 @@ Look for:
 
 IMPORTANT: Only flag genuinely spinnable content. Normal professional discussion about the crisis (even if it mentions challenges or uncertainties) is NOT scandalous. You need something that a real tabloid journalist would actually run with. Think TMZ, not Reuters.
 
-If you find something spinnable, write a sensational social media post about it (2-4 sentences, written as a journalist breaking exclusive leaked information). Include enough detail to be damaging but frame it dramatically. If nothing is worth reporting, set scandal_found to false.
+If you find something spinnable:
+1. Write a sensational social media post (2-4 sentences, dramatic journalist voice)
+2. Generate 1-2 news articles about the leak (breaking news + optional analysis piece)
+3. Generate 2-3 NPC social media reactions from outraged citizens, media commentators, or activists
+
+If nothing is worth reporting, set scandal_found to false.
 
 Return ONLY valid JSON:
 {
   "scandal_found": true or false,
-  "source_quote": "the exact verbatim quote(s) from the transcript that you are spinning (include 1-3 lines for context)",
+  "source_quote": "the exact verbatim quote(s) from the transcript being spun (1-3 lines for context)",
   "spin_post": "Your sensational breaking news post (2-4 sentences, dramatic journalist voice)",
   "severity": "low or medium or high",
-  "reasoning": "detailed explanation of why this is damaging and how it contradicts the team's public messaging or professional standards"
-}`;
+  "reasoning": "detailed explanation of why this is damaging",
+  "news_articles": [
+    {
+      "outlet_name": "Name of news outlet",
+      "headline": "Sensational headline",
+      "subheadline": "Optional subheadline",
+      "body": "Full news article (3-5 paragraphs, professional news style, include quotes from the leak, reactions, and context)",
+      "category": "breaking or analysis"
+    }
+  ],
+  "npc_reactions": [
+    {
+      "author_handle": "@handle",
+      "author_display_name": "Display Name",
+      "content": "Outraged reaction post (1-2 sentences)",
+      "platform": "x_twitter or facebook",
+      "sentiment": "negative or hateful or inflammatory"
+    }
+  ]
+}
+
+When scandal_found is false, omit news_articles and npc_reactions or set them to empty arrays.`;
 
 class ChatSurveillanceService {
   private intervalId: ReturnType<typeof setInterval> | null = null;
@@ -73,7 +116,7 @@ class ChatSurveillanceService {
       this.scanActiveSessions();
     }, SCAN_INTERVAL_MS);
 
-    logger.info('ChatSurveillanceService started (every 90s, social_media sessions only, GPT-5.2)');
+    logger.info('ChatSurveillanceService started (every 90s, scandal cascade mode)');
   }
 
   stop(): void {
@@ -134,7 +177,6 @@ class ChatSurveillanceService {
       if (Date.now() < state.cooldownUntil.getTime()) return;
     }
 
-    // On first scan (no prior state), look back to the session start to catch all messages
     const sinceTimestamp = state?.lastMessageTimestamp || startTime;
 
     const { data: messages, error: msgError } = await supabaseAdmin
@@ -207,7 +249,7 @@ Analyze these communications thoroughly. Is there anything that could be spun as
     const lastMsgTimestamp = messages[messages.length - 1].created_at;
 
     if (result?.scandal_found && result.spin_post) {
-      await this.createScandalPost(sessionId, result);
+      await this.createScandalCascade(sessionId, result);
       const currentState = this.sessionStates.get(sessionId);
       this.sessionStates.set(sessionId, {
         lastScanAt: new Date(),
@@ -218,7 +260,7 @@ Analyze these communications thoroughly. Is there anything that could be spun as
 
       logger.info(
         { sessionId, severity: result.severity, quote: result.source_quote?.substring(0, 80) },
-        'Chat surveillance: scandal post created',
+        'Chat surveillance: scandal cascade triggered',
       );
     } else {
       this.updateState(sessionId, lastMsgTimestamp, state);
@@ -275,10 +317,10 @@ Analyze these communications thoroughly. Is there anything that could be spun as
     }
   }
 
-  private async generateLeakScreenshot(): Promise<string | null> {
+  private async generateNewsGraphic(): Promise<string | null> {
     if (!env.openAiApiKey) return null;
     try {
-      const imagePrompt = `A realistic screenshot of a leaked group chat conversation on a messaging app (similar to WhatsApp or Telegram, dark mode). The screen shows several chat bubbles with the following conversation visible as blurred/partially readable text. The screenshot has a slight camera-photo quality as if someone took a photo of their phone screen with another phone. The image should look like authentic leaked internal communications being shared by a whistleblower. Include typical messaging app UI elements (timestamps, read receipts, profile icons). Dark background. The messages should appear as green and grey chat bubbles with small text that suggests a team discussion. Do NOT include any readable real names or explicit text - make the text slightly blurred as if photographed from an angle.`;
+      const imagePrompt = `A dramatic breaking news broadcast graphic. Dark background with red accents and urgent styling. Large bold white text reads "LEAKED: INTERNAL COMMUNICATIONS". Below in smaller text: "Crisis Response Team". Visual elements: a silhouette of a phone with chat bubbles, a "CONFIDENTIAL" watermark at an angle, breaking news lower-third bar styling. Professional news broadcast aesthetic like CNN or BBC breaking news alerts. No real conversation text visible. Dramatic red and black color scheme.`;
 
       const response = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
@@ -290,13 +332,13 @@ Analyze these communications thoroughly. Is there anything that could be spun as
           model: 'gpt-image-2',
           prompt: imagePrompt,
           n: 1,
-          size: '1024x1536',
+          size: '1024x1024',
           quality: 'medium',
         }),
       });
 
       if (!response.ok) {
-        logger.warn({ status: response.status }, 'Chat surveillance image generation failed');
+        logger.warn({ status: response.status }, 'News graphic generation failed');
         return null;
       }
 
@@ -318,7 +360,6 @@ Analyze these communications thoroughly. Is there anything that could be spun as
 
       if (!imageBuffer) return null;
 
-      // Upload to Supabase storage
       const fileName = `${randomUUID()}.png`;
       const filePath = `generated/${fileName}`;
 
@@ -335,30 +376,30 @@ Analyze these communications thoroughly. Is there anything that could be spun as
         .upload(filePath, imageBuffer, { contentType: 'image/png', upsert: false });
 
       if (uploadError) {
-        logger.warn({ error: uploadError }, 'Failed to upload leak screenshot');
+        logger.warn({ error: uploadError }, 'Failed to upload news graphic');
         return null;
       }
 
       const { data: urlData } = supabaseAdmin.storage.from(BUCKET_NAME).getPublicUrl(filePath);
       return urlData?.publicUrl || null;
     } catch (err) {
-      logger.error({ error: err }, 'Chat surveillance image generation error');
+      logger.error({ error: err }, 'News graphic generation error');
       return null;
     }
   }
 
-  private async createScandalPost(sessionId: string, result: ScandalResult): Promise<void> {
+  private async createScandalCascade(sessionId: string, result: ScandalResult): Promise<void> {
     const viralityScore = result.severity === 'high' ? 80 : result.severity === 'medium' ? 50 : 30;
     const likeCount = Math.floor(Math.random() * 200) + 50;
 
-    // Generate a "screenshot" of the leaked conversation
-    const screenshotUrl = await this.generateLeakScreenshot();
+    // 1. Generate branded news graphic (non-blocking if fails)
+    const imageUrl = await this.generateNewsGraphic();
+    const mediaUrls = imageUrl ? [imageUrl] : [];
 
     const postContent = `LEAKED: ${result.spin_post}\n\n(Source: anonymous insider within the crisis response team)\n\n#leaked #crisis #breaking`;
 
-    const mediaUrls = screenshotUrl ? [screenshotUrl] : [];
-
-    const { data: post, error } = await supabaseAdmin
+    // 2. Post on X/Twitter immediately
+    const { data: xPost } = await supabaseAdmin
       .from('social_posts')
       .insert({
         session_id: sessionId,
@@ -380,18 +421,129 @@ Analyze these communications thoroughly. Is there anything that could be spun as
       .select()
       .single();
 
-    if (error) {
-      logger.error({ error, sessionId }, 'Failed to create scandal social post');
-      return;
-    }
-
-    if (post) {
+    if (xPost) {
       getWebSocketService().broadcastToSession(sessionId, {
         type: 'social_post.created',
-        data: { post },
+        data: { post: xPost },
         timestamp: new Date().toISOString(),
       });
     }
+
+    // 3. Cross-post to Facebook (15s delay)
+    setTimeout(async () => {
+      try {
+        const { data: fbPost } = await supabaseAdmin
+          .from('social_posts')
+          .insert({
+            session_id: sessionId,
+            platform: 'facebook',
+            author_handle: '@BreakingLeaks',
+            author_display_name: 'Breaking Leaks',
+            author_type: 'npc_media',
+            content: postContent,
+            sentiment: 'negative',
+            virality_score: viralityScore,
+            content_flags: { leaked_comms: true, source_quote: result.source_quote },
+            requires_response: true,
+            like_count: Math.floor(likeCount * 1.5),
+            repost_count: Math.floor(likeCount * 0.3),
+            view_count: Math.floor(likeCount * 30),
+            hashtags: ['#leaked', '#crisis', '#breaking'],
+            media_urls: mediaUrls,
+          })
+          .select()
+          .single();
+
+        if (fbPost) {
+          getWebSocketService().broadcastToSession(sessionId, {
+            type: 'social_post.created',
+            data: { post: fbPost },
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch (err) {
+        logger.warn({ err, sessionId }, 'Failed to cross-post scandal to Facebook');
+      }
+    }, 15_000);
+
+    // 4. Insert news articles (staggered 45-150s)
+    const articles = result.news_articles || [];
+    for (let i = 0; i < articles.length; i++) {
+      const article = articles[i];
+      const articleDelay = (45 + i * 60) * 1000 + Math.floor(Math.random() * 30_000);
+
+      setTimeout(async () => {
+        try {
+          await supabaseAdmin.from('sim_news_articles').insert({
+            session_id: sessionId,
+            outlet_name: article.outlet_name || 'News Wire',
+            headline: article.headline,
+            subheadline: article.subheadline || null,
+            body: article.body,
+            category: article.category || 'breaking',
+          });
+
+          logger.info(
+            { sessionId, headline: article.headline, outlet: article.outlet_name },
+            'Chat surveillance: news article published',
+          );
+        } catch (err) {
+          logger.warn({ err, sessionId }, 'Failed to insert scandal news article');
+        }
+      }, articleDelay);
+    }
+
+    // 5. NPC reactions (staggered 30-90s)
+    const reactions = result.npc_reactions || [];
+    for (let i = 0; i < reactions.length; i++) {
+      const reaction = reactions[i];
+      const reactionDelay = (30 + i * 20) * 1000 + Math.floor(Math.random() * 15_000);
+
+      setTimeout(async () => {
+        try {
+          const isReply = xPost && reaction.platform === 'x_twitter' && Math.random() > 0.5;
+
+          const { data: reactionPost } = await supabaseAdmin
+            .from('social_posts')
+            .insert({
+              session_id: sessionId,
+              platform: reaction.platform || 'x_twitter',
+              author_handle: reaction.author_handle,
+              author_display_name: reaction.author_display_name,
+              author_type: 'npc_public',
+              content: reaction.content,
+              sentiment: reaction.sentiment || 'negative',
+              virality_score: Math.floor(Math.random() * 30) + 10,
+              reply_to_post_id: isReply ? xPost.id : null,
+              like_count: Math.floor(Math.random() * 50) + 5,
+              repost_count: Math.floor(Math.random() * 20),
+              view_count: Math.floor(Math.random() * 1000) + 100,
+            })
+            .select()
+            .single();
+
+          if (reactionPost) {
+            getWebSocketService().broadcastToSession(sessionId, {
+              type: 'social_post.created',
+              data: { post: reactionPost },
+              timestamp: new Date().toISOString(),
+            });
+          }
+        } catch (err) {
+          logger.warn({ err, sessionId }, 'Failed to insert NPC scandal reaction');
+        }
+      }, reactionDelay);
+    }
+
+    logger.info(
+      {
+        sessionId,
+        articlesCount: articles.length,
+        reactionsCount: reactions.length,
+        hasImage: !!imageUrl,
+      },
+      'Chat surveillance: scandal cascade initiated',
+    );
   }
 }
 
