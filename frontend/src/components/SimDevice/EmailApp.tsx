@@ -88,6 +88,59 @@ export default function EmailApp() {
     if (sessionId) setDrafts(loadDrafts(sessionId));
   }, [sessionId]);
 
+  // Auto-save draft on unmount (navigating away via notification, home button, etc.)
+  const composingRef = useRef(composing);
+  const replyDataRef = useRef(replyData);
+  const editingDraftIdRef = useRef(editingDraftId);
+  const draftsRef = useRef(drafts);
+
+  useEffect(() => {
+    composingRef.current = composing;
+  }, [composing]);
+  useEffect(() => {
+    replyDataRef.current = replyData;
+  }, [replyData]);
+  useEffect(() => {
+    editingDraftIdRef.current = editingDraftId;
+  }, [editingDraftId]);
+  useEffect(() => {
+    draftsRef.current = drafts;
+  }, [drafts]);
+
+  useEffect(() => {
+    return () => {
+      if (!sessionId) return;
+      const isComposing = composingRef.current;
+      const data = replyDataRef.current;
+      if (!isComposing || (!data.to && !data.subject && !data.body)) return;
+
+      const currentDrafts = [...draftsRef.current];
+      const draftId = editingDraftIdRef.current;
+
+      if (draftId) {
+        const idx = currentDrafts.findIndex((d) => d.id === draftId);
+        if (idx >= 0) {
+          currentDrafts[idx] = {
+            ...currentDrafts[idx],
+            to: data.to,
+            subject: data.subject,
+            body: data.body,
+            savedAt: new Date().toISOString(),
+          };
+        }
+      } else {
+        currentDrafts.unshift({
+          id: `draft-${Date.now()}`,
+          to: data.to,
+          subject: data.subject,
+          body: data.body,
+          savedAt: new Date().toISOString(),
+        });
+      }
+      saveDrafts(sessionId, currentDrafts);
+    };
+  }, [sessionId]);
+
   function saveDraft() {
     if (!sessionId) return;
     if (!replyData.to && !replyData.subject && !replyData.body) return;
