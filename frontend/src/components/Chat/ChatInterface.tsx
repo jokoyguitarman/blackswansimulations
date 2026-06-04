@@ -317,24 +317,39 @@ export const ChatInterface = ({
       type: string;
       created_at: string;
     }) => {
-      console.log('[ChatInterface] ✅✅✅ Realtime INSERT event received:', {
-        messageId: payload.id,
-        channelId: payload.channel_id,
-        currentChannel: selectedChannel || selectedDM,
-        sessionId: payload.session_id,
-        currentSessionId: sessionId,
-        content: payload.content.substring(0, 50),
-        senderId: payload.sender_id,
-        currentUserId: user?.id,
-      });
+      // If the message is from the current user, skip it entirely.
+      // The optimistic insert already shows our own messages -- realtime only adds OTHER users' messages.
+      // This eliminates all dedup race conditions for self-sent messages.
+      if (payload.sender_id === user?.id) {
+        // Clear optimistic tracking since realtime confirmed delivery
+        if (
+          optimisticMessageContentRef.current === payload.content ||
+          optimisticRealIdRef.current === payload.id
+        ) {
+          optimisticMessageIdRef.current = null;
+          optimisticMessageContentRef.current = null;
+          optimisticRealIdRef.current = null;
+          if (timeoutRef.current) {
+            clearTimeout(timeoutRef.current);
+            timeoutRef.current = null;
+          }
+        }
+        // Replace temp ID with real ID in state (for consistency) without adding a duplicate
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id.startsWith('temp-') && m.content === payload.content && m.sender_id === user?.id
+              ? { ...m, id: payload.id, created_at: payload.created_at }
+              : m,
+          ),
+        );
+        return;
+      }
 
-      // Check if this matches our optimistic message
-      // Match by: (a) real message ID from API response, OR (b) content + sender
+      // Check if this matches our optimistic message (fallback for edge cases)
       const isOptimisticMatch =
         (optimisticRealIdRef.current && optimisticRealIdRef.current === payload.id) ||
         (optimisticMessageContentRef.current &&
-          optimisticMessageContentRef.current === payload.content &&
-          (payload.sender_id === user?.id || !user?.id));
+          optimisticMessageContentRef.current === payload.content);
 
       if (isOptimisticMatch) {
         console.log('[ChatInterface] Realtime message matches optimistic message, replacing:', {
