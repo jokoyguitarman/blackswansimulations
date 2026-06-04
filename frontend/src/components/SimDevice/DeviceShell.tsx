@@ -46,9 +46,8 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
     const dbId = String(notif.id || '') || null;
     const title = String(notif.title || 'Notification');
     const message = String(notif.message || '');
-    const platform = String(notif.platform || '');
-
     const topMetadata = (notif.metadata || {}) as Record<string, unknown>;
+    const platform = String(notif.platform || topMetadata.platform || '');
     const isPageNotification = !!topMetadata.is_page_notification;
 
     let appId = 'home';

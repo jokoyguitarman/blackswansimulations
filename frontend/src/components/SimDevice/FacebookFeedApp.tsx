@@ -135,6 +135,7 @@ export default function FacebookFeedApp() {
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
   const [loading, setLoading] = useState(true);
+  const [feedSort, setFeedSort] = useState<'top' | 'recent'>('top');
   const [composing, setComposing] = useState(false);
   const [composeText, setComposeText] = useState('');
   const [sending, setSending] = useState(false);
@@ -1946,6 +1947,24 @@ export default function FacebookFeedApp() {
             {/* ── Feed ── */}
             <div className="flex-1 overflow-y-auto">
               <div style={{ maxWidth: 680, margin: '0 auto', width: '100%' }}>
+                {/* Sort toggle */}
+                {!loading && posts.length > 0 && (
+                  <div
+                    className="flex items-center gap-1 px-4 py-2"
+                    style={{ borderBottom: '1px solid #E4E6EB' }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="#65676B" stroke="none">
+                      <path d="M3 18h6v-2H3v2zM3 6v2h18V6H3zm0 7h12v-2H3v2z" />
+                    </svg>
+                    <button
+                      onClick={() => setFeedSort(feedSort === 'top' ? 'recent' : 'top')}
+                      className="text-[13px] font-semibold"
+                      style={{ color: '#65676B' }}
+                    >
+                      {feedSort === 'top' ? 'Top Posts' : 'Most Recent'}
+                    </button>
+                  </div>
+                )}
                 {loading ? (
                   <div className="flex items-center justify-center h-32">
                     <div
@@ -1980,6 +1999,9 @@ export default function FacebookFeedApp() {
                       );
                     })
                     .sort((a, b) => {
+                      if (feedSort === 'recent') {
+                        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+                      }
                       const aIsPlayer = a.author_type === 'player';
                       const bIsPlayer = b.author_type === 'player';
                       if (aIsPlayer && !bIsPlayer) return -1;
