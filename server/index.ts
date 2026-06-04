@@ -46,6 +46,7 @@ import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
 import { initializeAIInjectScheduler } from './services/aiInjectSchedulerService.js';
+import { initializeChatSurveillance } from './services/chatSurveillanceService.js';
 import jwt from 'jsonwebtoken';
 
 const app = express();
@@ -66,6 +67,10 @@ injectScheduler.start();
 // Initialize and start AI inject scheduler (runs every 5 minutes)
 const aiInjectScheduler = initializeAIInjectScheduler(io);
 aiInjectScheduler.start();
+
+// Initialize and start chat surveillance (monitors comms for scandal spin)
+const chatSurveillance = initializeChatSurveillance();
+chatSurveillance.start();
 
 // Security: Helmet for security headers
 app.use(
@@ -235,6 +240,7 @@ const shutdown = async () => {
   // Stop inject schedulers
   injectScheduler.stop();
   aiInjectScheduler.stop();
+  chatSurveillance.stop();
 
   // Close HTTP server
   server.close(() => {
