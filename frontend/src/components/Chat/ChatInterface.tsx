@@ -8,6 +8,7 @@ import { VoiceMicButton } from '../VoiceMicButton';
 import { VoiceCallPanel } from './VoiceCallPanel';
 import { IncomingCallToast } from './IncomingCallToast';
 import { useWebRTC } from '../../hooks/useWebRTC';
+import { LinkPreviewCard } from '../SimDevice/LinkPreviewCard';
 
 interface Channel {
   id: string;
@@ -1830,9 +1831,37 @@ export const ChatInterface = ({
                             🎙
                           </span>
                         )}
-                        {typeof message.content === 'string'
-                          ? message.content
-                          : JSON.stringify(message.content)}
+                        {(() => {
+                          const text =
+                            typeof message.content === 'string'
+                              ? message.content
+                              : JSON.stringify(message.content);
+                          const articleMatch = text.match(/\[article:([a-f0-9-]+)\]/);
+                          if (articleMatch) {
+                            const cleanText = text.replace(/\[article:[a-f0-9-]+\]/, '').trim();
+                            const headlineMatch = cleanText.match(/📰\s*(.+?)(?:\n|$)/);
+                            const outletMatch = cleanText.match(/—\s*(.+?)(?:\n|$)/);
+                            return (
+                              <>
+                                {cleanText && (
+                                  <span>
+                                    {cleanText
+                                      .replace(/📰\s*/, '')
+                                      .replace(/—\s*.+/, '')
+                                      .trim()}
+                                  </span>
+                                )}
+                                <LinkPreviewCard
+                                  headline={headlineMatch?.[1] || 'News Article'}
+                                  outletName={outletMatch?.[1] || 'News'}
+                                  snippet=""
+                                  platform="chat"
+                                />
+                              </>
+                            );
+                          }
+                          return <>{text}</>;
+                        })()}
                       </p>
                     </div>
                   );

@@ -53,6 +53,7 @@ export default function NewsApp() {
   const navigate = useNavigate();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
+  const [shareStatus, setShareStatus] = useState<string | null>(null);
 
   useEffect(() => {
     loadArticles();
@@ -79,6 +80,78 @@ export default function NewsApp() {
     } catch {
       /* ignore */
     }
+  }
+
+  async function shareArticle(article: NewsArticle, platform: 'x_twitter' | 'facebook') {
+    if (!sessionId) return;
+    setShareStatus(null);
+    try {
+      const headers = await getAuthHeaders();
+      const content =
+        platform === 'x_twitter'
+          ? `${article.headline}\n\nvia ${article.outlet_name}\n\nnews.sim/${article.id.slice(0, 8)}`
+          : `📰 ${article.headline}\n\n"${article.body.substring(0, 120)}..."\n\n— ${article.outlet_name}`;
+
+      await fetch(apiUrl('/api/social/posts'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          content,
+          platform,
+          shared_article_id: article.id,
+          content_flags: {
+            shared_article: {
+              id: article.id,
+              headline: article.headline,
+              outlet_name: article.outlet_name,
+              snippet: article.body.substring(0, 150),
+              category: article.category,
+            },
+          },
+        }),
+      });
+      setShareStatus(`Shared to ${platform === 'x_twitter' ? 'Z' : 'Fakebook'}!`);
+      setTimeout(() => setShareStatus(null), 3000);
+    } catch {
+      setShareStatus('Failed to share');
+    }
+  }
+
+  async function shareToChat(article: NewsArticle) {
+    if (!sessionId) return;
+    setShareStatus(null);
+    try {
+      const headers = await getAuthHeaders();
+      const channelsRes = await fetch(apiUrl(`/api/channels?session_id=${sessionId}`), { headers });
+      const channelsJson = await channelsRes.json();
+      const channels = channelsJson.data || [];
+      const generalChannel =
+        channels.find((c: Record<string, string>) => c.type === 'public') || channels[0];
+      if (!generalChannel) {
+        setShareStatus('No chat channel found');
+        return;
+      }
+      const messageContent = `📰 ${article.headline}\n— ${article.outlet_name}\n\n[article:${article.id}]`;
+      await fetch(apiUrl(`/api/channels/${generalChannel.id}/messages`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ content: messageContent, message_type: 'text' }),
+      });
+      setShareStatus('Shared to TeamChat!');
+      setTimeout(() => setShareStatus(null), 3000);
+    } catch {
+      setShareStatus('Failed to share');
+    }
+  }
+
+  function copyArticleLink(article: NewsArticle) {
+    const slug = article.outlet_name.toLowerCase().replace(/\s+/g, '-');
+    const url = `https://news.sim/${slug}/${article.id.slice(0, 8)}`;
+    navigator.clipboard.writeText(url).then(() => {
+      setShareStatus('Link copied!');
+      setTimeout(() => setShareStatus(null), 3000);
+    });
   }
 
   function timeAgo(dateStr: string): string {
@@ -211,7 +284,7 @@ export default function NewsApp() {
           </div>
 
           {/* Body */}
-          <div className="px-5 pb-8">
+          <div className="px-5 pb-4">
             <p
               className="whitespace-pre-wrap"
               style={{
@@ -223,6 +296,70 @@ export default function NewsApp() {
             >
               {selectedArticle.body}
             </p>
+          </div>
+
+          {/* Share buttons */}
+          <div className="mx-5 mb-8 pt-4" style={{ borderTop: '1px solid rgba(60,60,67,0.12)' }}>
+            <p className="text-[13px] font-medium mb-3" style={{ color: '#8E8E93' }}>
+              Share this article
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => shareArticle(selectedArticle, 'x_twitter')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold"
+                style={{ backgroundColor: '#16181C', color: '#E7E9EA' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="#E7E9EA">
+                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+                </svg>
+                Post to Z
+              </button>
+              <button
+                onClick={() => shareArticle(selectedArticle, 'facebook')}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold text-white"
+                style={{ backgroundColor: '#1877F2' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                  <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+                </svg>
+                Post to FB
+              </button>
+              <button
+                onClick={() => shareToChat(selectedArticle)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold"
+                style={{ backgroundColor: '#007AFF', color: '#FFFFFF' }}
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="white">
+                  <path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z" />
+                </svg>
+                Chat
+              </button>
+              <button
+                onClick={() => copyArticleLink(selectedArticle)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold"
+                style={{ backgroundColor: '#E5E5EA', color: '#1C1C1E' }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#1C1C1E"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+                Link
+              </button>
+            </div>
+            {shareStatus && (
+              <p className="text-[12px] mt-2 font-medium" style={{ color: '#34C759' }}>
+                {shareStatus}
+              </p>
+            )}
           </div>
         </div>
       </div>

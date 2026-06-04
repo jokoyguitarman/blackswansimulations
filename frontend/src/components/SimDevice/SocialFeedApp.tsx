@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import OrgPageView from './OrgPageView';
 import PlayerActivityPanel from './PlayerActivityPanel';
 import ShareMenu from './ShareMenu';
+import { LinkPreviewCard } from './LinkPreviewCard';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -1895,6 +1896,22 @@ export default function SocialFeedApp({
                             )}
                         </div>
                       )}
+
+                      {/* Link preview card for shared articles */}
+                      {(() => {
+                        const sa = (post.content_flags as Record<string, unknown>)
+                          ?.shared_article as Record<string, unknown> | undefined;
+                        if (!sa) return null;
+                        return (
+                          <LinkPreviewCard
+                            headline={String(sa.headline || '')}
+                            outletName={String(sa.outlet_name || '')}
+                            snippet={String(sa.snippet || '')}
+                            category={String(sa.category || '')}
+                            platform="x_twitter"
+                          />
+                        );
+                      })()}
 
                       {isTrainer &&
                         !!(
