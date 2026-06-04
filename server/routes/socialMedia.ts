@@ -231,6 +231,8 @@ router.post(
         image_prompt,
         media_url,
         post_as_page,
+        shared_article_id,
+        content_flags,
       } = req.body;
 
       const hashtags = content.match(/#\w+/g) || [];
@@ -293,6 +295,8 @@ router.post(
           image_prompt: image_prompt || null,
           media_urls: media_url ? [media_url] : null,
           virality_score: initialViralityScore,
+          ...(shared_article_id ? { shared_article_id } : {}),
+          ...(content_flags ? { content_flags } : {}),
           ...(postedByUserId
             ? { posted_by_user_id: postedByUserId, posted_by_display_name: postedByDisplayName }
             : {}),
