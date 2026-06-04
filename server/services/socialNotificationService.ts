@@ -4,30 +4,28 @@ import { logger } from '../lib/logger.js';
 
 async function findPlayerUserIdByHandle(sessionId: string, handle: string): Promise<string | null> {
   // Look up the player's user_id directly from their posts in this session
-  const { data: playerPost } = await supabaseAdmin
+  const { data: playerPosts } = await supabaseAdmin
     .from('social_posts')
     .select('user_id')
     .eq('session_id', sessionId)
     .eq('author_handle', handle)
     .eq('author_type', 'player')
     .not('user_id', 'is', null)
-    .limit(1)
-    .single();
+    .limit(1);
 
-  if (playerPost?.user_id) return playerPost.user_id as string;
+  if (playerPosts?.[0]?.user_id) return playerPosts[0].user_id as string;
 
   // Page post lookup: official_account posts store the real user in posted_by_user_id
-  const { data: pagePost } = await supabaseAdmin
+  const { data: pagePosts } = await supabaseAdmin
     .from('social_posts')
     .select('posted_by_user_id')
     .eq('session_id', sessionId)
     .eq('author_handle', handle)
     .eq('author_type', 'official_account')
     .not('posted_by_user_id', 'is', null)
-    .limit(1)
-    .single();
+    .limit(1);
 
-  if (pagePost?.posted_by_user_id) return pagePost.posted_by_user_id as string;
+  if (pagePosts?.[0]?.posted_by_user_id) return pagePosts[0].posted_by_user_id as string;
 
   // Fallback: check session_participants
   const { data: participants } = await supabaseAdmin
