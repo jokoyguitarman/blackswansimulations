@@ -85,6 +85,10 @@ function getAvatarColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
+function stripThreadTag(content: string): string {
+  return content.replace(/^@[\w._-]+\[[^\]]*\]\s*/, '');
+}
+
 export default function OrgPageView({
   platform = 'facebook',
   onBack,
@@ -364,7 +368,7 @@ export default function OrgPageView({
                       className="text-[14px] mt-0.5 whitespace-pre-wrap"
                       style={{ color: isFacebook ? '#050505' : '#E7E9EA' }}
                     >
-                      {comment.content}
+                      {stripThreadTag(comment.content)}
                     </p>
                     {comment.like_count > 0 && (
                       <span
