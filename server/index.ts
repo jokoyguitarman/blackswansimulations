@@ -47,6 +47,7 @@ import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
 import { initializeAIInjectScheduler } from './services/aiInjectSchedulerService.js';
 import { initializeChatSurveillance } from './services/chatSurveillanceService.js';
+import { initializeStatementWatchdog } from './services/statementWatchdogService.js';
 import jwt from 'jsonwebtoken';
 
 const app = express();
@@ -71,6 +72,10 @@ aiInjectScheduler.start();
 // Initialize and start chat surveillance (monitors comms for scandal spin)
 const chatSurveillance = initializeChatSurveillance();
 chatSurveillance.start();
+
+// Initialize and start statement watchdog (adversarial fact-checker for player public statements)
+const statementWatchdog = initializeStatementWatchdog();
+statementWatchdog.start();
 
 // Security: Helmet for security headers
 app.use(
@@ -241,6 +246,7 @@ const shutdown = async () => {
   injectScheduler.stop();
   aiInjectScheduler.stop();
   chatSurveillance.stop();
+  statementWatchdog.stop();
 
   // Close HTTP server
   server.close(() => {
