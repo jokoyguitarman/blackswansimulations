@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>INTERNAL — ASEAN 2027 Programme Costing &amp; Module Breakdown</title>
+<style>
+  :root {
+    --navy: #0e2a47;
+    --navy-deep: #081c30;
+    --navy-soft: #16395c;
+    --gold: #c8a04b;
+    --gold-soft: #e2c97e;
+    --red: #b23a3a;
+    --red-soft: #f3dede;
+    --ink: #1d2733;
+    --muted: #5b6b7b;
+    --line: #e2e8ef;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --ok: #1f7a5a;
+    --ok-soft: #e3f1ea;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink); background: var(--bg); line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 28px; }
+
+  .restricted-bar {
+    background: var(--red); color: #fff; text-align: center;
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    font-weight: 700; padding: 8px 0;
+  }
+
+  .cover {
+    background: linear-gradient(135deg, var(--navy-deep) 0%, var(--navy) 60%, var(--navy-soft) 100%);
+    color: #fff; padding: 56px 0 46px; position: relative; overflow: hidden;
+  }
+  .cover::after {
+    content: ""; position: absolute; right: -120px; top: -120px;
+    width: 360px; height: 360px; border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(200,160,75,0.20), transparent 70%);
+  }
+  .brandrow { display: flex; align-items: center; gap: 14px; letter-spacing: 0.18em;
+    text-transform: uppercase; font-size: 12px; color: var(--gold-soft); font-weight: 600; }
+  .brandmark { width: 34px; height: 34px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--gold) 0%, #8a6c2a 100%);
+    display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 800; font-size: 18px; }
+  .cover h1 { font-size: 34px; line-height: 1.18; margin: 26px 0 8px; font-weight: 700; }
+  .cover .sub { font-size: 16px; color: #c5d3e2; max-width: 660px; margin: 0; }
+  .cover .stamp {
+    position: absolute; top: 18px; right: 28px; font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: #fff; border: 1px solid var(--red);
+    background: rgba(178,58,58,0.35); padding: 5px 11px; border-radius: 4px; font-weight: 700;
+  }
+
+  section { padding: 40px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  .eyebrow { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--gold); font-weight: 700; margin-bottom: 8px; }
+  h2 { font-size: 25px; margin: 0 0 14px; color: var(--navy); }
+  h3 { font-size: 17px; margin: 22px 0 6px; color: var(--navy); }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--muted); }
+  .lead { font-size: 17px; }
+
+  /* assumptions */
+  .assume {
+    background: var(--card); border: 1px solid var(--line); border-left: 5px solid var(--navy);
+    border-radius: 10px; padding: 22px 26px; box-shadow: 0 8px 24px rgba(14,42,71,0.05);
+  }
+  .assume dl { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 32px; margin: 0; }
+  .assume dt { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .assume dd { margin: 0 0 8px; font-weight: 600; color: var(--ink); font-size: 15px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 6px; font-size: 14.5px; }
+  thead th { text-align: left; background: var(--navy); color: #fff; padding: 11px 13px; font-weight: 600; font-size: 12.5px; }
+  th.num, td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tbody td { padding: 10px 13px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:nth-child(even) { background: #fafbfd; }
+  .sub-row td { background: #eef2f7; font-weight: 700; color: var(--navy); }
+  .group-row td { background: var(--navy-soft); color: #fff; font-weight: 700; letter-spacing: 0.04em; font-size: 12.5px; text-transform: uppercase; }
+  .total-row td { font-weight: 800; color: var(--navy); background: #f0f3f8; border-top: 2px solid var(--navy); font-size: 15.5px; }
+  .pos { color: var(--ok); font-weight: 700; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin: 22px 0 4px; }
+  .card-stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px 18px; text-align: center; }
+  .card-stat .num { font-size: 26px; font-weight: 800; color: var(--navy); }
+  .card-stat.good .num { color: var(--ok); }
+  .card-stat .cap { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+
+  .callout { background: #eef3f9; border: 1px solid #d6e1ee; border-radius: 10px; padding: 16px 20px; margin: 16px 0; font-size: 14.5px; }
+  .callout.warn { background: var(--red-soft); border-color: #e6c4c4; }
+  .callout.good { background: var(--ok-soft); border-color: #c4e2d3; }
+  .callout strong { color: var(--navy); }
+
+  ul.clean { margin: 6px 0 14px; padding-left: 20px; }
+  ul.clean li { margin-bottom: 7px; }
+  .note { font-size: 12.5px; color: var(--muted); font-style: italic; margin-top: 10px; }
+
+  footer { background: var(--navy-deep); color: #c5d3e2; padding: 30px 0; font-size: 13px; }
+  footer strong { color: #fff; }
+
+  @media (max-width: 760px) {
+    .cards { grid-template-columns: 1fr; }
+    .assume dl { grid-template-columns: 1fr; }
+    .cover h1 { font-size: 26px; }
+  }
+  @media print { body { background:#fff;} section { page-break-inside: avoid; } }
+</style>
+</head>
+<body>
+
+  <div class="restricted-bar">Internal &amp; Confidential · Black Swan Simulations · Not for distribution to client</div>
+
+  <header class="cover">
+    <span class="stamp">Internal — Restricted</span>
+    <div class="wrap">
+      <div class="brandrow"><span class="brandmark">BS</span><span>Black Swan Simulations</span></div>
+      <h1>ASEAN 2027 Programme<br/>Internal Costing &amp; Module Breakdown</h1>
+      <p class="sub">Per-module development costing, full-engagement cost, profitability and founder economics for the MINDEF ASEAN 2027 readiness stint — and the recurring value beyond it.</p>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ASSUMPTIONS -->
+    <section id="assumptions">
+      <div class="eyebrow">Basis of Estimate</div>
+      <h2>Assumptions</h2>
+      <div class="assume">
+        <dl>
+          <div><dt>Team</dt><dd>4 × mid dev (SG) · 1 × senior dev (PH) · CTO (PH, founder)</dd></div>
+          <div><dt>Monthly burn (loaded)</dt><dd>~SGD 58,000 / month</dd></div>
+          <div><dt>SG mid dev (loaded)</dt><dd>~SGD 118,000 / yr each</dd></div>
+          <div><dt>PH senior dev (loaded)</dt><dd>~SGD 65,000 / yr</dd></div>
+          <div><dt>CTO draw (founder)</dt><dd>~SGD 60,000 / yr (lever)</dd></div>
+          <div><dt>Operating costs</dt><dd>~SGD 100,000 / yr (SG office, cloud/AI, admin)</dd></div>
+          <div><dt>Internal cost / eng-month</dt><dd>~SGD 13,000 (burn ÷ ~4.5 productive eng-mo/mo)</dd></div>
+          <div><dt>Engagement window</dt><dd>~13 months (Jun 2026 → summit, Q2 2027)</dd></div>
+          <div><dt>Quotation to MINDEF</dt><dd>SGD 1,870,000 (per proposal)</dd></div>
+          <div><dt>Currency</dt><dd>SGD · USD 1 ≈ 1.30 · SGD 1 ≈ 44 PHP (approx.)</dd></div>
+        </dl>
+      </div>
+      <p class="note">Engineering-month (eng-mo) = one developer-month of productive feature output. Costs are pre-tax and exclude accredited hosting/accreditation (treated as MINDEF-provided or pass-through).</p>
+    </section>
+
+    <!-- PER-MODULE BUILD COST -->
+    <section id="modules">
+      <div class="eyebrow">The Core Breakdown</div>
+      <h2>Development cost per module</h2>
+      <p class="muted">Build effort and internal cost for each component we develop. The engine core is a shared, one-time investment that all five scenarios are built on — which is why the scenarios are efficient rather than five separate builds.</p>
+
+      <table>
+        <thead>
+          <tr><th>Module</th><th>What it is</th><th class="num">Effort (eng-mo)</th><th class="num">Internal cost (SGD)</th></tr>
+        </thead>
+        <tbody>
+          <tr class="group-row"><td colspan="4">A · Foundation</td></tr>
+          <tr>
+            <td><b>Platformisation &amp; foundation</b></td>
+            <td>Define engine/content boundary, modularise hot files, stand up test harness + CI so the team can build in parallel.</td>
+            <td class="num">1.5</td><td class="num">19,500</td>
+          </tr>
+
+          <tr class="group-row"><td colspan="4">B · Simulation Engine Core (shared by all scenarios)</td></tr>
+          <tr>
+            <td><b>Mobile hostile AI agents</b></td>
+            <td>Adversaries that move, navigate, target and react (shooter, terrorists, assassin). Builds on existing RTS pathfinding + line-of-sight.</td>
+            <td class="num">2.5</td><td class="num">32,500</td>
+          </tr>
+          <tr>
+            <td><b>Continuous spatial simulation</b></td>
+            <td>Situation evolves every tick, not just at scripted points. Extends existing environmental/movement services.</td>
+            <td class="num">1.5</td><td class="num">19,500</td>
+          </tr>
+          <tr>
+            <td><b>Crowd dynamics (panic / crush)</b></td>
+            <td>Crowd density, panic spread and crush-risk modelling. Extends existing evacuation/occupancy services.</td>
+            <td class="num">2.0</td><td class="num">26,000</td>
+          </tr>
+          <tr class="sub-row"><td colspan="2">Engine core subtotal</td><td class="num">6.0</td><td class="num">78,000</td></tr>
+
+          <tr class="group-row"><td colspan="4">C · Scenario Modules (composed on the engine core)</td></tr>
+          <tr>
+            <td><b>Moving active shooter</b></td>
+            <td>Mobile armed threat through a venue; containment + intervention while protecting civilians. (Engine A+B+C)</td>
+            <td class="num">3.0</td><td class="num">39,000</td>
+          </tr>
+          <tr>
+            <td><b>Session-hall coordinated attack</b></td>
+            <td>Multi-attacker venue assault + hostage/barricade + evacuation under pressure. (Superset of active shooter)</td>
+            <td class="num">2.0</td><td class="num">26,000</td>
+          </tr>
+          <tr>
+            <td><b>Assassination attempt (VIP)</b></td>
+            <td>Threat against a protected dignitary; close-protection response, interdiction, contingency movement. (+ mobile entity)</td>
+            <td class="num">2.5</td><td class="num">32,500</td>
+          </tr>
+          <tr>
+            <td><b>Diplomatic convoy blockade</b></td>
+            <td>Convoy obstructed en route; route management, crowd handling, safe extraction. (+ route/movement system)</td>
+            <td class="num">2.5</td><td class="num">32,500</td>
+          </tr>
+          <tr>
+            <td><b>Event-ground stampede</b></td>
+            <td>Crowd-crush emergency; flow control + mass-casualty response. (Heaviest user of crowd dynamics)</td>
+            <td class="num">2.0</td><td class="num">26,000</td>
+          </tr>
+          <tr class="sub-row"><td colspan="2">Scenario modules subtotal</td><td class="num">12.0</td><td class="num">156,000</td></tr>
+
+          <tr class="group-row"><td colspan="4">D · Cross-cutting</td></tr>
+          <tr>
+            <td><b>Authoring (War Room) + AAR</b></td>
+            <td>Wizards to author the new scenario types + after-action scoring/metrics for them.</td>
+            <td class="num">3.0</td><td class="num">39,000</td>
+          </tr>
+          <tr>
+            <td><b>Deployment + security hardening</b></td>
+            <td>Accredited-environment deployment, centralised authorisation, lock down debug routes, secrets, test/CI for reliability.</td>
+            <td class="num">4.5</td><td class="num">58,500</td>
+          </tr>
+          <tr class="sub-row"><td colspan="2">Cross-cutting subtotal</td><td class="num">7.5</td><td class="num">97,500</td></tr>
+
+          <tr class="total-row"><td colspan="2">Total build</td><td class="num">27.0</td><td class="num">SGD 351,000</td></tr>
+        </tbody>
+      </table>
+      <p class="note">At ~4.5 productive eng-mo per calendar month, 27 eng-mo of build ≈ ~6 calendar months of full-team effort (Jun–Nov 2026).</p>
+    </section>
+
+    <!-- FULL ENGAGEMENT COST -->
+    <section id="engagement">
+      <div class="eyebrow">True Total Cost</div>
+      <h2>Full-engagement cost</h2>
+      <p>The build is only part of the cost. The contract commits us to live support and bug resolution <strong>through the summit</strong>, so the team is retained beyond the build window (also covering scenario-expansion overlap and MINDEF liaison).</p>
+      <table>
+        <thead><tr><th>Phase</th><th>Window</th><th class="num">Duration</th><th class="num">Internal cost (SGD)</th></tr></thead>
+        <tbody>
+          <tr><td><b>Build phase</b> (Modules A–D)</td><td>Jun – Nov 2026</td><td class="num">~6 months</td><td class="num">~351,000</td></tr>
+          <tr><td><b>Live use, expansion overlap &amp; summit support</b></td><td>Dec 2026 – summit</td><td class="num">~7 months</td><td class="num">~403,000</td></tr>
+          <tr class="total-row"><td colspan="2">Total internal cost (full team, ~13 months)</td><td class="num">~13 mo</td><td class="num">SGD ~754,000</td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        <strong>Margin lever:</strong> if the team is trimmed after the build (e.g., 2 devs + senior part-time for the support window) instead of held at full size, the support-phase cost drops to ~SGD 224,000, cutting total internal cost to ~SGD 574,000 and lifting profit accordingly (see sensitivity below).
+      </div>
+    </section>
+
+    <!-- PROFITABILITY -->
+    <section id="profit">
+      <div class="eyebrow">Profitability</div>
+      <h2>Revenue, cost &amp; margin (the stint)</h2>
+      <div class="cards">
+        <div class="card-stat"><div class="num">SGD 1.87M</div><div class="cap">Revenue (quotation)</div></div>
+        <div class="card-stat"><div class="num">SGD 0.75M</div><div class="cap">Internal cost (full team)</div></div>
+        <div class="card-stat good"><div class="num">SGD 1.12M</div><div class="cap">Gross profit (~60% margin)</div></div>
+      </div>
+      <table>
+        <thead><tr><th>Line</th><th>Note</th><th class="num">SGD</th></tr></thead>
+        <tbody>
+          <tr><td>Platform licence (Year 1)</td><td>IP — near-pure margin</td><td class="num">200,000</td></tr>
+          <tr><td>Development programme (M0–M3)</td><td>Build + tailoring, milestone fixed-price</td><td class="num">1,530,000</td></tr>
+          <tr><td>Live support &amp; bug resolution</td><td>Q4 2026 → summit</td><td class="num">140,000</td></tr>
+          <tr class="sub-row"><td colspan="2">Total revenue</td><td class="num">1,870,000</td></tr>
+          <tr><td>Less: internal cost</td><td>Team + opex, ~13 months (incl. CTO draw)</td><td class="num">(754,000)</td></tr>
+          <tr class="total-row"><td colspan="2">Gross profit (pre-tax)</td><td class="num pos">1,116,000</td></tr>
+        </tbody>
+      </table>
+      <p class="note">The fixed quotation of SGD 1.87M against a ~SGD 0.75M cost implies a ~60% blended gross margin — slightly above the 55% target, driven by separately pricing the platform IP and the low-cost PH senior/CTO split.</p>
+    </section>
+
+    <!-- FOUNDER ECONOMICS -->
+    <section id="founder">
+      <div class="eyebrow">Founder Economics</div>
+      <h2>Your take from the stint (50/50 with CEO)</h2>
+      <table>
+        <thead><tr><th>Item</th><th>Note</th><th class="num">SGD</th></tr></thead>
+        <tbody>
+          <tr><td>CTO salary (you)</td><td>Founder draw, already inside internal cost · ~13 months</td><td class="num">~65,000</td></tr>
+          <tr><td>Gross profit pool</td><td>After all salaries incl. your draw</td><td class="num">1,116,000</td></tr>
+          <tr><td>Your profit share (50%)</td><td>Split equally with CEO</td><td class="num">558,000</td></tr>
+          <tr><td>CEO profit share (50%)</td><td>Assumes CEO draws no separate salary</td><td class="num">558,000</td></tr>
+          <tr class="total-row"><td colspan="2">Your total take (salary + share)</td><td class="num pos">~SGD 623,000</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn">
+        <strong>Before you bank it:</strong> figures are <strong>pre-tax</strong> (apply SG corporate tax — ~17% headline, lower with early-stage exemptions). The model assumes the <strong>CEO takes no separate salary</strong>; if they do, it comes out of the profit pool first. Hosting/accreditation is excluded (treated as pass-through/MINDEF-provided).
+      </div>
+    </section>
+
+    <!-- SENSITIVITY -->
+    <section id="sensitivity">
+      <div class="eyebrow">Levers</div>
+      <h2>Sensitivity</h2>
+      <table>
+        <thead><tr><th>Scenario</th><th class="num">Internal cost</th><th class="num">Gross profit</th><th class="num">Each partner (50/50)</th></tr></thead>
+        <tbody>
+          <tr><td><b>Base</b> — full team held 13 months</td><td class="num">754,000</td><td class="num">1,116,000</td><td class="num">558,000</td></tr>
+          <tr><td><b>Lean support</b> — trim team after build</td><td class="num">574,000</td><td class="num">1,296,000</td><td class="num pos">648,000</td></tr>
+          <tr><td><b>Higher CTO draw</b> — e.g. SGD 120k/yr</td><td class="num">~819,000</td><td class="num">1,051,000</td><td class="num">525,500*</td></tr>
+        </tbody>
+      </table>
+      <p class="note">*A higher founder draw simply shifts money from the profit pool to your salary — your total take is roughly unchanged; it mainly affects the CEO’s share and cash-flow timing. Revenue is held fixed at the SGD 1.87M quotation in all scenarios.</p>
+    </section>
+
+    <!-- BEYOND THE STINT -->
+    <section id="beyond">
+      <div class="eyebrow">Beyond the Stint</div>
+      <h2>Recurring &amp; reusable value</h2>
+      <p>The stint profit is one-off; the strategic value is what it leaves behind.</p>
+      <ul class="clean">
+        <li><b>Recurring platform licence — ~SGD 200k/yr.</b> Renews annually after Year 1 at near-pure margin (it is IP, not labour). After minimal maintenance/hosting, that is roughly <b>~SGD 85k+ each per year</b> in passive profit, indefinitely.</li>
+        <li><b>The engine core becomes a product asset.</b> Mobile-threat, continuous-sim and crowd-dynamics engines plus five scenarios are reusable IP. Each new buyer reuses the same core at near-zero marginal cost — extremely high margin on every subsequent sale.</li>
+        <li><b>Adjacent buyers.</b> The same capability is sellable to the Police, HTX/Home Team, civil-defence/SCDF-type agencies, event-security operators, and other ASEAN nations preparing for summits — using MINDEF as the flagship reference.</li>
+        <li><b>Future module &amp; support renewals.</b> New scenario modules and annual support renewals compound recurring revenue beyond the initial programme.</li>
+      </ul>
+      <div class="callout good">
+        <strong>Bottom line:</strong> the ~SGD 1.12M stint profit is the entry point; the durable prize is a recurring licence stream plus a reusable, high-margin product you can sell repeatedly with the MINDEF win as your proof point.
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <div class="wrap">
+      <strong>Black Swan Simulations — Internal Costing</strong> · ASEAN 2027 Programme · Prepared June 2026<br/>
+      Internal &amp; confidential. Figures are indicative planning estimates, pre-tax, and exclude hosting/accreditation. © 2026 Black Swan Simulations.
+    </div>
+  </footer>
+
+</body>
+</html>
