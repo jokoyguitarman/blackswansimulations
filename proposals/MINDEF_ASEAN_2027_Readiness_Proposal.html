@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ASEAN 2027 Summit Security Readiness Programme — Proposal for MINDEF</title>
+<style>
+  :root {
+    --navy: #0e2a47;
+    --navy-deep: #081c30;
+    --navy-soft: #16395c;
+    --gold: #c8a04b;
+    --gold-soft: #e2c97e;
+    --ink: #1d2733;
+    --muted: #5b6b7b;
+    --line: #e2e8ef;
+    --bg: #f5f7fa;
+    --card: #ffffff;
+    --ok: #1f7a5a;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    margin: 0;
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---------- Cover ---------- */
+  .cover {
+    background: linear-gradient(135deg, var(--navy-deep) 0%, var(--navy) 55%, var(--navy-soft) 100%);
+    color: #fff;
+    padding: 72px 0 56px;
+    position: relative;
+    overflow: hidden;
+  }
+  .cover::after {
+    content: "";
+    position: absolute;
+    right: -120px; top: -120px;
+    width: 360px; height: 360px;
+    border-radius: 50%;
+    background: radial-gradient(circle at center, rgba(200,160,75,0.22), transparent 70%);
+  }
+  .brandrow {
+    display: flex; align-items: center; gap: 14px;
+    letter-spacing: 0.18em; text-transform: uppercase;
+    font-size: 12px; color: var(--gold-soft); font-weight: 600;
+  }
+  .brandmark {
+    width: 34px; height: 34px; border-radius: 7px;
+    background: linear-gradient(135deg, var(--gold) 0%, #8a6c2a 100%);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 18px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+  }
+  .cover h1 {
+    font-size: 40px; line-height: 1.15; margin: 30px 0 10px;
+    font-weight: 700; letter-spacing: -0.01em;
+  }
+  .cover .sub {
+    font-size: 18px; color: #c5d3e2; max-width: 640px; margin: 0 0 30px;
+  }
+  .cover-meta {
+    display: flex; flex-wrap: wrap; gap: 28px 56px; margin-top: 8px;
+    border-top: 1px solid rgba(255,255,255,0.16); padding-top: 22px;
+  }
+  .cover-meta .lbl { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--gold-soft); }
+  .cover-meta .val { font-size: 15px; color: #fff; font-weight: 600; margin-top: 3px; }
+  .confidential {
+    position: absolute; top: 22px; right: 28px;
+    font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase;
+    color: #fff; border: 1px solid var(--gold); padding: 5px 11px; border-radius: 4px;
+    background: rgba(200,160,75,0.12);
+  }
+
+  /* ---------- Sections ---------- */
+  section { padding: 46px 0; border-bottom: 1px solid var(--line); }
+  section:last-of-type { border-bottom: none; }
+  .eyebrow {
+    font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase;
+    color: var(--gold); font-weight: 700; margin-bottom: 8px;
+  }
+  h2 { font-size: 27px; margin: 0 0 18px; color: var(--navy); letter-spacing: -0.01em; }
+  h3 { font-size: 18px; margin: 26px 0 8px; color: var(--navy); }
+  p { margin: 0 0 14px; }
+  .lead { font-size: 18px; color: var(--ink); }
+  .muted { color: var(--muted); }
+
+  /* ---------- Summary card ---------- */
+  .summary-card {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-left: 5px solid var(--gold);
+    border-radius: 10px;
+    padding: 28px 30px;
+    box-shadow: 0 8px 26px rgba(14,42,71,0.06);
+    margin-top: 6px;
+  }
+  .summary-card p:last-child { margin-bottom: 0; }
+
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin: 26px 0 4px; }
+  .kpi {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 18px 16px; text-align: center;
+  }
+  .kpi .num { font-size: 24px; font-weight: 800; color: var(--navy); }
+  .kpi .cap { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.35; }
+
+  /* ---------- Timeline ---------- */
+  .timeline { margin-top: 12px; position: relative; }
+  .tl-item {
+    position: relative; padding: 0 0 26px 56px;
+  }
+  .tl-item::before {
+    content: ""; position: absolute; left: 19px; top: 6px; bottom: -6px;
+    width: 2px; background: var(--line);
+  }
+  .tl-item:last-child::before { display: none; }
+  .tl-dot {
+    position: absolute; left: 8px; top: 2px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--navy); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; z-index: 1;
+    box-shadow: 0 0 0 4px var(--bg);
+  }
+  .tl-item.key .tl-dot { background: var(--gold); }
+  .tl-when { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); font-weight: 700; }
+  .tl-title { font-size: 17px; font-weight: 700; color: var(--navy); margin: 2px 0 4px; }
+  .tl-desc { font-size: 14.5px; color: var(--muted); margin: 0; }
+  .tag-key {
+    display: inline-block; margin-left: 8px; font-size: 10.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: #7a5e1c; background: var(--gold-soft);
+    padding: 2px 8px; border-radius: 20px; vertical-align: middle; font-weight: 700;
+  }
+
+  /* ---------- Tables ---------- */
+  table { width: 100%; border-collapse: collapse; margin: 14px 0 6px; font-size: 15px; }
+  thead th {
+    text-align: left; background: var(--navy); color: #fff;
+    padding: 12px 14px; font-weight: 600; font-size: 13px; letter-spacing: 0.03em;
+  }
+  thead th:last-child, td.num { text-align: right; }
+  tbody td { padding: 12px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  tbody tr:nth-child(even) { background: #fafbfd; }
+  .total-row td { font-weight: 800; color: var(--navy); background: #f0f3f8; border-top: 2px solid var(--navy); font-size: 16px; }
+  .price { white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* ---------- Feature grid ---------- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-top: 8px; }
+  .feat {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 20px 22px;
+  }
+  .feat h4 { margin: 0 0 6px; font-size: 16px; color: var(--navy); }
+  .feat p { margin: 0; font-size: 14.5px; color: var(--muted); }
+  .feat .ico { font-size: 20px; }
+
+  ul.clean { margin: 6px 0 14px; padding-left: 20px; }
+  ul.clean li { margin-bottom: 7px; }
+
+  .callout {
+    background: #eef3f9; border: 1px solid #d6e1ee; border-radius: 10px;
+    padding: 18px 22px; margin: 18px 0; font-size: 14.5px;
+  }
+  .callout strong { color: var(--navy); }
+
+  .deliverables { font-size: 14px; color: var(--muted); margin-top: 6px; }
+  .deliverables b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Footer ---------- */
+  footer {
+    background: var(--navy-deep); color: #c5d3e2; padding: 38px 0; font-size: 13.5px;
+  }
+  footer .wrap { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 20px; }
+  footer strong { color: #fff; }
+  footer a { color: var(--gold-soft); text-decoration: none; }
+
+  .note { font-size: 12.5px; color: var(--muted); font-style: italic; margin-top: 10px; }
+
+  @media (max-width: 760px) {
+    .kpis { grid-template-columns: repeat(2, 1fr); }
+    .grid2 { grid-template-columns: 1fr; }
+    .cover h1 { font-size: 30px; }
+    .cover-meta { gap: 18px 30px; }
+  }
+
+  @media print {
+    body { background: #fff; }
+    .cover { padding: 40px 0; }
+    section { page-break-inside: avoid; }
+    .summary-card, .feat, .kpi { box-shadow: none; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- ===================== COVER ===================== -->
+  <header class="cover">
+    <span class="confidential">Confidential</span>
+    <div class="wrap">
+      <div class="brandrow">
+        <span class="brandmark">BS</span>
+        <span>Black Swan Simulations</span>
+      </div>
+      <h1>ASEAN 2027 Summit<br/>Security Readiness Programme</h1>
+      <p class="sub">A simulation-based training capability to prepare MINDEF and partner agencies for high-threat scenarios surrounding the ASEAN 2027 Summit.</p>
+      <div class="cover-meta">
+        <div>
+          <div class="lbl">Prepared for</div>
+          <div class="val">Singapore Ministry of Defence</div>
+        </div>
+        <div>
+          <div class="lbl">Prepared by</div>
+          <div class="val">Black Swan Simulations</div>
+        </div>
+        <div>
+          <div class="lbl">Date</div>
+          <div class="val">June 2026</div>
+        </div>
+        <div>
+          <div class="lbl">Validity</div>
+          <div class="val">60 days from issue</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+
+    <!-- ===================== EXECUTIVE SUMMARY ===================== -->
+    <section id="summary">
+      <div class="eyebrow">Executive Summary</div>
+      <h2>In one page</h2>
+      <div class="summary-card">
+        <p class="lead">MINDEF will host and secure the <strong>ASEAN 2027 Summit</strong> — a high-profile event presenting a concentrated set of security threats: armed attacks, threats to protected dignitaries, crowd emergencies, and coordinated assaults on venues.</p>
+        <p>Black Swan Simulations proposes to extend its <strong>already-validated simulation platform</strong> — the platform MINDEF reviewed and approved in our recent engagement — into a dedicated <strong>summit-readiness training environment</strong>. It allows MINDEF to rehearse multi-agency response to realistic, evolving crises in a safe, repeatable, and fully measurable setting, with detailed after-action analysis for every exercise.</p>
+        <p>We will deliver <strong>five new high-threat scenario capabilities</strong> built specifically around the summit threat picture, with the platform <strong>operational by the start of Q4 2026</strong>. This gives MINDEF a full live-use window before the summit, during which any issues encountered are captured and resolved by us under a committed support arrangement.</p>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi"><div class="num">Q4 2026</div><div class="cap">Operational and ready for exercises</div></div>
+        <div class="kpi"><div class="num">5</div><div class="cap">New summit-threat scenarios</div></div>
+        <div class="kpi"><div class="num">Through<br/>the Summit</div><div class="cap">Committed live support &amp; bug resolution</div></div>
+        <div class="kpi"><div class="num">Multi-<br/>agency</div><div class="cap">Police, special forces, EOD, evacuation &amp; comms</div></div>
+      </div>
+    </section>
+
+    <!-- ===================== MILESTONES ===================== -->
+    <section id="milestones">
+      <div class="eyebrow">At a Glance</div>
+      <h2>Programme milestones</h2>
+      <p class="muted">The programme is structured so MINDEF has a usable capability early (the “MVP” readiness point), then expands the scenario library while the platform is already in live use.</p>
+
+      <div class="timeline">
+        <div class="tl-item">
+          <div class="tl-dot">M0</div>
+          <div class="tl-when">Jun – Jul 2026</div>
+          <div class="tl-title">Mobilisation &amp; Foundation</div>
+          <p class="tl-desc">Team stood up, security and deployment requirements aligned with MINDEF, and the platform prepared for accelerated multi-developer delivery.</p>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot">M1</div>
+          <div class="tl-when">Jul – Sep 2026</div>
+          <div class="tl-title">Simulation Engine Core</div>
+          <p class="tl-desc">The shared engine that powers every new scenario: autonomous moving threat actors, continuous real-time simulation, and crowd dynamics (panic, density, crush).</p>
+        </div>
+        <div class="tl-item key">
+          <div class="tl-dot">M2</div>
+          <div class="tl-when">1 October 2026</div>
+          <div class="tl-title">Operational Readiness — MVP <span class="tag-key">Key Milestone</span></div>
+          <p class="tl-desc">Active-shooter and venue-assault scenarios live on accredited infrastructure. MINDEF begins running exercises; all issues are logged and resolved by us.</p>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot">M3</div>
+          <div class="tl-when">Oct 2026 – Jan 2027</div>
+          <div class="tl-title">Scenario Expansion</div>
+          <p class="tl-desc">Remaining scenarios delivered into the live platform: assassination attempt on a protected dignitary, diplomatic convoy blockade, and event-ground stampede.</p>
+        </div>
+        <div class="tl-item key">
+          <div class="tl-dot">M4</div>
+          <div class="tl-when">Jan 2027 – Summit</div>
+          <div class="tl-title">Summit Readiness &amp; Sustained Support <span class="tag-key">Key Milestone</span></div>
+          <p class="tl-desc">Full scenario suite validated and rehearsed. Committed live support and rapid bug resolution maintained right through the summit period.</p>
+        </div>
+        <div class="tl-item">
+          <div class="tl-dot">★</div>
+          <div class="tl-when">Q2 2027 (dates per MINDEF)</div>
+          <div class="tl-title">ASEAN 2027 Summit</div>
+          <p class="tl-desc">MINDEF teams enter the summit fully rehearsed across the complete threat picture.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== INVESTMENT SUMMARY ===================== -->
+    <section id="investment">
+      <div class="eyebrow">Investment Summary</div>
+      <h2>Commercial overview</h2>
+      <p class="muted">A single, transparent programme price with clearly defined milestones. Detailed scope for each line follows later in this document.</p>
+
+      <table>
+        <thead>
+          <tr><th>Component</th><th>Description</th><th>Investment (SGD)</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>Platform Licence</b><br/><span class="muted">Year 1</span></td>
+            <td>Enterprise licence to the Unified Simulation Environment platform and all delivered scenario modules.</td>
+            <td class="num price">200,000</td>
+          </tr>
+          <tr>
+            <td><b>Development Programme</b><br/><span class="muted">Milestones M0–M3</span></td>
+            <td>Simulation engine core plus the five new summit-threat scenarios, delivered as fixed-price milestones.</td>
+            <td class="num price">1,530,000</td>
+          </tr>
+          <tr>
+            <td><b>Live Support &amp; Bug Resolution</b><br/><span class="muted">Q4 2026 → Summit</span></td>
+            <td>Committed support, issue capture and rapid resolution throughout the live-use and summit period.</td>
+            <td class="num price">140,000</td>
+          </tr>
+          <tr class="total-row">
+            <td colspan="2">Total Programme Investment</td>
+            <td class="num price">SGD 1,870,000</td>
+          </tr>
+        </tbody>
+      </table>
+      <p class="note">Excludes accredited hosting / security-accreditation costs, which depend on MINDEF’s chosen environment (see “Security &amp; Deployment”). Where MINDEF provides the hosting environment, no such cost applies. The Platform Licence recurs annually after Year 1. All figures in Singapore Dollars and exclusive of GST where applicable.</p>
+    </section>
+
+    <!-- ===================== BACKGROUND ===================== -->
+    <section id="background">
+      <div class="eyebrow">Context</div>
+      <h2>The objective</h2>
+      <p>Hosting an ASEAN Summit places MINDEF and its partner agencies under exceptional operational pressure. The threats are diverse and fast-moving — and the cost of an inadequate response is measured in lives and national reputation. Traditional preparation (tabletop exercises, full-scale field drills) is valuable but expensive, infrequent, hard to repeat, and difficult to measure objectively.</p>
+      <p>This programme gives MINDEF a <strong>repeatable, measurable, multi-agency rehearsal environment</strong>. Teams can run the same scenario many times, vary the conditions, practise coordination under realistic stress, and receive an objective after-action review every time — at a fraction of the cost and logistical burden of a live drill.</p>
+    </section>
+
+    <!-- ===================== PLATFORM TODAY ===================== -->
+    <section id="today">
+      <div class="eyebrow">Proven Foundation</div>
+      <h2>What the platform already does</h2>
+      <p>This programme does not start from zero. It builds on a mature platform that MINDEF has already reviewed, with capabilities including:</p>
+      <div class="grid2">
+        <div class="feat">
+          <div class="ico">🗺️</div>
+          <h4>Multi-agency operating picture</h4>
+          <p>A live, map-based common operating picture coordinating police, bomb squad, special forces and evacuation teams across a shared incident.</p>
+        </div>
+        <div class="feat">
+          <div class="ico">💣</div>
+          <h4>Bombing &amp; evacuation scenarios</h4>
+          <p>Hazard, casualty and evacuation modelling for explosive incidents, with resource allocation and incident management.</p>
+        </div>
+        <div class="feat">
+          <div class="ico">📱</div>
+          <h4>Social-media crisis simulation</h4>
+          <p>A full public-communications crisis environment — social platforms, news, email and messaging — to rehearse information response.</p>
+        </div>
+        <div class="feat">
+          <div class="ico">📊</div>
+          <h4>Decisions, injects &amp; after-action review</h4>
+          <p>Structured decision workflows, trainer-controlled events, performance metrics and automated after-action analysis.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== NEW CAPABILITIES ===================== -->
+    <section id="new">
+      <div class="eyebrow">What We Will Build</div>
+      <h2>New capabilities for summit readiness</h2>
+      <p>The summit threat picture requires scenarios in which threats and crowds <strong>move and react in real time</strong>. We will first build a shared simulation engine, then deliver five scenarios on top of it.</p>
+
+      <h3>The simulation engine core</h3>
+      <p class="muted">A one-time foundational investment that powers all five scenarios — which is why the scenarios can be delivered efficiently rather than as five separate builds.</p>
+      <ul class="clean">
+        <li><b>Autonomous moving threat actors</b> — adversaries that move, navigate, seek targets and react to the response.</li>
+        <li><b>Continuous real-time simulation</b> — the situation evolves moment to moment, not just at scripted points.</li>
+        <li><b>Crowd dynamics</b> — realistic modelling of crowd density, panic spread and crush risk.</li>
+      </ul>
+
+      <h3>The five summit-threat scenarios</h3>
+      <div class="grid2">
+        <div class="feat">
+          <div class="ico">🎯</div>
+          <h4>1 · Moving active shooter</h4>
+          <p>A mobile armed threat moving through a venue, requiring coordinated containment and intervention by police and special forces while civilians are protected.</p>
+        </div>
+        <div class="feat">
+          <div class="ico">🏛️</div>
+          <h4>2 · Coordinated attack on a session hall</h4>
+          <p>A multi-attacker assault on an occupied venue, combining armed threat, hostage/barricade dynamics and evacuation under pressure.</p>
+        </div>
+        <div class="feat">
+          <div class="ico">🛡️</div>
+          <h4>3 · Assassination attempt on a dignitary</h4>
+          <p>A threat against a protected VIP, exercising close-protection response, threat interdiction and contingency movement.</p>
+        </div>
+        <div class="feat">
+          <div class="ico">🚗</div>
+          <h4>4 · Diplomatic convoy blockade</h4>
+          <p>A diplomatic convoy obstructed en route, requiring route management, crowd handling and safe extraction.</p>
+        </div>
+        <div class="feat">
+          <div class="ico">👥</div>
+          <h4>5 · Event-ground stampede</h4>
+          <p>A crowd-crush emergency on event grounds, exercising crowd management, flow control and mass-casualty response.</p>
+        </div>
+        <div class="feat" style="background:#f0f3f8;border-style:dashed;">
+          <div class="ico">🧩</div>
+          <h4>Tailored to the summit</h4>
+          <p>Each scenario is authored around the actual summit venues, agencies and doctrines, in consultation with MINDEF.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== APPROACH ===================== -->
+    <section id="approach">
+      <div class="eyebrow">How We Deliver</div>
+      <h2>Delivery approach</h2>
+      <p>We use an <strong>MVP-first</strong> approach: deliver a genuinely usable capability by the start of Q4 2026, then expand while MINDEF is already training on the platform. This maximises the live-use window before the summit and ensures issues are surfaced and fixed early.</p>
+      <div class="callout">
+        <strong>Why this matters for MINDEF:</strong> rather than waiting for a single “big bang” delivery close to the summit, MINDEF gains hands-on use from Q4 2026. Every issue encountered in real exercises is recorded and resolved by us under the support arrangement — so the platform is battle-tested well before it is needed.
+      </div>
+    </section>
+
+    <!-- ===================== DETAILED MILESTONES ===================== -->
+    <section id="detail">
+      <div class="eyebrow">Detailed Scope</div>
+      <h2>Milestones &amp; deliverables</h2>
+
+      <h3>M0 · Mobilisation &amp; Foundation <span class="muted">(Jun – Jul 2026)</span></h3>
+      <p class="deliverables"><b>Deliverables:</b> delivery team mobilised; security, data-residency and deployment requirements agreed with MINDEF; platform prepared for accelerated multi-developer delivery; automated quality and integration safeguards established.</p>
+
+      <h3>M1 · Simulation Engine Core <span class="muted">(Jul – Sep 2026)</span></h3>
+      <p class="deliverables"><b>Deliverables:</b> autonomous moving threat-actor system; continuous real-time simulation; crowd dynamics (density, panic, crush); supporting authoring and after-action measurement for the new scenario types.</p>
+
+      <h3>M2 · Operational Readiness — MVP <span class="muted">(by 1 October 2026)</span></h3>
+      <p class="deliverables"><b>Deliverables:</b> moving active-shooter scenario; coordinated session-hall attack scenario; deployment onto accredited infrastructure; trainer onboarding; MINDEF commences live exercises.</p>
+
+      <h3>M3 · Scenario Expansion <span class="muted">(Oct 2026 – Jan 2027)</span></h3>
+      <p class="deliverables"><b>Deliverables:</b> assassination-attempt scenario; diplomatic-convoy-blockade scenario; event-ground-stampede scenario; summit-specific scenario tailoring.</p>
+
+      <h3>M4 · Summit Readiness &amp; Sustained Support <span class="muted">(Jan 2027 – Summit)</span></h3>
+      <p class="deliverables"><b>Deliverables:</b> full scenario suite validated and rehearsed with MINDEF; committed live support and rapid bug resolution maintained through the summit period; readiness reporting.</p>
+    </section>
+
+    <!-- ===================== SUPPORT ===================== -->
+    <section id="support">
+      <div class="eyebrow">Commitment</div>
+      <h2>Live support &amp; bug resolution</h2>
+      <p>From operational readiness (Q4 2026) through the summit, Black Swan provides a committed support service:</p>
+      <ul class="clean">
+        <li>A single channel for MINDEF to report any issue encountered during exercises.</li>
+        <li>Logging, triage and prioritisation of every reported issue.</li>
+        <li>Rapid resolution of defects, with priority handling for anything affecting exercise delivery.</li>
+        <li>Regular status reporting so MINDEF always has visibility of platform health.</li>
+      </ul>
+      <p class="muted">Specific response and resolution targets (service levels) will be agreed with MINDEF and confirmed in the contract.</p>
+    </section>
+
+    <!-- ===================== SECURITY ===================== -->
+    <section id="security">
+      <div class="eyebrow">Security &amp; Deployment</div>
+      <h2>Hosting, security &amp; data residency</h2>
+      <p>We recognise that a MINDEF capability carries strict requirements for security, personnel suitability and data residency. We will align fully with MINDEF’s requirements during M0, and propose the following principles:</p>
+      <ul class="clean">
+        <li><b>Accredited environment.</b> The platform is deployed into an environment that meets MINDEF’s accreditation and data-residency requirements (MINDEF-provided or jointly arranged).</li>
+        <li><b>Personnel suitability.</b> Personnel handling MINDEF data and deployment meet MINDEF’s clearance and citizenship requirements.</li>
+        <li><b>Separation of concerns.</b> General platform engineering is performed in a non-sensitive development environment; anything touching MINDEF data or the live environment is handled strictly within MINDEF’s approved boundary by suitable personnel.</li>
+      </ul>
+      <div class="callout">
+        Hosting and accreditation costs are <strong>not included</strong> in the programme price, as they depend on the environment MINDEF selects. Where MINDEF provides the environment, there is no such cost. Where Black Swan arranges it, it is billed at cost plus a modest handling charge, agreed in advance.
+      </div>
+    </section>
+
+    <!-- ===================== TEAM ===================== -->
+    <section id="team">
+      <div class="eyebrow">Who Delivers</div>
+      <h2>Delivery team</h2>
+      <p>The programme is delivered by a dedicated team led by Black Swan’s Chief Technology Officer — the architect of the existing platform — supported by a senior engineering lead responsible for code quality, data integrity and integration, and a focused team of developers. A lean, senior-led structure keeps delivery fast, accountable and consistent with the platform’s existing design.</p>
+    </section>
+
+    <!-- ===================== ASSUMPTIONS ===================== -->
+    <section id="assumptions">
+      <div class="eyebrow">For Clarity</div>
+      <h2>Assumptions &amp; dependencies</h2>
+      <ul class="clean">
+        <li>MINDEF nominates a point of contact and subject-matter advisors to support scenario authoring and exercise design.</li>
+        <li>Security, accreditation and data-residency requirements are confirmed during M0 so they do not affect the schedule.</li>
+        <li>Hosting environment is confirmed early (MINDEF-provided or jointly arranged).</li>
+        <li>Timely MINDEF review and sign-off at each milestone.</li>
+        <li>Scenario count and scope are as described; material additions would be scoped and priced separately.</li>
+      </ul>
+    </section>
+
+    <!-- ===================== WHY ===================== -->
+    <section id="why">
+      <div class="eyebrow">Why Black Swan</div>
+      <h2>Why this is low-risk for MINDEF</h2>
+      <ul class="clean">
+        <li><b>Already validated.</b> MINDEF has reviewed and approved the platform’s outcome — this programme extends a known quantity, not an unproven concept.</li>
+        <li><b>Usable early.</b> An MVP-first plan puts a working capability in MINDEF’s hands at the start of Q4 2026, with months of live use before the summit.</li>
+        <li><b>We own the fixes.</b> Issues found in real exercises are captured and resolved by us under a committed support arrangement.</li>
+        <li><b>Specialist capability.</b> A purpose-built multi-agency crisis-simulation platform tailored to the summit threat picture.</li>
+      </ul>
+    </section>
+
+    <!-- ===================== NEXT STEPS ===================== -->
+    <section id="next">
+      <div class="eyebrow">Next Steps</div>
+      <h2>How to proceed</h2>
+      <ul class="clean">
+        <li><b>1.</b> A short working session to confirm security, hosting and data-residency requirements.</li>
+        <li><b>2.</b> Agreement on milestone acceptance criteria and support service levels.</li>
+        <li><b>3.</b> Contracting and mobilisation (Milestone M0) to protect the Q4 2026 readiness date.</li>
+      </ul>
+      <p>We would welcome the opportunity to walk MINDEF through this proposal in person and answer any questions.</p>
+    </section>
+
+  </main>
+
+  <!-- ===================== FOOTER ===================== -->
+  <footer>
+    <div class="wrap">
+      <div>
+        <strong>Black Swan Simulations</strong><br/>
+        ASEAN 2027 Summit Security Readiness Programme<br/>
+        Proposal for the Singapore Ministry of Defence
+      </div>
+      <div>
+        <strong>Contact</strong><br/>
+        [Name], Chief Technology Officer<br/>
+        [email] · [phone]
+      </div>
+      <div style="width:100%;border-top:1px solid rgba(255,255,255,0.14);padding-top:16px;margin-top:6px;">
+        This document is confidential and prepared solely for the Singapore Ministry of Defence. © 2026 Black Swan Simulations. All figures are indicative and subject to a definitive agreement.
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
