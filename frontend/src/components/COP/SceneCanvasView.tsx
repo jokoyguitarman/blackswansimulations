@@ -1396,7 +1396,7 @@ export function SceneCanvasView({
                 <div className="p-3 text-xs text-gray-300 space-y-2">
                   <div>
                     Type:{' '}
-                    <span className="text-orange-300">{activeDbHazard.hazard_type as string}</span>
+                    <span className="text-orange-300">{String(activeDbHazard.hazard_type)}</span>
                   </div>
                   {(activeDbHazard.appears_at_minutes as number) > 0 && (
                     <div>
@@ -1406,12 +1406,12 @@ export function SceneCanvasView({
                       </span>
                     </div>
                   )}
-                  {activeDbHazard.enriched_description && (
+                  {!!activeDbHazard.enriched_description && (
                     <div className="whitespace-pre-wrap text-gray-400 border-t border-gray-800 pt-2">
                       {String(activeDbHazard.enriched_description)}
                     </div>
                   )}
-                  {props.description && !activeDbHazard.enriched_description && (
+                  {!!props.description && !activeDbHazard.enriched_description && (
                     <div className="whitespace-pre-wrap text-gray-400">
                       {String(props.description)}
                     </div>
@@ -1446,7 +1446,7 @@ export function SceneCanvasView({
                     </div>
                   )}
 
-                  {(activeDbHazard.stud_id || props.spawned_from_stud) && (
+                  {!!(activeDbHazard.stud_id || props.spawned_from_stud) && (
                     <div className="text-[9px] text-cyan-500/60 border-t border-gray-800 pt-1">
                       Stud: {String(activeDbHazard.stud_id || props.spawned_from_stud)}
                     </div>
