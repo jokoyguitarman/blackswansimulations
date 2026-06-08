@@ -1408,12 +1408,12 @@ export function SceneCanvasView({
                   )}
                   {activeDbHazard.enriched_description && (
                     <div className="whitespace-pre-wrap text-gray-400 border-t border-gray-800 pt-2">
-                      {activeDbHazard.enriched_description as string}
+                      {String(activeDbHazard.enriched_description)}
                     </div>
                   )}
                   {props.description && !activeDbHazard.enriched_description && (
                     <div className="whitespace-pre-wrap text-gray-400">
-                      {props.description as string}
+                      {String(props.description)}
                     </div>
                   )}
 
@@ -1433,7 +1433,7 @@ export function SceneCanvasView({
                           </div>
                         );
                       })}
-                      {dt.spawns_new_hazards && (
+                      {!!dt.spawns_new_hazards && (
                         <div className="text-xs text-orange-400 font-bold mt-1">
                           Spawns new hazards if unresolved
                         </div>
@@ -1448,8 +1448,7 @@ export function SceneCanvasView({
 
                   {(activeDbHazard.stud_id || props.spawned_from_stud) && (
                     <div className="text-[9px] text-cyan-500/60 border-t border-gray-800 pt-1">
-                      Stud:{' '}
-                      {(activeDbHazard.stud_id as string) || (props.spawned_from_stud as string)}
+                      Stud: {String(activeDbHazard.stud_id || props.spawned_from_stud)}
                     </div>
                   )}
                 </div>
