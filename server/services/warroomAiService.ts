@@ -7902,8 +7902,7 @@ export async function warroomGenerateScenario(
         appears_at_minutes: 0,
         enriched_description:
           (matchedEnrichment?.generatedDescription as string) || h.description || undefined,
-        deterioration_timeline:
-          (matchedEnrichment?.events as unknown as Record<string, unknown>) || undefined,
+        deterioration_timeline: undefined,
         fire_class: (matchedEnrichment?.identifiedMaterial as string)?.toLowerCase().includes('gas')
           ? 'C'
           : undefined,

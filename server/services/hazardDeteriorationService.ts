@@ -98,7 +98,7 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
     {
       const { data: childHazards } = await supabaseAdmin
         .from('scenario_hazards')
-        .select('id, spawn_condition, status')
+        .select('id, spawn_condition, status, stud_id')
         .eq('scenario_id', session.scenario_id)
         .eq('session_id', sessionId)
         .eq('parent_pin_id', hazard.id)
@@ -122,9 +122,15 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
 
         revealedPreGenerated = true;
         try {
+          const childStudId = (child as Record<string, unknown>).stud_id as string | null;
           getWebSocketService().broadcastToSession(sessionId, {
             type: 'hazard.updated',
-            data: { hazard_id: child.id, status: 'active', spawned: true },
+            data: {
+              hazard_id: child.id,
+              status: 'active',
+              spawned: true,
+              ...(childStudId ? { stud_id: childStudId } : {}),
+            },
             timestamp: new Date().toISOString(),
           });
         } catch {

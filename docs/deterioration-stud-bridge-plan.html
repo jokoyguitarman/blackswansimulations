@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Implementation Plan — Bridge Deterioration to Studs</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0e17;--surface:#111827;--surface2:#1a2235;--surface3:#232d42;
+    --accent:#3b82f6;--accent2:#8b5cf6;--fire:#f97316;--fire2:#ef4444;
+    --ok:#10b981;--warn:#f59e0b;--fail:#ef4444;
+    --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+    --border:#1e293b;--glow:rgba(59,130,246,.12);
+    --radius:14px;--radius-sm:8px;
+  }
+  html{scroll-behavior:smooth}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+  ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
+  code{font-family:'Cascadia Code','Fira Code',monospace;font-size:.82em;background:var(--surface2);padding:.15em .4em;border-radius:4px;color:#93c5fd}
+  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+  /* ── Nav ─────────────────────────────────────────────── */
+  nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,14,23,.88);backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:.55rem 1.5rem;display:flex;align-items:center;gap:1rem;font-size:.82rem}
+  nav .brand{font-weight:800;letter-spacing:-.02em;white-space:nowrap;background:linear-gradient(135deg,var(--fire),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  nav .spacer{flex:1}
+  nav a{color:var(--text2);padding:.3rem .55rem;border-radius:5px;transition:all .2s;white-space:nowrap}
+  nav a:hover{color:var(--text);background:var(--surface2);text-decoration:none}
+
+  /* ── Hero ────────────────────────────────────────────── */
+  .hero{min-height:70vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6rem 2rem 4rem;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(59,130,246,.07) 0%,transparent 60%),radial-gradient(ellipse at 70% 80%,rgba(249,115,22,.05) 0%,transparent 50%);pointer-events:none}
+  .hero-pill{display:inline-flex;align-items:center;gap:.45rem;padding:.35rem .9rem;border-radius:20px;background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);color:var(--ok);font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:1.4rem;animation:fadeDown .7s ease}
+  .hero h1{font-size:clamp(2rem,4.5vw,3.4rem);font-weight:800;letter-spacing:-.03em;line-height:1.15;max-width:780px;animation:fadeDown .7s ease .1s both}
+  .hero h1 .grad{background:linear-gradient(135deg,var(--ok),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero .sub{font-size:1.05rem;color:var(--text2);max-width:600px;margin-top:1rem;animation:fadeDown .7s ease .2s both}
+  .hero .stats{display:flex;gap:2rem;margin-top:2.5rem;animation:fadeDown .7s ease .35s both}
+  .stat{text-align:center}
+  .stat .num{font-size:1.8rem;font-weight:800;font-variant-numeric:tabular-nums}
+  .stat .num.green{color:var(--ok)}.stat .num.blue{color:var(--accent)}.stat .num.orange{color:var(--fire)}
+  .stat .lbl{font-size:.72rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:.15rem}
+
+  /* ── Sections ───────────────────────────────────────── */
+  .container{max-width:1060px;margin:0 auto;padding:0 1.5rem}
+  section{padding:4.5rem 0}
+  .section-tag{display:inline-flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.7rem}
+  .section-tag.blue{color:var(--accent)}.section-tag.green{color:var(--ok)}.section-tag.orange{color:var(--fire)}.section-tag.purple{color:var(--accent2)}.section-tag.red{color:var(--fail)}
+  .section-tag .dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s ease infinite}
+  h2{font-size:clamp(1.5rem,2.8vw,2.2rem);font-weight:700;letter-spacing:-.02em;margin-bottom:.6rem}
+  h3{font-size:1.1rem;font-weight:600;margin-bottom:.5rem}
+  p.desc{color:var(--text2);max-width:680px;margin-bottom:1.8rem;font-size:.95rem}
+
+  /* ── Step Cards ─────────────────────────────────────── */
+  .step-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0;margin-bottom:1.4rem;overflow:hidden;transition:border-color .3s,box-shadow .3s}
+  .step-card:hover{border-color:rgba(59,130,246,.25);box-shadow:0 0 30px var(--glow)}
+  .step-header{display:flex;align-items:center;gap:1rem;padding:1.2rem 1.6rem;border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+  .step-num{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;flex-shrink:0}
+  .step-num.s1{background:rgba(239,68,68,.12);color:var(--fail)}
+  .step-num.s2{background:rgba(249,115,22,.12);color:var(--fire)}
+  .step-num.s3{background:rgba(59,130,246,.12);color:var(--accent)}
+  .step-num.s4{background:rgba(139,92,246,.12);color:var(--accent2)}
+  .step-num.s5{background:rgba(16,185,129,.12);color:var(--ok)}
+  .step-header .title{font-weight:700;font-size:1rem;flex:1}
+  .step-header .file-tag{font-size:.7rem;padding:.2rem .55rem;border-radius:4px;background:var(--surface2);color:var(--text3);font-family:'Cascadia Code','Fira Code',monospace;white-space:nowrap}
+  .step-header .chevron{transition:transform .25s;color:var(--text3);font-size:.8rem}
+  .step-card.open .chevron{transform:rotate(90deg)}
+  .step-body{padding:0 1.6rem 1.6rem;display:none}
+  .step-card.open .step-body{display:block}
+
+  /* ── Code blocks ────────────────────────────────────── */
+  .code{background:#0d1117;border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem 1.2rem;font-family:'Cascadia Code','Fira Code',monospace;font-size:.78rem;line-height:1.75;overflow-x:auto;margin:.8rem 0;color:#c9d1d9;position:relative}
+  .code .lang{position:absolute;top:.4rem;right:.6rem;font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+  .kw{color:#ff7b72}.fn{color:#d2a8ff}.str{color:#a5d6ff}.cmt{color:#8b949e;font-style:italic}.type{color:#79c0ff}.num{color:#f0883e}.op{color:#ff7b72}
+
+  /* ── Lists ──────────────────────────────────────────── */
+  .logic-list{list-style:none;counter-reset:logic}
+  .logic-list li{position:relative;padding:.55rem 0 .55rem 2.6rem;border-bottom:1px solid var(--border);font-size:.88rem}
+  .logic-list li:last-child{border-bottom:none}
+  .logic-list li::before{counter-increment:logic;content:counter(logic);position:absolute;left:0;top:.5rem;width:24px;height:24px;border-radius:6px;background:var(--surface2);color:var(--accent);font-size:.72rem;font-weight:700;display:flex;align-items:center;justify-content:center}
+  .logic-list li strong{color:var(--text)}
+  .logic-list li span{color:var(--text2)}
+
+  /* ── Threshold pills ────────────────────────────────── */
+  .thresholds{display:flex;flex-wrap:wrap;gap:.6rem;margin:.8rem 0}
+  .thresh{display:flex;align-items:center;gap:.35rem;padding:.35rem .7rem;border-radius:6px;background:var(--surface2);font-size:.78rem;font-weight:600}
+  .thresh .icon{font-size:.9rem}
+  .thresh .val{color:var(--accent)}
+
+  /* ── Architecture SVG ───────────────────────────────── */
+  .arch-wrap{margin:2rem 0;overflow-x:auto}
+  .arch-svg{width:100%;max-width:960px;margin:0 auto;display:block}
+  .arch-svg text{font-family:'Segoe UI',system-ui,sans-serif}
+
+  /* ── File summary table ─────────────────────────────── */
+  .file-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.85rem;margin:1.5rem 0}
+  .file-table th{text-align:left;padding:.65rem 1rem;background:var(--surface2);color:var(--text2);font-weight:600;font-size:.72rem;letter-spacing:.05em;text-transform:uppercase}
+  .file-table th:first-child{border-radius:var(--radius-sm) 0 0 0}.file-table th:last-child{border-radius:0 var(--radius-sm) 0 0}
+  .file-table td{padding:.65rem 1rem;border-bottom:1px solid var(--border);vertical-align:top}
+  .file-table tr:last-child td{border-bottom:none}
+  .file-table tr{transition:background .2s}.file-table tr:hover td{background:rgba(59,130,246,.03)}
+  .file-table code{font-size:.76rem}
+
+  /* ── Status chips ───────────────────────────────────── */
+  .chip{display:inline-flex;align-items:center;gap:.3rem;padding:.18rem .55rem;border-radius:4px;font-size:.7rem;font-weight:700;white-space:nowrap}
+  .chip::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
+  .chip.new{background:rgba(16,185,129,.1);color:var(--ok)}
+  .chip.fix{background:rgba(239,68,68,.1);color:var(--fail)}
+  .chip.edit{background:rgba(59,130,246,.1);color:var(--accent)}
+  .chip.migrate{background:rgba(139,92,246,.1);color:var(--accent2)}
+
+  /* ── Todo checklist ─────────────────────────────────── */
+  .todo-list{list-style:none;margin:1rem 0}
+  .todo-list li{display:flex;align-items:flex-start;gap:.7rem;padding:.65rem 0;border-bottom:1px solid var(--border);font-size:.88rem}
+  .todo-list li:last-child{border-bottom:none}
+  .todo-check{flex-shrink:0;width:22px;height:22px;border-radius:6px;border:2px solid var(--border);margin-top:1px;transition:all .25s;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:.65rem;color:transparent}
+  .todo-check:hover{border-color:var(--accent)}
+  .todo-check.done{background:var(--ok);border-color:var(--ok);color:#fff}
+  .todo-content{flex:1}
+  .todo-content .t-title{font-weight:600}
+  .todo-content .t-file{font-size:.75rem;color:var(--text3);margin-top:.15rem;font-family:'Cascadia Code','Fira Code',monospace}
+
+  /* ── Unchanged card ─────────────────────────────────── */
+  .unchanged{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.4rem 1.6rem;margin-top:1.5rem}
+  .unchanged h3{color:var(--text2);font-size:.9rem;margin-bottom:.6rem;display:flex;align-items:center;gap:.4rem}
+  .unchanged ul{list-style:none;color:var(--text3);font-size:.85rem}
+  .unchanged li{padding:.25rem 0;padding-left:1.2rem;position:relative}
+  .unchanged li::before{content:'--';position:absolute;left:0;color:var(--text3);font-weight:600}
+
+  /* ── Footer ─────────────────────────────────────────── */
+  footer{text-align:center;padding:3rem 1.5rem;color:var(--text3);font-size:.78rem;border-top:1px solid var(--border)}
+
+  /* ── Animations ─────────────────────────────────────── */
+  @keyframes fadeDown{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes slideIn{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+  .reveal{opacity:0;animation:slideIn .5s ease forwards}
+
+  @media(max-width:640px){nav a:not(.brand){display:none}.hero .stats{flex-direction:column;gap:.8rem}.step-header .file-tag{display:none}}
+</style>
+</head>
+<body>
+
+<!-- ═══════════ NAV ═══════════ -->
+<nav>
+  <span class="brand">Implementation Plan</span>
+  <span class="spacer"></span>
+  <a href="#arch">Architecture</a>
+  <a href="#steps">Steps</a>
+  <a href="#files">Files</a>
+  <a href="#checklist">Checklist</a>
+</nav>
+
+<!-- ═══════════ HERO ═══════════ -->
+<section class="hero">
+  <div class="hero-pill">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+    Implementation Plan
+  </div>
+  <h1>Bridge Fire-Spread Data<br>to <span class="grad">Stud-Snapped Pins</span></h1>
+  <p class="sub">Connect the pre-computed environmental timeline to the live session deterioration system, so fire spread physically maps to studs over time during gameplay.</p>
+  <div class="stats">
+    <div class="stat"><div class="num orange">1</div><div class="lbl">Bug Fix</div></div>
+    <div class="stat"><div class="num blue">1</div><div class="lbl">New Function</div></div>
+    <div class="stat"><div class="num green">5</div><div class="lbl">Files Changed</div></div>
+    <div class="stat"><div class="num" style="color:var(--accent2)">1</div><div class="lbl">Migration</div></div>
+  </div>
+</section>
+
+<!-- ═══════════ CONTEXT ═══════════ -->
+<section style="background:var(--surface)">
+  <div class="container">
+    <div class="section-tag orange"><span class="dot"></span> Context</div>
+    <h2>The Problem</h2>
+    <p class="desc">
+      The <code>SpatialEffectsEngine</code> already computes per-stud fire/gas/smoke spread at time intervals and stores it as <code>environmentalTimeline</code> in <code>rts_scene_configs.enrichment_result</code>. But this data is <strong>never consumed</strong> by the compile/persist pipeline. Live session deterioration spawns hazard pins at random zone positions, completely disconnected from the physics simulation. There is also a format mismatch bug where trainer hazards receive an <code>events[]</code> array instead of the expected <code>at_10min / at_20min / at_30min</code> object.
+    </p>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem">
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:1.2rem">
+        <div style="color:var(--fail);font-weight:700;font-size:.8rem;margin-bottom:.4rem">BUG</div>
+        <div style="font-weight:600;font-size:.92rem">Format Mismatch</div>
+        <div style="color:var(--text2);font-size:.82rem;margin-top:.25rem">Trainer hazards get <code>events[]</code> into <code>deterioration_timeline</code>, but runtime expects <code>at_10min/at_20min/at_30min</code>. Session deterioration silently does nothing.</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:1.2rem">
+        <div style="color:var(--fire);font-weight:700;font-size:.8rem;margin-bottom:.4rem">GAP</div>
+        <div style="font-weight:600;font-size:.92rem">Timeline Not Consumed</div>
+        <div style="color:var(--text2);font-size:.82rem;margin-top:.25rem"><code>environmentalTimeline</code> has per-stud fire data at 10+ time intervals, but compile never reads it. Only the frontend preview uses it.</div>
+      </div>
+      <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:1.2rem">
+        <div style="color:var(--warn);font-weight:700;font-size:.8rem;margin-bottom:.4rem">GAP</div>
+        <div style="font-weight:600;font-size:.92rem">Zone-Based Spawning</div>
+        <div style="color:var(--text2);font-size:.82rem;margin-top:.25rem">Live deterioration spawns new hazard pins via <code>placeInsideZoneType('hot')</code> -- random point in hot zone, no stud or fire-spread awareness.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ ARCHITECTURE ═══════════ -->
+<section id="arch">
+  <div class="container">
+    <div class="section-tag blue"><span class="dot"></span> Architecture</div>
+    <h2>Solution Data Flow</h2>
+    <p class="desc">At compile time, read the pre-computed fire spread timeline, cluster affected studs into hazard groups, and create stud-snapped <code>delayed</code> spawn pins. At runtime, the existing deterioration service reveals them automatically.</p>
+
+    <div class="arch-wrap">
+      <svg class="arch-svg" viewBox="0 0 960 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Compile box -->
+        <rect x="20" y="30" width="440" height="445" rx="16" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.2" stroke-dasharray="6 4"/>
+        <text x="240" y="18" text-anchor="middle" fill="var(--accent)" font-size="11" font-weight="700" letter-spacing="1.2">COMPILE PIPELINE (stageGenerateAndPersist)</text>
+
+        <rect x="50" y="60" width="380" height="38" rx="8" fill="var(--surface2)"/>
+        <text x="240" y="84" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="600">1. Load rts_scene_configs + enrichment_result</text>
+
+        <line x1="240" y1="98" x2="240" y2="118" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="50" y="118" width="380" height="38" rx="8" fill="var(--surface2)"/>
+        <text x="240" y="142" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="600">2. Extract sceneSynthesis.environmentalTimeline</text>
+
+        <line x1="240" y1="156" x2="240" y2="176" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="50" y="176" width="380" height="50" rx="8" fill="rgba(249,115,22,.08)" stroke="var(--fire)" stroke-width="1"/>
+        <text x="240" y="197" text-anchor="middle" fill="var(--fire)" font-size="12" font-weight="700">3. generateFireSpreadSpawnPins()</text>
+        <text x="240" y="215" text-anchor="middle" fill="var(--text2)" font-size="10">NEW -- diff snapshots, cluster studs, resolve coords</text>
+
+        <line x1="240" y1="226" x2="240" y2="246" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="50" y="246" width="380" height="38" rx="8" fill="var(--surface2)"/>
+        <text x="240" y="270" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="600">4. Resolve stud IDs to lat/lng via grid lookup</text>
+
+        <line x1="240" y1="284" x2="240" y2="304" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="50" y="304" width="380" height="38" rx="8" fill="var(--surface2)"/>
+        <text x="240" y="328" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="600">5. Append delayed spawn pins to payload.hazards</text>
+
+        <line x1="240" y1="342" x2="240" y2="362" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="50" y="362" width="380" height="38" rx="8" fill="var(--surface2)"/>
+        <text x="240" y="386" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="600">6. persistWarroomScenario (parent_pin_id linking)</text>
+
+        <line x1="240" y1="400" x2="240" y2="420" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="50" y="420" width="380" height="38" rx="8" fill="rgba(16,185,129,.06)" stroke="var(--ok)" stroke-width="1"/>
+        <text x="240" y="444" text-anchor="middle" fill="var(--ok)" font-size="12" font-weight="600">DB: scenario_hazards with stud_id + spawn_condition</text>
+
+        <!-- Arrow to runtime -->
+        <line x1="460" y1="440" x2="520" y2="440" stroke="var(--ok)" stroke-width="2" marker-end="url(#arwG)"/>
+
+        <!-- Runtime box -->
+        <rect x="520" y="280" width="420" height="200" rx="16" fill="var(--surface)" stroke="var(--accent2)" stroke-width="1.2" stroke-dasharray="6 4"/>
+        <text x="730" y="268" text-anchor="middle" fill="var(--accent2)" font-size="11" font-weight="700" letter-spacing="1.2">LIVE SESSION (existing, unchanged)</text>
+
+        <rect x="550" y="310" width="360" height="38" rx="8" fill="var(--surface2)"/>
+        <text x="730" y="334" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="600">hazardDeteriorationService tick (~30s)</text>
+
+        <line x1="730" y1="348" x2="730" y2="368" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="550" y="368" width="360" height="38" rx="8" fill="var(--surface2)"/>
+        <text x="730" y="392" text-anchor="middle" fill="var(--text)" font-size="12" font-weight="600">Reveal delayed pins when at_minutes reached</text>
+
+        <line x1="730" y1="406" x2="730" y2="426" stroke="var(--border)" stroke-width="1.5" marker-end="url(#arw)"/>
+
+        <rect x="550" y="426" width="360" height="38" rx="8" fill="rgba(16,185,129,.06)" stroke="var(--ok)" stroke-width="1"/>
+        <text x="730" y="450" text-anchor="middle" fill="var(--ok)" font-size="12" font-weight="600">Stud-snapped fire hazard appears on map</text>
+
+        <!-- Bug fix callout -->
+        <rect x="520" y="60" width="420" height="140" rx="16" fill="var(--surface)" stroke="var(--fail)" stroke-width="1.2"/>
+        <text x="730" y="48" text-anchor="middle" fill="var(--fail)" font-size="11" font-weight="700" letter-spacing="1.2">BUG FIX (Step 1)</text>
+
+        <text x="550" y="90" fill="var(--text)" font-size="11" font-weight="600">warroomAiService.ts ~line 7905</text>
+        <text x="550" y="112" fill="var(--fail)" font-size="11" font-weight="600" text-decoration="line-through">deterioration_timeline: events[]</text>
+        <text x="550" y="134" fill="var(--ok)" font-size="11" font-weight="600">deterioration_timeline: undefined</text>
+        <text x="550" y="160" fill="var(--text2)" font-size="10">Let Phase 4d generateDeteriorationTimeline</text>
+        <text x="550" y="176" fill="var(--text2)" font-size="10">produce the correct at_10min/at_20min/at_30min format</text>
+
+        <defs>
+          <marker id="arw" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="var(--border)"/></marker>
+          <marker id="arwG" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="var(--ok)"/></marker>
+        </defs>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ STEPS ═══════════ -->
+<section id="steps" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-tag green"><span class="dot"></span> Implementation Steps</div>
+    <h2>Step-by-Step Plan</h2>
+    <p class="desc">Five targeted changes. Step 1 is a bug fix. Steps 2-3 are the core feature. Steps 4-5 add stud-level tracking.</p>
+
+    <!-- Step 1 -->
+    <div class="step-card open" data-step>
+      <div class="step-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="step-num s1">1</div>
+        <div class="title">Fix the Format Mismatch Bug</div>
+        <div class="file-tag">warroomAiService.ts</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="step-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          The trainer hazard mapping at ~line 7905 assigns enrichment <code>events</code> (spatial sim array) to <code>deterioration_timeline</code>. This silently breaks runtime deterioration because <code>hazardDeteriorationService</code> expects <code>{ at_10min, at_20min, at_30min }</code>.
+        </p>
+
+        <h3 style="color:var(--fail)">Before (broken)</h3>
+        <div class="code">
+          <span class="lang">ts</span>
+<span class="cmt">// warroomAiService.ts ~7905</span>
+<span class="kw">deterioration_timeline</span>:
+  (matchedEnrichment?.<span class="fn">events</span> <span class="kw">as</span> <span class="type">unknown</span> <span class="kw">as</span> <span class="type">Record</span>&lt;<span class="type">string</span>, <span class="type">unknown</span>&gt;) || <span class="kw">undefined</span>,
+<span class="cmt">// stores: [{ triggerTimeSec: 0, spreadType: "fire", ... }]</span>
+<span class="cmt">// runtime expects: { at_10min: "string", at_20min: "string", ... }</span>
+        </div>
+
+        <h3 style="color:var(--ok)">After (fixed)</h3>
+        <div class="code">
+          <span class="lang">ts</span>
+<span class="cmt">// Let Phase 4d generateDeteriorationTimeline handle this</span>
+<span class="kw">deterioration_timeline</span>: <span class="kw">undefined</span>,
+        </div>
+
+        <p style="color:var(--text3);font-size:.82rem;margin-top:.8rem">
+          Phase 4d (<code>generateDeteriorationTimeline</code> &rarr; <code>mergeDeteriorationResult</code>) already runs later in the pipeline and produces the correct format. No data is lost -- we're just removing the incorrect early assignment.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step-card" data-step>
+      <div class="step-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="step-num s2">2</div>
+        <div class="title">New Function: generateFireSpreadSpawnPins()</div>
+        <div class="file-tag">warroomService.ts</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="step-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          New function in <code>warroomService.ts</code> that reads the pre-computed environmental timeline and converts stud-level fire spread into gameplay-ready spawn pins.
+        </p>
+
+        <h3>Function Signature</h3>
+        <div class="code">
+          <span class="lang">ts</span>
+<span class="kw">function</span> <span class="fn">generateFireSpreadSpawnPins</span>(
+  environmentalTimeline: <span class="type">EnvironmentalSnapshot</span>[],
+  studGrids: <span class="type">StudGrid</span>[],
+  existingHazards: <span class="type">Array</span>&lt;{ label: <span class="type">string</span>; location_lat: <span class="type">number</span>; location_lng: <span class="type">number</span>; hazard_type: <span class="type">string</span> }&gt;,
+  buildingPolygon: [<span class="type">number</span>, <span class="type">number</span>][],
+): <span class="type">Array</span>&lt;<span class="type">Record</span>&lt;<span class="type">string</span>, <span class="type">unknown</span>&gt;&gt;
+        </div>
+
+        <h3>Algorithm</h3>
+        <ol class="logic-list">
+          <li><strong>Diff snapshots</strong> <span>-- For each snapshot at time T, find studs newly on fire (<code>fire_intensity &ge; 0.3</code>) that were NOT on fire in the previous snapshot</span></li>
+          <li><strong>Cluster</strong> <span>-- Group nearby newly-affected studs using 15m spatial proximity to avoid creating one pin per stud</span></li>
+          <li><strong>Pick representative</strong> <span>-- For each cluster, select the stud with highest <code>fire_intensity</code> as the pin location</span></li>
+          <li><strong>Resolve coordinates</strong> <span>-- Look up the stud ID in <code>studGrids</code> (spacing=5 to match enrichment) to get <code>{ lat, lng }</code></span></li>
+          <li><strong>Find parent hazard</strong> <span>-- Match each cluster to the nearest existing hazard by distance to set <code>parent_pin_label</code></span></li>
+          <li><strong>Emit spawn pin</strong> <span>-- Return pin with <code>status: 'delayed'</code>, <code>spawn_condition</code>, and stud metadata</span></li>
+        </ol>
+
+        <h3>Output Pin Shape</h3>
+        <div class="code">
+          <span class="lang">ts</span>
+{
+  hazard_type: <span class="str">'fire'</span>,                <span class="cmt">// or parent hazard's type</span>
+  label: <span class="str">'Fire spread — east corridor T+10min'</span>,
+  location_lat: <span class="num">1.340521</span>,           <span class="cmt">// from stud grid lookup</span>
+  location_lng: <span class="num">103.749832</span>,
+  floor_level: <span class="str">'G'</span>,
+  status: <span class="str">'delayed'</span>,
+  appears_at_minutes: <span class="num">10</span>,
+  properties: {
+    spawned_from_stud: <span class="str">'bldg-0-G-12-8'</span>,
+    fire_intensity: <span class="num">1.0</span>,
+    cluster_stud_count: <span class="num">7</span>,
+    description: <span class="str">'Fire has spread to 7 studs in the east corridor'</span>,
+  },
+  _parent_pin_label: <span class="str">'Chemical storage fire'</span>,
+  _spawn_condition: {
+    trigger: <span class="str">'parent_unresolved'</span>,
+    at_minutes: <span class="num">10</span>,
+    unless_status: [<span class="str">'contained'</span>, <span class="str">'resolved'</span>],
+  },
+}
+        </div>
+
+        <h3>Thresholds and Guards</h3>
+        <div class="thresholds">
+          <div class="thresh"><span class="icon">&#9201;</span> Snapshots: <span class="val">5, 10, 15, 20, 30 min</span></div>
+          <div class="thresh"><span class="icon">&#128293;</span> Fire threshold: <span class="val">intensity &ge; 0.3</span></div>
+          <div class="thresh"><span class="icon">&#127759;</span> Cluster min: <span class="val">3+ studs</span></div>
+          <div class="thresh"><span class="icon">&#128203;</span> Max pins: <span class="val">~12 total</span></div>
+          <div class="thresh"><span class="icon">&#128207;</span> Cluster radius: <span class="val">15m proximity</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step-card" data-step>
+      <div class="step-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="step-num s3">3</div>
+        <div class="title">Wire Into Compile Flow</div>
+        <div class="file-tag">warroomService.ts</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="step-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          Insert the new function call into <code>stageGenerateAndPersist</code>, after the existing <code>mergeDeteriorationResult</code> call and before <code>persistWarroomScenario</code>.
+        </p>
+
+        <h3>Integration Point</h3>
+        <div class="code">
+          <span class="lang">ts</span>
+<span class="cmt">// Inside stageGenerateAndPersist, after mergeDeteriorationResult (~line 960)</span>
+
+<span class="cmt">// NEW: Convert environmental timeline fire spread to stud-snapped spawn pins</span>
+<span class="kw">const</span> envTimeline = (trainerScene?.enrichment?.sceneSynthesis <span class="kw">as</span> <span class="type">Record</span>&lt;<span class="type">string</span>,<span class="type">unknown</span>&gt;)
+  ?.environmentalTimeline <span class="kw">as</span> <span class="type">EnvironmentalSnapshot</span>[] | <span class="kw">undefined</span>;
+
+<span class="kw">if</span> (envTimeline?.length && sceneStudGrids?.length && buildingPolygon) {
+  <span class="kw">const</span> fireSpreadPins = <span class="fn">generateFireSpreadSpawnPins</span>(
+    envTimeline,
+    sceneStudGrids,
+    payload.hazards ?? [],
+    buildingPolygon,
+  );
+  <span class="kw">for</span> (<span class="kw">const</span> pin <span class="kw">of</span> fireSpreadPins) {
+    (payload.hazards <span class="kw">as</span> <span class="type">Array</span>&lt;<span class="type">Record</span>&lt;<span class="type">string</span>,<span class="type">unknown</span>&gt;&gt;).<span class="fn">push</span>(pin);
+  }
+}
+        </div>
+
+        <p style="color:var(--text3);font-size:.82rem;margin-top:.8rem">
+          No changes to <code>persistWarroomScenario</code> are needed for parent linking -- it already resolves <code>_parent_pin_label</code> to <code>parent_pin_id</code> via label matching in a second pass after insert.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step-card" data-step>
+      <div class="step-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="step-num s4">4</div>
+        <div class="title">Add stud_id Column to scenario_hazards</div>
+        <div class="file-tag">migration 165</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="step-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          New migration adds an optional <code>stud_id</code> column for explicit stud tracking. Enables future stud-aware queries and map rendering.
+        </p>
+
+        <div class="code">
+          <span class="lang">sql</span>
+<span class="kw">ALTER TABLE</span> scenario_hazards
+  <span class="kw">ADD COLUMN IF NOT EXISTS</span> stud_id <span class="type">TEXT</span> <span class="kw">DEFAULT NULL</span>;
+
+<span class="kw">CREATE INDEX IF NOT EXISTS</span> idx_hazards_stud_id
+  <span class="kw">ON</span> scenario_hazards(stud_id) <span class="kw">WHERE</span> stud_id <span class="kw">IS NOT NULL</span>;
+        </div>
+
+        <p style="color:var(--text2);font-size:.88rem;margin-top:.8rem">
+          Then update <code>warroomPersistenceService.ts</code> to read <code>stud_id</code> from the hazard object's <code>properties.spawned_from_stud</code> and include it in the insert row.
+        </p>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step-card" data-step>
+      <div class="step-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="step-num s5">5</div>
+        <div class="title">Enrich WebSocket Broadcasts with stud_id</div>
+        <div class="file-tag">hazardDeteriorationService.ts</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="step-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          Minor enhancement: when the deterioration service reveals a delayed child pin that has a <code>stud_id</code>, include it in the WebSocket <code>hazard.updated</code> broadcast so the frontend can highlight the specific stud.
+        </p>
+
+        <div class="code">
+          <span class="lang">ts</span>
+<span class="cmt">// In the child hazard reveal loop:</span>
+<span class="fn">getWebSocketService</span>().<span class="fn">broadcastToSession</span>(sessionId, {
+  type: <span class="str">'hazard.updated'</span>,
+  data: {
+    hazard_id: child.id,
+    status: <span class="str">'active'</span>,
+    spawned: <span class="kw">true</span>,
+    stud_id: child.stud_id ?? <span class="kw">null</span>,  <span class="cmt">// NEW</span>
+  },
+  timestamp: <span class="kw">new</span> <span class="fn">Date</span>().<span class="fn">toISOString</span>(),
+});
+        </div>
+
+        <p style="color:var(--text3);font-size:.82rem;margin-top:.8rem">
+          No changes to the core reveal/escalation logic. The existing <code>spawn_condition</code> mechanism handles all timing.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ FILES ═══════════ -->
+<section id="files">
+  <div class="container">
+    <div class="section-tag purple"><span class="dot"></span> Files Changed</div>
+    <h2>Change Summary</h2>
+
+    <table class="file-table">
+      <thead>
+        <tr><th>File</th><th>Type</th><th>Change</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>server/services/warroomAiService.ts</code></td>
+          <td><span class="chip fix">Bug Fix</span></td>
+          <td>Remove incorrect <code>events[]</code> assignment to <code>deterioration_timeline</code> for trainer hazards</td>
+        </tr>
+        <tr>
+          <td><code>server/services/warroomService.ts</code></td>
+          <td><span class="chip new">New Code</span></td>
+          <td>Add <code>generateFireSpreadSpawnPins()</code> function + wire into <code>stageGenerateAndPersist</code></td>
+        </tr>
+        <tr>
+          <td><code>server/services/warroomPersistenceService.ts</code></td>
+          <td><span class="chip edit">Edit</span></td>
+          <td>Include <code>stud_id</code> field in hazard insert row</td>
+        </tr>
+        <tr>
+          <td><code>server/services/hazardDeteriorationService.ts</code></td>
+          <td><span class="chip edit">Edit</span></td>
+          <td>Add <code>stud_id</code> to WebSocket broadcast when revealing delayed pins</td>
+        </tr>
+        <tr>
+          <td><code>migrations/165_hazard_stud_id.sql</code></td>
+          <td><span class="chip migrate">Migration</span></td>
+          <td>Add <code>stud_id TEXT</code> column + partial index on <code>scenario_hazards</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="unchanged">
+      <h3>&#128274; What This Does NOT Change</h3>
+      <ul>
+        <li>The existing <code>SpatialEffectsEngine</code> / <code>FireSimulation</code> frontend code</li>
+        <li>The existing <code>placeInsideZoneType</code> fallback for non-scene scenarios</li>
+        <li>The existing AI-generated <code>generateDeteriorationTimeline</code> spawn pins (fire-spread pins are additive)</li>
+        <li>Runtime deterioration escalation logic (10/20/30 min stages)</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════ CHECKLIST ═══════════ -->
+<section id="checklist" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-tag green"><span class="dot"></span> Implementation Checklist</div>
+    <h2>Task Tracker</h2>
+    <p class="desc">Click checkboxes as you complete each task.</p>
+
+    <ul class="todo-list" id="todoList">
+      <li>
+        <div class="todo-check" onclick="this.classList.toggle('done')"></div>
+        <div class="todo-content">
+          <div class="t-title">Fix deterioration_timeline format mismatch for trainer hazards</div>
+          <div class="t-file">server/services/warroomAiService.ts ~line 7905</div>
+        </div>
+      </li>
+      <li>
+        <div class="todo-check" onclick="this.classList.toggle('done')"></div>
+        <div class="todo-content">
+          <div class="t-title">Implement generateFireSpreadSpawnPins() function</div>
+          <div class="t-file">server/services/warroomService.ts -- diff snapshots, cluster, resolve coords, emit pins</div>
+        </div>
+      </li>
+      <li>
+        <div class="todo-check" onclick="this.classList.toggle('done')"></div>
+        <div class="todo-content">
+          <div class="t-title">Wire generateFireSpreadSpawnPins into stageGenerateAndPersist</div>
+          <div class="t-file">server/services/warroomService.ts -- after mergeDeteriorationResult, before persist</div>
+        </div>
+      </li>
+      <li>
+        <div class="todo-check" onclick="this.classList.toggle('done')"></div>
+        <div class="todo-content">
+          <div class="t-title">Create migration 165: add stud_id column to scenario_hazards</div>
+          <div class="t-file">migrations/165_hazard_stud_id.sql</div>
+        </div>
+      </li>
+      <li>
+        <div class="todo-check" onclick="this.classList.toggle('done')"></div>
+        <div class="todo-content">
+          <div class="t-title">Update persistence to include stud_id in hazard insert</div>
+          <div class="t-file">server/services/warroomPersistenceService.ts</div>
+        </div>
+      </li>
+      <li>
+        <div class="todo-check" onclick="this.classList.toggle('done')"></div>
+        <div class="todo-content">
+          <div class="t-title">Include stud_id in hazardDeteriorationService WebSocket broadcasts</div>
+          <div class="t-file">server/services/hazardDeteriorationService.ts</div>
+        </div>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- ═══════════ FOOTER ═══════════ -->
+<footer>
+  <p>Black Swan Simulations &mdash; Implementation Plan: Bridge Deterioration to Studs &middot; Jun 2026</p>
+</footer>
+
+<!-- ═══════════ SCRIPTS ═══════════ -->
+<script>
+(() => {
+  // Nav hide on scroll
+  let lastY = 0;
+  const nav = document.querySelector('nav');
+  window.addEventListener('scroll', () => {
+    const y = window.scrollY;
+    if (y > 100 && y > lastY) nav.style.transform = 'translateY(-100%)';
+    else nav.style.transform = '';
+    nav.style.transition = 'transform .3s';
+    lastY = y;
+  });
+
+  // Intersection reveal
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) {
+        e.target.classList.add('reveal');
+        e.target.style.animationDelay = '0s';
+      }
+    });
+  }, { threshold: 0.15 });
+  document.querySelectorAll('.step-card, .todo-list li').forEach(el => obs.observe(el));
+
+  // Persist checklist to localStorage
+  const key = 'bss-plan-checklist';
+  const checks = document.querySelectorAll('.todo-check');
+  const saved = JSON.parse(localStorage.getItem(key) || '[]');
+  checks.forEach((c, i) => { if (saved[i]) c.classList.add('done'); });
+  document.getElementById('todoList').addEventListener('click', () => {
+    const state = [...checks].map(c => c.classList.contains('done'));
+    localStorage.setItem(key, JSON.stringify(state));
+  });
+})();
+</script>
+</body>
+</html>

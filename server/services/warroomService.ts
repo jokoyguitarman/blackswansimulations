@@ -884,6 +884,192 @@ export async function generateAndPersistWarroomScenario(
   );
 }
 
+// ---------------------------------------------------------------------------
+// Fire-spread spawn pin generation from environmental timeline
+// ---------------------------------------------------------------------------
+
+interface EnvironmentalStudEffect {
+  stud_id: string;
+  fire_intensity: number;
+  smoke_density: number;
+  gas_concentration: number;
+  structural_damage: number;
+  visibility_m: number;
+}
+
+interface EnvironmentalSnapshot {
+  at_minutes: number;
+  stud_effects: EnvironmentalStudEffect[];
+  narrative: string;
+}
+
+const FIRE_SPREAD_SNAPSHOT_MINUTES = [5, 10, 15, 20, 30];
+const FIRE_INTENSITY_THRESHOLD = 0.3;
+const CLUSTER_RADIUS_M = 15;
+const MIN_CLUSTER_STUDS = 3;
+const MAX_SPREAD_PINS = 12;
+
+/**
+ * Convert pre-computed environmental timeline fire-spread data into
+ * stud-snapped spawn pins that the existing hazardDeteriorationService
+ * will reveal at runtime.
+ *
+ * For each meaningful time snapshot, finds studs that newly caught fire
+ * since the previous snapshot, clusters them spatially, and emits one
+ * delayed hazard pin per cluster positioned on the highest-intensity stud.
+ */
+function generateFireSpreadSpawnPins(
+  timeline: EnvironmentalSnapshot[],
+  studGrids: import('./buildingStudService.js').StudGrid[],
+  existingHazards: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  if (!timeline.length || !studGrids.length) return [];
+
+  const studLookup = new Map<string, { lat: number; lng: number }>();
+  for (const grid of studGrids) {
+    for (const stud of grid.studs) {
+      studLookup.set(stud.id, { lat: stud.lat, lng: stud.lng });
+    }
+  }
+
+  if (studLookup.size === 0) return [];
+
+  const sorted = [...timeline]
+    .filter((s) => FIRE_SPREAD_SNAPSHOT_MINUTES.includes(s.at_minutes))
+    .sort((a, b) => a.at_minutes - b.at_minutes);
+
+  if (sorted.length === 0) return [];
+
+  const previouslyOnFire = new Set<string>();
+  const allPins: Array<Record<string, unknown>> = [];
+
+  for (const snapshot of sorted) {
+    if (allPins.length >= MAX_SPREAD_PINS) break;
+
+    const newlyOnFire: Array<{ studId: string; intensity: number; lat: number; lng: number }> = [];
+
+    for (const effect of snapshot.stud_effects) {
+      if (effect.fire_intensity < FIRE_INTENSITY_THRESHOLD) continue;
+      if (previouslyOnFire.has(effect.stud_id)) continue;
+
+      const coords = studLookup.get(effect.stud_id);
+      if (!coords) continue;
+
+      newlyOnFire.push({
+        studId: effect.stud_id,
+        intensity: effect.fire_intensity,
+        lat: coords.lat,
+        lng: coords.lng,
+      });
+    }
+
+    // Mark all fire studs at this snapshot for future diffing
+    for (const effect of snapshot.stud_effects) {
+      if (effect.fire_intensity >= FIRE_INTENSITY_THRESHOLD) {
+        previouslyOnFire.add(effect.stud_id);
+      }
+    }
+
+    if (newlyOnFire.length < MIN_CLUSTER_STUDS) continue;
+
+    // Cluster by spatial proximity using simple greedy algorithm
+    const clusters = clusterStuds(newlyOnFire, CLUSTER_RADIUS_M);
+
+    for (const cluster of clusters) {
+      if (allPins.length >= MAX_SPREAD_PINS) break;
+      if (cluster.length < MIN_CLUSTER_STUDS) continue;
+
+      // Pick the stud with the highest fire intensity as representative
+      cluster.sort((a, b) => b.intensity - a.intensity);
+      const rep = cluster[0];
+
+      // Find nearest parent hazard by distance
+      let parentLabel = '';
+      let bestDist = Infinity;
+      for (const h of existingHazards) {
+        const hLat = h.location_lat as number;
+        const hLng = h.location_lng as number;
+        if (hLat == null || hLng == null) continue;
+        const d = approxDistM(rep.lat, rep.lng, hLat, hLng);
+        if (d < bestDist) {
+          bestDist = d;
+          parentLabel =
+            ((h.label ??
+              (h.properties as Record<string, unknown>)?.label ??
+              h.hazard_type) as string) || '';
+        }
+      }
+
+      if (!parentLabel) continue;
+
+      const description = `Fire spread to ${cluster.length} studs at T+${snapshot.at_minutes}min (~${Math.round(bestDist)}m from source)`;
+
+      allPins.push({
+        hazard_type: 'fire',
+        label: `Fire spread T+${snapshot.at_minutes}min`,
+        location_lat: rep.lat,
+        location_lng: rep.lng,
+        floor_level: 'G',
+        status: 'delayed',
+        appears_at_minutes: snapshot.at_minutes,
+        properties: {
+          spawned_from_stud: rep.studId,
+          fire_intensity: rep.intensity,
+          cluster_stud_count: cluster.length,
+          description,
+          size: 'small',
+          fuel_source: description,
+          spawned_from: 'environmental_timeline',
+        },
+        deterioration_timeline: {},
+        _parent_pin_label: parentLabel,
+        _spawn_condition: {
+          trigger: 'parent_unresolved',
+          at_minutes: snapshot.at_minutes,
+          unless_status: ['contained', 'resolved'],
+        },
+        _stud_id: rep.studId,
+      });
+    }
+  }
+
+  return allPins;
+}
+
+function clusterStuds(
+  studs: Array<{ studId: string; intensity: number; lat: number; lng: number }>,
+  radiusM: number,
+): Array<Array<{ studId: string; intensity: number; lat: number; lng: number }>> {
+  const assigned = new Set<number>();
+  const clusters: Array<Array<(typeof studs)[number]>> = [];
+
+  for (let i = 0; i < studs.length; i++) {
+    if (assigned.has(i)) continue;
+    const cluster = [studs[i]];
+    assigned.add(i);
+
+    for (let j = i + 1; j < studs.length; j++) {
+      if (assigned.has(j)) continue;
+      for (const member of cluster) {
+        if (approxDistM(member.lat, member.lng, studs[j].lat, studs[j].lng) <= radiusM) {
+          cluster.push(studs[j]);
+          assigned.add(j);
+          break;
+        }
+      }
+    }
+    clusters.push(cluster);
+  }
+
+  return clusters;
+}
+
+function approxDistM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLat = (lat2 - lat1) * 111_320;
+  const dLng = (lng2 - lng1) * 111_320 * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
 /**
  * Merge the deterioration specialist output back into the scenario payload.
  * Enriches existing hazard/casualty timelines and appends spawn pins.
@@ -898,6 +1084,7 @@ function mergeDeteriorationResult(
       (h) => ((h as Record<string, unknown>).label ?? h.hazard_type) === eh.hazard_label,
     );
     if (match) {
+      (match as Record<string, unknown>).deterioration_timeline = eh.deterioration_timeline;
       if (!match.properties) match.properties = {} as Record<string, unknown>;
       (match.properties as Record<string, unknown>).deterioration_timeline =
         eh.deterioration_timeline;
@@ -1403,6 +1590,35 @@ export async function stageGenerateAndPersist(
     }
   } catch (detErr) {
     logger.warn({ err: detErr }, 'Deterioration specialist failed; continuing without');
+  }
+
+  // Convert pre-computed fire-spread timeline into stud-snapped spawn pins
+  if (trainerScene?.enrichment?.sceneSynthesis && sceneStudGrids?.length) {
+    try {
+      const envTimeline = (trainerScene.enrichment.sceneSynthesis as Record<string, unknown>)
+        .environmentalTimeline as EnvironmentalSnapshot[] | undefined;
+
+      if (envTimeline?.length && trainerScene.buildingPolygon) {
+        const fireSpreadPins = generateFireSpreadSpawnPins(
+          envTimeline,
+          sceneStudGrids,
+          (payload.hazards ?? []) as Array<Record<string, unknown>>,
+        );
+
+        if (fireSpreadPins.length > 0) {
+          if (!payload.hazards) payload.hazards = [] as unknown as typeof payload.hazards;
+          for (const pin of fireSpreadPins) {
+            (payload.hazards as Array<Record<string, unknown>>).push(pin);
+          }
+          logger.info(
+            { fireSpreadPinCount: fireSpreadPins.length },
+            'Fire-spread spawn pins generated from environmental timeline',
+          );
+        }
+      }
+    } catch (fireErr) {
+      logger.warn({ err: fireErr }, 'Fire-spread pin generation failed; continuing without');
+    }
   }
 
   // Ensure we always have center coordinates: geocode first, then fall back to incident_site pin

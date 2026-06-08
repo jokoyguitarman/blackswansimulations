@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Black Swan — Deterioration &amp; Stud System Analysis</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0e17;--surface:#111827;--surface2:#1a2235;--surface3:#232d42;
+    --accent:#3b82f6;--accent2:#8b5cf6;--fire:#f97316;--fire2:#ef4444;
+    --ok:#10b981;--warn:#f59e0b;--fail:#ef4444;
+    --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+    --border:#1e293b;--glow:rgba(59,130,246,.15);
+    --radius:12px;--radius-sm:8px;
+  }
+  html{scroll-behavior:smooth}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.65;overflow-x:hidden}
+
+  /* ── Scrollbar ─────────────────────────────────────────── */
+  ::-webkit-scrollbar{width:6px}
+  ::-webkit-scrollbar-track{background:var(--bg)}
+  ::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
+
+  /* ── Hero ───────────────────────────────────────────────── */
+  .hero{position:relative;min-height:100vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:4rem 2rem;overflow:hidden}
+  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 30%,rgba(59,130,246,.08) 0%,transparent 60%),radial-gradient(ellipse at 80% 70%,rgba(249,115,22,.06) 0%,transparent 50%);pointer-events:none}
+  .hero-badge{display:inline-flex;align-items:center;gap:.5rem;padding:.4rem 1rem;border-radius:20px;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.25);color:var(--accent);font-size:.8rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:1.5rem;animation:fadeDown .8s ease}
+  .hero h1{font-size:clamp(2.2rem,5vw,3.8rem);font-weight:800;letter-spacing:-.03em;line-height:1.15;max-width:800px;animation:fadeDown .8s ease .1s both}
+  .hero h1 .gradient{background:linear-gradient(135deg,var(--fire),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero p.subtitle{font-size:1.15rem;color:var(--text2);max-width:620px;margin-top:1.2rem;animation:fadeDown .8s ease .2s both}
+  .hero-scroll{margin-top:3rem;animation:fadeDown .8s ease .4s both,bounce 2s ease-in-out 1.5s infinite}
+  .hero-scroll svg{width:28px;height:28px;color:var(--text3)}
+
+  /* ── Sections ──────────────────────────────────────────── */
+  .container{max-width:1100px;margin:0 auto;padding:0 1.5rem}
+  section{padding:5rem 0}
+  .section-label{display:inline-flex;align-items:center;gap:.4rem;font-size:.75rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:.8rem}
+  .section-label .dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 2s ease infinite}
+  h2{font-size:clamp(1.6rem,3vw,2.4rem);font-weight:700;letter-spacing:-.02em;margin-bottom:1rem}
+  h3{font-size:1.15rem;font-weight:600;margin-bottom:.6rem}
+
+  /* ── Cards ─────────────────────────────────────────────── */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.8rem;position:relative;overflow:hidden;transition:border-color .3s,box-shadow .3s}
+  .card:hover{border-color:rgba(59,130,246,.3);box-shadow:0 0 30px var(--glow)}
+  .card-grid{display:grid;gap:1.2rem}
+  .card-grid.cols-2{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
+
+  /* ── System Cards (side-by-side comparison) ────────────── */
+  .system-card{position:relative;padding-top:3rem}
+  .system-card .sys-badge{position:absolute;top:0;left:0;right:0;padding:.55rem 1.2rem;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;border-radius:var(--radius) var(--radius) 0 0}
+  .system-card.server .sys-badge{background:linear-gradient(135deg,rgba(139,92,246,.2),rgba(59,130,246,.2));color:var(--accent2);border-bottom:1px solid rgba(139,92,246,.2)}
+  .system-card.frontend .sys-badge{background:linear-gradient(135deg,rgba(249,115,22,.2),rgba(239,68,68,.15));color:var(--fire);border-bottom:1px solid rgba(249,115,22,.2)}
+
+  .sys-row{display:flex;align-items:flex-start;gap:.8rem;padding:.7rem 0;border-bottom:1px solid var(--border)}
+  .sys-row:last-child{border-bottom:none}
+  .sys-icon{flex-shrink:0;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.85rem}
+  .sys-row .label{font-weight:600;font-size:.9rem}.sys-row .desc{font-size:.82rem;color:var(--text2);margin-top:2px}
+
+  /* ── Pipeline Diagram ──────────────────────────────────── */
+  .pipeline{display:flex;flex-direction:column;gap:0;position:relative;margin:2rem 0}
+  .pipe-step{display:flex;align-items:stretch;gap:1rem;position:relative;opacity:0;animation:fadeRight .5s ease forwards}
+  .pipe-step:nth-child(1){animation-delay:.1s}.pipe-step:nth-child(2){animation-delay:.2s}.pipe-step:nth-child(3){animation-delay:.3s}.pipe-step:nth-child(4){animation-delay:.4s}.pipe-step:nth-child(5){animation-delay:.5s}.pipe-step:nth-child(6){animation-delay:.6s}.pipe-step:nth-child(7){animation-delay:.7s}
+  .pipe-line{display:flex;flex-direction:column;align-items:center;width:40px;flex-shrink:0}
+  .pipe-dot{width:14px;height:14px;border-radius:50%;border:2.5px solid;flex-shrink:0;position:relative;z-index:1}
+  .pipe-dot.ok{border-color:var(--ok);background:rgba(16,185,129,.2)}
+  .pipe-dot.warn{border-color:var(--warn);background:rgba(245,158,11,.2)}
+  .pipe-dot.fail{border-color:var(--fail);background:rgba(239,68,68,.2)}
+  .pipe-connector{flex:1;width:2px;background:var(--border);min-height:20px}
+  .pipe-body{flex:1;padding:.6rem 0 1.4rem}
+  .pipe-body h4{font-size:.95rem;font-weight:600}.pipe-body p{font-size:.82rem;color:var(--text2);margin-top:.2rem}
+  .pipe-body .tag{display:inline-block;font-size:.68rem;font-weight:600;padding:.15rem .5rem;border-radius:4px;margin-top:.35rem}
+  .tag.ok{background:rgba(16,185,129,.12);color:var(--ok)}
+  .tag.warn{background:rgba(245,158,11,.12);color:var(--warn)}
+  .tag.fail{background:rgba(239,68,68,.12);color:var(--fail)}
+
+  /* ── Interactive Fire Grid ─────────────────────────────── */
+  .fire-demo{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:2rem;margin:2rem 0}
+  .fire-controls{display:flex;align-items:center;gap:1.2rem;margin-bottom:1.2rem;flex-wrap:wrap}
+  .fire-controls label{font-size:.85rem;font-weight:600;color:var(--text2)}
+  .fire-controls input[type=range]{flex:1;min-width:200px;accent-color:var(--fire)}
+  .fire-controls .time-display{font-size:1.4rem;font-weight:800;font-variant-numeric:tabular-nums;min-width:80px;color:var(--fire)}
+  .grid-wrapper{display:flex;gap:2rem;flex-wrap:wrap}
+  .grid-section{flex:1;min-width:280px}
+  .grid-section h4{font-size:.85rem;font-weight:600;margin-bottom:.6rem;display:flex;align-items:center;gap:.4rem}
+  .grid-section h4 .indicator{width:8px;height:8px;border-radius:2px}
+  .stud-grid{display:grid;gap:2px;aspect-ratio:1}
+  .stud{border-radius:2px;transition:background .3s,box-shadow .3s;position:relative;min-height:0}
+  .stud.wall{background:#374151 !important;box-shadow:none !important}
+  .stud.none-state{background:var(--surface2)}
+  .stud.heating-state{background:#78350f;box-shadow:0 0 4px rgba(249,115,22,.3)}
+  .stud.burning-state{background:#dc2626;box-shadow:0 0 8px rgba(239,68,68,.5)}
+  .stud.burnt-state{background:#1c1917}
+  .stud.hazard-pin{background:var(--accent) !important;box-shadow:0 0 6px rgba(59,130,246,.5) !important;border-radius:50%}
+  .stud[title]{cursor:help}
+
+  .legend{display:flex;gap:1rem;margin-top:1rem;flex-wrap:wrap}
+  .legend-item{display:flex;align-items:center;gap:.35rem;font-size:.72rem;color:var(--text2)}
+  .legend-swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0}
+
+  /* ── Gap Table ─────────────────────────────────────────── */
+  .gap-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.85rem;margin:1.5rem 0}
+  .gap-table th{text-align:left;padding:.7rem 1rem;background:var(--surface2);color:var(--text2);font-weight:600;font-size:.75rem;letter-spacing:.05em;text-transform:uppercase}
+  .gap-table th:first-child{border-radius:var(--radius-sm) 0 0 0}
+  .gap-table th:last-child{border-radius:0 var(--radius-sm) 0 0}
+  .gap-table td{padding:.7rem 1rem;border-bottom:1px solid var(--border);vertical-align:top}
+  .gap-table tr:last-child td{border-bottom:none}
+  .gap-table tr{transition:background .2s}
+  .gap-table tr:hover td{background:rgba(59,130,246,.04)}
+  .status-chip{display:inline-flex;align-items:center;gap:.3rem;padding:.2rem .6rem;border-radius:4px;font-size:.72rem;font-weight:700;white-space:nowrap}
+  .status-chip.works{background:rgba(16,185,129,.12);color:var(--ok)}
+  .status-chip.partial{background:rgba(245,158,11,.12);color:var(--warn)}
+  .status-chip.missing{background:rgba(239,68,68,.12);color:var(--fail)}
+  .status-chip.bug{background:rgba(168,85,247,.12);color:#a855f7}
+  .status-chip::before{content:'';width:6px;height:6px;border-radius:50%;background:currentColor}
+
+  /* ── Code blocks ───────────────────────────────────────── */
+  .code-block{background:#0d1117;border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem 1.2rem;font-family:'Cascadia Code','Fira Code',monospace;font-size:.78rem;line-height:1.7;overflow-x:auto;margin:.8rem 0;color:#c9d1d9}
+  .code-block .kw{color:#ff7b72}.code-block .fn{color:#d2a8ff}.code-block .str{color:#a5d6ff}.code-block .cmt{color:#8b949e;font-style:italic}.code-block .type{color:#79c0ff}.code-block .num{color:#f0883e}
+
+  /* ── Collapsibles ──────────────────────────────────────── */
+  details{border:1px solid var(--border);border-radius:var(--radius-sm);margin:.6rem 0;background:var(--surface)}
+  details[open]{border-color:rgba(59,130,246,.25)}
+  summary{padding:.8rem 1rem;font-weight:600;font-size:.9rem;cursor:pointer;list-style:none;display:flex;align-items:center;gap:.5rem;user-select:none}
+  summary::before{content:'▸';font-size:.8rem;transition:transform .2s;color:var(--text3)}
+  details[open] summary::before{transform:rotate(90deg)}
+  summary::-webkit-details-marker{display:none}
+  details .inner{padding:0 1rem 1rem}
+
+  /* ── Architecture Diagram ──────────────────────────────── */
+  .arch-svg{width:100%;max-width:900px;margin:2rem auto;display:block}
+  .arch-svg text{font-family:'Segoe UI',system-ui,sans-serif}
+
+  /* ── Footer ────────────────────────────────────────────── */
+  footer{text-align:center;padding:3rem 1.5rem;color:var(--text3);font-size:.8rem;border-top:1px solid var(--border)}
+
+  /* ── Nav ────────────────────────────────────────────────── */
+  nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,14,23,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:.6rem 1.5rem;display:flex;align-items:center;gap:1rem;font-size:.82rem;transition:transform .3s}
+  nav.hidden{transform:translateY(-100%)}
+  nav .brand{font-weight:800;color:var(--text);letter-spacing:-.02em;white-space:nowrap}
+  nav a{color:var(--text2);text-decoration:none;padding:.3rem .5rem;border-radius:4px;transition:color .2s,background .2s;white-space:nowrap}
+  nav a:hover{color:var(--text);background:var(--surface2)}
+  nav .spacer{flex:1}
+
+  /* ── Animations ────────────────────────────────────────── */
+  @keyframes fadeDown{from{opacity:0;transform:translateY(-18px)}to{opacity:1;transform:none}}
+  @keyframes fadeRight{from{opacity:0;transform:translateX(-14px)}to{opacity:1;transform:none}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes bounce{0%,20%,50%,80%,100%{transform:translateY(0)}40%{transform:translateY(8px)}60%{transform:translateY(4px)}}
+  @keyframes glow{0%,100%{box-shadow:0 0 8px rgba(249,115,22,.3)}50%{box-shadow:0 0 18px rgba(249,115,22,.6)}}
+
+  /* ── Responsive ────────────────────────────────────────── */
+  @media(max-width:640px){
+    .card{padding:1.2rem}
+    .grid-wrapper{flex-direction:column}
+    nav a:not(.brand){display:none}
+  }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ NAV ════════════════ -->
+<nav id="nav">
+  <span class="brand">Black Swan Simulations</span>
+  <span class="spacer"></span>
+  <a href="#overview">Overview</a>
+  <a href="#systems">Two Systems</a>
+  <a href="#pipeline">Pipeline</a>
+  <a href="#fire-sim">Fire Spread</a>
+  <a href="#gaps">Gap Analysis</a>
+  <a href="#code">Code Refs</a>
+</nav>
+
+<!-- ════════════════ HERO ════════════════ -->
+<section class="hero">
+  <div class="hero-badge">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+    Architecture Analysis
+  </div>
+  <h1>Deterioration Data Doesn't <span class="gradient">Reach the Studs</span></h1>
+  <p class="subtitle">The codebase has a sophisticated fire-spread physics engine that computes stud-by-stud propagation, but it's disconnected from live gameplay. Here's the full anatomy of the gap.</p>
+  <div class="hero-scroll">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 13l5 5 5-5M7 6l5 5 5-5"/></svg>
+  </div>
+</section>
+
+<!-- ════════════════ OVERVIEW ════════════════ -->
+<section id="overview">
+  <div class="container">
+    <div class="section-label"><span class="dot"></span> The Core Problem</div>
+    <h2>Two Parallel Worlds, No Bridge</h2>
+    <p style="color:var(--text2);max-width:700px;margin-bottom:2rem">
+      The system computes fire spread across studs at time intervals (0, 1, 3, 5, 10, 15, 20, 30, 45, 60 min) — but this data is trapped as a <strong>preview artifact</strong>. Live sessions use a completely different, text-based deterioration model that spawns pins by zone, not by stud.
+    </p>
+
+    <!-- Architecture SVG -->
+    <svg class="arch-svg" viewBox="0 0 900 400" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Left box: Pre-compile -->
+      <rect x="20" y="40" width="380" height="320" rx="16" fill="#111827" stroke="#f97316" stroke-width="1.5" stroke-dasharray="6 4" opacity=".8"/>
+      <text x="210" y="28" text-anchor="middle" fill="#f97316" font-size="12" font-weight="700" letter-spacing="1">PRE-COMPILE SIMULATION (FRONTEND)</text>
+
+      <rect x="50" y="70" width="320" height="42" rx="8" fill="#1a2235"/>
+      <text x="210" y="96" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="600">Scene Editor → Trainer Hazards</text>
+
+      <line x1="210" y1="112" x2="210" y2="132" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="50" y="132" width="320" height="42" rx="8" fill="#1a2235"/>
+      <text x="210" y="158" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="600">SpatialEffectsEngine + FireSimulation</text>
+
+      <line x1="210" y1="174" x2="210" y2="194" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="50" y="194" width="320" height="42" rx="8" fill="rgba(249,115,22,.1)" stroke="#f97316" stroke-width="1"/>
+      <text x="210" y="220" text-anchor="middle" fill="#f97316" font-size="13" font-weight="600">Stud-by-Stud Fire Spread per Minute</text>
+
+      <line x1="210" y1="236" x2="210" y2="256" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="50" y="256" width="320" height="42" rx="8" fill="#1a2235"/>
+      <text x="210" y="282" text-anchor="middle" fill="#10b981" font-size="13" font-weight="600">✓ environmentalTimeline snapshots</text>
+
+      <line x1="210" y1="298" x2="210" y2="318" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="50" y="318" width="320" height="30" rx="8" fill="rgba(16,185,129,.08)" stroke="#10b981" stroke-width="1"/>
+      <text x="210" y="338" text-anchor="middle" fill="#10b981" font-size="12" font-weight="600">Preview slider in SceneCanvasView</text>
+
+      <!-- Right box: Live session -->
+      <rect x="500" y="40" width="380" height="320" rx="16" fill="#111827" stroke="#8b5cf6" stroke-width="1.5" stroke-dasharray="6 4" opacity=".8"/>
+      <text x="690" y="28" text-anchor="middle" fill="#8b5cf6" font-size="12" font-weight="700" letter-spacing="1">LIVE SESSION (SERVER)</text>
+
+      <rect x="530" y="70" width="320" height="42" rx="8" fill="#1a2235"/>
+      <text x="690" y="96" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="600">Inject Scheduler Tick (~30s)</text>
+
+      <line x1="690" y1="112" x2="690" y2="132" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="530" y="132" width="320" height="42" rx="8" fill="#1a2235"/>
+      <text x="690" y="158" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="600">hazardDeteriorationService</text>
+
+      <line x1="690" y1="174" x2="690" y2="194" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="530" y="194" width="320" height="42" rx="8" fill="rgba(139,92,246,.1)" stroke="#8b5cf6" stroke-width="1"/>
+      <text x="690" y="220" text-anchor="middle" fill="#8b5cf6" font-size="13" font-weight="600">Text-based 10/20/30 min Stages</text>
+
+      <line x1="690" y1="236" x2="690" y2="256" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="530" y="256" width="320" height="42" rx="8" fill="#1a2235"/>
+      <text x="690" y="282" text-anchor="middle" fill="#e2e8f0" font-size="13" font-weight="600">placeInsideZoneType('hot')</text>
+
+      <line x1="690" y1="298" x2="690" y2="318" stroke="#374151" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+      <rect x="530" y="318" width="320" height="30" rx="8" fill="rgba(245,158,11,.08)" stroke="#f59e0b" stroke-width="1"/>
+      <text x="690" y="338" text-anchor="middle" fill="#f59e0b" font-size="12" font-weight="600">⚠ Zone-based pin, NOT stud-snapped</text>
+
+      <!-- The broken bridge -->
+      <line x1="370" y1="277" x2="530" y2="277" stroke="#ef4444" stroke-width="2" stroke-dasharray="8 6" opacity=".6"/>
+      <text x="450" y="268" text-anchor="middle" fill="#ef4444" font-size="18" font-weight="800">✗</text>
+      <text x="450" y="295" text-anchor="middle" fill="#ef4444" font-size="10" font-weight="600">NO CONNECTION</text>
+
+      <defs>
+        <marker id="arrow" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+          <path d="M0,0 L8,4 L0,8" fill="#374151"/>
+        </marker>
+      </defs>
+    </svg>
+  </div>
+</section>
+
+<!-- ════════════════ TWO SYSTEMS ════════════════ -->
+<section id="systems" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-label"><span class="dot"></span> System Comparison</div>
+    <h2>Two Deterioration Engines</h2>
+    <p style="color:var(--text2);margin-bottom:2rem">One simulates physics on studs, the other manages gameplay pins by zone. They share no data at runtime.</p>
+
+    <div class="card-grid cols-2">
+      <!-- System A -->
+      <div class="card system-card frontend">
+        <div class="sys-badge">System A — Pre-Compile Fire Simulation (Frontend)</div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(249,115,22,.12);color:var(--fire)">🔥</div>
+          <div><div class="label">Engine</div><div class="desc">SpatialEffectsEngine + FireSimulation class</div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(249,115,22,.12);color:var(--fire)">📐</div>
+          <div><div class="label">Operates on studs?</div><div class="desc"><strong style="color:var(--ok)">YES</strong> — stud-by-stud neighbor propagation with 8m radius</div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(249,115,22,.12);color:var(--fire)">🧱</div>
+          <div><div class="label">Physics model</div><div class="desc">Wall material resistance, door gaps, hazard zone acceleration, NFPA/ISO 834 based</div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(249,115,22,.12);color:var(--fire)">💾</div>
+          <div><div class="label">Output</div><div class="desc">environmentalTimeline snapshots stored in <code>rts_scene_configs.enrichment_result</code></div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(239,68,68,.12);color:var(--fail)">✗</div>
+          <div><div class="label">Creates DB hazard pins?</div><div class="desc"><strong style="color:var(--fail)">NO</strong> — visual preview only</div></div>
+        </div>
+      </div>
+
+      <!-- System B -->
+      <div class="card system-card server">
+        <div class="sys-badge">System B — Live Session Deterioration (Server)</div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(139,92,246,.12);color:var(--accent2)">⏱</div>
+          <div><div class="label">Engine</div><div class="desc">hazardDeteriorationService — scheduler tick every ~30s</div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(139,92,246,.12);color:var(--accent2)">📐</div>
+          <div><div class="label">Operates on studs?</div><div class="desc"><strong style="color:var(--fail)">NO</strong> — zone-based coordinate offsets only</div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(139,92,246,.12);color:var(--accent2)">📝</div>
+          <div><div class="label">Physics model</div><div class="desc">None — text descriptions at 10/20/30 min intervals from AI generation</div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(139,92,246,.12);color:var(--accent2)">💾</div>
+          <div><div class="label">Output</div><div class="desc">Reveals delayed child pins or runtime-spawns new hazard/casualty records</div></div>
+        </div>
+        <div class="sys-row">
+          <div class="sys-icon" style="background:rgba(16,185,129,.12);color:var(--ok)">✓</div>
+          <div><div class="label">Creates DB hazard pins?</div><div class="desc"><strong style="color:var(--ok)">YES</strong> — but placed in hot zone, not on specific studs</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ PIPELINE ════════════════ -->
+<section id="pipeline">
+  <div class="container">
+    <div class="section-label"><span class="dot"></span> War Room Pipeline</div>
+    <h2>Data Flow: From Scenario Design to Live Gameplay</h2>
+    <p style="color:var(--text2);margin-bottom:2rem">Tracing how deterioration data moves (and where it stops) across the full War Room pipeline.</p>
+
+    <div class="pipeline" id="pipelineAnim">
+      <div class="pipe-step">
+        <div class="pipe-line"><div class="pipe-dot ok"></div><div class="pipe-connector"></div></div>
+        <div class="pipe-body">
+          <h4>Scene Editor (Step 3)</h4>
+          <p>Trainer places hazard zones on the building stud grid. Each hazard gets a <code>studId</code> from snap.</p>
+          <span class="tag ok">✓ Works — studId captured</span>
+        </div>
+      </div>
+
+      <div class="pipe-step">
+        <div class="pipe-line"><div class="pipe-dot ok"></div><div class="pipe-connector"></div></div>
+        <div class="pipe-body">
+          <h4>Research &amp; Enrichment (Step 6)</h4>
+          <p>AI generates <code>HazardEvent[]</code> per hazard — trigger times, spread type (fire/gas/flood), spread radius and rate.</p>
+          <span class="tag ok">✓ Works — realistic spread parameters</span>
+        </div>
+      </div>
+
+      <div class="pipe-step">
+        <div class="pipe-line"><div class="pipe-dot ok"></div><div class="pipe-connector"></div></div>
+        <div class="pipe-body">
+          <h4>Environmental Simulation</h4>
+          <p><code>SpatialEffectsEngine</code> runs fire spread across sim-space studs. Each stud gets <code>fire_intensity</code>, <code>smoke_density</code>, etc. at each time snapshot.</p>
+          <span class="tag ok">✓ Works — physics-based stud-by-stud propagation</span>
+        </div>
+      </div>
+
+      <div class="pipe-step">
+        <div class="pipe-line"><div class="pipe-dot ok"></div><div class="pipe-connector"></div></div>
+        <div class="pipe-body">
+          <h4>Timeline Snapshots Stored</h4>
+          <p>Results saved to <code>rts_scene_configs.enrichment_result.sceneSynthesis.environmentalTimeline</code> — stud IDs + effect values at 10+ time intervals.</p>
+          <span class="tag ok">✓ Works — data persisted</span>
+        </div>
+      </div>
+
+      <div class="pipe-step">
+        <div class="pipe-line"><div class="pipe-dot ok"></div><div class="pipe-connector"></div></div>
+        <div class="pipe-body">
+          <h4>Preview UI</h4>
+          <p>SceneCanvasView reads timeline and colors studs via slider. Trainer can see fire spreading at each interval.</p>
+          <span class="tag ok">✓ Works — visual preview</span>
+        </div>
+      </div>
+
+      <div class="pipe-step">
+        <div class="pipe-line"><div class="pipe-dot fail"></div><div class="pipe-connector"></div></div>
+        <div class="pipe-body">
+          <h4>Compile → Live Session Hazards</h4>
+          <p>Environmental timeline is <strong>not consumed</strong> by compile step. Hazard <code>deterioration_timeline</code> receives enrichment <code>events</code> array — <strong>format mismatch</strong> with what the session deterioration service expects (<code>at_10min/at_20min/at_30min</code>).</p>
+          <span class="tag fail">✗ BROKEN — format mismatch</span>
+        </div>
+      </div>
+
+      <div class="pipe-step">
+        <div class="pipe-line"><div class="pipe-dot fail"></div></div>
+        <div class="pipe-body">
+          <h4>Live Session: Fire Spread → Stud Hazard Pins</h4>
+          <p><code>hazardDeteriorationService</code> spawns child pins via <code>placeInsideZoneType('hot')</code> — random placement within the hot zone. <strong>No stud grid awareness, no fire-spread data consulted.</strong></p>
+          <span class="tag fail">✗ MISSING — studs not involved</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ FIRE SIM DEMO ════════════════ -->
+<section id="fire-sim" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-label"><span class="dot"></span> Interactive Demo</div>
+    <h2>What Fire Spread Should Look Like on Studs</h2>
+    <p style="color:var(--text2);margin-bottom:1rem">Drag the slider to see how fire propagates stud-by-stud over time. <strong>Left:</strong> what the pre-compile sim computes. <strong>Right:</strong> what the live session actually does.</p>
+
+    <div class="fire-demo">
+      <div class="fire-controls">
+        <label>Elapsed Time</label>
+        <input type="range" id="timeSlider" min="0" max="30" value="0" step="1">
+        <div class="time-display" id="timeDisplay">T+0 min</div>
+      </div>
+
+      <div class="grid-wrapper">
+        <div class="grid-section">
+          <h4><span class="indicator" style="background:var(--ok)"></span> Pre-Compile Simulation (Stud-Based)</h4>
+          <div class="stud-grid" id="gridLeft" style="grid-template-columns:repeat(18,1fr)"></div>
+        </div>
+        <div class="grid-section">
+          <h4><span class="indicator" style="background:var(--warn)"></span> Live Session Deterioration (Zone-Based)</h4>
+          <div class="stud-grid" id="gridRight" style="grid-template-columns:repeat(18,1fr)"></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--surface2)"></div> Unaffected</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#78350f"></div> Heating</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#dc2626"></div> Burning</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#1c1917"></div> Burnt Out</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#374151"></div> Wall</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--accent);border-radius:50%"></div> Spawned Hazard Pin</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ GAP ANALYSIS ════════════════ -->
+<section id="gaps">
+  <div class="container">
+    <div class="section-label"><span class="dot"></span> Gap Analysis</div>
+    <h2>Complete Status Matrix</h2>
+    <p style="color:var(--text2);margin-bottom:1.5rem">Every link in the chain from hazard design to live stud-level gameplay, rated by status.</p>
+
+    <div style="overflow-x:auto">
+      <table class="gap-table">
+        <thead>
+          <tr>
+            <th>Link in Chain</th>
+            <th>Status</th>
+            <th>Detail</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Scene hazards → stud snap at design time</td>
+            <td><span class="status-chip partial">Partial</span></td>
+            <td><code>studId</code> captured in scene editor, but only lat/lng survives into DB</td>
+          </tr>
+          <tr>
+            <td>Hazard enrichment → AI spread events</td>
+            <td><span class="status-chip works">Works</span></td>
+            <td>AI generates <code>HazardEvent[]</code> with spread types, radii, timing</td>
+          </tr>
+          <tr>
+            <td>AI events → physics fire spread on studs</td>
+            <td><span class="status-chip works">Works</span></td>
+            <td><code>SpatialEffectsEngine</code> propagates fire stud-by-stud</td>
+          </tr>
+          <tr>
+            <td>Spread results → time-indexed stud snapshots</td>
+            <td><span class="status-chip works">Works</span></td>
+            <td><code>EnvironmentalSnapshot[]</code> stored per stud at 10+ intervals</td>
+          </tr>
+          <tr>
+            <td>Snapshots → trainer preview UI</td>
+            <td><span class="status-chip works">Works</span></td>
+            <td><code>SceneCanvasView</code> timeline slider colors studs</td>
+          </tr>
+          <tr>
+            <td>Trainer events → session <code>deterioration_timeline</code></td>
+            <td><span class="status-chip bug">Format Bug</span></td>
+            <td>Events array put into column expecting <code>at_10min/at_20min/at_30min</code> object</td>
+          </tr>
+          <tr>
+            <td>Snapshots → live session hazard pins over time</td>
+            <td><span class="status-chip missing">Missing</span></td>
+            <td>No code reads <code>environmentalTimeline</code> to create gameplay pins</td>
+          </tr>
+          <tr>
+            <td>Session deterioration → stud-based spread</td>
+            <td><span class="status-chip missing">Missing</span></td>
+            <td>Uses <code>placeInsideZoneType('hot')</code> — random zone placement</td>
+          </tr>
+          <tr>
+            <td>Environmental sim → inject scheduler</td>
+            <td><span class="status-chip missing">Missing</span></td>
+            <td>Scheduler doesn't import or reference sim engine at all</td>
+          </tr>
+          <tr>
+            <td><code>stud_id</code> column on <code>scenario_hazards</code></td>
+            <td><span class="status-chip missing">Missing</span></td>
+            <td>No DB column — stud association is implicit via snapped coordinates only</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ════════════════ CODE REFS ════════════════ -->
+<section id="code" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-label"><span class="dot"></span> Code References</div>
+    <h2>Key Files &amp; Code Paths</h2>
+    <p style="color:var(--text2);margin-bottom:1.5rem">Expandable references to the exact code involved in each system.</p>
+
+    <details>
+      <summary>🔥 Fire Simulation Engine — <code>fireSimulation.ts</code></summary>
+      <div class="inner">
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:.8rem">The core stud-by-stud fire propagation engine. Each burning stud heats neighbors within 8m, walls block/delay spread based on material resistance.</p>
+        <div class="code-block">
+<span class="kw">step</span>(dt: <span class="type">number</span>, walls: <span class="type">InteriorWall</span>[], hazards: <span class="type">HazardZone</span>[]) {
+  <span class="kw">for</span> (<span class="kw">const</span> [id, fState] <span class="kw">of</span> <span class="kw">this</span>.states) {
+    <span class="kw">if</span> (fState.state === <span class="str">'burning'</span>) {
+      <span class="kw">const</span> neighbors = <span class="kw">this</span>.neighborCache.<span class="fn">get</span>(id);
+      <span class="kw">for</span> (<span class="kw">const</span> nId <span class="kw">of</span> neighbors) {
+        <span class="cmt">// Check wall blocking, then heat neighbor</span>
+        <span class="kw">if</span> (!blocked) toHeat.<span class="fn">push</span>({ id: nId, accel });
+      }
+    }
+  }
+  <span class="cmt">// Heated studs: none → heating → burning → burnt_out</span>
+}
+        </div>
+        <p style="color:var(--text3);font-size:.78rem">File: <code>frontend/src/lib/rts/fireSimulation.ts</code> lines 179–249</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>⏱ Hazard Deterioration Service — <code>hazardDeteriorationService.ts</code></summary>
+      <div class="inner">
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:.8rem">Runs every scheduler tick. Checks elapsed time against 10/20/30 min stages. Reveals pre-generated child pins or spawns new ones in the hot zone.</p>
+        <div class="code-block">
+<span class="cmt">// Reads text-based timeline expecting this format:</span>
+<span class="kw">const</span> timeline = hazard.deterioration_timeline;
+<span class="cmt">// { at_10min: "description...", at_20min: "...", at_30min: "..." }</span>
+
+<span class="cmt">// Spawns new hazards WITHOUT stud awareness:</span>
+<span class="kw">const</span> hazCoord = <span class="kw">await</span> <span class="fn">placeInsideZoneType</span>(
+  sessionId, <span class="str">'hot'</span>, hazRef, <span class="num">55</span>, <span class="kw">undefined</span>, scenarioId
+);
+<span class="cmt">// → Random point inside hot zone polygon</span>
+        </div>
+        <p style="color:var(--text3);font-size:.78rem">File: <code>server/services/hazardDeteriorationService.ts</code> — 0 references to buildingStudService</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>🐛 Format Mismatch — <code>warroomAiService.ts:7905</code></summary>
+      <div class="inner">
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:.8rem">Trainer-designed scene hazards get enrichment <code>events</code> (array of spread events) assigned to <code>deterioration_timeline</code> — but the runtime service expects an object with <code>at_10min/at_20min/at_30min</code> keys.</p>
+        <div class="code-block">
+<span class="cmt">// What gets stored (enrichment events format):</span>
+deterioration_timeline: matchedEnrichment?.events
+<span class="cmt">// → [{ triggerTimeSec: 0, spreadType: "fire", spreadRadius: 5, ... }]</span>
+
+<span class="cmt">// What hazardDeteriorationService.ts expects:</span>
+<span class="cmt">// → { at_10min: "string", at_20min: "string", at_30min: "string" }</span>
+<span class="kw">if</span> (timeline.at_30min) { ... } <span class="cmt">// ← never matches events array</span>
+        </div>
+        <p style="color:var(--text3);font-size:.78rem">Consequence: session deterioration silently does nothing for trainer scene hazards</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>📐 Building Stud Service — <code>buildingStudService.ts</code></summary>
+      <div class="inner">
+        <p style="color:var(--text2);font-size:.85rem;margin-bottom:.8rem">Generates uniform 3m grid points (studs) inside building footprints, classifies them by blast band and operational zone, and provides snap-to-stud logic for pin placement.</p>
+        <div class="code-block">
+<span class="kw">interface</span> <span class="type">BuildingStud</span> {
+  id: <span class="type">string</span>;
+  lat: <span class="type">number</span>;  lng: <span class="type">number</span>;
+  floor: <span class="type">string</span>;
+  studType: <span class="str">'building'</span> | <span class="str">'outdoor'</span> | <span class="str">'street'</span>;
+  blastBand?: <span class="str">'kill'</span> | <span class="str">'critical'</span> | <span class="str">'serious'</span> | <span class="str">'minor'</span>;
+  operationalZone?: <span class="str">'hot'</span> | <span class="str">'warm'</span> | <span class="str">'cold'</span>;
+  distFromIncidentM?: <span class="type">number</span>;
+  <span class="cmt">// Note: no hazardId, no fireState — studs are spatial only</span>
+}
+        </div>
+        <p style="color:var(--text3);font-size:.78rem">File: <code>server/services/buildingStudService.ts</code> lines 28–43</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>📁 All Key Files</summary>
+      <div class="inner">
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:.3rem .8rem;font-size:.82rem">
+          <span style="color:var(--text3)">War Room wizard</span><code>frontend/src/pages/WarRoom.tsx</code>
+          <span style="color:var(--text3)">Scene editor</span><code>frontend/src/components/WarRoom/SceneSetup.tsx</code>
+          <span style="color:var(--text3)">Stud generation</span><code>server/services/buildingStudService.ts</code>
+          <span style="color:var(--text3)">Fire simulation</span><code>frontend/src/lib/rts/fireSimulation.ts</code>
+          <span style="color:var(--text3)">Spatial effects engine</span><code>frontend/src/lib/rts/spatialEffects.ts</code>
+          <span style="color:var(--text3)">Backend env sim</span><code>server/services/environmentalSimService.ts</code>
+          <span style="color:var(--text3)">Scene enrichment</span><code>server/services/rtsSceneEnrichmentService.ts</code>
+          <span style="color:var(--text3)">Session deterioration</span><code>server/services/hazardDeteriorationService.ts</code>
+          <span style="color:var(--text3)">People deterioration</span><code>server/services/peopleDeteriorationService.ts</code>
+          <span style="color:var(--text3)">Inject scheduler</span><code>server/services/injectSchedulerService.ts</code>
+          <span style="color:var(--text3)">AI generation</span><code>server/services/warroomAiService.ts</code>
+          <span style="color:var(--text3)">DB persistence</span><code>server/services/warroomPersistenceService.ts</code>
+          <span style="color:var(--text3)">Hazard preview UI</span><code>frontend/src/components/COP/SceneCanvasView.tsx</code>
+          <span style="color:var(--text3)">Hazard schema</span><code>migrations/125, 129, 139, 159</code>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ════════════════ FOOTER ════════════════ -->
+<footer>
+  <p>Black Swan Simulations — Architecture Analysis &middot; Generated Jun 2026</p>
+</footer>
+
+<!-- ════════════════ SCRIPTS ════════════════ -->
+<script>
+(() => {
+  // ── Nav hide on scroll ──────────────────────────────
+  let lastY = 0;
+  const nav = document.getElementById('nav');
+  window.addEventListener('scroll', () => {
+    const y = window.scrollY;
+    nav.classList.toggle('hidden', y > 120 && y > lastY);
+    lastY = y;
+  });
+
+  // ── Intersection observer for pipeline animation ────
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting) e.target.style.animationPlayState = 'running';
+    });
+  }, { threshold: 0.2 });
+  document.querySelectorAll('.pipe-step').forEach(el => {
+    el.style.animationPlayState = 'paused';
+    obs.observe(el);
+  });
+
+  // ── Fire grid simulation ────────────────────────────
+  const COLS = 18, ROWS = 14;
+  const walls = new Set();
+  const fireOrigin = { r: 6, c: 4 };
+
+  // Walls (vertical wall with gap)
+  for (let r = 2; r < 12; r++) {
+    if (r !== 6 && r !== 7) walls.add(`${r}-8`);
+  }
+  // Horizontal wall
+  for (let c = 8; c < 15; c++) {
+    if (c !== 11) walls.add(`2-${c}`);
+  }
+
+  function dist(r1, c1, r2, c2) { return Math.sqrt((r1-r2)**2 + (c1-c2)**2); }
+
+  function getPhysicsStates(t) {
+    const states = new Map();
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const key = `${r}-${c}`;
+        if (walls.has(key)) { states.set(key, 'wall'); continue; }
+
+        const d = dist(r, c, fireOrigin.r, fireOrigin.c);
+        const wallBetween = isWallBlocking(fireOrigin.r, fireOrigin.c, r, c);
+        const effectiveD = wallBetween ? d + 6 : d;
+        const spreadTime = effectiveD * 1.1;
+
+        if (t < spreadTime) {
+          states.set(key, 'none');
+        } else if (t < spreadTime + 2) {
+          states.set(key, 'heating');
+        } else if (t < spreadTime + 12) {
+          states.set(key, 'burning');
+        } else {
+          states.set(key, 'burnt');
+        }
+      }
+    }
+    return states;
+  }
+
+  function isWallBlocking(r1, c1, r2, c2) {
+    const steps = Math.max(Math.abs(r2-r1), Math.abs(c2-c1));
+    for (let i = 1; i < steps; i++) {
+      const mr = Math.round(r1 + (r2-r1) * i / steps);
+      const mc = Math.round(c1 + (c2-c1) * i / steps);
+      if (walls.has(`${mr}-${mc}`)) return true;
+    }
+    return false;
+  }
+
+  function getZoneStates(t) {
+    const states = new Map();
+    const spawnTimes = [10, 20, 30];
+    const spawnPositions = [
+      { r: 4, c: 6 },
+      { r: 8, c: 3 },
+      { r: 5, c: 11 },
+    ];
+
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const key = `${r}-${c}`;
+        if (walls.has(key)) { states.set(key, 'wall'); continue; }
+
+        const d = dist(r, c, fireOrigin.r, fireOrigin.c);
+        if (d <= 1.5 && t > 0) {
+          states.set(key, t > 15 ? 'burnt' : 'burning');
+        } else {
+          let isPin = false;
+          for (let i = 0; i < spawnTimes.length; i++) {
+            if (t >= spawnTimes[i]) {
+              const sp = spawnPositions[i];
+              if (r === sp.r && c === sp.c) { isPin = true; break; }
+            }
+          }
+          states.set(key, isPin ? 'hazard-pin' : 'none');
+        }
+      }
+    }
+    return states;
+  }
+
+  function buildGrid(container, states) {
+    container.innerHTML = '';
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const key = `${r}-${c}`;
+        const div = document.createElement('div');
+        const st = states.get(key) || 'none';
+        div.className = `stud ${st === 'wall' ? 'wall' : st === 'hazard-pin' ? 'hazard-pin' : st + '-state'}`;
+        if (r === fireOrigin.r && c === fireOrigin.c && st !== 'wall') {
+          div.style.outline = '2px solid var(--fire)';
+          div.title = 'Fire Origin';
+        }
+        if (st === 'hazard-pin') div.title = 'Spawned hazard pin (random zone placement)';
+        container.appendChild(div);
+      }
+    }
+  }
+
+  const slider = document.getElementById('timeSlider');
+  const display = document.getElementById('timeDisplay');
+  const gridL = document.getElementById('gridLeft');
+  const gridR = document.getElementById('gridRight');
+
+  function update() {
+    const t = +slider.value;
+    display.textContent = `T+${t} min`;
+    buildGrid(gridL, getPhysicsStates(t));
+    buildGrid(gridR, getZoneStates(t));
+  }
+
+  slider.addEventListener('input', update);
+  update();
+
+  // Auto-play on scroll into view
+  const fireObs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting && +slider.value === 0) {
+        let v = 0;
+        const iv = setInterval(() => {
+          v++;
+          slider.value = v;
+          update();
+          if (v >= 30) clearInterval(iv);
+        }, 200);
+        fireObs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.5 });
+  fireObs.observe(document.querySelector('.fire-demo'));
+})();
+</script>
+</body>
+</html>

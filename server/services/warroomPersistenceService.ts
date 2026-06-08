@@ -335,6 +335,7 @@ export async function persistWarroomScenario(
           debris_type: h.debris_type ?? null,
           zones: h.zones ?? [],
           spawn_condition: (h as Record<string, unknown>)._spawn_condition ?? null,
+          stud_id: ((h as Record<string, unknown>)._stud_id as string) ?? null,
         };
       });
 
