@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Trainer Preview — Deterioration Pin Visibility Plan</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0e17;--surface:#111827;--surface2:#1a2235;--surface3:#232d42;
+    --accent:#3b82f6;--accent2:#8b5cf6;--fire:#f97316;--fire2:#ef4444;
+    --ok:#10b981;--warn:#f59e0b;--fail:#ef4444;--cyan:#06b6d4;
+    --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+    --border:#1e293b;--glow:rgba(59,130,246,.12);
+    --radius:14px;--radius-sm:8px;
+  }
+  html{scroll-behavior:smooth}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+  ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
+  code{font-family:'Cascadia Code','Fira Code',monospace;font-size:.82em;background:var(--surface2);padding:.15em .4em;border-radius:4px;color:#93c5fd}
+  a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+
+  nav{position:fixed;top:0;left:0;right:0;z-index:100;background:rgba(10,14,23,.88);backdrop-filter:blur(14px);border-bottom:1px solid var(--border);padding:.55rem 1.5rem;display:flex;align-items:center;gap:1rem;font-size:.82rem}
+  nav .brand{font-weight:800;letter-spacing:-.02em;white-space:nowrap;background:linear-gradient(135deg,var(--cyan),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  nav .spacer{flex:1}
+  nav a{color:var(--text2);padding:.3rem .55rem;border-radius:5px;transition:all .2s;white-space:nowrap}
+  nav a:hover{color:var(--text);background:var(--surface2);text-decoration:none}
+
+  .hero{min-height:60vh;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;padding:6rem 2rem 3rem;position:relative;overflow:hidden}
+  .hero::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(6,182,212,.06) 0%,transparent 60%);pointer-events:none}
+  .hero-pill{display:inline-flex;align-items:center;gap:.45rem;padding:.35rem .9rem;border-radius:20px;background:rgba(6,182,212,.08);border:1px solid rgba(6,182,212,.2);color:var(--cyan);font-size:.75rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:1.4rem;animation:fadeDown .7s ease}
+  .hero h1{font-size:clamp(1.8rem,4vw,3rem);font-weight:800;letter-spacing:-.03em;line-height:1.15;max-width:780px;animation:fadeDown .7s ease .1s both}
+  .hero h1 .grad{background:linear-gradient(135deg,var(--cyan),var(--accent));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .hero .sub{font-size:1rem;color:var(--text2);max-width:600px;margin-top:1rem;animation:fadeDown .7s ease .2s both}
+
+  .container{max-width:1060px;margin:0 auto;padding:0 1.5rem}
+  section{padding:4rem 0}
+  .section-tag{display:inline-flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.7rem}
+  .section-tag .dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s ease infinite}
+  h2{font-size:clamp(1.4rem,2.5vw,2rem);font-weight:700;letter-spacing:-.02em;margin-bottom:.6rem}
+  p.desc{color:var(--text2);max-width:680px;margin-bottom:1.8rem;font-size:.92rem}
+
+  .code{background:#0d1117;border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem 1.2rem;font-family:'Cascadia Code','Fira Code',monospace;font-size:.76rem;line-height:1.75;overflow-x:auto;margin:.8rem 0;color:#c9d1d9;position:relative;white-space:pre}
+  .code .lang{position:absolute;top:.4rem;right:.6rem;font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+  .kw{color:#ff7b72}.fn{color:#d2a8ff}.str{color:#a5d6ff}.cmt{color:#8b949e;font-style:italic}.type{color:#79c0ff}.num{color:#f0883e}.add{color:#3fb950;background:rgba(63,185,80,.08)}.del{color:#f85149;background:rgba(248,81,73,.08);text-decoration:line-through}
+
+  .gap-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0;margin-bottom:1.4rem;overflow:hidden;transition:border-color .3s,box-shadow .3s}
+  .gap-card:hover{border-color:rgba(6,182,212,.25);box-shadow:0 0 30px rgba(6,182,212,.08)}
+  .gap-header{display:flex;align-items:center;gap:1rem;padding:1.2rem 1.6rem;border-bottom:1px solid var(--border);cursor:pointer;user-select:none}
+  .gap-num{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:.85rem;font-weight:800;flex-shrink:0}
+  .gap-num.g1{background:rgba(6,182,212,.12);color:var(--cyan)}
+  .gap-num.g2{background:rgba(249,115,22,.12);color:var(--fire)}
+  .gap-num.g3{background:rgba(139,92,246,.12);color:var(--accent2)}
+  .gap-header .title{font-weight:700;font-size:1rem;flex:1}
+  .gap-header .file-tag{font-size:.7rem;padding:.2rem .55rem;border-radius:4px;background:var(--surface2);color:var(--text3);font-family:'Cascadia Code','Fira Code',monospace;white-space:nowrap}
+  .gap-header .effort{font-size:.68rem;padding:.2rem .6rem;border-radius:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .effort.small{background:rgba(16,185,129,.1);color:var(--ok)}
+  .effort.medium{background:rgba(245,158,11,.1);color:var(--warn)}
+  .gap-header .chevron{transition:transform .25s;color:var(--text3);font-size:.8rem}
+  .gap-card.open .chevron{transform:rotate(90deg)}
+  .gap-body{padding:0 1.6rem 1.6rem;display:none}
+  .gap-card.open .gap-body{display:block}
+
+  .what-why{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:.8rem 0}
+  .what-why > div{background:var(--surface2);border-radius:var(--radius-sm);padding:1rem}
+  .what-why .label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.4rem}
+  .what-why .label.now{color:var(--fail)}.what-why .label.after{color:var(--ok)}
+
+  .sim-demo{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;margin:2rem 0}
+  .sim-toolbar{display:flex;align-items:center;gap:.8rem;padding:.5rem .8rem;background:var(--surface2);border-radius:var(--radius-sm);margin-bottom:1rem;flex-wrap:wrap}
+  .sim-toolbar .btn{font-size:.7rem;font-weight:600;padding:.3rem .6rem;border-radius:4px;border:1px solid var(--border);cursor:pointer;transition:all .2s;background:transparent;color:var(--text2)}
+  .sim-toolbar .btn:hover{border-color:var(--cyan);color:var(--cyan)}
+  .sim-toolbar .btn.active{border-color:var(--fire2);background:rgba(239,68,68,.1);color:#fca5a5}
+  .sim-toolbar .time-label{font-size:.75rem;font-weight:700;color:var(--fire);font-variant-numeric:tabular-nums;min-width:60px}
+  .sim-toolbar input[type=range]{flex:1;min-width:120px;accent-color:var(--fire)}
+  .sim-toolbar .time-btns{display:flex;gap:2px}
+  .sim-toolbar .time-btn{font-size:.6rem;padding:.2rem .4rem;border-radius:3px;background:transparent;border:none;cursor:pointer;color:var(--text3);transition:all .15s}
+  .sim-toolbar .time-btn.active{background:rgba(239,68,68,.15);color:#fca5a5}
+
+  .sim-grid-wrap{display:flex;gap:1.5rem;flex-wrap:wrap}
+  .sim-panel{flex:1;min-width:280px}
+  .sim-panel h4{font-size:.82rem;font-weight:600;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem}
+  .sim-grid{display:grid;gap:2px;aspect-ratio:1.3}
+  .stud{border-radius:2px;transition:all .3s;min-height:0}
+  .stud.empty{background:var(--surface2)}
+  .stud.wall{background:#374151}
+  .stud.heating{background:#78350f;box-shadow:0 0 4px rgba(249,115,22,.3)}
+  .stud.burning{background:#dc2626;box-shadow:0 0 8px rgba(239,68,68,.5)}
+  .stud.burnt{background:#1c1917}
+  .stud.pin-active{background:var(--fire) !important;box-shadow:0 0 8px rgba(249,115,22,.6) !important;border-radius:50%;animation:pulse-pin 1.5s ease infinite}
+  .stud.pin-ghost{background:rgba(249,115,22,.2) !important;border:1px dashed rgba(249,115,22,.5);border-radius:50%}
+  .stud.pin-hidden{background:var(--surface2)}
+  .stud.stud-highlight{outline:2px solid var(--cyan);outline-offset:-1px;border-radius:1px}
+
+  .legend{display:flex;gap:.8rem;margin-top:.8rem;flex-wrap:wrap}
+  .legend-item{display:flex;align-items:center;gap:.3rem;font-size:.7rem;color:var(--text2)}
+  .legend-swatch{width:12px;height:12px;border-radius:2px;flex-shrink:0}
+
+  .file-table{width:100%;border-collapse:separate;border-spacing:0;font-size:.83rem;margin:1.5rem 0}
+  .file-table th{text-align:left;padding:.6rem .8rem;background:var(--surface2);color:var(--text2);font-weight:600;font-size:.7rem;letter-spacing:.05em;text-transform:uppercase}
+  .file-table th:first-child{border-radius:var(--radius-sm) 0 0 0}.file-table th:last-child{border-radius:0 var(--radius-sm) 0 0}
+  .file-table td{padding:.6rem .8rem;border-bottom:1px solid var(--border);vertical-align:top}
+  .file-table tr:last-child td{border-bottom:none}
+  .file-table tr:hover td{background:rgba(6,182,212,.03)}
+
+  .chip{display:inline-flex;align-items:center;gap:.3rem;padding:.18rem .55rem;border-radius:4px;font-size:.68rem;font-weight:700;white-space:nowrap}
+  .chip::before{content:'';width:5px;height:5px;border-radius:50%;background:currentColor}
+  .chip.edit{background:rgba(6,182,212,.1);color:var(--cyan)}
+  .chip.new{background:rgba(16,185,129,.1);color:var(--ok)}
+
+  footer{text-align:center;padding:3rem 1.5rem;color:var(--text3);font-size:.78rem;border-top:1px solid var(--border)}
+
+  @keyframes fadeDown{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:none}}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  @keyframes pulse-pin{0%,100%{transform:scale(1);box-shadow:0 0 6px rgba(249,115,22,.4)}50%{transform:scale(1.2);box-shadow:0 0 14px rgba(249,115,22,.7)}}
+  @media(max-width:640px){nav a:not(.brand){display:none}.what-why{grid-template-columns:1fr}.sim-grid-wrap{flex-direction:column}}
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="brand">Trainer Preview Enhancement</span>
+  <span class="spacer"></span>
+  <a href="#problem">Problem</a>
+  <a href="#demo">Demo</a>
+  <a href="#gaps">Changes</a>
+  <a href="#files">Files</a>
+</nav>
+
+<!-- ═══════ HERO ═══════ -->
+<section class="hero">
+  <div class="hero-pill">
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+    Frontend Enhancement
+  </div>
+  <h1>Let Trainers Preview <span class="grad">Deterioration Over Time</span></h1>
+  <p class="sub">The timeline slider already exists, but it only colors studs. Three targeted changes will make spawn pins appear/disappear as the trainer scrubs through time.</p>
+</section>
+
+<!-- ═══════ PROBLEM ═══════ -->
+<section id="problem" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-tag" style="color:var(--fire)"><span class="dot"></span> The Problem</div>
+    <h2>Everything Is Shown at Once</h2>
+    <p class="desc">Right now, the SceneCanvasView renders all hazard pins simultaneously regardless of status or timing. The timeline slider controls fire-spread stud coloring but doesn't affect pin visibility. A trainer can't tell which hazards appear at T+5 vs T+20.</p>
+
+    <div class="what-why">
+      <div>
+        <div class="label now">Current Behavior</div>
+        <ul style="list-style:none;font-size:.85rem;color:var(--text2)">
+          <li style="padding:.25rem 0">-- All 11 hazard pins visible at every time step</li>
+          <li style="padding:.25rem 0">-- Delayed spawn pins (fire spread) look identical to initial hazards</li>
+          <li style="padding:.25rem 0">-- Timeline slider only changes stud grid coloring</li>
+          <li style="padding:.25rem 0">-- Hazard info popup has no deterioration timeline</li>
+          <li style="padding:.25rem 0">-- No visual link between fire-spread studs and spawn pins</li>
+        </ul>
+      </div>
+      <div>
+        <div class="label after">Target Behavior</div>
+        <ul style="list-style:none;font-size:.85rem;color:var(--text2)">
+          <li style="padding:.25rem 0">-- Only pins with <code>appears_at_minutes &le; slider time</code> are visible</li>
+          <li style="padding:.25rem 0">-- Delayed pins appear as ghost/dashed before their time, solid when reached</li>
+          <li style="padding:.25rem 0">-- Slider controls both stud coloring AND pin visibility</li>
+          <li style="padding:.25rem 0">-- Clicking a pin shows its deterioration timeline in the info panel</li>
+          <li style="padding:.25rem 0">-- The stud where a spawn pin lands gets a cyan highlight</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ INTERACTIVE DEMO ═══════ -->
+<section id="demo">
+  <div class="container">
+    <div class="section-tag" style="color:var(--cyan)"><span class="dot"></span> Interactive Demo</div>
+    <h2>Before vs After: Timeline-Aware Pins</h2>
+    <p class="desc">Drag the slider to see how pins should behave at each time interval. Left shows current behavior (everything visible), right shows the target.</p>
+
+    <div class="sim-demo">
+      <div class="sim-toolbar">
+        <div class="btn active" id="btnHazards">Hazard Timeline</div>
+        <span class="time-label" id="timeLabel">T+0 min</span>
+        <input type="range" id="simSlider" min="0" max="30" value="0" step="1">
+        <div class="time-btns" id="timeBtns"></div>
+      </div>
+
+      <div class="sim-grid-wrap">
+        <div class="sim-panel">
+          <h4><span style="width:8px;height:8px;border-radius:2px;background:var(--fail)"></span> Current (all pins always visible)</h4>
+          <div class="sim-grid" id="gridBefore" style="grid-template-columns:repeat(16,1fr)"></div>
+        </div>
+        <div class="sim-panel">
+          <h4><span style="width:8px;height:8px;border-radius:2px;background:var(--ok)"></span> After (timeline-aware pins)</h4>
+          <div class="sim-grid" id="gridAfter" style="grid-template-columns:repeat(16,1fr)"></div>
+        </div>
+      </div>
+
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--surface2)"></div> Unaffected</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#78350f"></div> Heating</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#dc2626"></div> Burning</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#1c1917"></div> Burnt</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--fire);border-radius:50%"></div> Active Pin</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(249,115,22,.2);border:1px dashed rgba(249,115,22,.5);border-radius:50%"></div> Ghost Pin (future)</div>
+        <div class="legend-item"><div class="legend-swatch" style="outline:2px solid var(--cyan);outline-offset:-1px"></div> Stud Highlight</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ GAPS / CHANGES ═══════ -->
+<section id="gaps" style="background:var(--surface)">
+  <div class="container">
+    <div class="section-tag" style="color:var(--ok)"><span class="dot"></span> Required Changes</div>
+    <h2>Three Targeted Edits</h2>
+    <p class="desc">All changes are in <code>SceneCanvasView.tsx</code>. No backend work needed -- the data already exists in the DB.</p>
+
+    <!-- Gap 1 -->
+    <div class="gap-card open" data-gap>
+      <div class="gap-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="gap-num g1">1</div>
+        <div class="title">Filter Hazard Pins by Timeline Slider</div>
+        <div class="file-tag">SceneCanvasView.tsx</div>
+        <div class="effort small">Small</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="gap-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          The DB hazard data is already fetched (line ~160, <code>getScenarioHazards</code>). It includes <code>status</code>, <code>appears_at_minutes</code>, and <code>spawn_condition</code>. When the hazard timeline is active, filter the Leaflet markers so only pins whose <code>appears_at_minutes</code> has been reached are shown as solid markers.
+        </p>
+
+        <h3 style="font-size:.95rem">Where the DB hazards are loaded</h3>
+        <div class="code"><span class="lang">tsx</span><span class="cmt">// SceneCanvasView.tsx line ~156-160</span>
+<span class="kw">const</span> [sceneRes, casualtiesRes, locationsRes, <span class="fn">hazardsRes</span>, studsRes] = <span class="kw">await</span> Promise.all([
+  api.scenarios.<span class="fn">getSceneConfig</span>(scenarioId),
+  api.scenarios.<span class="fn">getScenarioCasualties</span>(scenarioId),
+  api.scenarios.<span class="fn">getScenarioLocations</span>(scenarioId),
+  api.scenarios.<span class="fn">getScenarioHazards</span>(scenarioId),  <span class="cmt">// includes delayed spawn pins</span>
+  api.scenarios.<span class="fn">getBuildingStuds</span>(scenarioId),
+]);</div>
+
+        <h3 style="font-size:.95rem">What to add: compute current slider time + filtered hazards</h3>
+        <div class="code"><span class="lang">tsx</span><span class="cmt">// Add near the other useMemo hooks (~line 379)</span>
+<span class="kw">const</span> currentTimelineMinutes = showHazardTimeline
+  ? (envTimeline[timelineIndex]?.at_minutes ?? <span class="num">0</span>)
+  : <span class="num">Infinity</span>;  <span class="cmt">// when slider off, show all</span>
+
+<span class="cmt">// Partition DB hazards into visible vs future</span>
+<span class="kw">const</span> { visibleHazardPins, futureHazardPins } = useMemo(() => {
+  <span class="kw">const</span> all = dbHazards;  <span class="cmt">// from hazardsRes</span>
+  <span class="kw">const</span> visible = all.<span class="fn">filter</span>(h =>
+    h.appears_at_minutes &lt;= currentTimelineMinutes
+  );
+  <span class="kw">const</span> future = all.<span class="fn">filter</span>(h =>
+    h.appears_at_minutes > currentTimelineMinutes
+    && h.status === <span class="str">'delayed'</span>
+  );
+  <span class="kw">return</span> { visibleHazardPins: visible, futureHazardPins: future };
+}, [dbHazards, currentTimelineMinutes]);</div>
+
+        <h3 style="font-size:.95rem">What to change: marker rendering (~line 820+)</h3>
+        <p style="color:var(--text2);font-size:.85rem;margin:.5rem 0">Currently DB hazards are only used for incident zone extraction (line 275-292) -- they aren't rendered as individual Leaflet markers. The <code>HazardMarker</code> component from the COP exists but isn't used here. Two options:</p>
+        <div class="code"><span class="lang">tsx</span><span class="cmt">// Option A: Render visible pins as orange markers, future as ghost markers</span>
+{visibleHazardPins.<span class="fn">map</span>(h => (
+  &lt;<span class="type">Marker</span> key={h.id}
+    position={[h.location_lat, h.location_lng]}
+    icon={<span class="fn">hazardIcon</span>(<span class="str">'solid'</span>)}
+    eventHandlers={{ click: () => <span class="fn">setActiveDbHazard</span>(h) }}
+  /&gt;
+))}
+
+{showHazardTimeline && futureHazardPins.<span class="fn">map</span>(h => (
+  &lt;<span class="type">Marker</span> key={`ghost-${h.id}`}
+    position={[h.location_lat, h.location_lng]}
+    icon={<span class="fn">hazardIcon</span>(<span class="str">'ghost'</span>)}
+    opacity={<span class="num">0.3</span>}
+  /&gt;
+))}</div>
+      </div>
+    </div>
+
+    <!-- Gap 2 -->
+    <div class="gap-card" data-gap>
+      <div class="gap-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="gap-num g2">2</div>
+        <div class="title">Show Deterioration Info in Hazard Popup</div>
+        <div class="file-tag">SceneCanvasView.tsx</div>
+        <div class="effort small">Small</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="gap-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          The hazard detail panel (line ~1152) shows enrichment data (material, risk, description) for trainer-designed hazards, but <strong>not</strong> the <code>deterioration_timeline</code> from the DB. Add a section that renders the at_10min/at_20min/at_30min stages when available.
+        </p>
+
+        <h3 style="font-size:.95rem">Current hazard popup (line ~1152-1219)</h3>
+        <div class="code"><span class="lang">tsx</span><span class="cmt">// SceneCanvasView.tsx line ~1152 — existing info panel</span>
+{activeHazard && (() => {
+  <span class="kw">const</span> enriched = hazardEnrichmentMap.<span class="fn">get</span>(activeHazard.id);
+  <span class="kw">return</span> (
+    &lt;div className=<span class="str">"absolute top-4 left-4 bg-gray-900/95..."</span>&gt;
+      &lt;div&gt;Type: {activeHazard.hazardType}&lt;/div&gt;
+      &lt;div&gt;Radius: {activeHazard.radius}m&lt;/div&gt;
+      {enriched?.riskLevel && &lt;div&gt;Risk: ...&lt;/div&gt;}
+      {enriched?.generatedDescription && &lt;div&gt;...&lt;/div&gt;}
+      <span class="cmt">// ← deterioration_timeline goes here</span>
+    &lt;/div&gt;
+  );
+})()}</div>
+
+        <h3 style="font-size:.95rem">What to add: deterioration timeline section</h3>
+        <div class="code"><span class="lang">tsx</span><span class="cmt">// Add after the secondaryEffects section (~line 1219)</span>
+<span class="cmt">// For DB hazard pins (not just trainer scene hazards)</span>
+{activeDbHazard?.deterioration_timeline &&
+  Object.keys(activeDbHazard.deterioration_timeline).length > <span class="num">0</span> && (
+  &lt;div className=<span class="str">"border-t border-gray-800 pt-2 mt-2"</span>&gt;
+    &lt;div className=<span class="str">"text-[9px] text-red-400 uppercase font-bold mb-1"</span>&gt;
+      Deterioration Timeline
+    &lt;/div&gt;
+    {[<span class="str">'at_10min'</span>, <span class="str">'at_20min'</span>, <span class="str">'at_30min'</span>].<span class="fn">map</span>(key => {
+      <span class="kw">const</span> val = activeDbHazard.deterioration_timeline[key];
+      <span class="kw">if</span> (!val) <span class="kw">return null</span>;
+      <span class="kw">return</span> (
+        &lt;div key={key} className=<span class="str">"text-xs text-gray-400 mb-1"</span>&gt;
+          &lt;span className=<span class="str">"text-red-300 font-bold"</span>&gt;
+            {key.<span class="fn">replace</span>(<span class="str">'at_'</span>, <span class="str">'T+'</span>).<span class="fn">replace</span>(<span class="str">'min'</span>, <span class="str">' min'</span>)}:
+          &lt;/span&gt; {String(val)}
+        &lt;/div&gt;
+      );
+    })}
+    {activeDbHazard.deterioration_timeline.spawns_new_hazards && (
+      &lt;div className=<span class="str">"text-xs text-orange-400 mt-1"</span>&gt;
+        Spawns new hazards if unresolved
+      &lt;/div&gt;
+    )}
+  &lt;/div&gt;
+)}</div>
+      </div>
+    </div>
+
+    <!-- Gap 3 -->
+    <div class="gap-card" data-gap>
+      <div class="gap-header" onclick="this.parentElement.classList.toggle('open')">
+        <div class="gap-num g3">3</div>
+        <div class="title">Highlight Source Stud for Spawn Pins</div>
+        <div class="file-tag">SceneCanvasView.tsx</div>
+        <div class="effort medium">Medium</div>
+        <div class="chevron">&#9654;</div>
+      </div>
+      <div class="gap-body">
+        <p style="color:var(--text2);font-size:.88rem;margin-bottom:1rem">
+          When a fire-spread spawn pin becomes visible (its <code>appears_at_minutes</code> matches the slider), the specific stud it was spawned from should get a distinct visual highlight. The <code>stud_id</code> is available in <code>properties.spawned_from_stud</code> and now also as a top-level DB column.
+        </p>
+
+        <h3 style="font-size:.95rem">How stud effects are currently rendered (~line 506)</h3>
+        <div class="code"><span class="lang">tsx</span><span class="cmt">// SceneCanvasView.tsx line ~506-520</span>
+<span class="kw">if</span> (showHazardTimeline && envTimeline.length > <span class="num">0</span>) {
+  <span class="kw">const</span> snap = envTimeline[Math.min(timelineIndex, envTimeline.length - <span class="num">1</span>)];
+  <span class="kw">if</span> (snap?.stud_effects?.length > <span class="num">0</span>) {
+    activeEffects = <span class="kw">new</span> Map();
+    <span class="kw">for</span> (<span class="kw">const</span> e <span class="kw">of</span> snap.stud_effects) {
+      activeEffects.<span class="fn">set</span>(e.stud_id, {
+        fire: { state: e.fire_intensity >= <span class="num">1</span> ? <span class="str">'burning'</span> : ... },
+        <span class="cmt">// ...</span>
+      });
+    }
+  }
+}</div>
+
+        <h3 style="font-size:.95rem">What to add: collect highlighted stud IDs</h3>
+        <div class="code"><span class="lang">tsx</span><span class="cmt">// Compute set of stud IDs that should be highlighted at current time</span>
+<span class="kw">const</span> highlightedStudIds = useMemo(() => {
+  <span class="kw">if</span> (!showHazardTimeline) <span class="kw">return new</span> Set&lt;<span class="type">string</span>&gt;();
+  <span class="kw">const</span> ids = <span class="kw">new</span> Set&lt;<span class="type">string</span>&gt;();
+  <span class="kw">for</span> (<span class="kw">const</span> h <span class="kw">of</span> visibleHazardPins) {
+    <span class="kw">const</span> studId = h.stud_id || h.properties?.spawned_from_stud;
+    <span class="kw">if</span> (studId) ids.<span class="fn">add</span>(studId);
+  }
+  <span class="kw">return</span> ids;
+}, [visibleHazardPins, showHazardTimeline]);
+
+<span class="cmt">// Pass highlightedStudIds to renderRTS() alongside activeEffects</span>
+<span class="cmt">// In the renderer, draw a cyan outline on studs in the set</span></div>
+
+        <h3 style="font-size:.95rem">Renderer change (renderer.ts drawStudGrid)</h3>
+        <div class="code"><span class="lang">ts</span><span class="cmt">// In drawStudGrid, after drawing the fire effect color:</span>
+<span class="kw">if</span> (highlightedStudIds?.has(stud.id)) {
+  ctx.strokeStyle = <span class="str">'#06b6d4'</span>;  <span class="cmt">// cyan</span>
+  ctx.lineWidth = <span class="num">2</span>;
+  ctx.<span class="fn">strokeRect</span>(sx - half, sy - half, size, size);
+}</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ FILES SUMMARY ═══════ -->
+<section id="files">
+  <div class="container">
+    <div class="section-tag" style="color:var(--accent2)"><span class="dot"></span> Files Summary</div>
+    <h2>What Changes Where</h2>
+
+    <table class="file-table">
+      <thead>
+        <tr><th>File</th><th>Type</th><th>Change</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>frontend/src/components/COP/SceneCanvasView.tsx</code></td>
+          <td><span class="chip edit">Edit</span></td>
+          <td>
+            <strong>Gap 1:</strong> Add <code>currentTimelineMinutes</code> + partition DB hazards into visible/future, render as Leaflet markers with solid vs ghost styling<br>
+            <strong>Gap 2:</strong> Add deterioration_timeline section to hazard info popup<br>
+            <strong>Gap 3:</strong> Compute <code>highlightedStudIds</code> set and pass to render loop
+          </td>
+        </tr>
+        <tr>
+          <td><code>frontend/src/lib/rts/renderer.ts</code></td>
+          <td><span class="chip edit">Edit</span></td>
+          <td><strong>Gap 3:</strong> Accept <code>highlightedStudIds</code> parameter in <code>renderRTS</code> / <code>drawStudGrid</code>, draw cyan outline on matching studs</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem 1.4rem;margin-top:1rem">
+      <h3 style="color:var(--text2);font-size:.88rem;margin-bottom:.5rem;display:flex;align-items:center;gap:.4rem">No backend changes needed</h3>
+      <p style="color:var(--text3);font-size:.83rem">
+        The data is already in the DB: <code>scenario_hazards</code> rows have <code>status</code>, <code>appears_at_minutes</code>, <code>deterioration_timeline</code>, <code>stud_id</code>, and <code>spawn_condition</code>. The API endpoint <code>getScenarioHazards</code> returns all of them. This is purely a frontend rendering change.
+      </p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Black Swan Simulations &mdash; Trainer Preview Deterioration Plan &middot; Jun 2026</p>
+</footer>
+
+<script>
+(() => {
+  // ── Interactive fire grid demo ──────────────────────
+  const COLS = 16, ROWS = 12;
+  const walls = new Set();
+  for (let r = 2; r < 10; r++) { if (r !== 5 && r !== 6) walls.add(`${r}-7`); }
+
+  const fireOrigin = { r: 5, c: 3 };
+  const spawnPins = [
+    { r: 4, c: 10, at: 10 },
+    { r: 7, c: 5, at: 15 },
+    { r: 3, c: 12, at: 20 },
+    { r: 8, c: 9, at: 30 },
+  ];
+  const initialPins = [
+    { r: fireOrigin.r, c: fireOrigin.c, at: 0 },
+    { r: 6, c: 2, at: 0 },
+  ];
+  const allPins = [...initialPins, ...spawnPins];
+
+  function dist(r1,c1,r2,c2){ return Math.sqrt((r1-r2)**2+(c1-c2)**2); }
+
+  function isWallBlocking(r1,c1,r2,c2) {
+    const steps = Math.max(Math.abs(r2-r1),Math.abs(c2-c1));
+    for (let i=1;i<steps;i++) {
+      const mr = Math.round(r1+(r2-r1)*i/steps);
+      const mc = Math.round(c1+(c2-c1)*i/steps);
+      if (walls.has(`${mr}-${mc}`)) return true;
+    }
+    return false;
+  }
+
+  function getFireState(t, r, c) {
+    if (walls.has(`${r}-${c}`)) return 'wall';
+    const d = dist(r,c,fireOrigin.r,fireOrigin.c);
+    const wallBlock = isWallBlocking(fireOrigin.r,fireOrigin.c,r,c);
+    const eff = wallBlock ? d + 5 : d;
+    const spread = eff * 1.2;
+    if (t < spread) return 'empty';
+    if (t < spread + 2) return 'heating';
+    if (t < spread + 10) return 'burning';
+    return 'burnt';
+  }
+
+  function buildGrid(container, t, mode) {
+    container.innerHTML = '';
+    const currentMin = t;
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const div = document.createElement('div');
+        const fire = getFireState(t, r, c);
+        div.className = `stud ${fire}`;
+
+        // Check if this cell has a pin
+        const pin = allPins.find(p => p.r === r && p.c === c);
+        if (pin) {
+          if (mode === 'before') {
+            div.className = 'stud pin-active';
+            div.title = `Hazard pin (T+${pin.at}min)`;
+          } else {
+            // Timeline-aware
+            if (pin.at <= currentMin) {
+              div.className = 'stud pin-active';
+              div.title = `Hazard pin (appeared at T+${pin.at}min)`;
+              // Check if it has a stud_id highlight
+              if (pin.at > 0 && pin.at <= currentMin) {
+                div.classList.add('stud-highlight');
+              }
+            } else if (pin.at <= currentMin + 10) {
+              div.className = 'stud pin-ghost';
+              div.title = `Future spawn pin (T+${pin.at}min)`;
+            } else {
+              div.className = `stud ${fire}`;
+            }
+          }
+        }
+
+        container.appendChild(div);
+      }
+    }
+  }
+
+  const slider = document.getElementById('simSlider');
+  const label = document.getElementById('timeLabel');
+  const gridB = document.getElementById('gridBefore');
+  const gridA = document.getElementById('gridAfter');
+  const timeBtns = document.getElementById('timeBtns');
+
+  const times = [0,1,3,5,10,15,20,30];
+  times.forEach(t => {
+    const btn = document.createElement('button');
+    btn.className = 'time-btn';
+    btn.textContent = t + 'm';
+    btn.onclick = () => { slider.value = t; update(); };
+    timeBtns.appendChild(btn);
+  });
+
+  function update() {
+    const t = +slider.value;
+    label.textContent = `T+${t} min`;
+    buildGrid(gridB, t, 'before');
+    buildGrid(gridA, t, 'after');
+    // Highlight active time button
+    timeBtns.querySelectorAll('.time-btn').forEach((btn, i) => {
+      btn.classList.toggle('active', times[i] === t);
+    });
+  }
+
+  slider.addEventListener('input', update);
+  update();
+
+  // Auto-play on scroll into view
+  const obs = new IntersectionObserver(entries => {
+    entries.forEach(e => {
+      if (e.isIntersecting && +slider.value === 0) {
+        let v = 0;
+        const iv = setInterval(() => { v++; slider.value = v; update(); if (v >= 30) clearInterval(iv); }, 150);
+        obs.unobserve(e.target);
+      }
+    });
+  }, { threshold: 0.4 });
+  obs.observe(document.querySelector('.sim-demo'));
+})();
+</script>
+</body>
+</html>

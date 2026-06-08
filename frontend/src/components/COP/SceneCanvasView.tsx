@@ -109,6 +109,8 @@ export function SceneCanvasView({
   const [wallPointLoading, setWallPointLoading] = useState(false);
   const [activeLocation, setActiveLocation] = useState<SimLocation | null>(null);
   const [activeHazard, setActiveHazard] = useState<HazardZone | null>(null);
+  const [activeDbHazard, setActiveDbHazard] = useState<Record<string, unknown> | null>(null);
+  const [dbHazards, setDbHazards] = useState<Array<Record<string, unknown>>>([]);
   const [plantedItems, setPlantedItems] = useState<Array<Record<string, unknown>>>([]);
   const [rawCasualties, setRawCasualties] = useState<
     Array<{ id: string; lat: number; lng: number; tag: string }>
@@ -272,8 +274,11 @@ export function SceneCanvasView({
             .filter((l): l is NonNullable<typeof l> => l !== null),
         );
 
-        // Extract incident zones from hazards
+        // Store raw DB hazards for timeline-aware pin rendering
         const hazards = (hazardsRes as { data: Array<Record<string, unknown>> }).data || [];
+        setDbHazards(hazards);
+
+        // Extract incident zones from hazards
         const zones: SimZone[] = [];
         for (const h of hazards) {
           if (!h.location_lat || !h.location_lng) continue;
@@ -413,6 +418,34 @@ export function SceneCanvasView({
     if (!sceneConfig?.wall_inspection_points) return [];
     return sceneConfig.wall_inspection_points as unknown as WallInspectionPoint[];
   }, [sceneConfig]);
+
+  // Timeline-aware DB hazard pin filtering
+  const currentTimelineMinutes = showHazardTimeline
+    ? (envTimeline[timelineIndex]?.at_minutes ?? 0)
+    : Infinity;
+
+  const { visibleDbHazards, futureDbHazards } = useMemo(() => {
+    const visible = dbHazards.filter(
+      (h) => ((h.appears_at_minutes as number) ?? 0) <= currentTimelineMinutes,
+    );
+    const future = dbHazards.filter(
+      (h) =>
+        ((h.appears_at_minutes as number) ?? 0) > currentTimelineMinutes && h.status === 'delayed',
+    );
+    return { visibleDbHazards: visible, futureDbHazards: future };
+  }, [dbHazards, currentTimelineMinutes]);
+
+  const highlightedStudIds = useMemo(() => {
+    if (!showHazardTimeline) return new Set<string>();
+    const ids = new Set<string>();
+    for (const h of visibleDbHazards) {
+      const studId =
+        (h.stud_id as string) ||
+        ((h.properties as Record<string, unknown>)?.spawned_from_stud as string);
+      if (studId) ids.add(studId);
+    }
+    return ids;
+  }, [visibleDbHazards, showHazardTimeline]);
 
   // Fetch Street View photo on demand when wall point is selected
   useEffect(() => {
@@ -561,6 +594,7 @@ export function SceneCanvasView({
             undefined,
             showBlastZone,
             showOperatingZones,
+            highlightedStudIds.size > 0 ? highlightedStudIds : null,
           );
 
           // Location and casualty pins are rendered as Leaflet DivIcon markers (not on canvas)
@@ -594,6 +628,7 @@ export function SceneCanvasView({
     showBlastZone,
     showOperatingZones,
     sceneGameZones,
+    highlightedStudIds,
   ]);
 
   // Evacuation engine step
@@ -960,6 +995,75 @@ export function SceneCanvasView({
                 </Marker>
               );
             })}
+          {/* DB hazard pins — timeline-aware visibility */}
+          {visibleDbHazards
+            .filter((h) => h.location_lat != null && h.location_lng != null)
+            .map((h) => {
+              const isSpawnPin =
+                h.status === 'delayed' || !!(h as Record<string, unknown>).spawn_condition;
+              const label =
+                ((h.properties as Record<string, unknown>)?.label as string) ||
+                (h.hazard_type as string) ||
+                'Hazard';
+              return (
+                <Marker
+                  key={`dbhaz-${h.id}`}
+                  position={[h.location_lat as number, h.location_lng as number]}
+                  zIndexOffset={1800}
+                  icon={
+                    new DivIcon({
+                      className: '',
+                      html: `<div style="background:${isSpawnPin ? '#f97316' : '#ef4444'};width:22px;height:22px;border-radius:50%;border:2px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 6px rgba(0,0,0,.4)">${svg('hazard', 13)}</div>`,
+                      iconSize: [22, 22],
+                      iconAnchor: [11, 11],
+                    })
+                  }
+                  eventHandlers={{
+                    click: () => {
+                      setActiveDbHazard(h);
+                      setActiveCasualtyPin(null);
+                      setActiveWallPoint(null);
+                      setActiveLocation(null);
+                      setActiveHazard(null);
+                    },
+                  }}
+                >
+                  <Tooltip className="pin-tooltip">
+                    <span className="text-xs">{label}</span>
+                  </Tooltip>
+                </Marker>
+              );
+            })}
+
+          {/* Future (not yet revealed) spawn pins shown as ghost markers */}
+          {showHazardTimeline &&
+            futureDbHazards
+              .filter((h) => h.location_lat != null && h.location_lng != null)
+              .map((h) => {
+                const label =
+                  ((h.properties as Record<string, unknown>)?.label as string) ||
+                  `Spawn T+${h.appears_at_minutes}min`;
+                return (
+                  <Marker
+                    key={`ghost-${h.id}`}
+                    position={[h.location_lat as number, h.location_lng as number]}
+                    zIndexOffset={1200}
+                    opacity={0.3}
+                    icon={
+                      new DivIcon({
+                        className: '',
+                        html: `<div style="background:rgba(249,115,22,0.2);width:22px;height:22px;border-radius:50%;border:2px dashed rgba(249,115,22,0.6);display:flex;align-items:center;justify-content:center">${svg('hazard', 13)}</div>`,
+                        iconSize: [22, 22],
+                        iconAnchor: [11, 11],
+                      })
+                    }
+                  >
+                    <Tooltip className="pin-tooltip">
+                      <span className="text-xs">{label}</span>
+                    </Tooltip>
+                  </Marker>
+                );
+              })}
         </MapContainer>
         <canvas
           ref={canvasRef}
@@ -1251,6 +1355,101 @@ export function SceneCanvasView({
                           className="w-full h-20 object-cover rounded border border-gray-700"
                         />
                       ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
+        {/* DB hazard pin detail panel with deterioration timeline */}
+        {activeDbHazard &&
+          (() => {
+            const props = (activeDbHazard.properties as Record<string, unknown>) || {};
+            const dt = (activeDbHazard.deterioration_timeline as Record<string, unknown>) || {};
+            const label =
+              (props.label as string) || (activeDbHazard.hazard_type as string) || 'Hazard';
+            const dtKeys = ['at_10min', 'at_20min', 'at_30min'] as const;
+            const hasDeteriorationData = dtKeys.some((k) => !!dt[k]);
+
+            return (
+              <div
+                className="absolute top-4 left-4 bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-y-auto"
+                style={{ zIndex: 1002, width: 380, maxHeight: 'calc(100% - 32px)' }}
+              >
+                <div className="flex items-center justify-between px-3 py-2 bg-orange-900/40 border-b border-orange-800">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-orange-300 font-bold">{label}</span>
+                    {activeDbHazard.status === 'delayed' && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-yellow-900/40 text-yellow-400 border border-yellow-700">
+                        DELAYED
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setActiveDbHazard(null)}
+                    className="text-gray-400 hover:text-white text-sm px-1"
+                  >
+                    X
+                  </button>
+                </div>
+                <div className="p-3 text-xs text-gray-300 space-y-2">
+                  <div>
+                    Type:{' '}
+                    <span className="text-orange-300">{activeDbHazard.hazard_type as string}</span>
+                  </div>
+                  {(activeDbHazard.appears_at_minutes as number) > 0 && (
+                    <div>
+                      Appears at:{' '}
+                      <span className="text-red-300 font-bold">
+                        T+{activeDbHazard.appears_at_minutes as number}min
+                      </span>
+                    </div>
+                  )}
+                  {activeDbHazard.enriched_description && (
+                    <div className="whitespace-pre-wrap text-gray-400 border-t border-gray-800 pt-2">
+                      {activeDbHazard.enriched_description as string}
+                    </div>
+                  )}
+                  {props.description && !activeDbHazard.enriched_description && (
+                    <div className="whitespace-pre-wrap text-gray-400">
+                      {props.description as string}
+                    </div>
+                  )}
+
+                  {hasDeteriorationData && (
+                    <div className="border-t border-gray-800 pt-2">
+                      <div className="text-[9px] text-red-400 uppercase font-bold mb-1">
+                        Deterioration Timeline
+                      </div>
+                      {dtKeys.map((key) => {
+                        const val = dt[key];
+                        if (!val) return null;
+                        const timeLabel = key.replace('at_', 'T+').replace('min', ' min');
+                        return (
+                          <div key={key} className="text-xs text-gray-400 mb-1.5">
+                            <span className="text-red-300 font-bold">{timeLabel}:</span>{' '}
+                            {String(val)}
+                          </div>
+                        );
+                      })}
+                      {dt.spawns_new_hazards && (
+                        <div className="text-xs text-orange-400 font-bold mt-1">
+                          Spawns new hazards if unresolved
+                        </div>
+                      )}
+                      {(dt.estimated_new_casualties as number) > 0 && (
+                        <div className="text-xs text-red-400 mt-0.5">
+                          Est. {dt.estimated_new_casualties as number} additional casualties
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {(activeDbHazard.stud_id || props.spawned_from_stud) && (
+                    <div className="text-[9px] text-cyan-500/60 border-t border-gray-800 pt-1">
+                      Stud:{' '}
+                      {(activeDbHazard.stud_id as string) || (props.spawned_from_stud as string)}
                     </div>
                   )}
                 </div>

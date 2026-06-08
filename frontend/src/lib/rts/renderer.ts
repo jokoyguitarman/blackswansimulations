@@ -107,6 +107,7 @@ export function renderRTS(
   blastRadius?: number,
   showBlastZone?: boolean,
   showOperatingZones?: boolean,
+  highlightedStudIds?: Set<string> | null,
 ) {
   preloadIcons();
   ctx.clearRect(0, 0, w, h);
@@ -118,7 +119,7 @@ export function renderRTS(
   }
 
   if (studGrid && studGrid.length > 0) {
-    drawStudGrid(ctx, studGrid, rc, effectStates ?? null);
+    drawStudGrid(ctx, studGrid, rc, effectStates ?? null, highlightedStudIds ?? null);
   }
 
   if (blastSite) {
@@ -213,6 +214,7 @@ function drawStudGrid(
     string,
     { fire: { state: string }; gas: number; flood: number; structural: number }
   > | null,
+  highlightedStudIds: Set<string> | null,
 ) {
   const baseR = Math.max(1.5, mToCanvas(0.4, rc));
 
@@ -301,6 +303,15 @@ function drawStudGrid(
         ctx.fillStyle = 'rgba(156, 163, 175, 0.12)';
       }
       ctx.fill();
+    }
+
+    if (highlightedStudIds?.has(s.id)) {
+      const hr = baseR * 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, hr, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
     }
   }
 }
