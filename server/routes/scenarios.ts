@@ -13,6 +13,7 @@ import {
   getOccupiedStudIds,
   loadClassifiedGrids,
   backfillBuildingsForScenario,
+  snapCoordinate,
 } from '../services/buildingStudService.js';
 
 const router = Router();
@@ -1572,6 +1573,24 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
         continue;
       }
 
+      // Compute raw offset coordinates, then snap to nearest stud
+      let pinLat = parent.location_lat + sp.lat_offset;
+      let pinLng = parent.location_lng + sp.lng_offset;
+      let pinStudId: string | null = null;
+      try {
+        const grids = await loadClassifiedGrids(scenarioId);
+        if (grids.length > 0) {
+          const snapped = snapCoordinate(pinLat, pinLng, sp.floor_level || 'G', grids, new Set());
+          if (snapped.studId) {
+            pinLat = snapped.lat;
+            pinLng = snapped.lng;
+            pinStudId = snapped.studId;
+          }
+        }
+      } catch {
+        /* best-effort */
+      }
+
       if (sp.pin_type === 'hazard') {
         const props = { ...(sp.properties ?? {}) } as Record<string, unknown>;
         props.label = sp.label;
@@ -1579,8 +1598,8 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
         const row = {
           scenario_id: scenarioId,
           hazard_type: sp.hazard_type || 'secondary_hazard',
-          location_lat: parent.location_lat + sp.lat_offset,
-          location_lng: parent.location_lng + sp.lng_offset,
+          location_lat: pinLat,
+          location_lng: pinLng,
           floor_level: sp.floor_level || 'G',
           properties: props,
           assessment_criteria: [],
@@ -1593,6 +1612,7 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
           zones: [],
           parent_pin_id: parent.id,
           spawn_condition: sp.spawn_condition,
+          stud_id: pinStudId,
         };
         const { error: insErr } = await supabaseAdmin.from('scenario_hazards').insert(row);
         if (!insErr) spawnHazardsInserted++;
@@ -1602,8 +1622,8 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
         const row = {
           scenario_id: scenarioId,
           casualty_type: sp.casualty_type || 'patient',
-          location_lat: parent.location_lat + sp.lat_offset,
-          location_lng: parent.location_lng + sp.lng_offset,
+          location_lat: pinLat,
+          location_lng: pinLng,
           floor_level: sp.floor_level || 'G',
           headcount: sp.headcount ?? 1,
           conditions: conds,

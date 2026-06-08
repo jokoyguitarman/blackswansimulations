@@ -13,6 +13,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { placeInsideZoneType } from './zonePlacementService.js';
+import { loadClassifiedGrids, snapCoordinate } from './buildingStudService.js';
 
 const DEMO_TRAINER_ID = 'a0000000-de00-b000-0001-000000000099';
 
@@ -187,6 +188,28 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
           undefined,
           session.scenario_id as string,
         );
+
+        let studId: string | null = null;
+        try {
+          const grids = await loadClassifiedGrids(session.scenario_id as string);
+          if (grids.length > 0) {
+            const snapped = snapCoordinate(
+              hazCoord.lat,
+              hazCoord.lng,
+              (hazard.floor_level as string) ?? 'G',
+              grids,
+              new Set(),
+            );
+            if (snapped.studId) {
+              hazCoord.lat = snapped.lat;
+              hazCoord.lng = snapped.lng;
+              studId = snapped.studId;
+            }
+          }
+        } catch {
+          /* stud snapping is best-effort */
+        }
+
         const newHazard = {
           scenario_id: session.scenario_id,
           session_id: sessionId,
@@ -194,6 +217,7 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
           location_lat: hazCoord.lat,
           location_lng: hazCoord.lng,
           floor_level: hazard.floor_level,
+          stud_id: studId,
           properties: {
             size: 'small',
             fuel_source: timeline.new_hazard_description,
@@ -238,6 +262,24 @@ export async function runHazardDeterioration(sessionId: string): Promise<void> {
             undefined,
             session.scenario_id as string,
           );
+          try {
+            const grids = await loadClassifiedGrids(session.scenario_id as string);
+            if (grids.length > 0) {
+              const snapped = snapCoordinate(
+                casCoord.lat,
+                casCoord.lng,
+                (hazard.floor_level as string) ?? 'G',
+                grids,
+                new Set(),
+              );
+              if (snapped.studId) {
+                casCoord.lat = snapped.lat;
+                casCoord.lng = snapped.lng;
+              }
+            }
+          } catch {
+            /* best-effort */
+          }
           const newCas = {
             scenario_id: session.scenario_id,
             session_id: sessionId,

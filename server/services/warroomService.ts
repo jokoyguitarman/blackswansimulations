@@ -55,7 +55,11 @@ import {
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import type { OsmVicinity } from './osmVicinityService.js';
 import type { OsmOpenSpace, OsmBuilding, OsmRouteGeometry } from './osmVicinityService.js';
-import { backfillBuildingsForScenario, generateStudGrids } from './buildingStudService.js';
+import {
+  backfillBuildingsForScenario,
+  generateStudGrids,
+  snapCoordinate,
+} from './buildingStudService.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1586,6 +1590,33 @@ export async function stageGenerateAndPersist(
           },
           'Deterioration timeline merged into scenario payload',
         );
+
+        // Snap AI-generated spawn pins to nearest building studs
+        if (sceneStudGrids?.length) {
+          const occupied = new Set<string>();
+          let snappedCount = 0;
+          for (const h of payload.hazards ?? []) {
+            const hAny = h as Record<string, unknown>;
+            if (!hAny._parent_pin_label) continue;
+            const snapped = snapCoordinate(
+              h.location_lat,
+              h.location_lng,
+              (h.floor_level as string) ?? 'G',
+              sceneStudGrids,
+              occupied,
+            );
+            if (snapped.studId) {
+              h.location_lat = snapped.lat;
+              h.location_lng = snapped.lng;
+              hAny._stud_id = snapped.studId;
+              occupied.add(snapped.studId);
+              snappedCount++;
+            }
+          }
+          if (snappedCount > 0) {
+            logger.info({ snappedCount }, 'AI spawn pins snapped to building studs');
+          }
+        }
       }
     }
   } catch (detErr) {
