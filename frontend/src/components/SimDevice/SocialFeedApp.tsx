@@ -1018,12 +1018,21 @@ export default function SocialFeedApp({
                   style={{ borderBottom: '1px solid #2F3336' }}
                 >
                   <div className="flex gap-3">
-                    <div
-                      className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
-                      style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}
-                    >
-                      {reply.author_display_name.charAt(0).toUpperCase()}
-                    </div>
+                    {reply.author_type === 'official_account' &&
+                    orgPageLogos[reply.author_handle] ? (
+                      <img
+                        src={orgPageLogos[reply.author_handle]}
+                        alt={reply.author_display_name}
+                        className="w-9 h-9 rounded-full object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-[14px] flex-shrink-0"
+                        style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}
+                      >
+                        {reply.author_display_name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1 flex-wrap">
                         <span className="font-bold text-[14px]">{reply.author_display_name}</span>

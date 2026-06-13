@@ -2703,16 +2703,25 @@ export default function FacebookFeedApp() {
                                             id={`fb-reply-${reply.id}`}
                                             className={`flex gap-2 mb-2.5 ${indented ? 'ml-10' : ''}`}
                                           >
-                                            <div
-                                              className={`${indented ? 'w-7 h-7 text-[10px]' : 'w-8 h-8 text-[12px]'} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}
-                                              style={{
-                                                backgroundColor: getAvatarColor(
-                                                  reply.author_display_name,
-                                                ),
-                                              }}
-                                            >
-                                              {reply.author_display_name.charAt(0).toUpperCase()}
-                                            </div>
+                                            {reply.author_type === 'official_account' &&
+                                            orgPageLogos[reply.author_handle] ? (
+                                              <img
+                                                src={orgPageLogos[reply.author_handle]}
+                                                alt={reply.author_display_name}
+                                                className={`${indented ? 'w-7 h-7' : 'w-8 h-8'} rounded-full object-cover flex-shrink-0`}
+                                              />
+                                            ) : (
+                                              <div
+                                                className={`${indented ? 'w-7 h-7 text-[10px]' : 'w-8 h-8 text-[12px]'} rounded-full flex items-center justify-center text-white font-bold flex-shrink-0`}
+                                                style={{
+                                                  backgroundColor: getAvatarColor(
+                                                    reply.author_display_name,
+                                                  ),
+                                                }}
+                                              >
+                                                {reply.author_display_name.charAt(0).toUpperCase()}
+                                              </div>
+                                            )}
                                             <div>
                                               <div
                                                 className="rounded-2xl px-3 py-1.5"

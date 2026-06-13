@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Comment Avatar Logo Fix</title>
+    <style>
+      :root {
+        --bg: #0f1117; --panel: #171a23; --panel2: #1f2330; --border: #2b3040;
+        --text: #e6e8ee; --muted: #9aa3b2; --bad: #f0556a; --good: #34c759;
+        --accent: #4c8dff; --fb: #1877f2;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg); color: var(--text); line-height: 1.55; }
+      header { padding: 40px 32px 28px; border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #141826, #0f1117); }
+      header h1 { margin: 0 0 8px; font-size: 26px; }
+      header p { margin: 0; color: var(--muted); max-width: 780px; }
+      main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+      .section { background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+        padding: 24px; margin: 24px 0; }
+      .section h2 { margin: 0 0 4px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+      .tag { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+        text-transform: uppercase; letter-spacing: 0.4px; }
+      .tag.fe { background: rgba(76,141,255,0.15); color: #8fb6ff; }
+      .sub { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+      .card { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--panel2); }
+      .card.before { border-color: rgba(240,85,106,0.4); }
+      .card.after { border-color: rgba(52,199,89,0.4); }
+      .card h3 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .card.before h3 { color: var(--bad); }
+      .card.after h3 { color: var(--good); }
+      /* Mock FB post + comments */
+      .fbcard { background: #fff; color: #050505; border-radius: 10px; padding: 12px; font-size: 13px; }
+      .prow { display: flex; align-items: center; gap: 10px; }
+      .av { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center;
+        justify-content: center; font-weight: 700; color: #fff; flex-shrink: 0; overflow: hidden; }
+      .av.sm { width: 30px; height: 30px; font-size: 12px; }
+      .av.letter { background: #2aa7d8; }
+      .av.logo { background: radial-gradient(circle at 30% 30%, #1a2a55, #0a1228); font-size: 9px; color: #d8b25a; }
+      .name { font-weight: 700; }
+      .name small { display: block; font-weight: 400; color: #65676b; font-size: 11px; }
+      .verified { color: #1877f2; }
+      .pbody { margin: 8px 0; }
+      .divider { border-top: 1px solid #e4e6eb; margin: 8px 0; }
+      .cmt { display: flex; gap: 8px; margin-top: 10px; }
+      .bubble { background: #f0f2f5; border-radius: 14px; padding: 6px 10px; }
+      .bubble .name { font-size: 12px; }
+      .bubble .txt { font-size: 13px; }
+      pre { background: #0b0d13; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+        overflow-x: auto; font-size: 12.5px; margin: 12px 0 0;
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; color: #c9d3e3; }
+      pre .c { color: #6b7384; } pre .del { color: var(--bad); } pre .add { color: var(--good); }
+      .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+      .files code { background: #0b0d13; border: 1px solid var(--border); border-radius: 6px;
+        padding: 3px 8px; font-size: 12px; color: #9fc1ff; }
+      .why { background: rgba(240,85,106,0.08); border-left: 3px solid var(--bad);
+        padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px; }
+      .fix { background: rgba(52,199,89,0.08); border-left: 3px solid var(--good);
+        padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px; }
+      .loc { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; font-size: 14px; margin-top: 10px; }
+      .loc code { color: #9fc1ff; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+      .check { color: var(--good); font-weight: 700; }
+      .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--panel2);
+        border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-top: 12px; font-size: 12.5px; }
+      .flow .step { background: #0b0d13; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+      .flow .arrow { color: var(--accent); font-weight: 700; }
+      footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Comment Avatar Logo Fix</h1>
+      <p>
+        The organization page logo (e.g. Marina Bay Sands) shows correctly on its <strong>posts</strong>,
+        but every <strong>comment</strong> made by the page falls back to the initial letter "M" - for all
+        viewers. This documents the concept, the change, and the result.
+      </p>
+    </header>
+
+    <main>
+      <!-- CONCEPT -->
+      <section class="section">
+        <h2>The concept <span class="tag fe">Frontend</span></h2>
+        <p class="sub">
+          Avatars are drawn by two different pieces of code: one for the post header, one for each
+          comment. The recent fix taught the <em>post</em> avatar to use the page logo, but the
+          <em>comment</em> avatar was never updated - it still always draws a colored circle with the
+          first letter of the name.
+        </p>
+
+        <div class="flow">
+          <span class="step">official_account author</span>
+          <span class="arrow">&rarr;</span>
+          <span class="step">Post avatar: looks up <strong>orgPageLogos[handle]</strong> &#10003;</span>
+          <span class="arrow">vs</span>
+          <span class="step">Comment avatar: always letter circle &#10007;</span>
+        </div>
+
+        <div class="why">
+          <strong>Why it happens:</strong> the comment/reply render path has no
+          <code>author_type === 'official_account'</code> branch, so it never reaches for the logo. It
+          unconditionally renders <code>getAvatarColor(name)</code> + the first letter.
+        </div>
+
+        <pre><span class="c">// comment/reply avatar today - letter only, no logo branch</span>
+&lt;div style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}&gt;
+  {reply.author_display_name.charAt(0).toUpperCase()}
+&lt;/div&gt;</pre>
+      </section>
+
+      <!-- BEFORE / AFTER -->
+      <section class="section">
+        <h2>Before and after</h2>
+        <p class="sub">A page post with a page comment underneath.</p>
+
+        <div class="grid">
+          <div class="card before">
+            <h3>Before</h3>
+            <div class="fbcard">
+              <div class="prow">
+                <div class="av logo">MBS</div>
+                <div class="name">Marina Bay Sands <span class="verified">&#10003;</span><small>27d</small></div>
+              </div>
+              <div class="pbody">Thank you to our guests for another vibrant month...</div>
+              <div class="divider"></div>
+              <div class="cmt">
+                <div class="av sm letter">M</div>
+                <div class="bubble">
+                  <div class="name">Marina Bay Sands</div>
+                  <div class="txt">wow water to fight fire? hahahaha</div>
+                </div>
+              </div>
+            </div>
+            <p style="color:var(--bad);font-size:12px;margin:10px 0 0">Post = logo, comment = letter "M"</p>
+          </div>
+
+          <div class="card after">
+            <h3>After</h3>
+            <div class="fbcard">
+              <div class="prow">
+                <div class="av logo">MBS</div>
+                <div class="name">Marina Bay Sands <span class="verified">&#10003;</span><small>27d</small></div>
+              </div>
+              <div class="pbody">Thank you to our guests for another vibrant month...</div>
+              <div class="divider"></div>
+              <div class="cmt">
+                <div class="av sm logo">MBS</div>
+                <div class="bubble">
+                  <div class="name">Marina Bay Sands</div>
+                  <div class="txt">wow water to fight fire? hahahaha</div>
+                </div>
+              </div>
+            </div>
+            <p style="color:var(--good);font-size:12px;margin:10px 0 0">Post and comment both show the logo</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- THE CHANGE -->
+      <section class="section">
+        <h2>The change <span class="tag fe">Frontend</span></h2>
+        <div class="fix">
+          <strong>Fix:</strong> give the comment/reply avatar the same logic as the post avatar - if the
+          author is an <code>official_account</code> and a logo exists for its handle, render the logo
+          image; otherwise keep the letter circle.
+        </div>
+
+        <pre><span class="del">- &lt;div style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}&gt;</span>
+<span class="del">-   {reply.author_display_name.charAt(0).toUpperCase()}</span>
+<span class="del">- &lt;/div&gt;</span>
+<span class="add">+ {reply.author_type === 'official_account' &amp;&amp; orgPageLogos[reply.author_handle] ? (</span>
+<span class="add">+   &lt;img src={orgPageLogos[reply.author_handle]} className="...rounded-full object-cover" /&gt;</span>
+<span class="add">+ ) : (</span>
+<span class="add">+   &lt;div style={{ backgroundColor: getAvatarColor(reply.author_display_name) }}&gt;</span>
+<span class="add">+     {reply.author_display_name.charAt(0).toUpperCase()}</span>
+<span class="add">+   &lt;/div&gt;</span>
+<span class="add">+ )}</span></pre>
+
+        <h4 style="color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:.5px;margin:18px 0 4px">
+          Applied in three comment/reply locations
+        </h4>
+        <div class="loc">
+          <code>FacebookFeedApp.tsx</code><span>Inline comment/reply avatars under feed posts</span>
+          <code>SocialFeedApp.tsx</code><span>Z (Twitter) reply avatars in the thread view</span>
+          <code>OrgPageView.tsx</code><span>Comment list avatars - also needs the all-pages logo map added (it currently only loads its own page)</span>
+        </div>
+        <div class="files">
+          <code>orgPageLogos = page_handle &rarr; page_logo_url (already loaded in the feeds)</code>
+        </div>
+      </section>
+
+      <!-- RESULTS -->
+      <section class="section">
+        <h2 style="margin-top:0">Results</h2>
+        <table>
+          <thead>
+            <tr><th>Where</th><th>Now</th><th>After fix</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Page post avatar</td>
+              <td><span class="check">&#10003;</span> Logo (already fixed)</td>
+              <td><span class="check">&#10003;</span> Logo</td>
+            </tr>
+            <tr>
+              <td>Page comment avatar - Facebook feed</td>
+              <td>Letter "M"</td>
+              <td><span class="check">&#10003;</span> Logo</td>
+            </tr>
+            <tr>
+              <td>Page comment avatar - Z thread</td>
+              <td>Letter "M"</td>
+              <td><span class="check">&#10003;</span> Logo</td>
+            </tr>
+            <tr>
+              <td>Page comment avatar - Org Page view</td>
+              <td>Letter "M"</td>
+              <td><span class="check">&#10003;</span> Logo</td>
+            </tr>
+            <tr>
+              <td>Visible to which viewers</td>
+              <td colspan="2"><span class="check">&#10003;</span> Everyone (controller or not) - avatar comes from the post/comment's page, not the viewer's</td>
+            </tr>
+            <tr>
+              <td>Non-page (player / NPC) comment avatars</td>
+              <td colspan="2"><span class="check">&#10003;</span> Unchanged - still the colored letter circle</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer>Frontend-only change across 3 files. No backend, schema, or data changes.</footer>
+    </main>
+  </body>
+</html>

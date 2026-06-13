@@ -114,6 +114,8 @@ export default function OrgPageView({
   const [comments, setComments] = useState<Comment[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentInput, setCommentInput] = useState('');
+  // Logos for every org page in the session, keyed by handle (for comment avatars).
+  const [orgPageLogos, setOrgPageLogos] = useState<Record<string, string>>({});
   const [likedCommentIds, setLikedCommentIds] = useState<Set<string>>(new Set());
   const [replyingToComment, setReplyingToComment] = useState<Comment | null>(null);
   const commentInputRef = useRef<HTMLInputElement>(null);
@@ -122,7 +124,7 @@ export default function OrgPageView({
     if (!sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      const [pageRes, postsRes] = await Promise.all([
+      const [pageRes, postsRes, allPagesRes] = await Promise.all([
         fetch(apiUrl(`/api/social/my-page/session/${sessionId}`), { headers }),
         fetch(
           apiUrl(
@@ -130,11 +132,19 @@ export default function OrgPageView({
           ),
           { headers },
         ),
+        fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers }),
       ]);
 
       const pageJson = await pageRes.json();
       const targetPage = (pageJson.data?.[platform] || null) as Record<string, string> | null;
       if (targetPage) setPageInfo(targetPage as unknown as OrgPage);
+
+      const allPagesJson = await allPagesRes.json();
+      const logoMap: Record<string, string> = {};
+      for (const pg of (allPagesJson.data || []) as Array<Record<string, string>>) {
+        if (pg.page_handle && pg.page_logo_url) logoMap[pg.page_handle] = pg.page_logo_url;
+      }
+      setOrgPageLogos(logoMap);
 
       const postsJson = await postsRes.json();
       const officialPosts = (postsJson.data || []) as PagePost[];
@@ -394,12 +404,21 @@ export default function OrgPageView({
                   className="px-4 py-3 flex gap-3"
                   style={{ borderBottom: `0.5px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}` }}
                 >
-                  <div
-                    className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white font-semibold text-[12px]"
-                    style={{ backgroundColor: getAvatarColor(comment.author_display_name) }}
-                  >
-                    {comment.author_display_name.charAt(0).toUpperCase()}
-                  </div>
+                  {comment.author_type === 'official_account' &&
+                  orgPageLogos[comment.author_handle] ? (
+                    <img
+                      src={orgPageLogos[comment.author_handle]}
+                      alt={comment.author_display_name}
+                      className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                    />
+                  ) : (
+                    <div
+                      className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white font-semibold text-[12px]"
+                      style={{ backgroundColor: getAvatarColor(comment.author_display_name) }}
+                    >
+                      {comment.author_display_name.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span
