@@ -293,8 +293,8 @@ async function seedBrandedHistory(
   const orgs = normalizeOrgPages(orgPage);
   const primary = orgs.find((o) => o.is_primary) || orgs[0];
   // Branded history is a flat list authored by the primary org.
-  const fb = primary?.facebook as Record<string, unknown> | undefined;
-  const tw = primary?.x_twitter as Record<string, unknown> | undefined;
+  const fb = primary?.facebook;
+  const tw = primary?.x_twitter;
   const history = (orgPage.branded_history || []) as Array<Record<string, unknown>>;
 
   await seedOrgPages(sessionId, initialState);
