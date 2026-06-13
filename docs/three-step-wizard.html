@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Three-Step Wizard — Plan</title>
+<style>
+  :root{
+    --bg:#0a0e14;--bg2:#0f1620;--panel:#131c28;--panel2:#182030;--line:#233143;
+    --ink:#e8eef6;--muted:#8aa0b8;--dim:#5d7186;
+    --good:#2dd4bf;--good2:#34d399;--bad:#f87171;--amber:#f5b942;--violet:#a78bfa;--cyan:#22d3ee;
+  }
+  *{box-sizing:border-box}html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"SF Mono","JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;font-size:15px;line-height:1.6;overflow-x:hidden}
+  h1,h2,h3,h4{font-weight:700;letter-spacing:-.01em;line-height:1.2}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#1c2736;color:var(--cyan);padding:1px 6px;border-radius:5px;font-size:.85em}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+  section{padding:62px 0;border-top:1px solid var(--line);position:relative}
+  .sec-num{font-size:13px;color:var(--good);letter-spacing:.25em;text-transform:uppercase;margin-bottom:10px;font-weight:700}
+  .sec-title{font-size:29px;margin:0 0 6px}
+  .sec-sub{color:var(--muted);margin:0 0 30px;max-width:780px}
+  .hl{color:var(--ink)}.good-t{color:var(--good)}.bad-t{color:var(--bad)}.amber-t{color:var(--amber)}.vio-t{color:var(--violet)}
+
+  header.hero{position:relative;min-height:80vh;display:flex;align-items:center;overflow:hidden;border:none}
+  .hero-bg{position:absolute;inset:0;z-index:0;
+    background:radial-gradient(900px 500px at 16% 12%,rgba(45,212,191,.16),transparent 60%),
+      radial-gradient(820px 480px at 84% 18%,rgba(167,139,250,.15),transparent 60%),
+      radial-gradient(820px 520px at 50% 104%,rgba(245,185,66,.08),transparent 60%);
+    animation:drift 16s ease-in-out infinite alternate}
+  @keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-16px,14px,0) scale(1.05)}}
+  .grid-lines{position:absolute;inset:0;z-index:0;opacity:.25;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:44px 44px;mask-image:radial-gradient(ellipse at 50% 40%,#000 35%,transparent 78%)}
+  .hero-content{position:relative;z-index:2}
+  .kicker{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--good);border:1px solid #244;padding:6px 14px;border-radius:999px;background:rgba(45,212,191,.06);margin-bottom:24px}
+  .pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 0 0 rgba(45,212,191,.7);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(45,212,191,.6)}70%{box-shadow:0 0 0 12px rgba(45,212,191,0)}100%{box-shadow:0 0 0 0 rgba(45,212,191,0)}}
+  .hero h1{font-size:clamp(32px,5.5vw,56px);margin:0 0 18px}
+  .hero h1 .g{background:linear-gradient(100deg,var(--good),var(--cyan) 55%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.lead{font-size:18px;color:var(--muted);max-width:660px;margin:0 0 28px}
+  .hero-stats{display:flex;flex-wrap:wrap;gap:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 18px;min-width:120px}
+  .stat b{font-size:23px;display:block}.stat span{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+  .scroll-hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:2;color:var(--muted);font-size:12px;text-align:center}
+  .scroll-hint .chev{display:block;margin:6px auto 0;width:12px;height:12px;border-right:2px solid var(--good);border-bottom:2px solid var(--good);transform:rotate(45deg);animation:bob 1.6s infinite}
+  @keyframes bob{0%,100%{transform:rotate(45deg) translate(0,0)}50%{transform:rotate(45deg) translate(4px,4px)}}
+
+  nav.toc{position:sticky;top:0;z-index:50;backdrop-filter:blur(10px);background:rgba(10,14,20,.82);border-bottom:1px solid var(--line)}
+  nav.toc .wrap{display:flex;gap:6px;overflow-x:auto;padding:10px 24px;scrollbar-width:none}
+  nav.toc .wrap::-webkit-scrollbar{display:none}
+  nav.toc a{color:var(--muted);text-decoration:none;font-size:12.5px;padding:7px 12px;border-radius:8px;white-space:nowrap;transition:.15s}
+  nav.toc a:hover,nav.toc a.active{color:var(--ink);background:var(--panel2)}
+
+  .reveal{opacity:0;transform:translateY(24px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  .reveal.d1{transition-delay:.08s}.reveal.d2{transition-delay:.16s}.reveal.d3{transition-delay:.24s}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:880px){.g2,.g3{grid-template-columns:1fr}}
+  ul.tight{margin:8px 0 0;padding-left:18px}ul.tight li{margin:5px 0;color:var(--muted);font-size:13.5px}
+  ul.tight li b{color:var(--ink)}
+  .note{font-size:12.5px;color:var(--dim)}
+  .badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px;font-weight:700}
+  .b-bad{background:rgba(248,113,113,.14);color:var(--bad);border:1px solid #5a2a2a}
+  .b-good{background:rgba(45,212,191,.14);color:var(--good);border:1px solid #1f4338}
+  .b-amber{background:rgba(245,185,66,.14);color:var(--amber);border:1px solid #5a4a1f}
+  .b-vio{background:rgba(167,139,250,.14);color:var(--violet);border:1px solid #3a2f5a}
+
+  /* big step row */
+  .steprow{display:flex;align-items:center;gap:0;flex-wrap:wrap}
+  .bigstep{flex:1;min-width:150px;border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--panel);position:relative}
+  .bigstep .n{width:30px;height:30px;border-radius:9px;background:var(--panel2);border:1px solid var(--line);color:var(--good);display:flex;align-items:center;justify-content:center;font-weight:700;margin-bottom:8px}
+  .bigstep h4{margin:0 0 3px;font-size:15px}.bigstep p{margin:0;font-size:12.5px;color:var(--muted)}
+  .bigstep.build{border-color:#3a2f5a}.bigstep.build .n{color:var(--violet)}
+  .arrow{min-width:38px;display:flex;align-items:center;justify-content:center;color:var(--good);font-size:20px}
+
+  /* chain inside build */
+  .substages{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .sub{display:flex;align-items:center;gap:7px;background:#0e1622;border:1px solid var(--line);border-radius:9px;padding:7px 11px;font-size:12px}
+  .sub .dot{width:8px;height:8px;border-radius:50%;background:var(--dim)}
+  .sub.run .dot{background:var(--amber);animation:blink 1s infinite}
+  .sub.done .dot{background:var(--good)}
+  @keyframes blink{50%{opacity:.3}}
+  .subarrow{color:var(--muted);align-self:center}
+
+  /* before/after */
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:880px){.ba{grid-template-columns:1fr}}
+  .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .pills{display:flex;flex-direction:column;gap:7px}
+  .pill{display:flex;align-items:center;gap:9px;background:#0e1622;border:1px solid var(--line);border-radius:9px;padding:9px 12px;font-size:13px}
+  .pill .ix{width:22px;height:22px;border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto}
+  .pill.keep .ix{background:#0f3d35;color:var(--good)}
+  .pill.merge .ix{background:#2f2350;color:var(--violet)}
+  .pill.cut{opacity:.5}.pill.cut .ix{background:#3d1f1f;color:var(--bad)}
+
+  /* code */
+  .code{background:#0c1420;border:1px solid var(--line);border-radius:12px;padding:14px 16px;font-size:12.5px;overflow-x:auto;white-space:pre;line-height:1.55}
+  .code .c{color:var(--dim)} .code .k{color:var(--violet)} .code .s{color:var(--good)} .code .f{color:var(--cyan)}
+  .code .del{color:var(--bad);background:rgba(248,113,113,.08);display:block}
+  .code .add{color:var(--good);background:rgba(45,212,191,.08);display:block}
+
+  table.cmp{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  table.cmp th,table.cmp td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  table.cmp th{background:var(--panel2);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  table.cmp td.now{color:var(--muted)}table.cmp td.next{color:var(--ink)}
+  table.cmp code{white-space:nowrap}
+
+  /* phone-ish building mock */
+  .mock{max-width:360px;margin:0 auto;background:#0f0f0f;border:1px solid #3a2d12;border-radius:14px;padding:18px;font-family:"JetBrains Mono",monospace}
+  .mock .mh{font-size:12px;letter-spacing:.12em;color:#FFB800;text-shadow:0 0 8px rgba(255,184,0,.4);text-align:center;margin-bottom:14px}
+  .mock .row{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13px;color:rgba(255,184,0,.55)}
+  .mock .row .tick{width:20px;height:20px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto;background:#2d2d2d;color:rgba(255,184,0,.3)}
+  .mock .row.done .tick{background:#0f3d35;color:var(--good)}.mock .row.done{color:rgba(255,184,0,.8)}
+  .mock .row.run .tick{background:#3a2d12;color:var(--amber);animation:blink 1s infinite}.mock .row.run{color:#FFB800}
+  .mock .bar{height:5px;border-radius:5px;background:#2d2d2d;margin-top:14px;overflow:hidden}
+  .mock .bar>i{display:block;height:100%;width:0;background:linear-gradient(90deg,#FFB800,#FF6B35);border-radius:5px;animation:fill 6s ease-in-out infinite}
+  @keyframes fill{0%{width:8%}40%{width:55%}75%{width:82%}100%{width:96%}}
+
+  .road{position:relative;padding-left:26px}
+  .road::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  .ph{position:relative;margin-bottom:14px}
+  .ph::before{content:"";position:absolute;left:-23px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--good);box-shadow:0 0 0 3px rgba(45,212,191,.12)}
+  .ph.warn::before{background:var(--amber);box-shadow:0 0 0 3px rgba(245,185,66,.12)}
+  .ph h4{margin:0 0 3px;font-size:14px}.ph p{margin:0;font-size:12.5px;color:var(--muted)}
+  .footer{padding:40px 0 70px;color:var(--muted);font-size:12.5px;text-align:center}
+  .kbd{font-size:11px;background:#1a2433;border:1px solid #2a3a4f;border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
+  .file{color:var(--cyan);font-size:12px}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-bg"></div><div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker"><span class="pulse-dot"></span> Wizard plan · Social Crisis</div>
+    <h1>From 5 clicks to<br/><span class="g">3 steps the user sees.</span></h1>
+    <p class="lead">Setup, then a single auto-running <span class="vio-t">Building</span> step that chains Characters &rarr; Storyline &rarr; Convergence &rarr; Org Pages, then Compile. Frontend-only &mdash; no backend changes.</p>
+    <div class="hero-stats">
+      <div class="stat"><b><span class="bad-t">5</span> &rarr; <span class="good-t">3</span></b><span>Visible steps</span></div>
+      <div class="stat"><b class="vio-t">1</b><span>Chained build step</span></div>
+      <div class="stat"><b class="good-t">0</b><span>Backend changes</span></div>
+      <div class="stat"><b class="amber-t">auto</b><span>Advance to compile</span></div>
+    </div>
+  </div>
+  <div class="scroll-hint">read the plan<span class="chev"></span></div>
+</header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#flow">New Flow</a>
+  <a href="#mapping">5 to 3 Mapping</a>
+  <a href="#constraint">The Constraint</a>
+  <a href="#orchestrator">Orchestrator</a>
+  <a href="#step1">Step 1</a>
+  <a href="#step2">Step 2</a>
+  <a href="#wiring">Wiring</a>
+  <a href="#draft">Drafts</a>
+  <a href="#build">Checklist</a>
+</div></nav>
+
+<!-- NEW FLOW -->
+<section id="flow">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">The new flow</div>
+      <h2 class="sec-title">Setup &rarr; Building &rarr; Compile</h2>
+      <p class="sec-sub">The four generation stages become one automated step. The user sees a progress screen, not four separate click-throughs.</p>
+    </div>
+    <div class="reveal d1 steprow">
+      <div class="bigstep"><div class="n">1</div><h4>Scenario Setup</h4><p>Crisis description, country, org name, logo, document &mdash; plus the competitor/ally roster.</p></div>
+      <div class="arrow">&rarr;</div>
+      <div class="bigstep build"><div class="n">2</div><h4>Building <span class="badge b-vio">auto</span></h4><p>Chains all generation, shows progress, auto-advances.</p>
+        <div class="substages">
+          <span class="sub done"><span class="dot"></span>Characters</span><span class="subarrow">&rsaquo;</span>
+          <span class="sub run"><span class="dot"></span>Storyline</span><span class="subarrow">&rsaquo;</span>
+          <span class="sub"><span class="dot"></span>Convergence</span><span class="subarrow">&rsaquo;</span>
+          <span class="sub"><span class="dot"></span>Org Pages</span>
+        </div>
+      </div>
+      <div class="arrow">&rarr;</div>
+      <div class="bigstep"><div class="n">3</div><h4>Review &amp; Compile</h4><p>Existing compile step, unchanged.</p></div>
+    </div>
+    <p class="reveal d2 note" style="margin-top:14px">Design choice: Step 2 is <b>progress-only</b> (no intermediate review/edit) and <b>auto-advances</b> to Compile on success. The roster lives in Setup so rival pages are AI-generated in the same pass.</p>
+  </div>
+</section>
+
+<!-- 5 to 3 MAPPING -->
+<section id="mapping">
+  <div class="wrap">
+    <div class="reveal"><div class="sec-num">What maps where</div><h2 class="sec-title">5 steps &rarr; 3 steps</h2></div>
+    <div class="ba">
+      <div class="reveal d1">
+        <div class="lab">Today (5 visible)</div>
+        <div class="pills">
+          <div class="pill keep"><span class="ix">1</span> Scenario Setup</div>
+          <div class="pill merge"><span class="ix">2</span> Characters &amp; Facts</div>
+          <div class="pill merge"><span class="ix">3</span> Storyline</div>
+          <div class="pill merge"><span class="ix">4</span> Convergence (+ org page, roster)</div>
+          <div class="pill keep"><span class="ix">5</span> Review &amp; Compile</div>
+        </div>
+      </div>
+      <div class="reveal d2">
+        <div class="lab" style="color:var(--good)">After (3 visible)</div>
+        <div class="pills">
+          <div class="pill keep"><span class="ix">1</span> Scenario Setup <span class="note">+ roster moved here</span></div>
+          <div class="pill merge"><span class="ix">2</span> Building <span class="note">= steps 2+3+4 chained</span></div>
+          <div class="pill keep"><span class="ix">3</span> Review &amp; Compile</div>
+        </div>
+        <p class="note" style="margin-top:10px"><code>VISIBLE_STEPS = [1, 2, 7]</code> &middot; labels: Scenario Setup, Building, Review &amp; Compile.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THE CONSTRAINT -->
+<section id="constraint">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">The critical constraint</div>
+      <h2 class="sec-title">State won't update mid-chain &mdash; thread the data</h2>
+      <p class="sec-sub">Today each generator reads the previous step's output from React <b>state</b>, which only works because steps are separated by user clicks. In one synchronous chain, state hasn't updated yet between calls.</p>
+    </div>
+    <div class="grid g2">
+      <div class="reveal d1 card" style="border-left:3px solid var(--bad)">
+        <span class="badge b-bad">the trap</span>
+        <p class="note" style="color:var(--muted);margin-top:10px"><code>generateStoryline</code> reads <code>personas</code>/<code>factSheet</code> from state (<span class="file">SocialCrisisWizard.tsx:566-567</span>). Call it right after <code>generateNPCs()</code> in a loop and those are still <b>empty</b> &mdash; React batches state updates.</p>
+      </div>
+      <div class="reveal d2 card" style="border-left:3px solid var(--good)">
+        <span class="badge b-good">the fix</span>
+        <p class="note" style="color:var(--muted);margin-top:10px">Refactor each generator to <b>accept explicit inputs and return its result</b> (still call <code>setState</code> for the UI). <code>generateAll</code> passes each return into the next call.</p>
+      </div>
+    </div>
+    <div class="reveal d3 card" style="margin-top:16px">
+      <div class="lab">Functions to refactor (return value + optional args)</div>
+      <ul class="tight">
+        <li><b>generateNPCs</b> (<span class="file">:475</span>) &rarr; returns <code>{ personas, factSheet, communities }</code></li>
+        <li><b>generateStoryline(personas, factSheet)</b> (<span class="file">:548</span>) &rarr; returns <code>storylineInjects</code></li>
+        <li><b>generateConvergence(personas, factSheet, storyline)</b> (<span class="file">:608</span>) &rarr; returns narrative/objectives/shared/gates/labels</li>
+        <li><b>generateOrgPage(roster)</b> (<span class="file">:703</span>) &rarr; sends allies/competitors/auto_antagonist; returns orgPage</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ORCHESTRATOR -->
+<section id="orchestrator">
+  <div class="wrap">
+    <div class="reveal"><div class="sec-num">The engine</div><h2 class="sec-title">generateAll() orchestrator</h2>
+      <p class="sec-sub">One function runs the chain in order, tracks the live stage, stops on failure (with retry), and auto-advances to compile on success.</p>
+    </div>
+    <div class="reveal d1 card">
+      <div class="code"><span class="k">const</span> generateAll = <span class="k">async</span> () => {
+  <span class="k">const</span> npc = <span class="k">await</span> <span class="f">generateNPCs</span>();                 <span class="c">// { personas, factSheet, communities }</span>
+  <span class="k">if</span> (!npc) <span class="k">return</span> <span class="f">setBuildError</span>(<span class="s">'characters'</span>);
+  <span class="k">const</span> story = <span class="k">await</span> <span class="f">generateStoryline</span>(npc.personas, npc.factSheet);
+  <span class="k">if</span> (!story) <span class="k">return</span> <span class="f">setBuildError</span>(<span class="s">'storyline'</span>);
+  <span class="k">const</span> conv = <span class="k">await</span> <span class="f">generateConvergence</span>(npc.personas, npc.factSheet, story);
+  <span class="k">if</span> (!conv) <span class="k">return</span> <span class="f">setBuildError</span>(<span class="s">'convergence'</span>);
+  <span class="k">await</span> <span class="f">generateOrgPage</span>({ allyEntries, competitorEntries, autoAntagonist });
+  <span class="k">await</span> <span class="f">saveDraftState</span>(<span class="s">7</span>);
+  <span class="f">setStep</span>(<span class="s">7</span>);                              <span class="c">// auto-advance to compile</span>
+};</div>
+      <p class="note" style="margin-top:12px">Track <code>buildStage</code> (characters | storyline | convergence | pages | done) and <code>buildError</code> to drive the progress UI and the retry button.</p>
+    </div>
+  </div>
+</section>
+
+<!-- STEP 1 -->
+<section id="step1">
+  <div class="wrap">
+    <div class="reveal"><div class="sec-num">Step 1</div><h2 class="sec-title">Setup absorbs the roster</h2>
+      <p class="sec-sub">Competitor/ally inputs move up from the old Step 4 so the chained org-page generation receives them &mdash; named competitors get full AI identities + branded history in the same pass.</p>
+    </div>
+    <div class="grid g2">
+      <div class="reveal d1 card">
+        <h4 style="margin:0 0 8px">New Setup state</h4>
+        <ul class="tight">
+          <li><code>allyEntries[]</code> &mdash; protagonist ally names (+ optional handles)</li>
+          <li><code>competitorEntries[]</code> &mdash; antagonist competitor names (1&ndash;10)</li>
+          <li><code>autoAntagonist</code> &mdash; default <b>true</b> (invent a rival if none named)</li>
+        </ul>
+      </div>
+      <div class="reveal d2 card">
+        <h4 style="margin:0 0 8px">UI change</h4>
+        <p class="note" style="color:var(--muted)">Move the two-panel ally/competitor UI from <code>renderStep4</code> into <code>renderStep1</code>. Replace the old <code>addExtraPage</code>/<code>getAllies</code>/<code>getAntagonists</code> (which mutate <code>orgPage.orgs</code>) with simple name lists &mdash; <code>orgPage</code> doesn't exist yet at Setup time.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- STEP 2 -->
+<section id="step2">
+  <div class="wrap">
+    <div class="reveal"><div class="sec-num">Step 2</div><h2 class="sec-title">Building: progress-only, auto-advance</h2>
+      <p class="sec-sub">A single <code>renderBuilding()</code> shows a per-stage checklist driven by <code>buildStage</code>, a spinner, and a retry on <code>buildError</code>. On success it calls <code>setStep(7)</code> automatically.</p>
+    </div>
+    <div class="grid g2" style="align-items:start">
+      <div class="reveal d1">
+        <div class="lab">What the user sees</div>
+        <div class="mock">
+          <div class="mh">BUILDING SCENARIO</div>
+          <div class="row done"><span class="tick">&#10003;</span> Characters &amp; facts</div>
+          <div class="row done"><span class="tick">&#10003;</span> Storyline</div>
+          <div class="row run"><span class="tick">&#9679;</span> Convergence</div>
+          <div class="row"><span class="tick">&middot;</span> Org pages</div>
+          <div class="bar"><i></i></div>
+        </div>
+      </div>
+      <div class="reveal d2" style="display:grid;gap:14px">
+        <div class="card"><b>Auto-advance</b><p class="note" style="margin-top:6px">On the final stage completing, <code>generateAll</code> saves the draft and calls <code>setStep(7)</code> &mdash; the user lands on Compile without an extra click.</p></div>
+        <div class="card"><b>Retry on failure</b><p class="note" style="margin-top:6px">If a stage fails, the chain stops (no auto-advance) and the failed stage shows a retry &mdash; one bad AI call doesn't force a full restart.</p></div>
+        <div class="card"><b>No review/edit</b><p class="note" style="margin-top:6px">Per the chosen design, Step 2 is purely progress. The old <code>renderStep2/3/4</code> bodies are replaced by <code>renderBuilding()</code>.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- WIRING -->
+<section id="wiring">
+  <div class="wrap">
+    <div class="reveal"><div class="sec-num">The wiring</div><h2 class="sec-title">goNext, render switch, canProceed</h2></div>
+    <div class="reveal d1 card">
+      <div class="lab">goNext (<span class="file">:873</span>) &mdash; kick off the chain on leaving Setup</div>
+      <div class="code"><span class="c">// remove the per-step triggers at :881-892, replace with:</span>
+<span class="k">if</span> (step === <span class="s">1</span>) { <span class="f">setStep</span>(<span class="s">2</span>); <span class="k">void</span> <span class="f">generateAll</span>(); <span class="k">return</span>; }</div>
+    </div>
+    <div class="reveal d2 card" style="margin-top:14px">
+      <div class="lab">render switch (<span class="file">:2035-2039</span>)</div>
+      <div class="code"><span class="f">step</span> === 1 && <span class="f">renderStep1</span>()
+<span class="f">step</span> === 2 && <span class="f">renderBuilding</span>()      <span class="c">// new</span>
+<span class="f">step</span> === 7 && <span class="f">renderStep7</span>()</div>
+    </div>
+    <div class="reveal d3 card" style="margin-top:14px">
+      <div class="lab">canProceed (<span class="file">:374</span>)</div>
+      <table class="cmp">
+        <thead><tr><th>Step</th><th>Rule</th></tr></thead>
+        <tbody>
+          <tr><td>1 Setup</td><td class="next"><code>crisisDescription.length &gt;= 50</code> (unchanged)</td></tr>
+          <tr><td>2 Building</td><td class="next"><code>false</code> &mdash; automatic; hide/disable Next while building</td></tr>
+          <tr><td>7 Compile</td><td class="next"><code>true</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- DRAFTS -->
+<section id="draft">
+  <div class="wrap">
+    <div class="reveal"><div class="sec-num">Persistence</div><h2 class="sec-title">Draft save &amp; resume</h2></div>
+    <div class="grid g2">
+      <div class="reveal d1 card"><b>Save</b><p class="note" style="margin-top:6px">Once after the chain completes (inside <code>generateAll</code>). <code>buildDraftInput</code> includes <code>allyEntries</code>, <code>competitorEntries</code>, <code>autoAntagonist</code>.</p></div>
+      <div class="reveal d2 card"><b>Resume</b><p class="note" style="margin-top:6px">Restore Setup inputs + any completed artifacts. If all of personas, storyline, convergence and orgPage are present &rarr; land on Step 7; otherwise Step 1.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- CHECKLIST -->
+<section id="build">
+  <div class="wrap">
+    <div class="reveal"><div class="sec-num">Build checklist</div><h2 class="sec-title">Seven changes, nothing missed</h2></div>
+    <div class="reveal d1 road">
+      <div class="ph"><h4>1 &middot; Steps config</h4><p><code>VISIBLE_STEPS=[1,2,7]</code> + labels (Setup, Building, Review &amp; Compile).</p></div>
+      <div class="ph"><h4>2 &middot; Roster into Setup</h4><p>ally/competitor/auto state; move the two-panel UI into <code>renderStep1</code>; drop the orgPage-mutating add helpers.</p></div>
+      <div class="ph warn"><h4>3 &middot; Return-value refactor <span class="badge b-amber">critical</span></h4><p>generateNPCs/Storyline/Convergence/OrgPage accept inputs + return results; orgPage sends the roster.</p></div>
+      <div class="ph"><h4>4 &middot; generateAll()</h4><p>Orchestrator with <code>buildStage</code>/<code>buildError</code>, auto-advance, retry-on-failure.</p></div>
+      <div class="ph"><h4>5 &middot; goNext + render + canProceed</h4><p>Kick off chain on leaving Setup; <code>renderBuilding()</code>; update the render switch + gating.</p></div>
+      <div class="ph"><h4>6 &middot; Drafts</h4><p>Save after the chain; resume restores inputs + artifacts and lands on the right step.</p></div>
+      <div class="ph"><h4>7 &middot; Verify</h4><p>Frontend typecheck + lint; manual chain run + forced mid-chain failure shows retry, no advance.</p></div>
+    </div>
+    <div class="reveal d2 card" style="margin-top:18px">
+      <b>Out of scope (unchanged)</b>
+      <ul class="tight">
+        <li>All four generation endpoints, <code>/compile</code>, persistence.</li>
+        <li>Runtime: antagonist engine, scoring, AAR.</li>
+        <li>Backend: zero changes.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="footer wrap">
+  Three-step wizard plan &middot; social-crisis War Room &middot; frontend-only.<br/>
+  Tip: the <span class="kbd">critical</span> item is the return-value refactor &mdash; without it the chain silently builds on empty state.
+</div>
+
+<script>
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  const links=[...document.querySelectorAll('nav.toc a')];
+  const secs=links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const nio=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.remove('active'));const l=links.find(a=>a.getAttribute('href')==='#'+e.target.id);if(l)l.classList.add('active')}})},{rootMargin:'-45% 0px -50% 0px'});
+  secs.forEach(s=>nio.observe(s));
+</script>
+</body>
+</html>

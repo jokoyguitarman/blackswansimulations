@@ -52,13 +52,11 @@ interface ObjectiveDef {
 
 const STEP_LABELS: Record<number, string> = {
   1: 'Scenario Setup',
-  2: 'Characters & Facts',
-  3: 'Storyline',
-  4: 'Convergence',
+  2: 'Building',
   7: 'Review & Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 3, 4, 7];
+const VISIBLE_STEPS = [1, 2, 7];
 
 const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social media crisis simulation.
 
@@ -164,73 +162,47 @@ export const SocialCrisisWizard = () => {
   const [newPageFbHandle, setNewPageFbHandle] = useState('');
   const [newPageXHandle, setNewPageXHandle] = useState('');
 
-  // Extra org pages (beyond the primary crisis page) the trainer adds manually.
-  const getExtraOrgs = useCallback((): Array<Record<string, unknown>> => {
-    const orgs = (orgPage as { orgs?: Array<Record<string, unknown>> } | null)?.orgs || [];
-    return orgs.filter((o) => !o.is_primary);
-  }, [orgPage]);
+  // Roster of additional brand pages defined in Setup. Sent to the org-page
+  // generator during the Build step. Allies = player-assignable protagonists;
+  // competitors = trainer/AI-driven antagonists.
+  const [allyEntries, setAllyEntries] = useState<
+    Array<{ name: string; facebook_handle?: string; x_handle?: string }>
+  >([]);
+  const [competitorEntries, setCompetitorEntries] = useState<
+    Array<{ name: string; facebook_handle?: string; x_handle?: string }>
+  >([]);
+  const [autoAntagonist, setAutoAntagonist] = useState(true);
 
-  const getAllies = useCallback(
-    () => getExtraOrgs().filter((o) => (o.role as string) !== 'antagonist'),
-    [getExtraOrgs],
-  );
-  const getAntagonists = useCallback(
-    () => getExtraOrgs().filter((o) => (o.role as string) === 'antagonist'),
-    [getExtraOrgs],
-  );
-
-  const addExtraPage = useCallback(
+  const addRosterEntry = useCallback(
     (role: 'protagonist' | 'antagonist') => {
       const name = newPageName.trim();
-      if (!name || !orgPage) return;
-      const fbHandle = newPageFbHandle.trim() || `@${name.replace(/[^\w]/g, '')}`;
-      const xHandle = newPageXHandle.trim() || fbHandle;
-      const orgKey = `org_${role}_${name.toLowerCase().replace(/[^\w]/g, '_')}_${Date.now().toString(36)}`;
-      const newOrg = {
-        org_key: orgKey,
-        display_name: name,
-        is_primary: false,
-        role,
-        control_mode: role === 'antagonist' ? 'ai' : 'player',
-        facebook: { page_name: name, page_handle: fbHandle, page_bio: '', follower_count: 10000 },
-        x_twitter: { page_name: name, page_handle: xHandle, page_bio: '', follower_count: 8000 },
+      if (!name) return;
+      const entry = {
+        name,
+        facebook_handle: newPageFbHandle.trim() || undefined,
+        x_handle: newPageXHandle.trim() || undefined,
       };
-      setOrgPage((prev) => {
-        if (!prev) return prev;
-        const existing = (prev as { orgs?: Array<Record<string, unknown>> }).orgs;
-        // Ensure the generated primary org is present in orgs.
-        const baseOrgs =
-          existing && existing.length > 0
-            ? existing
-            : [
-                {
-                  org_key: 'primary',
-                  display_name:
-                    (prev as { facebook?: { page_name?: string } }).facebook?.page_name ||
-                    'Organization',
-                  is_primary: true,
-                  role: 'protagonist',
-                  control_mode: 'player',
-                  facebook: (prev as { facebook?: unknown }).facebook,
-                  x_twitter: (prev as { x_twitter?: unknown }).x_twitter,
-                },
-              ];
-        return { ...prev, orgs: [...baseOrgs, newOrg] };
-      });
+      if (role === 'antagonist') setCompetitorEntries((prev) => [...prev, entry]);
+      else setAllyEntries((prev) => [...prev, entry]);
       setNewPageName('');
       setNewPageFbHandle('');
       setNewPageXHandle('');
     },
-    [newPageName, newPageFbHandle, newPageXHandle, orgPage],
+    [newPageName, newPageFbHandle, newPageXHandle],
   );
 
-  const removeExtraPage = useCallback((orgKey: string) => {
-    setOrgPage((prev) => {
-      if (!prev) return prev;
-      const existing = (prev as { orgs?: Array<Record<string, unknown>> }).orgs || [];
-      return { ...prev, orgs: existing.filter((o) => o.org_key !== orgKey) };
-    });
+  const removeRosterEntry = useCallback((role: 'protagonist' | 'antagonist', idx: number) => {
+    if (role === 'antagonist') setCompetitorEntries((prev) => prev.filter((_, i) => i !== idx));
+    else setAllyEntries((prev) => prev.filter((_, i) => i !== idx));
   }, []);
+
+  /* Step 2 — Building (combined generation) progress */
+  const [buildStage, setBuildStage] = useState<
+    'characters' | 'storyline' | 'convergence' | 'pages' | 'done' | null
+  >(null);
+  const [buildError, setBuildError] = useState<
+    'characters' | 'storyline' | 'convergence' | 'pages' | null
+  >(null);
 
   /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
@@ -260,6 +232,9 @@ export const SocialCrisisWizard = () => {
       objectives,
       dimension_labels: dimensionLabels,
       org_page: orgPage,
+      ally_entries: allyEntries,
+      competitor_entries: competitorEntries,
+      auto_antagonist: autoAntagonist,
     }),
     [
       crisisDescription,
@@ -278,6 +253,9 @@ export const SocialCrisisWizard = () => {
       objectives,
       dimensionLabels,
       orgPage,
+      allyEntries,
+      competitorEntries,
+      autoAntagonist,
     ],
   );
 
@@ -360,6 +338,23 @@ export const SocialCrisisWizard = () => {
           setDimensionLabels(input.dimension_labels as Record<string, string>);
         if (input.org_page && typeof input.org_page === 'object')
           setOrgPage(input.org_page as Record<string, unknown>);
+        if (Array.isArray(input.ally_entries))
+          setAllyEntries(
+            input.ally_entries as Array<{
+              name: string;
+              facebook_handle?: string;
+              x_handle?: string;
+            }>,
+          );
+        if (Array.isArray(input.competitor_entries))
+          setCompetitorEntries(
+            input.competitor_entries as Array<{
+              name: string;
+              facebook_handle?: string;
+              x_handle?: string;
+            }>,
+          );
+        if (typeof input.auto_antagonist === 'boolean') setAutoAntagonist(input.auto_antagonist);
 
         setStep(validStep);
       } catch (err) {
@@ -376,28 +371,14 @@ export const SocialCrisisWizard = () => {
       case 1:
         return crisisDescription.length >= 50;
       case 2:
-        return personas.length > 0 && !!factSheet && !step2Loading;
-      case 3:
-        return storylineInjects.length > 0 && !step3Loading;
-      case 4:
-        return (sharedInjects.length > 0 || convergenceGates.length > 0) && !step4Loading;
+        // Building runs automatically and auto-advances; no manual Next.
+        return false;
       case 7:
         return true;
       default:
         return false;
     }
-  }, [
-    step,
-    crisisDescription,
-    personas,
-    factSheet,
-    step2Loading,
-    storylineInjects,
-    step3Loading,
-    sharedInjects,
-    convergenceGates,
-    step4Loading,
-  ]);
+  }, [step, crisisDescription]);
 
   /* ─── File upload ───────────────────────────────────────────────────── */
 
@@ -472,10 +453,25 @@ export const SocialCrisisWizard = () => {
 
   /* ─── API calls ──────────────────────────────────────────────────── */
 
-  const generateNPCs = useCallback(async () => {
-    if (!crisisDescription) return;
+  type NpcResult = { personas: NPCPersona[]; factSheet: FactSheet; communities: string[] };
+
+  const generateNPCs = useCallback(async (): Promise<NpcResult | null> => {
+    if (!crisisDescription) return null;
     setStep2Loading(true);
     setStep2Error(null);
+    const apply = (d: Record<string, unknown>): NpcResult => {
+      const p = (Array.isArray(d.personas) ? d.personas : []) as NPCPersona[];
+      const fs = (d.factSheet ||
+        d.fact_sheet || {
+          confirmed_facts: [],
+          unconfirmed_claims: [],
+        }) as FactSheet;
+      const comms = (Array.isArray(d.communities) ? d.communities : []) as string[];
+      setPersonas(p);
+      setFactSheet(fs);
+      setCommunities(comms);
+      return { personas: p, factSheet: fs, communities: comms };
+    };
     try {
       const headers = await authHeaders();
       const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-npcs'), {
@@ -491,24 +487,21 @@ export const SocialCrisisWizard = () => {
       if (!res.ok) {
         setStep2Error('Failed to start NPC generation. Try again.');
         setStep2Loading(false);
-        return;
+        return null;
       }
       const json = await res.json();
 
       if (json.data) {
-        const d = json.data;
-        if (Array.isArray(d.personas)) setPersonas(d.personas);
-        if (d.factSheet || d.fact_sheet) setFactSheet((d.factSheet || d.fact_sheet) as FactSheet);
-        if (Array.isArray(d.communities)) setCommunities(d.communities);
+        const result = apply(json.data);
         setStep2Loading(false);
-        return;
+        return result;
       }
 
       const jobId = json.job_id;
       if (!jobId) {
         setStep2Error('Unexpected server response.');
         setStep2Loading(false);
-        return;
+        return null;
       }
 
       for (let i = 0; i < 120; i++) {
@@ -521,18 +514,14 @@ export const SocialCrisisWizard = () => {
           if (!pollRes.ok) continue;
           const pollJson = await pollRes.json();
           if (pollJson.status === 'completed' && pollJson.data) {
-            const d = pollJson.data;
-            if (Array.isArray(d.personas)) setPersonas(d.personas);
-            if (d.factSheet || d.fact_sheet)
-              setFactSheet((d.factSheet || d.fact_sheet) as FactSheet);
-            if (Array.isArray(d.communities)) setCommunities(d.communities);
+            const result = apply(pollJson.data);
             setStep2Loading(false);
-            return;
+            return result;
           }
           if (pollJson.status === 'failed') {
             setStep2Error(pollJson.error || 'NPC generation failed. Try again.');
             setStep2Loading(false);
-            return;
+            return null;
           }
         } catch {
           /* continue polling */
@@ -543,165 +532,183 @@ export const SocialCrisisWizard = () => {
       setStep2Error('Network error generating NPCs.');
     }
     setStep2Loading(false);
-  }, [crisisDescription, country]);
+    return null;
+  }, [crisisDescription, country, orgName]);
 
-  const generateStoryline = useCallback(async () => {
-    if (!crisisDescription) return;
-    setStep3Loading(true);
-    setStep3Error(null);
-    setStep3Progress([]);
-    setStorylineInjects([]);
+  const generateStoryline = useCallback(
+    async (
+      personasArg?: NPCPersona[],
+      factSheetArg?: FactSheet | null,
+    ): Promise<SocialInject[] | null> => {
+      if (!crisisDescription) return null;
+      const personasIn = personasArg ?? personas;
+      const factSheetIn = factSheetArg ?? factSheet;
+      setStep3Loading(true);
+      setStep3Error(null);
+      setStep3Progress([]);
+      setStorylineInjects([]);
+      let result: SocialInject[] | null = null;
 
-    try {
-      const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-storyline'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          crisis_type: crisisDescription,
-          country,
-          context: crisisDescription,
-          org_name: orgName || undefined,
-          duration: 60,
-          personas,
-          fact_sheet: factSheet,
-        }),
-      });
+      try {
+        const headers = await authHeaders();
+        const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-storyline'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            crisis_type: crisisDescription,
+            country,
+            context: crisisDescription,
+            org_name: orgName || undefined,
+            duration: 60,
+            personas: personasIn,
+            fact_sheet: factSheetIn,
+          }),
+        });
 
-      if (res.ok && res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+        if (res.ok && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const msg = JSON.parse(line);
-              if (msg.type === 'progress') {
-                setStep3Progress((prev) => [...prev, String(msg.message)]);
-              } else if (msg.type === 'complete' && msg.injects) {
-                setStorylineInjects(msg.injects);
-              } else if (msg.type === 'error') {
-                setStep3Error(String(msg.message || 'Storyline generation failed'));
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const msg = JSON.parse(line);
+                if (msg.type === 'progress') {
+                  setStep3Progress((prev) => [...prev, String(msg.message)]);
+                } else if (msg.type === 'complete' && msg.injects) {
+                  result = msg.injects as SocialInject[];
+                  setStorylineInjects(result);
+                } else if (msg.type === 'error') {
+                  setStep3Error(String(msg.message || 'Storyline generation failed'));
+                }
+              } catch {
+                /* skip malformed */
               }
-            } catch {
-              /* skip malformed */
             }
           }
+        } else {
+          setStep3Error('Failed to generate storyline.');
         }
-      } else {
-        setStep3Error('Failed to generate storyline.');
+      } catch {
+        setStep3Error('Network error generating storyline.');
       }
-    } catch {
-      setStep3Error('Network error generating storyline.');
-    }
-    setStep3Loading(false);
-  }, [crisisDescription, country, personas, factSheet]);
+      setStep3Loading(false);
+      return result;
+    },
+    [crisisDescription, country, orgName, personas, factSheet],
+  );
 
-  const generateConvergence = useCallback(async () => {
-    if (!crisisDescription) return;
-    setStep4Loading(true);
-    setStep4Error(null);
+  const generateConvergence = useCallback(
+    async (
+      personasArg?: NPCPersona[],
+      factSheetArg?: FactSheet | null,
+      storylineArg?: SocialInject[],
+    ): Promise<boolean> => {
+      if (!crisisDescription) return false;
+      const personasIn = personasArg ?? personas;
+      const factSheetIn = factSheetArg ?? factSheet;
+      const storylineIn = storylineArg ?? storylineInjects;
+      setStep4Loading(true);
+      setStep4Error(null);
 
-    try {
-      const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-convergence'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          crisis_type: crisisDescription,
-          location: '',
-          country,
-          context: crisisDescription,
-          org_name: orgName || undefined,
-          duration: 60,
-          communities,
-          personas,
-          fact_sheet: factSheet,
-          // Feed the Step-3 storyline so convergence designs shared injects and
-          // gates as organic consequences of the actual storyline beats.
-          team_storylines: storylineInjects.length > 0 ? { storyline: storylineInjects } : {},
-        }),
-      });
-
-      if (!res.ok) {
-        setStep4Error('Failed to start convergence generation. Try again.');
-        setStep4Loading(false);
-        return;
-      }
-
-      const json = await res.json();
-
-      if (json.data && !json.job_id) {
-        const d = json.data;
-        const si = d.sharedInjects || d.shared_injects;
+      const apply = (d: Record<string, unknown>) => {
+        const si = (d.sharedInjects || d.shared_injects) as SocialInject[] | undefined;
         if (Array.isArray(si)) setSharedInjects(si);
-        const cg = d.convergenceGates || d.convergence_gates;
+        const cg = (d.convergenceGates || d.convergence_gates) as SocialInject[] | undefined;
         if (Array.isArray(cg)) setConvergenceGates(cg);
-        if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
-        if (Array.isArray(d.objectives)) setObjectives(d.objectives);
-        const dl = d.dimensionLabels || d.dimension_labels;
+        if (d.narrative && typeof d.narrative === 'object')
+          setNarrative(d.narrative as { title: string; description: string; briefing: string });
+        if (Array.isArray(d.objectives)) setObjectives(d.objectives as ObjectiveDef[]);
+        const dl = (d.dimensionLabels || d.dimension_labels) as Record<string, string> | undefined;
         if (dl && typeof dl === 'object') setDimensionLabels(dl);
-        void generateOrgPage();
-        setStep4Loading(false);
-        return;
-      }
+        return (Array.isArray(si) && si.length > 0) || (Array.isArray(cg) && cg.length > 0);
+      };
 
-      const jobId = json.job_id;
-      if (!jobId) {
-        setStep4Error('Unexpected server response.');
-        setStep4Loading(false);
-        return;
-      }
+      try {
+        const headers = await authHeaders();
+        const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-convergence'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            crisis_type: crisisDescription,
+            location: '',
+            country,
+            context: crisisDescription,
+            org_name: orgName || undefined,
+            duration: 60,
+            communities,
+            personas: personasIn,
+            fact_sheet: factSheetIn,
+            // Feed the storyline so convergence designs shared injects and gates
+            // as organic consequences of the actual storyline beats.
+            team_storylines: storylineIn.length > 0 ? { storyline: storylineIn } : {},
+          }),
+        });
 
-      for (let i = 0; i < 180; i++) {
-        await new Promise((r) => setTimeout(r, 3000));
-        try {
-          const pollRes = await fetchJSON(
-            apiUrl(`/api/warroom/social-crisis/job-status/${jobId}`),
-            { headers },
-          );
-          if (!pollRes.ok) continue;
-          const pollJson = await pollRes.json();
-          if (pollJson.status === 'completed' && pollJson.data) {
-            const d = pollJson.data;
-            const si = d.sharedInjects || d.shared_injects;
-            if (Array.isArray(si)) setSharedInjects(si);
-            const cg = d.convergenceGates || d.convergence_gates;
-            if (Array.isArray(cg)) setConvergenceGates(cg);
-            if (d.narrative && typeof d.narrative === 'object') setNarrative(d.narrative);
-            if (Array.isArray(d.objectives)) setObjectives(d.objectives);
-            const dl = d.dimensionLabels || d.dimension_labels;
-            if (dl && typeof dl === 'object') setDimensionLabels(dl);
-            void generateOrgPage();
-            setStep4Loading(false);
-            return;
-          }
-          if (pollJson.status === 'failed') {
-            setStep4Error(pollJson.error || 'Convergence generation failed. Try again.');
-            setStep4Loading(false);
-            return;
-          }
-        } catch {
-          /* continue polling */
+        if (!res.ok) {
+          setStep4Error('Failed to start convergence generation. Try again.');
+          setStep4Loading(false);
+          return false;
         }
-      }
-      setStep4Error('Convergence generation timed out. Try again.');
-    } catch {
-      setStep4Error('Network error generating convergence.');
-    }
-    setStep4Loading(false);
-  }, [crisisDescription, country, communities, personas, factSheet, storylineInjects]);
 
-  const generateOrgPage = useCallback(async () => {
-    if (!crisisDescription || orgPage) return;
+        const json = await res.json();
+
+        if (json.data && !json.job_id) {
+          apply(json.data);
+          setStep4Loading(false);
+          return true;
+        }
+
+        const jobId = json.job_id;
+        if (!jobId) {
+          setStep4Error('Unexpected server response.');
+          setStep4Loading(false);
+          return false;
+        }
+
+        for (let i = 0; i < 180; i++) {
+          await new Promise((r) => setTimeout(r, 3000));
+          try {
+            const pollRes = await fetchJSON(
+              apiUrl(`/api/warroom/social-crisis/job-status/${jobId}`),
+              { headers },
+            );
+            if (!pollRes.ok) continue;
+            const pollJson = await pollRes.json();
+            if (pollJson.status === 'completed' && pollJson.data) {
+              apply(pollJson.data);
+              setStep4Loading(false);
+              return true;
+            }
+            if (pollJson.status === 'failed') {
+              setStep4Error(pollJson.error || 'Convergence generation failed. Try again.');
+              setStep4Loading(false);
+              return false;
+            }
+          } catch {
+            /* continue polling */
+          }
+        }
+        setStep4Error('Convergence generation timed out. Try again.');
+      } catch {
+        setStep4Error('Network error generating convergence.');
+      }
+      setStep4Loading(false);
+      return false;
+    },
+    [crisisDescription, country, orgName, communities, personas, factSheet, storylineInjects],
+  );
+
+  const generateOrgPage = useCallback(async (): Promise<boolean> => {
+    if (!crisisDescription) return false;
     try {
       const headers = await authHeaders();
       const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-org-page'), {
@@ -712,9 +719,10 @@ export const SocialCrisisWizard = () => {
           country,
           org_name: orgName || undefined,
           logo_url: brandLogoUrl || undefined,
-          // No competitors named at generation time -> the War Room invents one
-          // hostile rival. Trainers can add named competitors below.
-          auto_antagonist: true,
+          allies: allyEntries,
+          competitors: competitorEntries,
+          // If no competitors are named, the War Room invents one hostile rival.
+          auto_antagonist: autoAntagonist,
         }),
       });
 
@@ -742,11 +750,59 @@ export const SocialCrisisWizard = () => {
             }
           }
         }
+        return true;
       }
+      return false;
     } catch {
       /* non-critical -- org page is optional */
+      return false;
     }
-  }, [crisisDescription, country, orgPage]);
+  }, [
+    crisisDescription,
+    country,
+    orgName,
+    brandLogoUrl,
+    allyEntries,
+    competitorEntries,
+    autoAntagonist,
+  ]);
+
+  /**
+   * Combined Build step: chains Characters -> Storyline -> Convergence -> Org Pages
+   * in sequence (threading results, since React state is not updated mid-chain),
+   * then auto-advances to Compile. Stops on a failed stage and surfaces a retry.
+   */
+  const generateAll = useCallback(async () => {
+    setBuildError(null);
+
+    setBuildStage('characters');
+    const npc = await generateNPCs();
+    if (!npc) {
+      setBuildError('characters');
+      return;
+    }
+
+    setBuildStage('storyline');
+    const story = await generateStoryline(npc.personas, npc.factSheet);
+    if (!story || story.length === 0) {
+      setBuildError('storyline');
+      return;
+    }
+
+    setBuildStage('convergence');
+    const convOk = await generateConvergence(npc.personas, npc.factSheet, story);
+    if (!convOk) {
+      setBuildError('convergence');
+      return;
+    }
+
+    setBuildStage('pages');
+    await generateOrgPage();
+
+    setBuildStage('done');
+    await saveDraftState(7);
+    setStep(7);
+  }, [generateNPCs, generateStoryline, generateConvergence, generateOrgPage, saveDraftState]);
 
   const compileScenario = useCallback(async () => {
     if (!crisisDescription) return;
@@ -871,25 +927,18 @@ export const SocialCrisisWizard = () => {
   };
 
   const goNext = async () => {
+    // Leaving Setup kicks off the combined Build step, which auto-advances to Compile.
+    if (step === 1) {
+      await saveDraftState(2);
+      setStep(2);
+      void generateAll();
+      return;
+    }
     const nextIdx = currentStepIndex + 1;
     if (nextIdx >= VISIBLE_STEPS.length) return;
     const nextStep = VISIBLE_STEPS[nextIdx];
-
     await saveDraftState(nextStep);
     setStep(nextStep);
-
-    if (step === 1 && personas.length === 0) {
-      generateNPCs();
-      return;
-    }
-    if (step === 2 && storylineInjects.length === 0) {
-      generateStoryline();
-      return;
-    }
-    if (step === 3 && sharedInjects.length === 0 && convergenceGates.length === 0) {
-      generateConvergence();
-      return;
-    }
   };
 
   /* ─── Computed stats ────────────────────────────────────────────── */
@@ -1138,6 +1187,125 @@ export const SocialCrisisWizard = () => {
         </div>
       </div>
 
+      {/* Brand pages: protagonist allies + antagonist competitors */}
+      <div className="mb-4 p-3 border border-robotic-yellow/20 rounded bg-robotic-gray-200/40">
+        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-1 block">
+          Brand Pages (optional)
+        </label>
+        <p className="text-[10px] terminal-text text-robotic-yellow/40 mb-3">
+          Your crisis page is generated automatically. Add allied pages players can control, and
+          rival competitor pages the AI drives against you.
+        </p>
+
+        <div className="grid grid-cols-3 gap-2">
+          <input
+            value={newPageName}
+            onChange={(e) => setNewPageName(e.target.value)}
+            placeholder="Page name"
+            className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+          />
+          <input
+            value={newPageFbHandle}
+            onChange={(e) => setNewPageFbHandle(e.target.value)}
+            placeholder="@FacebookHandle"
+            className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+          />
+          <input
+            value={newPageXHandle}
+            onChange={(e) => setNewPageXHandle(e.target.value)}
+            placeholder="@XHandle"
+            className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+          />
+        </div>
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={() => addRosterEntry('protagonist')}
+            disabled={!newPageName.trim()}
+            className="military-button px-4 py-1.5 text-xs disabled:opacity-50"
+          >
+            [ADD_ALLY]
+          </button>
+          <button
+            onClick={() => addRosterEntry('antagonist')}
+            disabled={!newPageName.trim()}
+            className="px-4 py-1.5 text-xs terminal-text uppercase border border-red-400/50 text-red-400 hover:bg-red-400/10 rounded disabled:opacity-50"
+          >
+            [ADD_COMPETITOR]
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-[10px] terminal-text text-cyan-400/70 uppercase mb-1">
+            Your side &mdash; allied pages (assignable to players)
+          </div>
+          {allyEntries.length === 0 ? (
+            <div className="text-[10px] terminal-text text-robotic-yellow/30">
+              The crisis page is the required protagonist page. Add optional allies.
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {allyEntries.map((e, i) => (
+                <div
+                  key={`ally-${i}`}
+                  className="flex items-center justify-between border-b border-robotic-yellow/10 py-1"
+                >
+                  <span className="text-xs terminal-text">
+                    {e.name}{' '}
+                    <span className="text-robotic-yellow/40">{e.facebook_handle || ''}</span>
+                  </span>
+                  <button
+                    onClick={() => removeRosterEntry('protagonist', i)}
+                    className="text-[10px] terminal-text text-robotic-orange hover:underline"
+                  >
+                    [REMOVE]
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
+            Opposition &mdash; competitor pages (AI-driven, trainer can seize)
+          </div>
+          {competitorEntries.length === 0 ? (
+            <div className="text-[10px] terminal-text text-robotic-yellow/30">
+              {autoAntagonist
+                ? 'A hostile rival will be auto-generated. Add named competitors (up to 10) to stack the pressure.'
+                : 'No competitors. Add named competitors (up to 10).'}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {competitorEntries.map((e, i) => (
+                <div
+                  key={`comp-${i}`}
+                  className="flex items-center justify-between border-b border-red-400/10 py-1"
+                >
+                  <span className="text-xs terminal-text text-red-300">
+                    {e.name} <span className="text-red-400/40">{e.facebook_handle || ''}</span>
+                  </span>
+                  <button
+                    onClick={() => removeRosterEntry('antagonist', i)}
+                    className="text-[10px] terminal-text text-robotic-orange hover:underline"
+                  >
+                    [REMOVE]
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="flex items-center gap-2 mt-2 text-[10px] terminal-text text-robotic-yellow/50 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoAntagonist}
+              onChange={(e) => setAutoAntagonist(e.target.checked)}
+            />
+            Auto-generate a hostile rival if no competitors are named
+          </label>
+        </div>
+      </div>
+
       {crisisDescription.length >= 50 && (
         <div className="mt-4 p-3 border border-green-400/30 rounded bg-green-900/10">
           <p className="text-[10px] terminal-text text-green-400">
@@ -1149,206 +1317,74 @@ export const SocialCrisisWizard = () => {
     </div>
   );
 
-  /* ── Step 2: Characters & Facts (read-only preview) ────────────────── */
+  /* ── Step 2: Building (combined generation, progress-only) ─────────── */
 
-  const renderStep2 = () => (
-    <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 2: CHARACTERS & FACTS]</h2>
-      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        AI-generated NPC personas, fact sheet, and inferred affected communities. Read-only preview.
-      </p>
-
-      {step2Loading || (personas.length === 0 && !step2Error) ? (
-        <Spinner text="Generating NPC personas, fact sheet & communities..." />
-      ) : step2Error ? (
-        <div className="text-center py-8">
-          <p className="text-sm terminal-text text-red-400 mb-4">{step2Error}</p>
-          <button
-            onClick={generateNPCs}
-            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-          >
-            Retry
-          </button>
+  const renderBuilding = () => {
+    const stages: Array<{
+      key: 'characters' | 'storyline' | 'convergence' | 'pages';
+      label: string;
+    }> = [
+      { key: 'characters', label: 'Characters & facts' },
+      { key: 'storyline', label: 'Storyline' },
+      { key: 'convergence', label: 'Convergence' },
+      { key: 'pages', label: 'Org pages' },
+    ];
+    const order = ['characters', 'storyline', 'convergence', 'pages', 'done'];
+    const curIdx = buildStage ? order.indexOf(buildStage) : -1;
+    const loadingByKey: Record<string, boolean> = {
+      characters: step2Loading,
+      storyline: step3Loading,
+      convergence: step4Loading,
+      pages: buildStage === 'pages',
+    };
+    const errorMsg = step2Error || step3Error || step4Error;
+    return (
+      <div>
+        <h2 className="text-lg terminal-text uppercase mb-4">[STEP 2: BUILDING SCENARIO]</h2>
+        <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+          Generating characters, storyline, convergence, and brand pages. This takes a few minutes;
+          you will advance to compile automatically.
+        </p>
+        <div className="border border-robotic-gray-200 rounded p-4 space-y-2 mb-4">
+          {stages.map((s) => {
+            const idx = order.indexOf(s.key);
+            const isDone = buildStage === 'done' || (curIdx > -1 && curIdx > idx);
+            const isRunning = buildStage === s.key && !buildError && loadingByKey[s.key] !== false;
+            const isErrored = buildError === s.key;
+            return (
+              <div key={s.key} className="flex items-center gap-3 text-sm terminal-text">
+                <span
+                  className={`w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold ${
+                    isErrored
+                      ? 'bg-red-900/40 text-red-400'
+                      : isDone
+                        ? 'bg-green-900/30 text-green-400'
+                        : isRunning
+                          ? 'bg-robotic-yellow/20 text-robotic-yellow animate-pulse'
+                          : 'bg-robotic-gray-200 text-robotic-yellow/30'
+                  }`}
+                >
+                  {isErrored ? '!' : isDone ? '✓' : isRunning ? '●' : '·'}
+                </span>
+                <span
+                  className={
+                    isDone
+                      ? 'text-robotic-yellow/80'
+                      : isRunning
+                        ? 'text-robotic-yellow'
+                        : 'text-robotic-yellow/40'
+                  }
+                >
+                  {s.label}
+                </span>
+              </div>
+            );
+          })}
         </div>
-      ) : (
-        <>
-          <div className="mb-6">
-            {(() => {
-              const keyNpcs = personas.filter((p) => p.tier === 'key' || !p.tier);
-              const bgNpcs = personas.filter((p) => p.tier === 'background');
-              return (
-                <>
-                  <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                    Key Characters ({keyNpcs.length})
-                  </h3>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
-                    {keyNpcs.map((p, i) => (
-                      <div key={i} className="border border-robotic-gray-200 rounded p-3">
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs terminal-text text-cyan-400">{p.handle}</span>
-                          <span
-                            className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
-                              p.type === 'npc_media'
-                                ? 'bg-blue-900/30 text-blue-400'
-                                : p.type === 'npc_politician'
-                                  ? 'bg-purple-900/30 text-purple-400'
-                                  : p.type === 'npc_influencer'
-                                    ? 'bg-pink-900/30 text-pink-400'
-                                    : 'bg-robotic-gray-200/30 text-robotic-yellow/60'
-                            }`}
-                          >
-                            {p.type.replace('npc_', '')}
-                          </span>
-                          <span className="text-[9px] terminal-text bg-cyan-900/30 text-cyan-400 px-1.5 py-0.5 rounded">
-                            KEY
-                          </span>
-                        </div>
-                        <div className="text-xs terminal-text font-bold mb-1">{p.name}</div>
-                        <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-1">
-                          {p.personality}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-[9px] terminal-text text-robotic-yellow/30">
-                            Bias: {p.bias}
-                          </span>
-                          <span className="text-[9px] terminal-text text-robotic-yellow/30">
-                            {p.follower_count.toLocaleString()} followers
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {bgNpcs.length > 0 && (
-                    <details className="mb-4">
-                      <summary className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3 cursor-pointer hover:text-robotic-yellow/80">
-                        Background Characters ({bgNpcs.length}) — click to expand
-                      </summary>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-3">
-                        {bgNpcs.map((p, i) => (
-                          <div key={i} className="border border-robotic-gray-200/50 rounded p-2">
-                            <div className="flex items-center gap-1 mb-1">
-                              <span className="text-[10px] terminal-text text-cyan-400/70">
-                                {p.handle}
-                              </span>
-                            </div>
-                            <div className="text-[10px] terminal-text font-bold">{p.name}</div>
-                            <div className="text-[9px] terminal-text text-robotic-yellow/40">
-                              {p.personality}
-                            </div>
-                            {p.normal_interests && p.normal_interests.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {p.normal_interests.map((interest, ii) => (
-                                  <span
-                                    key={ii}
-                                    className="text-[8px] terminal-text bg-robotic-gray-200/20 text-robotic-yellow/40 px-1 py-0.5 rounded"
-                                  >
-                                    {interest}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                </>
-              );
-            })()}
-          </div>
 
-          {factSheet && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Fact Sheet
-              </h3>
-              <div className="mb-3">
-                <div className="text-[10px] terminal-text text-green-400/60 uppercase mb-2">
-                  Confirmed Facts
-                </div>
-                <div className="space-y-1">
-                  {factSheet.confirmed_facts.map((f, i) => (
-                    <div
-                      key={i}
-                      className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
-                    >
-                      <span className="text-green-400 mt-0.5">✓</span>
-                      <span>{f}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="text-[10px] terminal-text text-red-400/60 uppercase mb-2">
-                  Unconfirmed / False Claims
-                </div>
-                <div className="space-y-2">
-                  {factSheet.unconfirmed_claims.map((c, i) => (
-                    <div key={i} className="border border-robotic-gray-200 rounded px-3 py-2">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span
-                          className={`text-[9px] terminal-text px-1.5 py-0.5 rounded uppercase ${
-                            c.status === 'FALSE'
-                              ? 'bg-red-900/30 text-red-400'
-                              : 'bg-yellow-900/30 text-yellow-400'
-                          }`}
-                        >
-                          {c.status}
-                        </span>
-                        <span className="text-xs terminal-text">{c.claim}</span>
-                      </div>
-                      <div className="text-[10px] terminal-text text-robotic-yellow/40 ml-4">
-                        Truth: {c.truth}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {communities.length > 0 && (
-            <div>
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Affected Stakeholder Groups ({communities.length})
-              </h3>
-              <div className="space-y-1">
-                {communities.map((c, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-2 border border-robotic-gray-200 px-4 py-2 rounded"
-                  >
-                    <span className="text-cyan-400 text-xs">&#9656;</span>
-                    <span className="text-sm terminal-text">{c}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-
-  /* ── Step 3: Storyline ──────────────────────────────────────────────── */
-
-  const renderStep3 = () => (
-    <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 3: CRISIS STORYLINE]</h2>
-      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        AI-generated crisis storyline with escalating pressure arc. All players experience the same
-        events.
-      </p>
-
-      {step3Loading && (
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
-              Generating storyline...
-            </span>
-          </div>
-          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
+        {/* Live storyline generation log */}
+        {buildStage === 'storyline' && step3Progress.length > 0 && (
+          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto mb-4">
             {step3Progress.map((msg, i) => (
               <div key={i} className="text-robotic-yellow/70">
                 <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
@@ -1357,499 +1393,26 @@ export const SocialCrisisWizard = () => {
             ))}
             <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
           </div>
-        </div>
-      )}
+        )}
 
-      {step3Error && (
-        <div className="text-center py-4 mb-4">
-          <p className="text-sm terminal-text text-red-400 mb-4">{step3Error}</p>
-          <button
-            onClick={generateStoryline}
-            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {storylineInjects.length > 0 && (
-        <div className="border border-robotic-gray-200 rounded p-4">
-          <h3 className="text-sm terminal-text text-cyan-400 font-bold uppercase mb-3">
-            Crisis Timeline
-            <span className="text-[10px] text-robotic-yellow/40 ml-2 normal-case">
-              ({storylineInjects.length} injects)
-            </span>
-          </h3>
-          <div className="space-y-2">
-            {storylineInjects.map((inj, i) => (
-              <div
-                key={i}
-                className="flex items-start gap-3 border-l-2 border-robotic-yellow/20 pl-3 py-1"
-              >
-                <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
-                  T+{inj.trigger_time_minutes ?? '?'}m
-                </span>
-                <div className="flex-1">
-                  <div className="text-xs terminal-text font-bold">{inj.title}</div>
-                  <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                    {inj.content}
-                  </div>
-                  <div className="flex gap-2 mt-1">
-                    {inj.delivery_config && (
-                      <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded">
-                        {String((inj.delivery_config as Record<string, unknown>).app || inj.type)}
-                      </span>
-                    )}
-                    {inj.delivery_config &&
-                      !!(inj.delivery_config as Record<string, unknown>).platform && (
-                        <span className="text-[9px] terminal-text bg-purple-900/20 text-purple-400 px-1.5 py-0.5 rounded">
-                          {String((inj.delivery_config as Record<string, unknown>).platform)}
-                        </span>
-                      )}
-                    {inj.severity && (
-                      <span
-                        className={`text-[9px] terminal-text px-1.5 py-0.5 rounded ${
-                          inj.severity === 'critical'
-                            ? 'bg-red-900/20 text-red-400'
-                            : inj.severity === 'high'
-                              ? 'bg-orange-900/20 text-orange-400'
-                              : 'bg-yellow-900/20 text-yellow-400'
-                        }`}
-                      >
-                        {inj.severity}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+        {buildError ? (
+          <div className="text-center py-4">
+            <p className="text-sm terminal-text text-red-400 mb-4">
+              {errorMsg || `The ${buildError} stage failed.`} Retry to rebuild the scenario.
+            </p>
+            <button
+              onClick={() => void generateAll()}
+              className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+            >
+              Retry
+            </button>
           </div>
-        </div>
-      )}
-    </div>
-  );
-
-  /* ── Step 4: Convergence + Shared Chaos ─────────────────────────────── */
-
-  const renderStep4 = () => (
-    <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 4: CONVERGENCE]</h2>
-      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        Merged timeline with shared injects and convergence gates. Read-only preview.
-      </p>
-
-      {step4Loading ||
-      (sharedInjects.length === 0 && convergenceGates.length === 0 && !step4Error) ? (
-        <Spinner text="Generating convergence layer..." />
-      ) : step4Error ? (
-        <div className="text-center py-8">
-          <p className="text-sm terminal-text text-red-400 mb-4">{step4Error}</p>
-          <button
-            onClick={generateConvergence}
-            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-          >
-            Retry
-          </button>
-        </div>
-      ) : (
-        <>
-          {narrative && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
-                Scenario Narrative
-              </h3>
-              <div className="border border-robotic-gray-200 rounded p-4">
-                <div className="text-sm terminal-text text-cyan-400 font-bold mb-2">
-                  {narrative.title}
-                </div>
-                <div className="text-xs terminal-text text-robotic-yellow/70 leading-relaxed">
-                  {narrative.description}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {objectives.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
-                Training Objectives
-              </h3>
-              <div className="space-y-2">
-                {objectives.map((obj, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
-                  >
-                    <span className="text-cyan-400 mt-0.5">{String(i + 1).padStart(2, '0')}.</span>
-                    <div className="flex-1">
-                      <span className="font-bold">{obj.objective_name}</span>
-                      <span className="text-robotic-yellow/40 ml-2">(weight: {obj.weight})</span>
-                      <div className="text-[10px] text-robotic-yellow/50 mt-0.5">
-                        {obj.description}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {convergenceGates.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Convergence Gates ({convergenceGates.length})
-              </h3>
-              <div className="space-y-3">
-                {convergenceGates.map((gate, i) => {
-                  const conditions = gate.conditions_to_appear;
-                  const condList: string[] =
-                    conditions && typeof conditions === 'object'
-                      ? (((conditions as Record<string, unknown>).conditions ||
-                          (conditions as Record<string, unknown>).all ||
-                          []) as string[])
-                      : [];
-                  return (
-                    <div key={i} className="border border-cyan-700/30 bg-cyan-900/10 rounded p-4">
-                      <div className="flex items-center gap-3 mb-2">
-                        {gate.eligible_after_minutes != null && (
-                          <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap">
-                            after T+{gate.eligible_after_minutes}m
-                          </span>
-                        )}
-                        <span className="text-xs terminal-text text-cyan-300 font-bold uppercase">
-                          {gate.title}
-                        </span>
-                        <span
-                          className={`text-[9px] terminal-text px-1.5 py-0.5 rounded ${
-                            gate.severity === 'critical'
-                              ? 'bg-red-900/20 text-red-400'
-                              : 'bg-orange-900/20 text-orange-400'
-                          }`}
-                        >
-                          {gate.severity}
-                        </span>
-                      </div>
-                      <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
-                        {gate.content}
-                      </div>
-                      {condList.length > 0 && (
-                        <div className="mt-2 space-y-1">
-                          <div className="text-[9px] terminal-text text-cyan-400/60 uppercase">
-                            Conditions:
-                          </div>
-                          {condList.map((cond, ci) => (
-                            <div
-                              key={ci}
-                              className="text-[9px] terminal-text text-robotic-yellow/40 flex gap-1"
-                            >
-                              <span className="text-cyan-400">&#8226;</span> {String(cond)}
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Org Page Identity Preview */}
-          {orgPage ? (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Organization Page Identity
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {(
-                  orgPage as {
-                    facebook?: {
-                      page_name: string;
-                      page_handle: string;
-                      page_bio: string;
-                      follower_count: number;
-                    };
-                  }
-                ).facebook && (
-                  <div className="border border-robotic-gray-200 rounded p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      {(orgPage as { facebook: { page_logo_url?: string } }).facebook
-                        .page_logo_url ? (
-                        <img
-                          src={
-                            (orgPage as { facebook: { page_logo_url: string } }).facebook
-                              .page_logo_url
-                          }
-                          alt="Logo"
-                          className="w-10 h-10 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold">
-                          {
-                            ((orgPage as { facebook: { page_name: string } }).facebook.page_name ||
-                              'O')[0]
-                          }
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs terminal-text font-bold truncate">
-                          {(orgPage as { facebook: { page_name: string } }).facebook.page_name}
-                        </div>
-                        <div className="text-[10px] terminal-text text-cyan-400">
-                          {(orgPage as { facebook: { page_handle: string } }).facebook.page_handle}
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-blue-900/30 text-blue-400 px-1.5 py-0.5 rounded flex-shrink-0">
-                        Facebook
-                      </span>
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                      {(orgPage as { facebook: { page_bio: string } }).facebook.page_bio}
-                    </div>
-                    <div className="text-[9px] terminal-text text-robotic-yellow/30 mt-1">
-                      {(
-                        (orgPage as { facebook: { follower_count: number } }).facebook
-                          .follower_count || 0
-                      ).toLocaleString()}{' '}
-                      followers
-                    </div>
-                  </div>
-                )}
-                {(
-                  orgPage as {
-                    x_twitter?: {
-                      page_name: string;
-                      page_handle: string;
-                      page_bio: string;
-                      follower_count: number;
-                    };
-                  }
-                ).x_twitter && (
-                  <div className="border border-robotic-gray-200 rounded p-4">
-                    <div className="flex items-center gap-2 mb-2">
-                      {(orgPage as { x_twitter: { page_logo_url?: string } }).x_twitter
-                        .page_logo_url ? (
-                        <img
-                          src={
-                            (orgPage as { x_twitter: { page_logo_url: string } }).x_twitter
-                              .page_logo_url
-                          }
-                          alt="Logo"
-                          className="w-10 h-10 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="w-10 h-10 rounded-lg bg-gray-800 flex items-center justify-center text-white font-bold">
-                          {
-                            ((orgPage as { x_twitter: { page_name: string } }).x_twitter
-                              .page_name || 'O')[0]
-                          }
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs terminal-text font-bold truncate">
-                          {(orgPage as { x_twitter: { page_name: string } }).x_twitter.page_name}
-                        </div>
-                        <div className="text-[10px] terminal-text text-cyan-400">
-                          {
-                            (orgPage as { x_twitter: { page_handle: string } }).x_twitter
-                              .page_handle
-                          }
-                        </div>
-                      </div>
-                      <span className="text-[9px] bg-gray-700/30 text-gray-400 px-1.5 py-0.5 rounded flex-shrink-0">
-                        X
-                      </span>
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                      {(orgPage as { x_twitter: { page_bio: string } }).x_twitter.page_bio}
-                    </div>
-                    <div className="text-[9px] terminal-text text-robotic-yellow/30 mt-1">
-                      {(
-                        (orgPage as { x_twitter: { follower_count: number } }).x_twitter
-                          .follower_count || 0
-                      ).toLocaleString()}{' '}
-                      followers
-                    </div>
-                  </div>
-                )}
-              </div>
-              {(orgPage as { branded_history?: unknown[] }).branded_history &&
-                (orgPage as { branded_history: unknown[] }).branded_history.length > 0 && (
-                  <div className="mt-2 p-2 border border-cyan-400/20 rounded bg-cyan-900/10">
-                    <p className="text-[10px] terminal-text text-cyan-400">
-                      {(orgPage as { branded_history: unknown[] }).branded_history.length}{' '}
-                      pre-crisis branded posts will appear on the page timeline when the session
-                      starts.
-                    </p>
-                  </div>
-                )}
-
-              {/* Brand pages: protagonist allies + antagonist competitors */}
-              <div className="mt-4 p-3 border border-robotic-yellow/20 rounded bg-robotic-gray-200/40">
-                <h4 className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                  Brand Pages
-                </h4>
-
-                {/* Shared add inputs */}
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    value={newPageName}
-                    onChange={(e) => setNewPageName(e.target.value)}
-                    placeholder="Page name"
-                    className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
-                  />
-                  <input
-                    value={newPageFbHandle}
-                    onChange={(e) => setNewPageFbHandle(e.target.value)}
-                    placeholder="@FacebookHandle"
-                    className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
-                  />
-                  <input
-                    value={newPageXHandle}
-                    onChange={(e) => setNewPageXHandle(e.target.value)}
-                    placeholder="@XHandle"
-                    className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
-                  />
-                </div>
-                <div className="flex gap-2 mt-2">
-                  <button
-                    onClick={() => addExtraPage('protagonist')}
-                    disabled={!newPageName.trim()}
-                    className="military-button px-4 py-1.5 text-xs disabled:opacity-50"
-                  >
-                    [ADD_ALLY]
-                  </button>
-                  <button
-                    onClick={() => addExtraPage('antagonist')}
-                    disabled={!newPageName.trim()}
-                    className="px-4 py-1.5 text-xs terminal-text uppercase border border-red-400/50 text-red-400 hover:bg-red-400/10 rounded disabled:opacity-50"
-                  >
-                    [ADD_COMPETITOR]
-                  </button>
-                </div>
-
-                {/* Protagonist allies */}
-                <div className="mt-4">
-                  <div className="text-[10px] terminal-text text-cyan-400/70 uppercase mb-1">
-                    Your side &mdash; allied pages (assignable to players)
-                  </div>
-                  {getAllies().length === 0 ? (
-                    <div className="text-[10px] terminal-text text-robotic-yellow/30">
-                      The crisis page above is the required protagonist page. Add optional allies.
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {getAllies().map((o) => (
-                        <div
-                          key={String(o.org_key)}
-                          className="flex items-center justify-between border-b border-robotic-yellow/10 py-1"
-                        >
-                          <span className="text-xs terminal-text">
-                            {String(o.display_name)}{' '}
-                            <span className="text-robotic-yellow/40">
-                              {String(
-                                (o.facebook as { page_handle?: string } | undefined)?.page_handle ||
-                                  '',
-                              )}
-                            </span>
-                          </span>
-                          <button
-                            onClick={() => removeExtraPage(String(o.org_key))}
-                            className="text-[10px] terminal-text text-robotic-orange hover:underline"
-                          >
-                            [REMOVE]
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Antagonist competitors */}
-                <div className="mt-4">
-                  <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
-                    Opposition &mdash; competitor pages (AI-driven, trainer can seize)
-                  </div>
-                  {getAntagonists().length === 0 ? (
-                    <div className="text-[10px] terminal-text text-robotic-yellow/30">
-                      A hostile rival will be auto-generated. Add named competitors (up to 10) to
-                      stack the pressure.
-                    </div>
-                  ) : (
-                    <div className="space-y-1">
-                      {getAntagonists().map((o) => (
-                        <div
-                          key={String(o.org_key)}
-                          className="flex items-center justify-between border-b border-red-400/10 py-1"
-                        >
-                          <span className="text-xs terminal-text text-red-300">
-                            {String(o.display_name)}{' '}
-                            <span className="text-red-400/40">
-                              {String(
-                                (o.facebook as { page_handle?: string } | undefined)?.page_handle ||
-                                  '',
-                              )}
-                            </span>
-                            {o.auto_generated ? (
-                              <span className="text-[9px] text-red-400/40"> (auto)</span>
-                            ) : null}
-                          </span>
-                          <button
-                            onClick={() => removeExtraPage(String(o.org_key))}
-                            className="text-[10px] terminal-text text-robotic-orange hover:underline"
-                          >
-                            [REMOVE]
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            !step4Loading &&
-            (sharedInjects.length > 0 || convergenceGates.length > 0) && (
-              <div className="mb-6">
-                <Spinner text="Generating organization page identity..." />
-              </div>
-            )
-          )}
-
-          {sharedInjects.length > 0 && (
-            <div>
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Shared Injects ({sharedInjects.length})
-              </h3>
-              <div className="space-y-2">
-                {sharedInjects.map((inj, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-3 border-l-2 border-cyan-400/30 pl-3 py-1"
-                  >
-                    <span className="text-[10px] terminal-text text-cyan-400 whitespace-nowrap mt-0.5">
-                      T+{inj.trigger_time_minutes ?? '?'}m
-                    </span>
-                    <div className="flex-1">
-                      <div className="text-xs terminal-text font-bold">{inj.title}</div>
-                      <div className="text-[10px] terminal-text text-robotic-yellow/50">
-                        {inj.content}
-                      </div>
-                      {inj.delivery_config && (
-                        <span className="text-[9px] terminal-text bg-blue-900/20 text-blue-400 px-1.5 py-0.5 rounded mt-1 inline-block">
-                          {String((inj.delivery_config as Record<string, unknown>).app || inj.type)}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
+        ) : (
+          <Spinner text="Building scenario..." />
+        )}
+      </div>
+    );
+  };
 
   /* ── Step 5: Review & Compile ──────────────────────────────────────── */
 
@@ -2033,9 +1596,7 @@ export const SocialCrisisWizard = () => {
 
         <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6">
           {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
-          {step === 3 && renderStep3()}
-          {step === 4 && renderStep4()}
+          {step === 2 && renderBuilding()}
           {step === 7 && renderStep7()}
         </div>
 
