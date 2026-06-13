@@ -1981,6 +1981,9 @@ export default function SocialFeedApp({
                             snippet={String(sa.snippet || '')}
                             category={String(sa.category || '')}
                             platform="x_twitter"
+                            onClick={() =>
+                              navigate(`/sim/${sessionId}/device/news?article=${sa.id}`)
+                            }
                           />
                         );
                       })()}

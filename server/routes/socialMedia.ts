@@ -263,6 +263,9 @@ const createPostSchema = z.object({
       ])
       .default('text'),
     post_as_page: z.boolean().optional().default(false),
+    shared_article_id: z.string().uuid().optional(),
+    content_flags: z.record(z.string(), z.unknown()).optional(),
+    share_stance: z.enum(['support', 'neutral', 'criticize', 'fake_news']).optional(),
   }),
 });
 
@@ -284,6 +287,7 @@ router.post(
         post_as_page,
         shared_article_id,
         content_flags,
+        share_stance,
       } = req.body;
 
       const hashtags = content.match(/#\w+/g) || [];
@@ -344,7 +348,14 @@ router.post(
           media_urls: media_url ? [media_url] : null,
           virality_score: initialViralityScore,
           ...(shared_article_id ? { shared_article_id } : {}),
-          ...(content_flags ? { content_flags } : {}),
+          ...(content_flags || share_stance
+            ? {
+                content_flags: {
+                  ...(content_flags || {}),
+                  ...(share_stance ? { share_stance } : {}),
+                },
+              }
+            : {}),
           ...(postedByUserId
             ? { posted_by_user_id: postedByUserId, posted_by_display_name: postedByDisplayName }
             : {}),

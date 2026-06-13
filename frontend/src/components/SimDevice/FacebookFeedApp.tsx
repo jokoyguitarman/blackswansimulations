@@ -2195,6 +2195,9 @@ export default function FacebookFeedApp() {
                                   snippet={String(sa.snippet || '')}
                                   category={String(sa.category || '')}
                                   platform="facebook"
+                                  onClick={() =>
+                                    navigate(`/sim/${sessionId}/device/news?article=${sa.id}`)
+                                  }
                                 />
                               </div>
                             );

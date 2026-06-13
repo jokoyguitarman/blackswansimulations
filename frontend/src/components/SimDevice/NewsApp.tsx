@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -51,13 +52,33 @@ function getOutletColor(name: string): string {
 export default function NewsApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const { isTrainer } = useRoleVisibility();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
   const [shareStatus, setShareStatus] = useState<string | null>(null);
+  const [shareModal, setShareModal] = useState<{
+    article: NewsArticle;
+    platform: 'x_twitter' | 'facebook';
+  } | null>(null);
+  const [stanceText, setStanceText] = useState('');
+  const [selectedStance, setSelectedStance] = useState<
+    'support' | 'neutral' | 'criticize' | 'fake_news'
+  >('neutral');
+  const [posting, setPosting] = useState(false);
 
   useEffect(() => {
     loadArticles();
   }, [sessionId]);
+
+  useEffect(() => {
+    const articleIdParam = searchParams.get('article');
+    if (articleIdParam && articles.length > 0) {
+      const target = articles.find((a) => a.id === articleIdParam);
+      if (target) openArticle(target);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, articles]);
 
   useWebSocket({
     sessionId: sessionId || '',
@@ -82,15 +103,24 @@ export default function NewsApp() {
     }
   }
 
-  async function shareArticle(article: NewsArticle, platform: 'x_twitter' | 'facebook') {
-    if (!sessionId) return;
-    setShareStatus(null);
+  function openShareModal(article: NewsArticle, platform: 'x_twitter' | 'facebook') {
+    setShareModal({ article, platform });
+    setStanceText('');
+    setSelectedStance('neutral');
+  }
+
+  async function submitShare() {
+    if (!shareModal || !sessionId) return;
+    setPosting(true);
+    const { article, platform } = shareModal;
     try {
       const headers = await getAuthHeaders();
+      const linkSuffix = `news.sim/${article.id.slice(0, 8)}`;
+      const commentary = stanceText.trim();
       const content =
         platform === 'x_twitter'
-          ? `${article.headline}\n\nvia ${article.outlet_name}\n\nnews.sim/${article.id.slice(0, 8)}`
-          : `📰 ${article.headline}\n\n"${article.body.substring(0, 120)}..."\n\n— ${article.outlet_name}`;
+          ? `${commentary || article.headline}\n\n${linkSuffix}`
+          : `${commentary || `📰 ${article.headline}`}\n\n— ${article.outlet_name}`;
 
       await fetch(apiUrl('/api/social/posts'), {
         method: 'POST',
@@ -100,6 +130,7 @@ export default function NewsApp() {
           content,
           platform,
           shared_article_id: article.id,
+          share_stance: selectedStance,
           content_flags: {
             shared_article: {
               id: article.id,
@@ -111,10 +142,13 @@ export default function NewsApp() {
           },
         }),
       });
+      setShareModal(null);
       setShareStatus(`Shared to ${platform === 'x_twitter' ? 'Z' : 'Fakebook'}!`);
       setTimeout(() => setShareStatus(null), 3000);
     } catch {
       setShareStatus('Failed to share');
+    } finally {
+      setPosting(false);
     }
   }
 
@@ -143,6 +177,16 @@ export default function NewsApp() {
     } catch {
       setShareStatus('Failed to share');
     }
+  }
+
+  function openArticle(article: NewsArticle) {
+    setSelectedArticle(article);
+    getAuthHeaders().then((headers) =>
+      fetch(apiUrl(`/api/social/news/${article.id}/read`), {
+        method: 'POST',
+        headers,
+      }).catch(() => {}),
+    );
   }
 
   function copyArticleLink(article: NewsArticle) {
@@ -178,7 +222,7 @@ export default function NewsApp() {
   // Article Detail
   if (selectedArticle) {
     return (
-      <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
+      <div className="h-full flex flex-col relative" style={{ backgroundColor: '#FFFFFF' }}>
         {/* Nav */}
         <div
           className="flex items-center justify-between px-4 ios-blur-nav flex-shrink-0"
@@ -272,7 +316,7 @@ export default function NewsApp() {
                   </span>
                 );
               })()}
-              {!selectedArticle.is_factual && (
+              {isTrainer && !selectedArticle.is_factual && (
                 <span
                   className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                   style={{ backgroundColor: '#FFF3CD', color: '#856404' }}
@@ -305,7 +349,7 @@ export default function NewsApp() {
             </p>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => shareArticle(selectedArticle, 'x_twitter')}
+                onClick={() => openShareModal(selectedArticle, 'x_twitter')}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold"
                 style={{ backgroundColor: '#16181C', color: '#E7E9EA' }}
               >
@@ -315,7 +359,7 @@ export default function NewsApp() {
                 Post to Z
               </button>
               <button
-                onClick={() => shareArticle(selectedArticle, 'facebook')}
+                onClick={() => openShareModal(selectedArticle, 'facebook')}
                 className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-semibold text-white"
                 style={{ backgroundColor: '#1877F2' }}
               >
@@ -362,6 +406,105 @@ export default function NewsApp() {
             )}
           </div>
         </div>
+
+        {shareModal && (
+          <div
+            className="absolute inset-0 flex items-end justify-center"
+            style={{ backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 60 }}
+            onClick={() => setShareModal(null)}
+          >
+            <div
+              className="w-full rounded-t-2xl"
+              style={{ backgroundColor: '#FFFFFF', maxHeight: '75%' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                <h3 className="text-[17px] font-bold" style={{ color: '#1C1C1E' }}>
+                  Share to {shareModal.platform === 'x_twitter' ? 'Z' : 'Fakebook'}
+                </h3>
+                <button
+                  onClick={() => setShareModal(null)}
+                  className="text-[15px] font-medium"
+                  style={{ color: '#8E8E93' }}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="mx-5 mb-3 p-3 rounded-lg" style={{ backgroundColor: '#F2F2F7' }}>
+                <p
+                  className="text-[10px] font-bold uppercase tracking-wide mb-1"
+                  style={{ color: '#8E8E93' }}
+                >
+                  {shareModal.article.outlet_name}
+                </p>
+                <p className="text-[13px] font-semibold" style={{ color: '#1C1C1E' }}>
+                  {shareModal.article.headline}
+                </p>
+              </div>
+
+              <div className="px-5 mb-3">
+                <textarea
+                  value={stanceText}
+                  onChange={(e) => setStanceText(e.target.value)}
+                  placeholder="Add your commentary..."
+                  rows={3}
+                  className="w-full rounded-lg p-3 text-[14px] resize-none outline-none"
+                  style={{
+                    backgroundColor: '#F2F2F7',
+                    color: '#1C1C1E',
+                    border: '1px solid rgba(60,60,67,0.18)',
+                  }}
+                />
+              </div>
+
+              <div className="px-5 mb-4">
+                <p className="text-[12px] font-semibold mb-2" style={{ color: '#8E8E93' }}>
+                  Your stance on this article:
+                </p>
+                <div className="flex gap-2 flex-wrap">
+                  {(
+                    [
+                      { value: 'support', label: 'Support', bg: '#E8F5E9', fg: '#2E7D32' },
+                      { value: 'neutral', label: 'Neutral', bg: '#F5F5F5', fg: '#616161' },
+                      { value: 'criticize', label: 'Criticize', bg: '#FCE4EC', fg: '#C62828' },
+                      { value: 'fake_news', label: 'Fake News', bg: '#F3E5F5', fg: '#7B1FA2' },
+                    ] as const
+                  ).map((s) => (
+                    <button
+                      key={s.value}
+                      onClick={() => setSelectedStance(s.value)}
+                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all"
+                      style={{
+                        backgroundColor: selectedStance === s.value ? s.fg : s.bg,
+                        color: selectedStance === s.value ? '#FFFFFF' : s.fg,
+                        boxShadow: selectedStance === s.value ? `0 0 0 2px ${s.fg}` : 'none',
+                      }}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="px-5 pb-6">
+                <button
+                  onClick={submitShare}
+                  disabled={posting}
+                  className="w-full py-3 rounded-xl text-[15px] font-semibold text-white"
+                  style={{
+                    backgroundColor: shareModal.platform === 'x_twitter' ? '#16181C' : '#1877F2',
+                    opacity: posting ? 0.6 : 1,
+                  }}
+                >
+                  {posting
+                    ? 'Posting...'
+                    : `Post to ${shareModal.platform === 'x_twitter' ? 'Z' : 'Fakebook'}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -436,7 +579,7 @@ export default function NewsApp() {
             {/* Hero card for first article */}
             {heroArticle && (
               <button
-                onClick={() => setSelectedArticle(heroArticle)}
+                onClick={() => openArticle(heroArticle)}
                 className="w-full text-left ios-btn-bounce"
               >
                 <div
@@ -480,7 +623,7 @@ export default function NewsApp() {
                           BREAKING
                         </span>
                       )}
-                      {!heroArticle.is_factual && (
+                      {isTrainer && !heroArticle.is_factual && (
                         <span
                           className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                           style={{ backgroundColor: 'rgba(255,243,205,0.9)', color: '#856404' }}
@@ -516,7 +659,7 @@ export default function NewsApp() {
                   return (
                     <button
                       key={article.id}
-                      onClick={() => setSelectedArticle(article)}
+                      onClick={() => openArticle(article)}
                       className="w-full text-left px-4 py-3.5 ios-btn-bounce active:bg-gray-50"
                       style={{
                         borderBottom:
@@ -544,7 +687,7 @@ export default function NewsApp() {
                             BREAKING
                           </span>
                         )}
-                        {!article.is_factual && (
+                        {isTrainer && !article.is_factual && (
                           <span
                             className="text-[10px] font-bold px-1.5 py-0.5 rounded-full ml-auto"
                             style={{ backgroundColor: '#FFF3CD', color: '#856404' }}

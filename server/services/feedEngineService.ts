@@ -371,6 +371,67 @@ async function routeToNews(
   });
 
   logger.info({ sessionId, injectId, articleId: article.id }, 'Inject routed to news');
+
+  const outletName = config.outlet_name || 'News Wire';
+  const outletHandle =
+    '@' +
+    outletName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '');
+  const headline = config.headline || inject.title;
+  const category = config.category || 'breaking';
+  const categoryLabel = category === 'breaking' ? 'BREAKING' : category.toUpperCase();
+  const snippet = inject.content.substring(0, 150);
+
+  const xContent = `${categoryLabel}: ${headline}\n\nnews.sim/${article.id.slice(0, 8)}`;
+  const fbContent = `📰 ${headline}\n\n"${snippet}..."\n\n— ${outletName}`;
+
+  const sharedArticleFlags = {
+    shared_article: {
+      id: article.id,
+      headline,
+      outlet_name: outletName,
+      snippet,
+      category,
+    },
+  };
+
+  const platforms = [
+    { platform: 'x_twitter', content: xContent },
+    { platform: 'facebook', content: fbContent },
+  ];
+
+  for (const { platform, content: postContent } of platforms) {
+    const { data: socialPost, error: spError } = await supabaseAdmin
+      .from('social_posts')
+      .insert({
+        session_id: sessionId,
+        inject_id: injectId,
+        platform,
+        author_handle: outletHandle,
+        author_display_name: outletName,
+        author_type: 'npc_media',
+        content: postContent,
+        shared_article_id: article.id,
+        content_flags: sharedArticleFlags,
+        sentiment: 'neutral',
+        hashtags: ['#BreakingNews'],
+        virality_score: 60 + Math.floor(Math.random() * 30),
+      })
+      .select()
+      .single();
+
+    if (spError) {
+      logger.warn({ error: spError, platform }, 'Failed to dual-publish news to social feed');
+    } else if (socialPost) {
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'social_post.created',
+        data: { post: socialPost },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
 }
 
 async function routeToGroupChat(

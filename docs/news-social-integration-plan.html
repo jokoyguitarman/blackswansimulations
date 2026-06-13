@@ -1,0 +1,1065 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>News ↔ Social Media Integration Plan</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --panel2: #1f2330;
+        --border: #2b3040;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --bad: #f0556a;
+        --good: #34c759;
+        --accent: #4c8dff;
+        --warn: #f7b928;
+        --fb: #1877f2;
+        --z: #1d9bf0;
+        --news: #ff2d55;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+      header {
+        padding: 40px 32px 28px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #141826, #0f1117);
+      }
+      header h1 { margin: 0 0 8px; font-size: 28px; }
+      header p { margin: 0; color: var(--muted); max-width: 800px; font-size: 15px; }
+      main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 80px; }
+
+      /* Status overview */
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 14px;
+        margin: 24px 0;
+      }
+      .status-card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px;
+        text-align: center;
+      }
+      .status-card .num { font-size: 32px; font-weight: 800; }
+      .status-card .label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+
+      /* Task cards */
+      .task {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 0;
+        margin: 24px 0;
+        overflow: hidden;
+      }
+      .task-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 20px 24px;
+        border-bottom: 1px solid var(--border);
+      }
+      .task-header h2 { margin: 0; font-size: 18px; flex: 1; }
+      .task-body { padding: 20px 24px; }
+      .task-body p { margin: 0 0 12px; color: var(--muted); font-size: 14px; }
+
+      .tag {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .tag-critical { background: rgba(240,85,106,0.18); color: var(--bad); }
+      .tag-high { background: rgba(247,185,40,0.18); color: var(--warn); }
+      .tag-medium { background: rgba(76,141,255,0.18); color: var(--accent); }
+      .tag-low { background: rgba(52,199,89,0.18); color: var(--good); }
+      .tag-done { background: rgba(52,199,89,0.18); color: var(--good); }
+      .tag-bug { background: rgba(240,85,106,0.18); color: var(--bad); }
+
+      .priority-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+
+      /* File references */
+      .files {
+        background: var(--panel2);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 12px 0;
+        font-size: 13px;
+      }
+      .files .file-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+      .files code {
+        display: block;
+        padding: 2px 0;
+        color: var(--accent);
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 12px;
+      }
+
+      /* Code blocks */
+      pre {
+        background: #0d0f14;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-size: 12.5px;
+        line-height: 1.5;
+        margin: 12px 0;
+      }
+      pre code { color: var(--text); font-family: "SF Mono", "Fira Code", monospace; }
+      .kw { color: #c678dd; }
+      .str { color: #98c379; }
+      .cm { color: #5c6370; font-style: italic; }
+      .fn { color: #61afef; }
+      .num { color: #d19a66; }
+
+      /* Expected result panels */
+      .expected {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        margin: 16px 0;
+        overflow: hidden;
+      }
+      .expected-header {
+        background: var(--panel2);
+        padding: 10px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--good);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      .expected-body { padding: 16px; }
+
+      /* Mock device frames */
+      .device-row { display: flex; gap: 20px; flex-wrap: wrap; margin: 16px 0; }
+      .device-mock {
+        flex: 1;
+        min-width: 280px;
+        max-width: 360px;
+        border-radius: 16px;
+        overflow: hidden;
+        border: 2px solid var(--border);
+      }
+      .device-bar {
+        padding: 8px 14px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .device-content { padding: 12px; font-size: 13px; }
+
+      .z-bar { background: #16181c; color: var(--z); }
+      .z-body { background: #000; color: #e7e9ea; }
+      .fb-bar { background: #fff; color: var(--fb); }
+      .fb-body { background: #f0f2f5; color: #050505; }
+      .news-bar { background: #f2f2f7; color: var(--news); }
+      .news-body { background: #fff; color: #1c1c1e; }
+      .chat-bar { background: #fff; color: #007aff; }
+      .chat-body { background: #f2f2f7; color: #1c1c1e; }
+
+      /* Link preview mocks */
+      .link-card {
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid;
+        margin: 8px 0;
+      }
+      .link-card-z { border-color: #2f3336; background: #16181c; }
+      .link-card-fb { border-color: #e4e6eb; background: #f0f2f5; }
+      .link-accent { height: 3px; }
+      .link-accent-z { background: var(--z); }
+      .link-accent-fb { background: var(--fb); }
+      .link-inner { padding: 10px 12px; }
+      .link-outlet { font-size: 11px; margin-bottom: 4px; }
+      .link-outlet-z { color: #71767b; }
+      .link-outlet-fb { color: #65676b; }
+      .link-headline { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+      .link-headline-z { color: #e7e9ea; }
+      .link-headline-fb { color: #050505; }
+      .link-snippet { font-size: 11px; }
+      .link-snippet-z { color: #71767b; }
+      .link-snippet-fb { color: #65676b; }
+      .link-domain { font-size: 10px; margin-top: 6px; display: flex; align-items: center; gap: 4px; }
+      .link-domain-z { color: #71767b; }
+      .link-domain-fb { color: #65676b; }
+      .breaking-pill { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: #ff3b30; color: #fff; margin-left: 6px; }
+
+      /* Flowchart */
+      .flow {
+        background: var(--panel2);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 16px 0;
+        overflow-x: auto;
+      }
+      .flow-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+      .flow-box {
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .flow-arrow { color: var(--muted); font-size: 18px; }
+      .flow-inject { background: rgba(247,185,40,0.18); color: var(--warn); }
+      .flow-engine { background: rgba(76,141,255,0.18); color: var(--accent); }
+      .flow-news { background: rgba(255,45,85,0.18); color: var(--news); }
+      .flow-social { background: rgba(29,155,240,0.18); color: var(--z); }
+      .flow-player { background: rgba(52,199,89,0.18); color: var(--good); }
+      .flow-ws { background: rgba(175,82,222,0.15); color: #af52de; }
+      .flow-db { background: rgba(154,163,178,0.15); color: var(--muted); }
+
+      /* Sections */
+      .section-label {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+        margin: 40px 0 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+      h3 { margin: 16px 0 8px; font-size: 15px; }
+      ul { margin: 8px 0; padding-left: 20px; }
+      li { margin: 4px 0; font-size: 13.5px; color: var(--muted); }
+      li strong { color: var(--text); }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+      th { text-align: left; padding: 8px 12px; background: var(--panel2); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+      td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+      .done-row td { opacity: 0.5; }
+
+      .divider { height: 1px; background: var(--border); margin: 32px 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>News &harr; Social Media Integration</h1>
+      <p>Implementation plan for making the News App the central hub where NPC news outlets publish articles, which can then be shared on social media with link previews, and clicked to open back in the News App.</p>
+    </header>
+
+    <main>
+
+      <!-- ============================================================ -->
+      <!-- STATUS OVERVIEW -->
+      <!-- ============================================================ -->
+
+      <div class="status-grid">
+        <div class="status-card">
+          <div class="num" style="color: var(--good)">4</div>
+          <div class="label">Already Done</div>
+        </div>
+        <div class="status-card">
+          <div class="num" style="color: var(--bad)">1</div>
+          <div class="label">Critical Bug</div>
+        </div>
+        <div class="status-card">
+          <div class="num" style="color: var(--warn)">3</div>
+          <div class="label">High Priority</div>
+        </div>
+        <div class="status-card">
+          <div class="num" style="color: var(--accent)">2</div>
+          <div class="label">Medium Priority</div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- DESIGN RULE -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Key Design Rule</div>
+
+      <div class="task" style="border-color: #af52de;">
+        <div class="task-header">
+          <span class="tag" style="background:rgba(175,82,222,0.18); color:#af52de;">Design Rule</span>
+          <h2>Hide Factuality &amp; Content Flag Badges from Players</h2>
+        </div>
+        <div class="task-body">
+          <p style="color:var(--text);"><strong>Rationale:</strong> If players can see UNVERIFIED / BREAKING badges and content flags on articles and posts, it removes the critical thinking element from the simulation. Players should have to read the news, evaluate the source, check the facts, and decide for themselves whether an article is trustworthy. Trainers and admins still need these indicators for assessment and orchestration.</p>
+
+          <h3>What this means</h3>
+          <table>
+            <tr><th>Element</th><th>Player View</th><th>Trainer / Admin View</th></tr>
+            <tr>
+              <td><strong>News App:</strong> UNVERIFIED badge</td>
+              <td style="color:var(--bad)">Hidden &mdash; article looks like any other</td>
+              <td style="color:var(--good)">Visible &mdash; yellow UNVERIFIED pill</td>
+            </tr>
+            <tr>
+              <td><strong>News App:</strong> is_factual indicator</td>
+              <td style="color:var(--bad)">Hidden</td>
+              <td style="color:var(--good)">Visible</td>
+            </tr>
+            <tr>
+              <td><strong>Social Feed:</strong> Content flag badges<br><span style="font-size:11px; color:var(--muted)">(Hate Speech, Misinformation, etc.)</span></td>
+              <td style="color:var(--good)">Already hidden (gated by isTrainer)</td>
+              <td style="color:var(--good)">Already visible</td>
+            </tr>
+            <tr>
+              <td><strong>News App:</strong> BREAKING / category badges</td>
+              <td style="color:var(--good)">Visible &mdash; these are editorial labels, not truth indicators</td>
+              <td style="color:var(--good)">Visible</td>
+            </tr>
+          </table>
+
+          <div class="files">
+            <div class="file-label">File to modify</div>
+            <code>frontend/.../NewsApp.tsx</code> &mdash; import useRoleVisibility, gate UNVERIFIED badges behind isTrainer
+          </div>
+
+          <h3>Implementation</h3>
+<pre><code><span class="cm">// Add at top of NewsApp.tsx:</span>
+<span class="kw">import</span> { useRoleVisibility } <span class="kw">from</span> <span class="str">'../../hooks/useRoleVisibility'</span>;
+
+<span class="cm">// Inside component:</span>
+<span class="kw">const</span> { isTrainer } = useRoleVisibility();
+
+<span class="cm">// Then wrap EVERY is_factual / UNVERIFIED render with the isTrainer check:</span>
+<span class="cm">// BEFORE (visible to all):</span>
+{!article.is_factual && (
+  &lt;span className=<span class="str">"..."</span>&gt;UNVERIFIED&lt;/span&gt;
+)}
+
+<span class="cm">// AFTER (trainer-only):</span>
+<span style="color:var(--good)">{isTrainer && !article.is_factual && (</span>
+  &lt;span className=<span class="str">"..."</span>&gt;UNVERIFIED&lt;/span&gt;
+<span style="color:var(--good)">)}</span></code></pre>
+
+          <p style="color:var(--text); margin-top:16px;"><strong>There are 3 places in NewsApp.tsx where <code>!article.is_factual</code> renders the UNVERIFIED badge:</strong></p>
+          <ul>
+            <li><strong>Article detail view</strong> (line ~275) &mdash; in the publisher attribution area</li>
+            <li><strong>Hero card</strong> (line ~483) &mdash; top of the first article card</li>
+            <li><strong>Article list items</strong> (line ~547) &mdash; in each article row</li>
+          </ul>
+          <p>All three must be gated behind <code>isTrainer</code>.</p>
+
+          <div class="expected">
+            <div class="expected-header">&#9989; Expected Result</div>
+            <div class="expected-body">
+              <p style="margin:0 0 12px; font-size:13px; color:var(--muted)">The same article viewed by a player vs. a trainer:</p>
+              <div class="device-row">
+                <div class="device-mock">
+                  <div class="device-bar news-bar">News App &mdash; Player View</div>
+                  <div class="device-content news-body">
+                    <div style="background:#1c1c1e; border-radius:12px; padding:14px; color:#fff; margin-bottom:8px;">
+                      <div style="font-size:10px; color:#ff9500; font-weight:700; margin-bottom:6px;">SINGAPORE FREE PRESS</div>
+                      <div style="font-size:16px; font-weight:800;">EXCLUSIVE: MBS blast linked to foreign terror cell, sources claim</div>
+                      <div style="font-size:11px; color:rgba(255,255,255,0.5); margin-top:6px;">8m ago</div>
+                    </div>
+                    <div style="font-size:11px; color:#8e8e93; text-align:center; padding:4px;">No badge &mdash; player must evaluate credibility themselves</div>
+                  </div>
+                </div>
+
+                <div class="device-mock">
+                  <div class="device-bar" style="background:#f2f2f7; color:#ff9500;">News App &mdash; Trainer View</div>
+                  <div class="device-content news-body">
+                    <div style="background:#1c1c1e; border-radius:12px; padding:14px; color:#fff; margin-bottom:8px;">
+                      <div style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+                        <span style="font-size:10px; color:#ff9500; font-weight:700;">SINGAPORE FREE PRESS</span>
+                        <span style="font-size:9px; font-weight:700; padding:2px 7px; border-radius:4px; background:#fff3cd; color:#856404;">UNVERIFIED</span>
+                      </div>
+                      <div style="font-size:16px; font-weight:800;">EXCLUSIVE: MBS blast linked to foreign terror cell, sources claim</div>
+                      <div style="font-size:11px; color:rgba(255,255,255,0.5); margin-top:6px;">8m ago</div>
+                    </div>
+                    <div style="font-size:11px; color:#ff9500; text-align:center; padding:4px;">Trainer sees UNVERIFIED badge &mdash; knows this tests player judgment</div>
+                  </div>
+                </div>
+              </div>
+
+              <p style="margin:16px 0 0; font-size:13px; color:var(--muted);"><strong>Gameplay consequence:</strong> If a player shares this unverified article with a "Support" stance on social media, their trust score decreases because they amplified misinformation without verifying it first. Conversely, if they claim "Fake News" on this article, their score increases for catching it. The trainer can see on the dashboard exactly who fell for it and who didn't.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- ARCHITECTURE FLOW -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Target Architecture</div>
+
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-box flow-inject">Scenario Inject</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-engine">Feed Engine</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-news">sim_news_articles</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-ws">WS: news_article.published</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-news">News App</div>
+        </div>
+        <div style="padding: 4px 0 4px 210px; color: var(--muted); font-size: 12px;">&darr; <em>also auto-creates (NEW)</em></div>
+        <div class="flow-row" style="padding-left: 210px;">
+          <div class="flow-box flow-social">social_posts (NPC media)</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-ws">WS: social_post.created</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-social">Z / Fakebook Feed</div>
+        </div>
+        <div style="padding: 8px 0 4px; color: var(--muted); font-size: 12px;"><em>Player clicks article &rarr; shares to social:</em></div>
+        <div class="flow-row">
+          <div class="flow-box flow-player">Player in News App</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-player">Share + Commentary</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-db">POST /api/social/posts</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-social">Social Feed (with link preview)</div>
+        </div>
+        <div style="padding: 8px 0 4px; color: var(--muted); font-size: 12px;"><em>Someone clicks the link preview card in feed:</em></div>
+        <div class="flow-row">
+          <div class="flow-box flow-social">Link Preview Card</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-engine">Navigate to News App</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-news">Article Detail View</div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- WHAT'S ALREADY DONE -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Already Completed</div>
+
+      <table>
+        <tr><th>Item</th><th>Files</th><th>Status</th></tr>
+        <tr class="done-row">
+          <td><strong>DB: shared_article_id column</strong><br><span style="font-size:12px; color:var(--muted)">FK from social_posts &rarr; sim_news_articles with partial index</span></td>
+          <td><code style="font-size:12px; color:var(--accent)">migrations/183_shared_article_id.sql</code></td>
+          <td><span class="tag tag-done">Done</span></td>
+        </tr>
+        <tr class="done-row">
+          <td><strong>News App: Share toolbar</strong><br><span style="font-size:12px; color:var(--muted)">Post to Z, Post to FB, Share to Chat, Copy Link buttons in article detail</span></td>
+          <td><code style="font-size:12px; color:var(--accent)">frontend/.../NewsApp.tsx</code></td>
+          <td><span class="tag tag-done">Done</span></td>
+        </tr>
+        <tr class="done-row">
+          <td><strong>LinkPreviewCard component</strong><br><span style="font-size:12px; color:var(--muted)">Reusable card with Z/FB/Chat platform styling</span></td>
+          <td><code style="font-size:12px; color:var(--accent)">frontend/.../LinkPreviewCard.tsx</code></td>
+          <td><span class="tag tag-done">Done</span></td>
+        </tr>
+        <tr class="done-row">
+          <td><strong>Feed renders link previews</strong><br><span style="font-size:12px; color:var(--muted)">Both SocialFeedApp and FacebookFeedApp render LinkPreviewCard from content_flags</span></td>
+          <td><code style="font-size:12px; color:var(--accent)">SocialFeedApp.tsx, FacebookFeedApp.tsx</code></td>
+          <td><span class="tag tag-done">Done</span></td>
+        </tr>
+      </table>
+
+      <!-- ============================================================ -->
+      <!-- TASK 1: ZOD SCHEMA BUG -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Remaining Implementation Tasks</div>
+
+      <!-- TASK 1 -->
+      <div class="task" style="border-color: var(--bad);">
+        <div class="task-header">
+          <span class="tag tag-critical">Critical Bug</span>
+          <h2>Task 1 &mdash; Fix Zod Schema for shared_article_id</h2>
+          <span class="priority-label">P0</span>
+        </div>
+        <div class="task-body">
+          <p><strong>Problem:</strong> The <code>createPostSchema</code> Zod validator does not include <code>shared_article_id</code> or <code>content_flags</code>. Zod's default behavior strips unknown keys, so when a player shares a news article from the News App, the article reference is silently dropped. The post is created but with no link to the article.</p>
+
+          <div class="files">
+            <div class="file-label">File to modify</div>
+            <code>server/routes/socialMedia.ts</code> &mdash; lines 245&ndash;267
+          </div>
+
+          <h3>Current code</h3>
+<pre><code><span class="kw">const</span> createPostSchema = z.object({
+  body: z.object({
+    session_id: z.string().uuid(),
+    content: z.string().min(<span class="num">1</span>).max(<span class="num">2000</span>),
+    reply_to_post_id: z.string().uuid().optional(),
+    image_prompt: z.string().max(<span class="num">500</span>).optional(),
+    media_url: z.string().url().optional(),
+    platform: z.enum([<span class="str">'x_twitter'</span>, <span class="str">'facebook'</span>, ...]).default(<span class="str">'x_twitter'</span>),
+    post_format: z.enum([<span class="str">'text'</span>, <span class="str">'official_statement'</span>, ...]).default(<span class="str">'text'</span>),
+    post_as_page: z.boolean().optional().default(<span class="kw">false</span>),
+    <span class="cm">// &lt;-- shared_article_id and content_flags are MISSING</span>
+  }),
+});</code></pre>
+
+          <h3>Required change</h3>
+<pre><code><span class="kw">const</span> createPostSchema = z.object({
+  body: z.object({
+    session_id: z.string().uuid(),
+    content: z.string().min(<span class="num">1</span>).max(<span class="num">2000</span>),
+    reply_to_post_id: z.string().uuid().optional(),
+    image_prompt: z.string().max(<span class="num">500</span>).optional(),
+    media_url: z.string().url().optional(),
+    platform: z.enum([...]).default(<span class="str">'x_twitter'</span>),
+    post_format: z.enum([...]).default(<span class="str">'text'</span>),
+    post_as_page: z.boolean().optional().default(<span class="kw">false</span>),
+    <span class="good" style="color:var(--good)">shared_article_id: z.string().uuid().optional(),</span>
+    <span class="good" style="color:var(--good)">content_flags: z.record(z.unknown()).optional(),</span>
+  }),
+});</code></pre>
+
+          <div class="expected">
+            <div class="expected-header">&#9989; Expected Result</div>
+            <div class="expected-body">
+              <p style="margin:0; font-size:13px; color:var(--muted)">When a player clicks "Post to Z" or "Post to FB" in the News App article detail view, the resulting social post is created in <code>social_posts</code> with:</p>
+              <ul>
+                <li><code>shared_article_id</code> set to the news article's UUID</li>
+                <li><code>content_flags.shared_article</code> containing headline, outlet_name, snippet, and category</li>
+              </ul>
+              <p style="margin:8px 0 0; font-size:13px; color:var(--muted)">The link preview card then renders correctly on both the Z and Fakebook feeds.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TASK 2 -->
+      <div class="task" style="border-color: var(--warn);">
+        <div class="task-header">
+          <span class="tag tag-high">High</span>
+          <h2>Task 2 &mdash; Auto-Post News to Social Media (NPC Dual-Publish)</h2>
+          <span class="priority-label">P1</span>
+        </div>
+        <div class="task-body">
+          <p><strong>Goal:</strong> When the feed engine creates a news article via <code>routeToNews()</code>, it should also create a corresponding social post from the NPC news outlet account. This makes news organically appear on social media as a link post with the article attached.</p>
+
+          <div class="files">
+            <div class="file-label">File to modify</div>
+            <code>server/services/feedEngineService.ts</code> &mdash; <code>routeToNews()</code> function (lines 343&ndash;374)
+          </div>
+
+          <h3>What to add (after the article is inserted and broadcast)</h3>
+<pre><code><span class="cm">// After article insert + WS broadcast, also create a social post</span>
+<span class="kw">const</span> outletHandle = <span class="str">'@'</span> + (config.outlet_name || <span class="str">'newswire'</span>)
+  .toLowerCase().replace(/[^a-z0-9]/g, <span class="str">''</span>);
+
+<span class="kw">const</span> tweetContent = <span class="str">`BREAKING: ${config.headline || inject.title}\n\nFull story: news.sim/${article.id.slice(0, 8)}`</span>;
+
+<span class="kw">await</span> supabaseAdmin.from(<span class="str">'social_posts'</span>).insert({
+  session_id: sessionId,
+  inject_id: injectId,
+  platform: <span class="str">'x_twitter'</span>,
+  author_handle: outletHandle,
+  author_display_name: config.outlet_name || <span class="str">'News Wire'</span>,
+  author_type: <span class="str">'npc_media'</span>,
+  content: tweetContent,
+  shared_article_id: article.id,
+  content_flags: {
+    shared_article: {
+      id: article.id,
+      headline: config.headline || inject.title,
+      outlet_name: config.outlet_name || <span class="str">'News Wire'</span>,
+      snippet: inject.content.substring(<span class="num">0</span>, <span class="num">150</span>),
+      category: config.category || <span class="str">'breaking'</span>,
+    }
+  },
+  sentiment: <span class="str">'neutral'</span>,
+  hashtags: [<span class="str">'#BreakingNews'</span>],
+});
+
+<span class="cm">// Broadcast to social feed</span>
+getWebSocketService().broadcastToSession(sessionId, {
+  type: <span class="str">'social_post.created'</span>,
+  data: { post: socialPost },
+  timestamp: <span class="kw">new</span> Date().toISOString(),
+});</code></pre>
+
+          <div class="expected">
+            <div class="expected-header">&#9989; Expected Result</div>
+            <div class="expected-body">
+              <p style="margin:0 0 12px; font-size:13px; color:var(--muted)">When a news article is published (e.g. "Explosion reported near Marina Bay Sands"), the following happens simultaneously:</p>
+
+              <div class="device-row">
+                <div class="device-mock">
+                  <div class="device-bar news-bar">News App</div>
+                  <div class="device-content news-body">
+                    <div style="background:#1c1c1e; border-radius:12px; padding:14px; color:#fff; margin-bottom:8px;">
+                      <div style="font-size:10px; color:#ff3b30; font-weight:700; margin-bottom:6px;">CHANNEL NEWSASIA <span class="breaking-pill">BREAKING</span></div>
+                      <div style="font-size:16px; font-weight:800;">Explosion reported near Marina Bay Sands; emergency services responding</div>
+                      <div style="font-size:11px; color:rgba(255,255,255,0.5); margin-top:6px;">2m ago</div>
+                    </div>
+                    <div style="font-size:11px; color:#8e8e93; text-align:center; padding:4px;">Article appears in News App feed</div>
+                  </div>
+                </div>
+
+                <div class="device-mock">
+                  <div class="device-bar z-bar">Z Feed (auto-posted)</div>
+                  <div class="device-content z-body">
+                    <div style="display:flex; gap:8px; margin-bottom:8px;">
+                      <div style="width:32px;height:32px;border-radius:50%;background:#ff3b30;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">C</div>
+                      <div>
+                        <div style="font-size:13px;"><strong>Channel NewsAsia</strong> <span style="color:#71767b">@channelnewsasia</span></div>
+                        <div style="font-size:13px; margin-top:4px;">BREAKING: Explosion reported near Marina Bay Sands; emergency services responding<br><br><span style="color:#71767b">Full story: news.sim/a1b2c3d4</span></div>
+                        <div class="link-card link-card-z">
+                          <div class="link-accent link-accent-z"></div>
+                          <div class="link-inner">
+                            <div class="link-outlet link-outlet-z">Channel NewsAsia <span class="breaking-pill">BREAKING</span></div>
+                            <div class="link-headline link-headline-z">Explosion reported near Marina Bay Sands; emergency services responding</div>
+                            <div class="link-snippet link-snippet-z">SINGAPORE &mdash; An explosion was reported near the Marina Bay Sands integrated resort...</div>
+                            <div class="link-domain link-domain-z">&#128279; news.sim</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="font-size:11px; color:#71767b; text-align:center; padding:4px;">NPC media post with link preview card</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TASK 3 -->
+      <div class="task" style="border-color: var(--warn);">
+        <div class="task-header">
+          <span class="tag tag-high">High</span>
+          <h2>Task 3 &mdash; Cross-App Navigation (Link Preview &rarr; News App)</h2>
+          <span class="priority-label">P1</span>
+        </div>
+        <div class="task-body">
+          <p><strong>Goal:</strong> When a player clicks a link preview card in the Z or Fakebook feed, it navigates them to the News App with that specific article open. This bridges the two apps together.</p>
+
+          <div class="files">
+            <div class="file-label">Files to modify</div>
+            <code>frontend/.../SocialFeedApp.tsx</code> &mdash; wire onClick on LinkPreviewCard<br>
+            <code>frontend/.../FacebookFeedApp.tsx</code> &mdash; wire onClick on LinkPreviewCard<br>
+            <code>frontend/.../NewsApp.tsx</code> &mdash; read query param to auto-select article<br>
+            <code>frontend/.../DesktopShell.tsx</code> &mdash; open/focus News window with article param
+          </div>
+
+          <h3>Social Feed: Wire the onClick</h3>
+<pre><code><span class="cm">// In SocialFeedApp.tsx where LinkPreviewCard is rendered:</span>
+&lt;LinkPreviewCard
+  headline={String(sa.headline || <span class="str">''</span>)}
+  outletName={String(sa.outlet_name || <span class="str">''</span>)}
+  snippet={String(sa.snippet || <span class="str">''</span>)}
+  category={String(sa.category || <span class="str">''</span>)}
+  platform=<span class="str">"x_twitter"</span>
+  <span style="color:var(--good)">onClick={() => navigate(`/sim/${sessionId}/device/news?article=${sa.id}`)}</span>
+/&gt;</code></pre>
+
+          <h3>News App: Read query param</h3>
+<pre><code><span class="kw">import</span> { useSearchParams } <span class="kw">from</span> <span class="str">'react-router-dom'</span>;
+
+<span class="cm">// Inside NewsApp component:</span>
+<span class="kw">const</span> [searchParams] = useSearchParams();
+<span class="kw">const</span> articleIdParam = searchParams.get(<span class="str">'article'</span>);
+
+useEffect(() => {
+  <span class="kw">if</span> (articleIdParam && articles.length > <span class="num">0</span>) {
+    <span class="kw">const</span> target = articles.find(a => a.id === articleIdParam);
+    <span class="kw">if</span> (target) setSelectedArticle(target);
+  }
+}, [articleIdParam, articles]);</code></pre>
+
+          <div class="expected">
+            <div class="expected-header">&#9989; Expected Result</div>
+            <div class="expected-body">
+              <p style="margin:0 0 12px; font-size:13px; color:var(--muted)">Player sees a news link preview card in their Z or Fakebook feed. They tap it:</p>
+
+              <div class="device-row">
+                <div class="device-mock">
+                  <div class="device-bar z-bar">Z Feed &mdash; Before Click</div>
+                  <div class="device-content z-body">
+                    <div style="font-size:13px; margin-bottom:6px;"><strong>@angrymom_sg</strong> <span style="color:#71767b">· 5m</span></div>
+                    <div style="font-size:13px; margin-bottom:8px;">Can you believe this?? The government is hiding the truth! #MBSExplosion</div>
+                    <div class="link-card link-card-z" style="cursor:pointer; box-shadow: 0 0 0 2px var(--z);">
+                      <div class="link-accent link-accent-z"></div>
+                      <div class="link-inner">
+                        <div class="link-outlet link-outlet-z">The Straits Times</div>
+                        <div class="link-headline link-headline-z">MBS incident: At least 3 taken to hospital, police urge calm</div>
+                        <div class="link-domain link-domain-z">&#128279; news.sim &nbsp; <span style="color:var(--z)">&#8599; tap to read</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div style="display:flex; align-items:center; font-size:32px; color:var(--muted);">&rarr;</div>
+
+                <div class="device-mock">
+                  <div class="device-bar news-bar">News App &mdash; Article Opens</div>
+                  <div class="device-content news-body">
+                    <div style="font-size:11px; color:var(--news); margin-bottom:4px;">&larr; News</div>
+                    <div style="font-size:18px; font-weight:800; margin-bottom:6px;">MBS incident: At least 3 taken to hospital, police urge calm</div>
+                    <div style="font-size:12px; color:#6c6c70; margin-bottom:10px;">Authorities confirm injuries but no fatalities; racial tension rumors circulating online</div>
+                    <div style="height:1px; background:#e5e5ea; margin:8px 0;"></div>
+                    <div style="display:flex; align-items:center; gap:6px; margin-bottom:10px;">
+                      <div style="width:20px;height:20px;border-radius:50%;background:#007aff;display:flex;align-items:center;justify-content:center;color:#fff;font-size:9px;font-weight:700">T</div>
+                      <span style="font-size:11px; font-weight:600;">The Straits Times</span>
+                      <span style="font-size:11px; color:#8e8e93">15m ago</span>
+                    </div>
+                    <div style="font-size:12px; line-height:1.5;">SINGAPORE &mdash; At least three people have been taken to hospital following an explosion near Marina Bay Sands...</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TASK 4 -->
+      <div class="task" style="border-color: var(--accent);">
+        <div class="task-header">
+          <span class="tag tag-medium">Medium</span>
+          <h2>Task 4 &mdash; Player Commentary &amp; Stance System</h2>
+          <span class="priority-label">P2</span>
+        </div>
+        <div class="task-body">
+          <p><strong>Goal:</strong> When a player shares a news article, they should be able to add their own commentary and optionally declare a stance: support the article, criticize it, or claim it's fake news. This creates richer gameplay interactions.</p>
+
+          <div class="files">
+            <div class="file-label">Files to modify</div>
+            <code>frontend/.../NewsApp.tsx</code> &mdash; add compose modal with stance picker<br>
+            <code>server/routes/socialMedia.ts</code> &mdash; add <code>share_stance</code> to schema<br>
+            <code>server/services/npcReactionService.ts</code> &mdash; NPCs react to stance<br>
+            <code>server/services/socialStateUpdaterService.ts</code> &mdash; stance affects scoring
+          </div>
+
+          <h3>UI: Compose modal in News App</h3>
+          <p>Instead of immediately posting when clicking "Post to Z", open a compose modal where the player can:</p>
+          <ul>
+            <li>Write their own commentary text</li>
+            <li>Pick a stance: <span style="color:var(--good)">Support</span> | <span style="color:var(--warn)">Neutral</span> | <span style="color:var(--bad)">Criticize</span> | <span style="color:#af52de">Fake News</span></li>
+            <li>Choose platform (Z or Fakebook)</li>
+          </ul>
+
+          <h3>Backend: stance field</h3>
+<pre><code><span class="cm">// Add to createPostSchema:</span>
+share_stance: z.enum([<span class="str">'support'</span>, <span class="str">'neutral'</span>, <span class="str">'criticize'</span>, <span class="str">'fake_news'</span>]).optional(),</code></pre>
+
+          <h3>Scoring impact</h3>
+          <table>
+            <tr><th>Player Action</th><th>Article is Factual</th><th>Article is Non-Factual</th></tr>
+            <tr><td>Shares with <strong>Support</strong></td><td style="color:var(--good)">+Trust (good judgment)</td><td style="color:var(--bad)">&minus;Trust (spreading misinfo)</td></tr>
+            <tr><td>Shares with <strong>Criticize</strong></td><td style="color:var(--warn)">Neutral (contrarian)</td><td style="color:var(--good)">+Trust (healthy skepticism)</td></tr>
+            <tr><td>Claims <strong>Fake News</strong></td><td style="color:var(--bad)">&minus;Trust (undermining press)</td><td style="color:var(--good)">+Trust (caught misinfo!)</td></tr>
+            <tr><td>Shares <strong>Neutral</strong></td><td colspan="2" style="color:var(--muted)">Small +Monitor score</td></tr>
+          </table>
+
+          <div class="expected">
+            <div class="expected-header">&#9989; Expected Result</div>
+            <div class="expected-body">
+              <div class="device-row">
+                <div class="device-mock">
+                  <div class="device-bar news-bar">News App &mdash; Share Modal</div>
+                  <div class="device-content news-body">
+                    <div style="font-size:14px; font-weight:700; margin-bottom:8px;">Share to Social Media</div>
+                    <div style="background:#f2f2f7; border-radius:8px; padding:10px; margin-bottom:8px;">
+                      <div style="font-size:10px; color:#8e8e93; margin-bottom:4px;">THE STRAITS TIMES</div>
+                      <div style="font-size:12px; font-weight:600;">MBS incident: At least 3 taken to hospital</div>
+                    </div>
+                    <div style="background:#f2f2f7; border-radius:8px; padding:10px; margin-bottom:8px; min-height:40px; font-size:12px; color:#8e8e93;">Add your commentary...</div>
+                    <div style="font-size:11px; font-weight:600; margin-bottom:6px;">Your stance:</div>
+                    <div style="display:flex; gap:4px; margin-bottom:10px;">
+                      <span style="font-size:10px; padding:4px 8px; border-radius:12px; background:#e8f5e9; color:#2e7d32; font-weight:600;">Support</span>
+                      <span style="font-size:10px; padding:4px 8px; border-radius:12px; background:#f5f5f5; color:#666; font-weight:600;">Neutral</span>
+                      <span style="font-size:10px; padding:4px 8px; border-radius:12px; background:#fce4ec; color:#c62828; font-weight:600;">Criticize</span>
+                      <span style="font-size:10px; padding:4px 8px; border-radius:12px; background:#f3e5f5; color:#7b1fa2; font-weight:600;">Fake News</span>
+                    </div>
+                    <div style="display:flex; gap:4px;">
+                      <div style="flex:1; padding:8px; border-radius:8px; background:#16181c; color:#e7e9ea; text-align:center; font-size:11px; font-weight:600;">Post to Z</div>
+                      <div style="flex:1; padding:8px; border-radius:8px; background:#1877f2; color:#fff; text-align:center; font-size:11px; font-weight:600;">Post to FB</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="device-mock">
+                  <div class="device-bar z-bar">Z Feed &mdash; Player's shared post</div>
+                  <div class="device-content z-body">
+                    <div style="display:flex; gap:8px;">
+                      <div style="width:32px;height:32px;border-radius:50%;background:#34c759;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">P</div>
+                      <div>
+                        <div style="font-size:13px;"><strong>Player Name</strong> <span style="color:#71767b">@player</span></div>
+                        <div style="font-size:13px; margin-top:4px;">The authorities are doing the right thing urging calm. Let's wait for confirmed facts before speculating. #MBSIncident</div>
+                        <div class="link-card link-card-z">
+                          <div class="link-accent link-accent-z"></div>
+                          <div class="link-inner">
+                            <div class="link-outlet link-outlet-z">The Straits Times</div>
+                            <div class="link-headline link-headline-z">MBS incident: At least 3 taken to hospital, police urge calm</div>
+                            <div class="link-domain link-domain-z">&#128279; news.sim</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TASK 5 -->
+      <div class="task" style="border-color: var(--accent);">
+        <div class="task-header">
+          <span class="tag tag-medium">Medium</span>
+          <h2>Task 5 &mdash; Wire news_read Tracking &amp; Home Badge</h2>
+          <span class="priority-label">P2</span>
+        </div>
+        <div class="task-body">
+          <p><strong>Goal:</strong> Track when players open articles (the API exists but is never called) and show an unread count badge on the News App icon on the home screen.</p>
+
+          <div class="files">
+            <div class="file-label">Files to modify</div>
+            <code>frontend/.../NewsApp.tsx</code> &mdash; call POST /news/:id/read on article open<br>
+            <code>frontend/.../HomeScreen.tsx</code> &mdash; populate badges.news from unread count<br>
+            <code>frontend/.../DeviceShell.tsx</code> &mdash; increment news badge on inject.published
+          </div>
+
+          <h3>NewsApp: Track reads</h3>
+<pre><code><span class="cm">// When setSelectedArticle is called:</span>
+<span class="kw">function</span> <span class="fn">openArticle</span>(article: NewsArticle) {
+  setSelectedArticle(article);
+  <span class="cm">// Fire and forget &mdash; track the read</span>
+  getAuthHeaders().then(headers =>
+    fetch(apiUrl(<span class="str">`/api/social/news/${article.id}/read`</span>), {
+      method: <span class="str">'POST'</span>, headers
+    })
+  );
+}</code></pre>
+
+          <div class="expected">
+            <div class="expected-header">&#9989; Expected Result</div>
+            <div class="expected-body">
+              <div class="device-row">
+                <div class="device-mock" style="max-width:250px;">
+                  <div class="device-bar" style="background:#f2f2f7; color:#1c1c1e;">Home Screen</div>
+                  <div class="device-content" style="background:#f2f2f7; display:flex; gap:16px; justify-content:center; padding:20px;">
+                    <div style="text-align:center; position:relative;">
+                      <div style="width:48px;height:48px;border-radius:12px;background:#ff2d55;display:flex;align-items:center;justify-content:center;font-size:22px;">&#128240;</div>
+                      <div style="position:absolute;top:-4px;right:-4px;width:18px;height:18px;border-radius:50%;background:#ff3b30;color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;">3</div>
+                      <div style="font-size:10px; margin-top:4px; color:#1c1c1e;">News</div>
+                    </div>
+                    <div style="text-align:center;">
+                      <div style="width:48px;height:48px;border-radius:12px;background:#16181c;display:flex;align-items:center;justify-content:center;font-size:22px;">&#120143;</div>
+                      <div style="font-size:10px; margin-top:4px; color:#1c1c1e;">Z</div>
+                    </div>
+                    <div style="text-align:center;">
+                      <div style="width:48px;height:48px;border-radius:12px;background:#1877f2;display:flex;align-items:center;justify-content:center;font-size:22px;">f</div>
+                      <div style="font-size:10px; margin-top:4px; color:#1c1c1e;">Fakebook</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <ul>
+                <li>Red badge shows count of unread news articles</li>
+                <li><code>player_actions</code> table records <code>news_read</code> for SOP "monitor" scoring</li>
+                <li>After-action review can show which articles each player read and when</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- IMPLEMENTATION ORDER -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Recommended Implementation Order</div>
+
+      <table>
+        <tr><th style="width:40px">#</th><th>Task</th><th style="width:80px">Priority</th><th style="width:80px">Effort</th><th>Why this order</th></tr>
+        <tr>
+          <td><strong>1</strong></td>
+          <td><strong>Fix Zod Schema</strong></td>
+          <td><span class="tag tag-critical">P0</span></td>
+          <td>~15 min</td>
+          <td style="color:var(--muted); font-size:13px;">Critical bug &mdash; existing share feature is silently broken. Fixes everything already built.</td>
+        </tr>
+        <tr>
+          <td><strong>2</strong></td>
+          <td><strong>Hide Badges from Players</strong></td>
+          <td><span class="tag tag-high">P1</span></td>
+          <td>~30 min</td>
+          <td style="color:var(--muted); font-size:13px;">Must be done before going live &mdash; UNVERIFIED badges give away the answer and kill critical thinking gameplay.</td>
+        </tr>
+        <tr>
+          <td><strong>3</strong></td>
+          <td><strong>NPC Dual-Publish</strong></td>
+          <td><span class="tag tag-high">P1</span></td>
+          <td>~2 hrs</td>
+          <td style="color:var(--muted); font-size:13px;">Core mechanic: news articles must appear on social media automatically to create the bridge.</td>
+        </tr>
+        <tr>
+          <td><strong>4</strong></td>
+          <td><strong>Cross-App Navigation</strong></td>
+          <td><span class="tag tag-high">P1</span></td>
+          <td>~2 hrs</td>
+          <td style="color:var(--muted); font-size:13px;">Completes the link: social &rarr; news. Without this, link preview cards are visual-only.</td>
+        </tr>
+        <tr>
+          <td><strong>5</strong></td>
+          <td><strong>Stance &amp; Commentary</strong></td>
+          <td><span class="tag tag-medium">P2</span></td>
+          <td>~4 hrs</td>
+          <td style="color:var(--muted); font-size:13px;">Enriches gameplay &mdash; gives players agency in how they share. Depends on Tasks 1&ndash;4.</td>
+        </tr>
+        <tr>
+          <td><strong>6</strong></td>
+          <td><strong>Read Tracking &amp; Badge</strong></td>
+          <td><span class="tag tag-medium">P2</span></td>
+          <td>~1 hr</td>
+          <td style="color:var(--muted); font-size:13px;">Polish + scoring. Independent of other tasks, can be done anytime.</td>
+        </tr>
+      </table>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- END-TO-END SCENARIO -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">End-to-End Gameplay Scenario (After All Tasks)</div>
+
+      <div class="task" style="border-color: var(--accent);">
+        <div class="task-body">
+          <p style="color:var(--text); font-size:14px;"><strong>Scenario: MBS Explosion Crisis &mdash; Minute 5</strong></p>
+
+          <table>
+            <tr><th style="width:60px">Time</th><th>Event</th><th>Player Sees</th></tr>
+            <tr>
+              <td style="color:var(--warn)">0:05</td>
+              <td>Feed engine fires inject: Channel NewsAsia breaking news</td>
+              <td>
+                <strong>News App:</strong> Article appears at top of feed with BREAKING badge, push notification<br>
+                <strong>Z Feed:</strong> @channelnewsasia NPC posts with link preview card<br>
+                <strong>Home Screen:</strong> News badge shows "1"
+              </td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">0:07</td>
+              <td>Player opens News App, reads article</td>
+              <td>
+                Article detail view with full text, share buttons at bottom<br>
+                <code>news_read</code> recorded, badge clears
+              </td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">0:08</td>
+              <td>Player shares article to Z with "Support" stance</td>
+              <td>
+                Compose modal: "The authorities are doing the right thing..."<br>
+                Post appears on Z feed with link preview card attached<br>
+                NPCs react to player's post
+              </td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">0:10</td>
+              <td>NPC @conspiracy_theorist shares same article on Z with hostile commentary</td>
+              <td>
+                NPC post: "The government controlled media is hiding the truth!!!"<br>
+                Same link preview card, different commentary<br>
+                Player sees competing narratives around the same article
+              </td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">0:12</td>
+              <td>Player sees a suspicious article from unknown outlet</td>
+              <td>
+                News App shows article <strong>without any badge</strong> &mdash; player must evaluate the source, writing quality, and claims on their own<br>
+                Player shares to Z with "Fake News" stance<br>
+                If article was indeed non-factual: trust score increases (good critical thinking!)<br>
+                <span style="font-size:11px; color:var(--muted)">Meanwhile, trainer dashboard shows the <span style="background:#fff3cd; color:#856404; padding:1px 4px; border-radius:3px; font-size:10px;">UNVERIFIED</span> badge and tracks which players fell for it</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">0:15</td>
+              <td>Another player clicks the link preview in Z feed</td>
+              <td>
+                Navigated to News App &rarr; article detail view opens directly<br>
+                Can read full article and make their own decision to share or not
+              </td>
+            </tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- FILE CHANGE SUMMARY -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Complete File Change Summary</div>
+
+      <table>
+        <tr><th>File</th><th>Change Type</th><th>Task</th></tr>
+        <tr>
+          <td><code style="color:var(--accent)">server/routes/socialMedia.ts</code></td>
+          <td>Add 2 fields to Zod schema + share_stance</td>
+          <td>#1, #5</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">frontend/.../NewsApp.tsx</code></td>
+          <td>Import useRoleVisibility, gate UNVERIFIED badges behind isTrainer (3 locations), read article query param, compose modal, read tracking</td>
+          <td>#2, #4, #5, #6</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">server/services/feedEngineService.ts</code></td>
+          <td>Add social post creation in routeToNews()</td>
+          <td>#3</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">frontend/.../SocialFeedApp.tsx</code></td>
+          <td>Wire onClick on LinkPreviewCard</td>
+          <td>#4</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">frontend/.../FacebookFeedApp.tsx</code></td>
+          <td>Wire onClick on LinkPreviewCard</td>
+          <td>#4</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">frontend/.../DesktopShell.tsx</code></td>
+          <td>Open/focus News window with article param</td>
+          <td>#4</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">frontend/.../HomeScreen.tsx</code></td>
+          <td>Populate news badge from unread count</td>
+          <td>#6</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">frontend/.../DeviceShell.tsx</code></td>
+          <td>Increment news badge on news_article.published</td>
+          <td>#6</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">server/services/npcReactionService.ts</code></td>
+          <td>NPCs react to player stance on shared articles</td>
+          <td>#5</td>
+        </tr>
+        <tr>
+          <td><code style="color:var(--accent)">server/services/socialStateUpdaterService.ts</code></td>
+          <td>Stance affects trust/SOP scoring</td>
+          <td>#5</td>
+        </tr>
+      </table>
+
+      <div style="text-align:center; padding:40px 0 0; color:var(--muted); font-size:13px;">
+        Total estimated effort: ~10 hours across 6 tasks &bull; No new database migrations needed beyond existing 183
+      </div>
+
+    </main>
+  </body>
+</html>
