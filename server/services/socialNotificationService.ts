@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getWebSocketService } from './websocketService.js';
 import { logger } from '../lib/logger.js';
+import { getPageControllerIdsByHandle } from './orgPageService.js';
 
 async function findPlayerUserIdByHandle(sessionId: string, handle: string): Promise<string | null> {
   // Look up the player's user_id directly from their posts in this session
@@ -46,14 +47,6 @@ async function findPlayerUserIdByHandle(sessionId: string, handle: string): Prom
   return null;
 }
 
-async function findAllSessionParticipantIds(sessionId: string): Promise<string[]> {
-  const { data: participants } = await supabaseAdmin
-    .from('session_participants')
-    .select('user_id')
-    .eq('session_id', sessionId);
-  return (participants || []).map((p) => p.user_id as string);
-}
-
 function stripThreadTag(content: string): string {
   return content.replace(/^@[\w._-]+\[[^\]]+\]\s*/, '');
 }
@@ -70,7 +63,7 @@ export async function notifyPostReply(
 ): Promise<void> {
   try {
     const userIds = isPageNotification
-      ? await findAllSessionParticipantIds(sessionId)
+      ? await getPageControllerIdsByHandle(sessionId, parentAuthorHandle)
       : ([await findPlayerUserIdByHandle(sessionId, parentAuthorHandle)].filter(
           Boolean,
         ) as string[]);
@@ -135,7 +128,7 @@ export async function notifyPostLike(
 ): Promise<void> {
   try {
     const userIds = isPageNotification
-      ? await findAllSessionParticipantIds(sessionId)
+      ? await getPageControllerIdsByHandle(sessionId, postAuthorHandle)
       : ([await findPlayerUserIdByHandle(sessionId, postAuthorHandle)].filter(Boolean) as string[]);
     if (userIds.length === 0) return;
 
@@ -198,7 +191,7 @@ export async function notifyMention(
 ): Promise<void> {
   try {
     const userIds = isPageNotification
-      ? await findAllSessionParticipantIds(sessionId)
+      ? await getPageControllerIdsByHandle(sessionId, mentionedHandle)
       : ([await findPlayerUserIdByHandle(sessionId, mentionedHandle)].filter(Boolean) as string[]);
     if (userIds.length === 0) return;
 

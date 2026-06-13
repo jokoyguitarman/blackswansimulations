@@ -1172,6 +1172,20 @@ router.post(
       // Create default channels for the session
       await createDefaultChannels(data.id, user.id);
 
+      // For social-media sims, seed org page rows now so trainers can assign
+      // page controllers in the lobby (branded history still seeds lazily later).
+      if (simMode === 'social_media' && scenario.initial_state) {
+        try {
+          const { seedOrgPages } = await import('../services/ambientContentService.js');
+          await seedOrgPages(data.id, scenario.initial_state as Record<string, unknown>);
+        } catch (seedErr) {
+          logger.warn(
+            { error: seedErr, sessionId: data.id },
+            'Failed to seed org pages at creation',
+          );
+        }
+      }
+
       // If scenario has geography but no map URLs yet, generate maps in background so briefing is ready
       const { data: scenarioRow } = await supabaseAdmin
         .from('scenarios')

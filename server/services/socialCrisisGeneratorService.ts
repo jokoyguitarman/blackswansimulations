@@ -168,10 +168,60 @@ export interface BrandedHistoryPost {
   media_description?: string;
 }
 
+export interface OrgConfig {
+  org_key: string;
+  display_name: string;
+  is_primary: boolean;
+  facebook: OrgPagePlatformConfig;
+  x_twitter: OrgPagePlatformConfig;
+}
+
 export interface OrgPageConfig {
+  // Multi-page shape (primary crisis org + optional extras)
+  orgs?: OrgConfig[];
+  // Legacy single-org fields (retained for the primary org / backward compatibility)
   facebook: OrgPagePlatformConfig;
   x_twitter: OrgPagePlatformConfig;
   branded_history: BrandedHistoryPost[];
+}
+
+/**
+ * Normalize an org_page config (new multi-org `orgs[]` shape OR legacy single-org
+ * `{ facebook, x_twitter }` shape) into a flat list of OrgConfig. Guarantees exactly
+ * one org is flagged is_primary.
+ */
+export function normalizeOrgPages(
+  orgPage: OrgPageConfig | Record<string, unknown> | null | undefined,
+): OrgConfig[] {
+  if (!orgPage) return [];
+  const op = orgPage as OrgPageConfig;
+  let orgs: OrgConfig[] = [];
+
+  if (Array.isArray(op.orgs) && op.orgs.length > 0) {
+    orgs = op.orgs.map((o, i) => ({
+      org_key: o.org_key || (o.is_primary ? 'primary' : `org_${i + 1}`),
+      display_name:
+        o.display_name || o.facebook?.page_name || o.x_twitter?.page_name || 'Organization',
+      is_primary: !!o.is_primary,
+      facebook: o.facebook,
+      x_twitter: o.x_twitter,
+    }));
+  } else if (op.facebook || op.x_twitter) {
+    orgs = [
+      {
+        org_key: 'primary',
+        display_name: op.facebook?.page_name || op.x_twitter?.page_name || 'Organization',
+        is_primary: true,
+        facebook: op.facebook,
+        x_twitter: op.x_twitter,
+      },
+    ];
+  }
+
+  if (orgs.length > 0 && !orgs.some((o) => o.is_primary)) {
+    orgs[0].is_primary = true;
+  }
+  return orgs;
 }
 
 export interface SocialCrisisPayload {
@@ -1491,7 +1541,15 @@ Return ONLY valid JSON:
     tw.page_logo_url = resolvedLogoUrl;
   }
 
-  return { facebook: fb, x_twitter: tw, branded_history: history };
+  const primaryOrg: OrgConfig = {
+    org_key: 'primary',
+    display_name: orgName || fb.page_name || 'Organization',
+    is_primary: true,
+    facebook: fb,
+    x_twitter: tw,
+  };
+
+  return { orgs: [primaryOrg], facebook: fb, x_twitter: tw, branded_history: history };
 }
 
 // ─── Full Assembly ──────────────────────────────────────────────────────────

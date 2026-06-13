@@ -9,6 +9,7 @@ import {
   generateVideoThumbnail,
 } from './mediaGenerationService.js';
 import { triggerNPCMessages } from './npcMessengerService.js';
+import { normalizeOrgPages } from './socialCrisisGeneratorService.js';
 
 interface RegisteredNPC {
   handle: string;
@@ -213,6 +214,58 @@ function simpleHash(str: string): number {
 
 const seededSessions = new Set<string>();
 
+/**
+ * Upsert the org page rows (one per platform per org) for a session from its
+ * initial_state.org_page config. Safe to call multiple times. Does not seed
+ * branded history posts.
+ */
+export async function seedOrgPages(
+  sessionId: string,
+  initialState: Record<string, unknown>,
+): Promise<void> {
+  const orgPage = initialState?.org_page as Record<string, unknown> | undefined;
+  if (!orgPage) return;
+
+  const orgs = normalizeOrgPages(orgPage);
+  for (const org of orgs) {
+    if (org.facebook) {
+      await supabaseAdmin.from('sim_org_pages').upsert(
+        {
+          session_id: sessionId,
+          org_key: org.org_key,
+          is_primary: org.is_primary,
+          platform: 'facebook',
+          page_name: String(org.facebook.page_name || 'Organization'),
+          page_handle: String(org.facebook.page_handle || '@Organization'),
+          page_bio: String(org.facebook.page_bio || ''),
+          follower_count: Number(org.facebook.follower_count) || 50000,
+          page_logo_url: String(org.facebook.page_logo_url || ''),
+          verified: true,
+        },
+        { onConflict: 'session_id,platform,org_key' },
+      );
+    }
+
+    if (org.x_twitter) {
+      await supabaseAdmin.from('sim_org_pages').upsert(
+        {
+          session_id: sessionId,
+          org_key: org.org_key,
+          is_primary: org.is_primary,
+          platform: 'x_twitter',
+          page_name: String(org.x_twitter.page_name || 'Organization'),
+          page_handle: String(org.x_twitter.page_handle || '@Org'),
+          page_bio: String(org.x_twitter.page_bio || ''),
+          follower_count: Number(org.x_twitter.follower_count) || 30000,
+          page_logo_url: String(org.x_twitter.page_logo_url || ''),
+          verified: true,
+        },
+        { onConflict: 'session_id,platform,org_key' },
+      );
+    }
+  }
+}
+
 async function seedBrandedHistory(
   sessionId: string,
   initialState: Record<string, unknown>,
@@ -237,41 +290,14 @@ async function seedBrandedHistory(
     return;
   }
 
-  const fb = orgPage.facebook as Record<string, unknown> | undefined;
-  const tw = orgPage.x_twitter as Record<string, unknown> | undefined;
+  const orgs = normalizeOrgPages(orgPage);
+  const primary = orgs.find((o) => o.is_primary) || orgs[0];
+  // Branded history is a flat list authored by the primary org.
+  const fb = primary?.facebook as Record<string, unknown> | undefined;
+  const tw = primary?.x_twitter as Record<string, unknown> | undefined;
   const history = (orgPage.branded_history || []) as Array<Record<string, unknown>>;
 
-  if (fb) {
-    await supabaseAdmin.from('sim_org_pages').upsert(
-      {
-        session_id: sessionId,
-        platform: 'facebook',
-        page_name: String(fb.page_name || 'Organization'),
-        page_handle: String(fb.page_handle || '@Organization'),
-        page_bio: String(fb.page_bio || ''),
-        follower_count: Number(fb.follower_count) || 50000,
-        page_logo_url: String(fb.page_logo_url || ''),
-        verified: true,
-      },
-      { onConflict: 'session_id,platform' },
-    );
-  }
-
-  if (tw) {
-    await supabaseAdmin.from('sim_org_pages').upsert(
-      {
-        session_id: sessionId,
-        platform: 'x_twitter',
-        page_name: String(tw.page_name || 'Organization'),
-        page_handle: String(tw.page_handle || '@Org'),
-        page_bio: String(tw.page_bio || ''),
-        follower_count: Number(tw.follower_count) || 30000,
-        page_logo_url: String(tw.page_logo_url || ''),
-        verified: true,
-      },
-      { onConflict: 'session_id,platform' },
-    );
-  }
+  await seedOrgPages(sessionId, initialState);
 
   const startTime = new Date(sessionStartTime).getTime();
 

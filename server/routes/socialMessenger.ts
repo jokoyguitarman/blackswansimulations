@@ -4,6 +4,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
+import { getControlledOrgPage } from '../services/orgPageService.js';
 import { randomUUID } from 'crypto';
 
 const router = Router();
@@ -171,18 +172,15 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
     let senderType = 'player';
 
     if (send_as_page) {
-      const { data: orgPage } = await supabaseAdmin
-        .from('sim_org_pages')
-        .select('page_name, page_handle')
-        .eq('session_id', session_id)
-        .eq('platform', platform || 'facebook')
-        .single();
-
-      if (orgPage) {
-        senderHandle = orgPage.page_handle;
-        senderDisplayName = orgPage.page_name;
-        senderType = 'official_account';
+      const orgPage = await getControlledOrgPage(session_id, user.id, platform || 'facebook');
+      if (!orgPage) {
+        return res
+          .status(403)
+          .json({ error: 'You do not control a page on this platform for this session' });
       }
+      senderHandle = orgPage.page_handle;
+      senderDisplayName = orgPage.page_name;
+      senderType = 'official_account';
     }
 
     const { data: existingThread } = await supabaseAdmin

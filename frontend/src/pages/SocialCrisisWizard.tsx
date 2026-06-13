@@ -235,6 +235,61 @@ export const SocialCrisisWizard = () => {
   const [orgPage, setOrgPage] = useState<Record<string, unknown> | null>(null);
   const [step4Loading, setStep4Loading] = useState(false);
   const [step4Error, setStep4Error] = useState<string | null>(null);
+  const [newPageName, setNewPageName] = useState('');
+  const [newPageFbHandle, setNewPageFbHandle] = useState('');
+  const [newPageXHandle, setNewPageXHandle] = useState('');
+
+  // Extra org pages (beyond the primary crisis page) the trainer adds manually.
+  const getExtraOrgs = useCallback((): Array<Record<string, unknown>> => {
+    const orgs = (orgPage as { orgs?: Array<Record<string, unknown>> } | null)?.orgs || [];
+    return orgs.filter((o) => !o.is_primary);
+  }, [orgPage]);
+
+  const addExtraPage = useCallback(() => {
+    const name = newPageName.trim();
+    if (!name || !orgPage) return;
+    const fbHandle = newPageFbHandle.trim() || `@${name.replace(/[^\w]/g, '')}`;
+    const xHandle = newPageXHandle.trim() || fbHandle;
+    const orgKey = `org_${name.toLowerCase().replace(/[^\w]/g, '_')}_${Date.now().toString(36)}`;
+    const newOrg = {
+      org_key: orgKey,
+      display_name: name,
+      is_primary: false,
+      facebook: { page_name: name, page_handle: fbHandle, page_bio: '', follower_count: 10000 },
+      x_twitter: { page_name: name, page_handle: xHandle, page_bio: '', follower_count: 8000 },
+    };
+    setOrgPage((prev) => {
+      if (!prev) return prev;
+      const existing = (prev as { orgs?: Array<Record<string, unknown>> }).orgs;
+      // Ensure the generated primary org is present in orgs.
+      const baseOrgs =
+        existing && existing.length > 0
+          ? existing
+          : [
+              {
+                org_key: 'primary',
+                display_name:
+                  (prev as { facebook?: { page_name?: string } }).facebook?.page_name ||
+                  'Organization',
+                is_primary: true,
+                facebook: (prev as { facebook?: unknown }).facebook,
+                x_twitter: (prev as { x_twitter?: unknown }).x_twitter,
+              },
+            ];
+      return { ...prev, orgs: [...baseOrgs, newOrg] };
+    });
+    setNewPageName('');
+    setNewPageFbHandle('');
+    setNewPageXHandle('');
+  }, [newPageName, newPageFbHandle, newPageXHandle, orgPage]);
+
+  const removeExtraPage = useCallback((orgKey: string) => {
+    setOrgPage((prev) => {
+      if (!prev) return prev;
+      const existing = (prev as { orgs?: Array<Record<string, unknown>> }).orgs || [];
+      return { ...prev, orgs: existing.filter((o) => o.org_key !== orgKey) };
+    });
+  }, []);
 
   /* Step 5 — Public Sentiment Research (NEW) */
   const [sentimentProfile, setSentimentProfile] = useState<PublicSentimentProfile | null>(null);
@@ -1831,6 +1886,72 @@ export const SocialCrisisWizard = () => {
                     </p>
                   </div>
                 )}
+
+              {/* Additional Pages (optional) */}
+              <div className="mt-4 p-3 border border-robotic-yellow/20 rounded bg-robotic-gray-200/40">
+                <h4 className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
+                  Additional Pages (optional)
+                </h4>
+                <p className="text-[10px] terminal-text text-robotic-yellow/40 mb-3">
+                  The crisis page above is required. Add other organizations players can control
+                  (each spans Facebook + X). Players are assigned to pages in the session lobby.
+                </p>
+
+                {getExtraOrgs().length > 0 && (
+                  <div className="space-y-1 mb-3">
+                    {getExtraOrgs().map((o) => (
+                      <div
+                        key={String(o.org_key)}
+                        className="flex items-center justify-between border-b border-robotic-yellow/10 py-1"
+                      >
+                        <span className="text-xs terminal-text">
+                          {String(o.display_name)}{' '}
+                          <span className="text-robotic-yellow/40">
+                            {String(
+                              (o.facebook as { page_handle?: string } | undefined)?.page_handle ||
+                                '',
+                            )}
+                          </span>
+                        </span>
+                        <button
+                          onClick={() => removeExtraPage(String(o.org_key))}
+                          className="text-[10px] terminal-text text-robotic-orange hover:underline"
+                        >
+                          [REMOVE]
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    value={newPageName}
+                    onChange={(e) => setNewPageName(e.target.value)}
+                    placeholder="Page name"
+                    className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+                  />
+                  <input
+                    value={newPageFbHandle}
+                    onChange={(e) => setNewPageFbHandle(e.target.value)}
+                    placeholder="@FacebookHandle"
+                    className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+                  />
+                  <input
+                    value={newPageXHandle}
+                    onChange={(e) => setNewPageXHandle(e.target.value)}
+                    placeholder="@XHandle"
+                    className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+                  />
+                </div>
+                <button
+                  onClick={addExtraPage}
+                  disabled={!newPageName.trim()}
+                  className="military-button px-4 py-1.5 text-xs mt-2 disabled:opacity-50"
+                >
+                  [ADD_PAGE]
+                </button>
+              </div>
             </div>
           ) : (
             !step4Loading &&

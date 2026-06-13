@@ -4,6 +4,7 @@ import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
 import { JoinLinkPanel } from './JoinLinkPanel';
 import { TeamAssignmentModal } from '../Teams/TeamAssignmentModal';
+import { PageAssignmentModal } from '../Teams/PageAssignmentModal';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
 import { websocketClient } from '../../lib/websocketClient';
@@ -12,6 +13,7 @@ interface SessionLobbyProps {
   sessionId: string;
   session: {
     status: string;
+    sim_mode?: string | null;
     trainer_instructions?: string | null;
     scheduled_start_time?: string | null;
     join_token?: string | null;
@@ -52,6 +54,8 @@ export const SessionLobby = ({
   const [loading, setLoading] = useState(false);
   const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
+  const [showPageAssignmentModal, setShowPageAssignmentModal] = useState(false);
+  const isSocialSim = session.sim_mode === 'social_media';
   const [wsConnected, setWsConnected] = useState(false);
 
   useEffect(() => {
@@ -336,12 +340,22 @@ export const SessionLobby = ({
               [TEAM_ASSIGNMENTS]
             </h3>
             {isTrainer && (
-              <button
-                onClick={() => setShowTeamAssignmentModal(true)}
-                className="military-button px-4 py-2 text-xs"
-              >
-                [MANAGE_TEAMS]
-              </button>
+              <div className="flex gap-2">
+                {isSocialSim && (
+                  <button
+                    onClick={() => setShowPageAssignmentModal(true)}
+                    className="military-button px-4 py-2 text-xs"
+                  >
+                    [MANAGE_PAGES]
+                  </button>
+                )}
+                <button
+                  onClick={() => setShowTeamAssignmentModal(true)}
+                  className="military-button px-4 py-2 text-xs"
+                >
+                  [MANAGE_TEAMS]
+                </button>
+              </div>
             )}
           </div>
 
@@ -420,6 +434,19 @@ export const SessionLobby = ({
           onClose={() => setShowTeamAssignmentModal(false)}
           onSuccess={() => {
             loadMyTeams();
+            if (onSessionUpdate) {
+              onSessionUpdate();
+            }
+          }}
+        />
+      )}
+
+      {/* Page Assignment Modal (social-media sims only) */}
+      {showPageAssignmentModal && (
+        <PageAssignmentModal
+          sessionId={sessionId}
+          onClose={() => setShowPageAssignmentModal(false)}
+          onSuccess={() => {
             if (onSessionUpdate) {
               onSessionUpdate();
             }

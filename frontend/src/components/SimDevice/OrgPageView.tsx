@@ -29,6 +29,7 @@ interface PagePost {
   id: string;
   content: string;
   created_at: string;
+  author_handle?: string;
   like_count: number;
   reply_count: number;
   view_count: number;
@@ -122,7 +123,7 @@ export default function OrgPageView({
     try {
       const headers = await getAuthHeaders();
       const [pageRes, postsRes] = await Promise.all([
-        fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers }),
+        fetch(apiUrl(`/api/social/my-page/session/${sessionId}`), { headers }),
         fetch(
           apiUrl(
             `/api/social/posts/session/${sessionId}?platform=${platform}&limit=500&sort=chronological&author_type=official_account&top_level_only=true`,
@@ -132,15 +133,18 @@ export default function OrgPageView({
       ]);
 
       const pageJson = await pageRes.json();
-      const targetPage = (pageJson.data || []).find(
-        (p: Record<string, string>) => p.platform === platform,
-      );
-      if (targetPage) setPageInfo(targetPage);
+      const targetPage = (pageJson.data?.[platform] || null) as Record<string, string> | null;
+      if (targetPage) setPageInfo(targetPage as unknown as OrgPage);
 
       const postsJson = await postsRes.json();
       const officialPosts = (postsJson.data || []) as PagePost[];
+      // Show only the controlled page's own posts.
+      const ownHandle = targetPage?.page_handle;
+      const filtered = ownHandle
+        ? officialPosts.filter((p) => p.author_handle === ownHandle)
+        : officialPosts;
       setPosts(
-        officialPosts.sort(
+        filtered.sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
         ),
       );

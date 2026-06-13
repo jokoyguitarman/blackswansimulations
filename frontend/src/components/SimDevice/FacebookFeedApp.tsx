@@ -174,17 +174,16 @@ export default function FacebookFeedApp() {
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers });
+        const res = await fetch(apiUrl(`/api/social/my-page/session/${sessionId}`), { headers });
         const json = await res.json();
-        const fbPage = (json.data || []).find(
-          (p: Record<string, string>) => p.platform === 'facebook',
-        );
+        const fbPage = json.data?.facebook as Record<string, string> | null | undefined;
         if (fbPage)
           setOrgPageInfo({
             page_name: fbPage.page_name,
             page_handle: fbPage.page_handle,
             page_logo_url: fbPage.page_logo_url || '',
           });
+        else setOrgPageInfo(null);
       } catch {
         /* non-critical */
       }

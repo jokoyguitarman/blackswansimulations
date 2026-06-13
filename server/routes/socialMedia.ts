@@ -12,6 +12,7 @@ import { evaluateSOPCompliance } from '../services/sopCheckerService.js';
 import { computeSessionSentiment } from '../services/sentimentSimService.js';
 import { triggerNPCReactions } from '../services/npcReactionService.js';
 import { notifyPostReply, notifyPostLike } from '../services/socialNotificationService.js';
+import { getControlledOrgPage, getControlledOrgKey } from '../services/orgPageService.js';
 import {
   generatePostImage,
   generateVideo,
@@ -256,20 +257,17 @@ router.post(
       let postedByDisplayName: string | null = null;
 
       if (post_as_page) {
-        const { data: orgPage } = await supabaseAdmin
-          .from('sim_org_pages')
-          .select('page_name, page_handle')
-          .eq('session_id', session_id)
-          .eq('platform', platform)
-          .single();
-
-        if (orgPage) {
-          authorHandle = orgPage.page_handle;
-          authorDisplayName = orgPage.page_name;
-          authorType = 'official_account';
-          postedByUserId = user.id;
-          postedByDisplayName = personalDisplayName;
+        const orgPage = await getControlledOrgPage(session_id, user.id, platform);
+        if (!orgPage) {
+          return res
+            .status(403)
+            .json({ error: 'You do not control a page on this platform for this session' });
         }
+        authorHandle = orgPage.page_handle;
+        authorDisplayName = orgPage.page_name;
+        authorType = 'official_account';
+        postedByUserId = user.id;
+        postedByDisplayName = personalDisplayName;
       }
 
       const initialViralityScore = reply_to_post_id
@@ -571,6 +569,19 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
     const reactionType = req.body?.reaction_type || 'like';
     const postAsPage = req.body?.post_as_page || false;
     const reactedAs = postAsPage ? 'page' : 'personal';
+
+    if (postAsPage) {
+      const post = await supabaseAdmin
+        .from('social_posts')
+        .select('session_id')
+        .eq('id', postId)
+        .single();
+      const sid = post.data?.session_id as string | undefined;
+      const orgKey = sid ? await getControlledOrgKey(sid, user.id) : null;
+      if (!orgKey) {
+        return res.status(403).json({ error: 'You do not control a page in this session' });
+      }
+    }
 
     const { data: existing } = await supabaseAdmin
       .from('social_post_likes')
@@ -1789,6 +1800,194 @@ router.get('/org-page/session/:sessionId', requireAuth, async (req: Authenticate
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Helper: group sim_org_pages rows into a per-org structure keyed by org_key
+function groupOrgPages(rows: Array<Record<string, unknown>>) {
+  const map = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    const orgKey = String(row.org_key || 'primary');
+    if (!map.has(orgKey)) {
+      map.set(orgKey, {
+        org_key: orgKey,
+        is_primary: !!row.is_primary,
+        display_name: String(row.page_name || 'Organization'),
+        facebook: null,
+        x_twitter: null,
+      });
+    }
+    const entry = map.get(orgKey)!;
+    if (row.platform === 'facebook') entry.facebook = row;
+    else if (row.platform === 'x_twitter') entry.x_twitter = row;
+    if (row.is_primary) entry.is_primary = true;
+  }
+  return Array.from(map.values());
+}
+
+// List org pages (grouped by org_key) and their controllers for a session
+router.get('/pages/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+    const [pagesResult, controllersResult] = await Promise.all([
+      supabaseAdmin.from('sim_org_pages').select('*').eq('session_id', sessionId),
+      supabaseAdmin
+        .from('session_page_controllers')
+        .select('user_id, org_key')
+        .eq('session_id', sessionId),
+    ]);
+
+    if (pagesResult.error) {
+      return res.status(500).json({ error: 'Failed to fetch org pages' });
+    }
+
+    const grouped = groupOrgPages(pagesResult.data || []);
+    const controllers = controllersResult.data || [];
+    const withControllers = grouped.map((g) => ({
+      ...g,
+      controllers: controllers
+        .filter((c) => c.org_key === g.org_key)
+        .map((c) => c.user_id as string),
+    }));
+
+    res.json({ data: withControllers });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/pages/session/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Get the page (org) the current player controls for a session
+router.get('/my-page/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+    const user = req.user!;
+
+    const { data: controller } = await supabaseAdmin
+      .from('session_page_controllers')
+      .select('org_key')
+      .eq('session_id', sessionId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (!controller?.org_key) {
+      return res.json({ data: null });
+    }
+
+    const { data: rows } = await supabaseAdmin
+      .from('sim_org_pages')
+      .select('*')
+      .eq('session_id', sessionId)
+      .eq('org_key', controller.org_key);
+
+    const grouped = groupOrgPages(rows || []);
+    res.json({ data: grouped[0] || null });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/my-page/session/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Assign a player to a page (trainer only). Each player controls at most one page.
+router.post(
+  '/pages/session/:sessionId/assign',
+  requireAuth,
+  validate(
+    z.object({
+      params: z.object({ sessionId: z.string().uuid() }),
+      body: z.object({ user_id: z.string().uuid(), org_key: z.string().min(1) }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+      const user = req.user!;
+      const { user_id, org_key } = req.body;
+
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can assign pages' });
+      }
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('id, trainer_id')
+        .eq('id', sessionId)
+        .single();
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { data: assignment, error } = await supabaseAdmin
+        .from('session_page_controllers')
+        .upsert(
+          { session_id: sessionId, user_id, org_key, assigned_by: user.id },
+          { onConflict: 'session_id,user_id' },
+        )
+        .select()
+        .single();
+
+      if (error) {
+        logger.error(
+          { error, sessionId, userId: user_id, orgKey: org_key },
+          'Failed to assign page',
+        );
+        return res.status(500).json({ error: 'Failed to assign page' });
+      }
+
+      res.status(201).json({ data: assignment });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/pages/session/:sessionId/assign');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Remove a player's page assignment (trainer only)
+router.delete(
+  '/pages/session/:sessionId/assign',
+  requireAuth,
+  validate(
+    z.object({
+      params: z.object({ sessionId: z.string().uuid() }),
+      body: z.object({ user_id: z.string().uuid() }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+      const user = req.user!;
+      const { user_id } = req.body;
+
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can remove page assignments' });
+      }
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('id, trainer_id')
+        .eq('id', sessionId)
+        .single();
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { error } = await supabaseAdmin
+        .from('session_page_controllers')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', user_id);
+
+      if (error) {
+        return res.status(500).json({ error: 'Failed to remove page assignment' });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in DELETE /social/pages/session/:sessionId/assign');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
 
 // Get player's own activity for a session
 router.get(

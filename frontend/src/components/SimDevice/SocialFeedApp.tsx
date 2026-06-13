@@ -169,17 +169,16 @@ export default function SocialFeedApp({
     (async () => {
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), { headers });
+        const res = await fetch(apiUrl(`/api/social/my-page/session/${sessionId}`), { headers });
         const json = await res.json();
-        const twPage = (json.data || []).find(
-          (p: Record<string, string>) => p.platform === 'x_twitter',
-        );
+        const twPage = json.data?.x_twitter as Record<string, string> | null | undefined;
         if (twPage)
           setOrgPageInfo({
             page_name: twPage.page_name,
             page_handle: twPage.page_handle,
             page_logo_url: twPage.page_logo_url || '',
           });
+        else setOrgPageInfo(null);
       } catch {
         /* non-critical */
       }

@@ -50,22 +50,25 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
     const platform = String(notif.platform || topMetadata.platform || '');
     const isPageNotification = !!topMetadata.is_page_notification;
 
-    let appId = 'home';
-    let appName = 'System';
-    let appIcon = '/icons/icon-chat.png';
-    let route = `/sim/${sessionId}/device/home`;
+    // Only surface social interactions (on the player's / their page's posts) and team chat.
+    // Scenario-content (inject_published), decisions, incidents, and system alerts do not push.
+    const isSocialInteraction =
+      notifType === 'social_reply' ||
+      notifType === 'social_like' ||
+      notifType === 'social_mention' ||
+      notifType === 'social_repost';
+
+    let appId: string;
+    let appName: string;
+    let appIcon: string;
+    let route: string;
 
     if (notifType === 'chat_message') {
       appId = 'chat';
       appName = 'TeamChat';
       appIcon = '/icons/icon-chat.png';
       route = `/sim/${sessionId}/device/chat`;
-    } else if (
-      notifType === 'social_reply' ||
-      notifType === 'social_like' ||
-      notifType === 'social_mention' ||
-      notifType === 'social_repost'
-    ) {
+    } else if (isSocialInteraction) {
       const metadata = (notif.metadata || {}) as Record<string, unknown>;
       const postId = String(metadata.post_id || metadata.highlight_post_id || '');
       appId = platform === 'facebook' ? 'facebook' : 'social';
@@ -75,30 +78,9 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
       route = postId
         ? `/sim/${sessionId}/device/${appPath}?post=${postId}`
         : `/sim/${sessionId}/device/${appPath}`;
-    } else if (notifType === 'inject_published') {
-      appId = 'news';
-      appName = 'News';
-      appIcon = '/icons/icon-news.png';
-      route = `/sim/${sessionId}/device/news`;
-    } else if (
-      notifType === 'decision_approval_required' ||
-      notifType === 'decision_approved' ||
-      notifType === 'decision_rejected'
-    ) {
-      appId = 'home';
-      appName = 'Decisions';
-      appIcon = '/icons/icon-chat.png';
-      route = `/sim/${sessionId}/device/home`;
-    } else if (notifType === 'incident_reported' || notifType === 'incident_assigned') {
-      appId = 'home';
-      appName = 'Incidents';
-      appIcon = '/icons/icon-news.png';
-      route = `/sim/${sessionId}/device/home`;
-    } else if (notifType === 'system_alert') {
-      appId = 'home';
-      appName = 'System';
-      appIcon = '/icons/icon-news.png';
-      route = `/sim/${sessionId}/device/home`;
+    } else {
+      // Not an allowed push type.
+      return null;
     }
 
     return {
@@ -112,6 +94,28 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
       timestamp: String(notif.created_at || ts),
       route,
       isPageNotification,
+    };
+  }
+
+  if (event.type === 'messenger.received') {
+    const message = (event.data?.message || {}) as Record<string, unknown>;
+    const senderType = String(message.sender_type || '');
+    // Only push incoming DMs from others (NPCs/other accounts), never the player's own outbound.
+    if (senderType === 'player') return null;
+    const senderName = String(
+      message.sender_display_name || message.sender_handle || 'New message',
+    );
+    const body = String(message.content || '');
+    return {
+      id,
+      dbId: null,
+      appId: 'facebook',
+      appIcon: '/icons/icon-facebook.png',
+      appName: 'Messenger',
+      title: senderName,
+      body,
+      timestamp: ts,
+      route: `/sim/${sessionId}/device/facebook`,
     };
   }
 
@@ -129,22 +133,6 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
       body: subject,
       timestamp: ts,
       route: `/sim/${sessionId}/device/email`,
-    };
-  }
-
-  if (event.type === 'inject.published') {
-    const inject = (event.data?.inject || {}) as Record<string, unknown>;
-    const title = String(inject.title || 'Breaking News');
-    return {
-      id,
-      dbId: null,
-      appId: 'news',
-      appIcon: '/icons/icon-news.png',
-      appName: 'News',
-      title: 'Breaking',
-      body: title,
-      timestamp: ts,
-      route: `/sim/${sessionId}/device/news`,
     };
   }
 
@@ -219,7 +207,7 @@ function DeviceShellInner() {
   // WebSocket listener for live notifications
   useWebSocket({
     sessionId: sessionId || '',
-    eventTypes: ['notification.created', 'sim_email.received'],
+    eventTypes: ['notification.created', 'sim_email.received', 'messenger.received'],
     onEvent: useCallback(
       (event: WSEvent) => {
         if (!sessionId) return;
@@ -233,6 +221,13 @@ function DeviceShellInner() {
           const dbId = String(notif.id || '');
           if (dbId && processedIdsRef.current.has(dbId)) return;
           if (dbId) processedIdsRef.current.add(dbId);
+        }
+
+        // For messenger.received: only show DMs targeted at THIS user
+        if (event.type === 'messenger.received') {
+          const targetUserId = String(event.data?.user_id || '');
+          if (!targetUserId) return; // player's own outbound DM (no target) -> skip
+          if (user?.id && targetUserId !== user.id) return;
         }
 
         const item = mapEventToNotification(event, sessionId);
