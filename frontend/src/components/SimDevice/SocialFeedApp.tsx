@@ -117,6 +117,7 @@ interface SocialPost {
   target_player_ids?: string[];
   reaction_types?: string[];
   reaction_summary?: string[];
+  is_surfaced_to_session?: boolean;
 }
 
 function formatCount(n: number): string {
@@ -368,6 +369,7 @@ export default function SocialFeedApp({
     sessionId: sessionId || '',
     eventTypes: [
       'social_post.created',
+      'social_post.surfaced',
       'social_post.flagged',
       'social_posts.engagement_update',
       'social_post.media_updated',
@@ -457,6 +459,17 @@ export default function SocialFeedApp({
             });
           }
         }
+      } else if (event.type === 'social_post.surfaced') {
+        // A teammate engaged a targeted post; promote it into this feed.
+        const surfaced = (event.data as { post: SocialPost }).post;
+        if (!surfaced || surfaced.platform !== 'x_twitter') return;
+        if (surfaced.reply_to_post_id) return;
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === surfaced.id)) {
+            return prev.map((p) => (p.id === surfaced.id ? { ...p, ...surfaced } : p));
+          }
+          return [surfaced, ...prev];
+        });
       } else if (event.type === 'notification.created') {
         const eventData = event.data as { user_id?: string } | undefined;
         if (!eventData?.user_id || eventData.user_id === currentUserIdRef.current) {
@@ -1847,6 +1860,14 @@ export default function SocialFeedApp({
                         <span className="text-[14px] flex-shrink-0" style={{ color: '#71767B' }}>
                           {timeAgo(post.created_at)}
                         </span>
+                        {post.is_surfaced_to_session && (
+                          <span
+                            className="text-[10px] font-bold flex-shrink-0 px-1.5 py-0.5 rounded"
+                            style={{ color: '#8FB6FF', backgroundColor: 'rgba(76,141,255,0.15)' }}
+                          >
+                            Surfaced by teammate
+                          </span>
+                        )}
                       </div>
                       {post.author_type === 'official_account' && post.posted_by_display_name && (
                         <div className="text-[11px] mt-0.5" style={{ color: '#71767B' }}>

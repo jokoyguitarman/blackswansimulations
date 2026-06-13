@@ -100,6 +100,7 @@ interface SocialPost {
   posted_by_display_name?: string;
   is_branded_history?: boolean;
   target_player_ids?: string[];
+  is_surfaced_to_session?: boolean;
 }
 
 function formatCount(n: number): string {
@@ -556,6 +557,7 @@ export default function FacebookFeedApp() {
     sessionId: sessionId || '',
     eventTypes: [
       'social_post.created',
+      'social_post.surfaced',
       'social_posts.engagement_update',
       'social_post.media_updated',
       'notification.created',
@@ -631,6 +633,17 @@ export default function FacebookFeedApp() {
             });
           }
         }
+      } else if (event.type === 'social_post.surfaced') {
+        // A teammate engaged a targeted post; promote it into this feed.
+        const surfaced = (event.data as { post: SocialPost }).post;
+        if (!surfaced || surfaced.platform !== 'facebook') return;
+        if (surfaced.reply_to_post_id) return;
+        setPosts((prev) => {
+          if (prev.some((p) => p.id === surfaced.id)) {
+            return prev.map((p) => (p.id === surfaced.id ? { ...p, ...surfaced } : p));
+          }
+          return [surfaced, ...prev];
+        });
       } else if (event.type === 'notification.created') {
         const eventData = event.data as { user_id?: string } | undefined;
         if (!eventData?.user_id || eventData.user_id === currentUserIdRef.current) {
@@ -2138,6 +2151,17 @@ export default function FacebookFeedApp() {
                                 <svg width="12" height="12" viewBox="0 0 16 16" fill="#65676B">
                                   <path d="M8 0a8 8 0 100 16A8 8 0 008 0zm0 14.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13z" />
                                 </svg>
+                                {post.is_surfaced_to_session && (
+                                  <>
+                                    <span>·</span>
+                                    <span
+                                      className="text-[11px] font-semibold px-1.5 py-0.5 rounded"
+                                      style={{ color: '#1D4ED8', backgroundColor: '#DBEAFE' }}
+                                    >
+                                      Surfaced by teammate
+                                    </span>
+                                  </>
+                                )}
                               </div>
                             </div>
                             <button

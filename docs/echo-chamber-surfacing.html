@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Echo-Chamber Post Surfacing — Design &amp; Expected Outcomes</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --panel2: #1f2330;
+        --border: #2b3040;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --bad: #f0556a;
+        --good: #34c759;
+        --accent: #4c8dff;
+        --fb: #1877f2;
+        --warn: #f7b928;
+        --purple: #b07cff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+      header {
+        padding: 40px 32px 28px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #141826, #0f1117);
+      }
+      header h1 { margin: 0 0 8px; font-size: 26px; }
+      header p { margin: 0; color: var(--muted); max-width: 820px; }
+      .pill {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 999px;
+        margin-bottom: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: rgba(176,124,255,0.15);
+        color: var(--purple);
+        border: 1px solid rgba(176,124,255,0.35);
+      }
+      main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 24px;
+        margin: 24px 0;
+        overflow: hidden;
+      }
+      section h2 { margin: 0 0 4px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+      .num {
+        width: 26px; height: 26px; border-radius: 50%;
+        background: var(--accent); color: #fff;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 700; flex-shrink: 0;
+      }
+      .sub { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+      .tag {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .tag.fe { background: rgba(76,141,255,0.15); color: #8fb6ff; }
+      .tag.be { background: rgba(247,185,40,0.15); color: var(--warn); }
+      .tag.db { background: rgba(52,199,89,0.15); color: var(--good); }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+      @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        background: var(--panel2);
+      }
+      .card.before { border-color: rgba(240,85,106,0.4); }
+      .card.after { border-color: rgba(52,199,89,0.4); }
+      .card h3 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .card.before h3 { color: var(--bad); }
+      .card.after h3 { color: var(--good); }
+      ul, ol { margin: 8px 0; padding-left: 22px; }
+      li { margin: 6px 0; }
+      p { margin: 10px 0; }
+      code {
+        font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+        background: #0b0d13;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-size: 12.5px;
+        color: #d6c98a;
+      }
+      pre {
+        background: #0b0d13;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-size: 12.5px;
+        line-height: 1.5;
+      }
+      pre code { background: none; border: none; padding: 0; color: #c9d1e3; }
+      .file { color: var(--accent); font-size: 12px; font-family: "SF Mono", Menlo, monospace; }
+      .kw { color: #ff7b9c; }
+      .str { color: #7fd88f; }
+      .com { color: #6b7280; font-style: italic; }
+      .add { color: var(--good); }
+      .del { color: var(--bad); }
+      /* Mock phones */
+      .phones { display: flex; gap: 20px; flex-wrap: wrap; justify-content: center; margin: 20px 0; }
+      .phone {
+        width: 270px;
+        background: #050505;
+        border-radius: 22px;
+        padding: 10px;
+        border: 6px solid #1c1f27;
+      }
+      .phone .label {
+        text-align: center; font-size: 12px; color: var(--muted);
+        margin-bottom: 8px; font-weight: 600;
+      }
+      .screen {
+        background: #f0f2f5;
+        border-radius: 14px;
+        padding: 10px;
+        min-height: 230px;
+      }
+      .post {
+        background: #fff;
+        color: #050505;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 12px;
+        margin-bottom: 8px;
+        border: 1px solid #e4e6eb;
+      }
+      .post.highlight { border: 2px solid var(--accent); box-shadow: 0 0 0 3px rgba(76,141,255,0.2); }
+      .post .row { display: flex; align-items: center; gap: 8px; }
+      .avatar {
+        width: 32px; height: 32px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; color: #fff; flex-shrink: 0; font-size: 12px;
+      }
+      .a1 { background: #e0567a; }
+      .a2 { background: #4c8dff; }
+      .a3 { background: #34a853; }
+      .a4 { background: #9333ea; }
+      .post .name { font-weight: 700; font-size: 12px; }
+      .post .name small { display: block; font-weight: 400; color: #65676b; font-size: 10px; }
+      .post .body { margin: 7px 0 0; }
+      .post .meta { color: #65676b; font-size: 10px; margin-top: 6px; display: flex; gap: 12px; }
+      .badge-exc {
+        display: inline-block; font-size: 9px; font-weight: 700;
+        background: #fde2e4; color: #c0294a; padding: 2px 6px; border-radius: 4px;
+        text-transform: uppercase; letter-spacing: 0.3px;
+      }
+      .badge-shared {
+        display: inline-block; font-size: 9px; font-weight: 700;
+        background: #dbeafe; color: #1d4ed8; padding: 2px 6px; border-radius: 4px;
+        text-transform: uppercase; letter-spacing: 0.3px;
+      }
+      .flow {
+        display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap;
+        margin: 18px 0;
+      }
+      .step {
+        flex: 1; min-width: 150px;
+        background: var(--panel2); border: 1px solid var(--border);
+        border-radius: 10px; padding: 14px;
+      }
+      .step .n { font-size: 11px; color: var(--accent); font-weight: 700; }
+      .step h4 { margin: 6px 0 4px; font-size: 14px; }
+      .step p { margin: 0; font-size: 12.5px; color: var(--muted); }
+      .arrow { align-self: center; color: var(--muted); font-size: 20px; }
+      .callout {
+        border-left: 3px solid var(--accent);
+        background: rgba(76,141,255,0.08);
+        padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0;
+        font-size: 13.5px;
+      }
+      .callout.warn { border-color: var(--warn); background: rgba(247,185,40,0.08); }
+      .callout.good { border-color: var(--good); background: rgba(52,199,89,0.08); }
+      table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); }
+      th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+      td code { font-size: 11.5px; }
+      .yes { color: var(--good); font-weight: 700; }
+      .no { color: var(--bad); font-weight: 700; }
+      .toc { font-size: 13.5px; }
+      .toc a { color: var(--accent); text-decoration: none; }
+      .toc a:hover { text-decoration: underline; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="pill">Proposed Feature · Design Spec</span>
+      <h1>Echo-Chamber Post Surfacing</h1>
+      <p>
+        When a player engages with a post that is exclusive to their personal feed (a demographic
+        echo-chamber or NPC-bubble post), the post should be promoted so the whole team can see it —
+        enabling the team to band together, fact-check, and respond collectively. This document
+        explains the current behavior, the proposed change, the implementation touchpoints, and the
+        expected outcomes.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Contents</h2>
+        <div class="toc">
+          <ol>
+            <li><a href="#current">How feeds work today (the 3 visibility layers)</a></li>
+            <li><a href="#problem">The problem this solves</a></li>
+            <li><a href="#proposal">The proposed change</a></li>
+            <li><a href="#triggers">What triggers surfacing</a></li>
+            <li><a href="#demo">Visual demonstration (before / after)</a></li>
+            <li><a href="#flow">Request flow</a></li>
+            <li><a href="#impl">Implementation touchpoints</a></li>
+            <li><a href="#outcomes">Expected outcomes</a></li>
+            <li><a href="#decisions">Open design decisions</a></li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 1. CURRENT -->
+      <section id="current">
+        <h2><span class="num">1</span> How feeds work today</h2>
+        <p class="sub">The crisis simulation already personalizes each player's feed across three layers.</p>
+
+        <table>
+          <tr>
+            <th>Layer</th>
+            <th>Targeting field</th>
+            <th>Who sees it</th>
+          </tr>
+          <tr>
+            <td><strong>Shared / universal</strong><br /><span class="sub">Major breaking-news posts</span></td>
+            <td><em>none</em></td>
+            <td>Everyone in the session</td>
+          </tr>
+          <tr>
+            <td><strong>Per-player bubble</strong><br /><span class="sub">Personalized NPC-bubble posts</span></td>
+            <td><code>target_player_ids</code></td>
+            <td>Only the listed player(s)</td>
+          </tr>
+          <tr>
+            <td><strong>Demographic echo chamber</strong><br /><span class="sub">Content tailored to race/age/etc.</span></td>
+            <td><code>target_demographics</code></td>
+            <td>Only players matching the demographics</td>
+          </tr>
+        </table>
+
+        <p>
+          The feed query in <span class="file">server/routes/socialMedia.ts</span> is the single
+          gate that decides visibility — a post is shown only if it has no targeting, or the player
+          matches the targeting:
+        </p>
+        <pre><code><span class="kw">const</span> filteredData = (data || []).filter((post) => {
+  <span class="kw">if</span> (isTrainerOrAdmin) <span class="kw">return</span> <span class="kw">true</span>;
+  <span class="kw">if</span> (post.target_player_ids) {
+    <span class="kw">return</span> (post.target_player_ids).includes(user.id);
+  }
+  <span class="kw">if</span> (post.target_demographics) {
+    <span class="com">// ...player must match every demographic key...</span>
+  }
+  <span class="kw">return</span> <span class="kw">true</span>; <span class="com">// untargeted = visible to all</span>
+});</code></pre>
+        <div class="callout">
+          <strong>Key insight:</strong> visibility is driven <em>entirely</em> by the
+          <code>target_player_ids</code> / <code>target_demographics</code> columns. If we clear (or
+          override) those on a post, it instantly becomes visible to the whole team — no other code
+          needs to change to make it appear.
+        </div>
+      </section>
+
+      <!-- 2. PROBLEM -->
+      <section id="problem">
+        <h2><span class="num">2</span> The problem this solves</h2>
+        <p>
+          Today, when a player reacts to or comments on an echo-chamber-exclusive post,
+          <strong>nothing changes its targeting</strong>. The post stays invisible to teammates, so:
+        </p>
+        <ul>
+          <li>A teammate cannot help <strong>fact-check</strong> a piece of misinformation only one player can see.</li>
+          <li>The team cannot <strong>coordinate a unified response</strong> to a damaging post circulating in one demographic bubble.</li>
+          <li>A dangerous narrative can <strong>slip past the team</strong> because only one member ever saw it.</li>
+        </ul>
+        <div class="callout warn">
+          The closest workaround today is the <strong>repost</strong> action, which creates a brand-new
+          player-authored copy of the content. That works, but it's a manual "quote &amp; share" — it
+          does not surface the <em>original</em> post (with its original engagement, flags, and reply thread)
+          to the team.
+        </div>
+      </section>
+
+      <!-- 3. PROPOSAL -->
+      <section id="proposal">
+        <h2><span class="num">3</span> The proposed change</h2>
+        <p>
+          When a player performs a <strong>meaningful engagement</strong> on a targeted post, the
+          backend promotes that post to <strong>session-wide visibility</strong> and notifies all
+          connected clients in real time.
+        </p>
+        <div class="grid">
+          <div class="card before">
+            <h3>Before</h3>
+            <p style="font-size:13px;margin:0;">
+              Post has <code>target_demographics: { race: "X" }</code>. Only matching players ever
+              load it. Engagement (likes, flags, replies) is invisible to everyone else.
+            </p>
+          </div>
+          <div class="card after">
+            <h3>After</h3>
+            <p style="font-size:13px;margin:0;">
+              On a qualifying engagement, the post's targeting is cleared and a
+              <code>surfaced_by</code> / <code>surfaced_at</code> marker is set. A WebSocket event
+              pushes it into every teammate's feed instantly, tagged "Surfaced by teammate".
+            </p>
+          </div>
+        </div>
+        <p>Two implementation styles are possible:</p>
+        <table>
+          <tr><th>Approach</th><th>How</th><th>Trade-off</th></tr>
+          <tr>
+            <td><strong>A. Clear targeting</strong></td>
+            <td>Set <code>target_player_ids = null</code> and <code>target_demographics = null</code> on the post.</td>
+            <td>Simplest — works with the existing filter as-is. Loses the record of who it originally targeted.</td>
+          </tr>
+          <tr>
+            <td><strong>B. Add a <code>surfaced</code> flag</strong></td>
+            <td>Add a <code>is_surfaced_to_session</code> column; the feed filter returns <code>true</code> when it's set.</td>
+            <td>Preserves original targeting for analytics/after-action review. Requires a migration + one filter tweak.</td>
+          </tr>
+        </table>
+        <div class="callout good">
+          <strong>Recommendation:</strong> Approach B. Keeping the original targeting intact is valuable
+          for the trainer's after-action review ("this misinformation started in the X bubble and was
+          surfaced by Player A at T+14"), and the filter change is a single extra condition.
+        </div>
+      </section>
+
+      <!-- 4. TRIGGERS -->
+      <section id="triggers">
+        <h2><span class="num">4</span> What triggers surfacing</h2>
+        <p class="sub">Not every interaction should surface a post. Recommended trigger set:</p>
+        <table>
+          <tr><th>Action</th><th>Endpoint</th><th>Surface?</th><th>Why</th></tr>
+          <tr>
+            <td>Flag</td>
+            <td><code>POST /posts/:id/flag</code></td>
+            <td class="yes">Yes</td>
+            <td>Deliberate "this needs attention" signal — perfect for team fact-checking.</td>
+          </tr>
+          <tr>
+            <td>Comment / reply</td>
+            <td><code>POST /posts</code> (with <code>reply_to_post_id</code>)</td>
+            <td class="yes">Yes</td>
+            <td>Player is actively engaging the content; the team needs the parent for context.</td>
+          </tr>
+          <tr>
+            <td>Repost</td>
+            <td><code>POST /posts/:id/repost</code></td>
+            <td class="yes">Yes</td>
+            <td>Explicit amplification intent.</td>
+          </tr>
+          <tr>
+            <td>Like / react</td>
+            <td><code>POST /posts/:id/like</code></td>
+            <td class="no">Optional</td>
+            <td>Low-effort; could surface spoilers accidentally. Suggest leaving OFF by default.</td>
+          </tr>
+        </table>
+        <div class="callout warn">
+          <strong>Decision needed:</strong> should a simple <em>like</em> surface a post? Defaulting
+          to flag / comment / repost (intentional acts) avoids accidental spoilers and keeps the
+          training pressure realistic.
+        </div>
+      </section>
+
+      <!-- 5. DEMO -->
+      <section id="demo">
+        <h2><span class="num">5</span> Visual demonstration</h2>
+        <p class="sub">Scenario: a misinformation post only appears in Player A's demographic bubble. Player A flags it.</p>
+
+        <h3 style="color:var(--muted);font-size:13px;text-transform:uppercase;letter-spacing:0.5px;margin-top:20px;">Before — flag does nothing for the team</h3>
+        <div class="phones">
+          <div class="phone">
+            <div class="label">Player A (in the bubble)</div>
+            <div class="screen">
+              <div class="post">
+                <div class="row">
+                  <div class="avatar a1">RG</div>
+                  <div class="name">RealTalkRen <small>@ren_speaks</small></div>
+                </div>
+                <span class="badge-exc">Demographic-only</span>
+                <p class="body">BREAKING: the "recall" is fake — they're just covering up a lawsuit. Don't trust the official page. #boycott</p>
+                <div class="meta"><span>🚩 Flag</span><span>💬 Reply</span><span>↻ Repost</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone">
+            <div class="label">Player B (different demographic)</div>
+            <div class="screen">
+              <div class="post" style="opacity:0.55;">
+                <div class="row">
+                  <div class="avatar a2">BN</div>
+                  <div class="name">BizNewsDaily <small>@biznews</small></div>
+                </div>
+                <p class="body">Company issues voluntary recall of affected units. Statement expected this afternoon.</p>
+                <div class="meta"><span>👍 12</span><span>💬 3</span></div>
+              </div>
+              <p style="text-align:center;color:#90949c;font-size:11px;margin-top:14px;">
+                Player B never sees the misinformation post — even after Player A flags it.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <h3 style="color:var(--good);font-size:13px;text-transform:uppercase;letter-spacing:0.5px;margin-top:24px;">After — flagging surfaces it to the whole team</h3>
+        <div class="phones">
+          <div class="phone">
+            <div class="label">Player A (flags the post)</div>
+            <div class="screen">
+              <div class="post highlight">
+                <div class="row">
+                  <div class="avatar a1">RG</div>
+                  <div class="name">RealTalkRen <small>@ren_speaks</small></div>
+                </div>
+                <span class="badge-shared">Flagged · shared with team</span>
+                <p class="body">BREAKING: the "recall" is fake — they're just covering up a lawsuit. Don't trust the official page. #boycott</p>
+                <div class="meta"><span style="color:#c0294a;">🚩 Flagged</span><span>💬 Reply</span><span>↻ Repost</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone">
+            <div class="label">Player B (now sees it live)</div>
+            <div class="screen">
+              <div class="post highlight">
+                <div class="row">
+                  <div class="avatar a1">RG</div>
+                  <div class="name">RealTalkRen <small>@ren_speaks</small></div>
+                </div>
+                <span class="badge-shared">Surfaced by teammate</span>
+                <p class="body">BREAKING: the "recall" is fake — they're just covering up a lawsuit. Don't trust the official page. #boycott</p>
+                <div class="meta"><span style="color:#c0294a;">🚩 Flagged by A</span><span>💬 Reply</span></div>
+              </div>
+              <div class="post" style="opacity:0.55;">
+                <div class="row">
+                  <div class="avatar a2">BN</div>
+                  <div class="name">BizNewsDaily <small>@biznews</small></div>
+                </div>
+                <p class="body">Company issues voluntary recall of affected units...</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="callout good">
+          Both players now see the same post and can coordinate a single, unified fact-check response
+          to it — exactly the "band together on one post" outcome.
+        </div>
+      </section>
+
+      <!-- 6. FLOW -->
+      <section id="flow">
+        <h2><span class="num">6</span> Request flow</h2>
+        <div class="flow">
+          <div class="step">
+            <div class="n">STEP 1</div>
+            <h4>Player A flags</h4>
+            <p>Client calls <code>POST /posts/:id/flag</code> as it does today.</p>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <div class="n">STEP 2</div>
+            <h4>Backend checks targeting</h4>
+            <p>If the post has <code>target_demographics</code> or <code>target_player_ids</code>, mark it surfaced.</p>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <div class="n">STEP 3</div>
+            <h4>Promote the post</h4>
+            <p>Set <code>is_surfaced_to_session = true</code> (+ <code>surfaced_by</code>, <code>surfaced_at</code>).</p>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <div class="n">STEP 4</div>
+            <h4>Broadcast</h4>
+            <p>Emit <code>social_post.surfaced</code> to the whole session over WebSocket.</p>
+          </div>
+          <div class="arrow">→</div>
+          <div class="step">
+            <div class="n">STEP 5</div>
+            <h4>Teammates update</h4>
+            <p>Every client inserts the post into its feed, tagged "Surfaced by teammate".</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. IMPL -->
+      <section id="impl">
+        <h2><span class="num">7</span> Implementation touchpoints</h2>
+        <p class="sub">Approach B (surfaced flag). Roughly four small edits + one migration.</p>
+
+        <h3 style="font-size:14px;margin-top:18px;"><span class="tag db">DB</span> &nbsp;Migration — add columns</h3>
+        <p class="file">migrations/186_post_surfacing.sql</p>
+        <pre><code><span class="add">ALTER TABLE social_posts</span>
+<span class="add">  ADD COLUMN is_surfaced_to_session boolean DEFAULT false,</span>
+<span class="add">  ADD COLUMN surfaced_by uuid,</span>
+<span class="add">  ADD COLUMN surfaced_at timestamptz;</span></code></pre>
+
+        <h3 style="font-size:14px;margin-top:18px;"><span class="tag be">Backend</span> &nbsp;Feed filter — respect the flag</h3>
+        <p class="file">server/routes/socialMedia.ts &nbsp;(~line 114)</p>
+        <pre><code><span class="kw">const</span> filteredData = (data || []).filter((post) => {
+  <span class="kw">if</span> (isTrainerOrAdmin) <span class="kw">return</span> <span class="kw">true</span>;
+  <span class="add">if (post.is_surfaced_to_session) return true; // promoted to whole team</span>
+  <span class="kw">if</span> (post.target_player_ids) {
+    <span class="kw">return</span> (post.target_player_ids).includes(user.id);
+  }
+  <span class="kw">if</span> (post.target_demographics) { <span class="com">/* ...unchanged... */</span> }
+  <span class="kw">return</span> <span class="kw">true</span>;
+});</code></pre>
+
+        <h3 style="font-size:14px;margin-top:18px;"><span class="tag be">Backend</span> &nbsp;Shared helper — surface + broadcast</h3>
+        <p class="file">server/routes/socialMedia.ts &nbsp;(new helper, reused by flag / reply / repost)</p>
+        <pre><code><span class="kw">async function</span> surfacePostToSession(postId, sessionId, userId) {
+  <span class="kw">const</span> { data: post } = <span class="kw">await</span> supabaseAdmin
+    .from(<span class="str">'social_posts'</span>)
+    .select(<span class="str">'target_player_ids, target_demographics, is_surfaced_to_session'</span>)
+    .eq(<span class="str">'id'</span>, postId).single();
+
+  <span class="com">// Only surface posts that were actually targeted and not already shared</span>
+  <span class="kw">const</span> wasTargeted = post?.target_player_ids || post?.target_demographics;
+  <span class="kw">if</span> (!wasTargeted || post.is_surfaced_to_session) <span class="kw">return</span>;
+
+  <span class="kw">const</span> { data: updated } = <span class="kw">await</span> supabaseAdmin
+    .from(<span class="str">'social_posts'</span>)
+    .update({ is_surfaced_to_session: <span class="kw">true</span>, surfaced_by: userId, surfaced_at: <span class="kw">new</span> Date().toISOString() })
+    .eq(<span class="str">'id'</span>, postId).select().single();
+
+  getWebSocketService().broadcastToSession(sessionId, {
+    type: <span class="str">'social_post.surfaced'</span>,
+    data: { post: updated, surfaced_by: userId },
+    timestamp: <span class="kw">new</span> Date().toISOString(),
+  });
+}</code></pre>
+        <p style="font-size:13px;color:var(--muted);">
+          Then call <code>await surfacePostToSession(postId, sessionId, user.id)</code> inside the
+          <strong>flag</strong> handler (~line 759), the <strong>reply</strong> branch of
+          <code>POST /posts</code> (~line 310), and optionally the <strong>repost</strong> handler (~line 795).
+        </p>
+
+        <h3 style="font-size:14px;margin-top:18px;"><span class="tag fe">Frontend</span> &nbsp;Handle the new event</h3>
+        <p class="file">frontend/src/components/SimDevice/SocialFeedApp.tsx &amp; FacebookFeedApp.tsx</p>
+        <pre><code><span class="com">// In the WebSocket message handler, alongside 'social_post.created':</span>
+<span class="kw">case</span> <span class="str">'social_post.surfaced'</span>:
+  setPosts((prev) => prev.some((p) => p.id === msg.data.post.id)
+    ? prev.map((p) => p.id === msg.data.post.id ? msg.data.post : p)
+    : [msg.data.post, ...prev]); <span class="com">// insert if not already present</span>
+  <span class="kw">break</span>;</code></pre>
+        <p style="font-size:13px;color:var(--muted);">
+          Optionally render a small "Surfaced by teammate" badge when
+          <code>post.is_surfaced_to_session</code> is true.
+        </p>
+      </section>
+
+      <!-- 8. OUTCOMES -->
+      <section id="outcomes">
+        <h2><span class="num">8</span> Expected outcomes</h2>
+        <ul>
+          <li><strong>Team can rally on one post.</strong> A bubble-exclusive post becomes a shared focal point the moment a player engages it.</li>
+          <li><strong>Collaborative fact-checking.</strong> Misinformation that only one demographic saw can now be verified and countered by the whole team.</li>
+          <li><strong>Live propagation.</strong> Teammates see the post appear without refreshing, via the existing WebSocket session broadcast.</li>
+          <li><strong>Engagement carries over.</strong> Because it's the same post (not a repost copy), its flags, reply thread, and reaction counts come with it.</li>
+          <li><strong>Trainer visibility preserved.</strong> With Approach B, the original targeting and a <code>surfaced_by</code> / <code>surfaced_at</code> trail remain for after-action review.</li>
+          <li><strong>Minimal footprint.</strong> One migration, one filter line, one shared helper, one frontend event handler.</li>
+        </ul>
+        <div class="callout">
+          <strong>Edge cases to confirm:</strong> (a) a post should only surface <em>once</em> (the helper short-circuits if already surfaced); (b) only originally-targeted posts surface — untargeted posts are already global; (c) trainers/admins are unaffected since they already see everything.
+        </div>
+      </section>
+
+      <!-- 9. DECISIONS -->
+      <section id="decisions">
+        <h2><span class="num">9</span> Open design decisions</h2>
+        <table>
+          <tr><th>Question</th><th>Options</th><th>Suggested default</th></tr>
+          <tr>
+            <td>Which actions surface a post?</td>
+            <td>Flag only · Flag + Comment + Repost · All including Like</td>
+            <td>Flag + Comment + Repost</td>
+          </tr>
+          <tr>
+            <td>Keep original targeting?</td>
+            <td>Clear it (Approach A) · Keep + add flag (Approach B)</td>
+            <td>Approach B (keep)</td>
+          </tr>
+          <tr>
+            <td>Show a "surfaced by teammate" badge?</td>
+            <td>Yes · No</td>
+            <td>Yes (improves shared situational awareness)</td>
+          </tr>
+          <tr>
+            <td>Score it as a positive player action?</td>
+            <td>Yes (reward surfacing threats) · No</td>
+            <td>Tie to existing <code>recordPlayerAction</code> / SOP steps</td>
+          </tr>
+        </table>
+        <p style="margin-top:18px;color:var(--muted);font-size:13px;">
+          Once these are confirmed, the change can be implemented in Agent mode in a single pass.
+        </p>
+      </section>
+    </main>
+  </body>
+</html>

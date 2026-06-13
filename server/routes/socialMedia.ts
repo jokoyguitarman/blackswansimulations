@@ -27,6 +27,55 @@ import { deriveEmailAddress } from '../services/npcEmailReplyService.js';
 
 const router = Router();
 
+/**
+ * Surface a targeted post (echo-chamber / NPC-bubble) to the entire session.
+ *
+ * When a player engages (react / flag / comment / repost) with a post that was only
+ * visible to them (target_player_ids) or their demographic (target_demographics), the
+ * post is promoted so the whole team can rally and fact-check it together. The original
+ * targeting is preserved for after-action review; an is_surfaced_to_session flag drives
+ * visibility. Idempotent: a post is only surfaced once.
+ */
+async function surfacePostToSession(
+  postId: string,
+  sessionId: string,
+  userId: string,
+): Promise<void> {
+  try {
+    const { data: post } = await supabaseAdmin
+      .from('social_posts')
+      .select('target_player_ids, target_demographics, is_surfaced_to_session')
+      .eq('id', postId)
+      .single();
+
+    if (!post) return;
+    const wasTargeted = !!(post.target_player_ids || post.target_demographics);
+    if (!wasTargeted || post.is_surfaced_to_session) return;
+
+    const { data: updated, error } = await supabaseAdmin
+      .from('social_posts')
+      .update({
+        is_surfaced_to_session: true,
+        surfaced_by: userId,
+        surfaced_at: new Date().toISOString(),
+      })
+      .eq('id', postId)
+      .eq('is_surfaced_to_session', false)
+      .select()
+      .single();
+
+    if (error || !updated) return;
+
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'social_post.surfaced',
+      data: { post: updated, surfaced_by: userId },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.warn({ err, postId, sessionId }, 'Failed to surface post to session (non-critical)');
+  }
+}
+
 // ─── Social Posts ────────────────────────────────────────────────────────────
 
 router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -113,6 +162,7 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
 
     const filteredData = (data || []).filter((post) => {
       if (isTrainerOrAdmin) return true;
+      if (post.is_surfaced_to_session) return true;
       if (post.target_player_ids) {
         return (post.target_player_ids as string[]).includes(user.id);
       }
@@ -320,6 +370,9 @@ router.post(
             .eq('id', reply_to_post_id);
         }
         await markPostResponded(session_id, reply_to_post_id, post.id);
+
+        // Commenting on a targeted post surfaces the parent to the whole team.
+        await surfacePostToSession(reply_to_post_id, session_id, user.id);
 
         // Check if replying to harmful content -> assess SOP step
         const { data: parentFlags } = await supabaseAdmin
@@ -637,6 +690,9 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
         reaction_type: reactionType,
       });
 
+      // Engaging with a targeted post surfaces it to the whole team.
+      await surfacePostToSession(postId, post.session_id, user.id);
+
       // Notify the post author about the like
       const { data: likedPost } = await supabaseAdmin
         .from('social_posts')
@@ -785,6 +841,9 @@ router.post('/posts/:postId/flag', requireAuth, async (req: AuthenticatedRequest
       timestamp: new Date().toISOString(),
     });
 
+    // Engaging with a targeted post surfaces it to the whole team.
+    await surfacePostToSession(postId, post.session_id, user.id);
+
     res.json({ success: true });
   } catch (err) {
     logger.error({ error: err }, 'Error in POST /social/posts/:postId/flag');
@@ -830,6 +889,9 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
       .eq('id', postId);
 
     await recordPlayerAction(original.session_id, user.id, 'post_reposted', postId, null);
+
+    // Reposting a targeted post surfaces the original to the whole team.
+    await surfacePostToSession(postId, original.session_id, user.id);
 
     res.status(201).json({
       data: {
