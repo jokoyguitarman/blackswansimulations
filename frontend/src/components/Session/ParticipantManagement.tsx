@@ -325,8 +325,8 @@ export const ParticipantManagement = ({
                           const filtered = query
                             ? availableToAdd.filter(
                                 (u) =>
-                                  u.full_name.toLowerCase().includes(query) ||
-                                  u.email.toLowerCase().includes(query) ||
+                                  (u.full_name ?? '').toLowerCase().includes(query) ||
+                                  (u.email ?? '').toLowerCase().includes(query) ||
                                   (u.agency_name ?? '').toLowerCase().includes(query),
                               )
                             : availableToAdd;
@@ -360,7 +360,9 @@ export const ParticipantManagement = ({
                                     {isSelected ? '✓' : ''}
                                   </span>
                                   <div className="min-w-0">
-                                    <div className="font-medium truncate">{user.full_name}</div>
+                                    <div className="font-medium truncate">
+                                      {user.full_name || user.email || 'Unknown user'}
+                                    </div>
                                     <div className="text-robotic-yellow/50 truncate">
                                       {user.email}
                                       {user.agency_name ? ` · ${user.agency_name}` : ''}
