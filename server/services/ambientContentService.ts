@@ -10,6 +10,7 @@ import {
 } from './mediaGenerationService.js';
 import { triggerNPCMessages } from './npcMessengerService.js';
 import { normalizeOrgPages } from './socialCrisisGeneratorService.js';
+import { EXTREMIST_CELL } from './extremistDoctrine.js';
 
 interface RegisteredNPC {
   handle: string;
@@ -57,6 +58,19 @@ function loadDesignedPersonas(initialState: Record<string, unknown>, sessionId: 
       normal_interests: Array.isArray(p.normal_interests)
         ? (p.normal_interests as string[]).map(String)
         : [],
+    });
+  }
+
+  // Register the fixed extremist cell so thread continuation (simulateThreadActivity)
+  // addresses them in-character rather than as empty handles.
+  for (const c of EXTREMIST_CELL) {
+    registerNPC(sessionId, {
+      handle: c.handle,
+      display_name: c.name,
+      personality: c.voice,
+      bias: 'agitator',
+      tier: 'key',
+      normal_interests: [],
     });
   }
 }

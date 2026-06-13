@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getWebSocketService } from './websocketService.js';
 import { logger } from '../lib/logger.js';
+import { EXTREMIST_HANDLES } from './extremistDoctrine.js';
 
 export interface SocialState {
   total_posts: number;
@@ -195,8 +196,7 @@ export async function computeSocialState(
     allActions.filter((a) => a.action_type === 'post_flagged').map((a) => String(a.target_id)),
   );
 
-  const harmfulPosts = topLevelPosts.filter((p) => {
-    if (p.author_type === 'player') return false;
+  const hasHarmfulFlags = (p: (typeof allPosts)[number]): boolean => {
     const flags = (p.content_flags || {}) as Record<string, unknown>;
     return !!(
       flags.is_hate_speech ||
@@ -207,7 +207,33 @@ export async function computeSocialState(
       flags.incites_violence ||
       flags.is_organized_pressure
     );
-  });
+  };
+
+  const isDesignedNPCPost = (p: (typeof allPosts)[number]): boolean => {
+    const handle = String(p.author_handle);
+    return (
+      !!p.inject_id ||
+      npcHandles.has(handle) ||
+      antagonistHandles.has(handle) ||
+      EXTREMIST_HANDLES.has(handle)
+    );
+  };
+
+  // Top-level harmful posts (any non-player author) PLUS in-thread harmful
+  // replies authored by DESIGNED NPCs (hive / antagonist / scenario personas /
+  // inject-sourced). Ordinary NPC pile-on replies carry no harmful flags, and
+  // player replies are excluded, so only deliberate agitator replies count.
+  const harmfulTopLevel = topLevelPosts.filter(
+    (p) => p.author_type !== 'player' && hasHarmfulFlags(p),
+  );
+  const harmfulDesignedReplies = allPosts.filter(
+    (p) =>
+      !!p.reply_to_post_id &&
+      p.author_type !== 'player' &&
+      hasHarmfulFlags(p) &&
+      isDesignedNPCPost(p),
+  );
+  const harmfulPosts = [...harmfulTopLevel, ...harmfulDesignedReplies];
 
   const unattendedPosts = harmfulPosts.filter(
     (p) => !playerRepliedToIds.has(p.id) && !flaggedIds.has(p.id) && !p.is_flagged_by_player,
@@ -225,7 +251,10 @@ export async function computeSocialState(
     const ageMinutes = ageMs / 60000;
     const handle = String(post.author_handle);
     const isDesignedNPC =
-      !!post.inject_id || npcHandles.has(handle) || antagonistHandles.has(handle);
+      !!post.inject_id ||
+      npcHandles.has(handle) ||
+      antagonistHandles.has(handle) ||
+      EXTREMIST_HANDLES.has(handle);
     const weight = isDesignedNPC ? 3 : 1;
 
     let ageTier = 0;

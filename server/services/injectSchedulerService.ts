@@ -33,7 +33,8 @@ import { computeSocialState } from './socialStateUpdaterService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 import { checkResponseDeadlines } from './responseTrackerService.js';
 import { runEngagementTick } from './engagementAlgorithmService.js';
-import { runAntagonistEngine } from './antagonistEngineService.js';
+import { runAntagonistEngine, runAntagonistThreadReplies } from './antagonistEngineService.js';
+import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.js';
 import type { Server as SocketServer } from 'socket.io';
 /**
  * Shared AI cancellation gate for any inject about to be published.
@@ -998,6 +999,24 @@ export class InjectSchedulerService {
         await runAntagonistEngine(session.id, elapsedMinutes);
       } catch (antagErr) {
         logger.warn({ err: antagErr, sessionId: session.id }, 'Antagonist engine error');
+      }
+
+      try {
+        await runExtremistHive(session.id, elapsedMinutes);
+      } catch (hiveErr) {
+        logger.warn({ err: hiveErr, sessionId: session.id }, 'Extremist hive error');
+      }
+
+      try {
+        await runHiveThreadReplies(session.id, elapsedMinutes);
+      } catch (hiveReplyErr) {
+        logger.warn({ err: hiveReplyErr, sessionId: session.id }, 'Extremist hive reply error');
+      }
+
+      try {
+        await runAntagonistThreadReplies(session.id, elapsedMinutes);
+      } catch (antagReplyErr) {
+        logger.warn({ err: antagReplyErr, sessionId: session.id }, 'Antagonist reply error');
       }
     }
   }

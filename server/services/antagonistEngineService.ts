@@ -293,3 +293,249 @@ Return ONLY valid JSON:
     'Antagonist engine posted',
   );
 }
+
+// ─── Thread-exploitation reply pass ──────────────────────────────────────────
+
+function requiredAntagReplyGapMinutes(escalationRisk: number): number {
+  if (escalationRisk >= 50) return 2;
+  return 4;
+}
+
+/**
+ * Reactive pass: AI-driven antagonist pages reply inside active comment threads
+ * (their own posts and other hot threads) to needle the primary brand and
+ * exploit the conversation. Replies post as official_account using the
+ * antagonist's page identity, so they already carry the 3x designed weight.
+ */
+export async function runAntagonistThreadReplies(
+  sessionId: string,
+  elapsedMinutes: number,
+): Promise<void> {
+  if (!env.openAiApiKey) return;
+  if (elapsedMinutes < 3) return;
+
+  // Load AI-driven antagonist pages.
+  const { data: pageRows } = await supabaseAdmin
+    .from('sim_org_pages')
+    .select('org_key, platform, page_name, page_handle, role, control_mode')
+    .eq('session_id', sessionId)
+    .eq('role', 'antagonist')
+    .eq('control_mode', 'ai');
+  if (!pageRows || pageRows.length === 0) return;
+
+  const antagonistHandles = new Set<string>();
+  const identitiesByPlatform = new Map<string, Array<{ handle: string; name: string }>>();
+  for (const r of pageRows) {
+    const handle = String(r.page_handle || '');
+    if (!handle) continue;
+    antagonistHandles.add(handle);
+    const platform = String(r.platform || 'x_twitter');
+    if (!identitiesByPlatform.has(platform)) identitiesByPlatform.set(platform, []);
+    identitiesByPlatform.get(platform)!.push({ handle, name: String(r.page_name || 'Brand') });
+  }
+  const availablePlatforms = new Set(identitiesByPlatform.keys());
+
+  const { data: sessionRow } = await supabaseAdmin
+    .from('sessions')
+    .select('scenario_id, current_state')
+    .eq('id', sessionId)
+    .single();
+  if (!sessionRow?.scenario_id) return;
+
+  const currentState = (sessionRow.current_state as Record<string, unknown>) || {};
+  const socialState = (currentState.social_state as Record<string, unknown>) || {};
+  const escalationRisk = Number(socialState.escalation_risk ?? 25);
+
+  // Reply cadence gate.
+  const { data: lastReplyEvents } = await supabaseAdmin
+    .from('session_events')
+    .select('metadata, created_at')
+    .eq('session_id', sessionId)
+    .eq('event_type', 'antagonist_reply')
+    .order('created_at', { ascending: false })
+    .limit(1);
+  const lastReplyMin = (lastReplyEvents?.[0]?.metadata as { elapsed_minutes?: number })
+    ?.elapsed_minutes;
+  if (
+    typeof lastReplyMin === 'number' &&
+    elapsedMinutes - lastReplyMin < requiredAntagReplyGapMinutes(escalationRisk)
+  ) {
+    return;
+  }
+
+  // Candidate threads on platforms we can post to.
+  const since = new Date(Date.now() - 40 * 60 * 1000).toISOString();
+  const { data: roots } = await supabaseAdmin
+    .from('social_posts')
+    .select(
+      'id, author_handle, author_type, content, content_flags, platform, reply_count, created_at',
+    )
+    .eq('session_id', sessionId)
+    .is('reply_to_post_id', null)
+    .gt('reply_count', 0)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  if (!roots || roots.length === 0) return;
+
+  const now = Date.now();
+  const scored = roots
+    .filter((r) => availablePlatforms.has(String(r.platform || 'x_twitter')))
+    .map((r) => {
+      const flags = (r.content_flags || {}) as Record<string, unknown>;
+      const rootType = String(r.author_type || 'npc_public');
+      const ageMin = (now - new Date(String(r.created_at)).getTime()) / 60000;
+      const harmful = !!(flags.is_harmful_narrative || flags.is_inflammatory);
+      let score = Number(r.reply_count) * 0.5;
+      if (rootType === 'player' || rootType === 'official_account') score += 3;
+      if (harmful) score += 1.5;
+      if (antagonistHandles.has(String(r.author_handle))) score += 1.5;
+      if (ageMin <= 15) score += 2;
+      else if (ageMin <= 30) score += 1;
+      return { row: r, score };
+    });
+  scored.sort((a, b) => b.score - a.score);
+  const target = scored[0];
+  if (!target || target.score < 2.5) return;
+
+  const targetRow = target.row;
+  const topLevelId = String(targetRow.id);
+  const platform = String(targetRow.platform || 'x_twitter');
+
+  const { data: replies } = await supabaseAdmin
+    .from('social_posts')
+    .select('id, author_handle, author_display_name, author_type, content')
+    .eq('session_id', sessionId)
+    .eq('reply_to_post_id', topLevelId)
+    .order('created_at', { ascending: true })
+    .limit(12);
+  const replyRows = replies || [];
+
+  // Avoid talking to ourselves.
+  const lastReply = replyRows[replyRows.length - 1];
+  if (lastReply && antagonistHandles.has(String(lastReply.author_handle))) return;
+
+  const nonSelf = replyRows.filter((r) => !antagonistHandles.has(String(r.author_handle)));
+  const responderReply = [...nonSelf]
+    .reverse()
+    .find((r) => r.author_type === 'player' || r.author_type === 'official_account');
+  const baitReply = responderReply || nonSelf[nonSelf.length - 1];
+  const targetHandle = baitReply
+    ? String(baitReply.author_handle)
+    : String(targetRow.author_handle);
+  const targetCommentId = baitReply ? String(baitReply.id) : topLevelId;
+
+  const identities = identitiesByPlatform.get(platform) || [];
+  const identity = identities[Math.floor(Math.random() * identities.length)];
+  if (!identity) return;
+
+  const { data: scenario } = await supabaseAdmin
+    .from('scenarios')
+    .select('initial_state')
+    .eq('id', sessionRow.scenario_id)
+    .single();
+  const initialState = (scenario?.initial_state as Record<string, unknown>) || {};
+  const orgName = String(initialState.org_name || 'the organization');
+
+  const threadContext = [
+    `ROOT [${String(targetRow.author_type)}] ${String(targetRow.author_handle)}: ${String(targetRow.content || '').slice(0, 200)}`,
+    ...replyRows.map(
+      (r) => `  REPLY [${r.author_type}] ${r.author_handle}: ${String(r.content).slice(0, 140)}`,
+    ),
+  ].join('\n');
+
+  const result = await callAI(
+    `You are running a HOSTILE RIVAL brand's social media account in a crisis simulation. You are "${identity.name}" (${identity.handle}), a competitor pressuring "${orgName}".
+
+You are REPLYING inside a live comment thread. Pick ONE move and write a single short ${platform === 'facebook' ? 'Facebook' : 'X/Twitter'} reply (1-2 sentences) that executes it against THIS thread:
+${MOVES.map((m) => `- ${m}`).join('\n')}
+
+THREAD (most recent last):
+${threadContext}
+
+React to the specific exchange — needle the primary brand, pounce on a complaint, or twist a fresh statement. Intensity scales with the situation; be smart and cunning, never cartoonish, stay in-character as a real brand account. Do NOT incite violence or state trivially debunkable falsehoods as fact.
+
+Return ONLY valid JSON:
+{ "move": "quote_dunk|amplify_rumor|concerned_competitor|exploit_silence|call_the_switch|insinuate", "content": "the reply text", "content_flags": { "is_harmful_narrative": true, "is_inflammatory": false, "is_organized_pressure": false } }`,
+    `Write ${identity.name}'s reply in the thread.`,
+    700,
+    0.95,
+  );
+
+  if (!result?.content) return;
+
+  const rawFlags = (result.content_flags as Record<string, unknown>) || {
+    is_harmful_narrative: true,
+  };
+  const flags: Record<string, unknown> = { ...rawFlags, incites_violence: false };
+  if (!flags.is_harmful_narrative && !flags.is_inflammatory) flags.is_harmful_narrative = true;
+  const sentiment = flags.is_inflammatory ? 'inflammatory' : 'negative';
+
+  const aiContent = String(result.content);
+  const replyContent = /^@[\w._-]+\[/.test(aiContent)
+    ? aiContent
+    : `${targetHandle}[${targetCommentId}] ${aiContent}`;
+
+  const { data: post, error } = await supabaseAdmin
+    .from('social_posts')
+    .insert({
+      session_id: sessionId,
+      platform,
+      author_handle: identity.handle,
+      author_display_name: identity.name,
+      author_type: 'official_account',
+      content: replyContent,
+      reply_to_post_id: topLevelId,
+      hashtags: replyContent.match(/#\w+/g) || [],
+      sentiment,
+      content_flags: flags,
+      virality_score: 10 + Math.floor(Math.random() * 15),
+      posted_by_display_name: 'Antagonist AI',
+    })
+    .select()
+    .single();
+
+  if (error || !post) {
+    logger.warn({ error, sessionId, handle: identity.handle }, 'Antagonist reply insert failed');
+    return;
+  }
+
+  const { data: parentRow } = await supabaseAdmin
+    .from('social_posts')
+    .select('reply_count')
+    .eq('id', topLevelId)
+    .single();
+  await supabaseAdmin
+    .from('social_posts')
+    .update({ reply_count: ((parentRow?.reply_count as number) || 0) + 1 })
+    .eq('id', topLevelId);
+
+  getWebSocketService().broadcastToSession(sessionId, {
+    type: 'social_post.created',
+    data: { post },
+    timestamp: new Date().toISOString(),
+  });
+
+  try {
+    await supabaseAdmin.from('session_events').insert({
+      session_id: sessionId,
+      event_type: 'antagonist_reply',
+      description: `Antagonist ${identity.name} replied in thread (${String(result.move || 'move')})`,
+      metadata: {
+        handle: identity.handle,
+        move: result.move ?? null,
+        elapsed_minutes: elapsedMinutes,
+        thread_id: topLevelId,
+        bait_handle: targetHandle,
+        post_id: post.id,
+      },
+    });
+  } catch (eventErr) {
+    logger.warn({ err: eventErr, sessionId }, 'Antagonist reply cadence event insert failed');
+  }
+
+  logger.info(
+    { sessionId, handle: identity.handle, move: result.move, threadId: topLevelId },
+    'Antagonist replied in thread',
+  );
+}

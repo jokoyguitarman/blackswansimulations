@@ -31,3 +31,7 @@ logs/
 # Misc
 *.tsbuildinfo
 
+# Sensitive reference corpus (do NOT commit) + large media
+docs/Sample of Radical Messages*/
+docs/Sample of Radical Messages*.zip
+
