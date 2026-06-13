@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fix — Hazard Pins Appearing Outside Building</title>
+<style>
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --bg:#0a0e17;--surface:#111827;--surface2:#1a2235;--surface3:#232d42;
+    --accent:#3b82f6;--cyan:#06b6d4;--fire:#f97316;--fail:#ef4444;
+    --ok:#10b981;--warn:#f59e0b;--accent2:#8b5cf6;
+    --text:#e2e8f0;--text2:#94a3b8;--text3:#64748b;
+    --border:#1e293b;--radius:14px;--radius-sm:8px;
+  }
+  html{scroll-behavior:smooth}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.7;overflow-x:hidden}
+  ::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--surface3);border-radius:3px}
+  code{font-family:'Cascadia Code','Fira Code',monospace;font-size:.82em;background:var(--surface2);padding:.15em .4em;border-radius:4px;color:#93c5fd}
+
+  .container{max-width:1000px;margin:0 auto;padding:0 1.5rem}
+  section{padding:3.5rem 0}
+  h1{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:800;letter-spacing:-.03em;line-height:1.15;text-align:center;padding:5rem 1rem 1rem}
+  h1 .grad{background:linear-gradient(135deg,var(--fail),var(--fire));-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .subtitle{text-align:center;color:var(--text2);font-size:1rem;max-width:600px;margin:0 auto 3rem}
+  h2{font-size:1.5rem;font-weight:700;margin-bottom:.6rem}
+  .tag{display:inline-flex;align-items:center;gap:.4rem;font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;margin-bottom:.7rem}
+  .tag .dot{width:6px;height:6px;border-radius:50%;background:currentColor;animation:pulse 2s ease infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+  .code{background:#0d1117;border:1px solid var(--border);border-radius:var(--radius-sm);padding:1rem 1.2rem;font-family:'Cascadia Code','Fira Code',monospace;font-size:.76rem;line-height:1.75;overflow-x:auto;margin:.8rem 0;color:#c9d1d9;position:relative;white-space:pre}
+  .code .lang{position:absolute;top:.4rem;right:.6rem;font-size:.6rem;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+  .kw{color:#ff7b72}.fn{color:#d2a8ff}.str{color:#a5d6ff}.cmt{color:#8b949e;font-style:italic}.type{color:#79c0ff}.num{color:#f0883e}.add{color:#3fb950}.del{color:#f85149;text-decoration:line-through}
+
+  /* ── Interactive Map Demo ─────────────────────────── */
+  .map-demo{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0;margin:2rem 0;overflow:hidden}
+  .map-toolbar{display:flex;align-items:center;gap:1rem;padding:.7rem 1rem;background:var(--surface2);border-bottom:1px solid var(--border);flex-wrap:wrap}
+  .map-toolbar label{font-size:.78rem;font-weight:600;color:var(--text2);display:flex;align-items:center;gap:.4rem;cursor:pointer}
+  .map-toolbar input[type=checkbox]{accent-color:var(--cyan)}
+  .map-toolbar .count{font-size:.72rem;color:var(--text3);margin-left:auto;font-variant-numeric:tabular-nums}
+  .map-wrap{display:flex;gap:0}
+  .map-panel{flex:1;position:relative;aspect-ratio:1.4;min-height:300px;overflow:hidden}
+  .map-panel canvas{width:100%;height:100%;display:block}
+  .map-label{position:absolute;top:.5rem;left:.5rem;font-size:.7rem;font-weight:700;padding:.25rem .6rem;border-radius:4px;z-index:1}
+  .map-label.before{background:rgba(239,68,68,.15);color:var(--fail);border:1px solid rgba(239,68,68,.3)}
+  .map-label.after{background:rgba(16,185,129,.15);color:var(--ok);border:1px solid rgba(16,185,129,.3)}
+  .map-divider{width:2px;background:var(--border);flex-shrink:0}
+
+  .legend{display:flex;gap:1rem;padding:.6rem 1rem;border-top:1px solid var(--border);flex-wrap:wrap}
+  .legend-item{display:flex;align-items:center;gap:.3rem;font-size:.7rem;color:var(--text2)}
+  .legend-swatch{width:14px;height:14px;flex-shrink:0;border-radius:2px}
+
+  /* ── Explanation Cards ───────────────────────────── */
+  .cause-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1rem;margin:1.5rem 0}
+  .cause-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;transition:border-color .3s}
+  .cause-card:hover{border-color:rgba(239,68,68,.3)}
+  .cause-card .num{font-size:1.4rem;font-weight:800;margin-bottom:.3rem}
+  .cause-card .num.red{color:var(--fail)}.cause-card .num.orange{color:var(--fire)}.cause-card .num.purple{color:var(--accent2)}
+  .cause-card h3{font-size:.92rem;font-weight:700;margin-bottom:.4rem}
+  .cause-card p{font-size:.83rem;color:var(--text2)}
+
+  .fix-box{background:var(--surface);border:1px solid rgba(16,185,129,.3);border-radius:var(--radius);padding:1.5rem;margin:2rem 0}
+  .fix-box h3{color:var(--ok);font-size:1rem;margin-bottom:.8rem;display:flex;align-items:center;gap:.5rem}
+
+  footer{text-align:center;padding:2.5rem 1.5rem;color:var(--text3);font-size:.78rem;border-top:1px solid var(--border)}
+  @media(max-width:640px){.map-wrap{flex-direction:column}.map-divider{width:auto;height:2px}}
+</style>
+</head>
+<body>
+
+<h1>Why Hazard Pins Appear <span class="grad">Outside the Building</span></h1>
+<p class="subtitle">DB hazard pins are rendered at their raw lat/lng coordinates without checking if they're near the building polygon. Pins from zone-based spawning or exterior studs show up far from the scene.</p>
+
+<!-- ═══════ INTERACTIVE MAP ═══════ -->
+<section>
+  <div class="container">
+    <div class="tag" style="color:var(--cyan)"><span class="dot"></span> Interactive Comparison</div>
+    <h2>Before vs After the Proximity Filter</h2>
+    <p style="color:var(--text2);font-size:.9rem;margin-bottom:.5rem">Toggle the filter to see pins disappear from outside the building bounding box. Drag the padding slider to adjust how much area around the building is included.</p>
+
+    <div class="map-demo">
+      <div class="map-toolbar">
+        <label><input type="checkbox" id="filterToggle"> Enable proximity filter</label>
+        <label style="gap:.5rem">Padding: <input type="range" id="padSlider" min="0" max="200" value="100" style="width:100px;accent-color:var(--cyan)"> <span id="padLabel">~100m</span></label>
+        <div class="count" id="pinCount">Showing 11 / 11 pins</div>
+      </div>
+      <div class="map-wrap">
+        <div class="map-panel">
+          <div class="map-label before" id="labelBefore">BEFORE (no filter)</div>
+          <canvas id="mapBefore"></canvas>
+        </div>
+        <div class="map-divider"></div>
+        <div class="map-panel">
+          <div class="map-label after" id="labelAfter">AFTER (filtered)</div>
+          <canvas id="mapAfter"></canvas>
+        </div>
+      </div>
+      <div class="legend">
+        <div class="legend-item"><div class="legend-swatch" style="background:#1a3a2a;border:1px solid #22c55e"></div> Building footprint</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(6,182,212,.15);border:1px dashed var(--cyan)"></div> Bounding box + padding</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#ef4444;border-radius:50%"></div> Initial hazard pin</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:#f97316;border-radius:50%"></div> Spawn pin (fire spread)</div>
+        <div class="legend-item"><div class="legend-swatch" style="background:rgba(239,68,68,.2);border:2px dashed #ef4444;border-radius:50%"></div> Filtered out (hidden)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ WHY IT HAPPENS ═══════ -->
+<section style="background:var(--surface)">
+  <div class="container">
+    <div class="tag" style="color:var(--fail)"><span class="dot"></span> Root Cause</div>
+    <h2>Three Reasons Pins Land Outside the Building</h2>
+
+    <div class="cause-grid">
+      <div class="cause-card">
+        <div class="num red">1</div>
+        <h3>Exterior Padding Studs (150m)</h3>
+        <p><code>buildingStudService.ts</code> generates studs with <code>EXTERIOR_PADDING_M = 150</code> beyond the building footprint. The environmental simulation runs fire spread across ALL studs including these distant exterior ones. When a fire-spread spawn pin lands on an exterior stud, it gets coordinates far from the building.</p>
+      </div>
+      <div class="cause-card">
+        <div class="num orange">2</div>
+        <h3>Zone-Based Pin Spawning</h3>
+        <p>The old deterioration system (<code>hazardDeteriorationService</code>) uses <code>placeInsideZoneType('hot')</code> which picks a random point inside the hot zone polygon. Hot zones can extend well beyond the building footprint, placing pins in streets, parks, or neighboring blocks.</p>
+      </div>
+      <div class="cause-card">
+        <div class="num purple">3</div>
+        <h3>No Rendering Filter</h3>
+        <p>The new <code>visibleDbHazards</code> filter only checks <code>appears_at_minutes</code> vs the timeline slider. It does NOT check whether the pin's lat/lng is near the building. Every DB hazard for this scenario gets a Leaflet marker regardless of distance.</p>
+      </div>
+    </div>
+
+    <!-- Visual: stud grid showing 150m padding -->
+    <div style="background:var(--surface2);border-radius:var(--radius);padding:1.2rem;margin-top:1.5rem">
+      <div style="font-size:.8rem;font-weight:700;color:var(--text2);margin-bottom:.5rem">Stud Grid Layout (to scale)</div>
+      <div style="position:relative;width:100%;max-width:500px;aspect-ratio:1.6;margin:0 auto">
+        <canvas id="studViz" style="width:100%;height:100%"></canvas>
+      </div>
+      <div style="text-align:center;font-size:.72rem;color:var(--text3);margin-top:.4rem">
+        The green area is the building. Studs extend 150m in every direction. Fire can reach exterior studs, producing pins far from the building.
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════ THE FIX ═══════ -->
+<section>
+  <div class="container">
+    <div class="tag" style="color:var(--ok)"><span class="dot"></span> The Fix</div>
+    <h2>Bounding Box Proximity Filter</h2>
+    <p style="color:var(--text2);font-size:.9rem;margin-bottom:1rem">Compute a padded bounding box from the building polygon. Only render pins inside this box as Leaflet markers. Off-site pins still exist in the DB but are simply not rendered on the scene canvas.</p>
+
+    <div class="fix-box">
+      <h3><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg> Single file change: SceneCanvasView.tsx</h3>
+
+      <div style="font-size:.85rem;font-weight:600;margin-bottom:.4rem">Step 1: Compute building bounding box</div>
+      <div class="code"><span class="lang">tsx</span><span class="kw">const</span> buildingBounds = <span class="fn">useMemo</span>(() => {
+  <span class="kw">const</span> poly = sceneConfig?.building_polygon;
+  <span class="kw">if</span> (!poly || poly.length < <span class="num">3</span>) <span class="kw">return null</span>;
+  <span class="kw">const</span> lats = poly.<span class="fn">map</span>(p => p[<span class="num">0</span>]);
+  <span class="kw">const</span> lngs = poly.<span class="fn">map</span>(p => p[<span class="num">1</span>]);
+  <span class="kw">const</span> PAD = <span class="num">0.001</span>;  <span class="cmt">// ~111 meters in all directions</span>
+  <span class="kw">return</span> {
+    minLat: Math.<span class="fn">min</span>(...lats) - PAD,
+    maxLat: Math.<span class="fn">max</span>(...lats) + PAD,
+    minLng: Math.<span class="fn">min</span>(...lngs) - PAD,
+    maxLng: Math.<span class="fn">max</span>(...lngs) + PAD,
+  };
+}, [sceneConfig]);</div>
+
+      <div style="font-size:.85rem;font-weight:600;margin:.8rem 0 .4rem">Step 2: Add proximity check to the partition</div>
+      <div class="code"><span class="lang">tsx</span><span class="kw">const</span> { visibleDbHazards, futureDbHazards } = <span class="fn">useMemo</span>(() => {
+  <span class="kw">const</span> <span class="fn">isNearBuilding</span> = (h: Record&lt;string, unknown&gt;) => {
+    <span class="kw">if</span> (!buildingBounds) <span class="kw">return true</span>;
+    <span class="kw">const</span> lat = h.location_lat <span class="kw">as</span> <span class="type">number</span>;
+    <span class="kw">const</span> lng = h.location_lng <span class="kw">as</span> <span class="type">number</span>;
+    <span class="kw">return</span> (
+      lat >= buildingBounds.minLat && lat &lt;= buildingBounds.maxLat &&
+      lng >= buildingBounds.minLng && lng &lt;= buildingBounds.maxLng
+    );
+  };
+
+  <span class="kw">const</span> visible = dbHazards.<span class="fn">filter</span>(h =>
+    (h.appears_at_minutes <span class="kw">as</span> <span class="type">number</span> ?? <span class="num">0</span>) &lt;= currentTimelineMinutes
+    && <span class="fn">isNearBuilding</span>(h)  <span class="cmt">// NEW</span>
+  );
+  <span class="kw">const</span> future = dbHazards.<span class="fn">filter</span>(h =>
+    (h.appears_at_minutes <span class="kw">as</span> <span class="type">number</span> ?? <span class="num">0</span>) > currentTimelineMinutes
+    && h.status === <span class="str">'delayed'</span>
+    && <span class="fn">isNearBuilding</span>(h)  <span class="cmt">// NEW</span>
+  );
+  <span class="kw">return</span> { visibleDbHazards: visible, futureDbHazards: future };
+}, [dbHazards, currentTimelineMinutes, <span class="add">buildingBounds</span>]);</div>
+    </div>
+
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:1.2rem;margin-top:1rem">
+      <h3 style="color:var(--text2);font-size:.88rem;margin-bottom:.4rem">What this does NOT do</h3>
+      <ul style="list-style:none;color:var(--text3);font-size:.83rem">
+        <li style="padding:.2rem 0">-- Does not delete any data from the database</li>
+        <li style="padding:.2rem 0">-- Does not affect the live session deterioration service</li>
+        <li style="padding:.2rem 0">-- Does not change how pins are generated at compile time</li>
+        <li style="padding:.2rem 0">-- Only affects rendering in the SceneCanvasView trainer preview</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p>Black Swan Simulations -- Hazard Pin Proximity Filter -- Jun 2026</p>
+</footer>
+
+<script>
+(() => {
+  // ── Shared geometry ────────────────────────────────
+  // Simulated building polygon (centered around 0,0 in a 400x280 canvas)
+  const BUILDING = [
+    { x: 120, y: 80 }, { x: 280, y: 80 },
+    { x: 290, y: 90 }, { x: 290, y: 200 },
+    { x: 270, y: 210 }, { x: 110, y: 210 },
+    { x: 100, y: 195 }, { x: 100, y: 90 },
+  ];
+
+  // Pins: some inside/near building, some far away
+  const PINS = [
+    { x: 160, y: 120, type: 'initial', label: 'Chemical fire' },
+    { x: 200, y: 150, type: 'initial', label: 'Structural collapse' },
+    { x: 230, y: 130, type: 'spawn', label: 'Fire spread T+10' },
+    { x: 180, y: 185, type: 'spawn', label: 'Fire spread T+15' },
+    { x: 250, y: 170, type: 'spawn', label: 'Fire spread T+20' },
+    // Off-site pins (exterior studs / zone placement)
+    { x: 50, y: 50, type: 'spawn', label: 'Exterior stud pin' },
+    { x: 340, y: 60, type: 'spawn', label: 'Zone-placed pin' },
+    { x: 30, y: 230, type: 'spawn', label: 'Exterior stud pin' },
+    { x: 360, y: 240, type: 'spawn', label: 'Zone-placed pin' },
+    { x: 195, y: 260, type: 'spawn', label: 'Exterior stud pin' },
+    { x: 320, y: 145, type: 'spawn', label: 'Zone-placed pin' },
+  ];
+
+  function getBBox(padPx) {
+    const xs = BUILDING.map(p => p.x);
+    const ys = BUILDING.map(p => p.y);
+    return {
+      minX: Math.min(...xs) - padPx,
+      maxX: Math.max(...xs) + padPx,
+      minY: Math.min(...ys) - padPx,
+      maxY: Math.max(...ys) + padPx,
+    };
+  }
+
+  function isInBBox(pin, bbox) {
+    return pin.x >= bbox.minX && pin.x <= bbox.maxX &&
+           pin.y >= bbox.minY && pin.y <= bbox.maxY;
+  }
+
+  function drawMap(canvas, filterEnabled, padPx) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const w = rect.width, h = rect.height;
+    const sx = w / 400, sy = h / 290;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Background grid
+    ctx.strokeStyle = 'rgba(30, 41, 59, 0.5)';
+    ctx.lineWidth = 0.5;
+    for (let x = 0; x < w; x += 20 * sx) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+    for (let y = 0; y < h; y += 20 * sy) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+    // Bounding box (if filter on)
+    if (filterEnabled) {
+      const bb = getBBox(padPx);
+      ctx.fillStyle = 'rgba(6, 182, 212, 0.04)';
+      ctx.strokeStyle = 'rgba(6, 182, 212, 0.4)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.rect(bb.minX * sx, bb.minY * sy, (bb.maxX - bb.minX) * sx, (bb.maxY - bb.minY) * sy);
+      ctx.fill();
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // Building polygon
+    ctx.beginPath();
+    ctx.moveTo(BUILDING[0].x * sx, BUILDING[0].y * sy);
+    for (let i = 1; i < BUILDING.length; i++) ctx.lineTo(BUILDING[i].x * sx, BUILDING[i].y * sy);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.12)';
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // Label
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.5)';
+    ctx.font = `bold ${10 * Math.min(sx, sy)}px monospace`;
+    ctx.fillText('BUILDING', 155 * sx, 155 * sy);
+
+    // Pins
+    const bbox = getBBox(padPx);
+    let shown = 0;
+    for (const pin of PINS) {
+      const px = pin.x * sx, py = pin.y * sy;
+      const inBox = isInBBox(pin, bbox);
+      const visible = !filterEnabled || inBox;
+
+      if (visible) {
+        shown++;
+        const color = pin.type === 'initial' ? '#ef4444' : '#f97316';
+        ctx.beginPath();
+        ctx.arc(px, py, 7 * Math.min(sx, sy), 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      } else {
+        // Ghost: dashed circle
+        ctx.beginPath();
+        ctx.arc(px, py, 7 * Math.min(sx, sy), 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.08)';
+        ctx.fill();
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // X mark
+        const s = 3 * Math.min(sx, sy);
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(px - s, py - s); ctx.lineTo(px + s, py + s);
+        ctx.moveTo(px + s, py - s); ctx.lineTo(px - s, py + s);
+        ctx.stroke();
+      }
+    }
+    return shown;
+  }
+
+  // ── Stud grid visualization ────────────────────────
+  function drawStudViz() {
+    const canvas = document.getElementById('studViz');
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const w = rect.width, h = rect.height;
+    const cx = w / 2, cy = h / 2;
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Exterior padding ring (150m)
+    const bw = 120, bh = 70;
+    const padScale = 1.8;
+
+    // Padding area
+    ctx.fillStyle = 'rgba(156, 163, 175, 0.06)';
+    ctx.strokeStyle = 'rgba(156, 163, 175, 0.2)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.rect(cx - bw * padScale, cy - bh * padScale, bw * 2 * padScale, bh * 2 * padScale);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Stud dots in padding area
+    const spacing = 12;
+    for (let x = cx - bw * padScale + 6; x < cx + bw * padScale; x += spacing) {
+      for (let y = cy - bh * padScale + 6; y < cy + bh * padScale; y += spacing) {
+        const insideBuilding = x > cx - bw && x < cx + bw && y > cy - bh && y < cy + bh;
+        ctx.beginPath();
+        ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = insideBuilding ? 'rgba(34, 197, 94, 0.3)' : 'rgba(156, 163, 175, 0.15)';
+        ctx.fill();
+      }
+    }
+
+    // Building
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.12)';
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.rect(cx - bw, cy - bh, bw * 2, bh * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Labels
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.6)';
+    ctx.font = 'bold 11px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText('BUILDING', cx, cy + 4);
+
+    ctx.fillStyle = 'rgba(156, 163, 175, 0.5)';
+    ctx.font = 'bold 9px monospace';
+    ctx.fillText('150m EXTERIOR PADDING', cx, cy - bh * padScale + 14);
+
+    // Fire origin
+    ctx.beginPath();
+    ctx.arc(cx - 30, cy - 10, 5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ef4444';
+    ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Fire spread arrows to exterior
+    ctx.strokeStyle = 'rgba(249, 115, 22, 0.4)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 3]);
+    const targets = [
+      { x: cx - bw * padScale + 30, y: cy - bh * padScale + 30 },
+      { x: cx + bw * padScale - 30, y: cy + bh * padScale - 20 },
+      { x: cx + bw * padScale - 20, y: cy - bh * padScale + 25 },
+    ];
+    for (const t of targets) {
+      ctx.beginPath();
+      ctx.moveTo(cx - 30, cy - 10);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+
+      // Pin at target
+      ctx.setLineDash([]);
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#f97316';
+      ctx.fill();
+      ctx.setLineDash([4, 3]);
+    }
+    ctx.setLineDash([]);
+
+    // Pin labels
+    ctx.fillStyle = 'rgba(249, 115, 22, 0.6)';
+    ctx.font = '8px monospace';
+    ctx.textAlign = 'left';
+    ctx.fillText('spawn pin', targets[0].x + 8, targets[0].y + 3);
+    ctx.fillText('spawn pin', targets[1].x + 8, targets[1].y + 3);
+    ctx.fillText('spawn pin', targets[2].x + 8, targets[2].y + 3);
+  }
+
+  // ── Wiring ─────────────────────────────────────────
+  const cBefore = document.getElementById('mapBefore');
+  const cAfter = document.getElementById('mapAfter');
+  const filterToggle = document.getElementById('filterToggle');
+  const padSlider = document.getElementById('padSlider');
+  const padLabel = document.getElementById('padLabel');
+  const pinCountEl = document.getElementById('pinCount');
+  const lblBefore = document.getElementById('labelBefore');
+  const lblAfter = document.getElementById('labelAfter');
+
+  function render() {
+    const filterOn = filterToggle.checked;
+    const padPx = +padSlider.value / 4;
+    padLabel.textContent = `~${padSlider.value}m`;
+
+    drawMap(cBefore, false, padPx);
+    const shown = drawMap(cAfter, true, padPx);
+
+    lblBefore.textContent = `BEFORE (${PINS.length} pins, no filter)`;
+    lblAfter.textContent = filterOn
+      ? `AFTER (${shown} / ${PINS.length} pins shown)`
+      : `AFTER (filter off)`;
+    pinCountEl.textContent = filterOn
+      ? `${shown} / ${PINS.length} pins visible`
+      : `${PINS.length} / ${PINS.length} pins visible`;
+
+    // Only show filter effect on the "after" canvas
+    if (!filterOn) drawMap(cAfter, false, padPx);
+  }
+
+  filterToggle.addEventListener('change', render);
+  padSlider.addEventListener('input', render);
+  window.addEventListener('resize', () => { render(); drawStudViz(); });
+  render();
+  drawStudViz();
+
+  // Auto-enable filter after 2s
+  setTimeout(() => {
+    filterToggle.checked = true;
+    render();
+  }, 2000);
+})();
+</script>
+</body>
+</html>

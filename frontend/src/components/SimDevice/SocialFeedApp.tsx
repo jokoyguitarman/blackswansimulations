@@ -8,6 +8,7 @@ import OrgPageView from './OrgPageView';
 import PlayerActivityPanel from './PlayerActivityPanel';
 import ShareMenu from './ShareMenu';
 import { LinkPreviewCard } from './LinkPreviewCard';
+import DisputeModal from './DisputeModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -147,6 +148,8 @@ export default function SocialFeedApp({
   // Logos for every org page in the session, keyed by page handle (for rendering post avatars).
   const [orgPageLogos, setOrgPageLogos] = useState<Record<string, string>>({});
   const [overlayView, setOverlayView] = useState<'page' | 'profile' | null>(null);
+  // When set, the page overlay shows this org page read-only (a rival/other brand).
+  const [viewedPageHandle, setViewedPageHandle] = useState<string | null>(null);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const prevExternalFilter = useRef(externalFilter);
   const currentUserIdRef = useRef<string | null>(null);
@@ -221,6 +224,11 @@ export default function SocialFeedApp({
   const [activeTab, setActiveTab] = useState<'foryou' | 'latest'>('foryou');
   const [selectedFormat, setSelectedFormat] = useState<PostFormat>('text');
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null);
+  const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
+  const [disputeClaim, setDisputeClaim] = useState('');
+  const [disputeFacts, setDisputeFacts] = useState('');
+  const [disputing, setDisputing] = useState(false);
+  const [disputeStatus, setDisputeStatus] = useState<string | null>(null);
   const selectedPostRef = useRef<SocialPost | null>(null);
   const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
   const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
@@ -371,11 +379,18 @@ export default function SocialFeedApp({
       'social_post.created',
       'social_post.surfaced',
       'social_post.flagged',
+      'social_post.removed',
       'social_posts.engagement_update',
       'social_post.media_updated',
       'notification.created',
     ],
     onEvent: (event) => {
+      if (event.type === 'social_post.removed') {
+        const { post_id } = event.data as { post_id: string };
+        setPosts((prev) => prev.filter((p) => p.id !== post_id));
+        setSelectedPost((prev) => (prev && prev.id === post_id ? null : prev));
+        return;
+      }
       if (event.type === 'social_posts.engagement_update') {
         const updates = (
           event.data as {
@@ -711,6 +726,46 @@ export default function SocialFeedApp({
     setShareMenuPostId((prev) => (prev === postId ? null : postId));
   }
 
+  function openDisputeModal(post: SocialPost) {
+    setDisputePost(post);
+    setDisputeClaim('');
+    setDisputeFacts('');
+    setDisputeStatus(null);
+  }
+
+  async function submitPostDispute() {
+    if (!disputePost || !sessionId) return;
+    if (!disputeClaim.trim() || !disputeFacts.trim()) {
+      setDisputeStatus('Please fill in both fields');
+      return;
+    }
+    setDisputing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/social/disputes'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          target_type: 'post',
+          target_id: disputePost.id,
+          claimed_falsehood: disputeClaim.trim(),
+          submitted_facts: disputeFacts.trim(),
+        }),
+      });
+      if (res.ok) {
+        setDisputePost(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setDisputeStatus(err.error || 'Failed to file dispute');
+      }
+    } catch {
+      setDisputeStatus('Failed to file dispute');
+    } finally {
+      setDisputing(false);
+    }
+  }
+
   async function handleRepost(postId: string) {
     try {
       const headers = await getAuthHeaders();
@@ -973,6 +1028,28 @@ export default function SocialFeedApp({
                 >
                   <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
                   <line x1="4" y1="22" x2="4" y2="15" />
+                </svg>
+              </button>
+              {/* Dispute with facts */}
+              <button
+                onClick={() => openDisputeModal(selectedPost)}
+                className="ios-btn-bounce p-2 transition-colors hover:text-[#F4212E]"
+                style={{ color: '#71767B' }}
+                title="Dispute with facts"
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M12 9v4" />
+                  <path d="M12 17h.01" />
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
                 </svg>
               </button>
               {/* Share */}
@@ -1473,12 +1550,37 @@ export default function SocialFeedApp({
             </div>
           </div>
         )}
+
+        {disputePost && (
+          <DisputeModal
+            authorName={disputePost.author_display_name}
+            authorHandle={disputePost.author_handle}
+            preview={disputePost.content}
+            claim={disputeClaim}
+            facts={disputeFacts}
+            status={disputeStatus}
+            submitting={disputing}
+            onClaimChange={setDisputeClaim}
+            onFactsChange={setDisputeFacts}
+            onCancel={() => setDisputePost(null)}
+            onSubmit={submitPostDispute}
+          />
+        )}
       </div>
     );
   }
 
   if (overlayView === 'page') {
-    return <OrgPageView platform="x_twitter" onBack={() => setOverlayView(null)} />;
+    return (
+      <OrgPageView
+        platform="x_twitter"
+        viewHandle={viewedPageHandle || undefined}
+        onBack={() => {
+          setViewedPageHandle(null);
+          setOverlayView(null);
+        }}
+      />
+    );
   }
   if (overlayView === 'profile') {
     return <PlayerActivityPanel onBack={() => setOverlayView(null)} />;
@@ -1508,6 +1610,7 @@ export default function SocialFeedApp({
                 {orgPageInfo && (
                   <button
                     onClick={() => {
+                      setViewedPageHandle(null);
                       setOverlayView('page');
                       setShowAvatarMenu(false);
                     }}
@@ -1827,11 +1930,29 @@ export default function SocialFeedApp({
                         src={orgPageLogos[post.author_handle]}
                         alt={post.author_display_name}
                         className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                        style={{ cursor: 'pointer' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setViewedPageHandle(post.author_handle);
+                          setOverlayView('page');
+                        }}
                       />
                     ) : (
                       <div
                         className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
-                        style={{ backgroundColor: getAvatarColor(post.author_display_name) }}
+                        style={{
+                          backgroundColor: getAvatarColor(post.author_display_name),
+                          cursor: post.author_type === 'official_account' ? 'pointer' : undefined,
+                        }}
+                        onClick={
+                          post.author_type === 'official_account'
+                            ? (e) => {
+                                e.stopPropagation();
+                                setViewedPageHandle(post.author_handle);
+                                setOverlayView('page');
+                              }
+                            : undefined
+                        }
                       >
                         {post.author_display_name.charAt(0).toUpperCase()}
                       </div>

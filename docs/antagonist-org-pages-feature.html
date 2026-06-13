@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Antagonist Org Pages — Feature Walkthrough</title>
+<style>
+  :root{
+    --bg:#0a0e14; --bg2:#0f1620; --panel:#131c28; --panel2:#182030; --line:#233143;
+    --ink:#e8eef6; --muted:#8aa0b8; --dim:#5d7186;
+    --pro:#2dd4bf;          /* protagonist / cyan-green */
+    --pro2:#34d399;
+    --ant:#f87171;          /* antagonist / red */
+    --ant2:#fb923c;         /* dubious / orange */
+    --violet:#a78bfa; --amber:#f5b942; --cyan:#22d3ee;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:"SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace;
+    font-size:15px;line-height:1.6;overflow-x:hidden}
+  h1,h2,h3,h4{font-weight:700;letter-spacing:-.01em;line-height:1.2}
+  code{font-family:ui-monospace,Menlo,Consolas,monospace;background:#1c2736;color:var(--cyan);padding:1px 6px;border-radius:5px;font-size:.86em}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+  section{padding:66px 0;border-top:1px solid var(--line);position:relative}
+  .sec-num{font-size:13px;color:var(--pro);letter-spacing:.25em;text-transform:uppercase;margin-bottom:10px;font-weight:700}
+  .sec-title{font-size:30px;margin:0 0 6px}
+  .sec-sub{color:var(--muted);margin:0 0 34px;max-width:780px}
+  .hl{color:var(--ink)} .pro-t{color:var(--pro)} .ant-t{color:var(--ant)} .dub-t{color:var(--ant2)}
+
+  /* Hero */
+  header.hero{position:relative;min-height:88vh;display:flex;align-items:center;overflow:hidden;border:none}
+  .hero-bg{position:absolute;inset:0;z-index:0;
+    background:
+      radial-gradient(900px 520px at 14% 12%, rgba(45,212,191,.16), transparent 60%),
+      radial-gradient(900px 520px at 86% 16%, rgba(248,113,113,.18), transparent 60%),
+      radial-gradient(900px 600px at 50% 105%, rgba(251,146,60,.10), transparent 60%);
+    animation:drift 16s ease-in-out infinite alternate}
+  @keyframes drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(-18px,16px,0) scale(1.05)}}
+  .grid-lines{position:absolute;inset:0;z-index:0;opacity:.26;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:44px 44px;mask-image:radial-gradient(ellipse at 50% 40%,#000 35%,transparent 78%)}
+  .hero-content{position:relative;z-index:2}
+  .kicker{display:inline-flex;align-items:center;gap:9px;font-size:12.5px;letter-spacing:.2em;text-transform:uppercase;
+    color:var(--ant);border:1px solid #4a2a2a;padding:6px 14px;border-radius:999px;background:rgba(248,113,113,.06);margin-bottom:24px}
+  .pulse-dot{width:8px;height:8px;border-radius:50%;background:var(--ant);box-shadow:0 0 0 0 rgba(248,113,113,.7);animation:pulse 2s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(248,113,113,.6)}70%{box-shadow:0 0 0 12px rgba(248,113,113,0)}100%{box-shadow:0 0 0 0 rgba(248,113,113,0)}}
+  .hero h1{font-size:clamp(34px,6vw,60px);margin:0 0 18px}
+  .hero h1 .g1{background:linear-gradient(100deg,var(--pro),var(--pro2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero h1 .g2{background:linear-gradient(100deg,var(--ant),var(--ant2));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .hero p.lead{font-size:18px;color:var(--muted);max-width:700px;margin:0 0 30px}
+  .hero-stats{display:flex;flex-wrap:wrap;gap:14px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:13px 18px;min-width:120px}
+  .stat b{font-size:23px;display:block} .stat span{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em}
+  .scroll-hint{position:absolute;bottom:20px;left:50%;transform:translateX(-50%);z-index:2;color:var(--muted);font-size:12px;text-align:center}
+  .scroll-hint .chev{display:block;margin:6px auto 0;width:12px;height:12px;border-right:2px solid var(--pro);border-bottom:2px solid var(--pro);transform:rotate(45deg);animation:bob 1.6s infinite}
+  @keyframes bob{0%,100%{transform:rotate(45deg) translate(0,0)}50%{transform:rotate(45deg) translate(4px,4px)}}
+
+  /* Nav */
+  nav.toc{position:sticky;top:0;z-index:50;backdrop-filter:blur(10px);background:rgba(10,14,20,.82);border-bottom:1px solid var(--line)}
+  nav.toc .wrap{display:flex;gap:6px;overflow-x:auto;padding:10px 24px;scrollbar-width:none}
+  nav.toc .wrap::-webkit-scrollbar{display:none}
+  nav.toc a{color:var(--muted);text-decoration:none;font-size:12.5px;padding:7px 12px;border-radius:8px;white-space:nowrap;transition:.15s}
+  nav.toc a:hover,nav.toc a.active{color:var(--ink);background:var(--panel2)}
+
+  .reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  .reveal.d1{transition-delay:.08s}.reveal.d2{transition-delay:.16s}.reveal.d3{transition-delay:.24s}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:20px}
+  .grid{display:grid;gap:16px}.g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}
+  @media(max-width:920px){.g2,.g3{grid-template-columns:1fr}}
+  ul.tight{margin:8px 0 0;padding-left:18px}ul.tight li{margin:5px 0;color:var(--muted);font-size:13.5px}
+  .note{font-size:12.5px;color:var(--dim)}
+  .badge{font-size:10px;text-transform:uppercase;letter-spacing:.06em;padding:2px 8px;border-radius:999px;font-weight:700}
+  .b-pro{background:rgba(45,212,191,.14);color:var(--pro);border:1px solid #1f4338}
+  .b-ant{background:rgba(248,113,113,.14);color:var(--ant);border:1px solid #5a2a2a}
+  .b-ai{background:rgba(167,139,250,.14);color:var(--violet);border:1px solid #3a2f5a}
+  .b-new{background:rgba(245,185,66,.14);color:var(--amber);border:1px solid #5a4a1f}
+  .b-fix{background:rgba(34,211,238,.12);color:var(--cyan);border:1px solid #1d4a55}
+
+  /* VS roster */
+  .vs{display:grid;grid-template-columns:1fr 70px 1fr;gap:0;align-items:stretch;margin-top:10px}
+  @media(max-width:820px){.vs{grid-template-columns:1fr;gap:14px}.vs .vs-mid{display:none}}
+  .roster{border-radius:16px;padding:20px;border:1px solid var(--line);position:relative;overflow:hidden}
+  .roster.pro{background:linear-gradient(180deg,rgba(45,212,191,.07),transparent);border-color:#1f4338}
+  .roster.ant{background:linear-gradient(180deg,rgba(248,113,113,.08),transparent);border-color:#5a2a2a}
+  .roster h3{margin:0 0 4px;font-size:18px}
+  .roster .who{font-size:12px;color:var(--muted);margin-bottom:14px}
+  .pageitem{display:flex;align-items:center;gap:10px;background:#0e1622;border:1px solid var(--line);border-radius:10px;padding:9px 12px;margin-bottom:8px}
+  .pageitem .av{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex:0 0 auto}
+  .pageitem .nm{font-size:13px}.pageitem .hd{font-size:11px;color:var(--muted)}
+  .pageitem.req{border-color:#1f4338}
+  .av.pro{background:#0f3d35;color:var(--pro)} .av.ant{background:#3d1f1f;color:var(--ant)}
+  .vs-mid{display:flex;align-items:center;justify-content:center}
+  .vs-badge{width:56px;height:56px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:18px;
+    background:#0e1622;border:1px solid var(--line);color:var(--ink);animation:vspulse 2.2s ease-in-out infinite}
+  @keyframes vspulse{0%,100%{box-shadow:0 0 0 0 rgba(248,113,113,.0),0 0 0 0 rgba(45,212,191,0)}50%{box-shadow:0 0 22px 0 rgba(248,113,113,.25),0 0 22px 0 rgba(45,212,191,.2)}}
+
+  /* mockup frame label */
+  .mock-cap{display:flex;align-items:center;gap:10px;font-size:12px;color:var(--muted);margin:0 0 10px;text-transform:uppercase;letter-spacing:.08em}
+  .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:900px){.ba{grid-template-columns:1fr}}
+  .ba .lab{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+
+  /* ---- Wizard (amber terminal) mockup ---- */
+  .mk-wizard{font-family:"JetBrains Mono",ui-monospace,monospace;background:#0f0f0f;border-radius:12px;padding:16px;
+    border:1px solid #3a2d12;box-shadow:0 0 0 1px rgba(255,184,0,.08) inset;color:#FFB800}
+  .mk-wizard .w-h{font-size:13px;letter-spacing:.12em;color:#FFB800;text-shadow:0 0 8px rgba(255,184,0,.4);margin:0 0 4px}
+  .mk-wizard .w-sub{font-size:11px;color:rgba(255,184,0,.5);margin:0 0 14px}
+  .mk-panel{border:1px solid rgba(255,184,0,.2);border-radius:6px;padding:12px;margin-bottom:12px;background:rgba(45,45,45,.25)}
+  .mk-panel.pro{border-color:rgba(45,212,191,.3);background:rgba(45,212,191,.05)}
+  .mk-panel.ant{border-color:rgba(248,113,113,.3);background:rgba(248,113,113,.05)}
+  .mk-panel h5{margin:0 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase}
+  .mk-panel.pro h5{color:var(--pro)} .mk-panel.ant h5{color:var(--ant)}
+  .mk-row{display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid rgba(255,184,0,.1);padding:6px 0;font-size:12px}
+  .mk-row .rm{font-size:10px;color:#FF6B35;cursor:default}
+  .mk-inputs{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:6px;margin-top:8px}
+  .mk-inp{background:#1a1a1a;border:1px solid rgba(255,184,0,.3);color:rgba(255,184,0,.5);font-size:11px;padding:5px 7px;border-radius:4px}
+  .mk-inp.ant{border-color:rgba(248,113,113,.35)}
+  .mk-btn{background:linear-gradient(90deg,#FFB800,#FF6B35);color:#0f0f0f;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    font-size:11px;padding:6px 14px;border-radius:4px;border:none;margin-top:8px;display:inline-block}
+  .mk-btn.ant{background:linear-gradient(90deg,#f87171,#fb923c)}
+  .mk-note{font-size:10px;color:rgba(255,184,0,.4);margin:6px 0 0}
+  .mk-tag{font-size:9px;padding:1px 6px;border-radius:4px;border:1px solid;margin-left:6px}
+  .tag-ai{color:var(--violet);border-color:#3a2f5a;background:rgba(167,139,250,.1)}
+  .tag-tr{color:var(--amber);border-color:#5a4a1f;background:rgba(245,185,66,.1)}
+  .tag-req{color:var(--pro);border-color:#1f4338;background:rgba(45,212,191,.1)}
+  .stepper{display:flex;gap:4px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .stepper .s{font-size:9px;padding:3px 7px;border-radius:4px;border:1px solid rgba(255,184,0,.15);color:rgba(255,184,0,.3);text-transform:uppercase}
+  .stepper .s.cur{border-color:#FFB800;background:rgba(255,184,0,.1);color:#FFB800}
+  .stepper .s.past{color:rgba(255,184,0,.6)}
+  .toggle{display:inline-flex;align-items:center;gap:8px;font-size:11px;color:rgba(255,184,0,.7);margin-top:6px}
+  .tg{width:34px;height:18px;border-radius:999px;background:#2d2d2d;border:1px solid rgba(255,184,0,.3);position:relative}
+  .tg::after{content:"";position:absolute;top:1px;left:1px;width:14px;height:14px;border-radius:50%;background:#FFB800;transition:.3s}
+  .tg.on{background:rgba(45,212,191,.25);border-color:var(--pro)} .tg.on::after{left:17px;background:var(--pro)}
+
+  /* ---- Dashboard (slate) mockup ---- */
+  .mk-dash{background:#0f0f0f;border-radius:14px;padding:14px;border:1px solid #2a2a2a;font-family:ui-sans-serif,system-ui,sans-serif}
+  .d-card{background:#1a1a1a;border:1px solid #2a2a2a;border-radius:12px;overflow:hidden}
+  .d-card>.h{padding:9px 14px;border-bottom:1px solid #2a2a2a;font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#94a3b8;display:flex;justify-content:space-between;align-items:center}
+  .d-card>.b{padding:12px}
+  .adv-row{background:#141414;border:1px solid #2a2a2a;border-left:3px solid var(--ant);border-radius:9px;padding:10px 12px;margin-bottom:9px;font-family:ui-sans-serif,system-ui,sans-serif}
+  .adv-row .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .adv-row .nm{font-size:13px;font-weight:600;color:#e5e5e5}
+  .adv-row .hd{font-size:11px;color:#64748b}
+  .adv-row .meta{font-size:11px;color:#94a3b8;margin-top:6px}
+  .seize{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:4px 10px;border-radius:6px;border:1px solid;cursor:default}
+  .seize.ai{color:var(--violet);border-color:#3a2f5a;background:rgba(167,139,250,.12)}
+  .seize.tr{color:var(--amber);border-color:#5a4a1f;background:rgba(245,185,66,.12)}
+  .d-badge{font-size:10px;font-weight:700;padding:2px 7px;border-radius:6px}
+  .composer{background:#0f0f0f;border:1px solid #2a2a2a;border-radius:9px;padding:10px;margin-top:8px}
+  .composer textarea{width:100%;background:transparent;border:none;color:#cbd5e1;font:inherit;font-size:12px;resize:none;outline:none}
+  .composer .pbtn{background:#ef4444;color:#fff;font-size:11px;font-weight:700;padding:5px 12px;border-radius:6px;border:none;float:right}
+
+  /* ---- Phone (iOS Z) mockup ---- */
+  .phone-wrap{display:flex;justify-content:center}
+  .phone{width:300px;background:#000;border-radius:40px;border:9px solid #1C1C1E;box-shadow:0 30px 70px rgba(0,0,0,.5);overflow:hidden;position:relative}
+  .phone .notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);width:110px;height:24px;background:#1C1C1E;border-radius:14px;z-index:5}
+  .z-status{display:flex;justify-content:space-between;padding:14px 20px 6px;color:#fff;font-size:11px;font-weight:600;font-family:ui-sans-serif,system-ui}
+  .z-head{display:flex;align-items:center;justify-content:center;gap:8px;padding:6px 14px 10px;border-bottom:1px solid #2F3336;position:relative}
+  .z-logo{width:22px;height:22px}
+  .z-tabs{display:flex;border-bottom:1px solid #2F3336;font-family:ui-sans-serif,system-ui}
+  .z-tabs .t{flex:1;text-align:center;font-size:12px;padding:9px 0;color:#71767B}
+  .z-tabs .t.on{color:#E7E9EA;font-weight:700;position:relative}
+  .z-tabs .t.on::after{content:"";position:absolute;bottom:0;left:50%;transform:translateX(-50%);width:46px;height:3px;border-radius:3px;background:#1D9BF0}
+  .z-feed{font-family:ui-sans-serif,system-ui;max-height:430px;overflow:hidden}
+  .zpost{padding:11px 13px;border-bottom:1px solid #2F3336;display:flex;gap:10px}
+  .zpost .av{width:38px;height:38px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-weight:700;color:#fff;font-size:14px}
+  .zpost .nm{font-size:13px;font-weight:700;color:#E7E9EA}
+  .zpost .ck{color:#FFD700;font-size:12px}
+  .zpost .hd{font-size:12px;color:#71767B}
+  .zpost .body{font-size:13px;color:#E7E9EA;line-height:1.4;margin-top:3px}
+  .zpost .body .tagh{color:#1D9BF0}
+  .zpost .eng{display:flex;gap:22px;margin-top:8px;color:#71767B;font-size:11px}
+  .zpost.hostile{background:linear-gradient(90deg,rgba(248,113,113,.08),transparent);border-left:3px solid var(--ant)}
+  .flagchip{display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;margin-top:6px;margin-right:4px}
+  .fc-misinfo{color:#FB923C;background:rgba(249,115,22,.15)} .fc-pressure{color:#FB923C;background:rgba(249,115,22,.15)} .fc-harm{color:#F87171;background:rgba(239,68,68,.15)}
+  .incoming{animation:slideIn 1s ease both}
+  @keyframes slideIn{from{opacity:0;transform:translateY(-14px)}to{opacity:1;transform:none}}
+
+  /* engine brain */
+  .brain{display:grid;grid-template-columns:230px 1fr;gap:26px;align-items:center}
+  @media(max-width:820px){.brain{grid-template-columns:1fr}}
+  .ring{position:relative;width:210px;height:210px;margin:0 auto}
+  .ring svg{transform:rotate(-90deg)}
+  .ring .tk{fill:none;stroke:#233143;stroke-width:10}
+  .ring .pg{fill:none;stroke:url(#bg);stroke-width:10;stroke-linecap:round;stroke-dasharray:565;animation:spin 6s linear infinite}
+  @keyframes spin{from{stroke-dashoffset:565}to{stroke-dashoffset:0}}
+  .ring-c{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+  .ring-c b{font-size:15px;color:var(--ant)}.ring-c span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+  .moves{display:grid;gap:9px}
+  .move{display:grid;grid-template-columns:26px 1fr;gap:11px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 13px;transition:.3s}
+  .move.active{border-color:var(--ant);background:rgba(248,113,113,.07);box-shadow:0 0 18px rgba(248,113,113,.12)}
+  .move .ic{width:26px;height:26px;border-radius:7px;background:#3d1f1f;color:var(--ant);display:flex;align-items:center;justify-content:center;font-size:13px}
+  .move b{font-size:13px}.move p{margin:2px 0 0;font-size:12px;color:var(--muted)}
+
+  /* meters */
+  .meter{margin-bottom:14px}
+  .meter b{font-size:13px}.meter .val{float:right;font-weight:700}
+  .bar{height:12px;border-radius:7px;background:var(--panel2);overflow:hidden;margin-top:7px;border:1px solid var(--line)}
+  .bar>i{display:block;height:100%;width:0;border-radius:7px;transition:width 1.6s cubic-bezier(.2,.7,.2,1)}
+  .b-down>i{background:linear-gradient(90deg,#f87171,#fb923c)}
+  .b-up>i{background:linear-gradient(90deg,#fb923c,#f87171)}
+  .b-ok>i{background:linear-gradient(90deg,#22d3ee,#2dd4bf)}
+
+  /* flow */
+  .flow-wrap{background:var(--bg2);border:1px solid var(--line);border-radius:16px;padding:10px;overflow-x:auto}
+  svg .nb{fill:var(--panel);stroke:var(--line);stroke-width:1.5}
+  svg text{fill:var(--ink);font-family:ui-monospace,Menlo,Consolas,monospace}
+  svg .lbl{font-size:12px;font-weight:600}svg .sub{font-size:10px;fill:var(--muted)}
+  .dash{stroke-dasharray:7 7;animation:dm 1s linear infinite}@keyframes dm{to{stroke-dashoffset:-28}}
+
+  /* roadmap */
+  .road{position:relative;padding-left:26px}
+  .road::before{content:"";position:absolute;left:7px;top:6px;bottom:6px;width:2px;background:var(--line)}
+  .ph{position:relative;margin-bottom:14px}
+  .ph::before{content:"";position:absolute;left:-23px;top:6px;width:12px;height:12px;border-radius:50%;background:var(--pro);box-shadow:0 0 0 3px rgba(45,212,191,.12)}
+  .ph.eng::before{background:var(--ant);box-shadow:0 0 0 3px rgba(248,113,113,.12)}
+  .ph h4{margin:0 0 3px;font-size:14px}.ph p{margin:0;font-size:12.5px;color:var(--muted)}
+
+  table.cmp{width:100%;border-collapse:collapse;font-size:13px;margin-top:6px}
+  table.cmp th,table.cmp td{border:1px solid var(--line);padding:9px 12px;text-align:left;vertical-align:top}
+  table.cmp th{background:var(--panel2);color:var(--muted);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.06em}
+  table.cmp td.now{color:var(--muted)} table.cmp td.next{color:var(--ink)}
+  .footer{padding:40px 0 70px;color:var(--muted);font-size:12.5px;text-align:center}
+  .kbd{font-size:11px;background:#1a2433;border:1px solid #2a3a4f;border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:var(--ink)}
+</style>
+</head>
+<body>
+
+<!-- HERO -->
+<header class="hero">
+  <div class="hero-bg"></div><div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker"><span class="pulse-dot"></span> Feature Design · Social-Crisis War Room</div>
+    <h1><span class="g1">Protagonist</span> brands vs.<br/><span class="g2">smart, dubious</span> rival pages.</h1>
+    <p class="lead">A new authoring step lets trainers field allied brand pages players control, and a roster of <span class="ant-t">hostile competitor pages</span> that think for themselves &mdash; quoting, twisting, and insinuating to grind down the main brand. The trainer can seize any of them to crank up the heat.</p>
+    <div class="hero-stats">
+      <div class="stat"><b class="pro-t">1 + N</b><span>Protagonist pages</span></div>
+      <div class="stat"><b class="ant-t">0&ndash;10</b><span>Antagonist pages</span></div>
+      <div class="stat"><b class="dub-t">AI</b><span>Auto-driven hostility</span></div>
+      <div class="stat"><b class="b-new" style="background:none;border:none;padding:0">Seize</b><span>Trainer takeover</span></div>
+    </div>
+  </div>
+  <div class="scroll-hint">walk through the changes<span class="chev"></span></div>
+</header>
+
+<nav class="toc"><div class="wrap">
+  <a href="#concept">Concept</a>
+  <a href="#trainer">Trainer Changes</a>
+  <a href="#player">Player Changes</a>
+  <a href="#engine">The Hostile AI</a>
+  <a href="#pressure">The Pressure</a>
+  <a href="#flow">Data Flow</a>
+  <a href="#roadmap">Roadmap</a>
+</div></nav>
+
+<!-- CONCEPT -->
+<section id="concept">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">The concept</div>
+      <h2 class="sec-title">Two rosters, two control models</h2>
+      <p class="sec-sub">Every brand page now carries a <code>role</code> (protagonist / antagonist) and a <code>control_mode</code> (player / ai / trainer). That single distinction reshapes who can post as a page and how the simulation pushes back.</p>
+    </div>
+    <div class="reveal d1 vs">
+      <div class="roster pro">
+        <h3 class="pro-t">Protagonist side</h3>
+        <div class="who">Assignable to players in the lobby</div>
+        <div class="pageitem req"><div class="av pro">M</div><div><div class="nm">Meridian Pharma <span class="badge b-pro">required</span></div><div class="hd">@MeridianPharma · the brand in crisis</div></div></div>
+        <div class="pageitem"><div class="av pro">F</div><div><div class="nm">MeridianCares Foundation</div><div class="hd">@MeridianCares · optional ally</div></div></div>
+        <div class="pageitem"><div class="av pro">+</div><div><div class="nm">Add allied organization</div><div class="hd">optional, unlimited</div></div></div>
+      </div>
+      <div class="vs-mid"><div class="vs-badge">VS</div></div>
+      <div class="roster ant">
+        <h3 class="ant-t">Antagonist side</h3>
+        <div class="who">Trainer-only &middot; AI-driven by default</div>
+        <div class="pageitem"><div class="av ant">N</div><div><div class="nm">NovaCure Labs <span class="badge b-ai">ai</span></div><div class="hd">@NovaCure · named competitor</div></div></div>
+        <div class="pageitem"><div class="av ant">V</div><div><div class="nm">VitalRival Health <span class="badge b-ai">ai</span></div><div class="hd">@VitalRival · named competitor</div></div></div>
+        <div class="pageitem"><div class="av ant">?</div><div><div class="nm">Auto-invented antagonist <span class="badge b-new">if none named</span></div><div class="hd">War Room creates one</div></div></div>
+      </div>
+    </div>
+    <div class="reveal d2 grid g3" style="margin-top:18px">
+      <div class="card"><span class="badge b-pro">protagonist</span><p style="margin:10px 0 0;font-size:13.5px;color:var(--muted)">1 required main brand + optional allies. <span class="hl">Players</span> are assigned to control them and post as the page.</p></div>
+      <div class="card"><span class="badge b-ant">antagonist</span><p style="margin:10px 0 0;font-size:13.5px;color:var(--muted)">0&ndash;10 competitor brands. <span class="hl">Never</span> assigned to players. The <span class="dub-t">AI drives them</span> by default; the trainer can seize control.</p></div>
+      <div class="card"><span class="badge b-new">auto-antagonist</span><p style="margin:10px 0 0;font-size:13.5px;color:var(--muted)">Name none and the War Room <span class="hl">invents a rival</span> on compile &mdash; identity, page, and a pre-crisis timeline.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- TRAINER CHANGES -->
+<section id="trainer">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">What the trainer sees</div>
+      <h2 class="sec-title">Authoring &amp; control changes</h2>
+      <p class="sec-sub">Three touch points change for trainers: the wizard's org-page step splits into two sides, the lobby assignment list hides antagonists, and a new live "Adversary Console" appears on the dashboard.</p>
+    </div>
+
+    <!-- Wizard before/after -->
+    <div class="reveal d1">
+      <div class="mock-cap">Wizard &middot; Step 4 (Convergence / Org Page)</div>
+      <div class="ba">
+        <div>
+          <div class="lab">Before</div>
+          <div class="mk-wizard">
+            <div class="stepper"><span class="s past">1</span><span class="s past">2</span><span class="s past">3</span><span class="s cur">4 Convergence</span><span class="s">5</span><span class="s">6</span><span class="s">7</span></div>
+            <div class="w-h">[STEP 4: CONVERGENCE]</div>
+            <div class="w-sub">Organization Page Identity</div>
+            <div class="mk-panel">
+              <h5>Additional Pages (optional)</h5>
+              <div class="mk-note">The crisis page above is required. Add other organizations players can control (each spans Facebook + X).</div>
+              <div class="mk-row"><span>NovaCure Labs <span style="color:rgba(255,184,0,.4)">@NovaCure</span></span><span class="rm">[REMOVE]</span></div>
+              <div class="mk-inputs"><span class="mk-inp">Page name</span><span class="mk-inp">@FacebookHandle</span><span class="mk-inp">@XHandle</span></div>
+              <span class="mk-btn">[ADD_PAGE]</span>
+            </div>
+            <div class="mk-note">One untyped pool &mdash; every page is treated the same and is player-assignable.</div>
+          </div>
+        </div>
+        <div>
+          <div class="lab" style="color:var(--pro)">After</div>
+          <div class="mk-wizard">
+            <div class="stepper"><span class="s past">1</span><span class="s past">2</span><span class="s past">3</span><span class="s cur">4 Convergence</span><span class="s">5</span><span class="s">6</span><span class="s">7</span></div>
+            <div class="w-h">[STEP 4: CONVERGENCE]</div>
+            <div class="w-sub">Brand Pages &mdash; your side &amp; the opposition</div>
+
+            <div class="mk-panel pro">
+              <h5>&#9650; Your side &middot; Protagonist</h5>
+              <div class="mk-row"><span>Meridian Pharma <span style="color:rgba(255,184,0,.4)">@MeridianPharma</span> <span class="mk-tag tag-req">required &middot; crisis page</span></span></div>
+              <div class="mk-row"><span>MeridianCares <span style="color:rgba(255,184,0,.4)">@MeridianCares</span></span><span class="rm">[REMOVE]</span></div>
+              <div class="mk-inputs"><span class="mk-inp">Ally page name</span><span class="mk-inp">@FacebookHandle</span><span class="mk-inp">@XHandle</span></div>
+              <span class="mk-btn">[ADD_ALLY]</span>
+              <div class="mk-note">Assignable to players in the lobby.</div>
+            </div>
+
+            <div class="mk-panel ant">
+              <h5>&#9660; Opposition &middot; Antagonist (0&ndash;10)</h5>
+              <div class="mk-row"><span>NovaCure Labs <span style="color:rgba(255,184,0,.4)">@NovaCure</span> <span class="mk-tag tag-ai">ai-driven</span></span><span class="rm">[REMOVE]</span></div>
+              <div class="mk-row"><span>VitalRival Health <span style="color:rgba(255,184,0,.4)">@VitalRival</span> <span class="mk-tag tag-ai">ai-driven</span></span><span class="rm">[REMOVE]</span></div>
+              <div class="mk-inputs"><span class="mk-inp ant">Competitor name</span><span class="mk-inp ant">@FacebookHandle</span><span class="mk-inp ant">@XHandle</span></div>
+              <span class="mk-btn ant">[ADD_COMPETITOR]</span>
+              <div class="toggle"><span class="tg on"></span> If empty, let the War Room invent an antagonist</div>
+              <div class="mk-note">Trainer-controlled. Hostile by design.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Adversary console + assignment -->
+    <div class="reveal d2 grid g2" style="margin-top:30px">
+      <div>
+        <div class="mock-cap" style="color:var(--ant)">New &middot; Trainer Dashboard "Adversary Console"</div>
+        <div class="mk-dash">
+          <div class="d-card">
+            <div class="h"><span>Adversary Console (3)</span><span class="d-badge" style="background:rgba(248,113,113,.15);color:#f87171">live</span></div>
+            <div class="b">
+              <div class="adv-row">
+                <div class="top"><div><span class="nm">NovaCure Labs</span> <span class="hd">@NovaCure</span></div><span class="seize ai">AI &middot; running</span></div>
+                <div class="meta">Last move: quote-dunked Meridian's apology &middot; 40s ago</div>
+              </div>
+              <div class="adv-row">
+                <div class="top"><div><span class="nm">VitalRival Health</span> <span class="hd">@VitalRival</span></div><span class="seize tr">Seized &middot; you</span></div>
+                <div class="composer"><textarea rows="2" readonly>"Unlike some, OUR supply chain is audited monthly. Just saying. #transparency"</textarea><button class="pbtn">Post as page</button></div>
+              </div>
+              <div class="adv-row">
+                <div class="top"><div><span class="nm">TrueWell (auto)</span> <span class="hd">@TrueWell</span></div><span class="seize ai">AI &middot; running</span></div>
+                <div class="meta">Escalation rising &rarr; intensity HIGH</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="note" style="margin-top:8px">Seize toggles <code>control_mode</code> ai &harr; trainer. Posts hit a new <code>POST /pages/session/:id/post-as</code> (trainer-only, bypasses the one-page-per-user controller table).</p>
+      </div>
+      <div>
+        <div class="mock-cap">Changed &middot; Lobby Page Assignment</div>
+        <div class="mk-wizard">
+          <div class="w-h">[PAGE_ASSIGNMENTS]</div>
+          <div class="w-sub">Participant &rarr; Controls Page</div>
+          <div class="mk-row"><span>Alex Tan</span><span class="mk-inp" style="padding:3px 8px">Meridian Pharma (crisis)</span></div>
+          <div class="mk-row"><span>Priya N.</span><span class="mk-inp" style="padding:3px 8px">MeridianCares</span></div>
+          <div class="mk-row"><span>Jordan L.</span><span class="mk-inp" style="padding:3px 8px">None</span></div>
+          <div class="mk-note" style="color:var(--pro)">Dropdown now lists <b>protagonist pages only</b>. Antagonist pages are filtered out &mdash; players can never control a rival. <code>/pages/assign</code> rejects antagonist org_keys server-side.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- PLAYER CHANGES -->
+<section id="player">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">What the players feel</div>
+      <h2 class="sec-title">Hostile pages in the feed</h2>
+      <p class="sec-sub">Players don't get a new screen &mdash; they get a tougher world. Rival brand pages now appear in their feed as verified accounts, posting cutting, plausible-deniability attacks. Players can open a rival's page to read it, but never control it.</p>
+    </div>
+
+    <div class="reveal d1 grid g2" style="align-items:start">
+      <div>
+        <div class="mock-cap">Player phone &middot; Z feed (a rival lands an attack)</div>
+        <div class="phone-wrap">
+          <div class="phone">
+            <div class="notch"></div>
+            <div class="z-status"><span>9:41</span><span>5G &#9646;&#9646;&#9646;</span></div>
+            <div class="z-head">
+              <svg class="z-logo" viewBox="0 0 24 24" fill="none"><path d="M4 4H20L4 20H20" stroke="#E7E9EA" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </div>
+            <div class="z-tabs"><div class="t on">For You</div><div class="t">Latest</div></div>
+            <div class="z-feed">
+              <div class="zpost hostile incoming" id="hostilePost">
+                <div class="av" style="background:#3d1f1f;color:#f87171">N</div>
+                <div>
+                  <div><span class="nm">NovaCure Labs</span> <span class="ck">&#10003;</span> <span class="hd">@NovaCure &middot; now</span></div>
+                  <div class="body">Our hearts go out to anyone affected by the Meridian situation. We've <i>always</i> believed third-party batch testing should be mandatory. Patients deserve better. <span class="tagh">#PatientSafety</span></div>
+                  <div><span class="flagchip fc-pressure">Pressure Campaign</span><span class="flagchip fc-misinfo">Insinuation</span></div>
+                  <div class="eng"><span>&#128172; 212</span><span>&#8635; 1.4k</span><span>&#9825; 6.8k</span><span>&#9873;</span></div>
+                </div>
+              </div>
+              <div class="zpost">
+                <div class="av" style="background:#1D9BF0">C</div>
+                <div>
+                  <div><span class="nm">Concerned Mum</span> <span class="hd">@cna_reader · 2m</span></div>
+                  <div class="body">wait is NovaCure safer?? should i switch my mum's meds??</div>
+                  <div class="eng"><span>&#128172; 88</span><span>&#8635; 301</span><span>&#9825; 540</span><span>&#9873;</span></div>
+                </div>
+              </div>
+              <div class="zpost">
+                <div class="av" style="background:#0f3d35;color:#2dd4bf">M</div>
+                <div>
+                  <div><span class="nm">Meridian Pharma</span> <span class="ck" style="color:#FFD700">&#10003;</span> <span class="hd">@MeridianPharma · 5m</span></div>
+                  <div class="body">We are aware of reports and are investigating. Patient safety is our priority.</div>
+                  <div class="eng"><span>&#128172; 47</span><span>&#8635; 33</span><span>&#9825; 90</span><span>&#9873;</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:grid;gap:14px">
+        <div class="card">
+          <h4 style="margin:0 0 6px">The rival reads as a real verified brand</h4>
+          <p class="note">Gold <span style="color:#FFD700">&#10003;</span> on Z (blue on Fakebook), real logo, follower count. Authored as <code>author_type: 'official_account'</code> &mdash; indistinguishable from a legit page, which is exactly what makes it dangerous.</p>
+        </div>
+        <div class="card">
+          <h4 style="margin:0 0 6px">"Concerned competitor" &amp; insinuation</h4>
+          <p class="note">It never states a falsehood outright &mdash; it <span class="dub-t">implies</span>, using the fact sheet's unconfirmed claims as ammo. Plausible deniability that's hard for players to rebut.</p>
+        </div>
+        <div class="card">
+          <h4 style="margin:0 0 6px">View, but never control</h4>
+          <p class="note">Tapping the rival opens a <b>read-only org page</b> (header, bio, timeline, branded history) &mdash; no composer. A new mode on <code>OrgPageView</code> served from <code>/org-page/session/:id</code>.</p>
+        </div>
+        <div class="card">
+          <h4 style="margin:0 0 6px">Followers pile on</h4>
+          <p class="note">The rival's posts now trigger NPC amplification (today only player posts do), so a single jab spawns a wave of "should I switch?" doubt.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- THE HOSTILE AI -->
+<section id="engine">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">Smart &amp; dubious</div>
+      <h2 class="sec-title">How a rival page thinks</h2>
+      <p class="sec-sub">A new <code>antagonistEngineService</code> runs on the social scheduler tick. For each AI-driven antagonist it reads the live battlefield, picks an adaptive hostile move, and posts as the page &mdash; getting nastier as escalation climbs.</p>
+    </div>
+
+    <div class="reveal d1 card brain">
+      <div class="ring">
+        <svg width="210" height="210" viewBox="0 0 210 210">
+          <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f87171"/><stop offset="1" stop-color="#fb923c"/></linearGradient></defs>
+          <circle class="tk" cx="105" cy="105" r="90"/><circle class="pg" cx="105" cy="105" r="90"/>
+        </svg>
+        <div class="ring-c"><b>EACH TICK</b><span>read &middot; decide &middot; strike</span></div>
+      </div>
+      <div>
+        <h4 style="margin:0 0 10px">Context it ingests</h4>
+        <ul class="tight">
+          <li>The crisis description + this rival's <code>stance</code></li>
+          <li><span class="dub-t">Fact sheet</span> &mdash; especially <code>unconfirmed_claims</code> / <code>specific_claims</code> (the dubious ammo)</li>
+          <li>Recent player &amp; official-brand posts (what to twist)</li>
+          <li>Live <code>social_state</code> &mdash; narrative_control, sentiment, unanswered posts</li>
+        </ul>
+        <p class="note" style="margin-top:10px">Intensity scales with <code>escalation_risk</code>; per-tick caps + cooldowns mirror the statement-watchdog to bound AI cost.</p>
+      </div>
+    </div>
+
+    <div class="reveal d2" style="margin-top:22px">
+      <h4 style="margin:0 0 12px">The move it picks (cycles below)</h4>
+      <div class="moves" id="moveList">
+        <div class="move" data-i="0"><div class="ic">&#10078;</div><div><b>Quote-dunk</b><p>Twist the brand's latest statement into an admission.</p></div></div>
+        <div class="move" data-i="1"><div class="ic">&#128226;</div><div><b>Amplify the rumor</b><p>Boost an unverified claim with "just asking questions" framing.</p></div></div>
+        <div class="move" data-i="2"><div class="ic">&#129496;</div><div><b>Concerned competitor</b><p>Virtue-signal safety while implying the brand failed.</p></div></div>
+        <div class="move" data-i="3"><div class="ic">&#9203;</div><div><b>Exploit the silence</b><p>If a key post went unanswered, point at the void.</p></div></div>
+        <div class="move" data-i="4"><div class="ic">&#128680;</div><div><b>Call the switch</b><p>Nudge customers to defect: "patients deserve better."</p></div></div>
+        <div class="move" data-i="5"><div class="ic">&#129488;</div><div><b>Insinuate</b><p>Plausible-deniability smear that's hard to debunk.</p></div></div>
+      </div>
+      <p class="note" style="margin-top:12px">Adaptive: it times strikes to player actions (twist a fresh statement, pounce on silence), can spawn a coordinated NPC pile-on, and probes a new angle if players start winning narrative control. <span class="b-new badge">Trainer override</span> any page set to <code>trainer</code> is skipped by the engine &mdash; you drive it manually.</p>
+    </div>
+  </div>
+</section>
+
+<!-- THE PRESSURE -->
+<section id="pressure">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">Why it bites</div>
+      <h2 class="sec-title">Real, scored pressure</h2>
+      <p class="sec-sub">Hostile rival posts aren't cosmetic. With the scoring fix, an antagonist page's posts count as harmful at <b>3&times; weight</b> (like designed NPCs), dragging the four dimensions the players are graded on.</p>
+    </div>
+    <div class="reveal d1 grid g2" style="align-items:start">
+      <div class="card" id="meterCard">
+        <h4 style="margin:0 0 14px">Under sustained rival fire</h4>
+        <div class="meter b-down"><b>Narrative Control</b><span class="val" data-target="28" style="color:#f87171">0</span><div class="bar"><i data-w="28"></i></div></div>
+        <div class="meter b-up"><b>Escalation Risk</b><span class="val" data-target="71" style="color:#fb923c">0</span><div class="bar"><i data-w="71"></i></div></div>
+        <div class="meter b-down"><b>Public Trust</b><span class="val" data-target="41" style="color:#f87171">0</span><div class="bar"><i data-w="41"></i></div></div>
+        <div class="meter b-ok"><b>Composite Sentiment</b><span class="val" data-target="38" style="color:#22d3ee">0</span><div class="bar"><i data-w="38"></i></div></div>
+        <p class="note" style="margin-top:8px">Narrative control is 40% of the composite &mdash; exactly what the rival targets.</p>
+      </div>
+      <div style="display:grid;gap:14px">
+        <div class="card"><span class="badge b-fix">scoring fix</span><p style="margin:10px 0 0;font-size:13.5px;color:var(--muted)">Antagonist <code>sim_org_pages</code> handles join the harmful-weight set in <code>computeSocialState</code> &mdash; today only <code>npc_personas</code> handles or injects get the 3&times; weight.</p></div>
+        <div class="card"><span class="badge b-fix">amplification</span><p style="margin:10px 0 0;font-size:13.5px;color:var(--muted)">NPC reactions fire on antagonist posts, so each jab snowballs into a doubt cascade instead of sitting quietly.</p></div>
+        <div class="card"><span class="badge b-fix">defense counts</span><p style="margin:10px 0 0;font-size:13.5px;color:var(--muted)">Protagonist ally pages count toward player impression-dominance, so coordinated defense actually claws narrative control back.</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- DATA FLOW -->
+<section id="flow">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">Under the hood</div>
+      <h2 class="sec-title">How <code>role</code> flows end-to-end</h2>
+      <p class="sec-sub">The roster rides from the wizard into the database and the runtime. One critical fix: <code>normalizeOrgPages</code> currently rebuilds orgs from 5 hardcoded fields and silently drops unknowns &mdash; so <code>role</code> must be preserved there, plus new columns on <code>sim_org_pages</code>.</p>
+    </div>
+    <div class="reveal d1 flow-wrap">
+      <svg viewBox="0 0 1120 230" width="100%" height="230" role="img" aria-label="role data flow">
+        <defs><marker id="ah" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#2dd4bf"/></marker></defs>
+        <path class="dash" d="M190,60 H250" stroke="#2dd4bf" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+        <path class="dash" d="M440,60 H500" stroke="#2dd4bf" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+        <path class="dash" d="M690,60 H750" stroke="#f87171" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+        <path class="dash" d="M940,90 V150" stroke="#2dd4bf" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+        <path class="dash" d="M820,180 H700" stroke="#2dd4bf" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+        <path class="dash" d="M440,180 H320" stroke="#f87171" stroke-width="2" fill="none" marker-end="url(#ah)"/>
+
+        <g><rect class="nb" x="40" y="32" width="150" height="56" rx="10"/><text class="lbl" x="115" y="57" text-anchor="middle">Wizard Step 4</text><text class="sub" x="115" y="74" text-anchor="middle">orgs[] + role</text></g>
+        <g><rect class="nb" x="290" y="32" width="150" height="56" rx="10"/><text class="lbl" x="365" y="57" text-anchor="middle">generateOrgPage</text><text class="sub" x="365" y="74" text-anchor="middle">per-org + auto-antag</text></g>
+        <g><rect class="nb" x="540" y="32" width="150" height="56" rx="10" stroke="#f5b942"/><text class="lbl" x="615" y="50" text-anchor="middle">normalizeOrgPages</text><text class="sub" x="615" y="66" text-anchor="middle" fill="#f5b942">must keep role!</text><text class="sub" x="615" y="80" text-anchor="middle">(silent-drop fix)</text></g>
+        <g><rect class="nb" x="790" y="32" width="150" height="56" rx="10" stroke="#a78bfa"/><text class="lbl" x="865" y="57" text-anchor="middle">persist</text><text class="sub" x="865" y="74" text-anchor="middle">initial_state.org_page</text></g>
+
+        <g><rect class="nb" x="790" y="150" width="150" height="56" rx="10" stroke="#34d399"/><text class="lbl" x="865" y="175" text-anchor="middle">seedOrgPages</text><text class="sub" x="865" y="192" text-anchor="middle">+role +control_mode</text></g>
+        <g><rect class="nb" x="540" y="150" width="150" height="56" rx="10" stroke="#f87171"/><text class="lbl" x="615" y="175" text-anchor="middle">antagonistEngine</text><text class="sub" x="615" y="192" text-anchor="middle">hostile page posts</text></g>
+        <g><rect class="nb" x="290" y="150" width="150" height="56" rx="10" stroke="#22d3ee"/><text class="lbl" x="365" y="175" text-anchor="middle">scoring + feed</text><text class="sub" x="365" y="192" text-anchor="middle">3x harmful weight</text></g>
+
+        <circle r="4" fill="#2dd4bf"><animateMotion dur="2.6s" repeatCount="indefinite" path="M190,60 H250"/></circle>
+        <circle r="4" fill="#2dd4bf"><animateMotion dur="2.6s" begin=".6s" repeatCount="indefinite" path="M440,60 H500"/></circle>
+        <circle r="4" fill="#f87171"><animateMotion dur="2.4s" repeatCount="indefinite" path="M820,180 H700"/></circle>
+        <circle r="4" fill="#f87171"><animateMotion dur="2.4s" begin=".7s" repeatCount="indefinite" path="M440,180 H320"/></circle>
+      </svg>
+    </div>
+    <div class="reveal d2 grid g2" style="margin-top:18px">
+      <div class="card"><span class="badge b-new">new schema</span><ul class="tight"><li><code>sim_org_pages.role</code> + <code>control_mode</code> (migration 188)</li><li><code>OrgConfig</code> gains <code>role</code>, <code>control_mode</code>, per-org <code>branded_history</code></li></ul></div>
+      <div class="card"><span class="badge b-new">new endpoints</span><ul class="tight"><li><code>POST /pages/session/:id/post-as</code> (trainer, antagonist)</li><li><code>POST /pages/session/:id/seize</code> (ai &harr; trainer)</li><li><code>GET /pages/session/:id</code> now returns <code>role</code></li></ul></div>
+    </div>
+  </div>
+</section>
+
+<!-- ROADMAP -->
+<section id="roadmap">
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">Build order</div>
+      <h2 class="sec-title">Six phases</h2>
+      <p class="sec-sub">Foundation first so <code>role</code> survives the pipeline, then generation, control, the hostile brain, scoring, and finally the UI.</p>
+    </div>
+    <div class="reveal d1 road">
+      <div class="ph"><h4>1 &middot; Foundation <span class="badge b-fix">un-break</span></h4><p>Migration 188 (role + control_mode); extend OrgConfig types + per-org branded history; fix <code>normalizeOrgPages</code>, <code>seedOrgPages</code>, <code>seedBrandedHistory</code>.</p></div>
+      <div class="ph"><h4>2 &middot; Generation</h4><p>Multi-org + auto-antagonist identities &amp; per-org timelines; thread the roster into <code>/generate-npcs</code> + <code>/generate-storyline</code> (fixes the dropped org_name bug).</p></div>
+      <div class="ph"><h4>3 &middot; Endpoints &amp; gating</h4><p>Trainer <code>post-as</code> + <code>seize</code>; <code>role</code> in pages list; <code>/pages/assign</code> protagonist-only.</p></div>
+      <div class="ph eng"><h4>4 &middot; The hostile AI <span class="badge b-ant">core</span></h4><p><code>antagonistEngineService</code> wired into the social tick &mdash; adaptive, dubious, escalation-scaled, trainer-override aware.</p></div>
+      <div class="ph"><h4>5 &middot; Scoring integration</h4><p>3&times; harmful weight for antagonist handles; NPC amplification on their posts; ally pages count for player impression-dominance.</p></div>
+      <div class="ph"><h4>6 &middot; Frontend</h4><p>Wizard two-panel; protagonist-only assignment filter; read-only antagonist page view; trainer Adversary Console.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- BEFORE / AFTER TABLE -->
+<section>
+  <div class="wrap">
+    <div class="reveal">
+      <div class="sec-num">At a glance</div>
+      <h2 class="sec-title">Before &rarr; After</h2>
+    </div>
+    <div class="reveal d1">
+      <table class="cmp">
+        <thead><tr><th>Aspect</th><th>Today</th><th>With this feature</th></tr></thead>
+        <tbody>
+          <tr><td>Org pages</td><td class="now">1 primary + untyped extras</td><td class="next">Typed protagonist (1+N) vs antagonist (0&ndash;10) rosters</td></tr>
+          <tr><td>Competitors</td><td class="now">No concept</td><td class="next">1&ndash;10 named, or 1 auto-invented</td></tr>
+          <tr><td>Who controls rivals</td><td class="now">N/A</td><td class="next">AI by default; trainer can seize any</td></tr>
+          <tr><td>Hostile org content</td><td class="now">None (only NPC personas)</td><td class="next">Smart, dubious page posts every tick</td></tr>
+          <tr><td>Player assignment</td><td class="now">All pages assignable</td><td class="next">Protagonist-only (rivals blocked)</td></tr>
+          <tr><td>Scoring impact</td><td class="now">Page posts weight 1</td><td class="next">Antagonist posts weight 3&times; + NPC pile-on</td></tr>
+          <tr><td>Trainer tooling</td><td class="now">Read-only dashboard</td><td class="next">Adversary Console (seize + compose)</td></tr>
+          <tr><td>branded_history</td><td class="now">Flat, primary-only</td><td class="next">Per-org timelines</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<div class="footer wrap">
+  Antagonist Org Pages &middot; feature walkthrough &middot; built from the plan + a six-agent code audit.<br/>
+  Tip: scroll to animate the <span class="kbd">pressure meters</span>; watch the <span class="kbd">hostile AI</span> cycle its moves.
+</div>
+
+<script>
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target)}})},{threshold:.12});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+
+  /* meters */
+  const mio=new IntersectionObserver((es)=>{es.forEach(e=>{if(!e.isIntersecting)return;
+    e.target.querySelectorAll('.bar>i').forEach(b=>b.style.width=b.dataset.w+'%');
+    e.target.querySelectorAll('.val[data-target]').forEach(v=>{const t=+v.dataset.target;let c=0;const tick=()=>{c+=Math.max(1,Math.round(t/26));if(c>=t)c=t;v.textContent=c;if(c<t)requestAnimationFrame(tick)};requestAnimationFrame(tick)});
+    mio.unobserve(e.target)})},{threshold:.35});
+  const mc=document.getElementById('meterCard'); if(mc) mio.observe(mc);
+
+  /* cycle antagonist moves */
+  const moves=[...document.querySelectorAll('#moveList .move')];
+  let mi=0; setInterval(()=>{moves.forEach(m=>m.classList.remove('active'));moves[mi].classList.add('active');mi=(mi+1)%moves.length;},1400);
+  if(moves[0])moves[0].classList.add('active');
+
+  /* replay hostile post animation when scrolled into view */
+  const hp=document.getElementById('hostilePost');
+  if(hp){const hio=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.remove('incoming');void e.target.offsetWidth;e.target.classList.add('incoming')}})},{threshold:.6});hio.observe(hp);}
+
+  /* active nav */
+  const links=[...document.querySelectorAll('nav.toc a')];
+  const secs=links.map(a=>document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const nio=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){links.forEach(a=>a.classList.remove('active'));const l=links.find(a=>a.getAttribute('href')==='#'+e.target.id);if(l)l.classList.add('active')}})},{rootMargin:'-45% 0px -50% 0px'});
+  secs.forEach(s=>nio.observe(s));
+</script>
+</body>
+</html>

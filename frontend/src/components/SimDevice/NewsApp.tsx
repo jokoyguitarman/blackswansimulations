@@ -31,6 +31,8 @@ interface NewsArticle {
   category: string;
   is_factual: boolean;
   published_at: string;
+  status?: string;
+  correction_note?: string | null;
 }
 
 function getOutletColor(name: string): string {
@@ -66,6 +68,10 @@ export default function NewsApp() {
     'support' | 'neutral' | 'criticize' | 'fake_news'
   >('neutral');
   const [posting, setPosting] = useState(false);
+  const [disputeModal, setDisputeModal] = useState<NewsArticle | null>(null);
+  const [disputeClaim, setDisputeClaim] = useState('');
+  const [disputeFacts, setDisputeFacts] = useState('');
+  const [disputing, setDisputing] = useState(false);
 
   useEffect(() => {
     loadArticles();
@@ -82,11 +88,16 @@ export default function NewsApp() {
 
   useWebSocket({
     sessionId: sessionId || '',
-    eventTypes: ['news_article.published'],
+    eventTypes: ['news_article.published', 'news_article.updated'],
     onEvent: (event) => {
       if (event.type === 'news_article.published') {
         const article = (event.data as { article: NewsArticle }).article;
         setArticles((prev) => [article, ...prev]);
+      } else if (event.type === 'news_article.updated') {
+        const updated = (event.data as { article: NewsArticle }).article;
+        if (!updated) return;
+        setArticles((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+        setSelectedArticle((prev) => (prev && prev.id === updated.id ? updated : prev));
       }
     },
   });
@@ -189,6 +200,49 @@ export default function NewsApp() {
     );
   }
 
+  function openDisputeModal(article: NewsArticle) {
+    setDisputeModal(article);
+    setDisputeClaim('');
+    setDisputeFacts('');
+  }
+
+  async function submitDispute() {
+    if (!disputeModal || !sessionId) return;
+    if (!disputeClaim.trim() || !disputeFacts.trim()) {
+      setShareStatus('Please fill in both fields');
+      setTimeout(() => setShareStatus(null), 3000);
+      return;
+    }
+    setDisputing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/social/disputes'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          target_type: 'article',
+          target_id: disputeModal.id,
+          claimed_falsehood: disputeClaim.trim(),
+          submitted_facts: disputeFacts.trim(),
+        }),
+      });
+      if (res.ok) {
+        setDisputeModal(null);
+        setShareStatus('Dispute filed — under review');
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setShareStatus(err.error || 'Failed to file dispute');
+      }
+      setTimeout(() => setShareStatus(null), 4000);
+    } catch {
+      setShareStatus('Failed to file dispute');
+      setTimeout(() => setShareStatus(null), 3000);
+    } finally {
+      setDisputing(false);
+    }
+  }
+
   function copyArticleLink(article: NewsArticle) {
     const slug = article.outlet_name.toLowerCase().replace(/\s+/g, '-');
     const url = `https://news.sim/${slug}/${article.id.slice(0, 8)}`;
@@ -281,6 +335,38 @@ export default function NewsApp() {
               </p>
             )}
           </div>
+
+          {/* Moderation banner */}
+          {selectedArticle.status === 'retracted' && (
+            <div
+              className="mx-5 mb-4 p-3 rounded-lg"
+              style={{ backgroundColor: '#FDECEA', border: '1px solid #F0556A' }}
+            >
+              <p className="text-[13px] font-bold" style={{ color: '#C62828' }}>
+                This article has been retracted
+              </p>
+              {selectedArticle.correction_note && (
+                <p className="text-[12px] mt-1" style={{ color: '#8E6B6B' }}>
+                  {selectedArticle.correction_note}
+                </p>
+              )}
+            </div>
+          )}
+          {selectedArticle.status === 'corrected' && (
+            <div
+              className="mx-5 mb-4 p-3 rounded-lg"
+              style={{ backgroundColor: '#FFF8E1', border: '1px solid #F7B928' }}
+            >
+              <p className="text-[13px] font-bold" style={{ color: '#8A6D1F' }}>
+                Correction appended
+              </p>
+              {selectedArticle.correction_note && (
+                <p className="text-[12px] mt-1" style={{ color: '#8A7A4F' }}>
+                  {selectedArticle.correction_note}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Separator */}
           <div
@@ -399,6 +485,28 @@ export default function NewsApp() {
                 Link
               </button>
             </div>
+            {selectedArticle.status !== 'retracted' && (
+              <button
+                onClick={() => openDisputeModal(selectedArticle)}
+                className="flex items-center gap-1.5 mt-3 px-3 py-2 rounded-full text-[12px] font-semibold"
+                style={{ backgroundColor: '#FCE4EC', color: '#C62828' }}
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="#C62828"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                  <line x1="4" y1="22" x2="4" y2="15" />
+                </svg>
+                Dispute / Request Correction
+              </button>
+            )}
             {shareStatus && (
               <p className="text-[12px] mt-2 font-medium" style={{ color: '#34C759' }}>
                 {shareStatus}
@@ -501,6 +609,96 @@ export default function NewsApp() {
                     ? 'Posting...'
                     : `Post to ${shareModal.platform === 'x_twitter' ? 'Z' : 'Fakebook'}`}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {disputeModal && (
+          <div
+            className="absolute inset-0 flex items-end justify-center"
+            style={{ backgroundColor: 'rgba(0,0,0,0.4)', zIndex: 60 }}
+            onClick={() => setDisputeModal(null)}
+          >
+            <div
+              className="w-full rounded-t-2xl"
+              style={{ backgroundColor: '#FFFFFF', maxHeight: '85%', overflowY: 'auto' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 pt-4 pb-2">
+                <h3 className="text-[17px] font-bold" style={{ color: '#1C1C1E' }}>
+                  Request Correction / Takedown
+                </h3>
+                <button
+                  onClick={() => setDisputeModal(null)}
+                  className="text-[15px] font-medium"
+                  style={{ color: '#8E8E93' }}
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="mx-5 mb-3 p-3 rounded-lg" style={{ backgroundColor: '#F2F2F7' }}>
+                <p
+                  className="text-[10px] font-bold uppercase tracking-wide mb-1"
+                  style={{ color: '#8E8E93' }}
+                >
+                  {disputeModal.outlet_name}
+                </p>
+                <p className="text-[13px] font-semibold" style={{ color: '#1C1C1E' }}>
+                  {disputeModal.headline}
+                </p>
+              </div>
+
+              <div className="px-5 mb-3">
+                <p className="text-[12px] font-semibold mb-1.5" style={{ color: '#8E8E93' }}>
+                  What is inaccurate?
+                </p>
+                <textarea
+                  value={disputeClaim}
+                  onChange={(e) => setDisputeClaim(e.target.value)}
+                  placeholder="Identify the specific false or misleading claim..."
+                  rows={2}
+                  className="w-full rounded-lg p-3 text-[14px] resize-none outline-none"
+                  style={{
+                    backgroundColor: '#F2F2F7',
+                    color: '#1C1C1E',
+                    border: '1px solid rgba(60,60,67,0.18)',
+                  }}
+                />
+              </div>
+
+              <div className="px-5 mb-4">
+                <p className="text-[12px] font-semibold mb-1.5" style={{ color: '#8E8E93' }}>
+                  Provide your facts / evidence
+                </p>
+                <textarea
+                  value={disputeFacts}
+                  onChange={(e) => setDisputeFacts(e.target.value)}
+                  placeholder="Cite the verified facts that counter this claim..."
+                  rows={3}
+                  className="w-full rounded-lg p-3 text-[14px] resize-none outline-none"
+                  style={{
+                    backgroundColor: '#F2F2F7',
+                    color: '#1C1C1E',
+                    border: '1px solid rgba(60,60,67,0.18)',
+                  }}
+                />
+              </div>
+
+              <div className="px-5 pb-6">
+                <button
+                  onClick={submitDispute}
+                  disabled={disputing}
+                  className="w-full py-3 rounded-xl text-[15px] font-semibold text-white"
+                  style={{ backgroundColor: '#C62828', opacity: disputing ? 0.6 : 1 }}
+                >
+                  {disputing ? 'Submitting...' : 'Submit dispute'}
+                </button>
+                <p className="text-[11px] mt-2 text-center" style={{ color: '#8E8E93' }}>
+                  Editorial review takes a few minutes. Frivolous disputes may affect your
+                  credibility.
+                </p>
               </div>
             </div>
           </div>

@@ -33,6 +33,8 @@ interface OrgPage {
   org_key: string;
   display_name: string;
   is_primary: boolean;
+  role?: string;
+  control_mode?: string;
   controllers: string[];
 }
 
@@ -59,7 +61,11 @@ export const PageAssignmentModal = ({
       const headers = await getAuthHeaders();
       const res = await fetch(apiUrl(`/api/social/pages/session/${sessionId}`), { headers });
       const json = await res.json();
-      const loadedPages = (json.data || []) as OrgPage[];
+      // Players may only be assigned protagonist pages; antagonist (rival) pages
+      // are trainer/AI-driven and excluded from the assignment pool.
+      const loadedPages = ((json.data || []) as OrgPage[]).filter(
+        (pg) => (pg.role ?? 'protagonist') !== 'antagonist',
+      );
       setPages(loadedPages);
 
       const initial: Record<string, string> = {};

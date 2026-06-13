@@ -48,79 +48,6 @@ interface ObjectiveDef {
   weight: number;
 }
 
-interface ResearchGuidelines {
-  per_team: Array<{
-    team_name: string;
-    guidelines: Array<{
-      guideline_id: string;
-      best_practice: string;
-      source_basis: string;
-      timing_window?: string;
-      if_violated: string;
-      if_followed: string;
-      detection_signals: string[];
-    }>;
-  }>;
-  group_wide: {
-    coordination_guidelines: string[];
-    escalation_protocols: string[];
-    timing_benchmarks: Record<string, number>;
-    case_studies: Array<{ name: string; summary: string; lessons: string[] }>;
-  };
-}
-
-interface PublicSentimentProfile {
-  analogous_cases: Array<{
-    name: string;
-    year: number;
-    similarity_rationale: string;
-    key_lessons: string[];
-    sentiment_timeline: string;
-  }>;
-  expected_reaction_arc: {
-    phase_1_shock: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_2_outrage: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_3_blame: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_4_demand: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_5_resolution: { dominant_emotions: string[]; key_behaviors: string[] };
-  };
-  platform_behaviors: Array<{
-    platform: string;
-    typical_content_style: string;
-    virality_pattern: string;
-    key_hashtag_patterns: string[];
-  }>;
-  demographic_splits: Array<{
-    group: string;
-    likely_stance: string;
-    intensity: number;
-    key_concerns: string[];
-  }>;
-  cultural_factors: string[];
-  counter_narrative_effectiveness: Array<{
-    strategy: string;
-    historical_success_rate: string;
-    timing_requirement: string;
-    risk: string;
-  }>;
-}
-
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
 const STEP_LABELS: Record<number, string> = {
@@ -128,12 +55,10 @@ const STEP_LABELS: Record<number, string> = {
   2: 'Characters & Facts',
   3: 'Storyline',
   4: 'Convergence',
-  5: 'Sentiment Research',
-  6: 'Best Practices',
   7: 'Review & Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 3, 4, 5, 6, 7];
+const VISIBLE_STEPS = [1, 2, 3, 4, 7];
 
 const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social media crisis simulation.
 
@@ -245,43 +170,59 @@ export const SocialCrisisWizard = () => {
     return orgs.filter((o) => !o.is_primary);
   }, [orgPage]);
 
-  const addExtraPage = useCallback(() => {
-    const name = newPageName.trim();
-    if (!name || !orgPage) return;
-    const fbHandle = newPageFbHandle.trim() || `@${name.replace(/[^\w]/g, '')}`;
-    const xHandle = newPageXHandle.trim() || fbHandle;
-    const orgKey = `org_${name.toLowerCase().replace(/[^\w]/g, '_')}_${Date.now().toString(36)}`;
-    const newOrg = {
-      org_key: orgKey,
-      display_name: name,
-      is_primary: false,
-      facebook: { page_name: name, page_handle: fbHandle, page_bio: '', follower_count: 10000 },
-      x_twitter: { page_name: name, page_handle: xHandle, page_bio: '', follower_count: 8000 },
-    };
-    setOrgPage((prev) => {
-      if (!prev) return prev;
-      const existing = (prev as { orgs?: Array<Record<string, unknown>> }).orgs;
-      // Ensure the generated primary org is present in orgs.
-      const baseOrgs =
-        existing && existing.length > 0
-          ? existing
-          : [
-              {
-                org_key: 'primary',
-                display_name:
-                  (prev as { facebook?: { page_name?: string } }).facebook?.page_name ||
-                  'Organization',
-                is_primary: true,
-                facebook: (prev as { facebook?: unknown }).facebook,
-                x_twitter: (prev as { x_twitter?: unknown }).x_twitter,
-              },
-            ];
-      return { ...prev, orgs: [...baseOrgs, newOrg] };
-    });
-    setNewPageName('');
-    setNewPageFbHandle('');
-    setNewPageXHandle('');
-  }, [newPageName, newPageFbHandle, newPageXHandle, orgPage]);
+  const getAllies = useCallback(
+    () => getExtraOrgs().filter((o) => (o.role as string) !== 'antagonist'),
+    [getExtraOrgs],
+  );
+  const getAntagonists = useCallback(
+    () => getExtraOrgs().filter((o) => (o.role as string) === 'antagonist'),
+    [getExtraOrgs],
+  );
+
+  const addExtraPage = useCallback(
+    (role: 'protagonist' | 'antagonist') => {
+      const name = newPageName.trim();
+      if (!name || !orgPage) return;
+      const fbHandle = newPageFbHandle.trim() || `@${name.replace(/[^\w]/g, '')}`;
+      const xHandle = newPageXHandle.trim() || fbHandle;
+      const orgKey = `org_${role}_${name.toLowerCase().replace(/[^\w]/g, '_')}_${Date.now().toString(36)}`;
+      const newOrg = {
+        org_key: orgKey,
+        display_name: name,
+        is_primary: false,
+        role,
+        control_mode: role === 'antagonist' ? 'ai' : 'player',
+        facebook: { page_name: name, page_handle: fbHandle, page_bio: '', follower_count: 10000 },
+        x_twitter: { page_name: name, page_handle: xHandle, page_bio: '', follower_count: 8000 },
+      };
+      setOrgPage((prev) => {
+        if (!prev) return prev;
+        const existing = (prev as { orgs?: Array<Record<string, unknown>> }).orgs;
+        // Ensure the generated primary org is present in orgs.
+        const baseOrgs =
+          existing && existing.length > 0
+            ? existing
+            : [
+                {
+                  org_key: 'primary',
+                  display_name:
+                    (prev as { facebook?: { page_name?: string } }).facebook?.page_name ||
+                    'Organization',
+                  is_primary: true,
+                  role: 'protagonist',
+                  control_mode: 'player',
+                  facebook: (prev as { facebook?: unknown }).facebook,
+                  x_twitter: (prev as { x_twitter?: unknown }).x_twitter,
+                },
+              ];
+        return { ...prev, orgs: [...baseOrgs, newOrg] };
+      });
+      setNewPageName('');
+      setNewPageFbHandle('');
+      setNewPageXHandle('');
+    },
+    [newPageName, newPageFbHandle, newPageXHandle, orgPage],
+  );
 
   const removeExtraPage = useCallback((orgKey: string) => {
     setOrgPage((prev) => {
@@ -290,18 +231,6 @@ export const SocialCrisisWizard = () => {
       return { ...prev, orgs: existing.filter((o) => o.org_key !== orgKey) };
     });
   }, []);
-
-  /* Step 5 — Public Sentiment Research (NEW) */
-  const [sentimentProfile, setSentimentProfile] = useState<PublicSentimentProfile | null>(null);
-  const [step5Loading, setStep5Loading] = useState(false);
-  const [step5Progress, setStep5Progress] = useState<string[]>([]);
-  const [step5Error, setStep5Error] = useState<string | null>(null);
-
-  /* Step 6 — Best Practices / Research (NDJSON streaming) */
-  const [research, setResearch] = useState<ResearchGuidelines | null>(null);
-  const [step6Loading, setStep6Loading] = useState(false);
-  const [step6Progress, setStep6Progress] = useState<string[]>([]);
-  const [step6Error, setStep6Error] = useState<string | null>(null);
 
   /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
@@ -329,10 +258,8 @@ export const SocialCrisisWizard = () => {
       convergence_gates: convergenceGates,
       narrative,
       objectives,
-      sentiment_profile: sentimentProfile,
       dimension_labels: dimensionLabels,
       org_page: orgPage,
-      research,
     }),
     [
       crisisDescription,
@@ -349,10 +276,8 @@ export const SocialCrisisWizard = () => {
       convergenceGates,
       narrative,
       objectives,
-      sentimentProfile,
       dimensionLabels,
       orgPage,
-      research,
     ],
   );
 
@@ -431,13 +356,10 @@ export const SocialCrisisWizard = () => {
         if (input.narrative && typeof input.narrative === 'object')
           setNarrative(input.narrative as { title: string; description: string; briefing: string });
         if (Array.isArray(input.objectives)) setObjectives(input.objectives as ObjectiveDef[]);
-        if (input.sentiment_profile && typeof input.sentiment_profile === 'object')
-          setSentimentProfile(input.sentiment_profile as PublicSentimentProfile);
         if (input.dimension_labels && typeof input.dimension_labels === 'object')
           setDimensionLabels(input.dimension_labels as Record<string, string>);
         if (input.org_page && typeof input.org_page === 'object')
           setOrgPage(input.org_page as Record<string, unknown>);
-        if (input.research) setResearch(input.research as ResearchGuidelines);
 
         setStep(validStep);
       } catch (err) {
@@ -459,10 +381,6 @@ export const SocialCrisisWizard = () => {
         return storylineInjects.length > 0 && !step3Loading;
       case 4:
         return (sharedInjects.length > 0 || convergenceGates.length > 0) && !step4Loading;
-      case 5:
-        return !!sentimentProfile && !step5Loading;
-      case 6:
-        return !!research && !step6Loading;
       case 7:
         return true;
       default:
@@ -479,10 +397,6 @@ export const SocialCrisisWizard = () => {
     sharedInjects,
     convergenceGates,
     step4Loading,
-    sentimentProfile,
-    step5Loading,
-    research,
-    step6Loading,
   ]);
 
   /* ─── File upload ───────────────────────────────────────────────────── */
@@ -711,7 +625,9 @@ export const SocialCrisisWizard = () => {
           communities,
           personas,
           fact_sheet: factSheet,
-          team_storylines: {},
+          // Feed the Step-3 storyline so convergence designs shared injects and
+          // gates as organic consequences of the actual storyline beats.
+          team_storylines: storylineInjects.length > 0 ? { storyline: storylineInjects } : {},
         }),
       });
 
@@ -782,7 +698,7 @@ export const SocialCrisisWizard = () => {
       setStep4Error('Network error generating convergence.');
     }
     setStep4Loading(false);
-  }, [crisisDescription, country, communities, personas, factSheet]);
+  }, [crisisDescription, country, communities, personas, factSheet, storylineInjects]);
 
   const generateOrgPage = useCallback(async () => {
     if (!crisisDescription || orgPage) return;
@@ -796,6 +712,9 @@ export const SocialCrisisWizard = () => {
           country,
           org_name: orgName || undefined,
           logo_url: brandLogoUrl || undefined,
+          // No competitors named at generation time -> the War Room invents one
+          // hostile rival. Trainers can add named competitors below.
+          auto_antagonist: true,
         }),
       });
 
@@ -829,119 +748,6 @@ export const SocialCrisisWizard = () => {
     }
   }, [crisisDescription, country, orgPage]);
 
-  const generateSentimentResearch = useCallback(async () => {
-    if (!crisisDescription) return;
-    setStep5Loading(true);
-    setStep5Error(null);
-    setStep5Progress([]);
-    setSentimentProfile(null);
-
-    try {
-      const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research-sentiment'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          crisis_description: crisisDescription,
-          country,
-          org_name: orgName || undefined,
-        }),
-      });
-
-      if (res.ok && res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const msg = JSON.parse(line);
-              if (msg.type === 'progress') {
-                setStep5Progress((prev) => [...prev, String(msg.message)]);
-              } else if (msg.type === 'complete' && msg.sentiment_profile) {
-                setSentimentProfile(msg.sentiment_profile);
-              } else if (msg.type === 'error') {
-                setStep5Error(String(msg.message || 'Sentiment research failed'));
-              }
-            } catch {
-              /* skip malformed */
-            }
-          }
-        }
-      } else {
-        setStep5Error('Failed to research public sentiment.');
-      }
-    } catch {
-      setStep5Error('Network error during sentiment research.');
-    }
-    setStep5Loading(false);
-  }, [crisisDescription, country]);
-
-  const generateResearch = useCallback(async () => {
-    if (!crisisDescription) return;
-    setStep6Loading(true);
-    setStep6Error(null);
-    setStep6Progress([]);
-    setResearch(null);
-
-    try {
-      const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/research-general'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          crisis_type: crisisDescription,
-          context: crisisDescription,
-          org_name: orgName || undefined,
-          sentiment_profile: sentimentProfile,
-        }),
-      });
-
-      if (res.ok && res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
-
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const msg = JSON.parse(line);
-              if (msg.type === 'progress') {
-                setStep6Progress((prev) => [...prev, String(msg.message)]);
-              } else if (msg.type === 'complete' && msg.research) {
-                setResearch(msg.research);
-              } else if (msg.type === 'error') {
-                setStep6Error(String(msg.message || 'Research generation failed'));
-              }
-            } catch {
-              /* skip malformed */
-            }
-          }
-        }
-      } else {
-        setStep6Error('Failed to generate research.');
-      }
-    } catch {
-      setStep6Error('Network error generating research.');
-    }
-    setStep6Loading(false);
-  }, [crisisDescription, sentimentProfile]);
-
   const compileScenario = useCallback(async () => {
     if (!crisisDescription) return;
     setCompiling(true);
@@ -967,8 +773,6 @@ export const SocialCrisisWizard = () => {
           storyline_injects: storylineInjects,
           shared_injects: sharedInjects,
           convergence_gates: convergenceGates,
-          research,
-          sentiment_profile: sentimentProfile,
           dimension_labels: dimensionLabels,
           org_page: orgPage,
           duration: 60,
@@ -1046,8 +850,9 @@ export const SocialCrisisWizard = () => {
     convergenceGates,
     narrative,
     objectives,
-    research,
-    sentimentProfile,
+    orgName,
+    dimensionLabels,
+    orgPage,
   ]);
 
   /* ─── Step transition ────────────────────────────────────────────── */
@@ -1083,14 +888,6 @@ export const SocialCrisisWizard = () => {
     }
     if (step === 3 && sharedInjects.length === 0 && convergenceGates.length === 0) {
       generateConvergence();
-      return;
-    }
-    if (step === 4 && !sentimentProfile) {
-      generateSentimentResearch();
-      return;
-    }
-    if (step === 5 && !research) {
-      generateResearch();
       return;
     }
   };
@@ -1887,43 +1684,13 @@ export const SocialCrisisWizard = () => {
                   </div>
                 )}
 
-              {/* Additional Pages (optional) */}
+              {/* Brand pages: protagonist allies + antagonist competitors */}
               <div className="mt-4 p-3 border border-robotic-yellow/20 rounded bg-robotic-gray-200/40">
                 <h4 className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                  Additional Pages (optional)
+                  Brand Pages
                 </h4>
-                <p className="text-[10px] terminal-text text-robotic-yellow/40 mb-3">
-                  The crisis page above is required. Add other organizations players can control
-                  (each spans Facebook + X). Players are assigned to pages in the session lobby.
-                </p>
 
-                {getExtraOrgs().length > 0 && (
-                  <div className="space-y-1 mb-3">
-                    {getExtraOrgs().map((o) => (
-                      <div
-                        key={String(o.org_key)}
-                        className="flex items-center justify-between border-b border-robotic-yellow/10 py-1"
-                      >
-                        <span className="text-xs terminal-text">
-                          {String(o.display_name)}{' '}
-                          <span className="text-robotic-yellow/40">
-                            {String(
-                              (o.facebook as { page_handle?: string } | undefined)?.page_handle ||
-                                '',
-                            )}
-                          </span>
-                        </span>
-                        <button
-                          onClick={() => removeExtraPage(String(o.org_key))}
-                          className="text-[10px] terminal-text text-robotic-orange hover:underline"
-                        >
-                          [REMOVE]
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
+                {/* Shared add inputs */}
                 <div className="grid grid-cols-3 gap-2">
                   <input
                     value={newPageName}
@@ -1944,13 +1711,100 @@ export const SocialCrisisWizard = () => {
                     className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
                   />
                 </div>
-                <button
-                  onClick={addExtraPage}
-                  disabled={!newPageName.trim()}
-                  className="military-button px-4 py-1.5 text-xs mt-2 disabled:opacity-50"
-                >
-                  [ADD_PAGE]
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={() => addExtraPage('protagonist')}
+                    disabled={!newPageName.trim()}
+                    className="military-button px-4 py-1.5 text-xs disabled:opacity-50"
+                  >
+                    [ADD_ALLY]
+                  </button>
+                  <button
+                    onClick={() => addExtraPage('antagonist')}
+                    disabled={!newPageName.trim()}
+                    className="px-4 py-1.5 text-xs terminal-text uppercase border border-red-400/50 text-red-400 hover:bg-red-400/10 rounded disabled:opacity-50"
+                  >
+                    [ADD_COMPETITOR]
+                  </button>
+                </div>
+
+                {/* Protagonist allies */}
+                <div className="mt-4">
+                  <div className="text-[10px] terminal-text text-cyan-400/70 uppercase mb-1">
+                    Your side &mdash; allied pages (assignable to players)
+                  </div>
+                  {getAllies().length === 0 ? (
+                    <div className="text-[10px] terminal-text text-robotic-yellow/30">
+                      The crisis page above is the required protagonist page. Add optional allies.
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {getAllies().map((o) => (
+                        <div
+                          key={String(o.org_key)}
+                          className="flex items-center justify-between border-b border-robotic-yellow/10 py-1"
+                        >
+                          <span className="text-xs terminal-text">
+                            {String(o.display_name)}{' '}
+                            <span className="text-robotic-yellow/40">
+                              {String(
+                                (o.facebook as { page_handle?: string } | undefined)?.page_handle ||
+                                  '',
+                              )}
+                            </span>
+                          </span>
+                          <button
+                            onClick={() => removeExtraPage(String(o.org_key))}
+                            className="text-[10px] terminal-text text-robotic-orange hover:underline"
+                          >
+                            [REMOVE]
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Antagonist competitors */}
+                <div className="mt-4">
+                  <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
+                    Opposition &mdash; competitor pages (AI-driven, trainer can seize)
+                  </div>
+                  {getAntagonists().length === 0 ? (
+                    <div className="text-[10px] terminal-text text-robotic-yellow/30">
+                      A hostile rival will be auto-generated. Add named competitors (up to 10) to
+                      stack the pressure.
+                    </div>
+                  ) : (
+                    <div className="space-y-1">
+                      {getAntagonists().map((o) => (
+                        <div
+                          key={String(o.org_key)}
+                          className="flex items-center justify-between border-b border-red-400/10 py-1"
+                        >
+                          <span className="text-xs terminal-text text-red-300">
+                            {String(o.display_name)}{' '}
+                            <span className="text-red-400/40">
+                              {String(
+                                (o.facebook as { page_handle?: string } | undefined)?.page_handle ||
+                                  '',
+                              )}
+                            </span>
+                            {o.auto_generated ? (
+                              <span className="text-[9px] text-red-400/40"> (auto)</span>
+                            ) : null}
+                          </span>
+                          <button
+                            onClick={() => removeExtraPage(String(o.org_key))}
+                            className="text-[10px] terminal-text text-robotic-orange hover:underline"
+                          >
+                            [REMOVE]
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           ) : (
@@ -1997,475 +1851,7 @@ export const SocialCrisisWizard = () => {
     </div>
   );
 
-  /* ── Step 5: Public Sentiment Research (NEW) ────────────────────────── */
-
-  const renderStep5 = () => (
-    <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 5: PUBLIC SENTIMENT RESEARCH]</h2>
-      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        Deep analysis of public forum reactions to analogous real-world crises. This research
-        calibrates NPC behavior and sentiment curves for realistic simulation.
-      </p>
-
-      {step5Loading && (
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
-              Researching public sentiment patterns...
-            </span>
-          </div>
-          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
-            {step5Progress.map((msg, i) => (
-              <div key={i} className="text-robotic-yellow/70">
-                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
-                {msg}
-              </div>
-            ))}
-            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
-          </div>
-        </div>
-      )}
-
-      {step5Error && (
-        <div className="text-center py-4 mb-4">
-          <p className="text-sm terminal-text text-red-400 mb-4">{step5Error}</p>
-          <button
-            onClick={generateSentimentResearch}
-            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {sentimentProfile && (
-        <>
-          {/* Analogous Cases */}
-          {sentimentProfile.analogous_cases.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Analogous Real-World Cases ({sentimentProfile.analogous_cases.length})
-              </h3>
-              <div className="space-y-3">
-                {sentimentProfile.analogous_cases.map((cs, i) => (
-                  <div key={i} className="border border-robotic-gray-200 rounded px-4 py-3">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs terminal-text text-cyan-400 font-bold">
-                        {cs.name}
-                      </span>
-                      <span className="text-[9px] terminal-text bg-cyan-900/30 text-cyan-400 px-1.5 py-0.5 rounded">
-                        {cs.year}
-                      </span>
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-2">
-                      {cs.similarity_rationale}
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-2 italic">
-                      Timeline: {cs.sentiment_timeline}
-                    </div>
-                    {cs.key_lessons.length > 0 && (
-                      <div className="space-y-1">
-                        {cs.key_lessons.map((lesson, li) => (
-                          <div
-                            key={li}
-                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
-                          >
-                            <span className="text-green-400">&#8226;</span> {lesson}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Reaction Arc */}
-          {sentimentProfile.expected_reaction_arc && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Expected Public Reaction Arc
-              </h3>
-              <div className="space-y-2">
-                {(
-                  [
-                    'phase_1_shock',
-                    'phase_2_outrage',
-                    'phase_3_blame',
-                    'phase_4_demand',
-                    'phase_5_resolution',
-                  ] as const
-                ).map((phaseKey) => {
-                  const phase = sentimentProfile.expected_reaction_arc[phaseKey];
-                  if (!phase) return null;
-                  const label = phaseKey
-                    .replace('phase_', '')
-                    .replace('_', ': ')
-                    .replace(/^\d+/, (m) => `Phase ${m}`);
-                  const colors: Record<string, string> = {
-                    phase_1_shock: 'border-yellow-400/30 bg-yellow-900/10',
-                    phase_2_outrage: 'border-red-400/30 bg-red-900/10',
-                    phase_3_blame: 'border-orange-400/30 bg-orange-900/10',
-                    phase_4_demand: 'border-purple-400/30 bg-purple-900/10',
-                    phase_5_resolution: 'border-green-400/30 bg-green-900/10',
-                  };
-                  return (
-                    <div key={phaseKey} className={`border rounded p-3 ${colors[phaseKey] || ''}`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs terminal-text font-bold uppercase">{label}</span>
-                        {'duration_minutes' in phase && (
-                          <span className="text-[9px] terminal-text text-robotic-yellow/40">
-                            ~{(phase as { duration_minutes: number }).duration_minutes} min
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-1 mb-1">
-                        {phase.dominant_emotions.map((e, ei) => (
-                          <span
-                            key={ei}
-                            className="text-[9px] terminal-text bg-robotic-gray-200/30 text-robotic-yellow/60 px-1.5 py-0.5 rounded"
-                          >
-                            {e}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="space-y-0.5">
-                        {phase.key_behaviors.map((b, bi) => (
-                          <div
-                            key={bi}
-                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
-                          >
-                            <span className="text-cyan-400">&#9656;</span> {b}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Platform Behaviors */}
-          {sentimentProfile.platform_behaviors.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Platform-Specific Behaviors
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {sentimentProfile.platform_behaviors.map((pb, i) => (
-                  <div key={i} className="border border-robotic-gray-200 rounded p-3">
-                    <div className="text-xs terminal-text text-cyan-400 font-bold mb-1">
-                      {pb.platform}
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/50 mb-1">
-                      {pb.typical_content_style}
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-1">
-                      Virality: {pb.virality_pattern}
-                    </div>
-                    {pb.key_hashtag_patterns.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {pb.key_hashtag_patterns.map((h, hi) => (
-                          <span
-                            key={hi}
-                            className="text-[9px] terminal-text text-blue-400 bg-blue-900/20 px-1.5 py-0.5 rounded"
-                          >
-                            {h}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Demographic Splits */}
-          {sentimentProfile.demographic_splits.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Demographic Sentiment Splits
-              </h3>
-              <div className="space-y-2">
-                {sentimentProfile.demographic_splits.map((ds, i) => (
-                  <div key={i} className="border border-robotic-gray-200 rounded p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs terminal-text font-bold">{ds.group}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[9px] terminal-text text-robotic-yellow/40">
-                          {ds.likely_stance}
-                        </span>
-                        <div className="w-16 h-2 bg-robotic-gray-200 rounded overflow-hidden">
-                          <div
-                            className={`h-full rounded ${
-                              ds.intensity >= 7
-                                ? 'bg-red-400'
-                                : ds.intensity >= 4
-                                  ? 'bg-yellow-400'
-                                  : 'bg-green-400'
-                            }`}
-                            style={{ width: `${ds.intensity * 10}%` }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {ds.key_concerns.map((c, ci) => (
-                        <span
-                          key={ci}
-                          className="text-[9px] terminal-text text-robotic-yellow/40 bg-robotic-gray-200/20 px-1.5 py-0.5 rounded"
-                        >
-                          {c}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Cultural Factors */}
-          {sentimentProfile.cultural_factors.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Cultural Factors ({country})
-              </h3>
-              <div className="space-y-1">
-                {sentimentProfile.cultural_factors.map((cf, i) => (
-                  <div
-                    key={i}
-                    className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
-                  >
-                    <span className="text-cyan-400 mt-0.5">&#9656;</span>
-                    <span>{cf}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Counter-Narrative Effectiveness */}
-          {sentimentProfile.counter_narrative_effectiveness.length > 0 && (
-            <div>
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Counter-Narrative Strategies
-              </h3>
-              <div className="space-y-2">
-                {sentimentProfile.counter_narrative_effectiveness.map((cn, i) => (
-                  <div key={i} className="border border-robotic-gray-200 rounded p-3">
-                    <div className="text-xs terminal-text font-bold mb-1">{cn.strategy}</div>
-                    <div className="grid grid-cols-3 gap-2 text-[10px] terminal-text">
-                      <div>
-                        <span className="text-robotic-yellow/40">Success rate: </span>
-                        <span className="text-green-400">{cn.historical_success_rate}</span>
-                      </div>
-                      <div>
-                        <span className="text-robotic-yellow/40">Timing: </span>
-                        <span className="text-cyan-400">{cn.timing_requirement}</span>
-                      </div>
-                      <div>
-                        <span className="text-robotic-yellow/40">Risk: </span>
-                        <span className="text-red-400">{cn.risk}</span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-
-  /* ── Step 6: Best Practices (NDJSON streaming, read-only) ──────────── */
-
-  const renderStep6 = () => (
-    <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: BEST PRACTICES]</h2>
-      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
-        AI-researched guidelines and best practices for this crisis scenario. Read-only preview.
-      </p>
-
-      {step6Loading && (
-        <div className="mb-6">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
-              Researching best practices...
-            </span>
-          </div>
-          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto">
-            {step6Progress.map((msg, i) => (
-              <div key={i} className="text-robotic-yellow/70">
-                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
-                {msg}
-              </div>
-            ))}
-            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
-          </div>
-        </div>
-      )}
-
-      {step6Error && (
-        <div className="text-center py-4 mb-4">
-          <p className="text-sm terminal-text text-red-400 mb-4">{step6Error}</p>
-          <button
-            onClick={generateResearch}
-            className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
-          >
-            Retry
-          </button>
-        </div>
-      )}
-
-      {research && (
-        <>
-          {research.per_team.length > 0 && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Response Guidelines
-              </h3>
-              <div className="space-y-4">
-                {research.per_team.map((team, ti) => (
-                  <div key={ti} className="border border-robotic-gray-200 rounded p-4">
-                    <div className="text-sm terminal-text text-cyan-400 font-bold uppercase mb-3">
-                      {team.team_name}
-                      <span className="text-[10px] text-robotic-yellow/40 ml-2 normal-case">
-                        ({team.guidelines.length} guidelines)
-                      </span>
-                    </div>
-                    <div className="space-y-3">
-                      {team.guidelines.map((g, gi) => (
-                        <div key={gi} className="border-l-2 border-green-400/20 pl-3 py-1">
-                          <div className="text-xs terminal-text font-bold mb-1">
-                            {g.best_practice}
-                          </div>
-                          <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-1">
-                            Source: {g.source_basis}
-                          </div>
-                          {g.timing_window && (
-                            <div className="text-[10px] terminal-text text-cyan-400/60 mb-1">
-                              Timing: {g.timing_window}
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-2 mt-1">
-                            <div className="text-[10px] terminal-text text-red-400/60">
-                              If violated: {g.if_violated}
-                            </div>
-                            <div className="text-[10px] terminal-text text-green-400/60">
-                              If followed: {g.if_followed}
-                            </div>
-                          </div>
-                          {g.detection_signals.length > 0 && (
-                            <div className="mt-1 space-y-0.5">
-                              {g.detection_signals.map((sig, si) => (
-                                <div
-                                  key={si}
-                                  className="text-[9px] terminal-text text-robotic-yellow/30 flex gap-1"
-                                >
-                                  <span className="text-green-400">&#9656;</span> {sig}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {research.group_wide && (
-            <div className="mb-6">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Group-Wide Protocols
-              </h3>
-
-              {research.group_wide.coordination_guidelines.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-[10px] terminal-text text-green-400/60 uppercase mb-2">
-                    Coordination Guidelines
-                  </div>
-                  <div className="space-y-1">
-                    {research.group_wide.coordination_guidelines.map((cg, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
-                      >
-                        <span className="text-green-400 mt-0.5">✓</span>
-                        <span>{cg}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {research.group_wide.escalation_protocols.length > 0 && (
-                <div className="mb-4">
-                  <div className="text-[10px] terminal-text text-orange-400/60 uppercase mb-2">
-                    Escalation Protocols
-                  </div>
-                  <div className="space-y-1">
-                    {research.group_wide.escalation_protocols.map((ep, i) => (
-                      <div
-                        key={i}
-                        className="flex items-start gap-2 text-xs terminal-text text-robotic-yellow/70"
-                      >
-                        <span className="text-orange-400 mt-0.5">&#9656;</span>
-                        <span>{ep}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {research.group_wide?.case_studies.length > 0 && (
-            <div>
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-3">
-                Case Studies ({research.group_wide.case_studies.length})
-              </h3>
-              <div className="space-y-3">
-                {research.group_wide.case_studies.map((cs, i) => (
-                  <div key={i} className="border border-robotic-gray-200 rounded px-4 py-3">
-                    <div className="text-xs terminal-text text-cyan-400 font-bold mb-1">
-                      {cs.name}
-                    </div>
-                    <div className="text-[10px] terminal-text text-robotic-yellow/60 mb-2">
-                      {cs.summary}
-                    </div>
-                    {cs.lessons.length > 0 && (
-                      <div className="space-y-1">
-                        {cs.lessons.map((lesson, li) => (
-                          <div
-                            key={li}
-                            className="text-[10px] terminal-text text-robotic-yellow/40 flex gap-1"
-                          >
-                            <span className="text-green-400">&#8226;</span> {lesson}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </>
-      )}
-    </div>
-  );
-
-  /* ── Step 7: Review & Compile ──────────────────────────────────────── */
+  /* ── Step 5: Review & Compile ──────────────────────────────────────── */
 
   const renderStep7 = () => (
     <div>
@@ -2514,18 +1900,6 @@ export const SocialCrisisWizard = () => {
                 <div className="text-[10px] text-robotic-yellow/40 uppercase">Conv. Gates</div>
                 <div className="text-robotic-yellow font-bold text-lg">
                   {convergenceGates.length}
-                </div>
-              </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Sentiment Cases</div>
-                <div className="text-robotic-yellow font-bold text-lg">
-                  {sentimentProfile?.analogous_cases.length || 0}
-                </div>
-              </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Case Studies</div>
-                <div className="text-robotic-yellow font-bold text-lg">
-                  {research?.group_wide.case_studies.length || 0}
                 </div>
               </div>
             </div>
@@ -2662,8 +2036,6 @@ export const SocialCrisisWizard = () => {
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
           {step === 4 && renderStep4()}
-          {step === 5 && renderStep5()}
-          {step === 6 && renderStep6()}
           {step === 7 && renderStep7()}
         </div>
 

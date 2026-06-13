@@ -12,8 +12,6 @@ import {
   generateUnifiedStoryline,
   generateStrategyWindows,
   researchBestPractices,
-  researchGeneralBestPractices,
-  researchPublicSentiment,
   generateOrgPageConfig,
   buildSOPFromResearch,
   assemblePayload,
@@ -21,9 +19,8 @@ import {
   type FactSheet,
   type TeamDef,
   type SocialInject,
-  type ResearchGuidelines,
-  type PublicSentimentProfile,
 } from '../services/socialCrisisGeneratorService.js';
+import { RESPONSE_STANDARDS } from '../config/responseStandards.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
@@ -69,7 +66,7 @@ router.post(
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
-    const { crisis_type, context, country, location } = req.body;
+    const { crisis_type, context, country, location, org_name } = req.body;
     const jobId = `npc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
@@ -77,7 +74,13 @@ router.post(
 
     void (async () => {
       try {
-        const result = await generateNPCsAndFactSheet(crisis_type, context, country, location);
+        const result = await generateNPCsAndFactSheet(
+          crisis_type,
+          context,
+          country,
+          location,
+          org_name,
+        );
         aiJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
         logger.info({ jobId }, 'NPC generation completed');
       } catch (err) {
@@ -166,12 +169,18 @@ router.post(
   ),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const { crisis_type, country, context, duration, personas, fact_sheet } = req.body;
+      const { crisis_type, country, context, duration, personas, fact_sheet, org_name } = req.body;
 
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
 
-      const crisisContext = { crisisType: crisis_type, country, context, duration };
+      const crisisContext = {
+        crisisType: crisis_type,
+        country,
+        context,
+        duration,
+        orgName: org_name,
+      };
 
       const injects = await generateUnifiedStoryline(
         crisisContext,
@@ -190,44 +199,6 @@ router.post(
         res.status(500).json({ error: 'Failed to generate storyline' });
       } else {
         res.write(JSON.stringify({ type: 'error', message: 'Storyline generation failed' }) + '\n');
-        res.end();
-      }
-    }
-  },
-);
-
-// Step 5b: Research general best practices (no teams)
-router.post(
-  '/research-general',
-  requireAuth,
-  validate(
-    z.object({
-      body: z.object({
-        crisis_type: z.string(),
-        context: z.string().default(''),
-        org_name: z.string().optional(),
-      }),
-    }),
-  ),
-  async (req: AuthenticatedRequest, res) => {
-    try {
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
-
-      const { crisis_type, context } = req.body;
-
-      const research = await researchGeneralBestPractices(crisis_type, context, (msg: string) => {
-        res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
-      });
-
-      res.write(JSON.stringify({ type: 'complete', research }) + '\n');
-      res.end();
-    } catch (err) {
-      logger.error({ err }, 'Failed to research general best practices');
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Research failed' });
-      } else {
-        res.write(JSON.stringify({ type: 'error', message: 'Research failed' }) + '\n');
         res.end();
       }
     }
@@ -456,8 +427,6 @@ router.post(
         storyline_injects: z.array(z.unknown()).optional(),
         shared_injects: z.array(z.unknown()),
         convergence_gates: z.array(z.unknown()),
-        research: z.unknown(),
-        sentiment_profile: z.unknown().optional(),
         dimension_labels: z
           .object({
             public_trust: z.string(),
@@ -485,7 +454,7 @@ router.post(
 
     void (async () => {
       try {
-        const sop = buildSOPFromResearch(body.research as ResearchGuidelines);
+        const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
 
         let strategyWindows;
         try {
@@ -520,12 +489,11 @@ router.post(
           (body.team_storylines || {}) as Record<string, SocialInject[]>,
           body.shared_injects as SocialInject[],
           body.convergence_gates as SocialInject[],
-          body.research as ResearchGuidelines,
+          RESPONSE_STANDARDS,
           sop,
           body.duration,
           strategyWindows,
           body.storyline_injects as SocialInject[] | undefined,
-          body.sentiment_profile as PublicSentimentProfile | undefined,
           body.dimension_labels || null,
           (body.org_page as
             | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
@@ -685,6 +653,25 @@ router.post(
         country: z.string().default('Singapore'),
         org_name: z.string().optional(),
         logo_url: z.string().optional(),
+        allies: z
+          .array(
+            z.object({
+              name: z.string(),
+              facebook_handle: z.string().optional(),
+              x_handle: z.string().optional(),
+            }),
+          )
+          .optional(),
+        competitors: z
+          .array(
+            z.object({
+              name: z.string(),
+              facebook_handle: z.string().optional(),
+              x_handle: z.string().optional(),
+            }),
+          )
+          .optional(),
+        auto_antagonist: z.boolean().optional(),
       }),
     }),
   ),
@@ -693,7 +680,15 @@ router.post(
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
 
-      const { crisis_description, country, org_name, logo_url } = req.body;
+      const {
+        crisis_description,
+        country,
+        org_name,
+        logo_url,
+        allies,
+        competitors,
+        auto_antagonist,
+      } = req.body;
 
       const orgPage = await generateOrgPageConfig(
         crisis_description,
@@ -703,6 +698,7 @@ router.post(
           res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
         },
         logo_url,
+        { allies, competitors, auto_antagonist },
       );
 
       res.write(JSON.stringify({ type: 'complete', org_page: orgPage }) + '\n');
@@ -814,48 +810,6 @@ router.post(
     } catch (err) {
       logger.error({ err }, 'Document upload/parse failed');
       res.status(500).json({ error: 'Failed to parse document' });
-    }
-  },
-);
-
-// Public sentiment research (NDJSON streaming)
-router.post(
-  '/research-sentiment',
-  requireAuth,
-  validate(
-    z.object({
-      body: z.object({
-        crisis_description: z.string(),
-        country: z.string().default('Singapore'),
-        org_name: z.string().optional(),
-      }),
-    }),
-  ),
-  async (req: AuthenticatedRequest, res) => {
-    try {
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
-
-      const { crisis_description, country } = req.body;
-
-      const sentimentProfile = await researchPublicSentiment(
-        crisis_description,
-        country,
-        (msg: string) => {
-          res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
-        },
-      );
-
-      res.write(JSON.stringify({ type: 'complete', sentiment_profile: sentimentProfile }) + '\n');
-      res.end();
-    } catch (err) {
-      logger.error({ err }, 'Failed to research public sentiment');
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Sentiment research failed' });
-      } else {
-        res.write(JSON.stringify({ type: 'error', message: 'Sentiment research failed' }) + '\n');
-        res.end();
-      }
     }
   },
 );

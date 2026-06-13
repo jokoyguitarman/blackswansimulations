@@ -310,9 +310,23 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
     });
   }
 
-  // Impression dominance
+  // Impression dominance. Protagonist ally pages count toward player views.
+  const { data: orgRows } = await supabaseAdmin
+    .from('sim_org_pages')
+    .select('page_handle, role')
+    .eq('session_id', sessionId);
+  const protagonistPageHandles = new Set(
+    (orgRows || [])
+      .filter((r: Record<string, unknown>) => String(r.role) !== 'antagonist')
+      .map((r: Record<string, unknown>) => String(r.page_handle || '')),
+  );
   const playerViews = posts
-    .filter((p: Record<string, unknown>) => p.author_type === 'player')
+    .filter(
+      (p: Record<string, unknown>) =>
+        p.author_type === 'player' ||
+        (p.author_type === 'official_account' &&
+          protagonistPageHandles.has(String(p.author_handle))),
+    )
     .reduce((s: number, p: Record<string, unknown>) => s + (Number(p.view_count) || 0), 0);
   const hostileViews = posts
     .filter((p: Record<string, unknown>) => {

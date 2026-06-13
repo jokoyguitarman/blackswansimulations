@@ -1,0 +1,477 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fact-Based Takedown / Dispute System — Plan</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --panel2: #1f2330;
+        --border: #2b3040;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --bad: #f0556a;
+        --good: #34c759;
+        --accent: #4c8dff;
+        --warn: #f7b928;
+        --z: #1d9bf0;
+        --fb: #1877f2;
+        --news: #ff2d55;
+        --purple: #af52de;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+      header {
+        padding: 44px 32px 30px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #141826, #0f1117);
+      }
+      header .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: var(--purple); margin-bottom: 10px; }
+      header h1 { margin: 0 0 10px; font-size: 28px; }
+      header p { margin: 0; color: var(--muted); max-width: 820px; font-size: 15px; }
+      main { max-width: 1100px; margin: 0 auto; padding: 28px 24px 80px; }
+
+      .section-label {
+        font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+        color: var(--muted); margin: 44px 0 8px; padding-bottom: 8px; border-bottom: 1px solid var(--border);
+      }
+
+      .pill-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 20px 0; }
+      .pill { font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: 999px; background: var(--panel2); color: var(--muted); border: 1px solid var(--border); }
+      .pill b { color: var(--text); }
+
+      .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; margin: 20px 0; overflow: hidden; }
+      .card-header { display: flex; align-items: center; gap: 12px; padding: 18px 24px; border-bottom: 1px solid var(--border); }
+      .card-header h2 { margin: 0; font-size: 17px; flex: 1; }
+      .card-header .step-num { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; flex-shrink: 0; }
+      .card-body { padding: 18px 24px; }
+      .card-body p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+
+      .tag { font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+      .tag-db { background: rgba(154,163,178,0.15); color: var(--muted); }
+      .tag-be { background: rgba(76,141,255,0.18); color: var(--accent); }
+      .tag-fe { background: rgba(52,199,89,0.18); color: var(--good); }
+      .tag-ai { background: rgba(175,82,222,0.18); color: var(--purple); }
+
+      .files { background: var(--panel2); border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-size: 13px; }
+      .files .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+      .files code { display: block; padding: 2px 0; color: var(--accent); font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+
+      pre { background: #0d0f14; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; font-size: 12px; line-height: 1.5; margin: 12px 0; }
+      pre code { color: var(--text); font-family: "SF Mono", "Fira Code", monospace; }
+      .kw { color: #c678dd; } .str { color: #98c379; } .cm { color: #5c6370; font-style: italic; } .num { color: #d19a66; } .fn { color: #61afef; }
+      .add { color: var(--good); }
+
+      table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+      th { text-align: left; padding: 8px 12px; background: var(--panel2); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+      td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+
+      /* Flow */
+      .flow { background: var(--panel2); border-radius: 10px; padding: 20px; margin: 16px 0; overflow-x: auto; }
+      .flow-row { display: flex; align-items: center; gap: 8px; margin: 8px 0; flex-wrap: wrap; }
+      .flow-box { padding: 8px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+      .flow-arrow { color: var(--muted); font-size: 18px; }
+      .flow-player { background: rgba(52,199,89,0.18); color: var(--good); }
+      .flow-api { background: rgba(76,141,255,0.18); color: var(--accent); }
+      .flow-ai { background: rgba(175,82,222,0.18); color: var(--purple); }
+      .flow-db { background: rgba(154,163,178,0.15); color: var(--muted); }
+      .flow-news { background: rgba(255,45,85,0.18); color: var(--news); }
+      .flow-good { background: rgba(52,199,89,0.18); color: var(--good); border: 1px solid var(--good); }
+      .flow-warn { background: rgba(247,185,40,0.18); color: var(--warn); }
+      .flow-bad { background: rgba(240,85,106,0.18); color: var(--bad); }
+
+      /* Expected / device mocks */
+      .expected { border: 1px solid var(--border); border-radius: 10px; margin: 16px 0; overflow: hidden; }
+      .expected-header { background: var(--panel2); padding: 10px 16px; font-size: 12px; font-weight: 600; color: var(--good); border-bottom: 1px solid var(--border); }
+      .expected-body { padding: 16px; }
+      .device-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; align-items: flex-start; }
+      .device-mock { flex: 1; min-width: 250px; max-width: 330px; border-radius: 14px; overflow: hidden; border: 2px solid var(--border); }
+      .device-bar { padding: 8px 14px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+      .device-content { padding: 12px; font-size: 13px; }
+      .news-bar { background: #f2f2f7; color: var(--news); }
+      .news-body { background: #fff; color: #1c1c1e; }
+      .z-bar { background: #16181c; color: var(--z); }
+      .z-body { background: #000; color: #e7e9ea; }
+      .arrow-col { display: flex; align-items: center; font-size: 30px; color: var(--muted); }
+
+      .verdict-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; }
+      .v-retract { background: rgba(240,85,106,0.2); color: var(--bad); }
+      .v-correct { background: rgba(247,185,40,0.2); color: var(--warn); }
+      .v-reject { background: rgba(154,163,178,0.2); color: var(--muted); }
+
+      ul { margin: 8px 0; padding-left: 20px; }
+      li { margin: 5px 0; font-size: 13.5px; color: var(--muted); }
+      li strong { color: var(--text); }
+      .divider { height: 1px; background: var(--border); margin: 34px 0; }
+      .callout { border-left: 3px solid var(--warn); background: rgba(247,185,40,0.08); padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 13.5px; color: var(--text); }
+      .callout b { color: var(--warn); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="eyebrow">Implementation Plan / Preview</div>
+      <h1>Fact-Based Takedown &amp; Dispute System</h1>
+      <p>Players can challenge a news article or social post they believe spreads misinformation by submitting counter-facts. An AI judge weighs their evidence against the scenario's ground-truth fact sheet and decides to retract, correct, or reject — with realistic delay, scoring, and notifications.</p>
+    </header>
+
+    <main>
+
+      <div class="pill-row">
+        <span class="pill">Adjudication: <b>AI auto-judge</b></span>
+        <span class="pill">Scope: <b>Articles + Social Posts</b></span>
+        <span class="pill">Ground truth: <b>scenario.initial_state.fact_sheet</b></span>
+        <span class="pill">New migration: <b>187</b></span>
+        <span class="pill">New service: <b>contentDisputeService.ts</b></span>
+      </div>
+
+      <div class="callout">
+        <b>Design tie-in:</b> Players are never shown the hidden <code>is_factual</code> / UNVERIFIED flag. The dispute system is exactly how they act on suspicion — they must read, evaluate, and commit. The AI verdict is the payoff that reveals whether they were right.
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- HOW IT WORKS -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">How It Works (End to End)</div>
+
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-box flow-player">Player taps "Dispute" on article/post</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-player">Modal: what's false + counter-facts</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-api">POST /api/social/disputes</div>
+        </div>
+        <div class="flow-row" style="padding-left:40px;">
+          <span class="flow-arrow">&darr;</span>
+          <div class="flow-box flow-db">Insert content_dispute_requests (pending)</div>
+          <span class="flow-arrow">+</span>
+          <div class="flow-box flow-db">recordPlayerAction("dispute_filed", sop: fact_check)</div>
+        </div>
+        <div class="flow-row" style="padding-left:40px;">
+          <span class="flow-arrow">&darr;</span>
+          <div class="flow-box flow-ai">contentDisputeService.adjudicateDispute()</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-ai">AI judge vs fact_sheet</div>
+        </div>
+        <div class="flow-row" style="padding-left:140px;">
+          <div class="flow-box flow-bad">UPHOLD &rarr; retract article / remove post</div>
+        </div>
+        <div class="flow-row" style="padding-left:140px;">
+          <div class="flow-box flow-warn">CORRECT &rarr; article correction note</div>
+        </div>
+        <div class="flow-row" style="padding-left:140px;">
+          <div class="flow-box flow-db">REJECT &rarr; no change</div>
+        </div>
+        <div class="flow-row" style="padding-left:40px;">
+          <span class="flow-arrow">&darr;</span>
+          <div class="flow-box flow-good">Notify requester + WebSocket + score outcome</div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- THE 6 PIECES -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">What Gets Built</div>
+
+      <!-- 1 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">1</span>
+          <h2>Database migration</h2>
+          <span class="tag tag-db">DB</span>
+        </div>
+        <div class="card-body">
+          <div class="files">
+            <div class="label">New file</div>
+            <code>migrations/187_content_disputes.sql</code>
+          </div>
+          <p><strong>New table <code>content_dispute_requests</code>:</strong></p>
+          <ul>
+            <li><code>id</code>, <code>session_id</code>, <code>requested_by</code> (user_id), <code>target_type</code> ('article' | 'post'), <code>target_id</code></li>
+            <li><code>claimed_falsehood</code> — what the player says is false</li>
+            <li><code>submitted_facts</code> — their evidence</li>
+            <li><code>status</code> — 'pending' | 'upheld' | 'corrected' | 'rejected'</li>
+            <li><code>verdict_reason</code>, <code>ai_confidence</code>, <code>created_at</code>, <code>resolved_at</code></li>
+          </ul>
+          <p><strong>Extend <code>sim_news_articles</code>:</strong> add <code>status</code> ('published' | 'retracted' | 'corrected') and <code>correction_note</code>.</p>
+          <p><strong><code>social_posts</code>:</strong> reuses the existing <code>platform_removed</code> column — no change needed (already drives feed suppression).</p>
+        </div>
+      </div>
+
+      <!-- 2 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">2</span>
+          <h2>AI adjudication service</h2>
+          <span class="tag tag-ai">AI</span>
+        </div>
+        <div class="card-body">
+          <div class="files">
+            <div class="label">New file</div>
+            <code>server/services/contentDisputeService.ts</code>
+          </div>
+          <p>The AI judge reads the pre-produced fact sheet (already saved by the warroom pipeline) and returns a structured verdict:</p>
+<pre><code><span class="cm">// Ground truth already stored at scenario.initial_state.fact_sheet</span>
+<span class="cm">// { confirmed_facts: string[], unconfirmed_claims: [{claim, status, truth}] }</span>
+{
+  <span class="str">"verdict"</span>: <span class="str">"uphold | correct | reject"</span>,
+  <span class="str">"confidence"</span>: <span class="num">0.0</span>,
+  <span class="str">"reason"</span>: <span class="str">"..."</span>,
+  <span class="str">"correction_note"</span>: <span class="str">"..."</span>
+}</code></pre>
+          <p><strong>Judge rules:</strong> uphold only if content genuinely conflicts with confirmed facts AND the player's evidence is materially correct; correct if partially inaccurate; reject if the content was accurate or the player's "facts" are wrong.</p>
+          <p>Applies a realistic delay (60-180s), then updates content state, notifies the player, and scores the outcome — reusing the exact OpenAI + setTimeout pattern from <code>npcEmailReplyService.ts</code>.</p>
+          <div class="callout">
+            <b>Null fact-sheet fallback:</b> Fact sheets live on the scenario, so sessions whose scenario wasn't generated by the social-crisis warroom may have none. In that case the judge leans toward "reject" / low confidence rather than inventing ground truth.
+          </div>
+        </div>
+      </div>
+
+      <!-- 3 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">3</span>
+          <h2>API endpoints</h2>
+          <span class="tag tag-be">Backend</span>
+        </div>
+        <div class="card-body">
+          <div class="files">
+            <div class="label">File to modify</div>
+            <code>server/routes/socialMedia.ts</code> (near the existing News routes)
+          </div>
+          <ul>
+            <li><strong>POST /api/social/disputes</strong> — validates target exists, inserts pending dispute, records the player action, fires async adjudication (non-blocking), returns pending. Per-player rate limit to deter spam.</li>
+            <li><strong>GET /api/social/disputes/session/:sessionId</strong> — for trainer dashboard + after-action review.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">4</span>
+          <h2>News App: dispute UI</h2>
+          <span class="tag tag-fe">Frontend</span>
+        </div>
+        <div class="card-body">
+          <div class="files">
+            <div class="label">File to modify</div>
+            <code>frontend/src/components/SimDevice/NewsApp.tsx</code>
+          </div>
+          <p>Add a "Dispute / Request Correction" button in the article detail share row, opening a modal with two fields ("What is inaccurate?" and "Provide your facts"). Shows a pending state, then a Retracted or Correction banner once resolved (banners are outcomes shown to everyone — distinct from the hidden is_factual hint). Handles the <code>news_article.updated</code> WebSocket event.</p>
+        </div>
+      </div>
+
+      <!-- 5 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">5</span>
+          <h2>Social feeds: dispute action</h2>
+          <span class="tag tag-fe">Frontend</span>
+        </div>
+        <div class="card-body">
+          <div class="files">
+            <div class="label">Files to modify</div>
+            <code>frontend/src/components/SimDevice/SocialFeedApp.tsx</code>
+            <code>frontend/src/components/SimDevice/FacebookFeedApp.tsx</code>
+          </div>
+          <p>Add a "Dispute with facts" action (extends the existing flag flow / ShareMenu). When a post is upheld and <code>platform_removed</code> becomes true, it drops from the feed via the <code>social_post.removed</code> event.</p>
+        </div>
+      </div>
+
+      <!-- 6 -->
+      <div class="card">
+        <div class="card-header">
+          <span class="step-num">6</span>
+          <h2>Trainer dashboard / AAR (optional)</h2>
+          <span class="tag tag-fe">Frontend</span>
+        </div>
+        <div class="card-body">
+          <div class="files">
+            <div class="label">File to modify</div>
+            <code>frontend/src/components/SimDevice/TrainerSimDashboard.tsx</code>
+          </div>
+          <p>Surface the dispute queue and verdicts so trainers can see who challenged what, what evidence they gave, and how the AI ruled — valuable for debrief and scoring.</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- WHAT YOU'LL SEE -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">What You'll See — Player Experience</div>
+
+      <div class="expected">
+        <div class="expected-header">Step 1 — Player disputes an article they suspect is false</div>
+        <div class="expected-body">
+          <div class="device-row">
+            <div class="device-mock">
+              <div class="device-bar news-bar">News App — Article detail</div>
+              <div class="device-content news-body">
+                <div style="font-size:11px; color:var(--news); margin-bottom:4px;">&larr; News</div>
+                <div style="font-size:17px; font-weight:800; margin-bottom:6px;">EXCLUSIVE: MBS blast linked to foreign terror cell, sources claim</div>
+                <div style="font-size:11px; color:#8e8e93; margin-bottom:10px;">Singapore Free Press · 8m ago</div>
+                <div style="font-size:12px; line-height:1.5; color:#3c3c43;">An unnamed source alleges the explosion was a coordinated attack by an overseas group...</div>
+                <div style="border-top:1px solid #e5e5ea; margin-top:12px; padding-top:10px; display:flex; gap:6px; flex-wrap:wrap;">
+                  <span style="font-size:11px; padding:6px 10px; border-radius:999px; background:#16181c; color:#e7e9ea; font-weight:600;">Post to Z</span>
+                  <span style="font-size:11px; padding:6px 10px; border-radius:999px; background:#1877f2; color:#fff; font-weight:600;">Post to FB</span>
+                  <span style="font-size:11px; padding:6px 10px; border-radius:999px; background:#fce4ec; color:#c62828; font-weight:700;">⚑ Dispute</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="arrow-col">&rarr;</div>
+
+            <div class="device-mock">
+              <div class="device-bar news-bar">Dispute modal</div>
+              <div class="device-content news-body">
+                <div style="font-size:14px; font-weight:700; margin-bottom:8px;">Request Correction / Takedown</div>
+                <div style="font-size:11px; font-weight:600; color:#8e8e93; margin-bottom:4px;">What is inaccurate?</div>
+                <div style="background:#f2f2f7; border-radius:8px; padding:8px; font-size:12px; color:#1c1c1e; margin-bottom:8px;">The claim of a "foreign terror cell" — police have made no such attribution.</div>
+                <div style="font-size:11px; font-weight:600; color:#8e8e93; margin-bottom:4px;">Provide your facts</div>
+                <div style="background:#f2f2f7; border-radius:8px; padding:8px; font-size:12px; color:#1c1c1e; margin-bottom:10px;">SPF official statement at 7:40pm confirmed cause is under investigation with no suspects identified.</div>
+                <div style="padding:9px; border-radius:8px; background:#c62828; color:#fff; text-align:center; font-size:12px; font-weight:700;">Submit dispute</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="expected">
+        <div class="expected-header">Step 2 — After 60-180s, the AI judge rules. Three possible outcomes:</div>
+        <div class="expected-body">
+          <div class="device-row">
+            <div class="device-mock">
+              <div class="device-bar news-bar">UPHELD <span class="verdict-pill v-retract">RETRACTED</span></div>
+              <div class="device-content news-body">
+                <div style="background:#fdecea; border:1px solid #f0556a; border-radius:8px; padding:10px; margin-bottom:8px;">
+                  <div style="font-size:12px; font-weight:700; color:#c62828;">This article has been retracted</div>
+                  <div style="font-size:11px; color:#8e6b6b; margin-top:2px;">The claim conflicted with confirmed facts.</div>
+                </div>
+                <div style="font-size:14px; font-weight:700; color:#9aa3b2; text-decoration:line-through;">EXCLUSIVE: MBS blast linked to foreign terror cell</div>
+                <div style="font-size:11px; color:#34c759; margin-top:10px;">✓ Notification: your dispute was upheld (+ trust)</div>
+              </div>
+            </div>
+
+            <div class="device-mock">
+              <div class="device-bar news-bar">PARTIAL <span class="verdict-pill v-correct">CORRECTED</span></div>
+              <div class="device-content news-body">
+                <div style="background:#fff8e1; border:1px solid #f7b928; border-radius:8px; padding:10px; margin-bottom:8px;">
+                  <div style="font-size:12px; font-weight:700; color:#8a6d1f;">Correction appended</div>
+                  <div style="font-size:11px; color:#8a7a4f; margin-top:2px;">Police have not attributed the blast to any group.</div>
+                </div>
+                <div style="font-size:14px; font-weight:700; color:#1c1c1e;">EXCLUSIVE: MBS blast — investigation ongoing</div>
+                <div style="font-size:11px; color:#34c759; margin-top:10px;">✓ Notification: correction issued (+ trust)</div>
+              </div>
+            </div>
+
+            <div class="device-mock">
+              <div class="device-bar news-bar">DENIED <span class="verdict-pill v-reject">REJECTED</span></div>
+              <div class="device-content news-body">
+                <div style="background:#f2f2f7; border:1px solid #c7c7cc; border-radius:8px; padding:10px; margin-bottom:8px;">
+                  <div style="font-size:12px; font-weight:700; color:#636366;">Dispute not upheld</div>
+                  <div style="font-size:11px; color:#8e8e93; margin-top:2px;">The reporting matched confirmed facts.</div>
+                </div>
+                <div style="font-size:14px; font-weight:700; color:#1c1c1e;">Article remains published</div>
+                <div style="font-size:11px; color:#f0556a; margin-top:10px;">⚠ Notification: dispute rejected (− trust if frivolous)</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="expected">
+        <div class="expected-header">Same flow works on social posts — upheld posts disappear from the feed</div>
+        <div class="expected-body">
+          <div class="device-row">
+            <div class="device-mock">
+              <div class="device-bar z-bar">Z Feed — before</div>
+              <div class="device-content z-body">
+                <div style="font-size:13px;"><strong>@rumor_account</strong> <span style="color:#71767b">· 3m</span></div>
+                <div style="font-size:13px; margin:4px 0 8px;">CONFIRMED: foreign nationals behind the MBS attack. Spread the word!! #MBS</div>
+                <div style="display:flex; gap:10px; color:#71767b; font-size:12px;">
+                  <span>♡ 240</span><span>↻ 88</span><span style="color:#c62828; font-weight:700;">⚑ Dispute</span>
+                </div>
+              </div>
+            </div>
+            <div class="arrow-col">&rarr;</div>
+            <div class="device-mock">
+              <div class="device-bar z-bar">Z Feed — after upheld</div>
+              <div class="device-content z-body">
+                <div style="padding:20px 10px; text-align:center; color:#71767b; font-size:12px; border:1px dashed #2f3336; border-radius:10px;">
+                  Post removed for spreading misinformation
+                  <div style="font-size:10px; margin-top:6px; color:#34c759;">Your fact-based dispute was upheld</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- SCORING -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Scoring Logic</div>
+
+      <table>
+        <tr><th>Player Action</th><th>If content was actually false</th><th>If content was actually accurate</th></tr>
+        <tr>
+          <td>Files a dispute with solid facts</td>
+          <td style="color:var(--good)">+ Trust / fact-check credit (caught it)</td>
+          <td style="color:var(--bad)">− Trust (frivolous, crying "fake news")</td>
+        </tr>
+        <tr>
+          <td>Files a dispute with weak/wrong facts</td>
+          <td style="color:var(--warn)">Neutral / low impact</td>
+          <td style="color:var(--bad)">− Trust (frivolous)</td>
+        </tr>
+        <tr>
+          <td>Does nothing (ignores misinformation)</td>
+          <td style="color:var(--muted)">Missed opportunity (no fact-check credit)</td>
+          <td style="color:var(--muted)">No effect</td>
+        </tr>
+      </table>
+
+      <p style="color:var(--muted); font-size:13.5px;">This mirrors real reputational risk: challenging accurate reporting wrongly damages your credibility, while catching genuine misinformation with evidence builds trust. The 60-180s delay and AI skepticism prevent instant, gamey takedowns.</p>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- FILE SUMMARY -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Complete File Change Summary</div>
+
+      <table>
+        <tr><th>File</th><th>Type</th><th>Change</th></tr>
+        <tr><td><code style="color:var(--accent)">migrations/187_content_disputes.sql</code></td><td><span class="tag tag-db">New</span></td><td>content_dispute_requests table; article status + correction_note columns</td></tr>
+        <tr><td><code style="color:var(--accent)">server/services/contentDisputeService.ts</code></td><td><span class="tag tag-ai">New</span></td><td>AI judge vs fact sheet, delayed outcome, notifications, scoring</td></tr>
+        <tr><td><code style="color:var(--accent)">server/routes/socialMedia.ts</code></td><td><span class="tag tag-be">Edit</span></td><td>POST /disputes + GET /disputes/session/:id with validation &amp; rate limit</td></tr>
+        <tr><td><code style="color:var(--accent)">frontend/.../NewsApp.tsx</code></td><td><span class="tag tag-fe">Edit</span></td><td>Dispute button + modal; retracted/corrected banners; news_article.updated WS</td></tr>
+        <tr><td><code style="color:var(--accent)">frontend/.../SocialFeedApp.tsx</code></td><td><span class="tag tag-fe">Edit</span></td><td>Dispute-with-facts action; social_post.removed WS</td></tr>
+        <tr><td><code style="color:var(--accent)">frontend/.../FacebookFeedApp.tsx</code></td><td><span class="tag tag-fe">Edit</span></td><td>Dispute-with-facts action; social_post.removed WS</td></tr>
+        <tr><td><code style="color:var(--accent)">frontend/.../TrainerSimDashboard.tsx</code></td><td><span class="tag tag-fe">Optional</span></td><td>Dispute queue + verdict visibility</td></tr>
+      </table>
+
+      <div style="text-align:center; padding:40px 0 0; color:var(--muted); font-size:13px;">
+        Reuses existing notifications, player_actions, engagement suppression, and WebSocket infrastructure &bull; No new dependencies &bull; Fact sheets already in the DB from warroom generation
+      </div>
+
+    </main>
+  </body>
+</html>

@@ -234,6 +234,8 @@ export async function seedOrgPages(
           session_id: sessionId,
           org_key: org.org_key,
           is_primary: org.is_primary,
+          role: org.role || 'protagonist',
+          control_mode: org.control_mode || 'player',
           platform: 'facebook',
           page_name: String(org.facebook.page_name || 'Organization'),
           page_handle: String(org.facebook.page_handle || '@Organization'),
@@ -252,6 +254,8 @@ export async function seedOrgPages(
           session_id: sessionId,
           org_key: org.org_key,
           is_primary: org.is_primary,
+          role: org.role || 'protagonist',
+          control_mode: org.control_mode || 'player',
           platform: 'x_twitter',
           page_name: String(org.x_twitter.page_name || 'Organization'),
           page_handle: String(org.x_twitter.page_handle || '@Org'),
@@ -291,19 +295,24 @@ async function seedBrandedHistory(
   }
 
   const orgs = normalizeOrgPages(orgPage);
-  const primary = orgs.find((o) => o.is_primary) || orgs[0];
-  // Branded history is a flat list authored by the primary org.
-  const fb = primary?.facebook;
-  const tw = primary?.x_twitter;
-  const history = (orgPage.branded_history || []) as Array<Record<string, unknown>>;
+  const flatHistory = (orgPage.branded_history || []) as Array<Record<string, unknown>>;
+
+  // Build a per-org timeline: each org seeds its own branded_history. The
+  // primary org falls back to the legacy flat OrgPageConfig.branded_history.
+  const timeline: Array<{ post: Record<string, unknown>; org: (typeof orgs)[number] }> = [];
+  for (const org of orgs) {
+    const orgHistory = (org.branded_history as Array<Record<string, unknown>> | undefined) || [];
+    const posts = orgHistory.length > 0 ? orgHistory : org.is_primary ? flatHistory : [];
+    for (const post of posts) timeline.push({ post, org });
+  }
 
   await seedOrgPages(sessionId, initialState);
 
   const startTime = new Date(sessionStartTime).getTime();
 
-  for (const post of history) {
+  for (const { post, org } of timeline) {
     const platform = String(post.platform || 'facebook');
-    const pageConfig = platform === 'facebook' ? fb : tw;
+    const pageConfig = platform === 'facebook' ? org.facebook : org.x_twitter;
     if (!pageConfig) continue;
 
     const daysAgo = Number(post.days_ago) || 7;
@@ -364,16 +373,10 @@ async function seedBrandedHistory(
   }
 
   seededSessions.add(sessionId);
-  logger.info({ sessionId, historyCount: history.length }, 'Branded history seeded');
+  logger.info({ sessionId, historyCount: timeline.length }, 'Branded history seeded');
 
   // Seed comments on branded history posts (non-blocking)
-  const seededPostIds = history
-    .map((_, i) => i)
-    .filter((i) => {
-      const platform = String(history[i].platform || 'facebook');
-      return platform === 'facebook' ? !!fb : !!tw;
-    });
-  if (seededPostIds.length > 0) {
+  if (timeline.length > 0) {
     void seedBrandedComments(sessionId, initialState);
   }
 }

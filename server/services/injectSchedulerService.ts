@@ -33,6 +33,7 @@ import { computeSocialState } from './socialStateUpdaterService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 import { checkResponseDeadlines } from './responseTrackerService.js';
 import { runEngagementTick } from './engagementAlgorithmService.js';
+import { runAntagonistEngine } from './antagonistEngineService.js';
 import type { Server as SocketServer } from 'socket.io';
 /**
  * Shared AI cancellation gate for any inject about to be published.
@@ -991,6 +992,12 @@ export class InjectSchedulerService {
         await runEngagementTick(session.id);
       } catch (engErr) {
         logger.warn({ err: engErr, sessionId: session.id }, 'Engagement tick error');
+      }
+
+      try {
+        await runAntagonistEngine(session.id, elapsedMinutes);
+      } catch (antagErr) {
+        logger.warn({ err: antagErr, sessionId: session.id }, 'Antagonist engine error');
       }
     }
   }

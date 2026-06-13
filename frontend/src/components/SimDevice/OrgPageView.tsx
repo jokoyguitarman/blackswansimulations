@@ -94,9 +94,12 @@ function stripThreadTag(content: string): string {
 export default function OrgPageView({
   platform = 'facebook',
   onBack,
+  viewHandle,
 }: {
   platform?: 'facebook' | 'x_twitter';
   onBack?: () => void;
+  /** When set, view this page (by handle) read-only instead of the player's own. */
+  viewHandle?: string;
 }) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const { setIsPageMode } = usePageMode();
@@ -104,6 +107,8 @@ export default function OrgPageView({
   const [posts, setPosts] = useState<PagePost[]>([]);
   const [loading, setLoading] = useState(true);
   const [composeText, setComposeText] = useState('');
+  // Read-only when viewing a page the player does not control (e.g. a rival brand).
+  const [readOnly, setReadOnly] = useState(false);
 
   useEffect(() => {
     setIsPageMode(true);
@@ -136,19 +141,32 @@ export default function OrgPageView({
       ]);
 
       const pageJson = await pageRes.json();
-      const targetPage = (pageJson.data?.[platform] || null) as Record<string, string> | null;
-      if (targetPage) setPageInfo(targetPage as unknown as OrgPage);
+      const myPage = (pageJson.data?.[platform] || null) as Record<string, string> | null;
 
       const allPagesJson = await allPagesRes.json();
+      const allRows = (allPagesJson.data || []) as Array<Record<string, string>>;
       const logoMap: Record<string, string> = {};
-      for (const pg of (allPagesJson.data || []) as Array<Record<string, string>>) {
+      for (const pg of allRows) {
         if (pg.page_handle && pg.page_logo_url) logoMap[pg.page_handle] = pg.page_logo_url;
       }
       setOrgPageLogos(logoMap);
 
+      // Pick which page to show: an explicit viewHandle (read-only rival) or my own.
+      let targetPage = myPage;
+      let ro = false;
+      if (viewHandle) {
+        const row = allRows.find((r) => r.page_handle === viewHandle && r.platform === platform);
+        if (row) {
+          targetPage = row;
+          ro = viewHandle !== myPage?.page_handle;
+        }
+      }
+      setReadOnly(ro);
+      if (targetPage) setPageInfo(targetPage as unknown as OrgPage);
+
       const postsJson = await postsRes.json();
       const officialPosts = (postsJson.data || []) as PagePost[];
-      // Show only the controlled page's own posts.
+      // Show only the target page's own posts.
       const ownHandle = targetPage?.page_handle;
       const filtered = ownHandle
         ? officialPosts.filter((p) => p.author_handle === ownHandle)
@@ -162,7 +180,7 @@ export default function OrgPageView({
       /* ignore */
     }
     setLoading(false);
-  }, [sessionId, platform]);
+  }, [sessionId, platform, viewHandle]);
 
   useEffect(() => {
     loadPage();
@@ -479,64 +497,66 @@ export default function OrgPageView({
           )}
         </div>
 
-        {/* Comment compose input */}
-        <div
-          className="flex-shrink-0"
-          style={{
-            backgroundColor: isFacebook ? '#FFFFFF' : '#16181C',
-            borderTop: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
-          }}
-        >
-          {replyingToComment && (
-            <div className="flex items-center justify-between px-4 pt-2 pb-1">
-              <span className="text-[12px]" style={{ color: isFacebook ? '#65676B' : '#71767B' }}>
-                Replying to {replyingToComment.author_display_name}
-              </span>
-              <button
-                onClick={() => {
-                  setReplyingToComment(null);
-                  setCommentInput('');
+        {/* Comment compose input (hidden for read-only rival pages) */}
+        {!readOnly && (
+          <div
+            className="flex-shrink-0"
+            style={{
+              backgroundColor: isFacebook ? '#FFFFFF' : '#16181C',
+              borderTop: `1px solid ${isFacebook ? '#E4E6EB' : '#2F3336'}`,
+            }}
+          >
+            {replyingToComment && (
+              <div className="flex items-center justify-between px-4 pt-2 pb-1">
+                <span className="text-[12px]" style={{ color: isFacebook ? '#65676B' : '#71767B' }}>
+                  Replying to {replyingToComment.author_display_name}
+                </span>
+                <button
+                  onClick={() => {
+                    setReplyingToComment(null);
+                    setCommentInput('');
+                  }}
+                  className="text-[12px] font-semibold"
+                  style={{ color: isFacebook ? '#1877F2' : '#1D9BF0' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+            <div className="flex items-center gap-2 px-4 py-3">
+              <input
+                ref={commentInputRef}
+                type="text"
+                value={commentInput}
+                onChange={(e) => setCommentInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handlePostComment();
+                  }
                 }}
-                className="text-[12px] font-semibold"
-                style={{ color: isFacebook ? '#1877F2' : '#1D9BF0' }}
+                placeholder={
+                  replyingToComment
+                    ? `Reply as ${pageInfo.page_name}...`
+                    : `Comment as ${pageInfo.page_name}...`
+                }
+                className="flex-1 px-3 py-2 rounded-full text-[14px] outline-none"
+                style={{
+                  backgroundColor: isFacebook ? '#F0F2F5' : '#2F3336',
+                  color: isFacebook ? '#050505' : '#E7E9EA',
+                }}
+              />
+              <button
+                onClick={handlePostComment}
+                disabled={!commentInput.trim()}
+                className="px-3 py-2 rounded-full text-[13px] font-semibold text-white disabled:opacity-40"
+                style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
               >
-                Cancel
+                Post
               </button>
             </div>
-          )}
-          <div className="flex items-center gap-2 px-4 py-3">
-            <input
-              ref={commentInputRef}
-              type="text"
-              value={commentInput}
-              onChange={(e) => setCommentInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handlePostComment();
-                }
-              }}
-              placeholder={
-                replyingToComment
-                  ? `Reply as ${pageInfo.page_name}...`
-                  : `Comment as ${pageInfo.page_name}...`
-              }
-              className="flex-1 px-3 py-2 rounded-full text-[14px] outline-none"
-              style={{
-                backgroundColor: isFacebook ? '#F0F2F5' : '#2F3336',
-                color: isFacebook ? '#050505' : '#E7E9EA',
-              }}
-            />
-            <button
-              onClick={handlePostComment}
-              disabled={!commentInput.trim()}
-              className="px-3 py-2 rounded-full text-[13px] font-semibold text-white disabled:opacity-40"
-              style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
-            >
-              Post
-            </button>
           </div>
-        </div>
+        )}
       </div>
     );
   }
@@ -618,33 +638,35 @@ export default function OrgPageView({
         )}
       </div>
 
-      {/* Compose as page */}
-      <div
-        className="mx-4 mt-3 p-3 rounded-lg"
-        style={{ backgroundColor: isFacebook ? '#FFFFFF' : '#16181C' }}
-      >
-        <textarea
-          value={composeText}
-          onChange={(e) => setComposeText(e.target.value)}
-          placeholder={`Post as ${pageInfo.page_name}...`}
-          className="w-full bg-transparent text-sm resize-none outline-none"
-          style={{
-            color: isFacebook ? '#050505' : '#E7E9EA',
-            minHeight: 60,
-          }}
-          rows={2}
-        />
-        <div className="flex justify-end mt-2">
-          <button
-            onClick={handlePagePost}
-            disabled={!composeText.trim()}
-            className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
-            style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
-          >
-            Post as {pageInfo.page_name}
-          </button>
+      {/* Compose as page (hidden for read-only rival pages) */}
+      {!readOnly && (
+        <div
+          className="mx-4 mt-3 p-3 rounded-lg"
+          style={{ backgroundColor: isFacebook ? '#FFFFFF' : '#16181C' }}
+        >
+          <textarea
+            value={composeText}
+            onChange={(e) => setComposeText(e.target.value)}
+            placeholder={`Post as ${pageInfo.page_name}...`}
+            className="w-full bg-transparent text-sm resize-none outline-none"
+            style={{
+              color: isFacebook ? '#050505' : '#E7E9EA',
+              minHeight: 60,
+            }}
+            rows={2}
+          />
+          <div className="flex justify-end mt-2">
+            <button
+              onClick={handlePagePost}
+              disabled={!composeText.trim()}
+              className="px-4 py-1.5 rounded-lg text-sm font-semibold text-white disabled:opacity-40"
+              style={{ backgroundColor: isFacebook ? '#1877F2' : '#1D9BF0' }}
+            >
+              Post as {pageInfo.page_name}
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Posts timeline */}
       <div className="px-4 mt-3 pb-20 space-y-3">

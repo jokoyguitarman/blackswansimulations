@@ -24,6 +24,7 @@ import {
   type EvaluationContext,
 } from '../services/conditionEvaluatorService.js';
 import { deriveEmailAddress } from '../services/npcEmailReplyService.js';
+import { adjudicateDispute } from '../services/contentDisputeService.js';
 
 const router = Router();
 
@@ -1212,6 +1213,127 @@ router.post('/news/:articleId/read', requireAuth, async (req: AuthenticatedReque
   }
 });
 
+// ─── Content Disputes (fact-based takedown requests) ──────────────────────────
+
+const createDisputeSchema = z.object({
+  body: z.object({
+    session_id: z.string().uuid(),
+    target_type: z.enum(['article', 'post']),
+    target_id: z.string().uuid(),
+    claimed_falsehood: z.string().min(3).max(1000),
+    submitted_facts: z.string().min(3).max(2000),
+  }),
+});
+
+const MAX_PENDING_DISPUTES_PER_PLAYER = 5;
+
+router.post(
+  '/disputes',
+  requireAuth,
+  validate(createDisputeSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { session_id, target_type, target_id, claimed_falsehood, submitted_facts } = req.body;
+
+      // Verify the target exists and belongs to this session.
+      const table = target_type === 'article' ? 'sim_news_articles' : 'social_posts';
+      const { data: target } = await supabaseAdmin
+        .from(table)
+        .select('id, session_id')
+        .eq('id', target_id)
+        .single();
+
+      if (!target || target.session_id !== session_id) {
+        return res.status(404).json({ error: 'Disputed content not found in this session' });
+      }
+
+      // Anti-abuse: limit pending disputes per player.
+      const { count: pendingCount } = await supabaseAdmin
+        .from('content_dispute_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', session_id)
+        .eq('requested_by', user.id)
+        .eq('status', 'pending');
+
+      if ((pendingCount || 0) >= MAX_PENDING_DISPUTES_PER_PLAYER) {
+        return res
+          .status(429)
+          .json({ error: 'You have too many pending disputes. Wait for them to resolve.' });
+      }
+
+      // Prevent duplicate pending disputes on the same target by the same player.
+      const { data: existing } = await supabaseAdmin
+        .from('content_dispute_requests')
+        .select('id')
+        .eq('session_id', session_id)
+        .eq('requested_by', user.id)
+        .eq('target_id', target_id)
+        .eq('status', 'pending')
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        return res.json({ data: existing[0], already_pending: true });
+      }
+
+      const { data: dispute, error } = await supabaseAdmin
+        .from('content_dispute_requests')
+        .insert({
+          session_id,
+          requested_by: user.id,
+          target_type,
+          target_id,
+          claimed_falsehood,
+          submitted_facts,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, userId: user.id }, 'Failed to create content dispute');
+        return res.status(500).json({ error: 'Failed to file dispute' });
+      }
+
+      await recordPlayerAction(
+        session_id,
+        user.id,
+        'dispute_filed',
+        target_id,
+        claimed_falsehood,
+        { target_type },
+        'fact_check',
+      );
+
+      // Adjudicate asynchronously (non-blocking).
+      void adjudicateDispute(dispute.id).catch((err) =>
+        logger.warn({ err, disputeId: dispute.id }, 'Dispute adjudication trigger failed'),
+      );
+
+      res.status(201).json({ data: dispute });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/disputes');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+router.get('/disputes/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { data, error } = await supabaseAdmin
+      .from('content_dispute_requests')
+      .select('*')
+      .eq('session_id', sessionId)
+      .order('created_at', { ascending: false });
+
+    if (error) return res.status(500).json({ error: 'Failed to fetch disputes' });
+    res.json({ data });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/disputes/session/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── SOP & Sentiment ─────────────────────────────────────────────────────────
 
 router.get('/sop/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -1892,6 +2014,8 @@ function groupOrgPages(rows: Array<Record<string, unknown>>) {
       map.set(orgKey, {
         org_key: orgKey,
         is_primary: !!row.is_primary,
+        role: String(row.role || 'protagonist'),
+        control_mode: String(row.control_mode || 'player'),
         display_name: String(row.page_name || 'Organization'),
         facebook: null,
         x_twitter: null,
@@ -1901,6 +2025,8 @@ function groupOrgPages(rows: Array<Record<string, unknown>>) {
     if (row.platform === 'facebook') entry.facebook = row;
     else if (row.platform === 'x_twitter') entry.x_twitter = row;
     if (row.is_primary) entry.is_primary = true;
+    if (row.role) entry.role = String(row.role);
+    if (row.control_mode) entry.control_mode = String(row.control_mode);
   }
   return Array.from(map.values());
 }
@@ -1998,6 +2124,24 @@ router.post(
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      // Players may only control protagonist pages. Antagonist (rival) pages are
+      // trainer/AI-driven and must never be assigned to a participant.
+      const { data: targetPage } = await supabaseAdmin
+        .from('sim_org_pages')
+        .select('role')
+        .eq('session_id', sessionId)
+        .eq('org_key', org_key)
+        .limit(1)
+        .maybeSingle();
+      if (!targetPage) {
+        return res.status(404).json({ error: 'Org page not found for this session' });
+      }
+      if (String(targetPage.role) === 'antagonist') {
+        return res
+          .status(400)
+          .json({ error: 'Antagonist (rival) pages cannot be assigned to players' });
+      }
+
       const { data: assignment, error } = await supabaseAdmin
         .from('session_page_controllers')
         .upsert(
@@ -2066,6 +2210,154 @@ router.delete(
       res.json({ success: true });
     } catch (err) {
       logger.error({ error: err }, 'Error in DELETE /social/pages/session/:sessionId/assign');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Trainer takeover: post AS an antagonist (rival) org page (trainer only).
+// Bypasses session_page_controllers (UNIQUE per user) so the trainer can drive
+// multiple antagonist pages. Posts carry hostile content_flags so scoring counts them.
+router.post(
+  '/pages/session/:sessionId/post-as',
+  requireAuth,
+  validate(
+    z.object({
+      params: z.object({ sessionId: z.string().uuid() }),
+      body: z.object({
+        org_key: z.string().min(1),
+        platform: z.enum(['x_twitter', 'facebook']),
+        content: z.string().min(1),
+        content_flags: z.record(z.string(), z.unknown()).optional(),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+      const user = req.user!;
+      const { org_key, platform, content, content_flags } = req.body;
+
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can post as antagonist pages' });
+      }
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('id, trainer_id')
+        .eq('id', sessionId)
+        .single();
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { data: page } = await supabaseAdmin
+        .from('sim_org_pages')
+        .select('page_name, page_handle, role')
+        .eq('session_id', sessionId)
+        .eq('org_key', org_key)
+        .eq('platform', platform)
+        .maybeSingle();
+      if (!page) return res.status(404).json({ error: 'Org page not found' });
+      if (String(page.role) !== 'antagonist') {
+        return res.status(400).json({ error: 'post-as is only for antagonist pages' });
+      }
+
+      const flags = (content_flags as Record<string, unknown>) || {
+        is_harmful_narrative: true,
+        is_inflammatory: true,
+      };
+      const sentiment =
+        flags.is_hate_speech || flags.incites_violence
+          ? 'hateful'
+          : flags.is_inflammatory || flags.is_harmful_narrative
+            ? 'inflammatory'
+            : 'negative';
+      const hashtags = (content.match(/#\w+/g) || []) as string[];
+
+      const { data: post, error } = await supabaseAdmin
+        .from('social_posts')
+        .insert({
+          session_id: sessionId,
+          platform,
+          author_handle: String(page.page_handle),
+          author_display_name: String(page.page_name),
+          author_type: 'official_account',
+          content,
+          hashtags,
+          sentiment,
+          content_flags: flags,
+          virality_score: 55 + Math.floor(Math.random() * 25),
+          posted_by_user_id: user.id,
+          posted_by_display_name: 'Adversary Console',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, sessionId, org_key }, 'Failed to post as antagonist page');
+        return res.status(500).json({ error: 'Failed to create post' });
+      }
+
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'social_post.created',
+        data: { post },
+        timestamp: new Date().toISOString(),
+      });
+
+      res.status(201).json({ data: post });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/pages/session/:sessionId/post-as');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Seize / release an antagonist page: toggle control_mode between ai and trainer.
+router.post(
+  '/pages/session/:sessionId/seize',
+  requireAuth,
+  validate(
+    z.object({
+      params: z.object({ sessionId: z.string().uuid() }),
+      body: z.object({ org_key: z.string().min(1), control_mode: z.enum(['ai', 'trainer']) }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+      const user = req.user!;
+      const { org_key, control_mode } = req.body;
+
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can seize pages' });
+      }
+
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('id, trainer_id')
+        .eq('id', sessionId)
+        .single();
+      if (!session) return res.status(404).json({ error: 'Session not found' });
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { error } = await supabaseAdmin
+        .from('sim_org_pages')
+        .update({ control_mode })
+        .eq('session_id', sessionId)
+        .eq('org_key', org_key)
+        .eq('role', 'antagonist');
+
+      if (error) {
+        return res.status(500).json({ error: 'Failed to update control mode' });
+      }
+
+      res.json({ data: { org_key, control_mode } });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/pages/session/:sessionId/seize');
       res.status(500).json({ error: 'Internal server error' });
     }
   },

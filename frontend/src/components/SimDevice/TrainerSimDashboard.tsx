@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { supabase } from '../../lib/supabase';
+import { AdversaryConsole } from './AdversaryConsole';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -127,6 +128,19 @@ interface OrchestrationInject {
   total_count: number;
   mode: 'all' | 'threshold';
   threshold?: number;
+}
+
+interface DisputeRow {
+  id: string;
+  target_type: 'article' | 'post';
+  target_id: string;
+  claimed_falsehood: string;
+  submitted_facts: string;
+  status: 'pending' | 'upheld' | 'corrected' | 'rejected';
+  verdict_reason: string | null;
+  ai_confidence: number | null;
+  created_at: string;
+  resolved_at: string | null;
 }
 
 const CONDITION_LABELS: Record<string, string> = {
@@ -534,6 +548,7 @@ export default function TrainerSimDashboard() {
   const [showExplainer, setShowExplainer] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [orchestration, setOrchestration] = useState<OrchestrationInject[]>([]);
+  const [disputes, setDisputes] = useState<DisputeRow[]>([]);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
@@ -651,6 +666,18 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  const loadDisputes = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/disputes/session/${sessionId}`), { headers });
+      const json = await res.json();
+      if (Array.isArray(json.data)) setDisputes(json.data);
+    } catch {
+      /* retry on next poll */
+    }
+  }, [sessionId]);
+
   const loadAll = useCallback(() => {
     loadSocialState();
     loadPosts();
@@ -658,6 +685,7 @@ export default function TrainerSimDashboard() {
     loadConsequences();
     loadSessionInfo();
     loadOrchestration();
+    loadDisputes();
   }, [
     loadSocialState,
     loadPosts,
@@ -665,6 +693,7 @@ export default function TrainerSimDashboard() {
     loadConsequences,
     loadSessionInfo,
     loadOrchestration,
+    loadDisputes,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -1247,6 +1276,74 @@ export default function TrainerSimDashboard() {
         >
           <OrchestrationTicker injects={orchestration} />
         </Card>
+
+        {/* ============ DISPUTES ROW: full width ============ */}
+        <Card title={`Fact-Based Disputes (${disputes.length})`}>
+          {disputes.length === 0 ? (
+            <p className="text-xs text-center py-8" style={{ color: '#64748b' }}>
+              No disputes filed yet
+            </p>
+          ) : (
+            <div className="space-y-2">
+              {disputes.map((d) => {
+                const variant: 'red' | 'amber' | 'blue' | 'gray' =
+                  d.status === 'upheld'
+                    ? 'blue'
+                    : d.status === 'corrected'
+                      ? 'amber'
+                      : d.status === 'rejected'
+                        ? 'red'
+                        : 'gray';
+                const borderColor =
+                  d.status === 'upheld'
+                    ? '#22c55e'
+                    : d.status === 'corrected'
+                      ? '#f59e0b'
+                      : d.status === 'rejected'
+                        ? '#ef4444'
+                        : '#3b82f6';
+                return (
+                  <div
+                    key={d.id}
+                    className="rounded-lg p-2.5 border-l-2"
+                    style={{ backgroundColor: '#141414', borderColor }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-2">
+                        <Badge text={d.target_type.toUpperCase()} variant="blue" />
+                        <Badge text={d.status.toUpperCase()} variant={variant} />
+                        {d.ai_confidence != null && (
+                          <span className="text-[10px]" style={{ color: '#64748b' }}>
+                            conf {Math.round(d.ai_confidence * 100)}%
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-[10px]" style={{ color: '#64748b' }}>
+                        {timeLabel(d.created_at)}
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed mb-1" style={{ color: '#cbd5e1' }}>
+                      <strong style={{ color: '#e5e5e5' }}>Claim:</strong>{' '}
+                      {truncate(d.claimed_falsehood, 120)}
+                    </p>
+                    <p className="text-[11px] leading-snug mb-1" style={{ color: '#94a3b8' }}>
+                      <strong style={{ color: '#cbd5e1' }}>Evidence:</strong>{' '}
+                      {truncate(d.submitted_facts, 120)}
+                    </p>
+                    {d.verdict_reason && (
+                      <p className="text-[10px] italic leading-snug" style={{ color: '#64748b' }}>
+                        Verdict: {truncate(d.verdict_reason, 140)}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        {/* ============ ADVERSARY CONSOLE ROW: full width ============ */}
+        <AdversaryConsole sessionId={sessionId || ''} />
 
         {/* ============ BOTTOM ROW: 2 columns (3fr + 2fr) ============ */}
         <div className="grid gap-4" style={{ gridTemplateColumns: '3fr 2fr', minHeight: 220 }}>

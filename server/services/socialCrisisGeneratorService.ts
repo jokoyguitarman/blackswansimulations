@@ -168,12 +168,25 @@ export interface BrandedHistoryPost {
   media_description?: string;
 }
 
+export type OrgRole = 'protagonist' | 'antagonist';
+export type OrgControlMode = 'player' | 'ai' | 'trainer';
+
 export interface OrgConfig {
   org_key: string;
   display_name: string;
   is_primary: boolean;
+  /** protagonist = player-assignable; antagonist = trainer/AI-driven rival. */
+  role: OrgRole;
+  /** who drives the page at runtime. Antagonists default to 'ai'. */
+  control_mode: OrgControlMode;
+  /** Short adversarial positioning used to steer the antagonist AI engine. */
+  stance?: string;
+  /** True when the antagonist was auto-invented (no competitor names given). */
+  auto_generated?: boolean;
   facebook: OrgPagePlatformConfig;
   x_twitter: OrgPagePlatformConfig;
+  /** Per-org pre-crisis timeline. Falls back to the flat OrgPageConfig.branded_history for the primary. */
+  branded_history?: BrandedHistoryPost[];
 }
 
 export interface OrgPageConfig {
@@ -199,10 +212,14 @@ export function normalizeOrgPages(
 
   if (Array.isArray(op.orgs) && op.orgs.length > 0) {
     orgs = op.orgs.map((o, i) => ({
+      ...o,
       org_key: o.org_key || (o.is_primary ? 'primary' : `org_${i + 1}`),
       display_name:
         o.display_name || o.facebook?.page_name || o.x_twitter?.page_name || 'Organization',
       is_primary: !!o.is_primary,
+      role: o.role === 'antagonist' ? 'antagonist' : 'protagonist',
+      control_mode:
+        o.control_mode === 'ai' || o.control_mode === 'trainer' ? o.control_mode : 'player',
       facebook: o.facebook,
       x_twitter: o.x_twitter,
     }));
@@ -212,8 +229,11 @@ export function normalizeOrgPages(
         org_key: 'primary',
         display_name: op.facebook?.page_name || op.x_twitter?.page_name || 'Organization',
         is_primary: true,
+        role: 'protagonist',
+        control_mode: 'player',
         facebook: op.facebook,
         x_twitter: op.x_twitter,
+        branded_history: op.branded_history,
       },
     ];
   }
@@ -239,7 +259,6 @@ export interface SocialCrisisPayload {
       affected_communities: string[];
       research_guidelines: ResearchGuidelines;
       strategic_benchmarks?: StrategicActionBenchmark[];
-      sentiment_profile?: PublicSentimentProfile;
       dimension_labels?: {
         public_trust: string;
         community_safety: string;
@@ -693,291 +712,6 @@ Return ONLY valid JSON:
   }));
 }
 
-// ─── Research: General Best Practices (no teams) ────────────────────────────
-
-export async function researchGeneralBestPractices(
-  crisisType: string,
-  context: string,
-  onProgress?: (msg: string) => void,
-  orgName?: string,
-): Promise<ResearchGuidelines> {
-  onProgress?.('Researching crisis communication best practices...');
-
-  const [perTeamResult, groupResult] = await Promise.all([
-    callAI(
-      `You are an expert researcher in crisis communication and social media response.
-
-IMPORTANT: First analyze the crisis description below to identify the type of crisis, then research best practices RELEVANT to that specific crisis type. For example, a product recall crisis needs consumer safety and supply chain communication frameworks, while a racial tension crisis needs community cohesion frameworks.
-
-Research general best practices for a social media crisis response team handling this specific type of crisis. This covers the FULL range of crisis communication activities that any responder should know.
-
-Based on real-world frameworks relevant to this crisis type (e.g., crisis communication standards, industry-specific guidelines, regulatory frameworks, established PR crisis management protocols), generate 8-12 specific, actionable guidelines.
-
-Each guideline should specify:
-- What the best practice IS (concrete, not vague)
-- What source/framework it comes from
-- What happens narratively if VIOLATED (consequence in simulation)
-- What happens narratively if FOLLOWED (reward in simulation)
-- What player actions would SIGNAL violation or compliance
-
-Return ONLY valid JSON:
-{
-  "team_name": "Crisis Response Team",
-  "guidelines": [{
-    "guideline_id": "...",
-    "best_practice": "...",
-    "source_basis": "...",
-    "timing_window": "...",
-    "if_violated": "...",
-    "if_followed": "...",
-    "detection_signals": ["..."]
-  }]
-}`,
-      `Crisis: ${crisisType}${orgNameLine(orgName)}\nContext: ${context}`,
-      8000,
-    ),
-    callAI(
-      `You are an expert researcher in crisis coordination and social media crisis management.
-
-IMPORTANT: First analyze the crisis description below to identify the type of crisis, then research coordination practices RELEVANT to that specific crisis type.
-
-Research best practices for coordinating a social media crisis response for this specific type of crisis. Cover:
-
-1. COORDINATION GUIDELINES: How the response team should share information and coordinate actions
-2. ESCALATION PROTOCOLS: When and how to escalate issues to leadership, regulators, law enforcement, or platform operators (adapt to the crisis type)
-3. TIMING BENCHMARKS: Critical time thresholds relevant to this crisis type (e.g., "first official response within 30 minutes", "corrective statement within 2 hours")
-4. CASE STUDIES: 2-3 real-world examples of similar crises with lessons learned — choose cases that match the crisis type described below
-
-Base this on established frameworks relevant to this crisis type (crisis communication standards, industry regulations, PR best practices, etc.).
-
-Return ONLY valid JSON:
-{
-  "coordination_guidelines": ["..."],
-  "escalation_protocols": ["..."],
-  "timing_benchmarks": { "first_response_minutes": 30, "misinformation_debunk_minutes": 60 },
-  "case_studies": [{ "name": "...", "summary": "...", "lessons": ["..."] }]
-}`,
-      `Crisis: ${crisisType}${orgNameLine(orgName)}\nContext: ${context}`,
-      8000,
-    ),
-  ]);
-
-  onProgress?.('Best practices research complete');
-
-  const teamBP = (perTeamResult as unknown as TeamBestPractice) || {
-    team_name: 'Crisis Response Team',
-    guidelines: [],
-  };
-
-  const groupBP = (groupResult as unknown as ResearchGuidelines['group_wide']) || {
-    coordination_guidelines: [],
-    escalation_protocols: [],
-    timing_benchmarks: {},
-    case_studies: [],
-  };
-
-  return {
-    per_team: [teamBP],
-    group_wide: groupBP,
-  };
-}
-
-// ─── Public Sentiment Research ──────────────────────────────────────────────
-
-export interface PublicSentimentProfile {
-  analogous_cases: Array<{
-    name: string;
-    year: number;
-    similarity_rationale: string;
-    key_lessons: string[];
-    sentiment_timeline: string;
-  }>;
-  expected_reaction_arc: {
-    phase_1_shock: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_2_outrage: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_3_blame: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_4_demand: {
-      duration_minutes: number;
-      dominant_emotions: string[];
-      key_behaviors: string[];
-    };
-    phase_5_resolution: { dominant_emotions: string[]; key_behaviors: string[] };
-  };
-  platform_behaviors: Array<{
-    platform: string;
-    typical_content_style: string;
-    virality_pattern: string;
-    key_hashtag_patterns: string[];
-  }>;
-  demographic_splits: Array<{
-    group: string;
-    likely_stance: string;
-    intensity: number;
-    key_concerns: string[];
-  }>;
-  cultural_factors: string[];
-  counter_narrative_effectiveness: Array<{
-    strategy: string;
-    historical_success_rate: string;
-    timing_requirement: string;
-    risk: string;
-  }>;
-}
-
-export async function researchPublicSentiment(
-  crisisDescription: string,
-  country: string,
-  onProgress?: (msg: string) => void,
-  orgName?: string,
-): Promise<PublicSentimentProfile> {
-  onProgress?.('Analyzing crisis scenario to identify analogous real-world cases...');
-
-  const [casesResult, reactionsResult] = await Promise.all([
-    callAI(
-      `You are an expert social media analyst and crisis communications researcher. Your task is to deeply analyze a crisis scenario and research how the PUBLIC actually reacts on social media and public forums to analogous real-world crises.
-
-Given the crisis description, you must:
-
-1. IDENTIFY 3-5 ANALOGOUS REAL-WORLD CRISES that are similar in nature. For example:
-   - If the crisis is a product recall: Samsung Galaxy Note 7 (2016), Boeing 737 MAX (2019), Johnson & Johnson Tylenol (1982)
-   - If the crisis is corporate layoffs: Twitter/X mass layoffs (2022), Google layoffs (2023), Meta layoffs (2022)
-   - If the crisis is a data breach: Equifax (2017), Facebook-Cambridge Analytica (2018), Yahoo (2016)
-   - If the crisis is racial tension: Christchurch shooting aftermath (2019), George Floyd protests (2020)
-
-2. For EACH analogous case, provide:
-   - name: the case name
-   - year: when it happened
-   - similarity_rationale: why this is analogous to the current scenario
-   - key_lessons: 2-3 key lessons about how public sentiment evolved
-   - sentiment_timeline: a 1-2 sentence description of how public sentiment shifted over time
-
-3. Analyze PLATFORM-SPECIFIC BEHAVIORS for this type of crisis:
-   - X/Twitter: typical content style, virality patterns, common hashtag patterns
-   - Facebook: typical content style, group dynamics, community formation patterns
-   - Reddit: typical content style, subreddit dynamics, analysis patterns
-   - TikTok: typical content style, video trends, commentary patterns
-
-4. Identify DEMOGRAPHIC SPLITS in sentiment:
-   - Which groups support which sides
-   - Intensity of each group's reaction (1-10 scale)
-   - Key concerns for each group
-
-Country context: ${country} — factor in how this country's population specifically tends to react to this type of crisis. Consider cultural norms, media landscape, government trust levels, and social media penetration.
-
-Return ONLY valid JSON:
-{
-  "analogous_cases": [{ "name": "...", "year": 2020, "similarity_rationale": "...", "key_lessons": ["..."], "sentiment_timeline": "..." }],
-  "platform_behaviors": [{ "platform": "X/Twitter", "typical_content_style": "...", "virality_pattern": "...", "key_hashtag_patterns": ["#..."] }],
-  "demographic_splits": [{ "group": "...", "likely_stance": "...", "intensity": 7, "key_concerns": ["..."] }],
-  "cultural_factors": ["..."]
-}`,
-      `Crisis scenario: ${crisisDescription}${orgNameLine(orgName)}\nCountry: ${country}`,
-      10000,
-      0.5,
-    ),
-    callAI(
-      `You are an expert in public sentiment dynamics and crisis communication strategy. Analyze how the public typically reacts to this type of crisis and what counter-narrative strategies are most effective.
-
-1. EXPECTED REACTION ARC: Map out the typical emotional trajectory of public response in 5 phases. For each phase, specify:
-   - duration_minutes: how long this phase typically lasts in a social media crisis (compressed for simulation, so scale to a 60-minute exercise)
-   - dominant_emotions: the primary emotions driving public behavior in this phase
-   - key_behaviors: what people actually DO on social media during this phase
-
-   Phases:
-   - phase_1_shock: Initial reaction when the crisis becomes public
-   - phase_2_outrage: Peak anger and viral spread
-   - phase_3_blame: Public assigns blame and demands accountability
-   - phase_4_demand: Organized calls for action (boycotts, investigations, resignations, etc.)
-   - phase_5_resolution: The crisis begins to resolve or fatigue sets in
-
-2. COUNTER-NARRATIVE EFFECTIVENESS: For each common response strategy, analyze:
-   - strategy: what the response team might do
-   - historical_success_rate: how often this strategy has worked historically (low/medium/high)
-   - timing_requirement: when this strategy must be deployed to be effective
-   - risk: what can go wrong if this strategy backfires
-
-Country: ${country} — consider how this country's population responds to corporate/institutional apologies, government intervention, and community organizing.
-
-Return ONLY valid JSON:
-{
-  "expected_reaction_arc": {
-    "phase_1_shock": { "duration_minutes": 5, "dominant_emotions": ["..."], "key_behaviors": ["..."] },
-    "phase_2_outrage": { "duration_minutes": 10, "dominant_emotions": ["..."], "key_behaviors": ["..."] },
-    "phase_3_blame": { "duration_minutes": 15, "dominant_emotions": ["..."], "key_behaviors": ["..."] },
-    "phase_4_demand": { "duration_minutes": 15, "dominant_emotions": ["..."], "key_behaviors": ["..."] },
-    "phase_5_resolution": { "dominant_emotions": ["..."], "key_behaviors": ["..."] }
-  },
-  "counter_narrative_effectiveness": [{ "strategy": "...", "historical_success_rate": "medium", "timing_requirement": "within first 30 minutes", "risk": "..." }]
-}`,
-      `Crisis scenario: ${crisisDescription}${orgNameLine(orgName)}\nCountry: ${country}`,
-      8000,
-      0.5,
-    ),
-  ]);
-
-  onProgress?.('Compiling public sentiment profile...');
-
-  const cases = casesResult || {};
-  const reactions = reactionsResult || {};
-
-  const profile: PublicSentimentProfile = {
-    analogous_cases: (cases.analogous_cases as PublicSentimentProfile['analogous_cases']) || [],
-    expected_reaction_arc:
-      (reactions.expected_reaction_arc as PublicSentimentProfile['expected_reaction_arc']) || {
-        phase_1_shock: {
-          duration_minutes: 5,
-          dominant_emotions: ['shock', 'disbelief'],
-          key_behaviors: ['sharing news'],
-        },
-        phase_2_outrage: {
-          duration_minutes: 10,
-          dominant_emotions: ['anger', 'frustration'],
-          key_behaviors: ['demanding answers'],
-        },
-        phase_3_blame: {
-          duration_minutes: 15,
-          dominant_emotions: ['blame', 'suspicion'],
-          key_behaviors: ['finger-pointing'],
-        },
-        phase_4_demand: {
-          duration_minutes: 15,
-          dominant_emotions: ['determination', 'solidarity'],
-          key_behaviors: ['organized pressure'],
-        },
-        phase_5_resolution: {
-          dominant_emotions: ['fatigue', 'cautious optimism'],
-          key_behaviors: ['monitoring'],
-        },
-      },
-    platform_behaviors:
-      (cases.platform_behaviors as PublicSentimentProfile['platform_behaviors']) || [],
-    demographic_splits:
-      (cases.demographic_splits as PublicSentimentProfile['demographic_splits']) || [],
-    cultural_factors: (cases.cultural_factors as string[]) || [],
-    counter_narrative_effectiveness:
-      (reactions.counter_narrative_effectiveness as PublicSentimentProfile['counter_narrative_effectiveness']) ||
-      [],
-  };
-
-  onProgress?.(
-    `Sentiment research complete: ${profile.analogous_cases.length} analogous cases analyzed`,
-  );
-
-  return profile;
-}
-
 // ─── Stage 4: Convergence Layer ─────────────────────────────────────────────
 
 export async function generateConvergenceLayer(
@@ -1047,7 +781,7 @@ export async function generateConvergenceLayer(
    - narrative_control: measures who is winning the information narrative (e.g., "Media Narrative", "PR Control", "Narrative Control", "Information Dominance")
    - escalation_risk: measures risk of the crisis getting worse (e.g., "Boycott Risk", "Protest Risk", "Escalation Risk", "Regulatory Action Risk")
 
-Per-team storylines already created:
+Storyline injects already created (design the shared chaos and convergence gates as organic consequences of these beats):
 ${storylineSummary}
 
 NPCs: ${npcHandles}
@@ -1448,12 +1182,28 @@ Return ONLY valid JSON:
 
 // ─── Org Page Generation ────────────────────────────────────────────────────
 
+export interface OrgRosterEntry {
+  name: string;
+  facebook_handle?: string;
+  x_handle?: string;
+}
+
+export interface OrgRosterInput {
+  /** Extra protagonist-side organizations the players can control. */
+  allies?: OrgRosterEntry[];
+  /** Antagonist competitor brands. Trainer/AI-controlled rivals. */
+  competitors?: OrgRosterEntry[];
+  /** When true (default) and no competitors are named, invent one antagonist. */
+  auto_antagonist?: boolean;
+}
+
 export async function generateOrgPageConfig(
   crisisDescription: string,
   country: string,
   orgName?: string,
   onProgress?: (msg: string) => void,
   logoUrl?: string,
+  roster?: OrgRosterInput,
 ): Promise<OrgPageConfig> {
   onProgress?.('Generating organization page identity and branded history...');
 
@@ -1545,11 +1295,135 @@ Return ONLY valid JSON:
     org_key: 'primary',
     display_name: orgName || fb.page_name || 'Organization',
     is_primary: true,
+    role: 'protagonist',
+    control_mode: 'player',
     facebook: fb,
     x_twitter: tw,
+    branded_history: history,
   };
 
-  return { orgs: [primaryOrg], facebook: fb, x_twitter: tw, branded_history: history };
+  const secondaryOrgs = await generateSecondaryOrgPages(
+    crisisDescription,
+    country,
+    primaryOrg.display_name,
+    roster,
+    onProgress,
+  );
+
+  return {
+    orgs: [primaryOrg, ...secondaryOrgs],
+    facebook: fb,
+    x_twitter: tw,
+    branded_history: history,
+  };
+}
+
+/**
+ * Generate identities + per-org branded history for protagonist allies and
+ * antagonist competitors. If no competitors are named and auto_antagonist is
+ * not disabled, invent exactly one hostile rival brand.
+ */
+async function generateSecondaryOrgPages(
+  crisisDescription: string,
+  country: string,
+  primaryName: string,
+  roster: OrgRosterInput | undefined,
+  onProgress?: (msg: string) => void,
+): Promise<OrgConfig[]> {
+  const allies = roster?.allies ?? [];
+  const competitors = roster?.competitors ?? [];
+  const autoAntagonist = roster?.auto_antagonist !== false;
+  const inventAntagonist = competitors.length === 0 && autoAntagonist;
+
+  if (allies.length === 0 && competitors.length === 0 && !inventAntagonist) {
+    return [];
+  }
+
+  onProgress?.('Generating allied and rival brand pages...');
+
+  const allyLines = allies.map((a, i) => `  ALLY ${i + 1}: ${a.name}`).join('\n');
+  const compLines = competitors.map((c, i) => `  COMPETITOR ${i + 1}: ${c.name}`).join('\n');
+
+  const result = await callAI(
+    `You are creating social media presences for the SUPPORTING CAST of organizations around a crisis.
+Primary organization in crisis: "${primaryName}". Country: ${country}.
+
+For each organization below, generate a Facebook + X/Twitter identity and a short pre-crisis branded history (4-8 posts) in that brand's voice.
+
+PROTAGONIST ALLIES (friendly to the primary org):
+${allyLines || '  (none)'}
+
+ANTAGONIST COMPETITORS (rival brands that will pressure the primary org; their voice should be competitive and opportunistic):
+${compLines || '  (none)'}
+${inventAntagonist ? '\nNO competitors were named: INVENT exactly ONE realistic rival/competitor brand appropriate to this crisis. Mark it auto_generated.' : ''}
+
+For each org provide:
+- org_role: "protagonist" for allies, "antagonist" for competitors/invented rival
+- display_name
+- facebook: { page_name, page_handle, page_bio, follower_count }
+- x_twitter: { page_name, page_handle, page_bio, follower_count }
+- stance: (antagonists only) 1 sentence on how this rival positions itself against "${primaryName}" (e.g. "positions itself as the safer, more transparent alternative")
+- auto_generated: true ONLY for an invented antagonist
+- branded_history: 4-8 pre-crisis posts: { content, platform ("facebook"|"x_twitter"), post_format ("text"|"infographic"|"video_concept"), days_ago (1-30), media_description }
+
+Return ONLY valid JSON:
+{ "orgs": [{ "org_role": "antagonist", "display_name": "...", "facebook": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 40000 }, "x_twitter": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 25000 }, "stance": "...", "auto_generated": false, "branded_history": [{ "content": "...", "platform": "facebook", "post_format": "text", "days_ago": 7, "media_description": "" }] }] }`,
+    `Crisis scenario: ${crisisDescription.substring(0, 500)}`,
+    9000,
+    0.8,
+  );
+
+  const rawOrgs = (result?.orgs as Array<Record<string, unknown>>) || [];
+
+  // Map requested handles by name so trainer-provided handles win where given.
+  const handleByName = new Map<string, OrgRosterEntry>();
+  for (const a of allies) handleByName.set(a.name.toLowerCase(), a);
+  for (const c of competitors) handleByName.set(c.name.toLowerCase(), c);
+
+  const orgs: OrgConfig[] = [];
+  for (let i = 0; i < rawOrgs.length; i++) {
+    const o = rawOrgs[i];
+    const role: OrgRole = o.org_role === 'antagonist' ? 'antagonist' : 'protagonist';
+    const displayName = String(o.display_name || `Organization ${i + 1}`);
+    const requested = handleByName.get(displayName.toLowerCase());
+    const fbCfg = (o.facebook as OrgPagePlatformConfig) || {
+      page_name: displayName,
+      page_handle: `@${displayName.replace(/[^\w]/g, '')}`,
+      page_bio: '',
+      follower_count: 20000,
+    };
+    const twCfg = (o.x_twitter as OrgPagePlatformConfig) || {
+      page_name: displayName,
+      page_handle: `@${displayName.replace(/[^\w]/g, '')}`,
+      page_bio: '',
+      follower_count: 15000,
+    };
+    if (requested?.facebook_handle) fbCfg.page_handle = requested.facebook_handle;
+    if (requested?.x_handle) twCfg.page_handle = requested.x_handle;
+
+    orgs.push({
+      org_key: `org_${role}_${displayName.toLowerCase().replace(/[^\w]/g, '_')}_${i}`,
+      display_name: displayName,
+      is_primary: false,
+      role,
+      control_mode: role === 'antagonist' ? 'ai' : 'player',
+      stance: o.stance ? String(o.stance) : undefined,
+      auto_generated: o.auto_generated === true,
+      facebook: fbCfg,
+      x_twitter: twCfg,
+      branded_history: (o.branded_history as BrandedHistoryPost[]) || [],
+    });
+  }
+
+  logger.info(
+    {
+      allies: orgs.filter((o) => o.role === 'protagonist').length,
+      antagonists: orgs.filter((o) => o.role === 'antagonist').length,
+    },
+    'Secondary org pages generated',
+  );
+
+  return orgs;
 }
 
 // ─── Full Assembly ──────────────────────────────────────────────────────────
@@ -1569,7 +1443,6 @@ export function assemblePayload(
   duration: number,
   strategyWindows?: StrategyWindow[],
   storylineInjects?: SocialInject[],
-  sentimentProfile?: PublicSentimentProfile | null,
   dimensionLabels?: {
     public_trust: string;
     community_safety: string;
@@ -1601,25 +1474,15 @@ export function assemblePayload(
   const conditionInjects = [...convergenceGates, ...strategyInjects];
   const decisionInjects = allStoryInjects.filter((i) => i.trigger_condition);
 
-  const sentimentCurve = sentimentProfile?.expected_reaction_arc
-    ? {
-        baseline: 65,
-        crisis_drop: -35,
-        natural_recovery_per_10min: 2,
-        good_response_boost: 10,
-        poor_response_penalty: -8,
-        hate_speech_penalty_per_unaddressed: -3,
-        community_engagement_boost: 12,
-      }
-    : {
-        baseline: 65,
-        crisis_drop: -30,
-        natural_recovery_per_10min: 2,
-        good_response_boost: 10,
-        poor_response_penalty: -8,
-        hate_speech_penalty_per_unaddressed: -3,
-        community_engagement_boost: 12,
-      };
+  const sentimentCurve = {
+    baseline: 65,
+    crisis_drop: -30,
+    natural_recovery_per_10min: 2,
+    good_response_boost: 10,
+    poor_response_penalty: -8,
+    hate_speech_penalty_per_unaddressed: -3,
+    community_engagement_boost: 12,
+  };
 
   return {
     scenario: {
@@ -1635,7 +1498,6 @@ export function assemblePayload(
         sentiment_curve: sentimentCurve,
         affected_communities: communities,
         research_guidelines: research,
-        ...(sentimentProfile ? { sentiment_profile: sentimentProfile } : {}),
         ...(orgPageConfig ? { org_page: orgPageConfig } : {}),
         ...(orgName ? { org_name: orgName } : {}),
         dimension_labels: dimensionLabels || {

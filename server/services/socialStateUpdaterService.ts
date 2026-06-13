@@ -171,6 +171,23 @@ export async function computeSocialState(
     }
   }
 
+  // Antagonist (rival) org pages post hostile content as official_account; weight
+  // them like designed NPCs (3x). Protagonist ally pages count toward player dominance.
+  const antagonistHandles = new Set<string>();
+  const protagonistHandles = new Set<string>();
+  {
+    const { data: orgRows } = await supabaseAdmin
+      .from('sim_org_pages')
+      .select('page_handle, role')
+      .eq('session_id', sessionId);
+    for (const r of orgRows || []) {
+      const h = String(r.page_handle || '');
+      if (!h) continue;
+      if (String(r.role) === 'antagonist') antagonistHandles.add(h);
+      else protagonistHandles.add(h);
+    }
+  }
+
   const topLevelPosts = allPosts.filter((p) => !p.reply_to_post_id);
   const playerReplies = allPosts.filter((p) => p.author_type === 'player' && !!p.reply_to_post_id);
   const playerRepliedToIds = new Set(playerReplies.map((p) => String(p.reply_to_post_id)));
@@ -206,7 +223,9 @@ export async function computeSocialState(
     const flags = (post.content_flags || {}) as Record<string, unknown>;
     const ageMs = now - new Date(post.created_at).getTime();
     const ageMinutes = ageMs / 60000;
-    const isDesignedNPC = !!post.inject_id || npcHandles.has(String(post.author_handle));
+    const handle = String(post.author_handle);
+    const isDesignedNPC =
+      !!post.inject_id || npcHandles.has(handle) || antagonistHandles.has(handle);
     const weight = isDesignedNPC ? 3 : 1;
 
     let ageTier = 0;
@@ -311,8 +330,14 @@ export async function computeSocialState(
   communitySafety -= Math.min(fearPosts.length, 10) * 1.5;
   if (rallyCallActive) communitySafety -= 10;
 
-  // Impression-dominance-based narrative control
-  const playerTotalViews = playerPosts.reduce((s, p) => s + (Number(p.view_count) || 0), 0);
+  // Impression-dominance-based narrative control. Protagonist ally pages
+  // (official_account posts on the players' side) count toward player views.
+  const allyPagePosts = allPosts.filter(
+    (p) => p.author_type === 'official_account' && protagonistHandles.has(String(p.author_handle)),
+  );
+  const playerTotalViews =
+    playerPosts.reduce((s, p) => s + (Number(p.view_count) || 0), 0) +
+    allyPagePosts.reduce((s, p) => s + (Number(p.view_count) || 0), 0);
   const hostileTotalViews = harmfulPosts.reduce((s, p) => s + (Number(p.view_count) || 0), 0);
   const impressionRatio =
     hostileTotalViews > 0 ? playerTotalViews / hostileTotalViews : playerTotalViews > 0 ? 2.0 : 0;

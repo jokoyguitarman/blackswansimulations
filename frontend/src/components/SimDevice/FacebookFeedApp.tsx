@@ -11,6 +11,7 @@ import OrgPageView from './OrgPageView';
 import PlayerActivityPanel from './PlayerActivityPanel';
 import ShareMenu from './ShareMenu';
 import { LinkPreviewCard } from './LinkPreviewCard';
+import DisputeModal from './DisputeModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -134,6 +135,11 @@ export default function FacebookFeedApp() {
   const location = useLocation();
   const { isTrainer } = useRoleVisibility();
   const [posts, setPosts] = useState<SocialPost[]>([]);
+  const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
+  const [disputeClaim, setDisputeClaim] = useState('');
+  const [disputeFacts, setDisputeFacts] = useState('');
+  const [disputing, setDisputing] = useState(false);
+  const [disputeStatus, setDisputeStatus] = useState<string | null>(null);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
   const [loading, setLoading] = useState(true);
   const [feedSort, setFeedSort] = useState<'top' | 'recent'>('top');
@@ -235,6 +241,9 @@ export default function FacebookFeedApp() {
   const [activeView, setActiveView] = useState<
     'feed' | 'messenger' | 'groups' | 'events' | 'page' | 'profile'
   >('feed');
+  // When set, the page view shows this org page read-only (a rival/other brand)
+  // instead of the player's own controlled page.
+  const [viewedPageHandle, setViewedPageHandle] = useState<string | null>(null);
 
   useEffect(() => {
     setIsPageMode(pageMode || activeView === 'page');
@@ -558,11 +567,17 @@ export default function FacebookFeedApp() {
     eventTypes: [
       'social_post.created',
       'social_post.surfaced',
+      'social_post.removed',
       'social_posts.engagement_update',
       'social_post.media_updated',
       'notification.created',
     ],
     onEvent: (event) => {
+      if (event.type === 'social_post.removed') {
+        const { post_id } = event.data as { post_id: string };
+        setPosts((prev) => prev.filter((p) => p.id !== post_id));
+        return;
+      }
       if (event.type === 'social_posts.engagement_update') {
         const updates = (
           event.data as {
@@ -883,6 +898,46 @@ export default function FacebookFeedApp() {
       await fetch(apiUrl(`/api/social/posts/${postId}/flag`), { method: 'POST', headers });
     } catch {
       setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: false } : p)));
+    }
+  }
+
+  function openDisputeModal(post: SocialPost) {
+    setDisputePost(post);
+    setDisputeClaim('');
+    setDisputeFacts('');
+    setDisputeStatus(null);
+  }
+
+  async function submitPostDispute() {
+    if (!disputePost || !sessionId) return;
+    if (!disputeClaim.trim() || !disputeFacts.trim()) {
+      setDisputeStatus('Please fill in both fields');
+      return;
+    }
+    setDisputing(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl('/api/social/disputes'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          session_id: sessionId,
+          target_type: 'post',
+          target_id: disputePost.id,
+          claimed_falsehood: disputeClaim.trim(),
+          submitted_facts: disputeFacts.trim(),
+        }),
+      });
+      if (res.ok) {
+        setDisputePost(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setDisputeStatus(err.error || 'Failed to file dispute');
+      }
+    } catch {
+      setDisputeStatus('Failed to file dispute');
+    } finally {
+      setDisputing(false);
     }
   }
 
@@ -1521,7 +1576,14 @@ export default function FacebookFeedApp() {
       {activeView === 'groups' && sessionId && <FacebookGroupsView sessionId={sessionId} />}
       {activeView === 'events' && sessionId && <FacebookEventsView sessionId={sessionId} />}
       {activeView === 'page' && sessionId && (
-        <OrgPageView platform="facebook" onBack={() => setActiveView('feed')} />
+        <OrgPageView
+          platform="facebook"
+          viewHandle={viewedPageHandle || undefined}
+          onBack={() => {
+            setViewedPageHandle(null);
+            setActiveView('feed');
+          }}
+        />
       )}
       {activeView === 'profile' && <PlayerActivityPanel onBack={() => setActiveView('feed')} />}
 
@@ -1952,7 +2014,10 @@ export default function FacebookFeedApp() {
                   {isDesktopWidth ? `Managing as ${orgPageInfo.page_name}` : orgPageInfo.page_name}
                 </span>
                 <button
-                  onClick={() => setActiveView('page')}
+                  onClick={() => {
+                    setViewedPageHandle(null);
+                    setActiveView('page');
+                  }}
                   className="text-[11px] font-semibold px-1.5 py-0.5 rounded hover:bg-[#C2DBFE] transition-colors flex-shrink-0"
                   style={{ color: '#1877F2' }}
                 >
@@ -2093,7 +2158,10 @@ export default function FacebookFeedApp() {
                             className="flex items-center gap-2.5 px-3 pt-3 pb-1.5"
                             onClick={
                               post.author_type === 'official_account'
-                                ? () => setActiveView('page')
+                                ? () => {
+                                    setViewedPageHandle(post.author_handle);
+                                    setActiveView('page');
+                                  }
                                 : undefined
                             }
                             style={
@@ -2164,21 +2232,43 @@ export default function FacebookFeedApp() {
                                 )}
                               </div>
                             </div>
-                            <button
-                              onClick={() => handleFlag(post.id)}
-                              className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
-                            >
-                              <svg
-                                width="20"
-                                height="20"
-                                viewBox="0 0 24 24"
-                                fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
+                            <div className="flex items-center">
+                              <button
+                                onClick={() => openDisputeModal(post)}
+                                className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
+                                title="Dispute with facts"
                               >
-                                <circle cx="12" cy="5" r="2" />
-                                <circle cx="12" cy="12" r="2" />
-                                <circle cx="12" cy="19" r="2" />
-                              </svg>
-                            </button>
+                                <svg
+                                  width="18"
+                                  height="18"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="#65676B"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M12 9v4" />
+                                  <path d="M12 17h.01" />
+                                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={() => handleFlag(post.id)}
+                                className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
+                              >
+                                <svg
+                                  width="20"
+                                  height="20"
+                                  viewBox="0 0 24 24"
+                                  fill={post.flagged_by_me ? '#F59E0B' : '#65676B'}
+                                >
+                                  <circle cx="12" cy="5" r="2" />
+                                  <circle cx="12" cy="12" r="2" />
+                                  <circle cx="12" cy="19" r="2" />
+                                </svg>
+                              </button>
+                            </div>
                           </div>
 
                           {/* Content Flags (trainer only) */}
@@ -3803,6 +3893,22 @@ export default function FacebookFeedApp() {
             );
           })}
         </div>
+      )}
+
+      {disputePost && (
+        <DisputeModal
+          authorName={disputePost.author_display_name}
+          authorHandle={disputePost.author_handle}
+          preview={disputePost.content}
+          claim={disputeClaim}
+          facts={disputeFacts}
+          status={disputeStatus}
+          submitting={disputing}
+          onClaimChange={setDisputeClaim}
+          onFactsChange={setDisputeFacts}
+          onCancel={() => setDisputePost(null)}
+          onSubmit={submitPostDispute}
+        />
       )}
     </div>
   );
