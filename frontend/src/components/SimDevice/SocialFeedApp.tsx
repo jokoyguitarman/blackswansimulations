@@ -27,6 +27,15 @@ async function getAuthHeaders() {
   };
 }
 
+const REACTION_EMOJI: Record<string, string> = {
+  like: '\u{1F44D}',
+  love: '\u2764\uFE0F',
+  haha: '\u{1F602}',
+  wow: '\u{1F62E}',
+  angry: '\u{1F621}',
+  sad: '\u{1F622}',
+};
+
 type PostFormat =
   | 'text'
   | 'official_statement'
@@ -134,6 +143,8 @@ export default function SocialFeedApp({
     page_handle: string;
     page_logo_url?: string;
   } | null>(null);
+  // Logos for every org page in the session, keyed by page handle (for rendering post avatars).
+  const [orgPageLogos, setOrgPageLogos] = useState<Record<string, string>>({});
   const [overlayView, setOverlayView] = useState<'page' | 'profile' | null>(null);
   const [showAvatarMenu, setShowAvatarMenu] = useState(false);
   const prevExternalFilter = useRef(externalFilter);
@@ -179,6 +190,17 @@ export default function SocialFeedApp({
             page_logo_url: twPage.page_logo_url || '',
           });
         else setOrgPageInfo(null);
+
+        // Load logos for ALL org pages (any player can see page-post avatars).
+        const allRes = await fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), {
+          headers,
+        });
+        const allJson = await allRes.json();
+        const logoMap: Record<string, string> = {};
+        for (const pg of (allJson.data || []) as Array<Record<string, string>>) {
+          if (pg.page_handle && pg.page_logo_url) logoMap[pg.page_handle] = pg.page_logo_url;
+        }
+        setOrgPageLogos(logoMap);
       } catch {
         /* non-critical */
       }
@@ -360,6 +382,7 @@ export default function SocialFeedApp({
               like_count?: number;
               view_count?: number;
               repost_count?: number;
+              reaction_type?: string;
             }>;
           }
         ).updates;
@@ -368,11 +391,16 @@ export default function SocialFeedApp({
             prev.map((p) => {
               const up = updates.find((u) => u.id === p.id);
               if (!up) return p;
+              const reactionTypes =
+                up.reaction_type && !(p.reaction_types || []).includes(up.reaction_type)
+                  ? [...(p.reaction_types || []), up.reaction_type]
+                  : p.reaction_types;
               return {
                 ...p,
                 like_count: up.like_count ?? p.like_count,
                 view_count: up.view_count ?? p.view_count,
                 repost_count: up.repost_count ?? p.repost_count,
+                reaction_types: reactionTypes,
               };
             }),
           );
@@ -784,9 +812,10 @@ export default function SocialFeedApp({
           {/* Original Post (expanded) */}
           <div className="px-4 pt-4 pb-3" style={{ borderBottom: '1px solid #2F3336' }}>
             <div className="flex items-center gap-3 mb-3">
-              {selectedPost.author_type === 'official_account' && orgPageInfo?.page_logo_url ? (
+              {selectedPost.author_type === 'official_account' &&
+              orgPageLogos[selectedPost.author_handle] ? (
                 <img
-                  src={orgPageInfo.page_logo_url}
+                  src={orgPageLogos[selectedPost.author_handle]}
                   alt={selectedPost.author_display_name}
                   className="w-11 h-11 rounded-full object-cover"
                 />
@@ -1771,9 +1800,9 @@ export default function SocialFeedApp({
                   )}
 
                   <div className="flex gap-3">
-                    {post.author_type === 'official_account' && orgPageInfo?.page_logo_url ? (
+                    {post.author_type === 'official_account' && orgPageLogos[post.author_handle] ? (
                       <img
-                        src={orgPageInfo.page_logo_url}
+                        src={orgPageLogos[post.author_handle]}
                         alt={post.author_display_name}
                         className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                       />
@@ -2300,15 +2329,10 @@ export default function SocialFeedApp({
                       style={{ backgroundColor: '#16181C' }}
                     >
                       {notif.type === 'social_like' ? (
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="#F91880"
-                          stroke="none"
-                        >
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
+                        <span className="text-[15px] leading-none">
+                          {REACTION_EMOJI[String(notif.metadata?.reaction_type || 'like')] ||
+                            '\u{1F44D}'}
+                        </span>
                       ) : notif.type === 'social_reply' ? (
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
                           <path

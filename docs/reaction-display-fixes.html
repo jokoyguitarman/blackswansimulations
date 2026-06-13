@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page Logo + Reaction Display Fixes</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --panel2: #1f2330;
+        --border: #2b3040;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --bad: #f0556a;
+        --good: #34c759;
+        --accent: #4c8dff;
+        --fb: #1877f2;
+        --warn: #f7b928;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+      header {
+        padding: 40px 32px 28px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #141826, #0f1117);
+      }
+      header h1 { margin: 0 0 8px; font-size: 26px; }
+      header p { margin: 0; color: var(--muted); max-width: 760px; }
+      main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+      .bug {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 24px;
+        margin: 24px 0;
+        overflow: hidden;
+      }
+      .bug h2 { margin: 0 0 4px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+      .tag {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 999px;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
+      }
+      .tag.fe { background: rgba(76,141,255,0.15); color: #8fb6ff; }
+      .tag.be { background: rgba(247,185,40,0.15); color: var(--warn); }
+      .sub { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+      @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 16px;
+        background: var(--panel2);
+      }
+      .card.before { border-color: rgba(240,85,106,0.4); }
+      .card.after { border-color: rgba(52,199,89,0.4); }
+      .card h3 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .card.before h3 { color: var(--bad); }
+      .card.after h3 { color: var(--good); }
+      /* Mock social post */
+      .post {
+        background: #fff;
+        color: #050505;
+        border-radius: 10px;
+        padding: 12px;
+        font-size: 13px;
+      }
+      .post .row { display: flex; align-items: center; gap: 10px; }
+      .avatar {
+        width: 40px; height: 40px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        font-weight: 700; color: #fff; flex-shrink: 0; overflow: hidden;
+      }
+      .avatar.letter { background: #1877f2; }
+      .avatar.logo {
+        background: radial-gradient(circle at 30% 30%, #c8a24a, #6b4f1d);
+        font-size: 10px; letter-spacing: -0.5px;
+      }
+      .post .name { font-weight: 700; }
+      .post .name small { display: block; font-weight: 400; color: #65676b; font-size: 11px; }
+      .post .body { margin: 10px 0 8px; }
+      .post .meta { color: #65676b; font-size: 12px; border-top: 1px solid #e4e6eb; padding-top: 8px; }
+      .verified { color: #1877f2; }
+      /* Mock notification */
+      .notif {
+        display: flex; gap: 12px; align-items: flex-start;
+        background: #e7f3ff; color: #050505; border-radius: 10px; padding: 12px;
+      }
+      .notif .ic {
+        width: 38px; height: 38px; border-radius: 50%; background: #e4e6eb;
+        display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+      }
+      .notif .ic.heart { color: #f02849; }
+      .notif .t { font-size: 13px; }
+      .notif .t b { display: block; }
+      .notif .t span { color: #65676b; font-size: 12px; }
+      /* Reaction chips */
+      .rx { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px;
+        background: #f0f2f5; color: #65676b; border-radius: 999px; padding: 4px 10px; font-size: 12px; }
+      .rx .e { font-size: 15px; }
+      pre {
+        background: #0b0d13; border: 1px solid var(--border); border-radius: 8px;
+        padding: 12px 14px; overflow-x: auto; font-size: 12.5px; margin: 12px 0 0;
+        font-family: "SF Mono", ui-monospace, Menlo, Consolas, monospace; color: #c9d3e3;
+      }
+      pre .c { color: #6b7384; }
+      pre .del { color: var(--bad); }
+      pre .add { color: var(--good); }
+      .files { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+      .files code {
+        background: #0b0d13; border: 1px solid var(--border); border-radius: 6px;
+        padding: 3px 8px; font-size: 12px; color: #9fc1ff;
+      }
+      .why { background: rgba(240,85,106,0.08); border-left: 3px solid var(--bad);
+        padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px; }
+      .fix { background: rgba(52,199,89,0.08); border-left: 3px solid var(--good);
+        padding: 10px 14px; border-radius: 0 8px 8px 0; margin: 14px 0; font-size: 14px; }
+      h4 { margin: 18px 0 4px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+      .flow {
+        display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+        background: var(--panel2); border: 1px solid var(--border); border-radius: 10px;
+        padding: 14px; margin-top: 12px; font-size: 12.5px;
+      }
+      .flow .step { background: #0b0d13; border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+      .flow .arrow { color: var(--accent); font-weight: 700; }
+      .summary { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 24px; margin-top: 28px; }
+      .summary table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      .summary th, .summary td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      .summary th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+      .check { color: var(--good); font-weight: 700; }
+      footer { color: var(--muted); font-size: 12px; text-align: center; padding: 24px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Page Logo + Reaction Display Fixes</h1>
+      <p>
+        Three issues seen when a player who does <strong>not</strong> control the "Marina Bay Sands"
+        page reacted to a post made by that page. Below: what each bug looks like now, why it happens,
+        the change, and the result.
+      </p>
+    </header>
+
+    <main>
+      <!-- BUG 1 -->
+      <section class="bug">
+        <h2>Bug 1 - Page photo shows a letter <span class="tag fe">Frontend</span></h2>
+        <p class="sub">
+          A non-controller sees the page's post but the profile photo is missing - just the letter "M".
+        </p>
+
+        <div class="grid">
+          <div class="card before">
+            <h3>Before</h3>
+            <div class="post">
+              <div class="row">
+                <div class="avatar letter">M</div>
+                <div class="name">Marina Bay Sands <span class="verified">&#10003;</span>
+                  <small>1m</small></div>
+              </div>
+              <div class="body">We are aware of the incident and are cooperating with authorities.</div>
+              <div class="meta">6 comments</div>
+            </div>
+          </div>
+          <div class="card after">
+            <h3>After</h3>
+            <div class="post">
+              <div class="row">
+                <div class="avatar logo">MBS</div>
+                <div class="name">Marina Bay Sands <span class="verified">&#10003;</span>
+                  <small>1m</small></div>
+              </div>
+              <div class="body">We are aware of the incident and are cooperating with authorities.</div>
+              <div class="meta">6 comments</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="why">
+          <strong>Why:</strong> the feed renders a page post's avatar from
+          <code>orgPageInfo</code>, which now loads from <code>/api/social/my-page</code> and is
+          <em>null</em> for anyone who does not control that page. So every page post falls back to
+          the initial letter.
+        </div>
+        <div class="fix">
+          <strong>Fix:</strong> render the avatar from the <em>post's</em> page, not the viewer's. Load a
+          per-handle logo map from the all-pages endpoint and key it by the post author handle.
+        </div>
+
+        <pre><span class="c">// new: logos for every page in the session, keyed by handle</span>
+<span class="add">+ const [orgPageLogos, setOrgPageLogos] = useState&lt;Record&lt;string,string&gt;&gt;({});</span>
+<span class="c">// GET /api/social/org-page/session/:id  -&gt; map page_handle -&gt; page_logo_url</span>
+
+<span class="c">// post avatar render</span>
+<span class="del">- post.author_type === 'official_account' &amp;&amp; orgPageInfo?.page_logo_url</span>
+<span class="add">+ post.author_type === 'official_account' &amp;&amp; orgPageLogos[post.author_handle]</span></pre>
+        <div class="files">
+          <code>FacebookFeedApp.tsx</code><code>SocialFeedApp.tsx</code>
+        </div>
+      </section>
+
+      <!-- BUG 2 -->
+      <section class="bug">
+        <h2>Bug 2 - Notification icon is a heart, text says "haha" <span class="tag fe">Frontend</span></h2>
+        <p class="sub">
+          The page controller's notification shows a red heart, but the words say the reaction was a
+          "haha". Icon and text disagree.
+        </p>
+
+        <div class="grid">
+          <div class="card before">
+            <h3>Before</h3>
+            <div class="notif">
+              <div class="ic heart">&#10084;&#65039;</div>
+              <div class="t"><b>Jdoe reacted haha to your post</b><span>1m</span></div>
+            </div>
+          </div>
+          <div class="card after">
+            <h3>After</h3>
+            <div class="notif">
+              <div class="ic">&#128514;</div>
+              <div class="t"><b>Jdoe reacted haha to your post</b><span>1m</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="why">
+          <strong>Why:</strong> the in-app notification list hardcodes a heart SVG for every
+          <code>social_like</code> notification, ignoring <code>metadata.reaction_type</code>. The text
+          is generated from the real reaction label, so they don't match.
+        </div>
+        <div class="fix">
+          <strong>Fix:</strong> choose the icon from <code>metadata.reaction_type</code> using the
+          existing reaction emoji map.
+        </div>
+
+        <pre><span class="del">- {notif.type === 'social_like' ? (&lt;svg&gt;...heart...&lt;/svg&gt;) : ...}</span>
+<span class="add">+ {notif.type === 'social_like'</span>
+<span class="add">+   ? (REACTIONS.find(r =&gt; r.type === notif.metadata?.reaction_type)?.emoji ?? '\u{1F44D}')</span>
+<span class="add">+   : ...}</span>
+
+<span class="c">// reaction map already exists:</span>
+<span class="c">// like \u{1F44D}  love \u2764\uFE0F  haha \u{1F602}  wow \u{1F62E}  angry \u{1F621}  sad \u{1F622}</span></pre>
+        <div class="files">
+          <code>FacebookFeedApp.tsx</code><code>SocialFeedApp.tsx</code>
+        </div>
+      </section>
+
+      <!-- BUG 3 -->
+      <section class="bug">
+        <h2>Bug 3 - Other viewers see "like" instead of the real reaction
+          <span class="tag be">Backend</span><span class="tag fe">Frontend</span></h2>
+        <p class="sub">
+          The reactor sees their "haha" on the post, but the page controller sees a plain like - until a
+          full page reload.
+        </p>
+
+        <div class="grid">
+          <div class="card before">
+            <h3>Before (controller, live)</h3>
+            <div class="post">
+              <div class="row">
+                <div class="avatar logo">MBS</div>
+                <div class="name">Marina Bay Sands <span class="verified">&#10003;</span></div>
+              </div>
+              <div class="body">We are cooperating with authorities.</div>
+              <span class="rx"><span class="e">&#128077;</span> 1</span>
+            </div>
+          </div>
+          <div class="card after">
+            <h3>After (controller, live)</h3>
+            <div class="post">
+              <div class="row">
+                <div class="avatar logo">MBS</div>
+                <div class="name">Marina Bay Sands <span class="verified">&#10003;</span></div>
+              </div>
+              <div class="body">We are cooperating with authorities.</div>
+              <span class="rx"><span class="e">&#128514;</span> 1</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="why">
+          <strong>Why:</strong> the like endpoint updates the count but never broadcasts the reaction,
+          and the live update handler only syncs counts (not reaction type). With a baseline like-count
+          &gt; 0 and no reaction types loaded, the display falls back to a generic
+          <code>['like']</code>. The data is correct on a fresh reload, so it's a live-sync gap.
+        </div>
+        <div class="fix">
+          <strong>Fix:</strong> broadcast the reaction type when a like happens, and merge it into the
+          post's reaction set live.
+        </div>
+
+        <div class="flow">
+          <span class="step">Player reacts haha</span>
+          <span class="arrow">&rarr;</span>
+          <span class="step">like endpoint: insert + count++</span>
+          <span class="arrow">&rarr;</span>
+          <span class="step">broadcast { id, like_count, <strong>reaction_type</strong> }</span>
+          <span class="arrow">&rarr;</span>
+          <span class="step">feed merges reaction_type into reaction_types</span>
+          <span class="arrow">&rarr;</span>
+          <span class="step">post shows haha live</span>
+        </div>
+
+        <pre><span class="c">// backend: socialMedia.ts (player like)</span>
+<span class="add">+ getWebSocketService().broadcastToSession(post.session_id, {</span>
+<span class="add">+   type: 'social_posts.engagement_update',</span>
+<span class="add">+   data: { updates: [{ id: postId, like_count: newCount, reaction_type: reactionType }] },</span>
+<span class="add">+ });</span>
+
+<span class="c">// frontend: engagement_update handler</span>
+<span class="add">+ if (up.reaction_type) reaction_types = [...new Set([...(p.reaction_types||[]), up.reaction_type])];</span></pre>
+        <div class="files">
+          <code>server/routes/socialMedia.ts</code><code>server/services/npcReactionService.ts</code>
+          <code>FacebookFeedApp.tsx</code><code>SocialFeedApp.tsx</code>
+        </div>
+      </section>
+
+      <!-- SUMMARY -->
+      <section class="summary">
+        <h2 style="margin-top:0">Summary of results</h2>
+        <table>
+          <thead>
+            <tr><th>Behavior</th><th>Now</th><th>After fix</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Page post avatar (non-controller)</td>
+              <td>Letter "M"</td>
+              <td><span class="check">&#10003;</span> Real page logo</td>
+            </tr>
+            <tr>
+              <td>Reaction notification icon</td>
+              <td>Always a heart</td>
+              <td><span class="check">&#10003;</span> Matches the reaction (like / love / haha / wow / angry / sad)</td>
+            </tr>
+            <tr>
+              <td>Reaction shown on a post to other viewers (live)</td>
+              <td>Generic like</td>
+              <td><span class="check">&#10003;</span> The actual reaction, updated live without reload</td>
+            </tr>
+            <tr>
+              <td>Stored data / page control / notification targeting</td>
+              <td colspan="2"><span class="check">&#10003;</span> Unchanged - these are display/sync fixes only</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <footer>
+        Plan: fix_page_logo_and_reaction_display - 3 fixes across 4 files, no schema changes.
+      </footer>
+    </main>
+  </body>
+</html>

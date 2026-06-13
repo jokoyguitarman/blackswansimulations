@@ -147,6 +147,8 @@ export default function FacebookFeedApp() {
     page_handle: string;
     page_logo_url?: string;
   } | null>(null);
+  // Logos for every org page in the session, keyed by page handle (for rendering post avatars).
+  const [orgPageLogos, setOrgPageLogos] = useState<Record<string, string>>({});
   const currentUserIdRef = useRef<string | null>(null);
   const [playerDisplayName, setPlayerDisplayName] = useState('Player');
 
@@ -184,6 +186,17 @@ export default function FacebookFeedApp() {
             page_logo_url: fbPage.page_logo_url || '',
           });
         else setOrgPageInfo(null);
+
+        // Load logos for ALL org pages (any player can see page-post avatars).
+        const allRes = await fetch(apiUrl(`/api/social/org-page/session/${sessionId}`), {
+          headers,
+        });
+        const allJson = await allRes.json();
+        const logoMap: Record<string, string> = {};
+        for (const pg of (allJson.data || []) as Array<Record<string, string>>) {
+          if (pg.page_handle && pg.page_logo_url) logoMap[pg.page_handle] = pg.page_logo_url;
+        }
+        setOrgPageLogos(logoMap);
       } catch {
         /* non-critical */
       }
@@ -556,6 +569,7 @@ export default function FacebookFeedApp() {
               like_count?: number;
               view_count?: number;
               repost_count?: number;
+              reaction_type?: string;
             }>;
           }
         ).updates;
@@ -564,11 +578,16 @@ export default function FacebookFeedApp() {
             prev.map((p) => {
               const up = updates.find((u) => u.id === p.id);
               if (!up) return p;
+              const reactionTypes =
+                up.reaction_type && !(p.reaction_types || []).includes(up.reaction_type)
+                  ? [...(p.reaction_types || []), up.reaction_type]
+                  : p.reaction_types;
               return {
                 ...p,
                 like_count: up.like_count ?? p.like_count,
                 view_count: up.view_count ?? p.view_count,
                 repost_count: up.repost_count ?? p.repost_count,
+                reaction_types: reactionTypes,
               };
             }),
           );
@@ -1423,15 +1442,11 @@ export default function FacebookFeedApp() {
                       style={{ backgroundColor: '#E4E6EB' }}
                     >
                       {notif.type === 'social_like' ? (
-                        <svg
-                          width="16"
-                          height="16"
-                          viewBox="0 0 24 24"
-                          fill="#F02849"
-                          stroke="none"
-                        >
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
+                        <span className="text-[18px] leading-none">
+                          {REACTIONS.find(
+                            (r) => r.type === (notif.metadata?.reaction_type as string),
+                          )?.emoji ?? '\u{1F44D}'}
+                        </span>
                       ) : notif.type === 'social_reply' ? (
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
                           <path
@@ -2075,9 +2090,9 @@ export default function FacebookFeedApp() {
                             }
                           >
                             {post.author_type === 'official_account' &&
-                            orgPageInfo?.page_logo_url ? (
+                            orgPageLogos[post.author_handle] ? (
                               <img
-                                src={orgPageInfo.page_logo_url}
+                                src={orgPageLogos[post.author_handle]}
                                 alt={post.author_display_name}
                                 className="w-10 h-10 rounded-full object-cover flex-shrink-0"
                               />

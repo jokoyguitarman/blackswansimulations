@@ -620,10 +620,18 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
       .single();
 
     if (post) {
+      const newLikeCount = (post.like_count || 0) + 1;
       await supabaseAdmin
         .from('social_posts')
-        .update({ like_count: (post.like_count || 0) + 1 })
+        .update({ like_count: newLikeCount })
         .eq('id', postId);
+
+      // Broadcast so other viewers update the count AND the reaction type live.
+      getWebSocketService().broadcastToSession(post.session_id, {
+        type: 'social_posts.engagement_update',
+        data: { updates: [{ id: postId, like_count: newLikeCount, reaction_type: reactionType }] },
+        timestamp: new Date().toISOString(),
+      });
 
       await recordPlayerAction(post.session_id, user.id, 'post_liked', postId, null, {
         reaction_type: reactionType,
