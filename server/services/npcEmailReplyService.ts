@@ -514,34 +514,65 @@ Return ONLY valid JSON:
                   return;
                 }
 
-                // Journalist shares article on social media
-                const socialContent = `BREAKING: ${headline}\n\n${articleBody.substring(0, 200)}...\n\nFull story available.`;
-                const { data: post, error: postError } = await supabaseAdmin
-                  .from('social_posts')
-                  .insert({
-                    session_id: sessionId,
-                    platform: 'x_twitter',
-                    author_handle: respondentHandle || '@NewsWire',
-                    author_display_name: replyFromName || 'News Wire',
-                    author_type: 'npc_media',
-                    content: socialContent,
-                    sentiment: 'neutral',
-                    virality_score: 60,
-                    requires_response: false,
-                    like_count: Math.floor(Math.random() * 100) + 20,
-                    repost_count: Math.floor(Math.random() * 50) + 10,
-                    view_count: Math.floor(Math.random() * 3000) + 500,
-                    hashtags: ['#breaking', '#news'],
-                  })
-                  .select()
-                  .single();
+                getWebSocketService().broadcastToSession(sessionId, {
+                  type: 'news_article.published',
+                  data: { article },
+                  timestamp: new Date().toISOString(),
+                });
 
-                if (!postError && post) {
-                  getWebSocketService().broadcastToSession(sessionId, {
-                    type: 'social_post.created',
-                    data: { post },
-                    timestamp: new Date().toISOString(),
-                  });
+                const outletName = replyFromName || 'News Wire';
+                const outletHandle = respondentHandle || '@news_wire';
+                const snippet = articleBody.substring(0, 150);
+                const category = String(articleData.category || 'breaking');
+                const categoryLabel = category === 'breaking' ? 'BREAKING' : category.toUpperCase();
+
+                const sharedArticleFlags = {
+                  shared_article: {
+                    id: article.id,
+                    headline,
+                    outlet_name: outletName,
+                    snippet,
+                    category,
+                  },
+                };
+
+                const socialPlatforms = [
+                  {
+                    platform: 'x_twitter',
+                    content: `${categoryLabel}: ${headline}\n\nnews.sim/${article.id.slice(0, 8)}`,
+                  },
+                  {
+                    platform: 'facebook',
+                    content: `📰 ${headline}\n\n"${snippet}..."\n\n— ${outletName}`,
+                  },
+                ];
+
+                for (const { platform, content: postContent } of socialPlatforms) {
+                  const { data: post, error: postError } = await supabaseAdmin
+                    .from('social_posts')
+                    .insert({
+                      session_id: sessionId,
+                      platform,
+                      author_handle: outletHandle,
+                      author_display_name: outletName,
+                      author_type: 'npc_media',
+                      content: postContent,
+                      shared_article_id: article.id,
+                      content_flags: sharedArticleFlags,
+                      sentiment: 'neutral',
+                      hashtags: ['#BreakingNews'],
+                      virality_score: 60 + Math.floor(Math.random() * 30),
+                    })
+                    .select()
+                    .single();
+
+                  if (!postError && post) {
+                    getWebSocketService().broadcastToSession(sessionId, {
+                      type: 'social_post.created',
+                      data: { post },
+                      timestamp: new Date().toISOString(),
+                    });
+                  }
                 }
 
                 logger.info(

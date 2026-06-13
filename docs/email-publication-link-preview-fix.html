@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Fix: Email-Published Articles &rarr; Link Preview Integration</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --panel2: #1f2330;
+        --border: #2b3040;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --bad: #f0556a;
+        --good: #34c759;
+        --accent: #4c8dff;
+        --warn: #f7b928;
+        --z: #1d9bf0;
+        --news: #ff2d55;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+      header {
+        padding: 40px 32px 28px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #141826, #0f1117);
+      }
+      header h1 { margin: 0 0 8px; font-size: 26px; }
+      header p { margin: 0; color: var(--muted); max-width: 760px; font-size: 15px; }
+      main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+
+      .tag {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 10px;
+        border-radius: 999px;
+        white-space: nowrap;
+      }
+      .tag-bug { background: rgba(240,85,106,0.18); color: var(--bad); }
+      .tag-fix { background: rgba(52,199,89,0.18); color: var(--good); }
+
+      .section-label {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        color: var(--muted);
+        margin: 40px 0 8px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 0;
+        margin: 20px 0;
+        overflow: hidden;
+      }
+      .card-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 18px 24px;
+        border-bottom: 1px solid var(--border);
+      }
+      .card-header h2 { margin: 0; font-size: 17px; flex: 1; }
+      .card-body { padding: 18px 24px; }
+      .card-body p { margin: 0 0 10px; color: var(--muted); font-size: 14px; }
+
+      .files {
+        background: var(--panel2);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 12px 0;
+        font-size: 13px;
+      }
+      .files .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+      .files code { display: block; padding: 2px 0; color: var(--accent); font-family: "SF Mono", "Fira Code", monospace; font-size: 12px; }
+
+      pre {
+        background: #0d0f14;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-size: 12px;
+        line-height: 1.5;
+        margin: 12px 0;
+      }
+      pre code { color: var(--text); font-family: "SF Mono", "Fira Code", monospace; }
+      .del { background: rgba(240,85,106,0.12); color: var(--bad); text-decoration: line-through; }
+      .add { background: rgba(52,199,89,0.12); color: var(--good); }
+      .cm { color: #5c6370; font-style: italic; }
+      .kw { color: #c678dd; }
+      .str { color: #98c379; }
+      .num { color: #d19a66; }
+
+      table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 13px; }
+      th { text-align: left; padding: 8px 12px; background: var(--panel2); color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+      td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+
+      .flow {
+        background: var(--panel2);
+        border-radius: 10px;
+        padding: 20px;
+        margin: 16px 0;
+        overflow-x: auto;
+      }
+      .flow-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+      .flow-box {
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .flow-arrow { color: var(--muted); font-size: 18px; }
+      .flow-email { background: rgba(255,122,0,0.18); color: #ff7a00; }
+      .flow-ai { background: rgba(175,82,222,0.15); color: #af52de; }
+      .flow-news { background: rgba(255,45,85,0.18); color: var(--news); }
+      .flow-social { background: rgba(29,155,240,0.18); color: var(--z); }
+      .flow-ws { background: rgba(76,141,255,0.18); color: var(--accent); }
+      .flow-missing { background: rgba(240,85,106,0.15); color: var(--bad); border: 1px dashed var(--bad); }
+      .flow-fixed { background: rgba(52,199,89,0.15); color: var(--good); border: 1px solid var(--good); }
+
+      .expected {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        margin: 16px 0;
+        overflow: hidden;
+      }
+      .expected-header {
+        background: var(--panel2);
+        padding: 10px 16px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--good);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        border-bottom: 1px solid var(--border);
+      }
+      .expected-body { padding: 16px; }
+
+      .device-row { display: flex; gap: 16px; flex-wrap: wrap; margin: 12px 0; }
+      .device-mock {
+        flex: 1;
+        min-width: 260px;
+        max-width: 340px;
+        border-radius: 14px;
+        overflow: hidden;
+        border: 2px solid var(--border);
+      }
+      .device-bar {
+        padding: 8px 14px;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+      .device-content { padding: 12px; font-size: 13px; }
+
+      .link-card {
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #2f3336;
+        background: #16181c;
+        margin: 8px 0;
+      }
+      .link-accent { height: 3px; background: var(--z); }
+      .link-inner { padding: 10px 12px; }
+      .link-outlet { font-size: 11px; color: #71767b; margin-bottom: 4px; }
+      .link-headline { font-size: 13px; font-weight: 600; color: #e7e9ea; margin-bottom: 4px; }
+      .link-domain { font-size: 10px; color: #71767b; margin-top: 6px; }
+
+      ul { margin: 8px 0; padding-left: 20px; }
+      li { margin: 4px 0; font-size: 13.5px; color: var(--muted); }
+      li strong { color: var(--text); }
+      .divider { height: 1px; background: var(--border); margin: 32px 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Fix: Email-Published Articles &rarr; Link Preview Integration</h1>
+      <p>When a player emails a journalist NPC and provides enough information, the journalist publishes a news article. Currently, the resulting social media post is a plain text post with no link to the article. This fix connects it to the link preview system.</p>
+    </header>
+
+    <main>
+
+      <!-- ============================================================ -->
+      <!-- THE PROBLEM -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">The Problem</div>
+
+      <div class="card" style="border-color: var(--bad);">
+        <div class="card-header">
+          <span class="tag tag-bug">Gap</span>
+          <h2>Email-Published Articles Are Disconnected from Link Previews</h2>
+        </div>
+        <div class="card-body">
+          <p>The journalist NPC publication flow in <code>npcEmailReplyService.ts</code> (lines 485&ndash;554) has three issues:</p>
+
+          <table>
+            <tr><th style="width:50%">What's Missing</th><th>Consequence</th></tr>
+            <tr>
+              <td><strong>No <code>shared_article_id</code></strong> on the social post</td>
+              <td style="color:var(--bad)">Link preview card doesn't render &mdash; it's just a plain text post</td>
+            </tr>
+            <tr>
+              <td><strong>No <code>content_flags.shared_article</code></strong> metadata</td>
+              <td style="color:var(--bad)">Even if shared_article_id was set, the card has no headline/outlet/snippet to display</td>
+            </tr>
+            <tr>
+              <td><strong>No <code>news_article.published</code></strong> WebSocket broadcast</td>
+              <td style="color:var(--bad)">The News App never receives the article in real-time &mdash; player must refresh</td>
+            </tr>
+            <tr>
+              <td><strong>Only posts to X/Twitter</strong>, not Facebook</td>
+              <td style="color:var(--warn)">Fakebook players never see the journalist's story</td>
+            </tr>
+          </table>
+
+          <div class="files">
+            <div class="label">File with the issue</div>
+            <code>server/services/npcEmailReplyService.ts</code> &mdash; lines 485&ndash;554
+          </div>
+        </div>
+      </div>
+
+      <!-- ============================================================ -->
+      <!-- FLOW: BEFORE vs AFTER -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Data Flow: Before vs After</div>
+
+      <h3 style="font-size:14px; color:var(--bad); margin:16px 0 8px;">Current (broken)</h3>
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-box flow-email">Player emails journalist</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-ai">AI: should_publish = true</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-news">sim_news_articles (created)</div>
+        </div>
+        <div style="padding: 4px 0 4px 0; color: var(--muted); font-size: 12px;">&darr; but then...</div>
+        <div class="flow-row">
+          <div class="flow-box flow-missing">No WS broadcast to News App</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-missing">Player doesn't see article until refresh</div>
+        </div>
+        <div class="flow-row" style="margin-top:4px;">
+          <div class="flow-box flow-social">social_posts (plain text, X only)</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-missing">No link preview card</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-missing">No click-to-open-article</div>
+        </div>
+      </div>
+
+      <h3 style="font-size:14px; color:var(--good); margin:16px 0 8px;">After fix</h3>
+      <div class="flow">
+        <div class="flow-row">
+          <div class="flow-box flow-email">Player emails journalist</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-ai">AI: should_publish = true</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-news">sim_news_articles (created)</div>
+        </div>
+        <div style="padding: 4px 0 4px 210px; color: var(--muted); font-size: 12px;">&darr;</div>
+        <div class="flow-row" style="padding-left: 210px;">
+          <div class="flow-box flow-fixed">WS: news_article.published</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-news">News App shows article instantly</div>
+        </div>
+        <div style="padding: 4px 0 4px 210px; color: var(--muted); font-size: 12px;">&darr; also creates (both platforms)</div>
+        <div class="flow-row" style="padding-left: 210px;">
+          <div class="flow-box flow-fixed">social_posts + shared_article_id</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-fixed">Link preview card on Z &amp; Fakebook</div>
+          <span class="flow-arrow">&rarr;</span>
+          <div class="flow-box flow-news">Click &rarr; News App</div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- WHAT CHANGES -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">What Changes</div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="tag tag-fix">Fix</span>
+          <h2>Single file: npcEmailReplyService.ts (lines 496&ndash;545)</h2>
+        </div>
+        <div class="card-body">
+          <p><strong>Step 1:</strong> After the article is inserted successfully (line 507), add the WebSocket broadcast so the News App receives it in real-time.</p>
+
+<pre><code><span class="cm">// After article insert succeeds, broadcast to News App</span>
+<span class="add">getWebSocketService().broadcastToSession(sessionId, {</span>
+<span class="add">  type: 'news_article.published',</span>
+<span class="add">  data: { article },</span>
+<span class="add">  timestamp: new Date().toISOString(),</span>
+<span class="add">});</span></code></pre>
+
+          <p><strong>Step 2:</strong> Replace the single-platform plain text social post (lines 517&ndash;545) with the dual-platform linked pattern from feedEngineService.ts.</p>
+
+<pre><code><span class="cm">// REMOVE: old plain text X-only post</span>
+<span class="del">const socialContent = `BREAKING: ${headline}\n\n${articleBody.substring(0, 200)}...\n\nFull story available.`;</span>
+<span class="del">const { data: post, error: postError } = await supabaseAdmin</span>
+<span class="del">  .from('social_posts')</span>
+<span class="del">  .insert({ ...plain text fields, no shared_article_id... })</span>
+
+<span class="cm">// REPLACE WITH: dual-platform linked posts</span>
+<span class="add">const snippet = articleBody.substring(0, 150);</span>
+<span class="add">const categoryLabel = category === 'breaking' ? 'BREAKING' : category.toUpperCase();</span>
+<span class="add">const sharedArticleFlags = {</span>
+<span class="add">  shared_article: { id: article.id, headline, outlet_name: outletName, snippet, category }</span>
+<span class="add">};</span>
+<span class="add">const platforms = [</span>
+<span class="add">  { platform: 'x_twitter', content: `${categoryLabel}: ${headline}\n\nnews.sim/...` },</span>
+<span class="add">  { platform: 'facebook', content: `📰 ${headline}\n\n"${snippet}..."\n\n— ${outletName}` },</span>
+<span class="add">];</span>
+<span class="add">for (const { platform, content } of platforms) {</span>
+<span class="add">  // insert with shared_article_id + content_flags</span>
+<span class="add">  // broadcast social_post.created</span>
+<span class="add">}</span></code></pre>
+
+          <p style="color:var(--text);"><strong>No other files change.</strong> The LinkPreviewCard rendering and click-to-navigate logic in SocialFeedApp, FacebookFeedApp, and NewsApp are already wired up from the previous commit.</p>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- ============================================================ -->
+      <!-- EXPECTED RESULT -->
+      <!-- ============================================================ -->
+
+      <div class="section-label">Expected Result</div>
+
+      <div class="expected">
+        <div class="expected-header">&#9989; Gameplay Scenario: Player Emails a Journalist</div>
+        <div class="expected-body">
+
+          <table>
+            <tr><th style="width:70px">Step</th><th>What Happens</th><th>Player Sees</th></tr>
+            <tr>
+              <td style="color:var(--warn)">1</td>
+              <td>Player sends email to <code>sarah.chen@media.sim</code> with a press release about the company's response</td>
+              <td>Email sent confirmation in Email App</td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">2</td>
+              <td>Journalist NPC replies (10&ndash;30s delay) asking for clarification: "Can you provide an official quote and timeline?"</td>
+              <td>Email notification &mdash; NPC asks probing questions</td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">3</td>
+              <td>Player replies with official quote and details</td>
+              <td>Email sent</td>
+            </tr>
+            <tr>
+              <td style="color:var(--warn)">4</td>
+              <td>Journalist NPC sets <code>should_publish: true</code>. Replies: "Thank you &mdash; we'll have this published shortly."</td>
+              <td>Email from journalist confirming publication</td>
+            </tr>
+            <tr>
+              <td style="color:var(--good)">5</td>
+              <td>After 60&ndash;180s delay, article is created + broadcast</td>
+              <td>
+                <strong>News App:</strong> Article appears in real-time via WebSocket<br>
+                <strong>Z Feed:</strong> Journalist NPC posts with link preview card<br>
+                <strong>Fakebook:</strong> Same journalist post with FB-styled link preview card
+              </td>
+            </tr>
+            <tr>
+              <td style="color:var(--good)">6</td>
+              <td>Other players see the link preview card in their feeds</td>
+              <td>Clicking the card opens the article in the News App</td>
+            </tr>
+          </table>
+
+          <div class="device-row" style="margin-top:16px;">
+            <div class="device-mock">
+              <div class="device-bar" style="background:#16181c; color:var(--z);">Z Feed &mdash; After Fix</div>
+              <div class="device-content" style="background:#000; color:#e7e9ea;">
+                <div style="display:flex; gap:8px;">
+                  <div style="width:32px;height:32px;border-radius:50%;background:#ff9500;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0">S</div>
+                  <div>
+                    <div style="font-size:13px;"><strong>Sarah Chen</strong> <span style="color:#71767b">@sarah_chen</span></div>
+                    <div style="font-size:13px; margin-top:4px;">BREAKING: Company issues official response to MBS incident, confirms no structural damage<br><br><span style="color:#71767b">news.sim/a3f8b2c1</span></div>
+                    <div class="link-card">
+                      <div class="link-accent"></div>
+                      <div class="link-inner">
+                        <div class="link-outlet">Sarah Chen <span style="font-size:9px; font-weight:700; padding:2px 6px; border-radius:4px; background:#ff3b30; color:#fff; margin-left:4px;">BREAKING</span></div>
+                        <div class="link-headline">Company issues official response to MBS incident, confirms no structural damage</div>
+                        <div style="font-size:11px; color:#71767b; margin-top:2px;">"In a statement released through the crisis response team, a spokesperson confirmed..."</div>
+                        <div class="link-domain">&#128279; news.sim</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div style="font-size:11px; color:#71767b; text-align:center; padding:8px 0 4px;">Link preview card &mdash; click opens article in News App</div>
+              </div>
+            </div>
+
+            <div class="device-mock">
+              <div class="device-bar" style="background:#f2f2f7; color:var(--news);">News App &mdash; Article appears</div>
+              <div class="device-content" style="background:#fff; color:#1c1c1e;">
+                <div style="background:#1c1c1e; border-radius:12px; padding:14px; color:#fff; margin-bottom:8px;">
+                  <div style="font-size:10px; color:#ff9500; font-weight:700; margin-bottom:6px;">SARAH CHEN <span style="font-size:9px; padding:2px 6px; border-radius:4px; background:#ff3b30; color:#fff; margin-left:4px;">BREAKING</span></div>
+                  <div style="font-size:15px; font-weight:800;">Company issues official response to MBS incident, confirms no structural damage</div>
+                  <div style="font-size:11px; color:rgba(255,255,255,0.5); margin-top:6px;">Just now</div>
+                </div>
+                <div style="font-size:11px; color:#8e8e93; text-align:center;">Article pushed in real-time via WebSocket</div>
+              </div>
+            </div>
+          </div>
+
+          <p style="margin:16px 0 0; font-size:13px; color:var(--muted);"><strong>Key win:</strong> The player's proactive outreach to media now produces a visible, tangible outcome across all three apps (Email, News, Social) &mdash; creating a feedback loop that rewards good crisis communication strategy.</p>
+        </div>
+      </div>
+
+      <div style="text-align:center; padding:40px 0 0; color:var(--muted); font-size:13px;">
+        Single file change &bull; ~30 lines modified &bull; No new migrations &bull; No new dependencies
+      </div>
+
+    </main>
+  </body>
+</html>
