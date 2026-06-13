@@ -125,6 +125,7 @@ export async function notifyPostLike(
   reactionType: string = 'like',
   platform: string = 'x_twitter',
   isPageNotification: boolean = false,
+  postId?: string,
 ): Promise<void> {
   try {
     const userIds = isPageNotification
@@ -141,6 +142,7 @@ export async function notifyPostLike(
 
     const title = `${likerName} ${reactionLabel} your post`;
     const metadata = {
+      post_id: postId || null,
       platform,
       liker: likerName,
       reaction_type: reactionType,
@@ -171,7 +173,11 @@ export async function notifyPostLike(
           notification_type: 'social_like',
           platform,
           title,
-          metadata: { is_page_notification: isPageNotification },
+          metadata: {
+            post_id: postId || null,
+            platform,
+            is_page_notification: isPageNotification,
+          },
         },
         timestamp: new Date().toISOString(),
       });

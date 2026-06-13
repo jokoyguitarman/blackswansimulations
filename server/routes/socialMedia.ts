@@ -647,6 +647,7 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
           reactionType,
           likedPost.platform || 'x_twitter',
           isPageNotif,
+          postId,
         );
       }
     }

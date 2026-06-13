@@ -271,6 +271,7 @@ Return ONLY valid JSON:
                 'like',
                 postPlatform,
                 isOfficialPagePost,
+                String(playerPost.id),
               );
 
               getWebSocketService().broadcastToSession(sessionId, {
