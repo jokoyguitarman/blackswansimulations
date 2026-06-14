@@ -549,32 +549,26 @@ Other teams in the exercise: ${otherTeams.map((t) => `${t.team_name} (${t.team_d
 You must generate 8-15 injects that ONLY this team will experience. These create a unique pressure arc for this team's specific role.
 
 The injects should be a MIX of:
-- EXECUTIVE / DIRECTIVE EMAILS (app: "email") — these provide FACTS, CONSTRAINTS, and PROCEDURAL DIRECTIVES only. Generate at least 3-5 email injects from this team's direct leadership chain and relevant authorities. Each email MUST include "email_category" in its delivery_config. Use from_name and from_address matching the real-world supervisors, directors, and authorities this specific team would report to. The categories are:
-  * "verified_facts": Team's direct supervisor shares confirmed facts relevant to this team's domain. E.g. for a health team: "Confirmed: 12 injured, 2 critical at SGH. SCDF deployed 5 emergency vehicles." Include ONLY confirmed information — no language for the team to use, no talking points, no draft statements.
-  * "communication_boundaries": Red lines specific to this team's domain. E.g. for legal team: "Do NOT confirm any settlement discussions." For PR team: "Do NOT engage with accounts that have fewer than 1000 followers."
-  * "approval_chain": Who on this team can approve what. E.g. "Field updates: team lead approval. Media quotes: Director approval. Financial disclosures: CEO + Legal co-approval."
-  * "legal_advisory": Legal warnings relevant to this team's responsibilities. Regulatory deadlines, compliance obligations, evidence preservation for this team's domain.
-  * "stakeholder_priority": Priority contacts specific to this team's stakeholder group.
-  * "sitrep_request": Structured reporting format demanded from this team by leadership. Include the specific template they must follow.
-  * "resource_authorization": Resources unlocked for this team — budget, specialist consultants, overtime authorization, external agency support.
-  * "stand_down_pivot": Strategy change for this team — e.g. "Stop engaging on X/Twitter, focus entirely on Facebook community groups" or "New verified facts change the situation." Share the new facts but do NOT provide new messaging or draft statements.
-  * "general": Other correspondence — journalist inquiries directed to this team, community leader outreach, inter-team coordination requests.
+- EMAILS (app: "email") — these provide VERIFIED FACTS, STATUS REQUESTS, and EXTERNAL/PRESS correspondence ONLY. Generate at least 2-4 email injects. Each email MUST include "email_category" in its delivery_config. Use from_name and from_address matching the real-world supervisors and authorities this team would hear from. The ONLY allowed categories are:
+  * "verified_facts": Team's supervisor or authorities share confirmed facts relevant to this team's domain and address circulating rumours. E.g. for a health team: "Confirmed: 12 injured, 2 critical at SGH. SCDF deployed 5 emergency vehicles. No official cause released." Include ONLY confirmed information — no language to use, no talking points, no draft statements.
+  * "sitrep_request": Leadership asks this team for a status update — what they have observed and actioned. It requests information FROM the team; it does NOT instruct them how to handle the public.
+  * "general": Journalist inquiries directed to this team, community/faith leader outreach, affected-party messages. External pressure only — never instructions on what to do.
 
-ANTI-COACHING RULE (CRITICAL): Executive/leadership emails must NEVER tell the team what to say publicly, provide draft statements, give talking points, suggest messaging, offer PR strategy advice, or provide "approved language" to use. They may ONLY: share verified facts, set constraints (what NOT to do), request reports, authorize resources, and issue procedural directives. The players must figure out their own public response. This is a training simulation — spoonfeeding defeats the purpose.
+ANTI-COACHING RULE (CRITICAL): Emails must NEVER tell the team what to say publicly, provide draft statements, talking points, suggested messaging, approved language, PR strategy, communication red lines, approval chains, or stakeholder priority/comms-process instructions. Internal emails are limited to verified facts and status requests. The players must figure out their own procedures and public response. This is a training simulation — spoonfeeding the process or the message defeats the purpose.
 
 - DIRECT MESSAGES or GROUP CHAT (app: "group_chat") from NPCs or colleagues with tips, requests, or pressure.
 - SOCIAL MEDIA POSTS (app: "social_feed") that are particularly relevant to this team's monitoring responsibility. Use the NPC personas and their specific claims. For social_feed injects, set "platform" in the delivery_config to either "x_twitter" or "facebook". Vary the platform -- short reactions and hashtag trends go on X/Twitter, longer community posts and group discussions go on Facebook.
 - PHONE CALLS (app: "phone_call") from leadership or stakeholders demanding updates.
 
 Each inject should create PRESSURE specific to this team's role. The storyline should have:
-- An OPENING phase (T+0 to T+5): the team becomes aware of the crisis. Early emails: verified_facts (confirmed information for their domain), stakeholder_priority for their contacts.
-- A BUILDING phase (T+5 to T+20): pressure intensifies. Emails: communication_boundaries (team-specific red lines), approval_chain, updated verified_facts.
-- A PEAK phase (T+20 to T+40): maximum pressure. Emails: legal_advisory, sitrep_request, resource_authorization.
-- A RESOLUTION phase (T+40+): consequences appear. Emails: stand_down_pivot (new facts change the situation), updated verified_facts.
+- An OPENING phase (T+0 to T+5): the team becomes aware of the crisis. Early email: verified_facts (confirmed information for their domain).
+- A BUILDING phase (T+5 to T+20): pressure intensifies. Emails: updated verified_facts, a press request for comment (general).
+- A PEAK phase (T+20 to T+40): maximum pressure. Emails: sitrep_request (leadership asks for status), more external/press inquiries (general).
+- A RESOLUTION phase (T+40+): consequences appear. Emails: new verified_facts that change the situation.
 
 Mark critical injects with requires_response: true and response_deadline_minutes.
 
-CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "communication_boundaries", "approval_chain", "legal_advisory", "stakeholder_priority", "sitrep_request", "resource_authorization", "stand_down_pivot", or "general". Also set realistic "from_name", "from_address", and "priority". Use names and titles appropriate to this team's leadership chain.
+CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "sitrep_request", or "general". Do NOT use any other category. Also set realistic "from_name", "from_address", and "priority". Use names and titles appropriate to this team's leadership chain or external contacts.
 
 ALL injects must have target_teams: ["${team.team_name}"].
 
@@ -585,7 +579,7 @@ Facts and claims:
 ${factsContext}
 
 Return ONLY valid JSON:
-{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "team_specific", "target_teams": ["${team.team_name}"], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "email_category": "verified_facts|communication_boundaries|approval_chain|legal_advisory|stakeholder_priority|sitrep_request|resource_authorization|stand_down_pivot|general", "from_name": "...", "from_address": "...", "priority": "normal|high|urgent", ... } }] }`,
+{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "team_specific", "target_teams": ["${team.team_name}"], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "email_category": "verified_facts|sitrep_request|general", "from_name": "...", "from_address": "...", "priority": "normal|high|urgent", ... } }] }`,
     `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)} in ${crisisContext.location}, ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
     8000,
     0.8,
@@ -659,27 +653,21 @@ IMPORTANT: Analyze the crisis description to understand the type of crisis (prod
 
 The injects should be a MIX of:
 - SOCIAL MEDIA POSTS (app: "social_feed") from NPC personas spreading outrage, misinformation, fear, criticism, support, or defense. The tone and content must match the crisis type (e.g., boycott calls for a product recall, employee anger for layoffs, privacy outrage for data breaches). For social_feed injects, set "platform" in delivery_config to either "x_twitter" or "facebook". Aim for 60% X/Twitter and 40% Facebook. X posts are short and hashtag-heavy; Facebook posts are longer and more personal.
-- EXECUTIVE / DIRECTIVE EMAILS (app: "email") — these provide FACTS, CONSTRAINTS, and PROCEDURAL DIRECTIVES only. Generate at least 5-8 email injects from leadership, legal, and officials. Each email MUST include "email_category" in its delivery_config. Use realistic from_name and from_address for the organization's leadership chain. The categories are:
-  * "verified_facts" (T+3-5, T+15-20, T+30-35): Leadership sends periodic verified fact updates as new information is confirmed. Include ONLY confirmed facts, numbers, timelines, and official statements from authorities (e.g. "Police have confirmed 12 injured, 2 critical. MRT services suspended between Tanjong Pagar and City Hall. SCDF deployed 5 vehicles. No arrests yet."). Do NOT include any language for the team to use, talking points, draft statements, or PR strategy. The team must craft their own public response.
-  * "communication_boundaries" (T+5-10): Explicit red lines from leadership or legal on what CANNOT be said. List specific prohibitions: do not speculate on cause, do not name individuals, do not use the word "fault" or "blame", do not engage with specific accounts, do not make promises about compensation.
-  * "approval_chain" (T+5-15): Defines who can approve what level of response. E.g. "Social media replies under 50 words: comms lead approval. Any statement mentioning financial impact or personnel: Legal sign-off required. Press statements: CEO approval only."
-  * "legal_advisory" (T+10-20): From legal counsel — liability warnings, litigation hold notices, regulatory reporting deadlines, NDA reminders, social media policy reminders. Tone is formal and protective.
-  * "stakeholder_priority" (T+5-10): Ordered priority matrix of who to communicate with first. E.g. "Priority 1: Affected families. Priority 2: Employees. Priority 3: Regulators. Priority 4: Media. Priority 5: General public."
-  * "sitrep_request" (T+10-30): Leadership demands structured situation reports. E.g. "Submit SitRep every 30 minutes: (1) What we know (2) What we don't know (3) Actions taken (4) Resources needed (5) Next update time."
-  * "resource_authorization" (T+15-30): Authorizes emergency resources — external PR agency, backup call center, emergency budget, specialist consultants.
-  * "stand_down_pivot" (T+30-45): Strategy change order — new information changes the situation. Share the new facts, revoke previous constraints if needed. Do NOT provide new messaging or draft statements — the team decides how to respond.
-  * "general" — for any other correspondence (journalist inquiries, community leader outreach, etc.)
+- EMAILS (app: "email") — these provide VERIFIED FACTS, STATUS REQUESTS, and EXTERNAL/PRESS correspondence ONLY. Generate at least 4-6 email injects. Each email MUST include "email_category" in its delivery_config. Use realistic from_name and from_address. The ONLY allowed categories are:
+  * "verified_facts" (T+3-5, T+15-20, T+30-35): Leadership or authorities share confirmed information and explicitly address/debunk circulating rumours. Include ONLY confirmed facts, numbers, timelines, and official advisories (e.g. "Authorities reiterated there is no basis for claims of multiple attackers. Police confirmed the cordon and investigation remain ongoing. No official casualty figures have been released."). Do NOT include language for the team to use, talking points, draft statements, or PR strategy.
+  * "sitrep_request" (T+10-30): Leadership asks the team for a status update. It requests information FROM the team (what have you observed, what have you actioned) — it does NOT instruct them on how to handle the public or what to say.
+  * "general": Press briefings, journalist requests for comment, community/faith leader outreach, affected-party messages. These create external pressure but never tell the team what to do.
 
-ANTI-COACHING RULE (CRITICAL): Executive/leadership emails must NEVER tell the team what to say publicly, provide draft statements, give talking points, suggest messaging, offer PR strategy advice, or provide "approved language" to use. They may ONLY: share verified facts, set constraints (what NOT to do), request reports, authorize resources, and issue procedural directives. The players must figure out their own public response. This is a training simulation — spoonfeeding defeats the purpose.
+ANTI-COACHING RULE (CRITICAL): Emails must NEVER tell the team what to say publicly, provide draft statements, talking points, suggested messaging, approved language, PR strategy, communication red lines, approval chains, or stakeholder priority/comms-process instructions. Internal emails are limited to verified facts and status requests. The players must figure out their own procedures and public response. This is a training simulation — spoonfeeding the process or the message defeats the purpose.
 
 - GROUP CHAT messages (app: "group_chat") with internal coordination challenges, tips from the public, leaked information, or whistleblower messages.
 - PHONE CALLS (app: "phone_call") from senior leadership or media wanting statements.
 
 The storyline should have a clear PRESSURE ARC:
-- OPENING (T+0 to T+5): Crisis breaks. First social media posts appear. Team becomes aware. Early emails: verified_facts (confirmed information), stakeholder_priority matrix.
-- BUILDING (T+5 to T+15): Public outrage and misinformation intensify. Emails: communication_boundaries (red lines), approval_chain (who signs off), updated verified_facts.
-- ESCALATION (T+15 to T+30): Crisis peaks. Emails: legal_advisory (liability warnings), sitrep_request (structured updates demanded), resource_authorization (unlock PR agency or budget).
-- TURNING POINT (T+30 to T+45): Consequences appear. Emails: stand_down_pivot (new facts change the situation), updated communication_boundaries, new verified_facts.
+- OPENING (T+0 to T+5): Crisis breaks. First social media posts appear. Team becomes aware. Early email: verified_facts (initial confirmed information).
+- BUILDING (T+5 to T+15): Public outrage and misinformation intensify. Emails: updated verified_facts (rumours addressed by authorities), a press request for comment (general).
+- ESCALATION (T+15 to T+30): Crisis peaks. Emails: sitrep_request (leadership asks for status), more press inquiries (general).
+- TURNING POINT (T+30 to T+45): Consequences appear. Emails: new verified_facts that change the situation.
 - RESOLUTION (T+45 to T+60): Final consequences. Either stabilization or further deterioration.
 
 Mark critical injects with requires_response: true and response_deadline_minutes.
@@ -687,7 +675,7 @@ ALL injects must have inject_scope: "universal" and target_teams: [].
 
 CRITICAL: For every social_feed inject, you MUST set "author_handle" and "author_display_name" in the delivery_config using one of the NPC personas below. Do NOT leave them blank or use "@system". Each social post must come from a specific NPC character.
 
-CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "communication_boundaries", "approval_chain", "legal_advisory", "stakeholder_priority", "sitrep_request", "resource_authorization", "stand_down_pivot", or "general". Also set realistic "from_name", "from_address", and "priority" values. Use names and titles appropriate to the organization and crisis type (CEO, General Counsel, Director of Communications, Chief Medical Officer, etc.).
+CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "sitrep_request", or "general". Do NOT use any other category. Also set realistic "from_name", "from_address", and "priority" values. Use names and titles appropriate to the organization and crisis type (CEO, Director of Communications, journalists, community leaders, etc.).
 
 Available NPCs:
 ${npcContext}
@@ -696,7 +684,7 @@ Facts and claims:
 ${factsContext}
 
 Return ONLY valid JSON:
-{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "email_category": "verified_facts|communication_boundaries|approval_chain|legal_advisory|stakeholder_priority|sitrep_request|resource_authorization|stand_down_pivot|general", "from_name": "...", "from_address": "...", "priority": "normal|high|urgent", ... } }] }`,
+{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "email_category": "verified_facts|sitrep_request|general", "from_name": "...", "from_address": "...", "priority": "normal|high|urgent", ... } }] }`,
     `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
     12000,
     0.8,

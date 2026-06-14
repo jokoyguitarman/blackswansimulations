@@ -4,6 +4,11 @@ import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import { triggerNPCReactions } from './npcReactionService.js';
 import {
+  generatePostImage,
+  generateVideo,
+  generateVideoThumbnail,
+} from './mediaGenerationService.js';
+import {
   EXTREMIST_CELL,
   EXTREMIST_HANDLES,
   EXTREMIST_MOVES,
@@ -11,10 +16,46 @@ import {
   buildSystemPrompt,
   buildReplyPrompt,
   getMove,
+  getStageProfile,
   selectGrievanceFrame,
   type ExtremistMove,
   type ExtremistPersona,
 } from './extremistDoctrine.js';
+
+/** Generate fake "evidence" media for a hive post in the background (non-blocking). */
+async function attachHiveMedia(
+  sessionId: string,
+  postId: string,
+  imagePrompt: string,
+  allowVideo: boolean,
+  scenarioContext: string,
+): Promise<void> {
+  try {
+    const isVideo = allowVideo && /video clip:|footage:|video|clip/i.test(imagePrompt);
+    let url: string | null = null;
+    if (isVideo) {
+      url = await generateVideo(imagePrompt, 10, '16:9', scenarioContext);
+      if (!url) url = await generateVideoThumbnail(imagePrompt);
+    } else {
+      url = await generatePostImage(imagePrompt, 'evidence_photo', scenarioContext);
+    }
+    if (!url) return;
+    await supabaseAdmin
+      .from('social_posts')
+      .update({ media_urls: [url] })
+      .eq('id', postId);
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'social_post.media_updated',
+      data: { post_id: postId, media_urls: [url] },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err) {
+    logger.warn(
+      { err, sessionId, postId },
+      'Extremist hive media generation failed (non-critical)',
+    );
+  }
+}
 
 /**
  * Extremist Hive Engine — an opportunistic, scenario-agnostic agitator cell.
@@ -251,7 +292,21 @@ export async function runExtremistHive(sessionId: string, elapsedMinutes: number
     EXTREMIST_CELL.find((p) => !recentlyUsed.has(p.handle)) ||
     EXTREMIST_CELL[Math.floor(Math.random() * EXTREMIST_CELL.length)];
 
-  const move = pickMove(persona, opening);
+  // Escalation stage from the total number of prior hive posts this session.
+  const { count: priorPostCount } = await supabaseAdmin
+    .from('session_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('event_type', 'extremist_post');
+  const stageProfile = getStageProfile(priorPostCount || 0);
+
+  // Anti-repetition: avoid immediately repeating the last move when possible.
+  const lastMoveId = String((priorEvents?.[0]?.metadata as { move?: string })?.move || '');
+  let move = pickMove(persona, opening);
+  if (move.id === lastMoveId) {
+    const alt = opening.moves.filter((m) => m !== lastMoveId);
+    if (alt.length > 0) move = getMove(alt[Math.floor(Math.random() * alt.length)]) || move;
+  }
   const frame = selectGrievanceFrame(`${crisisDescription} ${orgName}`, sessionId);
   const platform: 'x_twitter' | 'facebook' = Math.random() < 0.6 ? 'x_twitter' : 'facebook';
 
@@ -281,6 +336,7 @@ export async function runExtremistHive(sessionId: string, elapsedMinutes: number
       socialStateSummary,
       recentFeed,
       openingNote: opening.note,
+      stage: stageProfile.stage,
     }),
     `Write ${persona.name}'s next post (${move.id}).`,
     900,
@@ -328,6 +384,20 @@ export async function runExtremistHive(sessionId: string, elapsedMinutes: number
     data: { post },
     timestamp: new Date().toISOString(),
   });
+
+  // From stage 2+, attach fake "evidence" media (photos; video at stage 3) — gated
+  // by stage and a probability to bound cost.
+  const imagePrompt = String(result.image_prompt || '').trim();
+  if (stageProfile.allowPhoto && imagePrompt) {
+    const wantVideo = stageProfile.allowVideo && Math.random() < 0.4;
+    void attachHiveMedia(
+      sessionId,
+      String(post.id),
+      imagePrompt,
+      wantVideo,
+      crisisDescription.slice(0, 200),
+    );
+  }
 
   // Record the cadence event (gate relies on this; isolate so a failure can't
   // suppress the NPC pile-on below).
@@ -477,23 +547,30 @@ export async function runHiveThreadReplies(
   });
 
   candidates.sort((a, b) => b.score - a.score);
-  const target = candidates[0];
-  // Require a real seam, not just any thread with one reply.
-  if (!target || target.score < 2.5) return;
+  // Iterate the ranked candidates (require a real seam) and pick the first thread
+  // the hive does not already dominate. Skip — never abort the whole pass.
+  const viable = candidates.filter((c) => c.score >= 2.5).slice(0, 6);
+  if (viable.length === 0) return;
 
-  // Load the thread's replies for context + to choose who to bait.
-  const { data: replies } = await supabaseAdmin
-    .from('social_posts')
-    .select('id, author_handle, author_display_name, author_type, content, created_at')
-    .eq('session_id', sessionId)
-    .eq('reply_to_post_id', target.topLevelId)
-    .order('created_at', { ascending: true })
-    .limit(12);
-
-  const replyRows = replies || [];
-  // Don't pile on a thread the hive already dominates (last reply is ours).
-  const lastReply = replyRows[replyRows.length - 1];
-  if (lastReply && EXTREMIST_HANDLES.has(String(lastReply.author_handle))) return;
+  let target: ThreadCandidate | null = null;
+  let replyRows: Array<Record<string, unknown>> = [];
+  for (const cand of viable) {
+    const { data: replies } = await supabaseAdmin
+      .from('social_posts')
+      .select('id, author_handle, author_display_name, author_type, content, created_at')
+      .eq('session_id', sessionId)
+      .eq('reply_to_post_id', cand.topLevelId)
+      .order('created_at', { ascending: true })
+      .limit(12);
+    const rows = (replies || []) as Array<Record<string, unknown>>;
+    const last = rows[rows.length - 1];
+    // Skip threads where the hive already has the last word (don't talk to ourselves).
+    if (last && EXTREMIST_HANDLES.has(String(last.author_handle))) continue;
+    target = cand;
+    replyRows = rows;
+    break;
+  }
+  if (!target) return;
 
   // Pick who to @-tag: most recent non-hive reply, preferring a player/official.
   const nonHive = replyRows.filter((r) => !EXTREMIST_HANDLES.has(String(r.author_handle)));
@@ -530,6 +607,14 @@ export async function runHiveThreadReplies(
   const crisisDescription = String(scenario?.description || '');
   const frame = selectGrievanceFrame(`${crisisDescription} ${orgName}`, sessionId);
 
+  // Escalation stage from total prior hive posts this session (replies escalate too).
+  const { count: priorPostCount } = await supabaseAdmin
+    .from('session_events')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('event_type', 'extremist_post');
+  const stageProfile = getStageProfile(priorPostCount || 0);
+
   const socialStateSummary = [
     `escalation_risk ${escalationRisk}/100`,
     `narrative_control ${Number(socialState.narrative_control ?? 30)}/100`,
@@ -556,6 +641,7 @@ export async function runHiveThreadReplies(
         socialStateSummary,
         recentFeed: '',
         openingNote: `Replying in thread ${target.topLevelId} (score ${target.score.toFixed(1)})`,
+        stage: stageProfile.stage,
       },
       threadContext,
     ),

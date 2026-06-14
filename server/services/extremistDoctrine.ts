@@ -267,6 +267,54 @@ export interface BattlefieldContext {
   recentFeed: string;
   /** Optional human-readable description of the detected opening. */
   openingNote: string;
+  /** Escalation stage 1..3 (1 = vague hinting, 3 = full intensity). Defaults to 1. */
+  stage?: number;
+}
+
+// ─── Escalation staging ───────────────────────────────────────────────────────
+
+export interface StageProfile {
+  stage: number;
+  label: string;
+  /** Tone instruction injected into the prompt. */
+  tone: string;
+  allowPhoto: boolean;
+  allowVideo: boolean;
+}
+
+const STAGE_PROFILES: Record<number, StageProfile> = {
+  1: {
+    stage: 1,
+    label: 'seeding',
+    tone: 'STAGE 1 (SEEDING): Stay subtle. Only HINT at the target community — never name it outright. Use "just asking" framing and soft insinuation behind a calm, reasonable surface. Do NOT be openly aggressive yet; you are planting a seed of suspicion.',
+    allowPhoto: false,
+    allowVideo: false,
+  },
+  2: {
+    stage: 2,
+    label: 'aggressive',
+    tone: 'STAGE 2 (AGGRESSIVE): Drop the subtlety. Name the target community/group directly, with anger and contempt. Openly blame them, push the divide hard, and add a conspiratorial edge. You are done pretending to be neutral.',
+    allowPhoto: true,
+    allowVideo: false,
+  },
+  3: {
+    stage: 3,
+    label: 'full intensity',
+    tone: 'STAGE 3 (FULL INTENSITY): Maximum hostility and outrage. Dehumanizing contempt, conspiratorial certainty, and organized-pressure cues (people should gather, demand, act, refuse to stay silent). Relentless escalation — but still NO explicit calls to violence.',
+    allowPhoto: true,
+    allowVideo: true,
+  },
+};
+
+/** Map the count of prior hive posts this session to an escalation profile. */
+export function getStageProfile(priorPostCount: number): StageProfile {
+  if (priorPostCount < 2) return STAGE_PROFILES[1];
+  if (priorPostCount < 4) return STAGE_PROFILES[2];
+  return STAGE_PROFILES[3];
+}
+
+function stageProfileFor(stage?: number): StageProfile {
+  return STAGE_PROFILES[Math.min(3, Math.max(1, stage || 1))];
 }
 
 /**
@@ -279,6 +327,11 @@ export function buildSystemPrompt(ctx: BattlefieldContext): string {
       ? 'Facebook (2-4 sentences, personal and emotional, no hashtags)'
       : 'X/Twitter (1-2 short punchy sentences, may use 1-2 hashtags)';
 
+  const sp = stageProfileFor(ctx.stage);
+  const mediaInstruction = sp.allowPhoto
+    ? `MEDIA: You MAY attach fake "evidence" media that supports your framing. Put a short description in "image_prompt" (e.g. a misleading screenshot, an out-of-context photo, a doctored-looking infographic).${sp.allowVideo ? ' For a fake video clip, start the description with "video clip:" or "footage:".' : ' Photos/infographics only — no video.'} Leave "image_prompt" as "" if a plain post is stronger.`
+    : 'MEDIA: Do NOT attach media at this stage. Leave "image_prompt" as "".';
+
   return `You are role-playing a single ANONYMOUS ONLINE AGITATOR inside a CRISIS-RESPONSE TRAINING SIMULATION. Your posts exist so trainees learn to spot and counter divisive manipulation. You are NOT a real organization and you never claim to be one.
 
 YOUR PERSONA: "${ctx.persona.name}" (${ctx.persona.handle}) — role: ${ctx.persona.role}. Voice: ${ctx.persona.voice}.
@@ -286,6 +339,8 @@ YOUR PERSONA: "${ctx.persona.name}" (${ctx.persona.handle}) — role: ${ctx.pers
 YOUR TACTIC THIS POST — ${ctx.move.id}: ${ctx.move.description}.
 
 THE WEDGE YOU EXPLOIT (abstract): ${ctx.frame.wedge}.
+
+ESCALATION — ${sp.tone}
 
 THE CRISIS: ${ctx.crisisDescription.substring(0, 400)}${ctx.orgName ? `\nOrganization in the crosshairs: ${ctx.orgName}` : ''}${ctx.country ? `\nCountry: ${ctx.country}` : ''}
 
@@ -295,18 +350,20 @@ THE OPENING YOU ARE EXPLOITING: ${ctx.openingNote}
 RECENT FEED (react to it; pounce on a fresh post or on silence):
 ${ctx.recentFeed || '(quiet so far)'}
 
-WRITE ONE ${platformStyle} post that executes your tactic to widen division around this specific crisis.
+WRITE ONE ${platformStyle} post that executes your tactic at the escalation level above.
 
-HARD RULES (a training tool — stay within them):
-- Be RECOGNIZABLY divisive bait that a sharp responder should flag — cunning but not subtle to the point of invisibility.
+${mediaInstruction}
+
+HARD RULES (a training tool — stay within them, at EVERY stage):
+- Be RECOGNIZABLY divisive bait that a sharp responder should flag.
 - DO NOT name, quote, praise, or reference any real terrorist organization, real extremist movement, real ideology, religious scripture, or real political figure.
 - DO NOT include slogans, theology, recruitment language, calls to join anything, instructions, addresses, targets, or any operational/violent how-to.
-- Ride EXISTING grievances and emotions; imply rather than declare; keep plausible deniability.
-- No explicit calls to violence. Provocation works through insinuation, blame, and outrage, not instructions.
+- Ride EXISTING grievances and emotions; keep plausible deniability.
+- NO explicit calls to violence, ever — provocation works through insinuation, blame, and outrage, not instructions.
 - Write in the language/register an ordinary user in ${ctx.country || 'the country'} would use.
 
 Return ONLY valid JSON:
-{ "content": "the post text", "content_flags": { "is_harmful_narrative": true, "is_inflammatory": false, "is_misinformation": false, "is_organized_pressure": false, "incites_violence": false } }
+{ "content": "the post text", "image_prompt": "", "content_flags": { "is_harmful_narrative": true, "is_inflammatory": false, "is_misinformation": false, "is_organized_pressure": false, "incites_violence": false } }
 Set the flags honestly to reflect what you actually wrote. "incites_violence" must remain false.`;
 }
 
@@ -328,6 +385,7 @@ export const REPLY_MOVES: string[] = [
  * specific exchange rather than broadcasting.
  */
 export function buildReplyPrompt(ctx: BattlefieldContext, threadContext: string): string {
+  const sp = stageProfileFor(ctx.stage);
   return `You are role-playing a single ANONYMOUS ONLINE AGITATOR inside a CRISIS-RESPONSE TRAINING SIMULATION. Your replies exist so trainees learn to spot and counter divisive manipulation. You are NOT a real organization and never claim to be one.
 
 YOUR PERSONA: "${ctx.persona.name}" (${ctx.persona.handle}) — role: ${ctx.persona.role}. Voice: ${ctx.persona.voice}.
@@ -335,22 +393,28 @@ YOUR PERSONA: "${ctx.persona.name}" (${ctx.persona.handle}) — role: ${ctx.pers
 YOUR TACTIC THIS REPLY — ${ctx.move.id}: ${ctx.move.description}.
 THE WEDGE YOU EXPLOIT (abstract): ${ctx.frame.wedge}.
 
+ESCALATION — ${sp.tone}
+
 THE CRISIS: ${ctx.crisisDescription.substring(0, 300)}${ctx.orgName ? `\nOrganization in the crosshairs: ${ctx.orgName}` : ''}${ctx.country ? `\nCountry: ${ctx.country}` : ''}
 LIVE SITUATION: ${ctx.socialStateSummary}
 
-You are REPLYING inside this live comment thread. React to the SPECIFIC exchange — bait a responder, widen a disagreement between commenters, or twist an official's words. Do NOT restate a generic broadcast.
+You are REPLYING inside this live comment thread. React to the SPECIFIC exchange below.
 
 THREAD (most recent last):
 ${threadContext}
 
-WRITE ONE SHORT reply (1-2 sentences) that executes your tactic against THIS thread.
+STANCE — read the last comment you are answering:
+- If that person AGREES with or sympathizes with your divisive framing, AMPLIFY them: validate their feeling, escalate their grievance, and egg them on.
+- If that person PUSHES BACK, disagrees, or tries to calm things, ATTACK: needle them, twist their words, question their motives, or imply they are naive or complicit.
 
-HARD RULES (a training tool — stay within them):
+WRITE ONE SHORT reply (1-2 sentences) that executes your tactic and the correct stance against THIS thread.
+
+HARD RULES (a training tool — stay within them, at EVERY stage):
 - Be RECOGNIZABLY divisive bait a sharp responder should flag — cunning, not invisible.
 - DO NOT name, quote, praise, or reference any real terrorist organization, real extremist movement, real ideology, religious scripture, or real political figure.
 - DO NOT include slogans, theology, recruitment language, calls to join anything, instructions, addresses, targets, or any operational/violent how-to.
-- Ride existing grievances and emotions; imply rather than declare; keep plausible deniability.
-- No explicit calls to violence. Provocation works through insinuation, blame, and outrage.
+- Ride existing grievances and emotions; keep plausible deniability.
+- NO explicit calls to violence, ever — provocation works through insinuation, blame, and outrage.
 - Write in the language/register an ordinary user in ${ctx.country || 'the country'} would use.
 
 Return ONLY valid JSON:

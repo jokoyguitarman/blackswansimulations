@@ -104,6 +104,7 @@ VERDICT OPTIONS:
 RULES:
 - Base your decision ONLY on the fact sheet and the evidence provided. Do not invent facts.
 - Be skeptical of vague or unsupported player claims. Crying "fake news" without solid evidence should be rejected.
+- If the player's claim of falsehood AND submitted facts are both empty, blank, or so sparse they provide no specific basis, you MUST return "reject" with low confidence (<= 0.3). A dispute filed with no supporting reasoning is frivolous and should fail.
 - confidence is 0.0-1.0 reflecting how certain you are.
 - correction_note is a short factual clarification (only meaningful when verdict is "correct"; otherwise empty string).
 

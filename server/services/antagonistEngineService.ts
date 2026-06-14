@@ -395,25 +395,33 @@ export async function runAntagonistThreadReplies(
       return { row: r, score };
     });
   scored.sort((a, b) => b.score - a.score);
-  const target = scored[0];
-  if (!target || target.score < 2.5) return;
+  // Iterate the ranked candidates; skip (do not abort) threads we already dominate.
+  const viable = scored.filter((c) => c.score >= 2.5).slice(0, 6);
+  if (viable.length === 0) return;
 
-  const targetRow = target.row;
-  const topLevelId = String(targetRow.id);
-  const platform = String(targetRow.platform || 'x_twitter');
-
-  const { data: replies } = await supabaseAdmin
-    .from('social_posts')
-    .select('id, author_handle, author_display_name, author_type, content')
-    .eq('session_id', sessionId)
-    .eq('reply_to_post_id', topLevelId)
-    .order('created_at', { ascending: true })
-    .limit(12);
-  const replyRows = replies || [];
-
-  // Avoid talking to ourselves.
-  const lastReply = replyRows[replyRows.length - 1];
-  if (lastReply && antagonistHandles.has(String(lastReply.author_handle))) return;
+  let targetRow: Record<string, unknown> | null = null;
+  let topLevelId = '';
+  let platform = 'x_twitter';
+  let replyRows: Array<Record<string, unknown>> = [];
+  for (const cand of viable) {
+    const rowId = String((cand.row as Record<string, unknown>).id);
+    const { data: replies } = await supabaseAdmin
+      .from('social_posts')
+      .select('id, author_handle, author_display_name, author_type, content')
+      .eq('session_id', sessionId)
+      .eq('reply_to_post_id', rowId)
+      .order('created_at', { ascending: true })
+      .limit(12);
+    const rows = (replies || []) as Array<Record<string, unknown>>;
+    const last = rows[rows.length - 1];
+    if (last && antagonistHandles.has(String(last.author_handle))) continue;
+    targetRow = cand.row as Record<string, unknown>;
+    topLevelId = rowId;
+    platform = String((cand.row as Record<string, unknown>).platform || 'x_twitter');
+    replyRows = rows;
+    break;
+  }
+  if (!targetRow) return;
 
   const nonSelf = replyRows.filter((r) => !antagonistHandles.has(String(r.author_handle)));
   const responderReply = [...nonSelf]
@@ -452,6 +460,8 @@ ${MOVES.map((m) => `- ${m}`).join('\n')}
 
 THREAD (most recent last):
 ${threadContext}
+
+STANCE — read the last comment you are answering: if they criticize you or defend "${orgName}", push back and needle them; if they agree with you or pile onto "${orgName}", amplify and encourage them.
 
 React to the specific exchange — needle the primary brand, pounce on a complaint, or twist a fresh statement. Intensity scales with the situation; be smart and cunning, never cartoonish, stay in-character as a real brand account. Do NOT incite violence or state trivially debunkable falsehoods as fact.
 

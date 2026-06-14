@@ -69,8 +69,7 @@ export default function NewsApp() {
   >('neutral');
   const [posting, setPosting] = useState(false);
   const [disputeModal, setDisputeModal] = useState<NewsArticle | null>(null);
-  const [disputeClaim, setDisputeClaim] = useState('');
-  const [disputeFacts, setDisputeFacts] = useState('');
+  const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
 
   useEffect(() => {
@@ -202,17 +201,11 @@ export default function NewsApp() {
 
   function openDisputeModal(article: NewsArticle) {
     setDisputeModal(article);
-    setDisputeClaim('');
-    setDisputeFacts('');
+    setDisputeNote('');
   }
 
   async function submitDispute() {
     if (!disputeModal || !sessionId) return;
-    if (!disputeClaim.trim() || !disputeFacts.trim()) {
-      setShareStatus('Please fill in both fields');
-      setTimeout(() => setShareStatus(null), 3000);
-      return;
-    }
     setDisputing(true);
     try {
       const headers = await getAuthHeaders();
@@ -223,8 +216,8 @@ export default function NewsApp() {
           session_id: sessionId,
           target_type: 'article',
           target_id: disputeModal.id,
-          claimed_falsehood: disputeClaim.trim(),
-          submitted_facts: disputeFacts.trim(),
+          claimed_falsehood: disputeNote.trim(),
+          submitted_facts: '',
         }),
       });
       if (res.ok) {
@@ -650,33 +643,15 @@ export default function NewsApp() {
                 </p>
               </div>
 
-              <div className="px-5 mb-3">
-                <p className="text-[12px] font-semibold mb-1.5" style={{ color: '#8E8E93' }}>
-                  What is inaccurate?
-                </p>
-                <textarea
-                  value={disputeClaim}
-                  onChange={(e) => setDisputeClaim(e.target.value)}
-                  placeholder="Identify the specific false or misleading claim..."
-                  rows={2}
-                  className="w-full rounded-lg p-3 text-[14px] resize-none outline-none"
-                  style={{
-                    backgroundColor: '#F2F2F7',
-                    color: '#1C1C1E',
-                    border: '1px solid rgba(60,60,67,0.18)',
-                  }}
-                />
-              </div>
-
               <div className="px-5 mb-4">
                 <p className="text-[12px] font-semibold mb-1.5" style={{ color: '#8E8E93' }}>
-                  Provide your facts / evidence
+                  What's wrong with this? Add any facts you have (optional)
                 </p>
                 <textarea
-                  value={disputeFacts}
-                  onChange={(e) => setDisputeFacts(e.target.value)}
-                  placeholder="Cite the verified facts that counter this claim..."
-                  rows={3}
+                  value={disputeNote}
+                  onChange={(e) => setDisputeNote(e.target.value)}
+                  placeholder="Identify the false claim and cite any verified facts that counter it..."
+                  rows={4}
                   className="w-full rounded-lg p-3 text-[14px] resize-none outline-none"
                   style={{
                     backgroundColor: '#F2F2F7',
@@ -693,11 +668,11 @@ export default function NewsApp() {
                   className="w-full py-3 rounded-xl text-[15px] font-semibold text-white"
                   style={{ backgroundColor: '#C62828', opacity: disputing ? 0.6 : 1 }}
                 >
-                  {disputing ? 'Submitting...' : 'Submit dispute'}
+                  {disputing ? 'Submitting...' : 'Submit report'}
                 </button>
                 <p className="text-[11px] mt-2 text-center" style={{ color: '#8E8E93' }}>
-                  Editorial review takes a few minutes. Frivolous disputes may affect your
-                  credibility.
+                  Editorial review takes a few minutes. Reports with no supporting facts are likely
+                  to be rejected and may affect your credibility.
                 </p>
               </div>
             </div>

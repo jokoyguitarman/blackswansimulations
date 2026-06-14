@@ -1078,7 +1078,7 @@ async function simulateThreadActivity(
 ): Promise<void> {
   const queryWith = supabaseAdmin
     .from('social_posts')
-    .select('id, content, author_handle, author_display_name, reply_count, platform')
+    .select('id, content, author_handle, author_display_name, author_type, reply_count, platform')
     .eq('session_id', sessionId)
     .eq('platform', platform)
     .is('reply_to_post_id', null)
@@ -1088,7 +1088,7 @@ async function simulateThreadActivity(
 
   const queryWithout = supabaseAdmin
     .from('social_posts')
-    .select('id, content, author_handle, author_display_name, reply_count, platform')
+    .select('id, content, author_handle, author_display_name, author_type, reply_count, platform')
     .eq('session_id', sessionId)
     .eq('platform', platform)
     .is('reply_to_post_id', null)
@@ -1099,7 +1099,7 @@ async function simulateThreadActivity(
   const recentCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
   const queryRecent = supabaseAdmin
     .from('social_posts')
-    .select('id, content, author_handle, author_display_name, reply_count, platform')
+    .select('id, content, author_handle, author_display_name, author_type, reply_count, platform')
     .eq('session_id', sessionId)
     .eq('platform', platform)
     .is('reply_to_post_id', null)
@@ -1123,7 +1123,13 @@ async function simulateThreadActivity(
   });
   if (candidates.length === 0) return;
 
-  const targetPost = candidates[Math.floor(Math.random() * candidates.length)];
+  // Prefer threads rooted on a player/official post (where responders are engaged)
+  // so NPC side-taking lands where it matters most; otherwise pick any active thread.
+  const responderThreads = candidates.filter(
+    (p) => p.author_type === 'player' || p.author_type === 'official_account',
+  );
+  const pool = responderThreads.length > 0 && Math.random() < 0.6 ? responderThreads : candidates;
+  const targetPost = pool[Math.floor(Math.random() * pool.length)];
 
   const { data: existingReplies } = await supabaseAdmin
     .from('social_posts')
@@ -1182,7 +1188,11 @@ Generate 3-5 new replies to continue this thread. Rules:
 - Characters should stay consistent with their personality and bias
 - Make it feel like a real argument/discussion -- people interrupt each other, quote each other, get emotional
 - 1-2 sentences per reply
-${isNormalLifePost ? '- This is a NORMAL LIFE post (not crisis-related). Keep comments casual and on-topic (e.g. food opinions, sports banter, daily life chatter).' : ''}
+${
+  isNormalLifePost
+    ? '- This is a NORMAL LIFE post (not crisis-related). Keep comments casual and on-topic (e.g. food opinions, sports banter, daily life chatter).'
+    : `- TAKE SIDES: each commenter should react based on their bias relative to what others in the thread are saying. If another commenter AGREES with their stance, back them up, amplify, or pile on together. If another commenter DISAGREES or opposes their stance, argue back, challenge, or call them out. Let allies and opponents form -- not everyone is neutral.`
+}
 
 THREADING FORMAT:
 - When replying to the ORIGINAL POST, just write the reply text normally

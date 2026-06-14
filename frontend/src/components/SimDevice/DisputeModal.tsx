@@ -2,12 +2,10 @@ interface DisputeModalProps {
   authorName: string;
   authorHandle: string;
   preview: string;
-  claim: string;
-  facts: string;
+  note: string;
   status: string | null;
   submitting: boolean;
-  onClaimChange: (v: string) => void;
-  onFactsChange: (v: string) => void;
+  onNoteChange: (v: string) => void;
   onCancel: () => void;
   onSubmit: () => void;
 }
@@ -16,12 +14,10 @@ export default function DisputeModal({
   authorName,
   authorHandle,
   preview,
-  claim,
-  facts,
+  note,
   status,
   submitting,
-  onClaimChange,
-  onFactsChange,
+  onNoteChange,
   onCancel,
   onSubmit,
 }: DisputeModalProps) {
@@ -38,7 +34,7 @@ export default function DisputeModal({
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
           <h3 className="text-[17px] font-bold" style={{ color: '#E7E9EA' }}>
-            Dispute with facts
+            Report misinformation
           </h3>
           <button
             onClick={onCancel}
@@ -61,29 +57,15 @@ export default function DisputeModal({
           </p>
         </div>
 
-        <div className="px-5 mb-3">
-          <p className="text-[12px] font-semibold mb-1.5" style={{ color: '#71767B' }}>
-            What is inaccurate?
-          </p>
-          <textarea
-            value={claim}
-            onChange={(e) => onClaimChange(e.target.value)}
-            placeholder="Identify the specific false or misleading claim..."
-            rows={2}
-            className="w-full rounded-lg p-3 text-[14px] resize-none outline-none"
-            style={{ backgroundColor: '#000000', color: '#E7E9EA', border: '1px solid #2F3336' }}
-          />
-        </div>
-
         <div className="px-5 mb-4">
           <p className="text-[12px] font-semibold mb-1.5" style={{ color: '#71767B' }}>
-            Provide your facts / evidence
+            What's wrong with this? Add any facts you have (optional)
           </p>
           <textarea
-            value={facts}
-            onChange={(e) => onFactsChange(e.target.value)}
-            placeholder="Cite the verified facts that counter this claim..."
-            rows={3}
+            value={note}
+            onChange={(e) => onNoteChange(e.target.value)}
+            placeholder="Identify the false claim and cite any verified facts that counter it..."
+            rows={4}
             className="w-full rounded-lg p-3 text-[14px] resize-none outline-none"
             style={{ backgroundColor: '#000000', color: '#E7E9EA', border: '1px solid #2F3336' }}
           />
@@ -102,10 +84,11 @@ export default function DisputeModal({
             className="w-full py-3 rounded-full text-[15px] font-semibold text-white"
             style={{ backgroundColor: '#F4212E', opacity: submitting ? 0.6 : 1 }}
           >
-            {submitting ? 'Submitting...' : 'Submit dispute'}
+            {submitting ? 'Submitting...' : 'Submit report'}
           </button>
           <p className="text-[11px] mt-2 text-center" style={{ color: '#71767B' }}>
-            Moderation review takes a few minutes. Frivolous disputes may affect your credibility.
+            Moderation review takes a few minutes. Reports with no supporting facts are likely to be
+            rejected and may affect your credibility.
           </p>
         </div>
       </div>

@@ -136,8 +136,7 @@ export default function FacebookFeedApp() {
   const { isTrainer } = useRoleVisibility();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
-  const [disputeClaim, setDisputeClaim] = useState('');
-  const [disputeFacts, setDisputeFacts] = useState('');
+  const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
   const [disputeStatus, setDisputeStatus] = useState<string | null>(null);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
@@ -903,17 +902,12 @@ export default function FacebookFeedApp() {
 
   function openDisputeModal(post: SocialPost) {
     setDisputePost(post);
-    setDisputeClaim('');
-    setDisputeFacts('');
+    setDisputeNote('');
     setDisputeStatus(null);
   }
 
   async function submitPostDispute() {
     if (!disputePost || !sessionId) return;
-    if (!disputeClaim.trim() || !disputeFacts.trim()) {
-      setDisputeStatus('Please fill in both fields');
-      return;
-    }
     setDisputing(true);
     try {
       const headers = await getAuthHeaders();
@@ -924,8 +918,8 @@ export default function FacebookFeedApp() {
           session_id: sessionId,
           target_type: 'post',
           target_id: disputePost.id,
-          claimed_falsehood: disputeClaim.trim(),
-          submitted_facts: disputeFacts.trim(),
+          claimed_falsehood: disputeNote.trim(),
+          submitted_facts: '',
         }),
       });
       if (res.ok) {
@@ -3900,12 +3894,10 @@ export default function FacebookFeedApp() {
           authorName={disputePost.author_display_name}
           authorHandle={disputePost.author_handle}
           preview={disputePost.content}
-          claim={disputeClaim}
-          facts={disputeFacts}
+          note={disputeNote}
           status={disputeStatus}
           submitting={disputing}
-          onClaimChange={setDisputeClaim}
-          onFactsChange={setDisputeFacts}
+          onNoteChange={setDisputeNote}
           onCancel={() => setDisputePost(null)}
           onSubmit={submitPostDispute}
         />

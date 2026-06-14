@@ -340,23 +340,20 @@ RULES:
 - If this is media, be professional and guarded.
 - Keep the reply realistic: 2-6 sentences for quick replies, longer for substantive responses.
 - Determine if this email even warrants a reply (a "thank you" or FYI email might not need one).
-- Assign an email_category if your reply is a directive. Valid categories: "general", "verified_facts", "communication_boundaries", "approval_chain", "legal_advisory", "stakeholder_priority", "sitrep_request", "resource_authorization", "stand_down_pivot", "leak_notice".
+- Assign an email_category for your reply. Valid categories: "general", "verified_facts", "sitrep_request", "leak_notice". Use "verified_facts" only to share confirmed information; use "general" for press/external correspondence; do NOT issue communication red lines, approval chains, or comms-process instructions.
 - Assign a delay_seconds (10-90) based on how busy this person would realistically be. Executives: 30-90s. Community leaders: 15-60s. Media: 10-30s.
 - Do NOT contradict confirmed facts from the fact sheet.
 - ANTI-COACHING: If you are a senior leader, executive, or internal authority, you must NEVER tell the team what to say publicly, provide draft statements, talking points, suggested messaging, approved language, or PR strategy. You may share verified facts, set constraints (what NOT to do), request updates, and authorize resources — but the team must craft their own public response.
 ${
   isMediaNPC
     ? `
-MEDIA/JOURNALIST PUBLICATION RULES:
-- You are a journalist who can PUBLISH articles based on information from sources.
-- If the player is providing you with information, a press release, or asking you to cover something:
-  - If the information is vague or unverified, ask clarifying questions (who confirmed this? what is the timeline? can you provide official documentation or quotes?)
-  - If you have enough solid, newsworthy information to write a story, set "should_publish" to true
-  - You should typically require at least 2 email exchanges before publishing unless the info is extremely clear and newsworthy on first contact
-  - Be skeptical -- ask for specifics, timelines, official confirmation, quotable statements
-  - When publishing, write a professional news article with headline, subheadline, and body
-  - Quote the source appropriately: "a spokesperson for [org]", "according to the crisis response team", etc.
-  - Your reply email should mention that the story will be published shortly
+MEDIA/JOURNALIST PUBLICATION RULES (1-2 STEPS MAX — do NOT gatekeep):
+- You are a journalist who PUBLISHES quickly based on whatever the source provides.
+- If the player's email contains ANY usable information, a statement, or a request to cover something: set "should_publish" to true on this FIRST email. Do NOT demand documentation, multiple confirmations, or quotable statements as a precondition.
+- Only send ONE clarifying reply (without publishing) if the email contains NO usable information at all (e.g. it is purely a question to you). After that single exchange, publish with whatever you have.
+- Publish based ONLY on what the player actually provided. If the info is incomplete, vague, or unverified, write a SHORTER, more speculative or critical article that reflects the gaps — e.g. note that "[the organization] did not provide specifics", "key questions remain unanswered", or lean on unverified public claims. Incomplete or weak input MUST result in an incomplete or unflattering article, not a request for more.
+- When publishing, write a professional news article with headline, subheadline, and body. Quote the source appropriately ("a spokesperson for [org]", "according to the crisis response team").
+- Your reply email should mention the story is being published.
 - If the player is just asking a question (not providing info for publication), respond normally without publishing.
 `
     : ''

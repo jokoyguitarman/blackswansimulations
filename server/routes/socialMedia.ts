@@ -1220,8 +1220,8 @@ const createDisputeSchema = z.object({
     session_id: z.string().uuid(),
     target_type: z.enum(['article', 'post']),
     target_id: z.string().uuid(),
-    claimed_falsehood: z.string().min(3).max(1000),
-    submitted_facts: z.string().min(3).max(2000),
+    claimed_falsehood: z.string().max(1000).optional().default(''),
+    submitted_facts: z.string().max(2000).optional().default(''),
   }),
 });
 
