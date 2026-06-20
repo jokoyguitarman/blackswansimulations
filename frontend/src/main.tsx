@@ -31,7 +31,14 @@ import TrainerSimDashboard from './components/SimDevice/TrainerSimDashboard';
 import DesktopShell from './components/SimDevice/DesktopShell';
 import './style.css';
 
-const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
+const ProtectedRoute = ({
+  children,
+  roles,
+}: {
+  children: React.ReactNode;
+  /** If provided, the authenticated user must have one of these roles. */
+  roles?: Array<'trainer' | 'admin'>;
+}) => {
   const { user, loading } = useAuth();
 
   if (loading) {
@@ -49,6 +56,12 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Defense-in-depth: role-restricted pages (trainer dashboards, debug tools).
+  // Authorization is still enforced server-side; this only hides the UI.
+  if (roles && !roles.includes(user.role as 'trainer' | 'admin')) {
+    return <Navigate to="/dashboard" replace />;
   }
 
   return <>{children}</>;
@@ -131,7 +144,7 @@ const App = () => {
             <Route
               path="/debug/building-studs"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute roles={['trainer', 'admin']}>
                   <DebugBuildingStuds />
                 </ProtectedRoute>
               }
@@ -139,7 +152,7 @@ const App = () => {
             <Route
               path="/debug/evacuation-sim"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute roles={['trainer', 'admin']}>
                   <DebugEvacuationSim />
                 </ProtectedRoute>
               }
@@ -147,7 +160,7 @@ const App = () => {
             <Route
               path="/debug/rts-sim"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute roles={['trainer', 'admin']}>
                   <DebugRTSSim />
                 </ProtectedRoute>
               }
@@ -181,7 +194,7 @@ const App = () => {
             <Route
               path="/sim/:sessionId/trainer"
               element={
-                <ProtectedRoute>
+                <ProtectedRoute roles={['trainer', 'admin']}>
                   <TrainerSimDashboard />
                 </ProtectedRoute>
               }

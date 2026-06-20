@@ -720,7 +720,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
     setExporting(format);
     try {
       const result = await api.aar.export(sessionId, format);
-      window.open(result.data.url, '_blank');
+      window.open(result.data.url, '_blank', 'noopener,noreferrer');
     } catch (error) {
       console.error(`Failed to export AAR as ${format}:`, error);
       alert(

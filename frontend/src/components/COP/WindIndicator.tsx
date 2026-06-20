@@ -32,12 +32,41 @@ export const WindIndicator = ({ wind }: WindIndicatorProps) => {
         const speedText = wind.speed_kph != null ? `${wind.speed_kph} km/h` : '';
         const dirLabel = wind.label || degreesToCardinal(wind.direction_degrees);
 
-        container.innerHTML = `
-          <div style="font-size: 10px; color: rgba(234,179,8,0.7); font-family: monospace; margin-bottom: 4px;">WIND</div>
-          <div style="font-size: 24px; line-height: 1; transform: rotate(${arrowRotation}deg); display: inline-block;">↓</div>
-          <div style="font-size: 10px; color: rgba(234,179,8,0.9); font-family: monospace; margin-top: 4px;">${dirLabel}</div>
-          ${speedText ? `<div style="font-size: 9px; color: rgba(234,179,8,0.6); font-family: monospace;">${speedText}</div>` : ''}
-        `;
+        // Build with textContent (not innerHTML) so any label/speed value is rendered
+        // as inert text and can never be interpreted as HTML.
+        const makeRow = (css: string, text: string): HTMLDivElement => {
+          const el = document.createElement('div');
+          el.style.cssText = css;
+          el.textContent = text;
+          return el;
+        };
+
+        container.appendChild(
+          makeRow(
+            'font-size: 10px; color: rgba(234,179,8,0.7); font-family: monospace; margin-bottom: 4px;',
+            'WIND',
+          ),
+        );
+        container.appendChild(
+          makeRow(
+            `font-size: 24px; line-height: 1; transform: rotate(${arrowRotation}deg); display: inline-block;`,
+            '↓',
+          ),
+        );
+        container.appendChild(
+          makeRow(
+            'font-size: 10px; color: rgba(234,179,8,0.9); font-family: monospace; margin-top: 4px;',
+            dirLabel,
+          ),
+        );
+        if (speedText) {
+          container.appendChild(
+            makeRow(
+              'font-size: 9px; color: rgba(234,179,8,0.6); font-family: monospace;',
+              speedText,
+            ),
+          );
+        }
 
         L.DomEvent.disableClickPropagation(container);
         L.DomEvent.disableScrollPropagation(container);

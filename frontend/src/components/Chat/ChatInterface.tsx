@@ -483,10 +483,11 @@ export const ChatInterface = ({
 
       // Hard requirement: Message must be for current session
       if (payload.session_id !== sessionId) {
-        console.log('[ChatInterface] Message rejected - not for current session:', {
-          messageSession: payload.session_id,
-          currentSession: sessionId,
-        });
+        if (import.meta.env.DEV)
+          console.log('[ChatInterface] Message rejected - not for current session:', {
+            messageSession: payload.session_id,
+            currentSession: sessionId,
+          });
         return;
       }
 

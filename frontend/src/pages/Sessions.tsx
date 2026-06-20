@@ -60,7 +60,7 @@ export const Sessions = () => {
   const loadSessions = async () => {
     try {
       const result = await api.sessions.list(1, 20);
-      console.log('Sessions API response:', result);
+      if (import.meta.env.DEV) console.log('Sessions API response:', result);
       setSessions((result.data || []) as Session[]);
       if (!result.data || result.data.length === 0) {
         console.warn('No sessions returned from API');

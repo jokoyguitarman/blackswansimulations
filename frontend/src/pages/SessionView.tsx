@@ -1115,19 +1115,22 @@ export const SessionView = () => {
 
   const loadMyTeams = async () => {
     if (!id || !user?.id) {
-      console.log('[SessionView] loadMyTeams: Missing id or user.id', { id, userId: user?.id });
+      if (import.meta.env.DEV)
+        console.log('[SessionView] loadMyTeams: Missing id or user.id', { id, userId: user?.id });
       return;
     }
     try {
       const result = await api.teams.getSessionTeams(id);
-      console.log('[SessionView] loadMyTeams: API result', {
-        allAssignments: result.data,
-        userId: user.id,
-      });
+      if (import.meta.env.DEV)
+        console.log('[SessionView] loadMyTeams: API result', {
+          allAssignments: result.data,
+          userId: user.id,
+        });
       const myTeamAssignments = (result.data || []).filter(
         (assignment: any) => assignment.user_id === user.id,
       );
-      console.log('[SessionView] loadMyTeams: Filtered assignments', myTeamAssignments);
+      if (import.meta.env.DEV)
+        console.log('[SessionView] loadMyTeams: Filtered assignments', myTeamAssignments);
       setMyTeams(
         myTeamAssignments.map((a: any) => ({
           team_name: a.team_name,
