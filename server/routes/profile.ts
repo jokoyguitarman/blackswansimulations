@@ -50,16 +50,22 @@ router.patch(
       const user = req.user!;
       const { role, agency_name, full_name } = req.body;
 
-      // Only allow role updates if user is admin, or if updating to non-admin roles
-      if (role && role !== 'admin' && user.role !== 'admin') {
-        // Non-admins can't change to admin, but can change to other roles
-        // This allows users to set their own role for testing
+      // SECURITY: role and agency are NOT self-service. They are privilege/affiliation
+      // fields and must only be changed by an admin (or, for trainer/admin, an operator
+      // directly in the database). This endpoint uses the service-role client, which
+      // bypasses RLS, so the check must be enforced here in code.
+      if ((role !== undefined || agency_name !== undefined) && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Not allowed to change role or agency' });
       }
 
       const updates: Record<string, unknown> = {};
       if (role !== undefined) updates.role = role;
       if (agency_name !== undefined) updates.agency_name = agency_name;
       if (full_name !== undefined) updates.full_name = full_name;
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No updatable fields provided' });
+      }
 
       const { data, error } = await supabaseAdmin
         .from('user_profiles')

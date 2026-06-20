@@ -16,7 +16,6 @@ export const SignUp = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole] = useState('trainer');
   const [agencyName, setAgencyName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -46,9 +45,8 @@ export const SignUp = () => {
         if (data.data.email) {
           setEmail(data.data.email);
         }
-        if (data.data.role) {
-          setRole(data.data.role);
-        }
+        // NOTE: the invited role is intentionally NOT read from the client here.
+        // It is applied server-side from the trusted session_invitations row.
       }
     } catch (err) {
       console.error('Failed to load invitation:', err);
@@ -63,9 +61,11 @@ export const SignUp = () => {
     setError(null);
     setLoading(true);
 
+    // SECURITY: do not send a self-selected role. New accounts default to the
+    // least-privileged role server-side; in-session roles come from invitations,
+    // and trainer/admin are provisioned by an operator.
     const { error } = await signUp(email, password, {
       full_name: fullName,
-      role: role,
       agency_name: agencyName,
     });
 
@@ -270,32 +270,6 @@ export const SignUp = () => {
               <p className="mt-1 text-xs terminal-text text-robotic-yellow/50">
                 [MIN] 6 characters required
               </p>
-            </div>
-
-            <div>
-              <label
-                htmlFor="role"
-                className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase tracking-wider"
-              >
-                [CLEARANCE_LEVEL]
-              </label>
-              <select
-                id="role"
-                name="role"
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="w-full px-4 py-3 military-input terminal-text text-sm"
-              >
-                <option value="trainer">TRAINER</option>
-                <option value="defence_liaison">DEFENCE_LIAISON</option>
-                <option value="police_commander">POLICE_COMMANDER</option>
-                <option value="public_information_officer">PUBLIC_INFO_OFFICER</option>
-                <option value="health_director">HEALTH_DIRECTOR</option>
-                <option value="civil_government">CIVIL_GOVERNMENT</option>
-                <option value="utility_manager">UTILITY_MANAGER</option>
-                <option value="intelligence_analyst">INTELLIGENCE_ANALYST</option>
-                <option value="ngo_liaison">NGO_LIAISON</option>
-              </select>
             </div>
 
             <div>

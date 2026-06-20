@@ -37,9 +37,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
 
   useEffect(() => {
     // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
-      setUser(session?.user ? mapSupabaseUser(session.user) : null);
+      setUser(session ? await resolveSessionUser(session) : null);
       setLoading(false);
     });
 
@@ -48,7 +48,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
-      setUser(session?.user ? mapSupabaseUser(session.user) : null);
+      setUser(session ? await resolveSessionUser(session) : null);
       setLoading(false);
     });
 
@@ -92,20 +92,53 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Helper to map Supabase user to our SessionUser type
+// Base identity from the Supabase user. The role is deliberately NOT taken from
+// user_metadata (which the user can edit). It defaults to the least-privileged
+// 'participant' and is replaced with the authoritative value from the backend in
+// resolveSessionUser(). app_metadata.role is server-controlled and safe to honor
+// if present, but it is currently unused, so the backend profile is the source of truth.
 function mapSupabaseUser(user: User): SessionUser {
   const metadata = user.user_metadata || {};
   const appMetadata = user.app_metadata || {};
 
-  // Anonymous users (join link flow) should default to 'participant', not 'trainer'
-  const isAnonymous = appMetadata.provider === 'anonymous' || !user.email;
-  const defaultRole = isAnonymous ? 'participant' : 'trainer';
-
   return {
     id: user.id,
     email: user.email,
-    role: (appMetadata.role || metadata.role || defaultRole) as SessionUser['role'],
+    role: ((appMetadata.role as string | undefined) || 'participant') as SessionUser['role'],
     agency: (appMetadata.agency_name || metadata.agency_name) as string | undefined,
     displayName: (metadata.full_name || user.email || 'User') as string | undefined,
   };
+}
+
+const API_BASE_URL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+
+// Resolve the authoritative SessionUser by reading the server-side profile.
+// The role/agency returned here come from user_profiles (which users cannot edit
+// after the lockdown migration), never from client-editable metadata. On any
+// failure we fall back to the least-privileged identity so the UI never grants
+// elevated access by default.
+async function resolveSessionUser(session: Session): Promise<SessionUser> {
+  const base = mapSupabaseUser(session.user);
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/profile`, {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    if (res.ok) {
+      const body = (await res.json()) as {
+        data?: { role?: string; agency_name?: string; full_name?: string };
+      };
+      const profile = body.data;
+      if (profile) {
+        return {
+          ...base,
+          role: (profile.role || base.role) as SessionUser['role'],
+          agency: profile.agency_name ?? base.agency,
+          displayName: profile.full_name ?? base.displayName,
+        };
+      }
+    }
+  } catch {
+    // Network/parse failure -> keep least-privilege base identity.
+  }
+  return base;
 }
