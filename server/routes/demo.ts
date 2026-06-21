@@ -16,6 +16,7 @@ import { getDemoPlaybackService, listDemoScripts } from '../services/demoScriptP
 import { resolveScenarioCenter } from '../services/scenarioCenterService.js';
 import { getDemoAIAgentService } from '../services/demoAIAgentService.js';
 import { generateDemoScript } from '../services/demoScriptGeneratorService.js';
+import { assertSessionOwner } from '../lib/access.js';
 
 const router = Router();
 
@@ -250,6 +251,13 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const { sessionId } = req.body;
+      const user = req.user!;
+
+      // Only the owning trainer (or an admin) may stop a session.
+      const access = await assertSessionOwner(sessionId, user);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
+      }
 
       getDemoPlaybackService().stop(sessionId);
       getDemoAIAgentService().stop(sessionId);

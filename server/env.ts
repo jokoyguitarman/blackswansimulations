@@ -16,6 +16,22 @@ const validatePort = (port: number): number => {
 
 const nodeEnv = process.env.NODE_ENV ?? 'development';
 
+const DEV_SESSION_SECRET = 'dev-secret-change-in-production';
+
+const resolveSessionSecret = (): string => {
+  if (nodeEnv === 'production') {
+    return required(process.env.SESSION_SECRET, 'SESSION_SECRET');
+  }
+  const secret = process.env.SESSION_SECRET ?? DEV_SESSION_SECRET;
+  // Defense-in-depth: if we're clearly running on a hosting platform but NODE_ENV
+  // wasn't set to 'production', still refuse to boot with the insecure dev default.
+  const onDeployPlatform = Boolean(process.env.VERCEL || process.env.RENDER);
+  if (onDeployPlatform && secret === DEV_SESSION_SECRET) {
+    throw new Error('SESSION_SECRET must be set to a strong value on deployed environments');
+  }
+  return secret;
+};
+
 export const env = {
   nodeEnv,
   port: validatePort(Number(process.env.PORT ?? 3001)),
@@ -27,10 +43,7 @@ export const env = {
   ),
   openAiApiKey: process.env.OPENAI_API_KEY,
   xaiApiKey: process.env.XAI_API_KEY,
-  sessionSecret:
-    nodeEnv === 'production'
-      ? required(process.env.SESSION_SECRET, 'SESSION_SECRET')
-      : (process.env.SESSION_SECRET ?? 'dev-secret-change-in-production'),
+  sessionSecret: resolveSessionSecret(),
   logLevel: process.env.LOG_LEVEL ?? 'info',
   // Email configuration
   emailEnabled: process.env.EMAIL_ENABLED !== 'false',

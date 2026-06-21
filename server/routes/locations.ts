@@ -1,14 +1,18 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from '../services/websocketService.js';
+import { assertSessionAccess, assertTeamMembership } from '../lib/access.js';
 
 const router = Router();
 
 router.post('/sessions/:id/locations/:locationId/claim', requireAuth, async (req, res) => {
   try {
     const { id: sessionId, locationId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
     const { team_name, claimed_as, claim_exclusivity } = req.body as {
       team_name: string;
       claimed_as: string;
@@ -18,6 +22,13 @@ router.post('/sessions/:id/locations/:locationId/claim', requireAuth, async (req
     if (!team_name || !claimed_as) {
       return res.status(400).json({ error: 'team_name and claimed_as are required' });
     }
+
+    // Caller must belong to the session and may only claim for a team they're on.
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+    const teamCheck = await assertTeamMembership(sessionId, user, team_name);
+    if (!teamCheck.ok) return res.status(teamCheck.status).json({ error: teamCheck.error });
 
     const { data: loc, error: fetchError } = await supabaseAdmin
       .from('scenario_locations')

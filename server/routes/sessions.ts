@@ -5,6 +5,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate, schemas } from '../lib/validation.js';
+import { assertSessionAccess } from '../lib/access.js';
 import { createDefaultChannels } from '../services/channelService.js';
 import { sendInvitationEmail, sendPendingInvitationEmail } from '../services/emailService.js';
 import { initializeSessionObjectives } from '../services/objectiveTrackingService.js';
@@ -49,7 +50,9 @@ const joinSessionSchema = z.object({
     id: z.string().uuid(),
   }),
   body: z.object({
-    role: z.string(),
+    // Self-service join may only request non-privileged roles. Command/trainer roles
+    // are assigned by a trainer, never self-selected here (prevents privilege escalation).
+    role: z.enum(['participant', 'observer']).default('participant'),
   }),
 });
 
@@ -741,6 +744,10 @@ router.get(
   async (req: AuthenticatedRequest, res) => {
     try {
       const { id: sessionId } = req.params;
+      const user = req.user!;
+
+      const access = await assertSessionAccess(sessionId, user);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
 
       const { data: events } = await supabaseAdmin
         .from('session_events')
@@ -858,6 +865,11 @@ router.get(
 router.get('/:id/scene-config', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const sessionId = req.params.id;
+    const user = req.user!;
+
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
     const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
       .select('scenario_id')
@@ -2491,6 +2503,10 @@ router.get(
   async (req: AuthenticatedRequest, res) => {
     try {
       const { id } = req.params;
+      const user = req.user!;
+
+      const access = await assertSessionAccess(id, user);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
 
       const { data: responses, error } = await supabaseAdmin
         .from('session_pursuit_responses')
@@ -2576,6 +2592,11 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const sessionId = req.params.id;
+      const user = req.user!;
+
+      const access = await assertSessionAccess(sessionId, user);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+
       const { asset_id, resources } = req.body;
       const result = await performSweep(sessionId, asset_id, resources);
       return res.json(result);

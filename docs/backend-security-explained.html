@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Backend Security Explained — Plain English + Attack Demos</title>
+<style>
+  :root {
+    --bg:#0a0e14; --bg2:#0f1620; --panel:#131c28; --panel2:#182030;
+    --line:#233143; --ink:#e8eef6; --muted:#8aa0b8; --dim:#5d7186;
+    --cyan:#2dd4bf; --cyan2:#22d3ee; --amber:#f5b942; --violet:#a78bfa;
+    --pink:#f472b6; --green:#34d399; --red:#f87171; --orange:#fb923c;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.65; overflow-x:hidden; }
+  a { color:var(--cyan); }
+  h1,h2,h3 { font-weight:700; letter-spacing:-0.01em; line-height:1.25; }
+  code,.mono,pre { font-family:"SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 24px; }
+  section { padding:54px 0; border-top:1px solid var(--line); }
+  .sec-num { font-size:12.5px; color:var(--cyan); letter-spacing:0.25em; text-transform:uppercase; margin-bottom:10px; font-weight:700; }
+  .sec-title { font-size:27px; margin:0 0 10px; }
+  .sec-sub { color:var(--muted); margin:0 0 26px; max-width:820px; }
+
+  header.hero { position:relative; min-height:58vh; display:flex; align-items:center; overflow:hidden; }
+  .hero-bg { position:absolute; inset:0; z-index:0;
+    background:radial-gradient(1000px 500px at 15% 5%, rgba(248,113,113,0.16), transparent 60%),
+      radial-gradient(900px 520px at 90% 20%, rgba(167,139,250,0.16), transparent 60%),
+      radial-gradient(900px 600px at 55% 100%, rgba(45,212,191,0.10), transparent 60%); }
+  .grid-lines { position:absolute; inset:0; z-index:0; opacity:0.22;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:46px 46px; mask-image:radial-gradient(ellipse at 50% 40%, #000 35%, transparent 78%); }
+  .hero-content { position:relative; z-index:2; }
+  .kicker { display:inline-flex; align-items:center; gap:9px; font-size:12px; letter-spacing:0.2em; text-transform:uppercase; color:var(--red); border:1px solid #5a2a2a; padding:6px 14px; border-radius:999px; background:rgba(248,113,113,0.06); margin-bottom:22px; }
+  .pulse-dot { width:8px; height:8px; border-radius:50%; background:var(--red); animation:pulse 2s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(248,113,113,0.6);} 70%{box-shadow:0 0 0 12px rgba(248,113,113,0);} 100%{box-shadow:0 0 0 0 rgba(248,113,113,0);} }
+  .hero h1 { font-size:clamp(30px,5vw,48px); margin:0 0 18px; max-width:900px; }
+  .hero h1 .grad { background:linear-gradient(100deg,var(--red),var(--violet) 55%,var(--cyan) 95%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .hero p.lead { font-size:18px; color:var(--muted); max-width:720px; margin:0 0 26px; }
+  .hero-stats { display:flex; flex-wrap:wrap; gap:12px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 18px; min-width:110px; }
+  .stat b { font-size:21px; display:block; }
+  .stat span { font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; }
+  .stat.red b{color:var(--red);} .stat.amber b{color:var(--amber);} .stat.green b{color:var(--green);}
+
+  nav.toc { position:sticky; top:0; z-index:50; backdrop-filter:blur(10px); background:rgba(10,14,20,0.82); border-bottom:1px solid var(--line); }
+  nav.toc .wrap { display:flex; gap:6px; overflow-x:auto; padding:10px 24px; scrollbar-width:none; }
+  nav.toc a { color:var(--muted); text-decoration:none; font-size:12.5px; padding:7px 12px; border-radius:8px; white-space:nowrap; }
+  nav.toc a:hover { color:var(--ink); background:var(--panel2); }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .grid { display:grid; gap:16px; }
+  .g2 { grid-template-columns:repeat(2,1fr); }
+  @media (max-width:900px){ .g2 { grid-template-columns:1fr; } }
+
+  .lead-in { font-size:17px; color:var(--ink); }
+  .analogy { border-left:3px solid var(--violet); background:rgba(167,139,250,0.06); padding:14px 18px; border-radius:0 10px 10px 0; margin:18px 0; color:#d8c9f7; }
+  .analogy b { color:var(--violet); }
+  .takeaway { border-left:3px solid var(--green); background:rgba(52,211,153,0.06); padding:14px 18px; border-radius:0 10px 10px 0; margin:18px 0; }
+  .takeaway b { color:var(--green); }
+
+  /* severity badges */
+  .sev { display:inline-block; font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:3px 9px; border-radius:6px; vertical-align:middle; }
+  .sev.crit{background:rgba(248,113,113,0.16); color:#fca5a5; border:1px solid #5a2a2a;}
+  .sev.high{background:rgba(251,146,60,0.16); color:#fdba74; border:1px solid #5a3a1a;}
+  .sev.med{background:rgba(245,185,66,0.14); color:#fcd34d; border:1px solid #5a4a1a;}
+  .sev.low{background:rgba(138,160,184,0.14); color:#b6c4d6; border:1px solid #2c3a4a;}
+  .sev.ok{background:rgba(52,211,153,0.14); color:#6ee7b7; border:1px solid #1a4a3a;}
+
+  /* mock screenshot windows */
+  .shot { border-radius:11px; overflow:hidden; border:1px solid var(--line); margin:14px 0 0; box-shadow:0 10px 30px rgba(0,0,0,0.35); }
+  .shot .bar { display:flex; align-items:center; gap:8px; padding:9px 13px; background:#1a2230; border-bottom:1px solid var(--line); font-size:12px; color:var(--muted); }
+  .dot { width:11px; height:11px; border-radius:50%; }
+  .dot.r{background:#ff5f56;} .dot.y{background:#ffbd2e;} .dot.g{background:#27c93f;}
+  .shot .bar .title { margin-left:8px; color:var(--dim); }
+  .shot.attack { border-color:#5a2a2a; }
+  .shot.attack .bar { background:#241519; }
+  .shot.defend { border-color:#1a4a3a; }
+  .shot.defend .bar { background:#0f1f1a; }
+  .term { background:#0b1119; padding:15px 16px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.7px; line-height:1.6; white-space:pre-wrap; word-break:break-word; color:#cfe0f0; margin:0; }
+  .term .cmd { color:#7dd3fc; } .term .prompt{color:var(--green);}
+  .term .c{color:var(--muted);} /* comment */
+  .term .ok{color:var(--green);} .term .bad{color:var(--red);} .term .warn{color:var(--amber);}
+  .term .k{color:var(--violet);} .term .s{color:#fcd34d;} /* string */
+  .term .hi{background:rgba(248,113,113,0.18); color:#fecaca; border-radius:3px; padding:0 2px;}
+  .term .hiok{background:rgba(52,211,153,0.15); color:#a7f3d0; border-radius:3px; padding:0 2px;}
+
+  .duo { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+  @media (max-width:900px){ .duo { grid-template-columns:1fr; } }
+  .lbl { font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; margin:18px 0 2px; display:flex; align-items:center; gap:8px; }
+  .lbl.bad { color:var(--red); } .lbl.good { color:var(--green); }
+
+  .steps { counter-reset:s; list-style:none; padding:0; margin:14px 0 0; }
+  .steps li { position:relative; padding:6px 0 6px 38px; color:var(--muted); }
+  .steps li::before { counter-increment:s; content:counter(s); position:absolute; left:0; top:5px; width:24px; height:24px; border-radius:50%; background:var(--panel2); border:1px solid var(--line); color:var(--cyan); font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .steps li b { color:var(--ink); }
+
+  table.findings { width:100%; border-collapse:collapse; margin-top:16px; font-size:13.5px; }
+  table.findings th, table.findings td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.findings th { color:var(--cyan); font-size:11.5px; text-transform:uppercase; letter-spacing:0.08em; }
+  table.findings td code { color:#fcd34d; font-size:12px; }
+
+  .pill { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:var(--panel2); border:1px solid var(--line); color:var(--muted); }
+  .footer { padding:40px 0 70px; color:var(--dim); font-size:13px; text-align:center; }
+  .footnote { font-size:13px; color:var(--dim); margin-top:8px; }
+  hr.soft { border:none; border-top:1px dashed var(--line); margin:26px 0; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker"><span class="pulse-dot"></span> Backend Security Sweep &mdash; Findings in Plain English</div>
+    <h1>How someone could <span class="grad">break into the simulator</span>, shown step by step &mdash; and how we stop them</h1>
+    <p class="lead">This page explains, with no jargon, the security weaknesses found in the backend. For each one you get a plain-English explanation, a mock &ldquo;screenshot&rdquo; of the attack, and the same screenshot <em>after</em> the fix so you can see exactly what you&rsquo;re preventing.</p>
+    <div class="hero-stats">
+      <div class="stat red"><b>7</b><span>High-risk holes</span></div>
+      <div class="stat amber"><b>1</b><span>Injection bug</span></div>
+      <div class="stat green"><b>0</b><span>Leaked secrets</span></div>
+      <div class="stat"><b>146</b><span>Files reviewed</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#bigidea">The big idea</a>
+    <a href="#idor">Reading anyone&rsquo;s chats</a>
+    <a href="#role">Becoming a commander</a>
+    <a href="#stop">Killing a live exercise</a>
+    <a href="#tamper">Editing other people&rsquo;s data</a>
+    <a href="#inject">Tricking the database</a>
+    <a href="#secrets">The secrets check</a>
+    <a href="#scoreboard">Full scoreboard</a>
+  </div>
+</nav>
+
+<section id="bigidea">
+  <div class="wrap">
+    <div class="sec-num">00 &middot; Start here</div>
+    <h2 class="sec-title">The one idea that explains almost everything</h2>
+    <p class="sec-sub">Nearly every problem below comes from a single design choice. Understand this and the rest is easy.</p>
+
+    <p class="lead-in">The app stores its data in a database (Supabase). That database has a built-in bouncer called <b>Row Level Security</b> &mdash; rules like &ldquo;a player can only see <em>their own</em> session.&rdquo; But our backend server talks to the database using a <b>master key</b> (the &ldquo;service-role key&rdquo;). The master key tells the bouncer: <em>&ldquo;Let me do anything, skip the checks.&rdquo;</em></p>
+
+    <div class="analogy">
+      <b>Analogy.</b> Think of the database as a hotel. Normally each guest&rsquo;s keycard only opens their own room &mdash; that&rsquo;s the bouncer (Row Level Security). Our server is staff carrying a <b>master keycard</b> that opens every room. That&rsquo;s fine&hellip; as long as the staff <em>checks your name against the room</em> before opening a door for you. The bugs below are all places where the staff opened a door <b>without checking whether it was actually your room.</b>
+    </div>
+
+    <p>Because the server holds the master key, the database will <b>not</b> stop a bad request on its own. The <em>only</em> thing standing between a user and everyone else&rsquo;s data is the code in each route checking &ldquo;wait, are you actually allowed to touch this?&rdquo; In a lot of places, that check is missing. The attacker doesn&rsquo;t need anything fancy &mdash; just a normal logged-in account and the ability to change an ID number in a request.</p>
+
+    <div class="grid g2" style="margin-top:18px;">
+      <div class="card">
+        <div class="lbl bad">What &ldquo;logged in&rdquo; proves today</div>
+        <p style="margin:6px 0 0; color:var(--muted);">Only <b>who you are</b> (&ldquo;yes, you&rsquo;re a real user named Bob&rdquo;). The middleware that runs on every request is called <code>requireAuth</code> &mdash; it checks your identity and nothing else.</p>
+      </div>
+      <div class="card">
+        <div class="lbl good">What it should <em>also</em> prove</div>
+        <p style="margin:6px 0 0; color:var(--muted);"><b>What you&rsquo;re allowed to touch</b> (&ldquo;&hellip;and Bob is a member of <em>this</em> session, so he may read <em>this</em> chat&rdquo;). This second check is the fix for most findings on this page.</p>
+      </div>
+    </div>
+
+    <div class="takeaway"><b>Plain-English takeaway:</b> &ldquo;Are you logged in?&rdquo; and &ldquo;Are you allowed to do this <em>specific</em> thing?&rdquo; are two different questions. The backend reliably asks the first, but often forgets the second.</div>
+  </div>
+</section>
+<section id="idor">
+  <div class="wrap">
+    <div class="sec-num">01 &middot; Broken Access Control (IDOR) <span class="sev high">High</span></div>
+    <h2 class="sec-title">Reading &mdash; and posting into &mdash; any session&rsquo;s private chat</h2>
+    <p class="sec-sub">File: <code>server/routes/channels.ts</code> &middot; The chat-message endpoints only verify membership for one-on-one DMs. For every other channel type, anyone can walk in.</p>
+
+    <p class="lead-in">Each chat channel has a number (an ID). When the app wants the messages in a channel, it asks the server: &ldquo;give me the messages for channel <code>abc-123</code>.&rdquo; The server checks <em>&ldquo;are you logged in?&rdquo;</em> &mdash; yes &mdash; and then, for a normal team/command channel, just hands over the messages. It never checks whether you belong to that session.</p>
+
+    <div class="analogy"><b>Analogy.</b> It&rsquo;s like a mailroom that hands you any mailbox&rsquo;s contents as long as you can read the number off the front. You don&rsquo;t need a key to <em>your</em> box &mdash; you just say a box number and they empty it onto the counter for you. Worse, they&rsquo;ll also post letters <em>into</em> any box you name.</p></div>
+
+    <h3 style="font-size:17px; margin:26px 0 0;">How the attack works</h3>
+    <ul class="steps">
+      <li>The attacker is a <b>normal participant</b> in their own session &mdash; a completely legitimate, low-privilege account.</li>
+      <li>Channel IDs are sequential-ish/guessable, or leak through other responses. The attacker grabs one belonging to a <b>different</b> session (e.g. a rival team&rsquo;s command channel).</li>
+      <li>They change the channel ID in the request and ask for the messages. The server returns them.</li>
+      <li>They can also <b>POST</b> a message into that channel &mdash; impersonating chatter inside an exercise they were never part of.</li>
+    </ul>
+
+    <div class="lbl bad">&#9632; Attack &mdash; before the fix</div>
+    <div class="shot attack">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">attacker&rsquo;s terminal &mdash; reading a channel that isn&rsquo;t theirs</span></div>
+<pre class="term"><span class="c"># Logged in as an ordinary participant. Token is for MY account only.</span>
+<span class="prompt">$</span> <span class="cmd">curl</span> https://api.blackswan.app/api/channels/<span class="hi">f3a9-OTHER-TEAM-9921</span>/messages \
+     -H <span class="s">"Authorization: Bearer eyJhbGci...&lt;my-normal-token&gt;"</span>
+
+<span class="ok">HTTP/1.1 200 OK</span>
+[
+  { "sender": <span class="s">"Incident Commander"</span>, "body": <span class="s">"Hold the cordon at 5th &amp; Main, SWAT inbound 3 min"</span> },
+  { "sender": <span class="s">"Trainer"</span>,            "body": <span class="s">"Inject: hostage demand just changed"</span> },
+  { "sender": <span class="s">"Logistics"</span>,          "body": <span class="s">"Ambulances staged at rally point B"</span> }
+]
+<span class="bad">^ These belong to a DIFFERENT session. I was never a member. Returned anyway.</span></pre>
+    </div>
+    <div class="shot attack" style="margin-top:12px;">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">&hellip;and posting a fake message into their channel</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> -X POST https://api.blackswan.app/api/channels/<span class="hi">f3a9-OTHER-TEAM-9921</span>/messages \
+     -H <span class="s">"Authorization: Bearer eyJhbGci...&lt;my-normal-token&gt;"</span> \
+     -d <span class="s">'{"body":"STAND DOWN — order from command"}'</span>
+
+<span class="ok">HTTP/1.1 201 Created</span>   <span class="bad">&larr; injected disinformation into a live exercise</span></pre>
+    </div>
+
+    <p style="margin-top:18px;">Here&rsquo;s the actual code that lets this happen &mdash; notice the check exists for <code>direct</code> messages, but the branch for private/role channels is an empty comment:</p>
+    <div class="shot">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">server/routes/channels.ts</span></div>
+<pre class="term">if (channel.type === <span class="s">'direct'</span>) {
+  <span class="c">// only DMs are checked</span>
+  const members = (channel.members as string[]) || [];
+  if (!members.includes(user.id)) {
+    return res.status(403).json({ error: <span class="s">'Access denied'</span> });
+  }
+} else if (channel.type === <span class="s">'private'</span> || channel.type === <span class="s">'role_specific'</span>) {
+  <span class="hi">// Additional access checks needed   &larr; never implemented</span>
+}
+<span class="c">// ...everything else falls straight through to returning the messages</span></pre>
+    </div>
+
+    <div class="lbl good">&#9632; After the fix &mdash; the server checks you belong to the session</div>
+    <div class="shot defend">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">attacker&rsquo;s terminal &mdash; same request, now blocked</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> https://api.blackswan.app/api/channels/<span class="hi">f3a9-OTHER-TEAM-9921</span>/messages \
+     -H <span class="s">"Authorization: Bearer eyJhbGci...&lt;my-normal-token&gt;"</span>
+
+<span class="bad">HTTP/1.1 403 Forbidden</span>
+{ "error": <span class="s">"You are not a participant in this session"</span> }
+<span class="hiok">^ The server loaded the channel's session, checked I'm not a member, and refused.</span></pre>
+    </div>
+    <div class="shot defend" style="margin-top:12px;">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">the fix, in code</span></div>
+<pre class="term"><span class="c">// Load the channel's session, THEN verify the caller is allowed in it.</span>
+<span class="hiok">await assertSessionAccess(channel.session_id, user);</span>  <span class="c">// trainer/admin OR a participant</span>
+
+if (channel.type === <span class="s">'direct'</span>) {
+  const members = (channel.members as string[]) || [];
+  if (!members.includes(user.id)) return res.status(403).json({ error: <span class="s">'Access denied'</span> });
+}
+<span class="ok">// only now do we return / write messages</span></pre>
+    </div>
+
+    <div class="takeaway"><b>What you&rsquo;re preventing:</b> a single curious or malicious participant from reading every team&rsquo;s private comms and planting fake orders mid-exercise. The fix is one extra line per endpoint: &ldquo;is this person actually in this session?&rdquo;</div>
+  </div>
+</section>
+<section id="role">
+  <div class="wrap">
+    <div class="sec-num">02 &middot; Privilege Escalation <span class="sev high">High</span></div>
+    <h2 class="sec-title">Joining any session as &ldquo;whoever you want to be&rdquo;</h2>
+    <p class="sec-sub">File: <code>server/routes/sessions.ts</code> &middot; The &ldquo;join a session&rdquo; endpoint lets you pick your own role, and trusts whatever you type.</p>
+
+    <p class="lead-in">When you join a session, the request includes a <code>role</code> field &mdash; like <code>participant</code>. The problem: the server accepts <em>any text</em> you put there and saves it as your role. Nothing forces it to be &ldquo;participant.&rdquo; So you can declare yourself <code>incident_commander</code>, <code>trainer</code>, or <code>legal_oversight</code> &mdash; roles that may unlock powers and information meant for senior staff.</p>
+
+    <div class="analogy"><b>Analogy.</b> Imagine signing into a building&rsquo;s visitor book where you write your own job title, and security hands out badges based purely on what you wrote. Write &ldquo;Fire Chief&rdquo; and you get the Fire Chief&rsquo;s badge &mdash; no one checks.</div>
+
+    <p>The validation rule literally accepts any string:</p>
+    <div class="shot">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">server/routes/sessions.ts &mdash; the rule for joining</span></div>
+<pre class="term">const joinSessionSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    role: <span class="hi">z.string()</span>,   <span class="c">// &larr; ANY text is accepted and saved as your role</span>
+  }),
+});</pre>
+    </div>
+
+    <div class="lbl bad">&#9632; Attack &mdash; before the fix</div>
+    <div class="shot attack">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">attacker promotes themselves while joining</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> -X POST https://api.blackswan.app/api/sessions/<span class="hi">&lt;any-session-id&gt;</span>/join \
+     -H <span class="s">"Authorization: Bearer eyJ...&lt;my-normal-token&gt;"</span> \
+     -d <span class="s">'{"role":"<span class="hi">incident_commander</span>"}'</span>
+
+<span class="ok">HTTP/1.1 201 Created</span>
+{ "data": { "user_id": <span class="s">"me"</span>, "session_id": <span class="s">"..."</span>, "role": <span class="bad">"incident_commander"</span> } }
+<span class="bad">^ I'm now seated as the commander in a session I just walked into.</span></pre>
+    </div>
+
+    <div class="lbl good">&#9632; After the fix &mdash; role is restricted to a safe list</div>
+    <div class="duo">
+      <div class="shot defend">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">request is rejected</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> ... -d <span class="s">'{"role":"incident_commander"}'</span>
+
+<span class="bad">HTTP/1.1 400 Bad Request</span>
+{ "error": <span class="s">"Validation failed"</span>,
+  "details": [{ "field": <span class="s">"role"</span>,
+    "message": <span class="s">"Invalid role"</span> }] }</pre>
+      </div>
+      <div class="shot defend">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">the fix, in code</span></div>
+<pre class="term">role: <span class="hiok">z.enum(['participant', 'observer'])</span>
+       .default(<span class="s">'participant'</span>),
+
+<span class="c">// Roles like commander/trainer are</span>
+<span class="c">// assigned by a trainer, never self-</span>
+<span class="c">// picked at join time.</span></pre>
+      </div>
+    </div>
+
+    <p class="footnote">Note: the app&rsquo;s real join flow (the invite-link sign-up in <code>join.ts</code>) already does this correctly &mdash; it forces <code>role: 'participant'</code>. The vulnerable endpoint shown here isn&rsquo;t actually called by the app anymore, so tightening it is both safe and a sensible belt-and-suspenders fix against anyone calling the API directly.</p>
+
+    <div class="takeaway"><b>What you&rsquo;re preventing:</b> a regular trainee from giving themselves a command role (and the visibility/authority that comes with it) in any exercise.</div>
+  </div>
+</section>
+<section id="stop">
+  <div class="wrap">
+    <div class="sec-num">03 &middot; Missing Authorization (Denial of Service) <span class="sev high">High</span></div>
+    <h2 class="sec-title">Ending anyone&rsquo;s live exercise with one request</h2>
+    <p class="sec-sub">File: <code>server/routes/demo.ts</code> &middot; The &ldquo;stop&rdquo; endpoint forces a session to <code>completed</code> &mdash; with no check that you own it or are even staff.</p>
+
+    <p class="lead-in">There&rsquo;s a companion to the &ldquo;start demo&rdquo; feature: <code>/stop</code>. &ldquo;Start&rdquo; correctly requires a trainer/admin. &ldquo;Stop&rdquo; forgot to. So any logged-in user can send a session ID and the server marks that session <b>completed</b> &mdash; freezing a live, in-progress training exercise for everyone in it.</p>
+
+    <div class="analogy"><b>Analogy.</b> The fire alarm has a glass cover and a key for the &ldquo;test&rdquo; switch &mdash; but the &ldquo;evacuate the whole building&rdquo; switch is just a bare button anyone walking by can slap. Same panel, one switch protected, the other wide open.</div>
+
+    <div class="shot">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">server/routes/demo.ts &mdash; notice no role / ownership check</span></div>
+<pre class="term">router.post(<span class="s">'/stop'</span>, <span class="k">requireAuth</span>, validate(stopDemoSchema), async (req, res) => {
+  const { sessionId } = req.body;       <span class="c">// &larr; whatever the caller sends</span>
+  getDemoPlaybackService().stop(sessionId);
+  await supabaseAdmin.from(<span class="s">'sessions'</span>)
+    .update({ status: <span class="hi">'completed'</span>, end_time: new Date().toISOString() })
+    .eq(<span class="s">'id'</span>, sessionId);   <span class="hi">// &larr; no "are you the trainer who owns this?" check</span>
+});</pre>
+    </div>
+
+    <div class="lbl bad">&#9632; Attack &mdash; before the fix</div>
+    <div class="shot attack">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">one request ends a live exercise</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> -X POST https://api.blackswan.app/api/demo/stop \
+     -H <span class="s">"Authorization: Bearer eyJ...&lt;any-logged-in-user&gt;"</span> \
+     -d <span class="s">'{"sessionId":"<span class="hi">the-live-exercise-everyone-is-in</span>"}'</span>
+
+<span class="ok">HTTP/1.1 200 OK</span>   { "success": true }
+<span class="bad">^ Session is now "completed". 30 trainees just got kicked out mid-scenario.</span></pre>
+    </div>
+
+    <div class="lbl good">&#9632; After the fix &mdash; only the owning trainer (or admin) can stop it</div>
+    <div class="duo">
+      <div class="shot defend">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">attacker is blocked</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> -X POST .../api/demo/stop \
+     -d <span class="s">'{"sessionId":"..."}'</span>
+
+<span class="bad">HTTP/1.1 403 Forbidden</span>
+{ "error": <span class="s">"Only the session's trainer can stop it"</span> }</pre>
+      </div>
+      <div class="shot defend">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">the fix, in code</span></div>
+<pre class="term"><span class="hiok">if (user.role !== 'admin') {</span>
+  const { data: s } = await supabaseAdmin
+    .from(<span class="s">'sessions'</span>).select(<span class="s">'trainer_id'</span>)
+    .eq(<span class="s">'id'</span>, sessionId).single();
+  <span class="hiok">if (!s || s.trainer_id !== user.id)</span>
+    return res.status(403).json({ error: ... });
+}</pre>
+      </div>
+    </div>
+
+    <div class="takeaway"><b>What you&rsquo;re preventing:</b> a griefer (or a bored trainee) from shutting down everyone&rsquo;s exercises at will. This is a classic &ldquo;denial of service&rdquo; &mdash; not stealing data, just breaking the service for everyone.</div>
+  </div>
+</section>
+<section id="tamper">
+  <div class="wrap">
+    <div class="sec-num">04 &middot; Broken Access Control (IDOR) <span class="sev high">High</span></div>
+    <h2 class="sec-title">Editing other people&rsquo;s incidents, casualties, and map assets</h2>
+    <p class="sec-sub">Files: <code>incidents.ts</code>, <code>placements.ts</code>, <code>casualties.ts</code>, <code>decisions.ts</code> &middot; Same root cause as #1: change an ID, edit data that isn&rsquo;t yours.</p>
+
+    <p class="lead-in">Several &ldquo;edit&rdquo; endpoints take the ID of a thing (an incident, a casualty, a map placement) and update it &mdash; without ever checking whether that thing belongs to a session you&rsquo;re part of. The server finds the record by ID and writes your changes. Many of these also accept a <code>team_name</code> straight from the request, so you can act <em>as another team</em>.</p>
+
+    <div class="analogy"><b>Analogy.</b> A shared spreadsheet where every row has a number, and the &ldquo;edit row&rdquo; button works on <em>any</em> number you type &mdash; including rows in other people&rsquo;s private copies. You can flip a casualty&rsquo;s triage status, move a rival team&rsquo;s roadblock, or rewrite an incident&rsquo;s severity, all from your own account.</div>
+
+    <p>Here&rsquo;s the incident editor &mdash; it fetches by ID and updates, with no ownership check in between:</p>
+    <div class="shot">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">server/routes/incidents.ts &mdash; PATCH /:id</span></div>
+<pre class="term">const { id } = req.params;
+const { data: incident } = await supabaseAdmin
+  .from(<span class="s">'incidents'</span>).select(<span class="s">'*'</span>).eq(<span class="s">'id'</span>, id).single();
+if (!incident) return res.status(404)...;
+<span class="hi">// &lt;-- nothing here checks the incident belongs to YOUR session --&gt;</span>
+await supabaseAdmin.from(<span class="s">'incidents'</span>).update(updateData).eq(<span class="s">'id'</span>, id);</pre>
+    </div>
+
+    <div class="lbl bad">&#9632; Attack &mdash; before the fix</div>
+    <div class="shot attack">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">rewriting a rival session&rsquo;s incident</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> -X PATCH https://api.blackswan.app/api/incidents/<span class="hi">SOME-OTHER-INCIDENT-ID</span> \
+     -H <span class="s">"Authorization: Bearer eyJ...&lt;my-normal-token&gt;"</span> \
+     -d <span class="s">'{"severity":"low","status":"resolved","casualty_count":0}'</span>
+
+<span class="ok">HTTP/1.1 200 OK</span>
+<span class="bad">^ I just marked someone else's active mass-casualty incident as "resolved, 0 hurt".</span>
+<span class="bad">  Their scoreboard, AI injects, and after-action report are now corrupted.</span></pre>
+    </div>
+
+    <div class="lbl good">&#9632; After the fix &mdash; check the parent session, then check the team you claim</div>
+    <div class="shot defend">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">the fix, in code &mdash; shared helpers, reused everywhere</span></div>
+<pre class="term">const { data: incident } = await supabaseAdmin
+  .from(<span class="s">'incidents'</span>).select(<span class="s">'*'</span>).eq(<span class="s">'id'</span>, id).single();
+if (!incident) return res.status(404)...;
+
+<span class="c">// helpers RETURN a result — no thrown errors that a try/catch could turn into a 500</span>
+const access = <span class="hiok">await assertSessionAccess(incident.session_id, user);</span>
+<span class="hiok">if (!access.ok) return res.status(access.status).json({ error: access.error });</span>
+
+<span class="c">// VALIDATE the team you claim — don't trust it, but don't blindly override it either</span>
+const team = <span class="hiok">await assertTeamMembership(incident.session_id, user, req.body.team_name);</span>
+<span class="hiok">if (!team.ok) return res.status(403).json({ error: 'Not on that team' });</span>
+
+await supabaseAdmin.from(<span class="s">'incidents'</span>).update(updateData)
+  .eq(<span class="s">'id'</span>, id)<span class="hiok">.eq('session_id', incident.session_id)</span>;  <span class="c">// scoped to the right session</span></pre>
+    </div>
+
+    <p style="margin-top:18px;">The same pattern (&ldquo;load the parent session &rarr; check access &rarr; verify the team you&rsquo;re claiming is really yours&rdquo;) fixes the matching holes in placements (move/delete any team&rsquo;s map assets), casualties (re-triage anyone&rsquo;s patients), and decision execution.</p>
+
+    <div class="analogy" style="border-left-color:var(--cyan); background:rgba(45,212,191,0.06); color:#bdeee8;"><b>Two important refinements (so we don&rsquo;t break real users).</b><br/>
+    &bull; <b>Validate, don&rsquo;t overwrite.</b> A player can be on more than one team, and trainers are on none. So instead of forcing a team onto the request, we simply confirm the team you <em>claim</em> is one you actually belong to. <b>Trainers and admins are exempt</b> &mdash; they may legitimately act on any team.<br/>
+    &bull; <b>Social-media-crisis sessions don&rsquo;t use &ldquo;teams.&rdquo;</b> There, your identity is the <b>org page / account</b> you were assigned (manually or automatically). For those actions we check &ldquo;do you control this page?&rdquo; using the same idea &mdash; the page-controller records &mdash; instead of the team list.</div>
+
+    <div class="takeaway"><b>What you&rsquo;re preventing:</b> one participant quietly sabotaging other teams&rsquo; exercises and corrupting the data the scoring and after-action reports are built on. The cure is the same everywhere &mdash; check the parent session, and verify the team (or page) you claim to act as.</div>
+  </div>
+</section>
+<section id="inject">
+  <div class="wrap">
+    <div class="sec-num">05 &middot; Filter / Query Injection <span class="sev high">High</span></div>
+    <h2 class="sec-title">Tricking the database by smuggling code into a name field</h2>
+    <p class="sec-sub">File: <code>server/routes/socialMessenger.ts</code> &middot; This is the &ldquo;SQL-injection-style&rdquo; bug you asked about &mdash; the one place user text is glued directly into a database query.</p>
+
+    <p class="lead-in">Most of the database calls in this app are safe, because values are passed as separate, clearly-labelled parameters (the database treats them as <em>data</em>, never as commands). But in one spot, the code builds a database filter by <b>pasting the user&rsquo;s text directly into the query string</b>. When you mix &ldquo;instructions&rdquo; and &ldquo;user data&rdquo; in the same string, a clever user can make their data <em>look like instructions.</em> That&rsquo;s injection.</p>
+
+    <div class="analogy"><b>Analogy.</b> Imagine telling an assistant out loud: &ldquo;Find the message where recipient is <em>&lt;whatever the user typed&gt;</em>.&rdquo; If the user&rsquo;s &ldquo;name&rdquo; is actually <em>&ldquo;Bob&rdquo; OR open every drawer in the building</em>, and you read it aloud word-for-word, the assistant hears a brand-new instruction. The fix is to treat the whole thing as a literal name in quotes &mdash; no matter how sneaky it looks.</div>
+
+    <p>The vulnerable line builds the filter by string-pasting the recipient handle the user sent:</p>
+    <div class="shot">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">server/routes/socialMessenger.ts &mdash; POST /send</span></div>
+<pre class="term">const { recipient_handle } = req.body;   <span class="c">// &larr; raw text from the user</span>
+await supabaseAdmin.from(<span class="s">'sim_direct_messages'</span>)
+  .or(`and(sender_handle.eq."${senderHandle}",recipient_handle.eq."<span class="hi">${recipient_handle}</span>"),...`)
+  <span class="c">// the user's text becomes part of the FILTER GRAMMAR, not just a value</span></pre>
+    </div>
+
+    <p>In this query language, characters like <code>"</code>, <code>,</code>, <code>(</code> and <code>)</code> and words like <code>.eq.</code> are <em>structure</em>. By including them in the &ldquo;handle,&rdquo; an attacker can close out the intended condition and bolt on their own &mdash; for example, broadening the search to match other people&rsquo;s private messages in the session.</p>
+
+    <div class="lbl bad">&#9632; Attack &mdash; before the fix</div>
+    <div class="shot attack">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">a &ldquo;recipient handle&rdquo; that is really a smuggled filter</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> -X POST https://api.blackswan.app/api/social/messenger/send \
+     -H <span class="s">"Authorization: Bearer eyJ...&lt;my-normal-token&gt;"</span> \
+     -d <span class="s">'{"session_id":"...","content":"hi",
+          "recipient_handle":"<span class="hi">x",recipient_handle.neq."__never__</span>"}'</span>
+
+<span class="c"># The server pastes that in, and the database now sees an extra condition</span>
+<span class="c"># it was never meant to: "...OR recipient_handle is not '__never__'" — i.e. MATCH ALMOST EVERYTHING.</span>
+<span class="warn">Result: the thread lookup latches onto messages between OTHER participants.</span></pre>
+    </div>
+
+    <div class="lbl good">&#9632; After the fix &mdash; treat the handle as plain data</div>
+    <div class="duo">
+      <div class="shot defend">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">malformed handle is rejected</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">curl</span> ... -d <span class="s">'{"recipient_handle":
+   "x\",recipient_handle.neq.\"y"}'</span>
+
+<span class="bad">HTTP/1.1 400 Bad Request</span>
+{ "error": <span class="s">"Invalid recipient handle"</span> }</pre>
+      </div>
+      <div class="shot defend">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">the fix, in code</span></div>
+<pre class="term"><span class="c">// The value sits inside double-quotes in the</span>
+<span class="c">// filter, so the ONLY breakout characters are</span>
+<span class="c">// the double-quote and the backslash. Reject those.</span>
+<span class="hiok">if (/["\\]/.test(recipient_handle))</span>
+  return res.status(400)...;</pre>
+      </div>
+    </div>
+
+    <div class="analogy" style="border-left-color:var(--cyan); background:rgba(45,212,191,0.06); color:#bdeee8;"><b>Why a &ldquo;block-list,&rdquo; not an &ldquo;allow-list.&rdquo;</b> An earlier idea was to allow only letters/numbers/dots. But real recipients include <b>AI-generated character handles</b> (like <code>@angry_citizen_42</code>) and <b>org-page handles from the database</b>, whose exact characters we don&rsquo;t fully control &mdash; a strict allow-list could reject perfectly valid recipients. Since the handle is wrapped in quotes inside the query, blocking just the quote and backslash shuts the injection completely <em>without</em> turning away legitimate names.</div>
+
+    <div class="card" style="margin-top:18px;">
+      <div class="lbl" style="color:var(--cyan); margin-top:0;">Good news on the rest</div>
+      <p style="margin:6px 0 0; color:var(--muted);">We specifically hunted for classic SQL injection across the whole backend and the database functions. Everywhere <em>else</em>, values are passed safely (as parameters), and the database&rsquo;s stored functions either use parameters or quote identifiers correctly. We also found <b>no</b> command-injection, no <code>eval</code>, no server-side template injection, and <b>no</b> attacker-controllable &ldquo;server-fetches-a-URL&rdquo; (SSRF) holes &mdash; every outbound request goes to a fixed, hard-coded address. This one messenger filter is the only true injection point.</p>
+    </div>
+
+    <div class="takeaway"><b>What you&rsquo;re preventing:</b> a user from using a &ldquo;name&rdquo; field to quietly rewrite a database query and read messages that aren&rsquo;t theirs. The fix: reject the two characters that can break out of the query (<code>"</code> and <code>\</code>), which closes the hole while still accepting every legitimate handle.</div>
+  </div>
+</section>
+<section id="secrets">
+  <div class="wrap">
+    <div class="sec-num">06 &middot; Secrets &amp; API Keys <span class="sev ok">Clean</span></div>
+    <h2 class="sec-title">The secrets check: what we looked for, and why it passed</h2>
+    <p class="sec-sub">You specifically asked about exposed tokens and secret keys. We searched the entire repository &mdash; backend, frontend, config, database scripts, and docs. Here&rsquo;s the result in plain English.</p>
+
+    <p class="lead-in">A &ldquo;secret&rdquo; is anything that proves the app is who it says it is &mdash; API keys (OpenAI, Google Maps), the email password, and especially the database <b>master key</b>. If any of those leak into a public place (like the code shipped to browsers, or committed into git history), an outsider could use them directly. The good news: <b>none are exposed.</b></p>
+
+    <div class="grid g2" style="margin-top:8px;">
+      <div class="card">
+        <div class="lbl good" style="margin-top:0;">&#10003; The master key stays on the server</div>
+        <p style="margin:6px 0 0; color:var(--muted);">The database master key (service-role key) is only ever used in backend code. The browser app uses a separate, limited &ldquo;public&rdquo; key that&rsquo;s safe to share &mdash; exactly as intended.</p>
+      </div>
+      <div class="card">
+        <div class="lbl good" style="margin-top:0;">&#10003; No <code>.env</code> file is committed</div>
+        <p style="margin:6px 0 0; color:var(--muted);">The file that holds the real secrets is correctly ignored by git, so it never gets uploaded. We confirmed git is not tracking any such file.</p>
+      </div>
+      <div class="card">
+        <div class="lbl good" style="margin-top:0;">&#10003; Secrets are scrubbed from logs</div>
+        <p style="margin:6px 0 0; color:var(--muted);">The logging system automatically redacts passwords, tokens, API keys and auth headers, so they don&rsquo;t end up sitting in log files.</p>
+      </div>
+      <div class="card">
+        <div class="lbl good" style="margin-top:0;">&#10003; No secrets hard-coded in the code</div>
+        <p style="margin:6px 0 0; color:var(--muted);">Searches for key patterns (<code>sk-&hellip;</code>, JWTs, bearer tokens, private keys, passworded connection strings) found only placeholders in documentation &mdash; no live values.</p>
+      </div>
+    </div>
+
+    <div class="shot defend" style="margin-top:18px;">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">verification &mdash; is any secret file tracked by git?</span></div>
+<pre class="term"><span class="prompt">$</span> <span class="cmd">git ls-files</span> | grep -i <span class="s">"\.env"</span>
+<span class="ok">(no results)</span>     <span class="c"># nothing secret is committed</span>
+
+<span class="prompt">$</span> <span class="cmd">cat</span> .gitignore
+.env
+.env.*
+!.env.example     <span class="c"># real secrets ignored; only the blank template is allowed</span>
+<span class="hiok">&#10003; Secrets are configured via environment variables, never stored in the repo.</span></pre>
+    </div>
+
+    <p style="margin-top:18px;">Three tiny housekeeping items (all <span class="sev low">Low</span>, none are live secrets): a hard-coded password for internal demo-bot accounts in a database script, some real email addresses left in a debug script, and a development-only fallback password that&rsquo;s correctly required to be set in production. Worth tidying, but none expose the system today.</p>
+
+    <div class="takeaway"><b>Bottom line on secrets:</b> the project follows good practice here. Nothing critical is leaking. The real work is the access-control fixes in sections 1&ndash;5.</div>
+  </div>
+</section>
+
+<section id="scoreboard">
+  <div class="wrap">
+    <div class="sec-num">07 &middot; The full picture</div>
+    <h2 class="sec-title">Complete scoreboard</h2>
+    <p class="sec-sub">Everything found, ranked. The pattern is consistent: the server checks <em>who</em> you are but not <em>what you may touch</em>. One shared pair of helpers fixes most of it.</p>
+
+    <table class="findings">
+      <thead><tr><th>Risk</th><th>Where</th><th>What an attacker can do</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td><span class="sev high">High</span></td><td><code>channels.ts</code></td><td>Read &amp; post in any session&rsquo;s chat</td><td>Check session membership</td></tr>
+        <tr><td><span class="sev high">High</span></td><td><code>incidents.ts</code></td><td>Edit any incident in any session</td><td>Check parent session</td></tr>
+        <tr><td><span class="sev high">High</span></td><td><code>sessions.ts</code> join</td><td>Self-assign a command/trainer role</td><td>Restrict role to a safe list</td></tr>
+        <tr><td><span class="sev high">High</span></td><td><code>demo.ts</code> stop</td><td>End anyone&rsquo;s live exercise</td><td>Require owning trainer/admin</td></tr>
+        <tr><td><span class="sev high">High</span></td><td><code>decisions.ts</code> execute</td><td>Run another team&rsquo;s approved decision</td><td>Check session access</td></tr>
+        <tr><td><span class="sev high">High</span></td><td><code>placements.ts</code></td><td>Move/delete any team&rsquo;s map assets</td><td>Check session; validate claimed team</td></tr>
+        <tr><td><span class="sev high">High</span></td><td><code>casualties.ts</code></td><td>Re-triage anyone&rsquo;s patients</td><td>Scope to session; validate team</td></tr>
+        <tr><td><span class="sev high">High</span></td><td><code>socialMessenger.ts</code></td><td>Query injection via &ldquo;handle&rdquo;</td><td>Reject <code>"</code> and <code>\</code> in handle</td></tr>
+        <tr><td><span class="sev med">Med</span></td><td><code>sessions.ts</code> reads</td><td>Peek at other sessions&rsquo; injects/timeline; run a sweep</td><td>Add session-access check</td></tr>
+        <tr><td><span class="sev med">Med</span></td><td><code>resources.ts</code>, <code>locations.ts</code>, <code>hazards.ts</code></td><td>Cross-session info / team spoofing</td><td>Add session-access check</td></tr>
+        <tr><td><span class="sev med">Med</span></td><td><code>scenarios.ts</code></td><td>One trainer edits another trainer&rsquo;s scenario</td><td>Lock edits to creator (admin bypass); viewing stays open</td></tr>
+        <tr><td><span class="sev low">Low</span></td><td><code>debug.ts</code>, <code>ai.ts</code></td><td>Run costly AI/map endpoints</td><td>Restrict to staff; rate-limit</td></tr>
+        <tr><td><span class="sev ok">OK</span></td><td>Secrets / keys</td><td>&mdash; nothing exposed &mdash;</td><td>Minor cleanup only</td></tr>
+        <tr><td><span class="sev ok">OK</span></td><td>SSRF / RCE / eval</td><td>&mdash; none found &mdash;</td><td>&mdash;</td></tr>
+      </tbody>
+    </table>
+
+    <hr class="soft" />
+
+    <div class="card">
+      <div class="lbl" style="color:var(--cyan); margin-top:0;">The shared helpers that fix most of this</div>
+      <p style="margin:6px 0 0; color:var(--muted);">Rather than 30 different patches, almost every High/Medium item is solved by a small set of shared functions, called wherever a request carries an ID. They <b>return a result</b> (rather than throwing), so each route can cleanly turn a denial into a 403 &mdash; without an existing <code>try/catch</code> accidentally masking it as a 500.</p>
+      <div class="shot" style="margin-top:12px;">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">the reusable guardrails (server/lib/access.ts)</span></div>
+<pre class="term"><span class="hiok">assertSessionAccess(sessionId, user)</span>   <span class="c">// ok if trainer/admin OR a participant; else 403/404</span>
+<span class="hiok">assertSessionOwner(sessionId, user)</span>    <span class="c">// ok only for the owning trainer or an admin</span>
+<span class="hiok">assertTeamMembership(sessionId, user, teamName)</span>  <span class="c">// validate the team you CLAIM (trainer/admin = any)</span>
+<span class="hiok">assertControlsOrgPage(sessionId, user, handle)</span>   <span class="c">// social-crisis: do you control this page?</span>
+
+<span class="c">// Recipe for any endpoint that takes a record ID:</span>
+<span class="c">//   1. load the record, read its session_id</span>
+<span class="c">//   2. const a = await assertSessionAccess(session_id, user)</span>
+<span class="c">//      if (!a.ok) return res.status(a.status).json({ error: a.error })</span>
+<span class="c">//   3. if acting as a team/page, validate it (don't trust the body)</span>
+<span class="c">//   4. scope every update/delete by session_id</span></pre>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:16px;">
+      <div class="lbl" style="color:var(--violet); margin-top:0;">Designed so nothing breaks</div>
+      <p style="margin:6px 0 0; color:var(--muted);">Before writing any code we traced the real usage to make sure the new checks won&rsquo;t lock out legitimate users:</p>
+      <ul style="margin:10px 0 0; color:var(--muted); padding-left:20px; line-height:1.7;">
+        <li>The self-join endpoint we&rsquo;re hardening <b>isn&rsquo;t even used by the app</b> &mdash; players join through a separate invite-link flow that already assigns the correct role.</li>
+        <li>Team checks <b>validate</b> the team you claim instead of overwriting it, so multi-team players and team-less trainers keep working.</li>
+        <li>Social-crisis sessions use the <b>org page you control</b> as your identity, not a team list.</li>
+        <li>Scenario <b>editing</b> is locked to its creator (admins exempt), but <b>viewing/listing stays open</b> to all trainers &mdash; exactly as requested.</li>
+        <li>The handle check is a <b>block-list</b> of two characters, so AI-generated and org-page handles still go through.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<div class="footer">
+  <div class="wrap">
+    Backend security sweep &middot; 146 files reviewed &middot; explanations written for non-specialists.<br/>
+    The mock screenshots are illustrative reconstructions of how each weakness behaves &mdash; not captures of a real breach.
+  </div>
+</div>
+</body>
+</html>

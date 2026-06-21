@@ -1,7 +1,8 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { assertSessionAccess } from '../lib/access.js';
 
 const router = Router();
 
@@ -15,15 +16,21 @@ function stripZoneGroundTruth(hazard: Record<string, unknown>): Record<string, u
 router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
 
     // Get session to find scenario_id and elapsed time
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('scenario_id, start_time, current_state')
-      .eq('id', sessionId)
-      .single();
-
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const access = await assertSessionAccess(
+      sessionId,
+      user,
+      'scenario_id, start_time, current_state',
+    );
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+    const session = access.session as unknown as {
+      scenario_id: string;
+      start_time: string | null;
+      current_state: unknown;
+    };
 
     const elapsedMinutes = session.start_time
       ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
@@ -77,12 +84,18 @@ router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
 // GET /sessions/:id/hazards/:hazardId — get single hazard detail
 router.get('/sessions/:id/hazards/:hazardId', requireAuth, async (req, res) => {
   try {
-    const { hazardId } = req.params;
+    const { id: sessionId, hazardId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
 
     const { data: hazard, error } = await supabaseAdmin
       .from('scenario_hazards')
       .select('*')
       .eq('id', hazardId)
+      .eq('session_id', sessionId)
       .single();
 
     if (error || !hazard) {

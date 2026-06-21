@@ -3,9 +3,10 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
-import { validate, schemas } from '../lib/validation.js';
+import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
+import { assertSessionAccess } from '../lib/access.js';
 import { io } from '../index.js';
 
 const router = Router();
@@ -42,16 +43,9 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     const { sessionId } = req.params;
     const user = req.user!;
 
-    // Verify session access
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('id, trainer_id')
-      .eq('id', sessionId)
-      .single();
-
-    if (!session) {
-      return res.status(404).json({ error: 'Session not found' });
-    }
+    // Verify session access (trainer/admin/participant)
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
 
     // Get agency resources
     const { data: resources, error: resourcesError } = await supabaseAdmin

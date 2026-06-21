@@ -15,6 +15,7 @@ import {
   backfillBuildingsForScenario,
   snapCoordinate,
 } from '../services/buildingStudService.js';
+import { assertScenarioOwner } from '../lib/access.js';
 
 const router = Router();
 
@@ -423,6 +424,8 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
       return res.status(403).json({ error: 'Access denied' });
     }
     const { id: scenarioId } = req.params;
+    const owner = await assertScenarioOwner(scenarioId, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
     const { locations, hazards, casualties, zones } = req.body as {
       locations?: Array<{
         id: string;
@@ -1059,6 +1062,8 @@ router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, 
     }
 
     const { id: scenarioId } = req.params;
+    const owner = await assertScenarioOwner(scenarioId, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
 
     const { data: scenario, error: scenErr } = await supabaseAdmin
       .from('scenarios')
@@ -1279,6 +1284,8 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
     }
 
     const { id: scenarioId } = req.params;
+    const owner = await assertScenarioOwner(scenarioId, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
     const force = Boolean((req.body as Record<string, unknown> | undefined)?.force);
 
     const { data: scenario, error: scenErr } = await supabaseAdmin
@@ -1687,6 +1694,8 @@ router.post('/:id/retry-custom-facts', requireAuth, async (req: AuthenticatedReq
     }
 
     const { id: scenarioId } = req.params;
+    const owner = await assertScenarioOwner(scenarioId, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
 
     const openAiApiKey = process.env.OPENAI_API_KEY;
     if (!openAiApiKey) {
@@ -2219,6 +2228,8 @@ router.post('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) => 
       return res.status(403).json({ error: 'Access denied' });
     }
     const { id: scenarioId } = req.params;
+    const owner = await assertScenarioOwner(scenarioId, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
     const { pin_type, data } = req.body as {
       pin_type: 'location' | 'hazard' | 'casualty';
       data: Record<string, unknown>;
@@ -2440,6 +2451,8 @@ router.delete('/:id/pins/:pinId', requireAuth, async (req: AuthenticatedRequest,
       return res.status(403).json({ error: 'Access denied' });
     }
     const { id: scenarioId, pinId } = req.params;
+    const owner = await assertScenarioOwner(scenarioId, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
     const pinType = (req.query.pin_type as string) || '';
 
     if (!['location', 'hazard', 'casualty'].includes(pinType)) {
@@ -2624,9 +2637,13 @@ router.get('/:id/building-studs', requireAuth, async (req, res) => {
 // POST /scenarios/:id/backfill-buildings — fetch OSM buildings for scenarios missing them
 // ---------------------------------------------------------------------------
 
-router.post('/:id/backfill-buildings', requireAuth, async (req, res) => {
+router.post('/:id/backfill-buildings', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id: scenarioId } = req.params;
+    const user = req.user!;
+    const owner = await assertScenarioOwner(scenarioId, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
+
     const radiusM = Number(req.query.radius) || 300;
 
     const result = await backfillBuildingsForScenario(scenarioId, {

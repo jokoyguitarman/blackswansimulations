@@ -1,5 +1,5 @@
 import { Router, json } from 'express';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireAuth, requireStaff, type AuthenticatedRequest } from '../middleware/auth.js';
 import {
   fetchVenueBuilding,
   type OsmBuilding,
@@ -36,6 +36,10 @@ import {
 import { env } from '../env.js';
 
 const router = Router();
+
+// All debug/diagnostic endpoints are staff-only (they invoke OpenAI/Overpass and
+// expose scenario internals). requireAuth populates req.user; requireStaff gates by role.
+router.use(requireAuth, requireStaff);
 
 function pickBlastBands(weaponClass: string | undefined): BlastBandConfig[] {
   if (weaponClass === 'explosive') return BLAST_BANDS_EXPLOSIVE;

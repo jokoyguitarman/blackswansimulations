@@ -25,7 +25,10 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
 
     const playerName =
       (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    const playerHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    // Strip characters that are structural in a PostgREST .or() filter (the value is
+    // wrapped in double quotes, so a literal " or \ could break out). Denylist keeps
+    // every realistic handle (letters/digits/_/.) intact.
+    const playerHandle = `@${playerName.replace(/[@.\s+,"\\]/g, '_').toLowerCase()}`;
 
     const { data: orgPages } = await supabaseAdmin
       .from('sim_org_pages')
@@ -33,7 +36,7 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       .eq('session_id', sessionId)
       .eq('platform', platformFilter || 'facebook');
 
-    const orgPageHandle = orgPages?.[0]?.page_handle || '';
+    const orgPageHandle = (orgPages?.[0]?.page_handle || '').replace(/["\\]/g, '');
 
     const handleFilter = orgPageHandle
       ? `sender_handle.eq."${playerHandle}",recipient_handle.eq."${playerHandle}",recipient_handle.eq."${orgPageHandle}",sender_handle.eq."${orgPageHandle}"`
@@ -155,6 +158,13 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res
         .status(400)
         .json({ error: 'session_id, recipient_handle, and content are required' });
+    }
+
+    // recipient_handle is interpolated into a PostgREST .or() filter where the value is
+    // double-quoted. Reject the only characters that can break out of that quoting,
+    // which closes the injection without rejecting legitimate handles.
+    if (typeof recipient_handle !== 'string' || /["\\]/.test(recipient_handle)) {
+      return res.status(400).json({ error: 'Invalid recipient handle' });
     }
 
     const { data: profile } = await supabaseAdmin

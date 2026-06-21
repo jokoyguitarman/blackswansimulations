@@ -7,6 +7,7 @@ import { validate } from '../lib/validation.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { createNotificationsForUsers } from '../services/notificationService.js';
+import { assertSessionAccess } from '../lib/access.js';
 import { io } from '../index.js';
 
 /**
@@ -673,18 +674,13 @@ router.post(
         casualty_count,
       } = req.body;
 
-      // Verify session access
-      const { data: session } = await supabaseAdmin
-        .from('sessions')
-        .select('id, status')
-        .eq('id', session_id)
-        .single();
-
-      if (!session) {
-        return res.status(404).json({ error: 'Session not found' });
+      // Verify session access (trainer/admin/participant)
+      const access = await assertSessionAccess(session_id, user, 'id, status');
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
 
-      if (session.status !== 'in_progress') {
+      if (access.session?.status !== 'in_progress') {
         return res.status(400).json({ error: 'Session is not active' });
       }
 
@@ -823,6 +819,12 @@ router.patch(
         return res.status(404).json({ error: 'Incident not found' });
       }
 
+      // Caller must belong to the incident's session.
+      const access = await assertSessionAccess(incident.session_id as string, user);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
       // Build update object
       const updateData: Record<string, unknown> = {
         updated_at: new Date().toISOString(),
@@ -853,6 +855,7 @@ router.patch(
         .from('incidents')
         .update(updateData)
         .eq('id', id)
+        .eq('session_id', incident.session_id)
         .select(
           `
         *,
@@ -980,7 +983,13 @@ router.post(
         return res.status(404).json({ error: 'Incident not found' });
       }
 
-      // Verify the user is a participant in the session
+      // Caller must belong to the incident's session.
+      const access = await assertSessionAccess(incident.session_id as string, user);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
+      // Verify the assignee is a participant in the session
       const { data: participant } = await supabaseAdmin
         .from('session_participants')
         .select('user_id')
@@ -1206,6 +1215,12 @@ router.post(
 
       if (!incident) {
         return res.status(404).json({ error: 'Incident not found' });
+      }
+
+      // Caller must belong to the incident's session.
+      const access = await assertSessionAccess(incident.session_id as string, user);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
 
       // This is a placeholder - actual resource allocation would update agency_resources

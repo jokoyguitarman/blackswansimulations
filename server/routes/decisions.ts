@@ -16,6 +16,7 @@ import { evaluateAllObjectivesForSession } from '../services/objectiveTrackingSe
 // but no longer drive player-facing inject publishing or objective skipping in the decision flow.
 import { orchestrateDecisionEvaluation } from '../services/decisionEvaluationOrchestrator.js';
 import { evaluateEnvironmentalPrerequisite } from '../services/environmentalPrerequisiteService.js';
+import { assertSessionAccess } from '../lib/access.js';
 import {
   evaluateEnvironmentalManagementIntentAndUpdateState,
   recordSpaceClaim,
@@ -322,18 +323,13 @@ router.post(
         required_approvers = [],
       } = req.body;
 
-      // Verify session access
-      const { data: session } = await supabaseAdmin
-        .from('sessions')
-        .select('id, status')
-        .eq('id', session_id)
-        .single();
-
-      if (!session) {
-        return res.status(404).json({ error: 'Session not found' });
+      // Verify session access (trainer/admin/participant)
+      const access = await assertSessionAccess(session_id, user, 'id, status');
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
 
-      if (session.status !== 'in_progress') {
+      if (access.session?.status !== 'in_progress') {
         return res.status(400).json({ error: 'Session is not active' });
       }
 
@@ -1669,6 +1665,12 @@ router.post('/:id/execute', requireAuth, async (req: AuthenticatedRequest, res) 
 
     if (!decision) {
       return res.status(404).json({ error: 'Decision not found' });
+    }
+
+    // Caller must belong to the decision's session (trainer/admin/participant).
+    const access = await assertSessionAccess(decision.session_id as string, user);
+    if (!access.ok) {
+      return res.status(access.status).json({ error: access.error });
     }
 
     // Allow execution if: status is 'approved' (legacy flow) OR status is 'proposed' and user is the creator (streamlined flow)

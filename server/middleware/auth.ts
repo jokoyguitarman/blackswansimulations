@@ -68,3 +68,20 @@ export const requireAuth = async (
     next(err);
   }
 };
+
+/**
+ * Restrict a route to staff (trainer or admin). Must run AFTER requireAuth so that
+ * req.user is populated. Used for cost-incurring / diagnostic endpoints.
+ */
+export const requireStaff = (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): void => {
+  const role = req.user?.role;
+  if (role !== 'trainer' && role !== 'admin') {
+    res.status(403).json({ error: 'Trainer or admin access required' });
+    return;
+  }
+  next();
+};

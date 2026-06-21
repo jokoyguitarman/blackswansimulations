@@ -8,6 +8,7 @@ import { logAndBroadcastEvent } from '../services/eventService.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { createNotification } from '../services/notificationService.js';
 import { createDefaultChannels } from '../services/channelService.js';
+import { assertSessionAccess } from '../lib/access.js';
 import { io } from '../index.js';
 
 const router = Router();
@@ -415,15 +416,10 @@ router.post(
         return res.status(400).json({ error: 'Cannot create DM with yourself' });
       }
 
-      // Verify user has access to session
-      const { data: session } = await supabaseAdmin
-        .from('sessions')
-        .select('id, trainer_id')
-        .eq('id', sessionId)
-        .single();
-
-      if (!session) {
-        return res.status(404).json({ error: 'Session not found' });
+      // Verify the CALLER belongs to the session (trainer/admin/participant).
+      const access = await assertSessionAccess(sessionId, user);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
       }
 
       // Verify recipient is a participant
@@ -583,15 +579,18 @@ router.get(
         return res.status(404).json({ error: 'Channel not found' });
       }
 
-      // Check access based on channel type
+      // Caller must belong to the channel's session (trainer/admin/participant).
+      const access = await assertSessionAccess(channel.session_id as string, user);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
+      // For direct messages, additionally verify the caller is one of the two members.
       if (channel.type === 'direct') {
-        // For direct messages, verify user is a member
         const members = (channel.members as string[]) || [];
         if (!Array.isArray(members) || !members.includes(user.id)) {
           return res.status(403).json({ error: 'Access denied' });
         }
-      } else if (channel.type === 'private' || channel.type === 'role_specific') {
-        // Additional access checks needed
       }
 
       const { data, error, count } = await supabaseAdmin
@@ -732,7 +731,13 @@ router.post(
         return res.status(404).json({ error: 'Channel not found' });
       }
 
-      // For direct messages, verify user is a member
+      // Caller must belong to the channel's session (trainer/admin/participant).
+      const access = await assertSessionAccess(channel.session_id as string, user);
+      if (!access.ok) {
+        return res.status(access.status).json({ error: access.error });
+      }
+
+      // For direct messages, additionally verify the caller is one of the two members.
       if (channel.type === 'direct') {
         const members = (channel.members as string[]) || [];
         if (!members.includes(user.id)) {

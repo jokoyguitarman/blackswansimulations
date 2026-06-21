@@ -31,10 +31,11 @@ SELECT
 FROM user_profiles up
 LEFT JOIN auth.users au ON au.id = up.id
 WHERE up.email IN (
-  'katigayunanfoodcorp@gmail.com',
-  'jdqtabbada@addu.edu.ph',
-  'therestaurateursph@gmail.com',
-  'cucinailocana@yahoo.com'
+  -- Replace these placeholders with the actual invited emails when debugging.
+  'user1@example.com',
+  'user2@example.com',
+  'user3@example.com',
+  'user4@example.com'
 )
 ORDER BY up.email;
 

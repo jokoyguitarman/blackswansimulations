@@ -12,6 +12,7 @@ import {
   getOccupiedStudIds,
   loadClassifiedGrids,
 } from '../services/buildingStudService.js';
+import { assertSessionAccess, assertTeamMembership } from '../lib/access.js';
 
 const router = Router();
 
@@ -243,6 +244,12 @@ async function processEnclosureLinks(
 router.get('/sessions/:id/placements', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
     const { data, error } = await supabaseAdmin
       .from('placed_assets')
       .select('*')
@@ -276,16 +283,16 @@ router.post('/sessions/:id/placements', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'team_name, asset_type, and geometry are required' });
     }
 
-    // Validate session is in progress
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('status')
-      .eq('id', sessionId)
-      .single();
+    // Caller must belong to the session, and may only place for a team they're on.
+    const access = await assertSessionAccess(sessionId, user, 'id, status');
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
 
-    if (!session || session.status !== 'in_progress') {
+    if (access.session?.status !== 'in_progress') {
       return res.status(400).json({ error: 'Session is not in progress' });
     }
+
+    const teamCheck = await assertTeamMembership(sessionId, user, team_name);
+    if (!teamCheck.ok) return res.status(teamCheck.status).json({ error: teamCheck.error });
 
     // Snap Point geometry to nearest classified stud (building or outdoor blast zone)
     if (
@@ -410,6 +417,21 @@ router.patch('/sessions/:id/placements/:placementId', requireAuth, async (req, r
     const { id: sessionId, placementId } = req.params;
     const user = (req as AuthenticatedRequest).user;
     if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
+    // Caller must belong to the session and own the asset's team.
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+    const { data: owned } = await supabaseAdmin
+      .from('placed_assets')
+      .select('team_name')
+      .eq('id', placementId)
+      .eq('session_id', sessionId)
+      .maybeSingle();
+    if (!owned) return res.status(404).json({ error: 'Placement not found' });
+
+    const teamCheck = await assertTeamMembership(sessionId, user, owned.team_name as string);
+    if (!teamCheck.ok) return res.status(teamCheck.status).json({ error: teamCheck.error });
 
     const { geometry, properties: rawPatchProps, label, linked_decision_id } = req.body;
     let properties = rawPatchProps as Record<string, unknown> | undefined;
@@ -537,6 +559,21 @@ router.delete('/sessions/:id/placements/:placementId', requireAuth, async (req, 
     const { id: sessionId, placementId } = req.params;
     const user = (req as AuthenticatedRequest).user;
     if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
+    // Caller must belong to the session and own the asset's team.
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+    const { data: owned } = await supabaseAdmin
+      .from('placed_assets')
+      .select('team_name')
+      .eq('id', placementId)
+      .eq('session_id', sessionId)
+      .maybeSingle();
+    if (!owned) return res.status(404).json({ error: 'Placement not found' });
+
+    const teamCheck = await assertTeamMembership(sessionId, user, owned.team_name as string);
+    if (!teamCheck.ok) return res.status(teamCheck.status).json({ error: teamCheck.error });
 
     const { data: updated, error } = await supabaseAdmin
       .from('placed_assets')

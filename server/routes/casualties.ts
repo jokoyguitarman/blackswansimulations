@@ -1,8 +1,9 @@
 import { Router } from 'express';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { hasMarshalProximity } from '../services/exitFlowService.js';
+import { assertSessionAccess, assertTeamMembership } from '../lib/access.js';
 
 const router = Router();
 
@@ -39,14 +40,12 @@ function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): num
 router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
 
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('scenario_id, start_time')
-      .eq('id', sessionId)
-      .single();
-
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const access = await assertSessionAccess(sessionId, user, 'scenario_id, start_time');
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+    const session = access.session as unknown as { scenario_id: string; start_time: string | null };
 
     const elapsedMinutes = session.start_time
       ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
@@ -77,12 +76,18 @@ router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
 
 router.get('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, res) => {
   try {
-    const { casualtyId } = req.params;
+    const { id: sessionId, casualtyId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
 
     const { data: casualty, error } = await supabaseAdmin
       .from('scenario_casualties')
       .select('*')
       .eq('id', casualtyId)
+      .eq('session_id', sessionId)
       .single();
 
     if (error || !casualty) {
@@ -99,7 +104,10 @@ router.get('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, res)
 
 router.patch('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, res) => {
   try {
-    const { casualtyId } = req.params;
+    const { id: sessionId, casualtyId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
     const { status, assigned_team, linked_decision_id, location_lat, location_lng, conditions } =
       req.body as {
         status?: string;
@@ -109,6 +117,13 @@ router.patch('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, re
         location_lng?: number;
         conditions?: Record<string, unknown>;
       };
+
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+    // If claiming a team, it must be one the caller belongs to (trainer/admin exempt).
+    const teamCheck = await assertTeamMembership(sessionId, user, assigned_team);
+    if (!teamCheck.ok) return res.status(teamCheck.status).json({ error: teamCheck.error });
 
     const updatePayload: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (status) updatePayload.status = status;
@@ -133,6 +148,7 @@ router.patch('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, re
       .from('scenario_casualties')
       .update(updatePayload)
       .eq('id', casualtyId)
+      .eq('session_id', sessionId)
       .select()
       .single();
 
@@ -155,6 +171,9 @@ router.patch('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, re
 router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (req, res) => {
   try {
     const { id: sessionId, casualtyId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
     const { player_triage_color, team_name } = req.body as {
       player_triage_color: string;
       team_name: string;
@@ -170,12 +189,13 @@ router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (r
       return res.status(400).json({ error: 'team_name is required' });
     }
 
-    const { data: session } = await supabaseAdmin
-      .from('sessions')
-      .select('scenario_id, start_time')
-      .eq('id', sessionId)
-      .single();
-    if (!session) return res.status(404).json({ error: 'Session not found' });
+    const access = await assertSessionAccess(sessionId, user, 'scenario_id, start_time');
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+    const teamCheck = await assertTeamMembership(sessionId, user, team_name);
+    if (!teamCheck.ok) return res.status(teamCheck.status).json({ error: teamCheck.error });
+
+    const session = access.session as unknown as { scenario_id: string; start_time: string | null };
 
     const elapsedMinutes = session.start_time
       ? Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000)
@@ -185,6 +205,7 @@ router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (r
       .from('scenario_casualties')
       .select('id, location_lat, location_lng, status, conditions')
       .eq('id', casualtyId)
+      .eq('session_id', sessionId)
       .single();
 
     if (casError || !casualty) {
@@ -241,6 +262,7 @@ router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (r
         updated_at: new Date().toISOString(),
       })
       .eq('id', casualtyId)
+      .eq('session_id', sessionId)
       .select()
       .single();
 
@@ -259,6 +281,12 @@ router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (r
 router.get('/sessions/:id/marshal-check', requireAuth, async (req, res) => {
   try {
     const { id: sessionId } = req.params;
+    const user = (req as AuthenticatedRequest).user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
+
+    const access = await assertSessionAccess(sessionId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
     const lat = parseFloat(req.query.lat as string);
     const lng = parseFloat(req.query.lng as string);
 
