@@ -222,7 +222,7 @@ export const ChatInterface = ({
     const initialize = async () => {
       await loadParticipants();
       loadChannels();
-      loadDMs();
+      if (!isWA) loadDMs();
     };
     initialize();
   }, [sessionId]);
@@ -1209,8 +1209,15 @@ export const ChatInterface = ({
     try {
       const result = await api.channels.list(sessionId);
       setChannels(result.data as Channel[]);
-      if (result.data && result.data.length > 0 && !selectedChannel && !selectedDM) {
-        setSelectedChannel((result.data[0] as Channel).id);
+      if (isWA) {
+        const allTeams = (result.data as Channel[]).find(
+          (c) => c.name === 'All Teams' || c.type === 'inter_agency',
+        );
+        setSelectedChannel(allTeams?.id || (result.data[0] as Channel)?.id || null);
+      } else {
+        if (result.data && result.data.length > 0 && !selectedChannel && !selectedDM) {
+          setSelectedChannel((result.data[0] as Channel).id);
+        }
       }
     } catch (error) {
       console.error('Failed to load channels:', error);
@@ -1503,133 +1510,145 @@ export const ChatInterface = ({
   return (
     <div className={s.container}>
       {/* Tabs and Channels/DMs Sidebar */}
-      <div className={s.tabBar}>
-        {/* View Mode Tabs */}
-        <div className="flex gap-2 mb-3">
+      {isWA ? (
+        <div
+          className="flex items-center justify-end px-3 py-2"
+          style={{ borderBottom: '1px solid rgba(134,150,160,0.1)' }}
+        >
           <button
             onClick={() => {
-              setViewMode('channels');
-              setSelectedDM(null);
-              if (channels.length > 0 && !selectedChannel) {
-                setSelectedChannel(channels[0].id);
+              if (viewMode === 'voice') {
+                setViewMode('channels');
+                const allTeams = channels.find(
+                  (c) => c.name === 'All Teams' || c.type === 'inter_agency',
+                );
+                if (allTeams) setSelectedChannel(allTeams.id);
+              } else {
+                setViewMode('voice');
+                setSelectedChannel(null);
+                setSelectedDM(null);
               }
-            }}
-            className={s.tabButton(viewMode === 'channels')}
-          >
-            {isWA ? 'Chats' : '[CHANNELS]'}
-          </button>
-          <button
-            onClick={() => {
-              setViewMode('dms');
-              setSelectedChannel(null);
-              loadDMs();
-            }}
-            className={s.tabButton(viewMode === 'dms')}
-          >
-            {isWA ? 'DMs' : '[DIRECT MESSAGES]'}
-          </button>
-          <button
-            onClick={() => {
-              setViewMode('voice');
-              setSelectedChannel(null);
-              setSelectedDM(null);
             }}
             className={s.voiceTabButton(viewMode === 'voice')}
           >
-            {isWA
-              ? webrtc.state.isInCall
-                ? 'In Call'
-                : 'Calls'
-              : `${webrtc.state.isInCall ? '🔴 ' : '🎙 '}[VOICE]`}
+            {webrtc.state.isInCall ? 'In Call' : 'Calls'}
           </button>
-          {viewMode === 'dms' && (
-            <button onClick={() => setShowUserList(!showUserList)} className={s.newDmButton}>
-              {isWA ? '+ New' : '[+ NEW DM]'}
-            </button>
-          )}
         </div>
+      ) : (
+        <div className={s.tabBar}>
+          {/* View Mode Tabs */}
+          <div className="flex gap-2 mb-3">
+            <button
+              onClick={() => {
+                setViewMode('channels');
+                setSelectedDM(null);
+                if (channels.length > 0 && !selectedChannel) {
+                  setSelectedChannel(channels[0].id);
+                }
+              }}
+              className={s.tabButton(viewMode === 'channels')}
+            >
+              [CHANNELS]
+            </button>
+            <button
+              onClick={() => {
+                setViewMode('dms');
+                setSelectedChannel(null);
+                loadDMs();
+              }}
+              className={s.tabButton(viewMode === 'dms')}
+            >
+              [DIRECT MESSAGES]
+            </button>
+            <button
+              onClick={() => {
+                setViewMode('voice');
+                setSelectedChannel(null);
+                setSelectedDM(null);
+              }}
+              className={s.voiceTabButton(viewMode === 'voice')}
+            >
+              {`${webrtc.state.isInCall ? '🔴 ' : '🎙 '}[VOICE]`}
+            </button>
+            {viewMode === 'dms' && (
+              <button onClick={() => setShowUserList(!showUserList)} className={s.newDmButton}>
+                [+ NEW DM]
+              </button>
+            )}
+          </div>
 
-        {/* Channel/DM List */}
-        <div className="flex gap-2 flex-wrap">
-          {viewMode === 'channels' &&
-            channels.map((channel) => (
-              <button
-                key={channel.id}
-                onClick={() => setSelectedChannel(channel.id)}
-                className={s.channelButton(selectedChannel === channel.id)}
-              >
-                {isWA ? channel.name : `[${channel.name}]`}
-              </button>
-            ))}
-          {viewMode === 'dms' && (
-            <>
-              <button
-                key={INSIDER_DM_ID}
-                onClick={() => setSelectedDM(INSIDER_DM_ID)}
-                className={s.dmButton(selectedDM === INSIDER_DM_ID)}
-              >
-                {isWA ? 'Insider' : '[INSIDER]'}
-              </button>
-              {hospitals.map((h) => {
-                const dmId = toHospitalDMId(h.id);
-                return (
-                  <button
-                    key={dmId}
-                    onClick={() => setSelectedDM(dmId)}
-                    className={s.dmButton(selectedDM === dmId)}
-                  >
-                    {isWA ? h.label : `[${h.label}]`}
-                  </button>
-                );
-              })}
-              {dmChannels.map((dm) => (
+          {/* Channel/DM List */}
+          <div className="flex gap-2 flex-wrap">
+            {viewMode === 'channels' &&
+              channels.map((channel) => (
                 <button
-                  key={dm.id}
-                  onClick={() => setSelectedDM(dm.id)}
-                  className={s.dmButton(selectedDM === dm.id)}
+                  key={channel.id}
+                  onClick={() => setSelectedChannel(channel.id)}
+                  className={s.channelButton(selectedChannel === channel.id)}
                 >
-                  {isWA
-                    ? dm.recipient?.full_name || 'Unknown'
-                    : `[${dm.recipient?.full_name || 'Unknown'}]`}
+                  {`[${channel.name}]`}
                 </button>
               ))}
-            </>
-          )}
-        </div>
-
-        {/* User List for Starting DMs */}
-        {showUserList && (
-          <div className={s.userListPanel}>
-            <p className={s.userListLabel}>{isWA ? 'Select a participant' : '[SELECT_USER]'}</p>
-            <div className="space-y-1">
-              {participants
-                .filter((participant) => participant.id !== user?.id)
-                .map((participant) => (
+            {viewMode === 'dms' && (
+              <>
+                <button
+                  key={INSIDER_DM_ID}
+                  onClick={() => setSelectedDM(INSIDER_DM_ID)}
+                  className={s.dmButton(selectedDM === INSIDER_DM_ID)}
+                >
+                  [INSIDER]
+                </button>
+                {hospitals.map((h) => {
+                  const dmId = toHospitalDMId(h.id);
+                  return (
+                    <button
+                      key={dmId}
+                      onClick={() => setSelectedDM(dmId)}
+                      className={s.dmButton(selectedDM === dmId)}
+                    >
+                      {`[${h.label}]`}
+                    </button>
+                  );
+                })}
+                {dmChannels.map((dm) => (
                   <button
-                    key={participant.id}
-                    onClick={() => handleStartDM(participant.id)}
-                    className={s.userListItem}
+                    key={dm.id}
+                    onClick={() => setSelectedDM(dm.id)}
+                    className={s.dmButton(selectedDM === dm.id)}
                   >
-                    {isWA
-                      ? `${participant.full_name} — ${participant.team_name || participant.role}`
-                      : `${participant.full_name} [${participant.team_name || participant.role}]`}
+                    {`[${dm.recipient?.full_name || 'Unknown'}]`}
                   </button>
                 ))}
-              {participants.filter((p) => p.id !== user?.id).length === 0 && (
-                <p
-                  className={
-                    isWA
-                      ? 'text-xs text-wa-text-secondary'
-                      : 'text-xs terminal-text text-robotic-yellow/50'
-                  }
-                >
-                  No other participants
-                </p>
-              )}
-            </div>
+              </>
+            )}
           </div>
-        )}
-      </div>
+
+          {/* User List for Starting DMs */}
+          {showUserList && (
+            <div className={s.userListPanel}>
+              <p className={s.userListLabel}>[SELECT_USER]</p>
+              <div className="space-y-1">
+                {participants
+                  .filter((participant) => participant.id !== user?.id)
+                  .map((participant) => (
+                    <button
+                      key={participant.id}
+                      onClick={() => handleStartDM(participant.id)}
+                      className={s.userListItem}
+                    >
+                      {`${participant.full_name} [${participant.team_name || participant.role}]`}
+                    </button>
+                  ))}
+                {participants.filter((p) => p.id !== user?.id).length === 0 && (
+                  <p className="text-xs terminal-text text-robotic-yellow/50">
+                    No other participants
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Incoming call toast — always visible */}
       {webrtc.incomingCall && (
