@@ -25,6 +25,7 @@ import {
 } from '../services/conditionEvaluatorService.js';
 import { deriveEmailAddress } from '../services/npcEmailReplyService.js';
 import { adjudicateDispute } from '../services/contentDisputeService.js';
+import { buildPlayerLedger } from '../services/playerLedgerService.js';
 
 const router = Router();
 
@@ -1473,6 +1474,25 @@ router.get('/disputes/session/:sessionId', requireAuth, async (req: Authenticate
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /social/disputes/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── Player Judgement Ledger (Trainer) ───────────────────────────────────────
+
+// Per-player ledger of artifacts + AI judgement + sentiment/consequence context.
+// Trainer/admin only. No status gate so it works for completed sessions too.
+router.get('/ledger/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { sessionId } = req.params;
+    const ledger = await buildPlayerLedger(sessionId);
+    return res.json({ data: ledger });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/ledger/session/:sessionId');
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

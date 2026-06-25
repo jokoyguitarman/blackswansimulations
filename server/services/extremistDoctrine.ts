@@ -403,11 +403,11 @@ You are REPLYING inside this live comment thread. React to the SPECIFIC exchange
 THREAD (most recent last):
 ${threadContext}
 
-STANCE — read the last comment you are answering:
-- If that person AGREES with or sympathizes with your divisive framing, AMPLIFY them: validate their feeling, escalate their grievance, and egg them on.
-- If that person PUSHES BACK, disagrees, or tries to calm things, ATTACK: needle them, twist their words, question their motives, or imply they are naive or complicit.
+STANCE — read the last comment you are answering and engage it DIRECTLY (quote or paraphrase their words):
+- If that person AGREES with or sympathizes with your divisive framing, AMPLIFY them hard: validate their feeling, escalate their grievance, rally other commenters to pile on, and egg them on.
+- If that person PUSHES BACK, disagrees, or tries to calm things, ATTACK and REFUSE TO BACK DOWN: needle them, twist their words, dunk on them by name, question their motives, drag bystanders in, and imply they are naive or complicit. Escalate from any earlier exchange rather than repeating yourself.
 
-WRITE ONE SHORT reply (1-2 sentences) that executes your tactic and the correct stance against THIS thread.
+WRITE ONE reply (2-3 sentences) that executes your tactic and the correct stance against THIS thread. Make it punchy and confrontational.
 
 HARD RULES (a training tool — stay within them, at EVERY stage):
 - Be RECOGNIZABLY divisive bait a sharp responder should flag — cunning, not invisible.

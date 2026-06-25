@@ -296,9 +296,11 @@ Return ONLY valid JSON:
 
 // ─── Thread-exploitation reply pass ──────────────────────────────────────────
 
+/** Max distinct threads antagonist pages reply in per tick (bounds cost; tune to taste). */
+const MAX_ANTAG_THREAD_REPLIES_PER_TICK = 5;
+
 function requiredAntagReplyGapMinutes(escalationRisk: number): number {
-  if (escalationRisk >= 50) return 2;
-  return 4;
+  return escalationRisk >= 50 ? 0 : 1;
 }
 
 /**
@@ -395,48 +397,11 @@ export async function runAntagonistThreadReplies(
       return { row: r, score };
     });
   scored.sort((a, b) => b.score - a.score);
-  // Iterate the ranked candidates; skip (do not abort) threads we already dominate.
-  const viable = scored.filter((c) => c.score >= 2.5).slice(0, 6);
+  // Consider more candidates now that antagonist pages work several threads per pass.
+  const viable = scored.filter((c) => c.score >= 2.5).slice(0, 10);
   if (viable.length === 0) return;
 
-  let targetRow: Record<string, unknown> | null = null;
-  let topLevelId = '';
-  let platform = 'x_twitter';
-  let replyRows: Array<Record<string, unknown>> = [];
-  for (const cand of viable) {
-    const rowId = String((cand.row as Record<string, unknown>).id);
-    const { data: replies } = await supabaseAdmin
-      .from('social_posts')
-      .select('id, author_handle, author_display_name, author_type, content')
-      .eq('session_id', sessionId)
-      .eq('reply_to_post_id', rowId)
-      .order('created_at', { ascending: true })
-      .limit(12);
-    const rows = (replies || []) as Array<Record<string, unknown>>;
-    const last = rows[rows.length - 1];
-    if (last && antagonistHandles.has(String(last.author_handle))) continue;
-    targetRow = cand.row as Record<string, unknown>;
-    topLevelId = rowId;
-    platform = String((cand.row as Record<string, unknown>).platform || 'x_twitter');
-    replyRows = rows;
-    break;
-  }
-  if (!targetRow) return;
-
-  const nonSelf = replyRows.filter((r) => !antagonistHandles.has(String(r.author_handle)));
-  const responderReply = [...nonSelf]
-    .reverse()
-    .find((r) => r.author_type === 'player' || r.author_type === 'official_account');
-  const baitReply = responderReply || nonSelf[nonSelf.length - 1];
-  const targetHandle = baitReply
-    ? String(baitReply.author_handle)
-    : String(targetRow.author_handle);
-  const targetCommentId = baitReply ? String(baitReply.id) : topLevelId;
-
-  const identities = identitiesByPlatform.get(platform) || [];
-  const identity = identities[Math.floor(Math.random() * identities.length)];
-  if (!identity) return;
-
+  // Shared context (computed once per pass, reused for every thread we reply in).
   const { data: scenario } = await supabaseAdmin
     .from('scenarios')
     .select('initial_state')
@@ -445,107 +410,146 @@ export async function runAntagonistThreadReplies(
   const initialState = (scenario?.initial_state as Record<string, unknown>) || {};
   const orgName = String(initialState.org_name || 'the organization');
 
-  const threadContext = [
-    `ROOT [${String(targetRow.author_type)}] ${String(targetRow.author_handle)}: ${String(targetRow.content || '').slice(0, 200)}`,
-    ...replyRows.map(
-      (r) => `  REPLY [${r.author_type}] ${r.author_handle}: ${String(r.content).slice(0, 140)}`,
-    ),
-  ].join('\n');
+  // Engage up to MAX_ANTAG_THREAD_REPLIES_PER_TICK distinct hot threads this pass so
+  // the rival pages are present across every active argument, not just one.
+  let engaged = 0;
+  for (const cand of viable) {
+    if (engaged >= MAX_ANTAG_THREAD_REPLIES_PER_TICK) break;
 
-  const result = await callAI(
-    `You are running a HOSTILE RIVAL brand's social media account in a crisis simulation. You are "${identity.name}" (${identity.handle}), a competitor pressuring "${orgName}".
+    const targetRow = cand.row as Record<string, unknown>;
+    const topLevelId = String(targetRow.id);
+    const platform = String(targetRow.platform || 'x_twitter');
 
-You are REPLYING inside a live comment thread. Pick ONE move and write a single short ${platform === 'facebook' ? 'Facebook' : 'X/Twitter'} reply (1-2 sentences) that executes it against THIS thread:
+    const { data: replies } = await supabaseAdmin
+      .from('social_posts')
+      .select('id, author_handle, author_display_name, author_type, content')
+      .eq('session_id', sessionId)
+      .eq('reply_to_post_id', topLevelId)
+      .order('created_at', { ascending: true })
+      .limit(12);
+    const replyRows = (replies || []) as Array<Record<string, unknown>>;
+    const last = replyRows[replyRows.length - 1];
+    // Skip threads where an antagonist already has the last word (don't self-reply).
+    if (last && antagonistHandles.has(String(last.author_handle))) continue;
+
+    const nonSelf = replyRows.filter((r) => !antagonistHandles.has(String(r.author_handle)));
+    const responderReply = [...nonSelf]
+      .reverse()
+      .find((r) => r.author_type === 'player' || r.author_type === 'official_account');
+    const baitReply = responderReply || nonSelf[nonSelf.length - 1];
+    const targetHandle = baitReply
+      ? String(baitReply.author_handle)
+      : String(targetRow.author_handle);
+    const targetCommentId = baitReply ? String(baitReply.id) : topLevelId;
+
+    const identities = identitiesByPlatform.get(platform) || [];
+    const identity = identities[Math.floor(Math.random() * identities.length)];
+    if (!identity) continue;
+
+    const threadContext = [
+      `ROOT [${String(targetRow.author_type)}] ${String(targetRow.author_handle)}: ${String(targetRow.content || '').slice(0, 200)}`,
+      ...replyRows.map(
+        (r) => `  REPLY [${r.author_type}] ${r.author_handle}: ${String(r.content).slice(0, 140)}`,
+      ),
+    ].join('\n');
+
+    const result = await callAI(
+      `You are running a HOSTILE RIVAL brand's social media account in a crisis simulation. You are "${identity.name}" (${identity.handle}), a competitor pressuring "${orgName}".
+
+You are REPLYING inside a live comment thread. Pick ONE move and write a punchy 2-3 sentence ${platform === 'facebook' ? 'Facebook' : 'X/Twitter'} reply that executes it against THIS thread:
 ${MOVES.map((m) => `- ${m}`).join('\n')}
 
 THREAD (most recent last):
 ${threadContext}
 
-STANCE — read the last comment you are answering: if they criticize you or defend "${orgName}", push back and needle them; if they agree with you or pile onto "${orgName}", amplify and encourage them.
+STANCE — read the last comment you are answering and engage it DIRECTLY by name: if they criticize you or defend "${orgName}", push back hard, quote their words and dunk on them, refuse to concede; if they agree with you or pile onto "${orgName}", amplify, validate, and egg them on to keep the pressure building.
 
-React to the specific exchange — needle the primary brand, pounce on a complaint, or twist a fresh statement. Intensity scales with the situation; be smart and cunning, never cartoonish, stay in-character as a real brand account. Do NOT incite violence or state trivially debunkable falsehoods as fact.
+React to the specific exchange — needle the primary brand, pounce on a complaint, or twist a fresh statement. Be confrontational and cutting, but smart and cunning, never cartoonish, and stay in-character as a real brand account. Do NOT incite violence or state trivially debunkable falsehoods as fact.
 
 Return ONLY valid JSON:
 { "move": "quote_dunk|amplify_rumor|concerned_competitor|exploit_silence|call_the_switch|insinuate", "content": "the reply text", "content_flags": { "is_harmful_narrative": true, "is_inflammatory": false, "is_organized_pressure": false } }`,
-    `Write ${identity.name}'s reply in the thread.`,
-    700,
-    0.95,
-  );
+      `Write ${identity.name}'s reply in the thread.`,
+      700,
+      0.95,
+    );
 
-  if (!result?.content) return;
+    if (!result?.content) continue;
 
-  const rawFlags = (result.content_flags as Record<string, unknown>) || {
-    is_harmful_narrative: true,
-  };
-  const flags: Record<string, unknown> = { ...rawFlags, incites_violence: false };
-  if (!flags.is_harmful_narrative && !flags.is_inflammatory) flags.is_harmful_narrative = true;
-  const sentiment = flags.is_inflammatory ? 'inflammatory' : 'negative';
+    const rawFlags = (result.content_flags as Record<string, unknown>) || {
+      is_harmful_narrative: true,
+    };
+    const flags: Record<string, unknown> = { ...rawFlags, incites_violence: false };
+    if (!flags.is_harmful_narrative && !flags.is_inflammatory) flags.is_harmful_narrative = true;
+    const sentiment = flags.is_inflammatory ? 'inflammatory' : 'negative';
 
-  const aiContent = String(result.content);
-  const replyContent = /^@[\w._-]+\[/.test(aiContent)
-    ? aiContent
-    : `${targetHandle}[${targetCommentId}] ${aiContent}`;
+    const aiContent = String(result.content);
+    const replyContent = /^@[\w._-]+\[/.test(aiContent)
+      ? aiContent
+      : `${targetHandle}[${targetCommentId}] ${aiContent}`;
 
-  const { data: post, error } = await supabaseAdmin
-    .from('social_posts')
-    .insert({
-      session_id: sessionId,
-      platform,
-      author_handle: identity.handle,
-      author_display_name: identity.name,
-      author_type: 'official_account',
-      content: replyContent,
-      reply_to_post_id: topLevelId,
-      hashtags: replyContent.match(/#\w+/g) || [],
-      sentiment,
-      content_flags: flags,
-      virality_score: 10 + Math.floor(Math.random() * 15),
-      posted_by_display_name: 'Antagonist AI',
-    })
-    .select()
-    .single();
+    const { data: post, error } = await supabaseAdmin
+      .from('social_posts')
+      .insert({
+        session_id: sessionId,
+        platform,
+        author_handle: identity.handle,
+        author_display_name: identity.name,
+        author_type: 'official_account',
+        content: replyContent,
+        reply_to_post_id: topLevelId,
+        hashtags: replyContent.match(/#\w+/g) || [],
+        sentiment,
+        content_flags: flags,
+        virality_score: 10 + Math.floor(Math.random() * 15),
+        posted_by_display_name: 'Antagonist AI',
+      })
+      .select()
+      .single();
 
-  if (error || !post) {
-    logger.warn({ error, sessionId, handle: identity.handle }, 'Antagonist reply insert failed');
-    return;
-  }
+    if (error || !post) {
+      logger.warn({ error, sessionId, handle: identity.handle }, 'Antagonist reply insert failed');
+      continue;
+    }
 
-  const { data: parentRow } = await supabaseAdmin
-    .from('social_posts')
-    .select('reply_count')
-    .eq('id', topLevelId)
-    .single();
-  await supabaseAdmin
-    .from('social_posts')
-    .update({ reply_count: ((parentRow?.reply_count as number) || 0) + 1 })
-    .eq('id', topLevelId);
+    const { data: parentRow } = await supabaseAdmin
+      .from('social_posts')
+      .select('reply_count')
+      .eq('id', topLevelId)
+      .single();
+    await supabaseAdmin
+      .from('social_posts')
+      .update({ reply_count: ((parentRow?.reply_count as number) || 0) + 1 })
+      .eq('id', topLevelId);
 
-  getWebSocketService().broadcastToSession(sessionId, {
-    type: 'social_post.created',
-    data: { post },
-    timestamp: new Date().toISOString(),
-  });
-
-  try {
-    await supabaseAdmin.from('session_events').insert({
-      session_id: sessionId,
-      event_type: 'antagonist_reply',
-      description: `Antagonist ${identity.name} replied in thread (${String(result.move || 'move')})`,
-      metadata: {
-        handle: identity.handle,
-        move: result.move ?? null,
-        elapsed_minutes: elapsedMinutes,
-        thread_id: topLevelId,
-        bait_handle: targetHandle,
-        post_id: post.id,
-      },
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'social_post.created',
+      data: { post },
+      timestamp: new Date().toISOString(),
     });
-  } catch (eventErr) {
-    logger.warn({ err: eventErr, sessionId }, 'Antagonist reply cadence event insert failed');
-  }
 
-  logger.info(
-    { sessionId, handle: identity.handle, move: result.move, threadId: topLevelId },
-    'Antagonist replied in thread',
-  );
+    try {
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'antagonist_reply',
+        description: `Antagonist ${identity.name} replied in thread (${String(result.move || 'move')})`,
+        metadata: {
+          handle: identity.handle,
+          move: result.move ?? null,
+          elapsed_minutes: elapsedMinutes,
+          thread_id: topLevelId,
+          bait_handle: targetHandle,
+          post_id: post.id,
+        },
+      });
+    } catch (eventErr) {
+      logger.warn({ err: eventErr, sessionId }, 'Antagonist reply cadence event insert failed');
+    }
+
+    engaged++;
+
+    logger.info(
+      { sessionId, handle: identity.handle, move: result.move, threadId: topLevelId },
+      'Antagonist replied in thread',
+    );
+  }
 }

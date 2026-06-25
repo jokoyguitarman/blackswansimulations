@@ -1123,12 +1123,25 @@ async function simulateThreadActivity(
   });
   if (candidates.length === 0) return;
 
-  // Prefer threads rooted on a player/official post (where responders are engaged)
-  // so NPC side-taking lands where it matters most; otherwise pick any active thread.
+  // Selection bias, in priority order:
+  // 1. Threads started by a polarizing (high-bias) voice — where arguments get hot.
+  // 2. Threads rooted on a player/official post (where responders are engaged).
+  // 3. Any active thread.
+  const selectionRegistry = getRegistry(sessionId);
+  const isHighBiasHandle = (handle: unknown): boolean => {
+    const reg = selectionRegistry.get(String(handle));
+    return !!(reg?.bias && reg.bias !== 'none');
+  };
   const responderThreads = candidates.filter(
     (p) => p.author_type === 'player' || p.author_type === 'official_account',
   );
-  const pool = responderThreads.length > 0 && Math.random() < 0.6 ? responderThreads : candidates;
+  const spicyThreads = candidates.filter((p) => isHighBiasHandle(p.author_handle));
+  const pool =
+    spicyThreads.length > 0 && Math.random() < 0.7
+      ? spicyThreads
+      : responderThreads.length > 0 && Math.random() < 0.6
+        ? responderThreads
+        : candidates;
   const targetPost = pool[Math.floor(Math.random() * pool.length)];
 
   const { data: existingReplies } = await supabaseAdmin
@@ -1187,11 +1200,12 @@ Generate 3-5 new replies to continue this thread. Rules:
 - Replies can be to the original post OR to another reply
 - Characters should stay consistent with their personality and bias
 - Make it feel like a real argument/discussion -- people interrupt each other, quote each other, get emotional
-- 1-2 sentences per reply
+- 1-3 sentences per reply
 ${
   isNormalLifePost
     ? '- This is a NORMAL LIFE post (not crisis-related). Keep comments casual and on-topic (e.g. food opinions, sports banter, daily life chatter).'
-    : `- TAKE SIDES: each commenter should react based on their bias relative to what others in the thread are saying. If another commenter AGREES with their stance, back them up, amplify, or pile on together. If another commenter DISAGREES or opposes their stance, argue back, challenge, or call them out. Let allies and opponents form -- not everyone is neutral.`
+    : `- TAKE SIDES POTENTLY: each commenter should react based on their bias relative to what others in the thread are saying. If another commenter AGREES with their stance, back them up, amplify, and pile on together. If another commenter DISAGREES or opposes their stance, argue back hard, quote their words and dunk on them by name, challenge their motives, and call them out. Let allies and opponents form -- not everyone is neutral, and arguments should escalate across the thread rather than fizzle.
+- EXTREMIST/HIGH-BIAS VOICES DOMINATE: any commenter with a strong bias should escalate aggressively, refuse to concede, rally like-minded commenters, and drag bystanders into the fight. If any high-bias user is listed above, MAKE SURE at least one of your replies comes from such a voice ramping up the conflict.`
 }
 
 THREADING FORMAT:

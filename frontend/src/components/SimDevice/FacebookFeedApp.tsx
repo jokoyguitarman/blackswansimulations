@@ -632,6 +632,11 @@ export default function FacebookFeedApp() {
         const isOwnPost =
           currentUserIdRef.current &&
           (newPost as unknown as Record<string, unknown>).user_id === currentUserIdRef.current;
+        // Posts the player composed as the org page live in OrgPageView's separate
+        // state, so they are NOT optimistically inserted into this feed. They must come
+        // through the live event (dedup by id guards against double inserts when the
+        // page post was composed from within this feed).
+        const isOwnPagePost = isOwnPost && newPost.author_type === 'official_account';
         if (newPost.reply_to_post_id) {
           const pid = newPost.reply_to_post_id!;
           setPostReplies((prev) => {
@@ -646,7 +651,7 @@ export default function FacebookFeedApp() {
           }
           setExpandedComments((prev) => new Set([...prev, pid]));
         } else {
-          if (!isOwnPost) {
+          if (!isOwnPost || isOwnPagePost) {
             setPosts((prev) => {
               if (prev.some((p) => p.id === newPost.id)) return prev;
               return [newPost, ...prev];

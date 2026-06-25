@@ -105,6 +105,59 @@ interface ConsequenceEvent {
   created_at: string;
 }
 
+// ---- Player Judgement Ledger -------------------------------------------------
+
+interface LedgerEntry {
+  id: string;
+  kind: 'post' | 'reply' | 'email' | 'dm' | 'action';
+  timestamp: string;
+  content: string;
+  // Full ContentGrade JSON when AI-graded; untruncated, all fields kept.
+  grade: {
+    overall?: number;
+    accuracy?: number;
+    tone?: number;
+    cultural_sensitivity?: number;
+    persuasiveness?: number;
+    completeness?: number;
+    clarity?: number;
+    feedback?: string;
+    strengths?: string[];
+    improvements?: string[];
+    dimensions?: Record<string, number>;
+    signals?: Record<string, boolean>;
+    media_concept_grade?: number;
+    media_feedback?: string;
+  } | null;
+  action_type?: string;
+  target_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  sop_step?: string | null;
+  dispute?: {
+    status: string;
+    verdict_reason: string | null;
+    ai_confidence: number | null;
+  } | null;
+  sentiment?: string | null;
+}
+
+interface LedgerPlayer {
+  player_id: string;
+  display_name: string;
+  entries: LedgerEntry[];
+}
+
+interface PlayerLedger {
+  players: LedgerPlayer[];
+  sentiment_trajectory: Array<{ recorded_at: string; sentiment_score: number }>;
+  consequences: Array<{
+    id: string;
+    created_at: string;
+    description: string;
+    is_positive: boolean;
+  }>;
+}
+
 interface FeedPost {
   id: string;
   author_handle: string;
@@ -235,6 +288,48 @@ function durationMinutes(startIso: string, endIso: string): number {
     Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000),
   );
 }
+
+/**
+ * Approximate the sentiment effect of an action: the sentiment value at the
+ * first snapshot at/after the entry's timestamp, and the delta vs the snapshot
+ * just before it. Returns null when there isn't enough trajectory to compare.
+ */
+function nearestSentimentEffect(
+  trajectory: Array<{ recorded_at: string; sentiment_score: number }>,
+  timestamp: string,
+): { value: number; delta: number | null } | null {
+  if (!trajectory || trajectory.length === 0) return null;
+  const t = new Date(timestamp).getTime();
+  let beforeIdx = -1;
+  let afterIdx = -1;
+  for (let i = 0; i < trajectory.length; i++) {
+    const ts = new Date(trajectory[i].recorded_at).getTime();
+    if (ts <= t) beforeIdx = i;
+    if (ts >= t && afterIdx === -1) afterIdx = i;
+  }
+  const refIdx = afterIdx !== -1 ? afterIdx : beforeIdx;
+  if (refIdx === -1) return null;
+  const value = trajectory[refIdx].sentiment_score;
+  const prevIdx = beforeIdx !== -1 && beforeIdx < refIdx ? beforeIdx : refIdx - 1;
+  const delta = prevIdx >= 0 ? value - trajectory[prevIdx].sentiment_score : null;
+  return { value, delta };
+}
+
+const LEDGER_KIND_LABEL: Record<string, string> = {
+  post: 'POST',
+  reply: 'REPLY',
+  email: 'EMAIL',
+  dm: 'DM',
+  action: 'ACTION',
+};
+
+const LEDGER_KIND_COLOR: Record<string, string> = {
+  post: '#3b82f6',
+  reply: '#22c55e',
+  email: '#a855f7',
+  dm: '#64748b',
+  action: '#f59e0b',
+};
 
 function truncate(text: string, max: number): string {
   return text.length > max ? text.slice(0, max) + '…' : text;
@@ -569,6 +664,8 @@ export default function TrainerSimDashboard() {
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [orchestration, setOrchestration] = useState<OrchestrationInject[]>([]);
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
+  const [ledger, setLedger] = useState<PlayerLedger | null>(null);
+  const [selectedLedgerPlayer, setSelectedLedgerPlayer] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
@@ -709,6 +806,18 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  const loadLedger = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/ledger/session/${sessionId}`), { headers });
+      const json = await res.json();
+      if (json.data) setLedger(json.data as PlayerLedger);
+    } catch {
+      /* retry on next poll */
+    }
+  }, [sessionId]);
+
   const loadAll = useCallback(() => {
     loadSocialState();
     loadPosts();
@@ -717,6 +826,7 @@ export default function TrainerSimDashboard() {
     loadSessionInfo();
     loadOrchestration();
     loadDisputes();
+    loadLedger();
   }, [
     loadSocialState,
     loadPosts,
@@ -725,6 +835,7 @@ export default function TrainerSimDashboard() {
     loadSessionInfo,
     loadOrchestration,
     loadDisputes,
+    loadLedger,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -1602,6 +1713,266 @@ export default function TrainerSimDashboard() {
               </div>
             )}
           </Card>
+        </div>
+      </div>
+
+      {/* Player Judgement Ledger (full-width) */}
+      <div className="px-4 pb-6">
+        <div
+          className="rounded-xl border"
+          style={{ backgroundColor: '#141414', borderColor: '#232323' }}
+        >
+          <div
+            className="flex items-start justify-between gap-3 px-4 py-3 border-b flex-wrap"
+            style={{ borderColor: '#232323' }}
+          >
+            <div>
+              <h2 className="text-sm font-bold" style={{ color: '#fff' }}>
+                Player Judgement Ledger
+              </h2>
+              <p className="text-[11px]" style={{ color: '#64748b' }}>
+                Full AI judgement per player, untruncated. Sentiment effect is approximate (nearest
+                snapshot to each action).
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {(ledger?.players ?? []).map((pl, idx) => {
+                const active = selectedLedgerPlayer
+                  ? selectedLedgerPlayer === pl.player_id
+                  : idx === 0;
+                return (
+                  <button
+                    key={pl.player_id}
+                    onClick={() => setSelectedLedgerPlayer(pl.player_id)}
+                    className="text-[11px] px-2.5 py-1 rounded-lg font-semibold transition-opacity hover:opacity-90"
+                    style={{
+                      backgroundColor: active ? '#1d4ed8' : '#1a1a1a',
+                      color: active ? '#fff' : '#94a3b8',
+                      border: '1px solid #2a2a2a',
+                    }}
+                  >
+                    {pl.display_name} ({pl.entries.length})
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-3">
+            {!ledger || ledger.players.length === 0 ? (
+              <p className="text-xs text-center py-8" style={{ color: '#64748b' }}>
+                No player activity recorded yet
+              </p>
+            ) : (
+              (() => {
+                const active =
+                  ledger.players.find((p) => p.player_id === selectedLedgerPlayer) ??
+                  ledger.players[0];
+                if (active.entries.length === 0) {
+                  return (
+                    <p className="text-xs text-center py-6" style={{ color: '#64748b' }}>
+                      No entries for this player
+                    </p>
+                  );
+                }
+                return (
+                  <div className="space-y-2">
+                    {active.entries.map((e) => {
+                      const effect = nearestSentimentEffect(
+                        ledger.sentiment_trajectory,
+                        e.timestamp,
+                      );
+                      const g = e.grade;
+                      return (
+                        <div
+                          key={e.id}
+                          className="rounded-lg p-3 border"
+                          style={{ backgroundColor: '#0f0f0f', borderColor: '#232323' }}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <span
+                              className="text-[9px] font-bold px-1.5 py-0.5 rounded"
+                              style={{
+                                backgroundColor: `${LEDGER_KIND_COLOR[e.kind]}22`,
+                                color: LEDGER_KIND_COLOR[e.kind],
+                              }}
+                            >
+                              {e.action_type
+                                ? e.action_type.replace(/_/g, ' ').toUpperCase()
+                                : LEDGER_KIND_LABEL[e.kind]}
+                            </span>
+                            <span className="text-[10px]" style={{ color: '#64748b' }}>
+                              {timeLabel(e.timestamp)}
+                            </span>
+                            {effect && (
+                              <span
+                                className="ml-auto text-[10px] font-bold"
+                                title="Approximate sentiment near this action"
+                              >
+                                <span style={{ color: '#64748b' }}>sentiment </span>
+                                <span style={{ color: gaugeColor(effect.value) }}>
+                                  {Math.round(effect.value)}
+                                </span>
+                                {effect.delta != null && effect.delta !== 0 && (
+                                  <span style={{ color: effect.delta > 0 ? '#22c55e' : '#ef4444' }}>
+                                    {' '}
+                                    {effect.delta > 0 ? '+' : ''}
+                                    {Math.round(effect.delta)}
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+
+                          {e.content && (
+                            <p
+                              className="text-xs leading-relaxed whitespace-pre-wrap mb-2"
+                              style={{ color: '#cbd5e1' }}
+                            >
+                              {e.content}
+                            </p>
+                          )}
+
+                          {g ? (
+                            <div className="rounded-md p-2" style={{ backgroundColor: '#141414' }}>
+                              <div className="flex flex-wrap gap-2 text-[10px] font-bold mb-1">
+                                {g.accuracy != null && (
+                                  <span style={{ color: gradeColor(g.accuracy) }}>
+                                    ACC {g.accuracy}
+                                  </span>
+                                )}
+                                {g.tone != null && (
+                                  <span style={{ color: gradeColor(g.tone) }}>TONE {g.tone}</span>
+                                )}
+                                {g.cultural_sensitivity != null && (
+                                  <span style={{ color: gradeColor(g.cultural_sensitivity) }}>
+                                    SENS {g.cultural_sensitivity}
+                                  </span>
+                                )}
+                                {g.persuasiveness != null && (
+                                  <span style={{ color: gradeColor(g.persuasiveness) }}>
+                                    PERS {g.persuasiveness}
+                                  </span>
+                                )}
+                                {g.completeness != null && (
+                                  <span style={{ color: gradeColor(g.completeness) }}>
+                                    COMP {g.completeness}
+                                  </span>
+                                )}
+                                {g.clarity != null && (
+                                  <span style={{ color: gradeColor(g.clarity) }}>
+                                    CLAR {g.clarity}
+                                  </span>
+                                )}
+                                {g.overall != null && (
+                                  <span
+                                    className="ml-auto"
+                                    style={{ color: gradeColor(g.overall) }}
+                                  >
+                                    OVERALL {g.overall}
+                                  </span>
+                                )}
+                              </div>
+                              {g.feedback && (
+                                <p
+                                  className="text-[11px] italic leading-snug"
+                                  style={{ color: '#94a3b8' }}
+                                >
+                                  {g.feedback}
+                                </p>
+                              )}
+                              {g.strengths && g.strengths.length > 0 && (
+                                <div className="mt-1.5">
+                                  <div
+                                    className="text-[9px] font-bold uppercase"
+                                    style={{ color: '#22c55e' }}
+                                  >
+                                    Strengths
+                                  </div>
+                                  <ul
+                                    className="list-disc ml-4 text-[10px]"
+                                    style={{ color: '#94a3b8' }}
+                                  >
+                                    {g.strengths.map((s, i) => (
+                                      <li key={i}>{s}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {g.improvements && g.improvements.length > 0 && (
+                                <div className="mt-1.5">
+                                  <div
+                                    className="text-[9px] font-bold uppercase"
+                                    style={{ color: '#f59e0b' }}
+                                  >
+                                    Improvements
+                                  </div>
+                                  <ul
+                                    className="list-disc ml-4 text-[10px]"
+                                    style={{ color: '#94a3b8' }}
+                                  >
+                                    {g.improvements.map((s, i) => (
+                                      <li key={i}>{s}</li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {g.media_feedback && (
+                                <p
+                                  className="text-[10px] italic mt-1.5"
+                                  style={{ color: '#64748b' }}
+                                >
+                                  Media: {g.media_feedback}
+                                  {g.media_concept_grade != null
+                                    ? ` (${g.media_concept_grade})`
+                                    : ''}
+                                </p>
+                              )}
+                            </div>
+                          ) : e.dispute ? (
+                            <div className="rounded-md p-2" style={{ backgroundColor: '#141414' }}>
+                              <span
+                                className="text-[10px] font-bold"
+                                style={{
+                                  color:
+                                    e.dispute.status === 'upheld' ||
+                                    e.dispute.status === 'corrected'
+                                      ? '#22c55e'
+                                      : e.dispute.status === 'rejected'
+                                        ? '#ef4444'
+                                        : '#f59e0b',
+                                }}
+                              >
+                                Dispute {e.dispute.status.toUpperCase()}
+                                {e.dispute.ai_confidence != null
+                                  ? ` · confidence ${e.dispute.ai_confidence}`
+                                  : ''}
+                              </span>
+                              {e.dispute.verdict_reason && (
+                                <p
+                                  className="text-[11px] italic leading-snug mt-1"
+                                  style={{ color: '#94a3b8' }}
+                                >
+                                  {e.dispute.verdict_reason}
+                                </p>
+                              )}
+                            </div>
+                          ) : (
+                            <span
+                              className="text-[9px] px-1.5 py-0.5 rounded"
+                              style={{ backgroundColor: '#1a1a1a', color: '#64748b' }}
+                            >
+                              {e.kind === 'dm' ? 'DM · no AI grade' : 'no AI grade'}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()
+            )}
+          </div>
         </div>
       </div>
 

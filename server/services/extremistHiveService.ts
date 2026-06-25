@@ -440,10 +440,12 @@ export async function runExtremistHive(sessionId: string, elapsedMinutes: number
 
 // ─── Thread-exploitation reply pass ──────────────────────────────────────────
 
-/** Reply pass is lighter than the post pass; gap shrinks as escalation rises. */
+/** Max distinct threads the hive replies in per tick (bounds cost; tune to taste). */
+const MAX_HIVE_THREAD_REPLIES_PER_TICK = 5;
+
+/** Reply pass gap shrinks as escalation rises; near-continuous when threads are hot. */
 function requiredReplyGapMinutes(escalationRisk: number): number {
-  if (escalationRisk >= 50) return 2;
-  return 4;
+  return escalationRisk >= 50 ? 0 : 1;
 }
 
 interface ThreadCandidate {
@@ -547,55 +549,11 @@ export async function runHiveThreadReplies(
   });
 
   candidates.sort((a, b) => b.score - a.score);
-  // Iterate the ranked candidates (require a real seam) and pick the first thread
-  // the hive does not already dominate. Skip — never abort the whole pass.
-  const viable = candidates.filter((c) => c.score >= 2.5).slice(0, 6);
+  // Consider more candidates now that the hive works several threads per pass.
+  const viable = candidates.filter((c) => c.score >= 2.5).slice(0, 10);
   if (viable.length === 0) return;
 
-  let target: ThreadCandidate | null = null;
-  let replyRows: Array<Record<string, unknown>> = [];
-  for (const cand of viable) {
-    const { data: replies } = await supabaseAdmin
-      .from('social_posts')
-      .select('id, author_handle, author_display_name, author_type, content, created_at')
-      .eq('session_id', sessionId)
-      .eq('reply_to_post_id', cand.topLevelId)
-      .order('created_at', { ascending: true })
-      .limit(12);
-    const rows = (replies || []) as Array<Record<string, unknown>>;
-    const last = rows[rows.length - 1];
-    // Skip threads where the hive already has the last word (don't talk to ourselves).
-    if (last && EXTREMIST_HANDLES.has(String(last.author_handle))) continue;
-    target = cand;
-    replyRows = rows;
-    break;
-  }
-  if (!target) return;
-
-  // Pick who to @-tag: most recent non-hive reply, preferring a player/official.
-  const nonHive = replyRows.filter((r) => !EXTREMIST_HANDLES.has(String(r.author_handle)));
-  const responderReply = [...nonHive]
-    .reverse()
-    .find((r) => r.author_type === 'player' || r.author_type === 'official_account');
-  const baitReply = responderReply || nonHive[nonHive.length - 1];
-  const targetHandle = baitReply ? String(baitReply.author_handle) : target.rootHandle;
-  const targetCommentId = baitReply ? String(baitReply.id) : target.topLevelId;
-
-  // Rotate cell member by recent reply usage.
-  const recentlyUsed = new Set(
-    (lastReplyEvents || [])
-      .slice(0, EXTREMIST_CELL.length - 1)
-      .map((e) => String((e.metadata as { handle?: string })?.handle || '')),
-  );
-  const persona =
-    EXTREMIST_CELL.find((p) => !recentlyUsed.has(p.handle)) ||
-    EXTREMIST_CELL[Math.floor(Math.random() * EXTREMIST_CELL.length)];
-
-  // Move: prefer a reply-suited move this persona favors.
-  const personaReplyMoves = persona.primary_moves.filter((m) => REPLY_MOVES.includes(m));
-  const movePool = personaReplyMoves.length > 0 ? personaReplyMoves : REPLY_MOVES;
-  const move = getMove(movePool[Math.floor(Math.random() * movePool.length)]) || EXTREMIST_MOVES[0];
-
+  // Shared context (computed once per pass, reused for every thread we reply in).
   const { data: scenario } = await supabaseAdmin
     .from('scenarios')
     .select('description, initial_state')
@@ -621,113 +579,168 @@ export async function runHiveThreadReplies(
     `official statement published: ${socialState.official_statement_published ? 'yes' : 'no'}`,
   ].join(', ');
 
-  const threadContext = [
-    `ROOT [${target.rootType}] ${target.rootHandle}: ${target.rootContent.slice(0, 200)}`,
-    ...replyRows.map(
-      (r) => `  REPLY [${r.author_type}] ${r.author_handle}: ${String(r.content).slice(0, 140)}`,
-    ),
-  ].join('\n');
-
-  const result = await callAI(
-    buildReplyPrompt(
-      {
-        persona,
-        move,
-        frame,
-        platform: target.platform as 'x_twitter' | 'facebook',
-        crisisDescription,
-        orgName,
-        country,
-        socialStateSummary,
-        recentFeed: '',
-        openingNote: `Replying in thread ${target.topLevelId} (score ${target.score.toFixed(1)})`,
-        stage: stageProfile.stage,
-      },
-      threadContext,
-    ),
-    `Write ${persona.name}'s reply (${move.id}).`,
-    700,
-    0.95,
+  // Rotate cell members: avoid those used in the last few reply events, and avoid
+  // reusing the same member twice within this pass.
+  const recentlyUsed = new Set(
+    (lastReplyEvents || [])
+      .slice(0, EXTREMIST_CELL.length - 1)
+      .map((e) => String((e.metadata as { handle?: string })?.handle || '')),
   );
+  const usedThisPass = new Set<string>();
 
-  if (!result?.content) return;
+  // Engage up to MAX_HIVE_THREAD_REPLIES_PER_TICK distinct hot threads this pass so
+  // the hive is present across every active argument, not just one.
+  let engaged = 0;
+  for (const target of viable) {
+    if (engaged >= MAX_HIVE_THREAD_REPLIES_PER_TICK) break;
 
-  const rawFlags = (result.content_flags as Record<string, unknown>) || {};
-  const flags: Record<string, unknown> = { ...rawFlags, incites_violence: false };
-  if (!flags.is_harmful_narrative && !flags.is_inflammatory && !flags.is_misinformation) {
-    flags.is_harmful_narrative = true;
-  }
-  const sentiment = flags.is_inflammatory ? 'inflammatory' : 'negative';
+    const { data: replies } = await supabaseAdmin
+      .from('social_posts')
+      .select('id, author_handle, author_display_name, author_type, content, created_at')
+      .eq('session_id', sessionId)
+      .eq('reply_to_post_id', target.topLevelId)
+      .order('created_at', { ascending: true })
+      .limit(12);
+    const replyRows = (replies || []) as Array<Record<string, unknown>>;
+    const last = replyRows[replyRows.length - 1];
+    // Skip threads where the hive already has the last word (don't talk to ourselves).
+    if (last && EXTREMIST_HANDLES.has(String(last.author_handle))) continue;
 
-  // Thread-tag the comment we're baiting so the UI nests it correctly.
-  const aiContent = String(result.content);
-  const replyContent = /^@[\w._-]+\[/.test(aiContent)
-    ? aiContent
-    : `${targetHandle}[${targetCommentId}] ${aiContent}`;
+    // Pick who to @-tag: most recent non-hive reply, preferring a player/official.
+    const nonHive = replyRows.filter((r) => !EXTREMIST_HANDLES.has(String(r.author_handle)));
+    const responderReply = [...nonHive]
+      .reverse()
+      .find((r) => r.author_type === 'player' || r.author_type === 'official_account');
+    const baitReply = responderReply || nonHive[nonHive.length - 1];
+    const targetHandle = baitReply ? String(baitReply.author_handle) : target.rootHandle;
+    const targetCommentId = baitReply ? String(baitReply.id) : target.topLevelId;
 
-  const { data: post, error } = await supabaseAdmin
-    .from('social_posts')
-    .insert({
-      session_id: sessionId,
-      platform: target.platform,
-      author_handle: persona.handle,
-      author_display_name: persona.name,
-      author_type: persona.author_type,
-      content: replyContent,
-      reply_to_post_id: target.topLevelId,
-      hashtags: replyContent.match(/#\w+/g) || [],
-      sentiment,
-      content_flags: flags,
-      virality_score: 10 + Math.floor(Math.random() * 15),
-      posted_by_display_name: 'Extremist Hive AI',
-    })
-    .select()
-    .single();
+    // Choose a cell member not used recently and not already used this pass.
+    const persona =
+      EXTREMIST_CELL.find((p) => !recentlyUsed.has(p.handle) && !usedThisPass.has(p.handle)) ||
+      EXTREMIST_CELL.find((p) => !usedThisPass.has(p.handle)) ||
+      EXTREMIST_CELL[Math.floor(Math.random() * EXTREMIST_CELL.length)];
 
-  if (error || !post) {
-    logger.warn({ error, sessionId, handle: persona.handle }, 'Extremist hive reply insert failed');
-    return;
-  }
+    // Move: prefer a reply-suited move this persona favors.
+    const personaReplyMoves = persona.primary_moves.filter((m) => REPLY_MOVES.includes(m));
+    const movePool = personaReplyMoves.length > 0 ? personaReplyMoves : REPLY_MOVES;
+    const move =
+      getMove(movePool[Math.floor(Math.random() * movePool.length)]) || EXTREMIST_MOVES[0];
 
-  // Bump the parent thread's reply count.
-  const { data: parentRow } = await supabaseAdmin
-    .from('social_posts')
-    .select('reply_count')
-    .eq('id', target.topLevelId)
-    .single();
-  await supabaseAdmin
-    .from('social_posts')
-    .update({ reply_count: ((parentRow?.reply_count as number) || 0) + 1 })
-    .eq('id', target.topLevelId);
+    const threadContext = [
+      `ROOT [${target.rootType}] ${target.rootHandle}: ${target.rootContent.slice(0, 200)}`,
+      ...replyRows.map(
+        (r) => `  REPLY [${r.author_type}] ${r.author_handle}: ${String(r.content).slice(0, 140)}`,
+      ),
+    ].join('\n');
 
-  getWebSocketService().broadcastToSession(sessionId, {
-    type: 'social_post.created',
-    data: { post },
-    timestamp: new Date().toISOString(),
-  });
+    const result = await callAI(
+      buildReplyPrompt(
+        {
+          persona,
+          move,
+          frame,
+          platform: target.platform as 'x_twitter' | 'facebook',
+          crisisDescription,
+          orgName,
+          country,
+          socialStateSummary,
+          recentFeed: '',
+          openingNote: `Replying in thread ${target.topLevelId} (score ${target.score.toFixed(1)})`,
+          stage: stageProfile.stage,
+        },
+        threadContext,
+      ),
+      `Write ${persona.name}'s reply (${move.id}).`,
+      700,
+      0.95,
+    );
 
-  try {
-    await supabaseAdmin.from('session_events').insert({
-      session_id: sessionId,
-      event_type: 'extremist_reply',
-      description: `Extremist hive ${persona.name} replied in thread (${move.id})`,
-      metadata: {
-        handle: persona.handle,
-        role: persona.role,
-        move: move.id,
-        frame: frame.id,
-        elapsed_minutes: elapsedMinutes,
-        thread_id: target.topLevelId,
-        bait_handle: targetHandle,
-        post_id: post.id,
-      },
+    if (!result?.content) continue;
+
+    const rawFlags = (result.content_flags as Record<string, unknown>) || {};
+    const flags: Record<string, unknown> = { ...rawFlags, incites_violence: false };
+    if (!flags.is_harmful_narrative && !flags.is_inflammatory && !flags.is_misinformation) {
+      flags.is_harmful_narrative = true;
+    }
+    const sentiment = flags.is_inflammatory ? 'inflammatory' : 'negative';
+
+    // Thread-tag the comment we're baiting so the UI nests it correctly.
+    const aiContent = String(result.content);
+    const replyContent = /^@[\w._-]+\[/.test(aiContent)
+      ? aiContent
+      : `${targetHandle}[${targetCommentId}] ${aiContent}`;
+
+    const { data: post, error } = await supabaseAdmin
+      .from('social_posts')
+      .insert({
+        session_id: sessionId,
+        platform: target.platform,
+        author_handle: persona.handle,
+        author_display_name: persona.name,
+        author_type: persona.author_type,
+        content: replyContent,
+        reply_to_post_id: target.topLevelId,
+        hashtags: replyContent.match(/#\w+/g) || [],
+        sentiment,
+        content_flags: flags,
+        virality_score: 10 + Math.floor(Math.random() * 15),
+        posted_by_display_name: 'Extremist Hive AI',
+      })
+      .select()
+      .single();
+
+    if (error || !post) {
+      logger.warn(
+        { error, sessionId, handle: persona.handle },
+        'Extremist hive reply insert failed',
+      );
+      continue;
+    }
+
+    // Bump the parent thread's reply count.
+    const { data: parentRow } = await supabaseAdmin
+      .from('social_posts')
+      .select('reply_count')
+      .eq('id', target.topLevelId)
+      .single();
+    await supabaseAdmin
+      .from('social_posts')
+      .update({ reply_count: ((parentRow?.reply_count as number) || 0) + 1 })
+      .eq('id', target.topLevelId);
+
+    getWebSocketService().broadcastToSession(sessionId, {
+      type: 'social_post.created',
+      data: { post },
+      timestamp: new Date().toISOString(),
     });
-  } catch (eventErr) {
-    logger.warn({ err: eventErr, sessionId }, 'Extremist hive reply cadence event insert failed');
-  }
 
-  logger.info(
-    { sessionId, handle: persona.handle, move: move.id, threadId: target.topLevelId },
-    'Extremist hive replied in thread',
-  );
+    try {
+      await supabaseAdmin.from('session_events').insert({
+        session_id: sessionId,
+        event_type: 'extremist_reply',
+        description: `Extremist hive ${persona.name} replied in thread (${move.id})`,
+        metadata: {
+          handle: persona.handle,
+          role: persona.role,
+          move: move.id,
+          frame: frame.id,
+          elapsed_minutes: elapsedMinutes,
+          thread_id: target.topLevelId,
+          bait_handle: targetHandle,
+          post_id: post.id,
+        },
+      });
+    } catch (eventErr) {
+      logger.warn({ err: eventErr, sessionId }, 'Extremist hive reply cadence event insert failed');
+    }
+
+    usedThisPass.add(persona.handle);
+    engaged++;
+
+    logger.info(
+      { sessionId, handle: persona.handle, move: move.id, threadId: target.topLevelId },
+      'Extremist hive replied in thread',
+    );
+  }
 }
