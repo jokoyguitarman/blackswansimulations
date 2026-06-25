@@ -9,6 +9,7 @@ import PlayerActivityPanel from './PlayerActivityPanel';
 import ShareMenu from './ShareMenu';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import DisputeModal from './DisputeModal';
+import ReportModal from './ReportModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -228,6 +229,11 @@ export default function SocialFeedApp({
   const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
   const [disputeStatus, setDisputeStatus] = useState<string | null>(null);
+  const [reportPost, setReportPost] = useState<SocialPost | null>(null);
+  const [reportCategory, setReportCategory] = useState('');
+  const [reportReason, setReportReason] = useState('');
+  const [reporting, setReporting] = useState(false);
+  const [reportStatus, setReportStatus] = useState<string | null>(null);
   const selectedPostRef = useRef<SocialPost | null>(null);
   const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
   const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
@@ -721,6 +727,44 @@ export default function SocialFeedApp({
     }
   }
 
+  function openReportModal(post: SocialPost) {
+    setReportPost(post);
+    setReportCategory('');
+    setReportReason('');
+    setReportStatus(null);
+  }
+
+  async function submitReport() {
+    if (!reportPost || !reportCategory) return;
+    setReporting(true);
+    const postId = reportPost.id;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/posts/${postId}/report`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          violation_category: reportCategory,
+          reason_text: reportReason.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setReportStatus(err.error || 'Failed to submit report');
+        return;
+      }
+      const flagOn = (p: SocialPost) =>
+        p.id === postId ? { ...p, flagged_by_me: true, is_flagged_by_player: true } : p;
+      setPosts((prev) => prev.map(flagOn));
+      setSelectedPost((prev) => (prev ? flagOn(prev) : prev));
+      setReportPost(null);
+    } catch {
+      setReportStatus('Failed to submit report');
+    } finally {
+      setReporting(false);
+    }
+  }
+
   function handleShareMenu(postId: string) {
     setShareMenuPostId((prev) => (prev === postId ? null : postId));
   }
@@ -1004,11 +1048,12 @@ export default function SocialFeedApp({
                   <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
                 </svg>
               </button>
-              {/* Flag */}
+              {/* Report (with reason) */}
               <button
-                onClick={() => handleFlag(selectedPost.id)}
+                onClick={() => openReportModal(selectedPost)}
                 className="ios-btn-bounce p-2 transition-colors"
                 style={{ color: selectedPost.is_flagged_by_player ? '#F59E0B' : '#71767B' }}
+                title="Report post"
               >
                 <svg
                   width="20"
@@ -1556,6 +1601,22 @@ export default function SocialFeedApp({
             onNoteChange={setDisputeNote}
             onCancel={() => setDisputePost(null)}
             onSubmit={submitPostDispute}
+          />
+        )}
+
+        {reportPost && (
+          <ReportModal
+            authorName={reportPost.author_display_name}
+            authorHandle={reportPost.author_handle}
+            preview={reportPost.content}
+            category={reportCategory}
+            reason={reportReason}
+            status={reportStatus}
+            submitting={reporting}
+            onCategoryChange={setReportCategory}
+            onReasonChange={setReportReason}
+            onCancel={() => setReportPost(null)}
+            onSubmit={submitReport}
           />
         )}
       </div>

@@ -28,6 +28,28 @@ interface NpcReaction {
   sentiment: string;
 }
 
+interface StandardScore {
+  score: number;
+  evidence?: string;
+}
+
+// Crisis-comms best-practice framework (Transparency, Consistency, RDAP posture, Victim-centring).
+// Speed is deterministic (engine) and Clarity is graded per-post, so they are not here.
+export interface CrisisStandards {
+  transparency?: StandardScore;
+  consistency?: StandardScore;
+  rdap?: {
+    level: 'reactive' | 'defensive' | 'accommodative' | 'proactive';
+    score: number;
+    evidence?: string;
+  };
+  victim_centring?: {
+    match: 'appropriate' | 'under' | 'over';
+    score: number;
+    evidence?: string;
+  };
+}
+
 interface WatchdogResult {
   issue_found: boolean;
   issue_type: string;
@@ -38,6 +60,7 @@ interface WatchdogResult {
   reasoning: string;
   news_articles?: NewsArticle[];
   npc_reactions?: NpcReaction[];
+  standards?: CrisisStandards;
 }
 
 interface FactSheet {
@@ -99,6 +122,16 @@ If you find an issue:
 
 If the statements are factually sound, legally safe, and internally consistent, set issue_found to false.
 
+SEPARATELY, ALWAYS rate the team's crisis communication against this best-practice framework (this is independent of issue_found - rate it every time, based on the FULL timeline, not just the new statements):
+- TRANSPARENCY (0-100): Following the "Rule of Three" (Tell the Truth, Tell it All, Tell it Fast)? Forthcoming and complete, or evasive / selective / canned?
+- CONSISTENCY (0-100): A unified "core narrative" across X, Facebook, the official site, and emails? Or fragmented / conflicting across channels?
+- RDAP posture: Classify the team's overall ethical posture as one of:
+  * "reactive" (denies responsibility, does less than required),
+  * "defensive" (admits but fights it, does the least required),
+  * "accommodative" (accepts responsibility, does all required),
+  * "proactive" (anticipates responsibility, does MORE than required). Also give a 0-100 score (reactive ~20, defensive ~45, accommodative ~70, proactive ~90).
+- VICTIM_CENTRING: Does the empathy/apology level MATCH the crisis responsibility? Use the crisis_cluster provided. "appropriate" = matches; "under" = too cold / not enough empathy; "over" = overly accommodating for a low-responsibility (victim-cluster) crisis. Give a 0-100 score (appropriate high, under/over lower).
+
 Return ONLY valid JSON:
 {
   "issue_found": true or false,
@@ -108,6 +141,12 @@ Return ONLY valid JSON:
   "persona": "legal_analyst|fact_checker|investigative_journalist",
   "severity": "low|medium|high",
   "reasoning": "Detailed explanation of why this is problematic (empty string if none)",
+  "standards": {
+    "transparency": { "score": 0-100, "evidence": "brief justification" },
+    "consistency": { "score": 0-100, "evidence": "brief justification" },
+    "rdap": { "level": "reactive|defensive|accommodative|proactive", "score": 0-100, "evidence": "brief justification" },
+    "victim_centring": { "match": "appropriate|under|over", "score": 0-100, "evidence": "brief justification" }
+  },
   "news_articles": [
     {
       "outlet_name": "News outlet name",
@@ -195,10 +234,12 @@ class StatementWatchdogService {
   private async scanSession(sessionId: string, scenarioId: string | null): Promise<void> {
     const state = this.sessionStates.get(sessionId);
 
-    if (state) {
-      if (state.totalPostsCreated >= MAX_POSTS_PER_SESSION) return;
-      if (Date.now() < state.cooldownUntil.getTime()) return;
-    }
+    // Challenge-post creation stays throttled by the cooldown + per-session cap, but the standards
+    // scoring below runs every scan (decoupled from the cooldown).
+    const canPostChallenge =
+      !state ||
+      (state.totalPostsCreated < MAX_POSTS_PER_SESSION &&
+        Date.now() >= state.cooldownUntil.getTime());
 
     const sinceTimestamp =
       state?.lastPostTimestamp || new Date(Date.now() - 5 * 60_000).toISOString();
@@ -240,6 +281,7 @@ class StatementWatchdogService {
     // Load scenario fact sheet
     let factSheet: FactSheet = { confirmed_facts: [], unconfirmed_claims: [] };
     let crisisContext = 'A social media crisis';
+    let crisisCluster = 'unknown';
 
     if (scenarioId) {
       const { data: scenario } = await supabaseAdmin
@@ -253,6 +295,11 @@ class StatementWatchdogService {
         factSheet = (initialState.fact_sheet as FactSheet) || factSheet;
         crisisContext =
           `${scenario.title || 'Crisis'}. ${String(initialState.crisis_description || initialState.context || '')}`.trim();
+        crisisCluster = String(
+          initialState.crisis_cluster ||
+            (initialState.fact_sheet as Record<string, unknown> | undefined)?.crisis_cluster ||
+            'unknown',
+        );
       }
     }
 
@@ -287,6 +334,7 @@ class StatementWatchdogService {
       .join('\n');
 
     const userPrompt = `Crisis scenario: ${crisisContext.substring(0, 800)}
+Crisis responsibility cluster: ${crisisCluster} (victim = org not at fault; accidental = moderate; preventable = org at fault). Use this to judge victim-centring.
 
 ${factsContext}${claimsContext}
 
@@ -302,7 +350,12 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
 
     const lastTimestamp = newStatements[newStatements.length - 1].created_at;
 
-    if (result?.issue_found && result.challenge_post) {
+    // Standards scoring is persisted every scan, regardless of the challenge-post cooldown.
+    if (result?.standards) {
+      await this.persistStandards(sessionId, result.standards);
+    }
+
+    if (canPostChallenge && result?.issue_found && result.challenge_post) {
       // Dedup: hash the evidence to avoid re-flagging same issue
       const issueHash = createHash('md5')
         .update(result.evidence || '')
@@ -340,6 +393,25 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
       );
     } else {
       this.updateState(sessionId, lastTimestamp, state);
+    }
+  }
+
+  // Merge the latest standards scores into sessions.current_state.crisis_standards so the
+  // deterministic engine (computeSocialState) can fold them into the dimensions.
+  private async persistStandards(sessionId: string, standards: CrisisStandards): Promise<void> {
+    try {
+      const { data: session } = await supabaseAdmin
+        .from('sessions')
+        .select('current_state')
+        .eq('id', sessionId)
+        .single();
+      const currentState = (session?.current_state as Record<string, unknown>) || {};
+      await supabaseAdmin
+        .from('sessions')
+        .update({ current_state: { ...currentState, crisis_standards: standards } })
+        .eq('id', sessionId);
+    } catch (err) {
+      logger.warn({ err, sessionId }, 'Failed to persist crisis standards');
     }
   }
 

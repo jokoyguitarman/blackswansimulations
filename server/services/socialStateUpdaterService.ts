@@ -16,6 +16,22 @@ export interface SocialState {
   counter_narratives_published: number;
   misinformation_flagged_count: number;
 
+  // Reporting (scored reporting with a reason)
+  total_reports: number;
+  valid_reports: number;
+  invalid_reports: number;
+  report_precision: number;
+
+  // Speed metrics (deterministic) + crisis-comms standards passthrough (Phase 4)
+  time_to_first_response_minutes: number | null;
+  time_to_first_statement_minutes: number | null;
+  transparency_score: number | null;
+  consistency_score: number | null;
+  rdap_level: string | null;
+  rdap_score: number | null;
+  victim_centring_match: string | null;
+  victim_centring_score: number | null;
+
   sentiment_score: number;
   public_trust: number;
   community_safety: number;
@@ -88,20 +104,15 @@ export interface SocialState {
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
+// dispute_filed / dispute_upheld are strategic verification actions (see scoring fix 9.3/9.6).
 const TIER2_ACTIONS = [
   'post_created',
-  'draft_created',
-  'draft_published',
   'fact_checked',
   'email_read',
+  'dispute_filed',
+  'dispute_upheld',
 ];
-const TIER3_ACTIONS = [
-  'email_sent',
-  'escalated',
-  'draft_submitted_for_approval',
-  'draft_approved',
-  'call_answered',
-];
+const TIER3_ACTIONS = ['email_sent', 'escalated'];
 
 export async function computeSocialState(
   sessionId: string,
@@ -135,11 +146,23 @@ export async function computeSocialState(
 
   const { data: sessionRow } = await supabaseAdmin
     .from('sessions')
-    .select('scenario_id, current_state')
+    .select('scenario_id, current_state, start_time')
     .eq('id', sessionId)
     .single();
 
   const scenarioId = sessionRow?.scenario_id;
+  const startMs = sessionRow?.start_time
+    ? new Date(sessionRow.start_time).getTime()
+    : now - elapsedMinutes * 60000;
+
+  // Crisis-comms standards scores written by the statement watchdog (Phase 4). Optional.
+  const crisisStandards = ((sessionRow?.current_state as Record<string, unknown>)
+    ?.crisis_standards || {}) as {
+    transparency?: { score?: number };
+    consistency?: { score?: number };
+    rdap?: { level?: string; score?: number };
+    victim_centring?: { match?: string; score?: number };
+  };
   let npcHandles: Set<string> = new Set();
   let dimensionLabels:
     | {
@@ -195,6 +218,16 @@ export async function computeSocialState(
   const flaggedIds = new Set(
     allActions.filter((a) => a.action_type === 'post_flagged').map((a) => String(a.target_id)),
   );
+  // Valid reports (post genuinely harmful) also "address" a hostile post; invalid reports do not.
+  const reportedValidIds = new Set(
+    allActions
+      .filter(
+        (a) =>
+          a.action_type === 'post_reported' &&
+          (a.metadata as Record<string, unknown> | null)?.valid === true,
+      )
+      .map((a) => String(a.target_id)),
+  );
 
   const hasHarmfulFlags = (p: (typeof allPosts)[number]): boolean => {
     const flags = (p.content_flags || {}) as Record<string, unknown>;
@@ -236,7 +269,11 @@ export async function computeSocialState(
   const harmfulPosts = [...harmfulTopLevel, ...harmfulDesignedReplies];
 
   const unattendedPosts = harmfulPosts.filter(
-    (p) => !playerRepliedToIds.has(p.id) && !flaggedIds.has(p.id) && !p.is_flagged_by_player,
+    (p) =>
+      !playerRepliedToIds.has(p.id) &&
+      !flaggedIds.has(p.id) &&
+      !reportedValidIds.has(p.id) &&
+      !p.is_flagged_by_player,
   );
 
   let weightedHatePenalty = 0;
@@ -305,9 +342,23 @@ export async function computeSocialState(
         String(a.content || '') + String(a.target_id || ''),
       ),
   );
-  const officialDrafted = allActions.some((a) => a.action_type === 'draft_created');
-  const officialPublished = allActions.some((a) => a.action_type === 'draft_published');
-  const platformReports = allActions.filter((a) => a.action_type === 'post_reported').length;
+  // Fix 9.1: the legacy draft_created/draft_published actions are no longer emitted (the
+  // draft->approve->publish workflow was replaced by direct posting). Derive these from the
+  // signals that actually exist today: a posted official_statement, or a matched 'publish' SOP step.
+  const officialPublished =
+    playerPosts.some((p) => String(p.post_format || '') === 'official_statement') ||
+    allActions.some((a) => a.sop_step_matched === 'publish');
+  const officialDrafted = officialPublished;
+  // Reporting: only VALID reports (of genuinely harmful posts) reduce escalation. Frivolous reports
+  // of legitimate speech are tracked for the moderation-precision penalty below.
+  const reportActions = allActions.filter((a) => a.action_type === 'post_reported');
+  const totalReports = reportActions.length;
+  const validReports = reportActions.filter(
+    (a) => (a.metadata as Record<string, unknown> | null)?.valid === true,
+  ).length;
+  const invalidReports = totalReports - validReports;
+  const reportPrecision = totalReports > 0 ? validReports / totalReports : 1;
+  const platformReports = validReports;
 
   const rallyPosts = unattendedPosts.filter((p) => {
     const flags = (p.content_flags || {}) as Record<string, unknown>;
@@ -345,7 +396,12 @@ export async function computeSocialState(
 
   let publicTrust = 50;
   publicTrust += avgGradeAccuracy > 0 ? (avgGradeAccuracy - 50) / 5 : 0;
-  publicTrust += allActions.filter((a) => a.action_type === 'fact_checked').length * 3;
+  // Fix 9.6: credit genuine verification, not just opening the briefing email. An upheld dispute
+  // (proving a claim false) is worth more than reading a verified-facts email.
+  const factCheckCredits =
+    allActions.filter((a) => a.action_type === 'fact_checked').length +
+    allActions.filter((a) => a.action_type === 'dispute_upheld').length * 2;
+  publicTrust += factCheckCredits * 3;
   publicTrust -= unaddressedMisinfoCount * 2;
   if (oldestMisinfoMinutes > 10) publicTrust -= Math.floor(oldestMisinfoMinutes / 5) * 2;
 
@@ -375,6 +431,9 @@ export async function computeSocialState(
   narrativeControl += officialPublished ? 10 : 0;
   narrativeControl += avgGradePersuasiveness > 0 ? (avgGradePersuasiveness - 50) / 5 : 0;
   narrativeControl -= weightedHatePenalty * 0.5;
+  // Moderation accuracy: frivolously reporting legitimate speech (censoring critics) costs
+  // narrative control. Modest and capped so teams aren't afraid to report genuine harm.
+  narrativeControl -= Math.min(invalidReports, 5) * 2;
 
   let escalationRisk = 20;
   escalationRisk += rallyPosts.length * 12;
@@ -383,8 +442,19 @@ export async function computeSocialState(
     return !!flags.incites_violence;
   });
   escalationRisk += violencePosts.length * 8;
+  // Fix 9.4: platformReports already counts post_reported actions; the second subtraction below
+  // double-counted the same reports, so it has been removed.
   escalationRisk -= platformReports * 3;
-  escalationRisk -= allActions.filter((a) => a.action_type === 'post_reported').length * 2;
+
+  // Fold crisis-comms standards (Transparency, Consistency, RDAP posture, Victim-centring) from the
+  // watchdog into the dimensions. Bounded and additive so a flaky LLM judgment can't swing the score.
+  if (crisisStandards.transparency?.score != null)
+    publicTrust += (crisisStandards.transparency.score - 50) / 5;
+  if (crisisStandards.consistency?.score != null)
+    narrativeControl += (crisisStandards.consistency.score - 50) / 5;
+  if (crisisStandards.rdap?.score != null) communitySafety += (crisisStandards.rdap.score - 50) / 5;
+  if (crisisStandards.victim_centring?.score != null)
+    communitySafety += (crisisStandards.victim_centring.score - 50) / 8;
 
   publicTrust = Math.max(0, Math.min(100, Math.round(publicTrust)));
   communitySafety = Math.max(0, Math.min(100, Math.round(communitySafety)));
@@ -434,7 +504,13 @@ export async function computeSocialState(
     elapsedMinutes > sopTimeLimits[stepId];
 
   // Strategy pattern detection bonuses (must be after sopCompleted is defined)
-  const factCheckAction = allActions.find((a) => a.action_type === 'fact_checked');
+  // Fix 9.6: a dispute counts as "checked first" too.
+  const factCheckAction = allActions.find(
+    (a) =>
+      a.action_type === 'fact_checked' ||
+      a.action_type === 'dispute_filed' ||
+      a.action_type === 'dispute_upheld',
+  );
   const factCheckThenPost =
     !!factCheckAction &&
     allActions.some(
@@ -442,11 +518,30 @@ export async function computeSocialState(
         a.action_type === 'post_created' &&
         new Date(a.created_at) > new Date(factCheckAction.created_at),
     );
-  const draftApprovePublish =
-    sopCompleted('draft') && sopCompleted('approve') && sopCompleted('publish');
+  // Fix 9.2: the draft/approve SOP steps are never matched anymore, so the old
+  // draftApprovePublish bonus was dead. Reward "verify, then publish officially" instead.
+  const verifiedThenOfficial = factCheckThenPost && officialPublished;
   if (factCheckThenPost) narrativeControl += 5;
-  if (draftApprovePublish) narrativeControl += 5;
+  if (verifiedThenOfficial) narrativeControl += 5;
   narrativeControl = Math.max(0, Math.min(100, Math.round(narrativeControl)));
+
+  // Speed metrics (deterministic): how quickly the team responded and published an official statement.
+  const playerPostsSorted = [...playerPosts].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  const firstPlayerPost = playerPostsSorted[0];
+  const firstOfficialStatement = playerPostsSorted.find(
+    (p) => String(p.post_format || '') === 'official_statement',
+  );
+  const timeToFirstResponseMinutes = firstPlayerPost
+    ? Math.max(0, Math.round((new Date(firstPlayerPost.created_at).getTime() - startMs) / 60000))
+    : null;
+  const timeToFirstStatementMinutes = firstOfficialStatement
+    ? Math.max(
+        0,
+        Math.round((new Date(firstOfficialStatement.created_at).getTime() - startMs) / 60000),
+      )
+    : null;
 
   const state: SocialState = {
     total_posts: allPosts.length,
@@ -459,6 +554,20 @@ export async function computeSocialState(
     oldest_unaddressed_misinfo_minutes: Math.round(oldestMisinfoMinutes),
     counter_narratives_published: counterNarratives,
     misinformation_flagged_count: misinfoFlagged,
+
+    total_reports: totalReports,
+    valid_reports: validReports,
+    invalid_reports: invalidReports,
+    report_precision: Math.round(reportPrecision * 100) / 100,
+
+    time_to_first_response_minutes: timeToFirstResponseMinutes,
+    time_to_first_statement_minutes: timeToFirstStatementMinutes,
+    transparency_score: crisisStandards.transparency?.score ?? null,
+    consistency_score: crisisStandards.consistency?.score ?? null,
+    rdap_level: crisisStandards.rdap?.level ?? null,
+    rdap_score: crisisStandards.rdap?.score ?? null,
+    victim_centring_match: crisisStandards.victim_centring?.match ?? null,
+    victim_centring_score: crisisStandards.victim_centring?.score ?? null,
 
     sentiment_score: sentimentScore,
     public_trust: publicTrust,

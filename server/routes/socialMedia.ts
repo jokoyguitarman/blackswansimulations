@@ -863,6 +863,109 @@ router.post('/posts/:postId/flag', requireAuth, async (req: AuthenticatedRequest
   }
 });
 
+// Reporting a post requires the player to choose WHY (the violation category), like a real
+// platform. Correct reports of genuinely harmful content are rewarded (lower escalation, counts
+// as addressed); frivolous reports of legitimate speech are recorded as invalid and penalised.
+const VIOLATION_CATEGORIES = [
+  'hate_speech',
+  'incitement_to_violence',
+  'misinformation',
+  'organized_harassment',
+  'harmful_narrative',
+  'other',
+] as const;
+
+const reportSchema = z.object({
+  body: z.object({
+    violation_category: z.enum(VIOLATION_CATEGORIES),
+    reason_text: z.string().max(1000).optional(),
+  }),
+});
+
+router.post(
+  '/posts/:postId/report',
+  requireAuth,
+  validate(reportSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { postId } = req.params;
+      const { violation_category, reason_text } = req.body;
+
+      const { data: post } = await supabaseAdmin
+        .from('social_posts')
+        .select('session_id, content_flags')
+        .eq('id', postId)
+        .single();
+
+      if (!post) return res.status(404).json({ error: 'Post not found' });
+
+      const flags = (post.content_flags || {}) as Record<string, unknown>;
+      const anyHarmful = !!(
+        flags.is_hate_speech ||
+        flags.is_harmful_narrative ||
+        flags.is_misinformation ||
+        flags.is_racist ||
+        flags.is_inflammatory ||
+        flags.incites_violence ||
+        flags.is_organized_pressure
+      );
+      // A report is valid if the post is genuinely harmful. We don't require the exact category to
+      // match (categories overlap), but reporting a benign post is always invalid.
+      const isValidReport = anyHarmful;
+
+      const { data: existing } = await supabaseAdmin
+        .from('social_post_flags')
+        .select('id')
+        .eq('post_id', postId)
+        .eq('player_id', user.id)
+        .single();
+
+      if (!existing) {
+        await supabaseAdmin.from('social_post_flags').insert({
+          post_id: postId,
+          player_id: user.id,
+          violation_category,
+          reason_text: reason_text || null,
+          is_valid_report: isValidReport,
+        });
+      }
+
+      if (isValidReport) {
+        await supabaseAdmin
+          .from('social_posts')
+          .update({ is_flagged_by_player: true })
+          .eq('id', postId);
+      }
+
+      await recordPlayerAction(
+        post.session_id,
+        user.id,
+        'post_reported',
+        postId,
+        reason_text || null,
+        { violation_category, valid: isValidReport },
+        isValidReport ? 'monitor' : null,
+      );
+
+      getWebSocketService().broadcastToSession(post.session_id, {
+        type: 'social_post.flagged',
+        data: { post_id: postId, reported_by: user.id, valid: isValidReport },
+        timestamp: new Date().toISOString(),
+      });
+
+      if (isValidReport) {
+        await surfacePostToSession(postId, post.session_id, user.id);
+      }
+
+      res.json({ success: true, valid: isValidReport });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /social/posts/:postId/report');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
@@ -1043,6 +1146,45 @@ router.post(
         data: { email },
         timestamp: new Date().toISOString(),
       });
+
+      // Grade the outbound email against the case facts (non-blocking). Rewards using verified
+      // facts in outgoing comms - e.g. a takedown/correction request that cites confirmed facts.
+      void (async () => {
+        try {
+          const { data: sessionData } = await supabaseAdmin
+            .from('sessions')
+            .select('scenario_id, start_time')
+            .eq('id', session_id)
+            .single();
+          if (!sessionData) return;
+          const { data: scenario } = await supabaseAdmin
+            .from('scenarios')
+            .select('description, initial_state')
+            .eq('id', sessionData.scenario_id)
+            .single();
+          if (!scenario) return;
+          const is = (scenario.initial_state || {}) as Record<string, unknown>;
+          const factSheet = (is.fact_sheet || {}) as Record<string, unknown>;
+          const confirmedFacts = (factSheet.confirmed_facts || []) as string[];
+          const elapsedMinutes = sessionData.start_time
+            ? Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 60000)
+            : 0;
+          const { gradePlayerContent } = await import('../services/contentGraderService.js');
+          const grade = await gradePlayerContent(`${subject}\n\n${body_text}`, {
+            crisis_description: scenario.description || '',
+            confirmed_facts: confirmedFacts,
+            post_format: 'official_statement',
+            elapsed_minutes: elapsedMinutes,
+            org_name: (is.org_name as string) || undefined,
+          });
+          await supabaseAdmin
+            .from('sim_emails')
+            .update({ sop_compliance_score: grade })
+            .eq('id', email.id);
+        } catch (gradeErr) {
+          logger.warn({ err: gradeErr, emailId: email.id }, 'Outbound email grading failed');
+        }
+      })();
 
       // Trigger NPC reply if the email is to an NPC (non-blocking)
       void (async () => {

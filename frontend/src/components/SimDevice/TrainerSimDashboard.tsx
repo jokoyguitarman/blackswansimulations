@@ -62,6 +62,19 @@ interface SocialState {
     narrative_control: string;
     escalation_risk: string;
   };
+  // Scored reporting + crisis-comms standards + speed (scoring overhaul)
+  total_reports?: number;
+  valid_reports?: number;
+  invalid_reports?: number;
+  report_precision?: number;
+  time_to_first_response_minutes?: number | null;
+  time_to_first_statement_minutes?: number | null;
+  transparency_score?: number | null;
+  consistency_score?: number | null;
+  rdap_level?: string | null;
+  rdap_score?: number | null;
+  victim_centring_match?: string | null;
+  victim_centring_score?: number | null;
 }
 
 interface GradedReply {
@@ -214,6 +227,13 @@ function gradeColor(score: number): string {
 
 function minutesAgo(iso: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+}
+
+function durationMinutes(startIso: string, endIso: string): number {
+  return Math.max(
+    0,
+    Math.round((new Date(endIso).getTime() - new Date(startIso).getTime()) / 60000),
+  );
 }
 
 function truncate(text: string, max: number): string {
@@ -553,6 +573,10 @@ export default function TrainerSimDashboard() {
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
 
+  // Review mode: the session is concluded. The dashboard becomes a read-only
+  // debrief surface (no polling, frozen timer, no live affordances).
+  const isReview = sessionInfo?.status === 'completed';
+
   // ---- Data loaders -------------------------------------------------------
 
   const loadSocialState = useCallback(async () => {
@@ -643,8 +667,15 @@ export default function TrainerSimDashboard() {
       const json = await res.json();
       if (json.data) {
         setSessionInfo(json.data);
-        if (typeof json.data.started_at === 'string') {
-          setElapsedMinutes(minutesAgo(String(json.data.started_at)));
+        const start = (json.data.started_at ?? json.data.start_time) as string | undefined;
+        const end = (json.data.ended_at ?? json.data.end_time) as string | undefined;
+        if (typeof start === 'string') {
+          if (json.data.status === 'completed' && typeof end === 'string') {
+            // Freeze elapsed at the final session duration for review mode.
+            setElapsedMinutes(durationMinutes(start, end));
+          } else {
+            setElapsedMinutes(minutesAgo(start));
+          }
         }
       }
     } catch {
@@ -700,24 +731,30 @@ export default function TrainerSimDashboard() {
 
   useEffect(() => {
     loadAll();
+    // In review mode the session is over; load once and skip live polling.
+    if (isReview) return;
     const id = setInterval(loadAll, 12000);
     return () => clearInterval(id);
-  }, [loadAll]);
+  }, [loadAll, isReview]);
 
-  // keep elapsed time ticking every 30s
+  // keep elapsed time ticking every 30s (frozen in review mode)
   useEffect(() => {
+    if (isReview) return;
     const id = setInterval(() => {
-      if (sessionInfo && typeof (sessionInfo as Record<string, unknown>).started_at === 'string') {
-        setElapsedMinutes(minutesAgo(String((sessionInfo as Record<string, unknown>).started_at)));
+      const info = sessionInfo as Record<string, unknown> | null;
+      const start = info?.started_at ?? info?.start_time;
+      if (typeof start === 'string') {
+        setElapsedMinutes(minutesAgo(start));
       }
     }, 30000);
     return () => clearInterval(id);
-  }, [sessionInfo]);
+  }, [sessionInfo, isReview]);
 
   // ---- WebSocket ----------------------------------------------------------
 
   useWebSocket({
     sessionId: sessionId || '',
+    enabled: !isReview,
     eventTypes: [
       'social_state.updated',
       'social_post.created',
@@ -845,7 +882,9 @@ export default function TrainerSimDashboard() {
         !!flags.threatening ||
         !!flags.incites_violence ||
         !!flags.is_organized_pressure);
-    if (isHarmful && !post.responded_at) return 'border-l-2 border-red-500 animate-pulse';
+    if (isHarmful && !post.responded_at)
+      // In review mode the post is no longer actionable; keep the marker but drop the live pulse.
+      return isReview ? 'border-l-2 border-red-500' : 'border-l-2 border-red-500 animate-pulse';
     if (post.author_type === 'npc' || post.author_type === 'designed_npc')
       return 'border-l-2 border-amber-400';
     if (post.author_type === 'player') return 'border-l-2 border-blue-500';
@@ -885,10 +924,11 @@ export default function TrainerSimDashboard() {
           </button>
           <div>
             <h1 className="text-base font-bold" style={{ color: '#ffffff' }}>
-              Crisis Trainer Dashboard
+              {isReview ? 'Crisis Session Review' : 'Crisis Trainer Dashboard'}
             </h1>
             <p className="text-[11px]" style={{ color: '#64748b' }}>
-              Session {sessionId ? truncate(sessionId, 12) : '—'} · {elapsedMinutes}m elapsed
+              Session {sessionId ? truncate(sessionId, 12) : '—'} · {elapsedMinutes}m{' '}
+              {isReview ? 'total' : 'elapsed'}
             </p>
           </div>
         </div>
@@ -900,46 +940,59 @@ export default function TrainerSimDashboard() {
           >
             How It Works
           </button>
-          <span
-            className="text-[11px] px-2 py-1 rounded font-semibold"
-            style={{
-              backgroundColor: socialState ? 'rgba(34,197,94,0.15)' : 'rgba(100,116,139,0.15)',
-              color: socialState ? '#22c55e' : '#64748b',
-            }}
-          >
-            {socialState ? 'LIVE' : 'CONNECTING…'}
-          </span>
-          <button
-            onClick={async () => {
-              if (!sessionId) return;
-              if (
-                !window.confirm(
-                  'Are you sure you want to conclude this session? This will end the simulation for all players.',
+          {isReview ? (
+            <span
+              className="text-[11px] px-2 py-1 rounded font-semibold"
+              style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+            >
+              COMPLETED · REVIEW
+            </span>
+          ) : (
+            <span
+              className="text-[11px] px-2 py-1 rounded font-semibold"
+              style={{
+                backgroundColor: socialState ? 'rgba(34,197,94,0.15)' : 'rgba(100,116,139,0.15)',
+                color: socialState ? '#22c55e' : '#64748b',
+              }}
+            >
+              {socialState ? 'LIVE' : 'CONNECTING…'}
+            </span>
+          )}
+          {!isReview && (
+            <button
+              onClick={async () => {
+                if (!sessionId) return;
+                if (
+                  !window.confirm(
+                    'Are you sure you want to conclude this session? This will end the simulation for all players.',
+                  )
                 )
-              )
-                return;
-              try {
-                const headers = await getAuthHeaders();
-                const res = await fetch(apiUrl(`/api/sessions/${sessionId}`), {
-                  method: 'PATCH',
-                  headers,
-                  body: JSON.stringify({ status: 'completed' }),
-                });
-                if (res.ok) {
-                  alert('Session concluded successfully.');
-                  navigate(`/sessions/${sessionId}`);
-                } else {
-                  alert('Failed to conclude session.');
+                  return;
+                try {
+                  const headers = await getAuthHeaders();
+                  const res = await fetch(apiUrl(`/api/sessions/${sessionId}`), {
+                    method: 'PATCH',
+                    headers,
+                    body: JSON.stringify({ status: 'completed' }),
+                  });
+                  if (res.ok) {
+                    alert('Session concluded. Switching to review mode.');
+                    // Refresh session info so the dashboard flips to review mode in place.
+                    await loadSessionInfo();
+                    loadAll();
+                  } else {
+                    alert('Failed to conclude session.');
+                  }
+                } catch {
+                  alert('Error concluding session.');
                 }
-              } catch {
-                alert('Error concluding session.');
-              }
-            }}
-            className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: '#ef4444', color: '#fff' }}
-          >
-            Conclude Session
-          </button>
+              }}
+              className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
+              style={{ backgroundColor: '#ef4444', color: '#fff' }}
+            >
+              Conclude Session
+            </button>
+          )}
         </div>
       </header>
 
@@ -984,6 +1037,73 @@ export default function TrainerSimDashboard() {
                   value={socialState.escalation_risk}
                   invert
                 />
+
+                {(socialState.transparency_score != null ||
+                  socialState.consistency_score != null ||
+                  socialState.rdap_score != null ||
+                  socialState.victim_centring_score != null) && (
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #1e293b' }}>
+                    <div
+                      className="text-[10px] font-semibold mb-2"
+                      style={{ color: '#64748b', letterSpacing: '0.5px' }}
+                    >
+                      CRISIS COMMS STANDARDS
+                    </div>
+                    {socialState.transparency_score != null && (
+                      <Gauge label="Transparency" value={socialState.transparency_score} />
+                    )}
+                    {socialState.consistency_score != null && (
+                      <Gauge label="Consistency" value={socialState.consistency_score} />
+                    )}
+                    {socialState.rdap_score != null && (
+                      <Gauge
+                        label={`Posture${socialState.rdap_level ? ` (${socialState.rdap_level})` : ''}`}
+                        value={socialState.rdap_score}
+                      />
+                    )}
+                    {socialState.victim_centring_score != null && (
+                      <Gauge
+                        label={`Victim-centring${socialState.victim_centring_match ? ` (${socialState.victim_centring_match})` : ''}`}
+                        value={socialState.victim_centring_score}
+                      />
+                    )}
+                  </div>
+                )}
+
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid #1e293b' }}>
+                  <div className="flex justify-between text-[11px] mb-1.5">
+                    <span style={{ color: '#94a3b8' }}>Report precision</span>
+                    <span
+                      style={{
+                        color:
+                          (socialState.total_reports || 0) === 0
+                            ? '#64748b'
+                            : gaugeColor((socialState.report_precision || 0) * 100),
+                        fontWeight: 700,
+                      }}
+                    >
+                      {(socialState.total_reports || 0) === 0
+                        ? 'n/a'
+                        : `${Math.round((socialState.report_precision || 0) * 100)}% (${socialState.valid_reports}/${socialState.total_reports})`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px] mb-1.5">
+                    <span style={{ color: '#94a3b8' }}>Time to first response</span>
+                    <span style={{ color: '#e2e8f0', fontWeight: 700 }}>
+                      {socialState.time_to_first_response_minutes == null
+                        ? '--'
+                        : `${socialState.time_to_first_response_minutes}m`}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-[11px]">
+                    <span style={{ color: '#94a3b8' }}>Time to official statement</span>
+                    <span style={{ color: '#e2e8f0', fontWeight: 700 }}>
+                      {socialState.time_to_first_statement_minutes == null
+                        ? '--'
+                        : `${socialState.time_to_first_statement_minutes}m`}
+                    </span>
+                  </div>
+                </div>
               </>
             ) : (
               <p className="text-xs text-center py-8" style={{ color: '#64748b' }}>
@@ -992,11 +1112,15 @@ export default function TrainerSimDashboard() {
             )}
           </Card>
 
-          {/* Panel 2 — Unattended Posts */}
-          <Card title={`Unattended Harmful Posts (${unattendedPosts.length})`}>
+          {/* Panel 2 — Unattended Posts (re-framed as a debrief stat in review mode) */}
+          <Card
+            title={`${isReview ? 'Posts Left Unaddressed' : 'Unattended Harmful Posts'} (${unattendedPosts.length})`}
+          >
             {unattendedPosts.length === 0 ? (
               <p className="text-xs text-center py-8" style={{ color: '#64748b' }}>
-                All clear — no unattended harmful posts
+                {isReview
+                  ? 'No harmful posts went unaddressed'
+                  : 'All clear — no unattended harmful posts'}
               </p>
             ) : (
               <div className="space-y-2">
@@ -1021,8 +1145,11 @@ export default function TrainerSimDashboard() {
                             </span>
                           )}
                         </span>
-                        <span className="text-[10px] font-bold" style={{ color: ageColor(age) }}>
-                          {age}m ago
+                        <span
+                          className="text-[10px] font-bold"
+                          style={{ color: isReview ? '#64748b' : ageColor(age) }}
+                        >
+                          {isReview ? 'no response' : `${age}m ago`}
                         </span>
                       </div>
                       <p className="text-xs leading-relaxed mb-1.5" style={{ color: '#cbd5e1' }}>

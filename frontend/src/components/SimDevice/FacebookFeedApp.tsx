@@ -12,6 +12,7 @@ import PlayerActivityPanel from './PlayerActivityPanel';
 import ShareMenu from './ShareMenu';
 import { LinkPreviewCard } from './LinkPreviewCard';
 import DisputeModal from './DisputeModal';
+import ReportModal from './ReportModal';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -139,6 +140,11 @@ export default function FacebookFeedApp() {
   const [disputeNote, setDisputeNote] = useState('');
   const [disputing, setDisputing] = useState(false);
   const [disputeStatus, setDisputeStatus] = useState<string | null>(null);
+  const [reportPost, setReportPost] = useState<SocialPost | null>(null);
+  const [reportCategory, setReportCategory] = useState('');
+  const [reportReason, setReportReason] = useState('');
+  const [reporting, setReporting] = useState(false);
+  const [reportStatus, setReportStatus] = useState<string | null>(null);
   const [postReplies, setPostReplies] = useState<Record<string, SocialPost[]>>({});
   const [loading, setLoading] = useState(true);
   const [feedSort, setFeedSort] = useState<'top' | 'recent'>('top');
@@ -888,15 +894,38 @@ export default function FacebookFeedApp() {
     setSending(false);
   }
 
-  async function handleFlag(postId: string) {
-    const post = posts.find((p) => p.id === postId);
-    if (post?.flagged_by_me) return;
-    setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: true } : p)));
+  function openReportModal(post: SocialPost) {
+    setReportPost(post);
+    setReportCategory('');
+    setReportReason('');
+    setReportStatus(null);
+  }
+
+  async function submitReport() {
+    if (!reportPost || !reportCategory) return;
+    setReporting(true);
+    const postId = reportPost.id;
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl(`/api/social/posts/${postId}/flag`), { method: 'POST', headers });
+      const res = await fetch(apiUrl(`/api/social/posts/${postId}/report`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          violation_category: reportCategory,
+          reason_text: reportReason.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        setReportStatus(err.error || 'Failed to submit report');
+        return;
+      }
+      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: true } : p)));
+      setReportPost(null);
     } catch {
-      setPosts((prev) => prev.map((p) => (p.id === postId ? { ...p, flagged_by_me: false } : p)));
+      setReportStatus('Failed to submit report');
+    } finally {
+      setReporting(false);
     }
   }
 
@@ -2248,8 +2277,9 @@ export default function FacebookFeedApp() {
                                 </svg>
                               </button>
                               <button
-                                onClick={() => handleFlag(post.id)}
+                                onClick={() => openReportModal(post)}
                                 className="p-1.5 rounded-full hover:bg-[#F2F3F5]"
+                                title="Report post"
                               >
                                 <svg
                                   width="20"
@@ -3900,6 +3930,22 @@ export default function FacebookFeedApp() {
           onNoteChange={setDisputeNote}
           onCancel={() => setDisputePost(null)}
           onSubmit={submitPostDispute}
+        />
+      )}
+
+      {reportPost && (
+        <ReportModal
+          authorName={reportPost.author_display_name}
+          authorHandle={reportPost.author_handle}
+          preview={reportPost.content}
+          category={reportCategory}
+          reason={reportReason}
+          status={reportStatus}
+          submitting={reporting}
+          onCategoryChange={setReportCategory}
+          onReasonChange={setReportReason}
+          onCancel={() => setReportPost(null)}
+          onSubmit={submitReport}
         />
       )}
     </div>

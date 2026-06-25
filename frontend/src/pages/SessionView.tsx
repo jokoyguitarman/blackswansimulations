@@ -1051,17 +1051,17 @@ export const SessionView = () => {
   }, [id, user?.id]);
 
   useEffect(() => {
-    if (
-      session &&
-      (session as unknown as Record<string, unknown>).sim_mode === 'social_media' &&
-      session.status === 'in_progress' &&
-      id
-    ) {
-      if (isTrainer) {
+    const isSocial =
+      session && (session as unknown as Record<string, unknown>).sim_mode === 'social_media';
+    if (!session || !isSocial || !id) return;
+    if (isTrainer) {
+      // Trainers stay on the social dashboard for both the live session and the
+      // post-session review (review mode), instead of the field-ops AAR.
+      if (session.status === 'in_progress' || session.status === 'completed') {
         navigate(`/sim/${id}/trainer`, { replace: true });
-      } else {
-        navigate(`/sim/${id}/device`, { replace: true });
       }
+    } else if (session.status === 'in_progress') {
+      navigate(`/sim/${id}/device`, { replace: true });
     }
   }, [session, id, navigate, isTrainer]);
 

@@ -8,6 +8,7 @@ export interface ContentGrade {
   cultural_sensitivity: number;
   persuasiveness: number;
   completeness: number;
+  clarity: number;
   overall: number;
   feedback: string;
   strengths: string[];
@@ -172,6 +173,8 @@ ${context.elapsed_minutes != null ? `Time elapsed since crisis began: ${context.
 
 Post format declared by player: ${format}
 
+ALSO include a "clarity" field (0-100) in your JSON: is the language clear, concise, human, and unambiguous? Clear messaging is a defence against disinformation; vague or jargon-heavy wording that bad actors could exploit scores low.
+
 SEMANTIC SIGNALS: In addition to grading, evaluate these boolean signals about the player's post content. Return them in a "signals" object alongside the other fields:
 
 - acknowledged_affected_parties: true if the post acknowledges those affected by the crisis and expresses empathy
@@ -226,6 +229,9 @@ Evaluate the media concept as part of your grading. Include these additional fie
 
     const grade = JSON.parse(content) as ContentGrade;
     grade.format = format;
+    if (grade.clarity == null || Number.isNaN(grade.clarity)) {
+      grade.clarity = grade.tone || 50;
+    }
     if (!grade.dimensions) {
       grade.dimensions = {
         accuracy: grade.accuracy || 50,
@@ -253,6 +259,7 @@ function defaultGrade(feedback: string, format?: string): ContentGrade {
     cultural_sensitivity: 50,
     persuasiveness: 50,
     completeness: 50,
+    clarity: 50,
     overall: 50,
     feedback,
     strengths: [],

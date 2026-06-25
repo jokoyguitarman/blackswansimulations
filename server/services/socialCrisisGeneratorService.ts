@@ -28,6 +28,9 @@ export interface FactSheetEntry {
 export interface FactSheet {
   confirmed_facts: string[];
   unconfirmed_claims: FactSheetEntry[];
+  // Crisis responsibility cluster (Coombs SCCT). Used to judge victim-centring: how much empathy /
+  // apology is appropriate. victim = org not at fault; accidental = moderate; preventable = at fault.
+  crisis_cluster?: 'victim' | 'accidental' | 'preventable';
 }
 
 export interface TeamDef {
@@ -364,6 +367,7 @@ Given the crisis event, generate:
 3. FACT SHEET: The ground truth for the simulation.
    - confirmed_facts: 6-10 facts that official sources have confirmed
    - unconfirmed_claims: 5-8 false or unverified claims, each with claim, status, truth, spread_by
+   - crisis_cluster: classify the organisation's responsibility (Coombs SCCT) as one of "victim" (org is itself a victim - e.g. rumor, sabotage, natural disaster; low responsibility), "accidental" (technical/unintended error; moderate responsibility), or "preventable" (org misdeed or known negligence; high responsibility).
 
 Country: ${country}
 
@@ -373,7 +377,8 @@ Return ONLY valid JSON:
   "personas": [{ "handle": "...", "name": "...", "type": "...", "personality": "...", "bias": "...", "follower_count": 0, "backstory": "...", "posting_pattern": "...", "specific_claims": ["..."], "image_prompts": ["..."] }],
   "fact_sheet": {
     "confirmed_facts": ["..."],
-    "unconfirmed_claims": [{ "claim": "...", "status": "FALSE", "truth": "...", "spread_by": ["@handle1"] }]
+    "unconfirmed_claims": [{ "claim": "...", "status": "FALSE", "truth": "...", "spread_by": ["@handle1"] }],
+    "crisis_cluster": "victim|accidental|preventable"
   }
 }`,
     `Crisis scenario: ${crisisType}${orgNameLine(orgName)}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nDetailed context: ${context}`,
