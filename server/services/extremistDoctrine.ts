@@ -22,6 +22,8 @@
 
 // ─── Persona roster (fixed, scenario-agnostic) ───────────────────────────────
 
+import type { ScenarioBlueprint, BlueprintFaction } from './blueprint/blueprintTypes.js';
+
 export type ExtremistRole =
   | 'ideologue'
   | 'amplifier'
@@ -420,4 +422,98 @@ HARD RULES (a training tool — stay within them, at EVERY stage):
 Return ONLY valid JSON:
 { "content": "the reply text", "content_flags": { "is_harmful_narrative": true, "is_inflammatory": false, "is_misinformation": false, "is_organized_pressure": false, "incites_violence": false } }
 Set the flags honestly. "incites_violence" must remain false.`;
+}
+
+// ─── Blueprint-driven cell + frame (Phase 5b, gated) ─────────────────────────
+//
+// When a trainer document supplied distinct hostile factions, render THOSE
+// instead of the fixed scenario-agnostic cell. Falls back to the built-ins when
+// no blueprint is present, so no-blueprint sessions are unchanged. The hard
+// containment rules in buildSystemPrompt still apply to both paths.
+
+const AGGRESSIVE_ALIGNMENTS = new Set([
+  'hostile',
+  'amplifier',
+  'opportunist',
+  'provocateur',
+  'extremist',
+]);
+
+function slugToHandle(faction: BlueprintFaction, index: number): string {
+  const base = (faction.id || faction.name || `faction_${index}`)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 24);
+  return `@${base || `faction_${index}`}`;
+}
+
+function roleForAlignment(alignment: string): ExtremistRole {
+  switch (alignment.trim().toLowerCase()) {
+    case 'amplifier':
+      return 'amplifier';
+    case 'opportunist':
+      return 'pseudo_news';
+    case 'provocateur':
+      return 'provocateur';
+    default:
+      return 'ideologue';
+  }
+}
+
+function factionToPersonas(faction: BlueprintFaction, index: number): ExtremistPersona[] {
+  const count = Math.max(1, Math.min(2, faction.headcount_hint ?? 1));
+  const role = roleForAlignment(faction.alignment);
+  const voice =
+    faction.tone_guidance ||
+    `voices the "${faction.name}" grievance; ${faction.typical_narratives.slice(0, 1).join('')}`;
+  return Array.from({ length: count }, (_, i) => ({
+    handle: count > 1 ? `${slugToHandle(faction, index)}_${i + 1}` : slugToHandle(faction, index),
+    name: faction.name || `Faction ${index + 1}`,
+    author_type: role === 'amplifier' ? 'npc_public' : 'npc_influencer',
+    role,
+    voice,
+    primary_moves: ['news_jack', 'wedge', 'moral_outrage', 'grievance_hijack'],
+    follower_count: 3000 + Math.floor(Math.random() * 40000),
+  }));
+}
+
+/** Hostile-aligned factions from the blueprint, or [] when none. */
+export function blueprintHostileFactions(blueprint?: ScenarioBlueprint | null): BlueprintFaction[] {
+  if (!blueprint) return [];
+  return blueprint.factions.filter((f) =>
+    AGGRESSIVE_ALIGNMENTS.has(f.alignment.trim().toLowerCase()),
+  );
+}
+
+/** The agitator roster to use this session: blueprint factions, else the fixed cell. */
+export function resolveCell(blueprint?: ScenarioBlueprint | null): ExtremistPersona[] {
+  const hostiles = blueprintHostileFactions(blueprint);
+  if (hostiles.length === 0) return EXTREMIST_CELL;
+  return hostiles.flatMap((f, i) => factionToPersonas(f, i));
+}
+
+/** The grievance wedge to use: derived from a blueprint faction, else the built-in selection. */
+export function resolveFrame(
+  crisisText: string,
+  sessionId: string,
+  blueprint?: ScenarioBlueprint | null,
+): GrievanceFrame {
+  const hostiles = blueprintHostileFactions(blueprint);
+  const lead = hostiles[0];
+  if (lead) {
+    const wedge =
+      lead.typical_narratives.slice(0, 3).join('; ') ||
+      lead.behaviour_patterns.slice(0, 3).join('; ') ||
+      lead.tone_guidance;
+    if (wedge) {
+      return {
+        id: lead.id || 'blueprint_wedge',
+        label: lead.name || 'Document-defined grievance',
+        wedge,
+        cues: [],
+      };
+    }
+  }
+  return selectGrievanceFrame(crisisText, sessionId);
 }

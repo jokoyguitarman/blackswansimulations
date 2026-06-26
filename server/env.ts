@@ -69,4 +69,11 @@ export const env = {
   // Document-driven scenario blueprint feature. Default OFF: when disabled the
   // social-crisis War Room behaves exactly as before (raw document text only).
   enableDocumentBlueprint: process.env.ENABLE_DOCUMENT_BLUEPRINT === 'true',
+  // Runtime Scenario Director (Phase 5). Same semantics as enableAutoInjects:
+  // ON in production unless explicitly disabled, OFF in dev unless turned on.
+  // It is further guarded at runtime (needs a usable blueprint + social_media
+  // session + cadence gate), so this only activates where a blueprint exists.
+  enableScenarioDirector:
+    process.env.ENABLE_SCENARIO_DIRECTOR === 'true' ||
+    (nodeEnv === 'production' && process.env.ENABLE_SCENARIO_DIRECTOR !== 'false'),
 };

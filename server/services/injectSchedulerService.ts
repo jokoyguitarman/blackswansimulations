@@ -35,6 +35,7 @@ import { checkResponseDeadlines } from './responseTrackerService.js';
 import { runEngagementTick } from './engagementAlgorithmService.js';
 import { runAntagonistEngine, runAntagonistThreadReplies } from './antagonistEngineService.js';
 import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.js';
+import { runScenarioDirector } from './blueprint/scenarioDirectorService.js';
 import type { Server as SocketServer } from 'socket.io';
 /**
  * Shared AI cancellation gate for any inject about to be published.
@@ -1017,6 +1018,14 @@ export class InjectSchedulerService {
         await runAntagonistThreadReplies(session.id, elapsedMinutes);
       } catch (antagReplyErr) {
         logger.warn({ err: antagReplyErr, sessionId: session.id }, 'Antagonist reply error');
+      }
+
+      if (env.enableScenarioDirector) {
+        try {
+          await runScenarioDirector(session.id, elapsedMinutes);
+        } catch (dirErr) {
+          logger.warn({ err: dirErr, sessionId: session.id }, 'Scenario director error');
+        }
       }
     }
   }

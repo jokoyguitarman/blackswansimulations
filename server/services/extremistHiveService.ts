@@ -17,10 +17,11 @@ import {
   buildReplyPrompt,
   getMove,
   getStageProfile,
-  selectGrievanceFrame,
+  resolveFrame,
   type ExtremistMove,
   type ExtremistPersona,
 } from './extremistDoctrine.js';
+import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 
 /** Generate fake "evidence" media for a hive post in the background (non-blocking). */
 async function attachHiveMedia(
@@ -307,7 +308,11 @@ export async function runExtremistHive(sessionId: string, elapsedMinutes: number
     const alt = opening.moves.filter((m) => m !== lastMoveId);
     if (alt.length > 0) move = getMove(alt[Math.floor(Math.random() * alt.length)]) || move;
   }
-  const frame = selectGrievanceFrame(`${crisisDescription} ${orgName}`, sessionId);
+  const frame = resolveFrame(
+    `${crisisDescription} ${orgName}`,
+    sessionId,
+    (initialState.blueprint as ScenarioBlueprint | undefined) ?? null,
+  );
   const platform: 'x_twitter' | 'facebook' = Math.random() < 0.6 ? 'x_twitter' : 'facebook';
 
   const socialStateSummary = [
@@ -563,7 +568,11 @@ export async function runHiveThreadReplies(
   const orgName = String(initialState.org_name || '');
   const country = String(initialState.country || '');
   const crisisDescription = String(scenario?.description || '');
-  const frame = selectGrievanceFrame(`${crisisDescription} ${orgName}`, sessionId);
+  const frame = resolveFrame(
+    `${crisisDescription} ${orgName}`,
+    sessionId,
+    (initialState.blueprint as ScenarioBlueprint | undefined) ?? null,
+  );
 
   // Escalation stage from total prior hive posts this session (replies escalate too).
   const { count: priorPostCount } = await supabaseAdmin
