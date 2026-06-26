@@ -19,12 +19,31 @@ describe('chunkText', () => {
     assert.deepEqual(chunkText('hello world', 6000, 400), ['hello world']);
   });
 
-  test('splits long text into overlapping chunks covering the whole document', () => {
+  test('hard-splits a single oversized block with no boundaries', () => {
     const text = 'x'.repeat(5000) + 'END_MARKER';
     const chunks = chunkText(text, 2000, 200);
     assert.ok(chunks.length > 1, 'expected multiple chunks');
     assert.equal(chunks[0].length, 2000);
     assert.ok(chunks[chunks.length - 1].endsWith('END_MARKER'), 'last chunk must reach end');
+  });
+
+  test('keeps a typical document in a single chunk (no truncation)', () => {
+    assert.equal(chunkText('y'.repeat(20000)).length, 1); // default size 25000
+  });
+
+  test('section-aware: splits at paragraph boundaries, never mid-section', () => {
+    const a = 'FACTION ALPHA: ' + 'a'.repeat(30);
+    const b = 'FACTION BRAVO: ' + 'b'.repeat(30);
+    const c = 'FACTION CHARLIE: ' + 'c'.repeat(30);
+    const chunks = chunkText([a, b, c].join('\n\n'), 60, 10);
+    assert.ok(chunks.length > 1, 'expected multiple chunks');
+    // Each whole section appears intact in some chunk (no mid-section cut).
+    for (const section of [a, b, c]) {
+      assert.ok(
+        chunks.some((ch) => ch.includes(section)),
+        `section not intact: ${section}`,
+      );
+    }
   });
 });
 
