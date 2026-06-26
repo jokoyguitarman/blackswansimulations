@@ -33,6 +33,7 @@ export async function persistSocialCrisisScenario(
       duration_minutes: scenario.duration_minutes,
       objectives: objectives.map((o) => o.objective_name),
       initial_state: scenario.initial_state,
+      blueprint: scenario.initial_state.blueprint ?? null,
       created_by: createdBy,
     })
     .select('id')

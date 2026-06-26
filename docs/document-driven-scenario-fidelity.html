@@ -1,0 +1,1371 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Document-Driven Scenario Fidelity — Implementation Plan</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      :root {
+        --bg: #0e1116;
+        --panel: #161b22;
+        --panel-2: #1c2230;
+        --border: #2b3340;
+        --text: #e6edf3;
+        --muted: #9aa7b4;
+        --accent: #4ea1ff;
+        --accent-2: #7ee787;
+        --warn: #ffb454;
+        --danger: #ff7b72;
+        --add-bg: rgba(126, 231, 135, 0.08);
+        --add-border: #2ea043;
+        --del-bg: rgba(255, 123, 114, 0.08);
+        --del-border: #f85149;
+        --code-bg: #0b0f14;
+        --radius: 10px;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        line-height: 1.6;
+      }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 120px; }
+      header.hero {
+        background: linear-gradient(135deg, #11203a 0%, #161b22 60%);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 32px;
+        margin-bottom: 32px;
+      }
+      header.hero h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.02em; }
+      header.hero p { margin: 0; color: var(--muted); font-size: 16px; max-width: 760px; }
+      .badges { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; }
+      .badge {
+        font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px;
+        background: var(--panel-2); border: 1px solid var(--border); color: var(--muted);
+      }
+      .badge.ok { color: var(--accent-2); border-color: var(--add-border); }
+      .badge.warn { color: var(--warn); border-color: #6b4a1f; }
+      h2 {
+        margin: 48px 0 12px; font-size: 22px; letter-spacing: -0.01em;
+        border-bottom: 1px solid var(--border); padding-bottom: 8px;
+      }
+      h3 { margin: 28px 0 8px; font-size: 17px; color: #cdd9e5; }
+      h4 { margin: 18px 0 6px; font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      p, li { color: var(--text); }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      code.inline {
+        font-family: var(--mono); font-size: 13px; background: var(--panel-2);
+        border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; color: #d8e0ea;
+      }
+      .panel {
+        background: var(--panel); border: 1px solid var(--border);
+        border-radius: var(--radius); padding: 20px 22px; margin: 16px 0;
+      }
+      .grid { display: grid; gap: 16px; }
+      .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+      @media (max-width: 760px) { .grid.cols-2 { grid-template-columns: 1fr; } }
+      .phase {
+        border-left: 3px solid var(--accent); padding-left: 16px; margin: 28px 0;
+      }
+      .phase .tag {
+        display: inline-block; font-size: 12px; font-weight: 700; color: var(--accent);
+        background: rgba(78,161,255,0.1); border: 1px solid #1f3b5c;
+        padding: 2px 10px; border-radius: 999px; margin-bottom: 6px;
+      }
+      .filemeta {
+        font-family: var(--mono); font-size: 12px; color: var(--muted);
+        margin: 14px 0 6px; display: flex; align-items: center; gap: 8px;
+      }
+      .pill { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+      .pill.new { background: rgba(126,231,135,0.12); color: var(--accent-2); border: 1px solid var(--add-border); }
+      .pill.edit { background: rgba(255,180,84,0.12); color: var(--warn); border: 1px solid #6b4a1f; }
+      pre {
+        background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+        padding: 16px; overflow-x: auto; margin: 8px 0 18px;
+      }
+      pre code { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: #d8e0ea; white-space: pre; }
+      .diff .add { display: block; background: var(--add-bg); border-left: 3px solid var(--add-border); padding-left: 8px; margin-left: -16px; }
+      .diff .del { display: block; background: var(--del-bg); border-left: 3px solid var(--del-border); padding-left: 8px; margin-left: -16px; }
+      .cmt { color: #6e7681; }
+      .kw { color: #ff7b72; }
+      .str { color: #a5d6ff; }
+      .fn { color: #d2a8ff; }
+      .typ { color: #7ee787; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 14px; }
+      th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+      td code.inline { font-size: 12px; }
+      .callout { border-radius: 8px; padding: 14px 16px; margin: 16px 0; border: 1px solid; }
+      .callout.safety { background: rgba(255,123,114,0.06); border-color: #6b2b27; }
+      .callout.fallback { background: rgba(126,231,135,0.06); border-color: #1f5c2e; }
+      .callout.note { background: rgba(78,161,255,0.06); border-color: #1f3b5c; }
+      .callout strong { color: var(--text); }
+      .toc { columns: 2; column-gap: 28px; }
+      .toc a { display: block; padding: 3px 0; font-size: 14px; }
+      @media (max-width: 600px) { .toc { columns: 1; } }
+      .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin: 16px 0; }
+      .legend { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); margin: 4px 0 0; }
+      .legend span { display: inline-flex; align-items: center; gap: 6px; }
+      .sw { width: 22px; height: 12px; border-radius: 3px; display: inline-block; }
+      .footer { margin-top: 60px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 16px; }
+      ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+      ol.steps > li { position: relative; padding: 6px 0 6px 36px; }
+      ol.steps > li::before {
+        counter-increment: step; content: counter(step);
+        position: absolute; left: 0; top: 6px; width: 24px; height: 24px;
+        background: var(--panel-2); border: 1px solid var(--border); border-radius: 50%;
+        text-align: center; line-height: 24px; font-size: 12px; font-weight: 700; color: var(--accent);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <h1>Document-Driven Scenario Fidelity</h1>
+        <p>
+          A plan to make the Social Crisis War Room ingest a trainer's design document &mdash; <strong>whatever its
+          format or organizing structure</strong> &mdash; extract it into a structured <strong>Scenario Blueprint</strong>,
+          and drive both scenario generation and the live runtime engines from it. A detailed document yields a scenario
+          <strong>&ge;90% true to its core</strong>; an arbitrarily-structured document still maps via a schema-discovery
+          pass plus a never-lose catch-all; a missing or thin document gracefully falls back to today's AI generation.
+        </p>
+        <div class="badges">
+          <span class="badge">Social Crisis War Room</span>
+          <span class="badge ok">Fallback-safe</span>
+          <span class="badge ok">Format-agnostic</span>
+          <span class="badge warn">Touches live runtime (Phase 5)</span>
+          <span class="badge">7 phases</span>
+        </div>
+      </header>
+
+      <div class="panel">
+        <h4 style="margin-top:0">Contents</h4>
+        <nav class="toc">
+          <a href="#idea">1. The core idea</a>
+          <a href="#ontology">1b. Format vs. ontology</a>
+          <a href="#current">2. Why fidelity is low today</a>
+          <a href="#flow">3. Target data flow</a>
+          <a href="#example">4. Worked example (Interfaith Firestorm)</a>
+          <a href="#example2">5. Worked example 2 (Product Recall)</a>
+          <a href="#example3">6. Worked example 3 (Professional Misconduct)</a>
+          <a href="#p0a">Phase 0a &mdash; Corpus validation</a>
+          <a href="#p0">Phase 0 &mdash; Foundation</a>
+          <a href="#p1">Phase 1 &mdash; Extraction</a>
+          <a href="#p2">Phase 2 &mdash; Review UI</a>
+          <a href="#p3">Phase 3 &mdash; Generation</a>
+          <a href="#p4">Phase 4 &mdash; Fidelity loop</a>
+          <a href="#p5">Phase 5 &mdash; Runtime</a>
+          <a href="#llm">LLM model &amp; token budget</a>
+          <a href="#legacy">Legacy model retirement</a>
+          <a href="#rollout">Rollout safety</a>
+          <a href="#standards">Engineering standards</a>
+          <a href="#dod">Definition of Done</a>
+          <a href="#cross">Cross-cutting concerns</a>
+          <a href="#seq">Sequencing &amp; value</a>
+        </nav>
+      </div>
+
+      <!-- ───────────────────────── IDEA ───────────────────────── -->
+      <h2 id="idea">1. The core idea</h2>
+      <p>
+        Change the data flow from <code class="inline">document &rarr; raw text &rarr; LLM context</code> to
+        <code class="inline">document &rarr; structured Blueprint &rarr; drives generation AND runtime</code>,
+        with a per-field confidence/coverage score. <strong>Two rules</strong> govern everything:
+      </p>
+      <div class="callout note">
+        <strong>Rule 1 &mdash; "Honor what was extracted; generate only what is missing."</strong> Produces both
+        the rich-document and the no-document behaviors with no separate code paths.
+      </div>
+      <div class="callout note">
+        <strong>Rule 2 &mdash; "Format-agnostic, ontology-flexible, never-lose."</strong> The blueprint must NOT be
+        hard-wired to the one sample doc's structure (faction-centric, staged timeline). It absorbs arbitrary trainer
+        frameworks by (a) discovering the trainer's own organizing concepts before mapping, (b) using open vocabularies
+        instead of fixed enums, and (c) capturing anything it cannot confidently place into a visible catch-all rather
+        than silently dropping it.
+      </div>
+      <div class="grid cols-2">
+        <div class="panel">
+          <h4 style="margin-top:0; color: var(--accent-2)">Rich document</h4>
+          <p style="margin:0">High-confidence fields are used (near-)verbatim &rarr; high fidelity to the trainer's factions, stages, triggers, and rules.</p>
+        </div>
+        <div class="panel">
+          <h4 style="margin-top:0; color: var(--accent)">No / thin document</h4>
+          <p style="margin:0">Empty or low-confidence fields fall through to today's AI generators &rarr; identical to current behavior, zero regression.</p>
+        </div>
+      </div>
+
+      <!-- ───────────────────────── ONTOLOGY ───────────────────────── -->
+      <h2 id="ontology">1b. Format vs. ontology &mdash; the real risk</h2>
+      <p>"Will it adapt to a different trainer's framework?" splits into two very different questions:</p>
+      <div class="grid cols-2">
+        <div class="panel">
+          <h4 style="margin-top:0; color: var(--accent-2)">Format / wording / order / length</h4>
+          <p style="margin:0">
+            Different headings, prose vs. bullets, "actors" vs. "factions", British spelling, 3 vs. 30 pages
+            &rarr; <strong>handled well</strong>, because extraction is LLM semantic mapping, not heading/regex parsing.
+          </p>
+        </div>
+        <div class="panel">
+          <h4 style="margin-top:0; color: var(--warn)">Structure / ontology (mental model)</h4>
+          <p style="margin:0">
+            The trainer thinks in a different shape than ours &rarr; <strong>the fragile part</strong>. A fixed schema
+            would silently drop whatever does not fit, recreating today's lossiness one level up.
+          </p>
+        </div>
+      </div>
+      <p>Concrete frameworks a rigid schema would mangle &mdash; and where each lands instead:</p>
+      <table>
+        <thead><tr><th>Trainer's framework</th><th>How the adaptive design absorbs it</th></tr></thead>
+        <tbody>
+          <tr><td>Scripted <strong>inject timeline</strong> ("at T+15, journalist calls"), not characters</td><td>Captured as a <code class="inline">trainer_concept</code> ("events") + timeline; personas thin but not required</td></tr>
+          <tr><td><strong>Branching decision tree</strong> ("if team does X then Y")</td><td>Branches land in <code class="inline">unmapped_directives</code> and surface in the Gap Report for review</td></tr>
+          <tr><td><strong>Verbatim character sheets / exact messages</strong></td><td>Preserved in <code class="inline">raw_excerpts</code> and flagged so generation quotes rather than paraphrases</td></tr>
+          <tr><td><strong>Scoring rubric / objectives-first</strong></td><td>Maps to <code class="inline">objectives</code>; nuance kept in <code class="inline">trainer_concepts</code></td></tr>
+          <tr><td><strong>Non-social domain</strong> (cyber, financial)</td><td>Open vocabularies + catch-all keep domain terms; low <code class="inline">structure_confidence</code> triggers the raw-excerpt floor</td></tr>
+        </tbody>
+      </table>
+
+      <!-- ───────────────────────── CURRENT ───────────────────────── -->
+      <h2 id="current">2. Why fidelity is low today (~40&ndash;50%)</h2>
+      <p>The document currently survives only as theme/flavor because of four structural facts:</p>
+      <table>
+        <thead>
+          <tr><th>Problem</th><th>Where</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>The document is concatenated into one free-text string and sent as <em>both</em> <code class="inline">crisis_type</code> and <code class="inline">context</code>.</td>
+            <td><code class="inline">frontend/src/pages/SocialCrisisWizard.tsx</code> &mdash; <code class="inline">crisisDescription</code> memo (128&ndash;133)</td>
+          </tr>
+          <tr>
+            <td><code class="inline">/upload-document</code> only returns raw text and truncates at 50k chars.</td>
+            <td><code class="inline">server/routes/socialCrisisWarroom.ts</code> (769&ndash;815)</td>
+          </tr>
+          <tr>
+            <td>Generators impose fixed molds: archetype quotas, a fixed 5-phase arc, and an enumerated set of convergence keys.</td>
+            <td><code class="inline">socialCrisisGeneratorService.ts</code> &mdash; <code class="inline">generateNPCsAndFactSheet</code> (331), <code class="inline">generateUnifiedStoryline</code> (630), <code class="inline">generateConvergenceLayer</code> (710)</td>
+          </tr>
+          <tr>
+            <td><code class="inline">NPCPersona</code> has <strong>no faction field</strong>; the 7 factions collapse into generic archetypes.</td>
+            <td><code class="inline">socialCrisisGeneratorService.ts</code> (6&ndash;19)</td>
+          </tr>
+          <tr>
+            <td>Runtime engines are fixed and scenario-agnostic; they never read the document. Escalation/de-escalation triggers are ignored.</td>
+            <td><code class="inline">extremistDoctrine.ts</code>, <code class="inline">extremistHiveService.ts</code>, <code class="inline">antagonistEngineService.ts</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- ───────────────────────── FLOW ───────────────────────── -->
+      <h2 id="flow">3. Target data flow</h2>
+      <div class="mermaid">
+flowchart TD
+  doc[Trainer Document] --> upload["/upload-document (raw text)"]
+  upload --> discover["Pass A: schema-discovery (what framework/concepts is this?)"]
+  discover --> extract["Pass B: /extract-blueprint (chunked map-reduce; standard fields + trainer concepts)"]
+  extract --> bp[(ScenarioBlueprint + coverage + unmapped catch-all + raw excerpts)]
+  noDoc[No document] --> bp
+  bp --> review["Wizard Step: Blueprint Review + Gap Report (edit/lock)"]
+  review --> gen["Blueprint-driven generation (honor extracted, fill gaps)"]
+  gen --> fidelity[Fidelity check + auto-repair]
+  fidelity --> persist["Persist scenario + initial_state.blueprint"]
+  persist --> runtime["Runtime Director + data-driven engines obey blueprint"]
+  bp -.->|"~0% structured coverage"| floor["Raw-excerpt floor = today's behavior (never worse)"]
+      </div>
+
+      <!-- ───────────────────────── WORKED EXAMPLE ───────────────────────── -->
+      <h2 id="example">4. Worked example: the "Interfaith Firestorm" document, traced end-to-end</h2>
+      <p>
+        This traces the trainer's real <em>"Terrorism Crisis: Interfaith Community Information Firestorm"</em> document
+        through every transformation. Each box shows <span class="pill" style="background: rgba(78,161,255,0.12); color: var(--accent); border:1px solid #1f3b5c;">INPUT</span>
+        (what the code receives) and <span class="pill" style="background: rgba(126,231,135,0.12); color: var(--accent-2); border:1px solid var(--add-border);">OUTPUT</span>
+        (the data structure it produces). We follow one faction &mdash; the <strong>Far-Right / Great Replacement</strong>
+        actor &mdash; so you can see the same content carried all the way into a live post.
+      </p>
+
+      <div class="mermaid">
+flowchart LR
+  excerpt["Doc excerpt (Far-Right faction)"] --> bpf["blueprint.factions[6]"]
+  excerpt2["Doc: Time Progression (10 stages)"] --> bpt["blueprint.timeline[]"]
+  excerpt3["Doc: Narrative Mutation Rules"] --> bpm["blueprint.narrative_mutations[]"]
+  bpf --> persona["NPCPersona (faction_id)"]
+  bpt --> inject["SocialInject (trigger_time_minutes)"]
+  bpm --> fact["FactSheetEntry (unconfirmed_claims)"]
+  bpf --> gate["convergence gate (conditions_to_appear)"]
+  persona --> dir["Runtime Director fires staged post"]
+  inject --> dir
+  gate --> dir
+      </div>
+
+      <!-- STEP 1: raw input -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(78,161,255,0.12); color: var(--accent); border:1px solid #1f3b5c;">STEP 1 &middot; INPUT</span> raw text returned by <code class="inline">/upload-document</code> (verbatim excerpt)</div>
+        <pre><code>7. Far-Right Extremist/Great Replacement Theorist
+Emotional Drivers: paranoia; rage at institutions; fear of demographic change;
+  conspiratorial certainty; desire for confrontation; in-group victimhood
+Behaviour Patterns: frame the incident as proof of an existential threat;
+  accuse government, media, and interfaith groups of betrayal; spread conspiracy
+  theories and fabricated statistics; try to recruit angry residents...
+  Refer to https://archive.4plebs.org/pol/
+Typical Narratives: "They claim the incident proves a wider conspiracy by elites."
+Escalation Triggers: unverified rumours about suspect background; political leaders
+  using inflammatory language; police perceived as protecting minority communities
+De-escalation Triggers: swift correction of false claims; strong enforcement against
+  threats and harassment; victim families calling for unity
+AI Behaviour Guidance: represent activity through reports/paraphrases; emphasise
+  conspiratorial distortion and escalation risk
+
+Time Progression: 1. Breaking News  2. Rumour Surge  3. Identity Attribution
+  4. Community Backlash  5. Extremist Exploitation  6. Government/Police Response
+  7. Interfaith Intervention  8. Media Scrutiny  9. Public Safety Anxiety
+  10. Stabilisation or Escalation
+
+Narrative Mutation Rules: False suspect names; Fake screenshots from alleged private
+  chats; Rumours of additional attacks; Claims of police cover-up; Misleading old
+  videos presented as current...</code></pre>
+      </div>
+
+      <!-- STEP 2: Pass A discovery -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(126,231,135,0.12); color: var(--accent-2); border:1px solid var(--add-border);">STEP 2 &middot; OUTPUT</span> Pass A schema-discovery (gpt-5.2, temp 0.2) &rarr; classifies the framework</div>
+        <pre><code>{
+  <span class="str">"detected_framework_kind"</span>: <span class="str">"faction-roster + staged-timeline + escalation-tiers"</span>,
+  <span class="str">"trainer_concepts"</span>: [
+    { <span class="str">"name"</span>: <span class="str">"Bot factions"</span>, <span class="str">"items"</span>: [<span class="str">"Government &amp; Local Media"</span>, <span class="str">"Concerned Residents"</span>,
+        <span class="str">"Anti-Institutional Marxists"</span>, <span class="str">"Conservative Muslims"</span>, <span class="str">"Jihadists"</span>,
+        <span class="str">"Islamophobic Residents"</span>, <span class="str">"Far-Right / Great Replacement"</span>] },
+    { <span class="str">"name"</span>: <span class="str">"Time progression"</span>, <span class="str">"items"</span>: [<span class="str">"Breaking News"</span>, <span class="str">"Rumour Surge"</span>, <span class="str">"..."</span>] },
+    { <span class="str">"name"</span>: <span class="str">"Narrative mutation rules"</span>, <span class="str">"items"</span>: [<span class="str">"false suspect names"</span>, <span class="str">"police cover-up"</span>] }
+  ],
+  <span class="str">"structure_confidence"</span>: <span class="str">0.93</span>   <span class="cmt">// fits a structured shape very well -> NOT the raw-excerpt floor</span>
+}</code></pre>
+      </div>
+
+      <!-- STEP 3: Pass B blueprint -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(126,231,135,0.12); color: var(--accent-2); border:1px solid var(--add-border);">STEP 3 &middot; OUTPUT</span> Pass B extraction (gpt-5.2, temp 0.2-0.3) &rarr; the structured <code class="inline">ScenarioBlueprint</code> (fragment)</div>
+        <pre><code>{
+  <span class="str">"premise"</span>: { <span class="str">"crisis_type"</span>: <span class="str">"terrorism / interfaith information firestorm"</span>, <span class="str">"confidence"</span>: <span class="str">0.95</span> },
+
+  <span class="str">"factions"</span>: [ <span class="cmt">/* ...6 others... */</span>, {
+    <span class="str">"id"</span>: <span class="str">"far_right_great_replacement"</span>,
+    <span class="str">"name"</span>: <span class="str">"Far-Right Extremist / Great Replacement Theorist"</span>,
+    <span class="str">"alignment"</span>: <span class="str">"hostile"</span>,                       <span class="cmt">// open vocabulary, not a hard enum</span>
+    <span class="str">"emotional_drivers"</span>: [<span class="str">"paranoia"</span>, <span class="str">"rage at institutions"</span>, <span class="str">"fear of demographic change"</span>],
+    <span class="str">"behaviour_patterns"</span>: [<span class="str">"frame incident as existential threat"</span>, <span class="str">"accuse institutions of betrayal"</span>,
+        <span class="str">"spread fabricated statistics"</span>, <span class="str">"recruit angry residents"</span>],
+    <span class="str">"typical_narratives"</span>: [<span class="str">"the incident proves an elite conspiracy"</span>, <span class="str">"interfaith dialogue is weakness"</span>],
+    <span class="str">"escalation_triggers"</span>: [<span class="str">"unverified rumours about suspect background"</span>,
+        <span class="str">"inflammatory political language"</span>, <span class="str">"police seen protecting minorities"</span>],
+    <span class="str">"deescalation_triggers"</span>: [<span class="str">"swift correction of false claims"</span>, <span class="str">"victim families calling for unity"</span>],
+    <span class="str">"tone_guidance"</span>: <span class="str">"represent via paraphrase / community reactions; emphasise distortion"</span>,
+    <span class="str">"headcount_hint"</span>: <span class="str">2</span>, <span class="str">"confidence"</span>: <span class="str">0.9</span>
+  }],
+
+  <span class="str">"timeline"</span>: [ { <span class="str">"stage"</span>: <span class="str">"Breaking News"</span>, <span class="str">"order"</span>: <span class="str">1</span> }, <span class="cmt">/* ... */</span>
+                 { <span class="str">"stage"</span>: <span class="str">"Identity Attribution"</span>, <span class="str">"order"</span>: <span class="str">3</span> },
+                 { <span class="str">"stage"</span>: <span class="str">"Extremist Exploitation"</span>, <span class="str">"order"</span>: <span class="str">5</span> }, <span class="cmt">/* ...10 total... */</span> ],
+
+  <span class="str">"escalation_model"</span>: { <span class="str">"tiers"</span>: [
+      { <span class="str">"name"</span>: <span class="str">"Low"</span>, <span class="str">"indicators"</span>: [<span class="str">"confusion"</span>, <span class="str">"early speculation"</span>] },
+      { <span class="str">"name"</span>: <span class="str">"Critical"</span>, <span class="str">"indicators"</span>: [<span class="str">"threats against religious sites"</span>, <span class="str">"mass misinformation cascade"</span>] } ] },
+
+  <span class="str">"narrative_mutations"</span>: [<span class="str">"false suspect names"</span>, <span class="str">"fake private-chat screenshots"</span>,
+      <span class="str">"rumours of additional attacks"</span>, <span class="str">"claims of police cover-up"</span>, <span class="str">"old videos shown as current"</span>],
+
+  <span class="str">"objectives"</span>: [<span class="str">"test de-escalation of polarisation"</span>, <span class="str">"manage misinformation without amplifying"</span>],
+  <span class="str">"participant_decisions"</span>: [<span class="str">"issue joint statement before all facts known?"</span>, <span class="str">"hold vigil vs closed-door dialogue?"</span>],
+
+  <span class="str">"unmapped_directives"</span>: [ {                          <span class="cmt">// NEVER-LOSE catch-all</span>
+      <span class="str">"source_excerpt"</span>: <span class="str">"Refer to https://archive.4plebs.org/pol/"</span>,
+      <span class="str">"note"</span>: <span class="str">"external extremist archive -- NOT fetched; dropped by safety layer, kept only as tone intent"</span> } ],
+  <span class="str">"safety_constraints"</span>: [<span class="str">"no real extremist orgs/slogans"</span>, <span class="str">"paraphrase extremist activity only"</span>, <span class="str">"no violent/operational content"</span>],
+
+  <span class="str">"structure_confidence"</span>: <span class="str">0.93</span>,
+  <span class="str">"coverage"</span>: { <span class="str">"factions"</span>: <span class="str">0.95</span>, <span class="str">"timeline"</span>: <span class="str">1.0</span>, <span class="str">"narrative_mutations"</span>: <span class="str">0.9</span>, <span class="str">"participant_decisions"</span>: <span class="str">0.8</span> }
+}</code></pre>
+        <div class="callout safety" style="margin-top:0"><strong>Safety in action:</strong> the doc's <code class="inline">4chan</code> link and the literal "Great Replacement" slogan do <em>not</em> become content. They land in <code class="inline">unmapped_directives</code> as "intent to represent," and the generators/runtime render only recognizable, non-operational bait.</div>
+      </div>
+
+      <!-- STEP 4: generation outputs -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill edit">STEP 4 &middot; INPUT &rarr; OUTPUT</span> blueprint drives generation in <code class="inline">socialCrisisGeneratorService.ts</code></div>
+
+        <h4>4a &middot; faction &rarr; <code class="inline">NPCPersona</code> (tagged with <code class="inline">faction_id</code>)</h4>
+        <pre><code>{
+  <span class="str">"handle"</span>: <span class="str">"@real_demographics_watch"</span>,
+  <span class="str">"name"</span>: <span class="str">"Heartland Truth Watch"</span>,
+  <span class="str">"type"</span>: <span class="str">"npc_influencer"</span>,
+  <span class="str">"alignment"</span>: <span class="str">"hostile"</span>,
+  <span class="str">"faction_id"</span>: <span class="str">"far_right_great_replacement"</span>,      <span class="cmt">// NEW: faction survives as a first-class link</span>
+  <span class="str">"personality"</span>: <span class="str">"Calm, pseudo-analytical 'just connecting the dots' voice; never swears."</span>,
+  <span class="str">"bias"</span>: <span class="str">"demographic-conspiracy framing"</span>,
+  <span class="str">"follower_count"</span>: <span class="str">38400</span>,
+  <span class="str">"posting_pattern"</span>: <span class="str">"drops 'data' threads after every breaking event; quote-amplifies fear"</span>,
+  <span class="str">"specific_claims"</span>: [<span class="str">"authorities are hiding the suspect's background"</span>,
+      <span class="str">"this is part of a wider plan ordinary people aren't told about"</span>],
+  <span class="str">"tier"</span>: <span class="str">"key"</span>
+}</code></pre>
+
+        <h4>4b &middot; timeline stage &rarr; <code class="inline">SocialInject</code> (mapped onto the 60-min duration)</h4>
+        <pre><code><span class="cmt">// 10 stages across 60 min -> "Identity Attribution" (order 3) lands near T+18</span>
+{
+  <span class="str">"trigger_time_minutes"</span>: <span class="str">18</span>,
+  <span class="str">"type"</span>: <span class="str">"social_post"</span>,
+  <span class="str">"title"</span>: <span class="str">"Stage 3: Identity Attribution"</span>,
+  <span class="str">"content"</span>: <span class="str">"Why won't they release the suspect's name? We all know why. #TellTheTruth"</span>,
+  <span class="str">"severity"</span>: <span class="str">"high"</span>,
+  <span class="str">"inject_scope"</span>: <span class="str">"universal"</span>,
+  <span class="str">"target_teams"</span>: [],
+  <span class="str">"delivery_config"</span>: { <span class="str">"app"</span>: <span class="str">"social_feed"</span>, <span class="str">"platform"</span>: <span class="str">"x_twitter"</span>,
+      <span class="str">"author_handle"</span>: <span class="str">"@real_demographics_watch"</span>, <span class="str">"author_type"</span>: <span class="str">"npc_influencer"</span> }
+}</code></pre>
+
+        <h4>4c &middot; narrative_mutation &rarr; <code class="inline">FactSheet.unconfirmed_claims</code></h4>
+        <pre><code><span class="cmt">// "Claims of police cover-up" becomes a tracked, debunkable falsehood</span>
+{
+  <span class="str">"claim"</span>: <span class="str">"Police are covering up the suspect's identity on official orders"</span>,
+  <span class="str">"status"</span>: <span class="str">"FALSE"</span>,
+  <span class="str">"truth"</span>: <span class="str">"No identity is released because the investigation is ongoing; no cover-up directive exists."</span>,
+  <span class="str">"spread_by"</span>: [<span class="str">"@real_demographics_watch"</span>, <span class="str">"@just_asking_jay"</span>]
+}</code></pre>
+
+        <h4>4d &middot; escalation_trigger &rarr; runtime condition + convergence gate</h4>
+        <pre><code><span class="cmt">// Phase 5 maps the natural-language trigger to measurable signals:</span>
+<span class="cmt">//   "police seen protecting minorities" + "rumours unaddressed"</span>
+<span class="cmt">//        -> conditions: [ misinformation_unaddressed_10min, sentiment_below_30 ]</span>
+{
+  <span class="str">"title"</span>: <span class="str">"Far-right 'cover-up' wedge goes viral"</span>,
+  <span class="str">"type"</span>: <span class="str">"social_post"</span>,
+  <span class="str">"severity"</span>: <span class="str">"critical"</span>,
+  <span class="str">"inject_scope"</span>: <span class="str">"universal"</span>,
+  <span class="str">"conditions_to_appear"</span>: { <span class="str">"threshold"</span>: <span class="str">1</span>,
+      <span class="str">"conditions"</span>: [<span class="str">"misinformation_unaddressed_10min"</span>, <span class="str">"sentiment_below_30"</span>] },
+  <span class="str">"delivery_config"</span>: { <span class="str">"app"</span>: <span class="str">"social_feed"</span>, <span class="str">"author_handle"</span>: <span class="str">"@real_demographics_watch"</span> }
+}</code></pre>
+      </div>
+
+      <!-- STEP 5: runtime -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill new">STEP 5 &middot; RUNTIME</span> the Scenario Director acts on the blueprint each bounded tick</div>
+        <pre><code><span class="cmt">// scenarioDirectorService.ts (gpt-5.2, temp 0.4-0.6, max_completion_tokens 5000)</span>
+<span class="kw">const</span> stage = <span class="fn">currentStage</span>(blueprint.timeline, elapsedMinutes);   <span class="cmt">// e.g. "Extremist Exploitation" @ T+30</span>
+<span class="kw">const</span> state = <span class="kw">await</span> <span class="fn">readSocialState</span>(sessionId);             <span class="cmt">// { escalation_risk: 58, narrative_control: 24 }</span>
+
+<span class="kw">if</span> (<span class="fn">triggersFire</span>(faction.escalation_triggers, state)) {      <span class="cmt">// rumours unaddressed + narrative collapsing</span>
+  <span class="kw">await</span> <span class="fn">dispatchFactionPost</span>(<span class="str">'far_right_great_replacement'</span>, stage, {
+    <span class="cmt">// SAFETY LAYER (non-overridable): recognizable bait only --</span>
+    <span class="cmt">// no real slogans, no 4chan, no "Great Replacement" verbatim, no calls to violence</span>
+    containment: <span class="str">'paraphrase_only'</span>,
+  });
+}</code></pre>
+        <div class="callout note" style="margin-top:0"><strong>Net result:</strong> the trainer's Far-Right faction is now a named persona, a timed stage-3 inject, a tracked false claim, a viral convergence gate, and a live Director-driven actor &mdash; all derived from a few lines of their document, and all bounded by the safety layer.</div>
+      </div>
+
+      <!-- ───────────────────────── WORKED EXAMPLE 2 ───────────────────────── -->
+      <h2 id="example2">5. Worked example 2: a totally different document (Product Recall) &mdash; same pipeline</h2>
+      <p>
+        To prove the pipeline is <strong>not hard-wired to the terrorism doc</strong>, here is a completely different
+        trainer document &mdash; a corporate <em>"Social Media Firestorm: Product Recall Crisis"</em> &mdash; run through the
+        <strong>exact same code</strong>. The domain, the stakeholder taxonomy, and even the on-screen scoring dimensions
+        all change, with <strong>zero code branching</strong>. We follow the <strong>Competitor Brands</strong> stakeholder,
+        because it lands directly on an engine that already exists in the codebase.
+      </p>
+      <div class="callout note">
+        <strong>Why this one is a strong test:</strong> nothing here mentions "factions," "communities," or terrorism. It is
+        organised around <em>stakeholders</em>, <em>cross-stakeholder dynamics</em>, and <em>optional advanced injects</em>.
+        The open-vocabulary schema + Pass A discovery absorb that shape, and the <strong>Competitor Brands</strong> group maps
+        onto the existing <code class="inline">antagonistEngineService.ts</code> (rival-brand pages) &mdash; so the document's
+        intent is realized by code that already ships.
+      </div>
+
+      <div class="mermaid">
+flowchart LR
+  s1["Doc: Competitor Brands stakeholder"] --> f1["blueprint.factions (alignment: opportunist)"]
+  s2["Doc: 7-stage Time Progression"] --> t1["blueprint.timeline[]"]
+  s3["Doc: Optional Advanced Injects"] --> a1["blueprint.advanced_injects (-> trainer_concepts)"]
+  f1 --> org["OrgPageConfig antagonist org (control_mode: ai)"]
+  org --> antag["EXISTING antagonistEngineService runs it live"]
+  t1 --> inj["timed SocialInjects"]
+  s4["Doc: Cross-Stakeholder Dynamics"] --> gate["convergence gates (inter-faction pile-ons)"]
+      </div>
+
+      <!-- STEP 1 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(78,161,255,0.12); color: var(--accent); border:1px solid #1f3b5c;">STEP 1 &middot; INPUT</span> raw text from <code class="inline">/upload-document</code> (verbatim excerpt)</div>
+        <pre><code>5. Competitor Brands
+Profile: Rival companies seeking to benefit from Company X's crisis while managing
+  their own reputational risk. Some act subtly through marketing; others aggressively
+  exploit the situation to gain market share.
+Behaviour Patterns: indirectly contrast their safety standards with Company X; quietly
+  encourage migration to their brand; publicly express sympathy while privately
+  exploiting the crisis; brief journalists anonymously.
+Typical Narratives: "Safety and quality assurance are non-negotiable." / "This is why
+  rigorous testing matters." / "People should reconsider who they trust."
+AI Behaviour Guidance: maintain plausible deniability; avoid defamatory claims; polished
+  corporate language mixed with subtle competitive framing.
+
+Time Progression: 1. Initial Recall Announcement  2. Viral Public Reaction
+  3. Media Amplification  4. Political/Regulatory Scrutiny  5. Investor Anxiety
+  6. Secondary Allegations / Narrative Mutation  7. Stabilisation or Escalation
+
+Cross-Stakeholder Dynamics: Investors criticise leadership incompetence -> Protestors
+  weaponise investor panic -> Loyalists attack protestors -> Influencers amplify conflict.
+
+Optional Advanced Injects: a whistleblower interview; a leaked internal memo; a regulator
+  press conference; a class-action lawsuit announcement.</code></pre>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(126,231,135,0.12); color: var(--accent-2); border:1px solid var(--add-border);">STEP 2 &middot; OUTPUT</span> Pass A schema-discovery &rarr; a different framework, detected automatically</div>
+        <pre><code>{
+  <span class="str">"detected_framework_kind"</span>: <span class="str">"corporate product-recall firestorm; stakeholder-roster + staged-timeline + escalation-tiers"</span>,
+  <span class="str">"trainer_concepts"</span>: [
+    { <span class="str">"name"</span>: <span class="str">"Stakeholders"</span>, <span class="str">"items"</span>: [<span class="str">"Brand Loyalists"</span>, <span class="str">"Anti-Capitalist Protestors"</span>,
+        <span class="str">"Investors"</span>, <span class="str">"Political/Business Influencers"</span>, <span class="str">"Competitor Brands"</span>] },
+    { <span class="str">"name"</span>: <span class="str">"Cross-stakeholder dynamics"</span>, <span class="str">"items"</span>: [<span class="str">"pile-ons"</span>, <span class="str">"hashtag warfare"</span>, <span class="str">"echo chambers"</span>] },
+    { <span class="str">"name"</span>: <span class="str">"Optional advanced injects"</span>, <span class="str">"items"</span>: [<span class="str">"whistleblower"</span>, <span class="str">"leaked memo"</span>,
+        <span class="str">"regulator presser"</span>, <span class="str">"class-action"</span>] }
+  ],
+  <span class="str">"structure_confidence"</span>: <span class="str">0.94</span>
+}</code></pre>
+        <div class="callout fallback" style="margin-top:0"><strong>No new code path:</strong> "Stakeholders" is just this trainer's word for what the schema calls <code class="inline">factions</code>; Pass A records both so nothing is forced or lost.</div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(126,231,135,0.12); color: var(--accent-2); border:1px solid var(--add-border);">STEP 3 &middot; OUTPUT</span> the <code class="inline">ScenarioBlueprint</code> (fragment) &mdash; note the open <code class="inline">alignment</code> values</div>
+        <pre><code>{
+  <span class="str">"premise"</span>: { <span class="str">"crisis_type"</span>: <span class="str">"product recall / consumer-safety firestorm"</span>, <span class="str">"confidence"</span>: <span class="str">0.96</span> },
+
+  <span class="str">"factions"</span>: [
+    { <span class="str">"id"</span>: <span class="str">"competitor_brands"</span>, <span class="str">"name"</span>: <span class="str">"Competitor Brands"</span>,
+      <span class="str">"alignment"</span>: <span class="str">"opportunist"</span>,            <span class="cmt">// NOT in the terrorism enum -- open vocabulary handles it</span>
+      <span class="str">"behaviour_patterns"</span>: [<span class="str">"contrast own safety standards"</span>, <span class="str">"encourage brand migration"</span>,
+          <span class="str">"sympathy in public, exploit in private"</span>, <span class="str">"brief journalists anonymously"</span>],
+      <span class="str">"typical_narratives"</span>: [<span class="str">"rigorous testing matters"</span>, <span class="str">"reconsider who you trust"</span>],
+      <span class="str">"escalation_triggers"</span>: [<span class="str">"weak Company X messaging"</span>, <span class="str">"long recall timelines"</span>],
+      <span class="str">"deescalation_triggers"</span>: [<span class="str">"fear of regulatory scrutiny spreading"</span>, <span class="str">"backlash against opportunism"</span>],
+      <span class="str">"tone_guidance"</span>: <span class="str">"plausible deniability; polished corporate; no defamatory claims"</span>, <span class="str">"headcount_hint"</span>: <span class="str">2</span> },
+    { <span class="str">"id"</span>: <span class="str">"anti_capitalist"</span>, <span class="str">"alignment"</span>: <span class="str">"hostile"</span>, <span class="cmt">/* boycott organisers */</span> },
+    { <span class="str">"id"</span>: <span class="str">"investors"</span>, <span class="str">"alignment"</span>: <span class="str">"analyst"</span>, <span class="cmt">/* financial panic/speculation */</span> },
+    { <span class="str">"id"</span>: <span class="str">"brand_loyalists"</span>, <span class="str">"alignment"</span>: <span class="str">"defender"</span> }
+  ],
+
+  <span class="str">"timeline"</span>: [ <span class="str">"Initial Recall Announcement"</span>, <span class="str">"Viral Public Reaction"</span>, <span class="str">"Media Amplification"</span>,
+      <span class="str">"Political/Regulatory Scrutiny"</span>, <span class="str">"Investor Anxiety"</span>, <span class="str">"Secondary Allegations"</span>, <span class="str">"Stabilisation/Escalation"</span> ],
+
+  <span class="str">"narrative_mutations"</span>: [<span class="str">"fake screenshots"</span>, <span class="str">"alleged insider leaks"</span>, <span class="str">"claims of cover-up"</span>,
+      <span class="str">"comparisons to unrelated scandals"</span>],  <span class="cmt">// "not all malicious -- some from confusion"</span>
+
+  <span class="str">"advanced_injects"</span>: [<span class="str">"whistleblower interview"</span>, <span class="str">"leaked internal memo"</span>, <span class="str">"regulator presser"</span>, <span class="str">"class-action"</span>],
+  <span class="str">"cross_faction_dynamics"</span>: [<span class="str">"investors -> protestors weaponise panic -> loyalists attack protestors -> influencers amplify"</span>],
+
+  <span class="str">"crisis_cluster"</span>: <span class="str">"preventable"</span>,   <span class="cmt">// Coombs SCCT: alleged concealment/negligence -> high org responsibility</span>
+  <span class="str">"structure_confidence"</span>: <span class="str">0.94</span>,
+  <span class="str">"coverage"</span>: { <span class="str">"factions"</span>: <span class="str">0.95</span>, <span class="str">"timeline"</span>: <span class="str">1.0</span>, <span class="str">"advanced_injects"</span>: <span class="str">0.9</span> }
+}</code></pre>
+      </div>
+
+      <!-- STEP 4 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill edit">STEP 4 &middot; INPUT &rarr; OUTPUT</span> blueprint drives generation</div>
+
+        <h4>4a &middot; Competitor Brand &rarr; <code class="inline">OrgPageConfig</code> antagonist org (drives the EXISTING engine)</h4>
+        <pre><code><span class="cmt">// generateOrgPageConfig builds a rival page; control_mode:'ai' + role:'antagonist'</span>
+<span class="cmt">// is exactly what antagonistEngineService.ts looks for at runtime.</span>
+{
+  <span class="str">"org_key"</span>: <span class="str">"rival_safefirst"</span>,
+  <span class="str">"display_name"</span>: <span class="str">"SafeFirst Home Goods"</span>,
+  <span class="str">"is_primary"</span>: <span class="kw">false</span>,
+  <span class="str">"role"</span>: <span class="str">"antagonist"</span>,
+  <span class="str">"control_mode"</span>: <span class="str">"ai"</span>,
+  <span class="str">"stance"</span>: <span class="str">"opportunistic competitor: sympathy in public, contrast our safety record, nudge defections"</span>,
+  <span class="str">"x_twitter"</span>: { <span class="str">"page_name"</span>: <span class="str">"SafeFirst"</span>, <span class="str">"page_handle"</span>: <span class="str">"@SafeFirstHG"</span>, <span class="str">"follower_count"</span>: <span class="str">120000</span> }
+}</code></pre>
+        <div class="callout note" style="margin-top:0"><strong>Maps to shipping code:</strong> at runtime this page is driven by the <code class="inline">MOVES</code> already defined in <code class="inline">antagonistEngineService.ts</code> (17-24): <code class="inline">concerned_competitor</code>, <code class="inline">call_the_switch</code>, <code class="inline">insinuate</code> &mdash; the trainer's "plausible deniability / nudge migration" intent, verbatim in behavior.</div>
+
+        <h4>4b &middot; crisis type &rarr; relabeled scoring dimensions + <code class="inline">crisis_cluster</code></h4>
+        <pre><code><span class="cmt">// generateConvergenceLayer relabels the 4 dimensions to fit THIS crisis (771-776)</span>
+{
+  <span class="str">"public_trust"</span>: <span class="str">"Consumer Trust"</span>,
+  <span class="str">"community_safety"</span>: <span class="str">"Brand Perception"</span>,
+  <span class="str">"narrative_control"</span>: <span class="str">"Media Narrative"</span>,
+  <span class="str">"escalation_risk"</span>: <span class="str">"Boycott Risk"</span>           <span class="cmt">// terrorism doc instead got "Community Safety" / "Protest Risk"</span>
+}</code></pre>
+
+        <h4>4c &middot; Anti-Capitalist faction &rarr; <code class="inline">NPCPersona</code> + boycott inject</h4>
+        <pre><code>{ <span class="str">"handle"</span>: <span class="str">"@accountability_now"</span>, <span class="str">"name"</span>: <span class="str">"People Over Profit"</span>, <span class="str">"type"</span>: <span class="str">"npc_public"</span>,
+  <span class="str">"alignment"</span>: <span class="str">"hostile"</span>, <span class="str">"faction_id"</span>: <span class="str">"anti_capitalist"</span>,
+  <span class="str">"specific_claims"</span>: [<span class="str">"executives knew and hid this"</span>, <span class="str">"profit over people"</span>],
+  <span class="str">"posting_pattern"</span>: <span class="str">"coordinated hashtags, boycott calls, quote-dunks on the brand"</span> }</code></pre>
+
+        <h4>4d &middot; Optional Advanced Inject &rarr; scheduled <code class="inline">SocialInject</code> (leaked memo as email)</h4>
+        <pre><code>{
+  <span class="str">"trigger_time_minutes"</span>: <span class="str">34</span>,                       <span class="cmt">// Stage 6: Secondary Allegations</span>
+  <span class="str">"type"</span>: <span class="str">"email_inbound"</span>,
+  <span class="str">"title"</span>: <span class="str">"Leaked internal memo surfaces"</span>,
+  <span class="str">"content"</span>: <span class="str">"A document alleged to be an internal QA memo is circulating online..."</span>,
+  <span class="str">"severity"</span>: <span class="str">"critical"</span>, <span class="str">"requires_response"</span>: <span class="kw">true</span>,
+  <span class="str">"delivery_config"</span>: { <span class="str">"app"</span>: <span class="str">"email"</span>, <span class="str">"email_category"</span>: <span class="str">"general"</span>, <span class="str">"from_name"</span>: <span class="str">"Investigations Desk"</span> }
+}</code></pre>
+
+        <h4>4e &middot; Cross-Stakeholder Dynamics &rarr; convergence gate (inter-faction pile-on)</h4>
+        <pre><code><span class="cmt">// "Investors panic -> Protestors weaponise it -> Loyalists counter-attack"</span>
+{
+  <span class="str">"title"</span>: <span class="str">"Investor sell-off talk fuels boycott surge"</span>,
+  <span class="str">"type"</span>: <span class="str">"social_post"</span>, <span class="str">"severity"</span>: <span class="str">"high"</span>, <span class="str">"inject_scope"</span>: <span class="str">"universal"</span>,
+  <span class="str">"conditions_to_appear"</span>: { <span class="str">"threshold"</span>: <span class="str">1</span>, <span class="str">"conditions"</span>: [<span class="str">"sentiment_below_30"</span>, <span class="str">"rally_call_active"</span>] },
+  <span class="str">"delivery_config"</span>: { <span class="str">"app"</span>: <span class="str">"social_feed"</span>, <span class="str">"author_handle"</span>: <span class="str">"@accountability_now"</span> }
+}</code></pre>
+      </div>
+
+      <!-- STEP 5 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill new">STEP 5 &middot; RUNTIME</span> live behavior &mdash; mostly existing engines, now blueprint-fed</div>
+        <pre><code><span class="cmt">// Per 30s tick (injectSchedulerService): time injects -> computeSocialState -> conditions</span>
+<span class="cmt">//   -> antagonist engine -> extremist hive -> Scenario Director</span>
+
+<span class="fn">runAntagonistEngine</span>(sessionId)   <span class="cmt">// EXISTS today: drives @SafeFirstHG with concerned_competitor / call_the_switch</span>
+<span class="fn">runScenarioDirector</span>(sessionId)   <span class="cmt">// NEW: advances 7-stage timeline, fires advanced injects, evaluates fuzzy triggers</span>
+
+<span class="cmt">// Note: for THIS doc the extremist hive is largely dormant (no demographic fault line);</span>
+<span class="cmt">// the antagonist engine carries the load -- the document's "Competitor Brands" intent.</span></code></pre>
+        <div class="callout fallback" style="margin-top:0"><strong>Same code, different scenario:</strong> the terrorism doc lit up the extremist hive; the recall doc lights up the antagonist engine and the financial/boycott dimensions. No conditional "if terrorism / if recall" anywhere &mdash; the blueprint simply points the same machinery at different content.</div>
+      </div>
+
+      <!-- ───────────────────────── WORKED EXAMPLE 3 ───────────────────────── -->
+      <h2 id="example3">6. Worked example 3: Professional Misconduct &mdash; and a deliberately imperfect document</h2>
+      <p>
+        A third document &mdash; <em>"Social Media Firestorm: Professional Misconduct"</em> &mdash; an internal
+        leadership-scandal crisis. It introduces an <strong>employee/insider</strong> ontology (anonymous testimonies,
+        leaks, walkouts) that neither prior doc had. It also &mdash; usefully &mdash; contains a <strong>real authoring
+        mistake</strong>: its "Time Progression" was copy-pasted from the Product Recall scenario ("Initial Recall
+        Announcement"...), which makes no sense for a misconduct case. We follow the <strong>Anonymous Employee</strong>
+        stakeholder, and show how the pipeline <strong>catches and surfaces that inconsistency</strong> instead of silently
+        shipping the wrong stage names.
+      </p>
+      <div class="callout warn" style="background: rgba(255,180,84,0.06); border: 1px solid #6b4a1f;">
+        <strong>The headline this example demonstrates:</strong> robustness to <em>flawed</em> trainer documents. Pass A
+        flags the timeline/premise mismatch, the Gap Report (Phase 2) shows it to the trainer with a suggested fix, and
+        nothing wrong gets baked in silently.
+      </div>
+
+      <div class="mermaid">
+flowchart LR
+  emp["Doc: Anonymous Employee stakeholder"] --> f["blueprint.factions (alignment: insider)"]
+  badtl["Doc: Time Progression (recall labels - WRONG)"] --> warn["Pass A consistency warning"]
+  warn --> gap["Gap Report: trainer confirms corrected timeline"]
+  f --> persona["confessional NPCPersona + whistleblower inject"]
+  gap --> tl["blueprint.timeline (misconduct-appropriate)"]
+  f --> conv["convergence gate: activists vs 'cancel culture' loyalists"]
+      </div>
+
+      <!-- STEP 1 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(78,161,255,0.12); color: var(--accent); border:1px solid #1f3b5c;">STEP 1 &middot; INPUT</span> raw text from <code class="inline">/upload-document</code> (verbatim excerpt, including the copy-paste error)</div>
+        <pre><code>1. Anonymous Employee
+Profile: Current and former staff reacting to the allegations. Some feel vindicated,
+  others fearful, conflicted, or defensive of leadership.
+Behaviour Patterns: share personal experiences anonymously; leak internal information;
+  debate organisational culture publicly; coordinate collective statements or petitions.
+Typical Narratives: "Everyone internally knew." / "HR protected leadership." /
+  "Not everyone's experience was negative."
+
+Time Progression:               <span class="cmt">&lt;-- NOTE: these labels are wrong (pasted from the Recall doc)</span>
+  1. Initial Recall Announcement  2. Viral Public Reaction  3. Media Amplification
+  4. Political/Regulatory Scrutiny  5. Investor Anxiety  6. Secondary Allegations
+  7. Stabilisation or Escalation
+
+Narrative Mutation Rules: anonymous testimonies; alleged internal screenshots; rumoured
+  NDAs or settlements; claims of retaliation; edited clips of executive statements.
+
+Optional Advanced Injects: a leaked HR complaint; anonymous Glassdoor-style allegations;
+  a journalist expose; a poorly received executive apology video; a virtual walkout.</code></pre>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(126,231,135,0.12); color: var(--accent-2); border:1px solid var(--add-border);">STEP 2 &middot; OUTPUT</span> Pass A discovery &rarr; detects the domain AND the inconsistency</div>
+        <pre><code>{
+  <span class="str">"detected_framework_kind"</span>: <span class="str">"corporate leadership-misconduct firestorm; stakeholder-roster + staged-timeline"</span>,
+  <span class="str">"trainer_concepts"</span>: [
+    { <span class="str">"name"</span>: <span class="str">"Stakeholders"</span>, <span class="str">"items"</span>: [<span class="str">"Anonymous Employee"</span>, <span class="str">"Social Justice Activists"</span>,
+        <span class="str">"Investors"</span>, <span class="str">"Political/Business Influencers"</span>, <span class="str">"Competitor Brands"</span>] },
+    { <span class="str">"name"</span>: <span class="str">"Optional advanced injects"</span>, <span class="str">"items"</span>: [<span class="str">"leaked HR complaint"</span>, <span class="str">"Glassdoor allegations"</span>,
+        <span class="str">"journalist expose"</span>, <span class="str">"apology video"</span>, <span class="str">"virtual walkout"</span>] }
+  ],
+  <span class="str">"warnings"</span>: [ {                                <span class="cmt">// consistency check -- the copy-paste error caught</span>
+      <span class="str">"field"</span>: <span class="str">"timeline"</span>,
+      <span class="str">"issue"</span>: <span class="str">"stage labels reference a PRODUCT RECALL ('Initial Recall Announcement'); premise is leadership misconduct"</span>,
+      <span class="str">"suggested_fix"</span>: [<span class="str">"Allegations Surface"</span>, <span class="str">"Viral Public Reaction"</span>, <span class="str">"Media Amplification"</span>,
+          <span class="str">"Calls for Resignation"</span>, <span class="str">"Board / Investor Scrutiny"</span>, <span class="str">"Secondary Allegations"</span>, <span class="str">"Stabilisation or Escalation"</span>] } ],
+  <span class="str">"structure_confidence"</span>: <span class="str">0.9</span>
+}</code></pre>
+        <div class="callout warn" style="margin-top:0; background: rgba(255,180,84,0.06); border: 1px solid #6b4a1f;"><strong>Cold extraction earns its keep here:</strong> because extraction runs at temp 0.2 (faithful, not creative), it notices the labels contradict the premise rather than "smoothing over" the mismatch &mdash; and raises it instead of guessing.</div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill" style="background: rgba(126,231,135,0.12); color: var(--accent-2); border:1px solid var(--add-border);">STEP 3 &middot; OUTPUT</span> blueprint (fragment) + how the warning reaches the trainer</div>
+        <pre><code>{
+  <span class="str">"premise"</span>: { <span class="str">"crisis_type"</span>: <span class="str">"senior-leadership professional-misconduct firestorm"</span>, <span class="str">"confidence"</span>: <span class="str">0.95</span> },
+
+  <span class="str">"factions"</span>: [
+    { <span class="str">"id"</span>: <span class="str">"anonymous_employee"</span>, <span class="str">"name"</span>: <span class="str">"Anonymous Employee"</span>,
+      <span class="str">"alignment"</span>: <span class="str">"insider"</span>,               <span class="cmt">// another open-vocabulary value, again no code change</span>
+      <span class="str">"behaviour_patterns"</span>: [<span class="str">"anonymous confessional posts"</span>, <span class="str">"leak internal info"</span>,
+          <span class="str">"coordinate petitions"</span>, <span class="str">"form internal factions"</span>],
+      <span class="str">"typical_narratives"</span>: [<span class="str">"everyone internally knew"</span>, <span class="str">"HR protected leadership"</span>,
+          <span class="str">"not everyone's experience was negative"</span>],
+      <span class="str">"escalation_triggers"</span>: [<span class="str">"evidence of concealment"</span>, <span class="str">"retaliation allegations"</span>, <span class="str">"leadership minimising"</span>],
+      <span class="str">"deescalation_triggers"</span>: [<span class="str">"independent investigation"</span>, <span class="str">"employee listening sessions"</span>],
+      <span class="str">"tone_guidance"</span>: <span class="str">"emotionally personal; some fearful, some highly activist"</span> },
+    { <span class="str">"id"</span>: <span class="str">"social_justice_activists"</span>, <span class="str">"alignment"</span>: <span class="str">"hostile"</span> },
+    { <span class="str">"id"</span>: <span class="str">"leadership_loyalists"</span>, <span class="str">"alignment"</span>: <span class="str">"defender"</span>, <span class="cmt">/* the "cancel culture" counter-voice */</span> },
+    { <span class="str">"id"</span>: <span class="str">"investors"</span>, <span class="str">"alignment"</span>: <span class="str">"analyst"</span> },
+    { <span class="str">"id"</span>: <span class="str">"competitor_brands"</span>, <span class="str">"alignment"</span>: <span class="str">"opportunist"</span> }
+  ],
+
+  <span class="str">"timeline"</span>: <span class="str">null</span>,                          <span class="cmt">// withheld pending trainer confirmation (see warning)</span>
+  <span class="str">"timeline_suggested"</span>: [<span class="str">"Allegations Surface"</span>, <span class="str">"Viral Public Reaction"</span>, <span class="str">"Media Amplification"</span>,
+      <span class="str">"Calls for Resignation"</span>, <span class="str">"Board / Investor Scrutiny"</span>, <span class="str">"Secondary Allegations"</span>, <span class="str">"Stabilisation or Escalation"</span>],
+
+  <span class="str">"narrative_mutations"</span>: [<span class="str">"anonymous testimonies"</span>, <span class="str">"rumoured NDAs/settlements"</span>, <span class="str">"retaliation claims"</span>,
+      <span class="str">"edited executive clips"</span>, <span class="str">"institutional cover-up claims"</span>],
+  <span class="str">"advanced_injects"</span>: [<span class="str">"leaked HR complaint"</span>, <span class="str">"secretly recorded meeting"</span>, <span class="str">"journalist expose"</span>,
+      <span class="str">"executive apology video"</span>, <span class="str">"virtual walkout"</span>],
+  <span class="str">"crisis_cluster"</span>: <span class="str">"preventable"</span>,
+  <span class="str">"coverage"</span>: { <span class="str">"factions"</span>: <span class="str">0.95</span>, <span class="str">"timeline"</span>: <span class="str">0.4</span>, <span class="str">"narrative_mutations"</span>: <span class="str">0.9</span> }   <span class="cmt">// timeline low on purpose -> needs review</span>
+}</code></pre>
+        <div class="callout note" style="margin-top:0"><strong>Gap Report (Phase 2 UI):</strong> the trainer sees <em>"Timeline looks copied from a product recall &mdash; use suggested misconduct stages?"</em> with one click to accept <code class="inline">timeline_suggested</code>, edit it, or keep the original. Low <code class="inline">coverage.timeline</code> guarantees it cannot slip through unreviewed.</div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill edit">STEP 4 &middot; INPUT &rarr; OUTPUT</span> generation (after the trainer accepts the corrected timeline)</div>
+
+        <h4>4a &middot; Anonymous Employee &rarr; confessional <code class="inline">NPCPersona</code> + whistleblower inject</h4>
+        <pre><code>{ <span class="str">"handle"</span>: <span class="str">"@throwaway_ex_staff"</span>, <span class="str">"name"</span>: <span class="str">"former insider"</span>, <span class="str">"type"</span>: <span class="str">"npc_public"</span>,
+  <span class="str">"alignment"</span>: <span class="str">"insider"</span>, <span class="str">"faction_id"</span>: <span class="str">"anonymous_employee"</span>,
+  <span class="str">"personality"</span>: <span class="str">"anonymous, raw, conflicted; 'I shouldn't be posting this but...'"</span>,
+  <span class="str">"specific_claims"</span>: [<span class="str">"HR sat on complaints for years"</span>], <span class="str">"posting_pattern"</span>: <span class="str">"confessional threads, late-night"</span> }</code></pre>
+
+        <h4>4b &middot; crisis type &rarr; relabeled dimensions (note <code class="inline">Employee Morale</code>)</h4>
+        <pre><code>{
+  <span class="str">"public_trust"</span>: <span class="str">"Public Trust"</span>,
+  <span class="str">"community_safety"</span>: <span class="str">"Employee Morale"</span>,        <span class="cmt">// the internal dimension this crisis turns on</span>
+  <span class="str">"narrative_control"</span>: <span class="str">"Media Narrative"</span>,
+  <span class="str">"escalation_risk"</span>: <span class="str">"Resignation Pressure"</span>
+}</code></pre>
+
+        <h4>4c &middot; Optional Advanced Inject &rarr; scheduled <code class="inline">SocialInject</code> (poorly received apology video)</h4>
+        <pre><code>{
+  <span class="str">"trigger_time_minutes"</span>: <span class="str">40</span>,
+  <span class="str">"type"</span>: <span class="str">"social_post"</span>,
+  <span class="str">"title"</span>: <span class="str">"CEO apology video lands badly"</span>,
+  <span class="str">"content"</span>: <span class="str">"Watch this 'apology' and tell me it doesn't feel scripted. #DoBetter"</span>,
+  <span class="str">"severity"</span>: <span class="str">"high"</span>, <span class="str">"requires_response"</span>: <span class="kw">true</span>,
+  <span class="str">"delivery_config"</span>: { <span class="str">"app"</span>: <span class="str">"social_feed"</span>, <span class="str">"platform"</span>: <span class="str">"x_twitter"</span>, <span class="str">"author_type"</span>: <span class="str">"npc_influencer"</span> }
+}</code></pre>
+
+        <h4>4d &middot; Cross-stakeholder dynamic &rarr; convergence gate (activists vs "cancel culture" loyalists)</h4>
+        <pre><code>{
+  <span class="str">"title"</span>: <span class="str">"'Cancel culture' backlash collides with resignation demands"</span>,
+  <span class="str">"type"</span>: <span class="str">"social_post"</span>, <span class="str">"severity"</span>: <span class="str">"high"</span>, <span class="str">"inject_scope"</span>: <span class="str">"universal"</span>,
+  <span class="str">"conditions_to_appear"</span>: { <span class="str">"threshold"</span>: <span class="str">1</span>, <span class="str">"conditions"</span>: [<span class="str">"rally_call_active"</span>, <span class="str">"sentiment_below_30"</span>] }
+}</code></pre>
+      </div>
+
+      <!-- STEP 5 -->
+      <div class="panel">
+        <div class="filemeta"><span class="pill new">STEP 5 &middot; RUNTIME</span> live behavior</div>
+        <pre><code><span class="fn">runScenarioDirector</span>(sessionId)   <span class="cmt">// advances the CORRECTED timeline; fires whistleblower + walkout injects</span>
+<span class="fn">runAntagonistEngine</span>(sessionId)   <span class="cmt">// competitor brands quietly poach talent / "ethical employer" framing</span>
+<span class="cmt">// Extremist hive: dormant (no demographic fault line) -- correctly silent for this crisis.</span></code></pre>
+        <div class="callout fallback" style="margin-top:0"><strong>Three docs, one engine:</strong> terrorism &rarr; hive-led; product recall &rarr; antagonist/financial-led; misconduct &rarr; insider/governance-led with a corrected timeline. Same code, same schema, same safety layer &mdash; the only thing that changed each time was the blueprint extracted from the document.</div>
+      </div>
+
+      <!-- ───────────────────────── PHASE 0a ───────────────────────── -->
+      <div class="phase" id="p0a">
+        <span class="tag">PHASE 0a</span> <span class="badge ok" style="margin-left:8px">do this first</span>
+        <h2 style="border:none; margin:6px 0 4px; padding:0">Schema corpus validation (before locking the schema)</h2>
+        <p>
+          The draft schema was reverse-engineered from <strong>one sample</strong> (the terrorism/interfaith doc).
+          Before locking it, gather <strong>5&ndash;10 real trainer docs</strong> written by different people in different
+          styles and confirm the blueprint fields are a genuine <strong>superset</strong> of how they all think &mdash;
+          not a transcription of one scenario.
+        </p>
+        <ul>
+          <li>Produce a <strong>field-coverage matrix</strong>: which sample doc populates which field, and what falls into the catch-all.</li>
+          <li>Surface missing concepts (inject-timeline-centric, decision-tree, verbatim character sheets, rubric-first, non-social domains).</li>
+          <li>This de-risks every later phase; skipping it bakes one trainer's style into the product.</li>
+        </ul>
+      </div>
+
+      <!-- ───────────────────────── PHASE 0 ───────────────────────── -->
+      <div class="phase" id="p0">
+        <span class="tag">PHASE 0</span>
+        <h2 style="border:none; margin:6px 0 4px; padding:0">Foundation: Blueprint schema + plumbing</h2>
+        <p>Define a <strong>format-agnostic, extensible</strong> intermediate representation (not a 1:1 of the sample doc), add a DB column, and make personas faction-aware.</p>
+
+        <div class="filemeta"><span class="pill new">NEW FILE</span> server/services/blueprint/blueprintTypes.ts</div>
+        <pre class="diff"><code><span class="kw">export interface</span> <span class="typ">BlueprintFaction</span> {
+  id: <span class="typ">string</span>;
+  name: <span class="typ">string</span>;                          <span class="cmt">// e.g. "Far-Right / Great Replacement"</span>
+<span class="del">  alignment: 'hostile' | 'amplifier' | 'defender' | 'media' | 'authority' | 'wildcard';</span>
+<span class="add">  alignment: <span class="typ">string</span>;   <span class="cmt">// OPEN vocabulary (suggested: hostile|amplifier|defender|media|authority|wildcard) -- never a hard enum</span></span>
+  emotional_drivers: <span class="typ">string</span>[];
+  behaviour_patterns: <span class="typ">string</span>[];
+  typical_narratives: <span class="typ">string</span>[];
+  escalation_triggers: <span class="typ">string</span>[];
+  deescalation_triggers: <span class="typ">string</span>[];
+  tone_guidance: <span class="typ">string</span>;
+  headcount_hint?: <span class="typ">number</span>;
+  confidence: <span class="typ">number</span>;                    <span class="cmt">// 0..1 extraction confidence</span>
+}
+
+<span class="kw">export interface</span> <span class="typ">ScenarioBlueprint</span> {
+  <span class="cmt">// --- standard sections (all best-effort / optional) ---</span>
+  premise: { summary: <span class="typ">string</span>; crisis_type: <span class="typ">string</span>; setting: <span class="typ">string</span>; confidence: <span class="typ">number</span> };
+  factions: <span class="typ">BlueprintFaction</span>[];
+  timeline: { stage: <span class="typ">string</span>; description: <span class="typ">string</span>; order: <span class="typ">number</span> }[];
+  escalation_model: { tiers: { name: <span class="typ">string</span>; indicators: <span class="typ">string</span>[] }[] };
+  narrative_mutations: <span class="typ">string</span>[];     <span class="cmt">// false suspect names, fake screenshots, etc.</span>
+  objectives: <span class="typ">string</span>[];
+  participant_decisions: <span class="typ">string</span>[];
+  ground_rules: <span class="typ">string</span>[];
+  safety_constraints: <span class="typ">string</span>[];
+<span class="add">  <span class="cmt">// --- discovery + never-lose (Rule 2) ---</span></span>
+<span class="add">  detected_framework_kind?: <span class="typ">string</span>;        <span class="cmt">// from Pass A: e.g. "inject-timeline", "decision-tree"</span></span>
+<span class="add">  trainer_concepts?: { name: <span class="typ">string</span>; items: <span class="typ">string</span>[] }[]; <span class="cmt">// the trainer's OWN organizing concepts</span></span>
+<span class="add">  unmapped_directives: { source_excerpt: <span class="typ">string</span>; note: <span class="typ">string</span> }[]; <span class="cmt">// catch-all: nothing dropped silently</span></span>
+<span class="add">  raw_excerpts?: <span class="typ">Record</span>&lt;<span class="typ">string</span>, <span class="typ">string</span>&gt;;   <span class="cmt">// original text kept for the raw-excerpt floor</span></span>
+<span class="add">  structure_confidence: <span class="typ">number</span>;            <span class="cmt">// 0..1: how well the doc fit ANY structured shape</span></span>
+  coverage: <span class="typ">Record</span>&lt;<span class="typ">string</span>, <span class="typ">number</span>&gt;;     <span class="cmt">// per-section completeness 0..1 -> drives fallback</span>
+}</code></pre>
+
+        <div class="filemeta"><span class="pill new">NEW FILE</span> migrations/192_scenario_blueprint.sql</div>
+        <pre class="diff"><code><span class="cmt">-- Mirrors the ADD COLUMN IF NOT EXISTS pattern from migration 122.</span>
+<span class="kw">ALTER TABLE</span> scenarios <span class="kw">ADD COLUMN IF NOT EXISTS</span> blueprint JSONB <span class="kw">DEFAULT</span> NULL;
+
+<span class="cmt">-- A copy is ALSO nested under initial_state.blueprint at persist time so the</span>
+<span class="cmt">-- runtime engines (which already read scenarios.initial_state) need no new query.</span></code></pre>
+
+        <div class="filemeta"><span class="pill edit">EDIT</span> server/services/socialCrisisGeneratorService.ts (lines 6&ndash;19)</div>
+        <pre class="diff"><code><span class="kw">export interface</span> <span class="typ">NPCPersona</span> {
+  handle: <span class="typ">string</span>;
+  name: <span class="typ">string</span>;
+  type: <span class="str">'npc_public'</span> | <span class="str">'npc_media'</span> | <span class="str">'npc_politician'</span> | <span class="str">'npc_influencer'</span>;
+  personality: <span class="typ">string</span>;
+  bias: <span class="typ">string</span>;
+  <span class="cmt">// ...existing fields...</span>
+  tier?: <span class="str">'key'</span> | <span class="str">'background'</span>;
+<span class="add">  faction_id?: <span class="typ">string</span>;   <span class="cmt">// NEW: ties a persona to a Blueprint faction (first-class, queryable)</span></span>
+<span class="add">  alignment?: <span class="typ">string</span>;   <span class="cmt">// NEW: hostile|amplifier|defender|media|authority|wildcard</span></span>
+}</code></pre>
+      </div>
+
+      <!-- ───────────────────────── PHASE 1 ───────────────────────── -->
+      <div class="phase" id="p1">
+        <span class="tag">PHASE 1</span>
+        <h2 style="border:none; margin:6px 0 4px; padding:0">Structured extraction (ingestion) &mdash; two-pass, format-agnostic</h2>
+        <p>
+          <strong>Pass A (schema-discovery)</strong> classifies the framework and lists the trainer's own concepts
+          before any mapping. <strong>Pass B (chunked map-reduce)</strong> extracts against both the standard fields
+          and the discovered concepts, beating the 50k cap that currently truncates the tail. Anything unplaceable
+          goes to the catch-all; nothing is dropped.
+        </p>
+
+        <div class="filemeta"><span class="pill new">NEW FILE</span> server/services/blueprint/blueprintExtractionService.ts</div>
+        <pre class="diff"><code><span class="kw">export async function</span> <span class="fn">extractBlueprint</span>(rawText: <span class="typ">string</span>): <span class="typ">Promise</span>&lt;<span class="typ">ScenarioBlueprint</span>&gt; {
+  <span class="kw">if</span> (!rawText.<span class="fn">trim</span>()) <span class="kw">return</span> <span class="fn">emptyBlueprint</span>();   <span class="cmt">// no doc -> empty -> generators fill everything</span>
+
+<span class="add">  <span class="cmt">// PASS A - schema discovery (one cheap whole-doc call): what KIND of framework is</span></span>
+<span class="add">  <span class="cmt">// this, and what are the trainer's OWN organizing concepts? Adapts to their shape.</span></span>
+<span class="add">  <span class="kw">const</span> discovery = <span class="kw">await</span> <span class="fn">discoverFramework</span>(rawText);   <span class="cmt">// -> { kind, concepts[] }</span></span>
+
+  <span class="cmt">// PASS B / MAP: split into ~6k-char overlapping chunks; extract against BOTH the</span>
+  <span class="cmt">// standard fields AND discovery.concepts, in parallel.</span>
+  <span class="kw">const</span> chunks = <span class="fn">chunkText</span>(rawText, <span class="str">6000</span>, <span class="str">400</span>);
+  <span class="kw">const</span> partials = <span class="kw">await</span> <span class="typ">Promise</span>.<span class="fn">all</span>(chunks.<span class="fn">map</span>((c) =&gt; <span class="fn">extractChunk</span>(c, discovery)));
+
+  <span class="cmt">// REDUCE: merge factions by name, union triggers/narratives, order the timeline.</span>
+  <span class="kw">const</span> merged = <span class="fn">mergeBlueprints</span>(partials, discovery);
+<span class="add">  <span class="cmt">// NEVER-LOSE: anything unplaceable -> unmapped_directives; keep originals in raw_excerpts.</span></span>
+<span class="add">  merged.unmapped_directives = <span class="fn">collectUnmapped</span>(partials);</span>
+<span class="add">  merged.raw_excerpts = <span class="fn">keyExcerpts</span>(rawText);</span>
+
+  <span class="cmt">// SCORE: coverage drives honor-vs-generate; structure_confidence drives the floor.</span>
+  merged.coverage = <span class="fn">scoreCoverage</span>(merged);
+<span class="add">  merged.structure_confidence = <span class="fn">scoreStructure</span>(merged);  <span class="cmt">// low -> raw-excerpt floor downstream</span></span>
+  <span class="kw">return</span> merged;
+}</code></pre>
+
+        <div class="filemeta"><span class="pill new">NEW ROUTE</span> server/routes/socialCrisisWarroom.ts (reuses the existing aiJobs async/poll pattern at 34&ndash;122)</div>
+        <pre class="diff"><code>router.<span class="fn">post</span>(<span class="str">'/extract-blueprint'</span>, requireAuth, <span class="kw">async</span> (req, res) =&gt; {
+  <span class="kw">const</span> { text } = req.body;                       <span class="cmt">// raw text from /upload-document (may be empty)</span>
+  <span class="kw">const</span> jobId = <span class="str">`bp_</span>${<span class="typ">Date</span>.<span class="fn">now</span>()}<span class="str">`</span>;
+  aiJobs.<span class="fn">set</span>(jobId, { status: <span class="str">'generating'</span>, startedAt: <span class="typ">Date</span>.<span class="fn">now</span>() });
+  res.<span class="fn">json</span>({ job_id: jobId, status: <span class="str">'generating'</span> });
+
+  <span class="kw">void</span> (<span class="kw">async</span> () =&gt; {
+    <span class="kw">try</span> {
+      <span class="kw">const</span> blueprint = <span class="kw">await</span> <span class="fn">extractBlueprint</span>(text || <span class="str">''</span>);
+      aiJobs.<span class="fn">set</span>(jobId, { status: <span class="str">'completed'</span>, data: blueprint, startedAt: <span class="typ">Date</span>.<span class="fn">now</span>() });
+    } <span class="kw">catch</span> (err) {
+      aiJobs.<span class="fn">set</span>(jobId, { status: <span class="str">'failed'</span>, error: <span class="str">'Blueprint extraction failed'</span>, startedAt: <span class="typ">Date</span>.<span class="fn">now</span>() });
+    }
+  })();
+});</code></pre>
+        <div class="callout note"><strong>Note:</strong> <code class="inline">/upload-document</code> stays unchanged (still returns raw text for flavor quoting). Extraction is a distinct, cacheable step.</div>
+        <div class="callout fallback"><strong>Raw-excerpt floor (graceful degradation):</strong> if <code class="inline">structure_confidence</code> is very low (an alien/novel format), generation still receives <code class="inline">raw_excerpts</code> as context &rarr; worst case equals today's behavior, never worse.</div>
+      </div>
+
+      <!-- ───────────────────────── PHASE 2 ───────────────────────── -->
+      <div class="phase" id="p2">
+        <span class="tag">PHASE 2</span>
+        <h2 style="border:none; margin:6px 0 4px; padding:0">Blueprint review + edit UI (trainer trust)</h2>
+        <p>Insert a visible step between <em>Setup</em> and <em>Building</em> showing the extracted blueprint with confidence badges, editable fields, lock toggles, and an overall coverage score.</p>
+        <div class="callout note">
+          <strong>Gap Report (the safety net for novel formats):</strong> prominently surface
+          <code class="inline">detected_framework_kind</code>, <code class="inline">structure_confidence</code>, the
+          <code class="inline">trainer_concepts</code> we found, and every <code class="inline">unmapped_directives</code> item
+          ("we could not fit these N things &mdash; review, re-map, or accept"). Let the trainer promote an unmapped item
+          into a structured field inline. The trainer becomes the adapter for anything the schema cannot reach.
+        </div>
+
+        <div class="filemeta"><span class="pill edit">EDIT</span> frontend/src/pages/SocialCrisisWizard.tsx (lines 53&ndash;59)</div>
+        <pre class="diff"><code><span class="kw">const</span> STEP_LABELS: <span class="typ">Record</span>&lt;<span class="typ">number</span>, <span class="typ">string</span>&gt; = {
+  <span class="str">1</span>: <span class="str">'Scenario Setup'</span>,
+<span class="add">  <span class="str">3</span>: <span class="str">'Blueprint Review'</span>,   <span class="cmt">// NEW step</span></span>
+  <span class="str">2</span>: <span class="str">'Building'</span>,
+  <span class="str">7</span>: <span class="str">'Review &amp; Compile'</span>,
+};
+<span class="del">const VISIBLE_STEPS = [1, 2, 7];</span>
+<span class="add">const VISIBLE_STEPS = [1, 3, 2, 7];   <span class="cmt">// Setup -> Blueprint Review -> Building -> Compile</span></span></code></pre>
+
+        <div class="filemeta"><span class="pill edit">EDIT</span> frontend/src/pages/SocialCrisisWizard.tsx &mdash; <code class="inline">goNext</code> (929&ndash;942)</div>
+        <pre class="diff"><code><span class="cmt">// Setup no longer jumps straight to generateAll(); it extracts first.</span>
+<span class="kw">async function</span> <span class="fn">goNext</span>() {
+  <span class="kw">if</span> (step === <span class="str">1</span>) {
+<span class="del">    saveDraftState(2); setStep(2); generateAll();</span>
+<span class="add">    <span class="kw">await</span> saveDraftState(<span class="str">3</span>); setStep(<span class="str">3</span>);</span>
+<span class="add">    <span class="kw">const</span> bp = <span class="kw">await</span> extractBlueprint(uploadedDocText);  <span class="cmt">// empty doc -> empty blueprint, skip-through</span></span>
+<span class="add">    setBlueprint(bp);</span>
+    <span class="kw">return</span>;
+  }
+<span class="add">  <span class="kw">if</span> (step === <span class="str">3</span>) { <span class="kw">await</span> saveDraftState(<span class="str">2</span>); setStep(<span class="str">2</span>); generateAll(blueprint); <span class="kw">return</span>; }</span>
+}</code></pre>
+        <p style="margin-top:4px">Also: add a render branch near 1598&ndash;1600, thread <code class="inline">blueprint</code> through <code class="inline">buildDraftInput</code> (215&ndash;260) and the resume effect (297&ndash;365), and add a <code class="inline">case</code> for step 3 in <code class="inline">canProceed</code> (369&ndash;381).</p>
+        <div class="legend">
+          <span><span class="sw" style="background:var(--add-border)"></span> added line</span>
+          <span><span class="sw" style="background:var(--del-border)"></span> removed line</span>
+        </div>
+      </div>
+
+      <!-- ───────────────────────── PHASE 3 ───────────────────────── -->
+      <div class="phase" id="p3">
+        <span class="tag">PHASE 3</span>
+        <h2 style="border:none; margin:6px 0 4px; padding:0">Blueprint-driven generation (the gen-time 90%)</h2>
+        <p>Refactor generators to accept the blueprint and prefer it &mdash; generating only uncovered fields.</p>
+
+        <div class="filemeta"><span class="pill edit">EDIT</span> socialCrisisGeneratorService.ts &mdash; <code class="inline">generateNPCsAndFactSheet</code> (331)</div>
+        <pre class="diff"><code><span class="kw">export async function</span> <span class="fn">generateNPCsAndFactSheet</span>(
+  crisisType, context, country, location, orgName,
+<span class="add">  blueprint?: <span class="typ">ScenarioBlueprint</span>,   <span class="cmt">// NEW</span></span>
+) {
+<span class="add">  <span class="cmt">// HONOR: if the doc defined factions, generate personas PER FACTION using its</span></span>
+<span class="add">  <span class="cmt">// drivers/narratives + headcount_hint, and tag each persona with faction_id.</span></span>
+<span class="add">  <span class="kw">if</span> (blueprint?.factions?.length &amp;&amp; blueprint.coverage.factions &gt;= <span class="str">0.5</span>) {</span>
+<span class="add">    <span class="kw">return</span> <span class="fn">generatePersonasFromFactions</span>(blueprint, country, orgName);</span>
+<span class="add">  }</span>
+  <span class="cmt">// FALL BACK: original fixed-archetype-quota path (unchanged) when no/thin doc.</span>
+  <span class="kw">const</span> keyResult = <span class="kw">await</span> <span class="fn">callAI</span>(<span class="cmt">/* ...existing prompt... */</span>);
+  <span class="cmt">// ...</span>
+}</code></pre>
+
+        <p>Other generator edits follow the same honor-vs-fallback shape:</p>
+        <table>
+          <thead><tr><th>Function</th><th>Blueprint-driven change</th></tr></thead>
+          <tbody>
+            <tr><td><code class="inline">generateUnifiedStoryline</code> (630) / team storylines (524, 601)</td><td>Replace the fixed 5-phase arc with the blueprint <code class="inline">timeline</code> stages mapped proportionally onto <code class="inline">duration</code>; bucket injects into those stages; schedule <code class="inline">narrative_mutations</code> as misinformation injects.</td></tr>
+            <tr><td><code class="inline">generateConvergenceLayer</code> (710)</td><td>Honor blueprint <code class="inline">objectives</code> and <code class="inline">dimension_labels</code>; build convergence gates from blueprint triggers (mapped to condition keys &mdash; see Phase 5).</td></tr>
+            <tr><td><code class="inline">generateNPCsAndFactSheet</code> fact sheet</td><td>Seed <code class="inline">unconfirmed_claims</code> from <code class="inline">narrative_mutations</code>; honor blueprint <code class="inline">crisis_cluster</code>.</td></tr>
+          </tbody>
+        </table>
+
+        <div class="filemeta"><span class="pill edit">EDIT</span> socialCrisisGeneratorService.ts &mdash; <code class="inline">assemblePayload</code> initial_state (1488&ndash;1507)</div>
+        <pre class="diff"><code>      initial_state: {
+        npc_personas: npcs,
+        fact_sheet: factSheet,
+        affected_communities: communities,
+        <span class="cmt">// ...existing keys...</span>
+        dimension_labels: dimensionLabels || { <span class="cmt">/* defaults */</span> },
+<span class="add">        ...(blueprint ? { blueprint } : {}),   <span class="cmt">// NEW: runtime engines read it here</span></span>
+      },</code></pre>
+
+        <div class="filemeta"><span class="pill edit">EDIT</span> server/services/socialCrisisPersistenceService.ts (insert 27&ndash;37)</div>
+        <pre class="diff"><code>    .<span class="fn">insert</span>({
+      title: scenario.title,
+      description: scenario.description,
+      <span class="cmt">// ...existing columns...</span>
+      initial_state: scenario.initial_state,
+<span class="add">      blueprint: scenario.blueprint ?? <span class="kw">null</span>,   <span class="cmt">// NEW top-level column (queryable)</span></span>
+      created_by: createdBy,
+    })</code></pre>
+      </div>
+
+      <!-- ───────────────────────── PHASE 4 ───────────────────────── -->
+      <div class="phase" id="p4">
+        <span class="tag">PHASE 4</span>
+        <h2 style="border:none; margin:6px 0 4px; padding:0">Fidelity validation loop</h2>
+        <p>After generation, compare the output against the blueprint section-by-section and auto-repair the weak sections. This is how you <em>measure</em> (and therefore promise) the 90%.</p>
+
+        <div class="filemeta"><span class="pill new">NEW FILE</span> server/services/blueprint/fidelityCheckService.ts</div>
+        <pre class="diff"><code><span class="kw">export async function</span> <span class="fn">checkFidelity</span>(
+  blueprint: <span class="typ">ScenarioBlueprint</span>,
+  generated: { personas: <span class="typ">NPCPersona</span>[]; injects: <span class="typ">SocialInject</span>[]; objectives: <span class="typ">ObjectiveDef</span>[] },
+): <span class="typ">Promise</span>&lt;<span class="typ">FidelityReport</span>&gt; {
+  <span class="kw">const</span> sections = {
+    factions: <span class="fn">scoreFactions</span>(blueprint.factions, generated.personas),   <span class="cmt">// e.g. 7/7 present</span>
+    timeline: <span class="fn">scoreTimeline</span>(blueprint.timeline, generated.injects),      <span class="cmt">// e.g. 9/10 stages</span>
+    triggers: <span class="fn">scoreTriggers</span>(blueprint, generated.injects),            <span class="cmt">// e.g. 6/8 wired</span>
+    objectives: <span class="fn">scoreObjectives</span>(blueprint.objectives, generated.objectives),
+<span class="add">    unmapped: <span class="fn">scoreUnmappedHonored</span>(blueprint.unmapped_directives, generated), <span class="cmt">// novel-format content kept accountable</span></span>
+  };
+  <span class="kw">const</span> overall = <span class="fn">weightedAverage</span>(sections);
+  <span class="kw">return</span> { overall, sections, weak: <span class="fn">below</span>(sections, <span class="str">0.7</span>) };  <span class="cmt">// "weak" -> re-prompt only those</span>
+}</code></pre>
+        <p style="margin-top:4px">Surface <code class="inline">overall</code> in the <code class="inline">/compile</code> result and the Blueprint Review UI; re-prompt only sections in <code class="inline">weak</code>.</p>
+      </div>
+
+      <!-- ───────────────────────── PHASE 5 ───────────────────────── -->
+      <div class="phase" id="p5">
+        <span class="tag">PHASE 5</span> <span class="badge warn" style="margin-left:8px">heaviest lift &mdash; touches the live tick</span>
+        <h2 style="border:none; margin:6px 0 4px; padding:0">Runtime fidelity (live engines obey custom rules)</h2>
+        <p>This closes the gap from ~75% to ~90% on the <em>dynamic</em> rules &mdash; the per-faction escalation/de-escalation triggers and stage progression that the fixed engines ignore today.</p>
+
+        <h3>5a. Data-drive the extremist doctrine</h3>
+        <div class="filemeta"><span class="pill edit">EDIT</span> server/services/extremistDoctrine.ts</div>
+        <pre class="diff"><code><span class="cmt">// EXTREMIST_CELL and GRIEVANCE_FRAMES become DEFAULTS, not the only option.</span>
+<span class="kw">export function</span> <span class="fn">resolveCell</span>(blueprint?: <span class="typ">ScenarioBlueprint</span>): <span class="typ">ExtremistPersona</span>[] {
+<span class="add">  <span class="kw">const</span> hostiles = blueprint?.factions?.<span class="fn">filter</span>((f) =&gt; f.alignment === <span class="str">'hostile'</span>) ?? [];</span>
+<span class="add">  <span class="kw">if</span> (hostiles.length) <span class="kw">return</span> hostiles.<span class="fn">map</span>(factionToPersona);  <span class="cmt">// distinct factions render distinctly</span></span>
+  <span class="kw">return</span> EXTREMIST_CELL;   <span class="cmt">// fallback: built-in generic cell</span>
+}</code></pre>
+
+        <h3>5b. Map document triggers to runtime condition keys</h3>
+        <div class="filemeta"><span class="pill edit">EDIT</span> server/services/conditionEvaluatorService.ts (registry 387&ndash;438)</div>
+        <pre class="diff"><code><span class="cmt">// At extraction time, each natural-language trigger is mapped to the nearest</span>
+<span class="cmt">// measurable signal. Common cases resolve to existing/derived keys here:</span>
+<span class="add">conditionRegistry.blueprint_trigger = (ctx, arg) =&gt;</span>
+<span class="add">  <span class="fn">evalBlueprintSignal</span>(<span class="fn">getSocialState</span>(ctx), arg);  <span class="cmt">// arg = mapped signal id</span></span>
+
+<span class="cmt">// Fuzzy triggers that cannot be mapped deterministically are handled by the</span>
+<span class="cmt">// Scenario Director (5c) instead of the pure evaluator.</span></code></pre>
+
+        <h3>5c. Scenario Director (the stage/trigger brain)</h3>
+        <div class="filemeta"><span class="pill new">NEW FILE</span> server/services/blueprint/scenarioDirectorService.ts</div>
+        <pre class="diff"><code><span class="kw">export async function</span> <span class="fn">runScenarioDirector</span>(sessionId, elapsedMinutes) {
+  <span class="kw">const</span> blueprint = <span class="kw">await</span> <span class="fn">loadBlueprint</span>(sessionId);     <span class="cmt">// from initial_state.blueprint</span>
+  <span class="kw">if</span> (!blueprint) <span class="kw">return</span>;                              <span class="cmt">// no doc -> Director is a no-op</span>
+  <span class="kw">if</span> (!<span class="fn">cadenceElapsed</span>(sessionId, elapsedMinutes)) <span class="kw">return</span>; <span class="cmt">// bounded to cap cost</span>
+
+  <span class="kw">const</span> state = <span class="kw">await</span> <span class="fn">readSocialState</span>(sessionId);
+  <span class="kw">const</span> stage = <span class="fn">advanceStage</span>(blueprint.timeline, elapsedMinutes, state); <span class="cmt">// the doc's stages</span>
+  <span class="kw">const</span> fired = <span class="fn">evaluateFuzzyTriggers</span>(blueprint, state);          <span class="cmt">// LLM-judged triggers</span>
+  <span class="kw">await</span> <span class="fn">dispatchFactionActions</span>(sessionId, stage, fired);          <span class="cmt">// faction-appropriate posts/mutations</span>
+}</code></pre>
+
+        <div class="filemeta"><span class="pill edit">EDIT</span> server/services/injectSchedulerService.ts (alongside the engine calls at 998&ndash;1020)</div>
+        <pre class="diff"><code>      <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runAntagonistEngine</span>(session.id, elapsedMinutes); } <span class="kw">catch</span> { <span class="cmt">/* ... */</span> }
+      <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runExtremistHive</span>(session.id, elapsedMinutes); } <span class="kw">catch</span> { <span class="cmt">/* ... */</span> }
+<span class="add">      <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runScenarioDirector</span>(session.id, elapsedMinutes); } <span class="kw">catch</span> (e) {</span>
+<span class="add">        logger.<span class="fn">warn</span>({ err: e, sessionId: session.id }, <span class="str">'Scenario director error'</span>);</span>
+<span class="add">      }</span></code></pre>
+        <p style="margin-top:4px">The Director reads <code class="inline">initial_state.blueprint</code> + live <code class="inline">social_state</code> + recent <code class="inline">session_events</code> (the same sources the existing engines use), so no new query plumbing is required.</p>
+      </div>
+
+      <!-- ───────────────────────── LLM BUDGET ───────────────────────── -->
+      <h2 id="llm">LLM model &amp; token budget (finalized)</h2>
+      <div class="callout note">
+        <strong>One model throughout: <code class="inline">gpt-5.2</code>.</strong> Every new LLM step uses it (matching the
+        existing <code class="inline">callAI</code> default and the hive/antagonist/NPC-reaction engines) &mdash; no
+        <code class="inline">gpt-4o-mini</code>/<code class="inline">gpt-5.1</code> split, for quality and consistency.
+        <strong><code class="inline">max_completion_tokens</code> &ge; 5,000 on every call</strong> so nothing truncates
+        mid-JSON on a dense document. The cap is a ceiling, not a target &mdash; billing is on actual output tokens, so a
+        generous cap removes truncation risk without adding cost. All calls keep
+        <code class="inline">response_format: { type: 'json_object' }</code>.
+      </div>
+      <table>
+        <thead><tr><th>Step</th><th>Model</th><th>temperature</th><th><code class="inline">max_completion_tokens</code></th></tr></thead>
+        <tbody>
+          <tr><td>Pass A &mdash; schema discovery</td><td><code class="inline">gpt-5.2</code></td><td>0.2</td><td>5,000</td></tr>
+          <tr><td>Pass B &mdash; chunked extraction</td><td><code class="inline">gpt-5.2</code></td><td>0.2&ndash;0.3</td><td>8,000 / chunk</td></tr>
+          <tr><td>Trigger &rarr; condition mapping</td><td><code class="inline">gpt-5.2</code></td><td>0</td><td>5,000</td></tr>
+          <tr><td>Fidelity judge</td><td><code class="inline">gpt-5.2</code></td><td>0.1</td><td>6,000</td></tr>
+          <tr><td>Fidelity auto-repair</td><td><code class="inline">gpt-5.2</code></td><td>0.7&ndash;0.9 (reuse generator temps)</td><td>8,000</td></tr>
+          <tr><td>Scenario Director (runtime)</td><td><code class="inline">gpt-5.2</code></td><td>0.4&ndash;0.6</td><td>5,000</td></tr>
+        </tbody>
+      </table>
+      <div class="callout warn" style="background: rgba(255,180,84,0.06); border: 1px solid #6b4a1f;">
+        <strong>Temperature inversion (important).</strong> Extraction/judge steps run <strong>cold</strong> (0&ndash;0.3)
+        because they transcribe the document faithfully; only generation/repair stay creative (0.7&ndash;0.9). High
+        temperature during extraction would hallucinate factions/triggers the trainer never wrote and undermine the
+        &ge;90% fidelity goal.
+      </div>
+      <div class="callout note">
+        <strong>Centralize the config.</strong> The repo currently hardcodes model names across ~15 services. Add one
+        <code class="inline">env</code>-driven <code class="inline">BLUEPRINT_MODELS</code>/token map (Phase 0 plumbing) so
+        model and limit tuning is a one-line change.
+      </div>
+
+      <!-- ───────────────────────── LEGACY MODEL RETIREMENT ───────────────────────── -->
+      <h2 id="legacy">Legacy model retirement (separate workstream)</h2>
+      <div class="callout warn" style="background: rgba(255,180,84,0.06); border:1px solid #6b4a1f;">
+        <strong>Ships on its own branch, not bundled with the blueprint feature.</strong> Goal: standardize on the latest
+        models everywhere &mdash; <strong>text on <code class="inline">gpt-5.2</code>, images on <code class="inline">gpt-image-2</code></strong>
+        &mdash; and retire the legacy text callers. This is a repo-wide migration touching shipped War Room / RTS / AAR /
+        grading features, so it gets per-feature regression testing.
+      </div>
+
+      <h4>Inventory: what gets migrated</h4>
+      <table>
+        <thead><tr><th>Current model</th><th>Where</th><th>Action</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">gpt-4o-mini</code> (cheap analysis/classification)</td><td><code class="inline">aiService.ts</code> (~10+ inline calls), <code class="inline">hospitalCapacityService.ts</code>, <code class="inline">decisionCasualtyEffectsService.ts</code>, <code class="inline">demoAIAgentService.ts</code>, <code class="inline">environmentalConsistencyService.ts</code></td><td>&rarr; <code class="inline">gpt-5.2</code></td></tr>
+          <tr><td><code class="inline">gpt-5.1</code></td><td><code class="inline">warroomResearchService.ts</code>, <code class="inline">warroomAiService.ts</code>, <code class="inline">rtsCasualtyService.ts</code>, <code class="inline">rtsSceneEnrichmentService.ts</code></td><td>&rarr; <code class="inline">gpt-5.2</code></td></tr>
+          <tr><td><code class="inline">gpt-4</code> (prose, not JSON)</td><td><code class="inline">aarAiService.ts</code></td><td>&rarr; <code class="inline">gpt-5.2</code> (keep prose response format)</td></tr>
+          <tr><td><code class="inline">gpt-image-2</code></td><td><code class="inline">mediaGenerationService.ts</code> (<code class="inline">/v1/images/generations</code>)</td><td><span class="badge ok">No change</span> &mdash; already standard</td></tr>
+          <tr><td><code class="inline">grok-imagine-video</code> (xAI)</td><td><code class="inline">mediaGenerationService.ts</code></td><td><span class="badge warn">Out of scope</span> &mdash; different provider; decide separately</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Approach</h4>
+      <ol class="steps">
+        <li>Build the shared client first (<code class="inline">openAiJson()</code> / <code class="inline">openAiText()</code> / <code class="inline">openAiImage()</code>): model defaults to <code class="inline">gpt-5.2</code> but overridable; normalize <code class="inline">max_tokens</code> &rarr; <code class="inline">max_completion_tokens</code>; add a <code class="inline">responseFormat</code> option (JSON vs prose for AAR). Keep <code class="inline">temperature</code>/token limits per-call (grading stays temp 0.1).</li>
+        <li>Migrate call sites <strong>in batches by feature</strong>, deleting each inline <code class="inline">gpt-4o-mini</code>/<code class="inline">5.1</code>/<code class="inline">4</code> fetch as it moves to the client.</li>
+        <li>Re-test each feature's downstream <strong>parsers and scoring</strong> after the swap.</li>
+      </ol>
+
+      <div class="callout safety" style="background: rgba(255,123,114,0.06); border:1px solid #6b2b27;">
+        <strong>Risks to verify, not assume:</strong>
+        <ul style="margin:8px 0 0">
+          <li><strong>Output recalibration</strong> &mdash; parsers/score thresholds were tuned to <code class="inline">gpt-4o-mini</code>; JSON shape/verbosity can shift.</li>
+          <li><strong>Cost + latency</strong> &mdash; several legacy calls fire <strong>per scheduler tick</strong> (sentiment, grading) for every live session; uniform <code class="inline">gpt-5.2</code> raises both. Decide per-call whether to accept it or keep a fast tier.</li>
+          <li><strong>Prose callers</strong> &mdash; AAR returns prose and must NOT be forced to <code class="inline">json_object</code>.</li>
+        </ul>
+      </div>
+
+      <!-- ───────────────────────── ROLLOUT SAFETY ───────────────────────── -->
+      <h2 id="rollout">Rollout safety (will it break anything?)</h2>
+      <p>
+        The plan is additive-plus-fallback by design, but it modifies three high-traffic areas, so "non-breaking"
+        depends on the guardrails below being implemented &mdash; not assumed.
+      </p>
+      <table>
+        <thead><tr><th>Change</th><th>Blast radius</th><th>Risk</th></tr></thead>
+        <tbody>
+          <tr><td>New files + <code class="inline">/extract-blueprint</code> route + nullable migration</td><td>Isolated</td><td><span class="badge ok">None</span> &mdash; additive</td></tr>
+          <tr><td><code class="inline">NPCPersona</code> optional fields</td><td>Shared type</td><td><span class="badge ok">Low</span> &mdash; optional = backward-compatible</td></tr>
+          <tr><td>Wizard <code class="inline">goNext</code> re-route</td><td>Every scenario build (incl. no-doc)</td><td><span class="badge warn">Medium</span></td></tr>
+          <tr><td>Generator refactor (Phase 3)</td><td>Critical path of every build</td><td><span class="badge warn">Medium</span> &mdash; main regression surface</td></tr>
+          <tr><td>Scenario Director (Phase 5)</td><td>The live 30s tick, all sessions</td><td><span class="badge warn">Highest</span></td></tr>
+        </tbody>
+      </table>
+
+      <p>The scheduler already isolates each engine in its own try/catch, which is what protects the riskiest part:</p>
+      <pre><code>      <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runAntagonistEngine</span>(session.id, elapsedMinutes); }
+      <span class="kw">catch</span> (antagErr) { logger.<span class="fn">warn</span>({ err: antagErr, sessionId: session.id }, <span class="str">'Antagonist engine error'</span>); }
+
+      <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runExtremistHive</span>(session.id, elapsedMinutes); }
+      <span class="kw">catch</span> (hiveErr) { logger.<span class="fn">warn</span>({ err: hiveErr, sessionId: session.id }, <span class="str">'Extremist hive error'</span>); }
+
+<span class="add">      <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runScenarioDirector</span>(session.id, elapsedMinutes); }   <span class="cmt">// NEW: same isolation</span></span>
+<span class="add">      <span class="kw">catch</span> (dirErr) { logger.<span class="fn">warn</span>({ err: dirErr, sessionId: session.id }, <span class="str">'Scenario director error'</span>); }</span></code></pre>
+
+      <div class="callout fallback">
+        <strong>The guardrails that make "won't break anything" true (must be real, not aspirational):</strong>
+        <ol style="margin:8px 0 0">
+          <li><strong>Master switch:</strong> feature-flag the entire document path (default OFF). Dormant code = unchanged behavior until enabled.</li>
+          <li><strong>No-regression test:</strong> assert an empty-document build produces today's generation path byte-for-byte; Director is a no-op with no blueprint.</li>
+          <li><strong>Director fully guarded:</strong> <code class="inline">sim_mode === 'social_media'</code> AND <code class="inline">blueprint != null</code> AND its own try/catch (above).</li>
+          <li><strong>Migration ordering:</strong> apply migration 192 before deploying code that writes <code class="inline">blueprint</code> &mdash; or nest it under <code class="inline">initial_state.blueprint</code> (schemaless jsonb) to remove the schema dependency.</li>
+          <li><strong>Phase order = risk order:</strong> ship Phases 0-3 (no runtime risk) first; Phase 5 (live tick) last, behind the flag.</li>
+        </ol>
+      </div>
+      <div class="callout safety" style="background: rgba(255,123,114,0.06); border:1px solid #6b2b27;">
+        <strong>The single most dangerous shortcut:</strong> folding the ~37-file <code class="inline">callAI</code> consolidation into this
+        feature. That refactor touches existing antagonist/hive/ambient/social-gen behavior &mdash; keep it in a
+        <strong>separate PR</strong> with its own tests. Ship the feature behind its flag first.
+      </div>
+
+      <!-- ───────────────────────── ENGINEERING STANDARDS ───────────────────────── -->
+      <h2 id="standards">Engineering standards (so it reads as senior-written, not AI-generated)</h2>
+      <p>
+        Non-negotiable for every phase. The codebase already contains the anti-patterns below; the plan must
+        <strong>consolidate, not propagate</strong> them. The single highest-leverage rule is the first one.
+      </p>
+      <table>
+        <thead><tr><th>Standard</th><th>What it means in this codebase</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>One LLM client, not a fifth copy</strong></td>
+            <td><code class="inline">callAI</code> is duplicated across <code class="inline">socialCrisisGeneratorService.ts</code>, <code class="inline">antagonistEngineService.ts</code>, <code class="inline">extremistHiveService.ts</code>, and <code class="inline">ambientContentService.ts</code>. Add a single shared <code class="inline">openAiJson()</code> (<code class="inline">server/services/blueprint/llmClient.ts</code>) wired to the centralized model/token config; all blueprint code calls it. Stretch: migrate the existing four in a cleanup PR.</td>
+          </tr>
+          <tr>
+            <td><strong>Validate boundaries with zod; do not cast</strong></td>
+            <td>Define <code class="inline">ScenarioBlueprintSchema</code> and <code class="inline">.parse()</code> every LLM JSON output. No <code class="inline">as Record&lt;string, unknown&gt;</code> on blueprint data (the repo's current habit). Matches the zod validation already in the routes.</td>
+          </tr>
+          <tr>
+            <td><strong>Resilience on new LLM calls</strong></td>
+            <td>Pass B uses concurrency-limited parallelism (<code class="inline">p-limit</code>), retry-with-backoff, and tolerant JSON parsing &mdash; a bad chunk becomes a coverage gap, never a crash. No raw <code class="inline">Promise.all</code> over un-retried fetches.</td>
+          </tr>
+          <tr>
+            <td><strong>Named constants, not magic numbers</strong></td>
+            <td>Chunk size/overlap, coverage thresholds, stage-to-minute mapping, and Director cadence live in config &mdash; not inline literals like the doc's illustrative <code class="inline">6000</code>/<code class="inline">0.5</code>/<code class="inline">T+18</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>Small, single-purpose functions</strong></td>
+            <td>Do not extend the repo's 1,000+ line files / mega-functions (<code class="inline">processSession</code>, <code class="inline">generateNPCsAndFactSheet</code>). New modules stay focused.</td>
+          </tr>
+          <tr>
+            <td><strong>Comments explain why, not what</strong></td>
+            <td>No line-by-line narration. The snippets in this doc are intentionally over-commented for teaching; shipped code is sparse.</td>
+          </tr>
+          <tr>
+            <td><strong>Match existing conventions</strong></td>
+            <td>Reuse the <code class="inline">aiJobs</code> async/poll pattern, the logger, route zod-validation, and existing types rather than inventing parallel idioms.</td>
+          </tr>
+          <tr>
+            <td><strong>Runtime hygiene</strong></td>
+            <td>The Scenario Director uses a <code class="inline">session_events</code>-keyed cadence gate like the hive/antagonist engines; the blueprint is read once per tick, not per sub-call.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Why the existing clones differ &mdash; and why that does not justify them</h3>
+      <p>
+        The OpenAI endpoint is hit directly in <strong>~37 files</strong>. Four of them define a near-identical
+        <code class="inline">callAI</code> helper (all <code class="inline">gpt-5.2</code>, all <code class="inline">json_object</code>).
+        Read side by side they are byte-for-byte the same except the <strong>default argument values</strong> and the log string:
+      </p>
+      <table>
+        <thead><tr><th>File</th><th>default <code class="inline">maxTokens</code></th><th>default <code class="inline">temperature</code></th><th>why the default differs</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">socialCrisisGeneratorService.ts</code> (286-323)</td><td>8000</td><td>0.7</td><td>large structured generation (NPCs, storyline)</td></tr>
+          <tr><td><code class="inline">ambientContentService.ts</code> (491-525)</td><td>2000</td><td>0.85</td><td>medium ambient filler posts</td></tr>
+          <tr><td><code class="inline">antagonistEngineService.ts</code> (26-60)</td><td>1200</td><td>0.95</td><td>one short rival post</td></tr>
+          <tr><td><code class="inline">extremistHiveService.ts</code> (74-108)</td><td>900</td><td>0.95</td><td>one short bait post</td></tr>
+        </tbody>
+      </table>
+      <div class="callout note">
+        <strong>The token need is real; the duplication is not justified by it.</strong> <code class="inline">maxTokens</code> and
+        <code class="inline">temperature</code> are <em>already function parameters</em> &mdash; so "this process needs fewer
+        tokens" only changes a <strong>default value</strong>, never the HTTP block. One shared client taking those as
+        arguments covers all four cases with zero loss. And since <code class="inline">max_completion_tokens</code> is a ceiling
+        billed on actual output, a smaller limit is not even a cost win &mdash; you simply pass the value you want.
+      </div>
+      <p>Some variation across the wider call sites <em>is</em> legitimate and a unified client must support it via options, not copies:</p>
+      <ul>
+        <li><strong>Model by task</strong> &mdash; a legacy layer (<code class="inline">aiService.ts</code>, <code class="inline">hospitalCapacityService.ts</code>) uses <code class="inline">gpt-4o-mini</code> for cheap analysis; research uses <code class="inline">gpt-5.1</code>; images use <code class="inline">gpt-image-2</code>; AAR uses <code class="inline">gpt-4</code>.</li>
+        <li><strong>Param-name drift</strong> &mdash; the legacy layer uses <code class="inline">max_tokens</code>; the newer <code class="inline">gpt-5.2</code> layer uses <code class="inline">max_completion_tokens</code>. A shared client normalizes this.</li>
+        <li><strong>Response shape</strong> &mdash; some force <code class="inline">json_object</code>, others expect prose (AAR). Needs a <code class="inline">responseFormat</code> option.</li>
+      </ul>
+      <div class="callout safety" style="background: rgba(255,123,114,0.06); border:1px solid #6b2b27;">
+        <strong>The real smell (not token needs):</strong> the copy-pasted HTTP plumbing, <strong>inconsistent error handling</strong>
+        (some return null silently, some log), and <strong>no retry/timeout/backoff anywhere</strong> &mdash; every clone is
+        fire-once, so a transient 429/500 silently degrades the feature. Consolidating into one
+        <code class="inline">openAiJson()</code> / <code class="inline">openAiText()</code> client (model + tokens + temperature +
+        responseFormat as options) fixes all of that in one place.
+      </div>
+
+      <!-- ───────────────────────── DEFINITION OF DONE ───────────────────────── -->
+      <h2 id="dod">Definition of Done</h2>
+      <div class="panel">
+        <ol class="steps">
+          <li>Types + <code class="inline">ScenarioBlueprintSchema</code> (zod) merged; migration 192 applied; <code class="inline">faction_id</code>/<code class="inline">alignment</code> on <code class="inline">NPCPersona</code>.</li>
+          <li>Shared <code class="inline">openAiJson()</code> client in use; <strong>no new duplicated fetch-to-OpenAI blocks</strong> introduced.</li>
+          <li>Unit tests for the deterministic pieces: chunking, blueprint merge, coverage/<code class="inline">structure_confidence</code> scoring, trigger&rarr;condition mapping, and any new keys in <code class="inline">conditionEvaluatorService.ts</code>.</li>
+          <li>Golden-file extraction tests against the Phase 0a corpus (the three sample docs here + more), asserting key factions/timeline/mutations are captured <em>and</em> that the misconduct doc's mismatched timeline is flagged.</li>
+          <li><strong>No-regression guarantee:</strong> an empty-document run produces the same generation path as today (assert in test); the Director is a no-op with no blueprint.</li>
+          <li>Fidelity check returns per-section scores incl. <code class="inline">unmapped_directives</code> honored; weak-section auto-repair verified.</li>
+          <li><code class="inline">tsc</code> + lint clean; no <code class="inline">any</code>/unchecked casts on blueprint data; functions and files within sane size limits.</li>
+          <li>Feature-flagged rollout; structured logs/metrics for extraction coverage, fidelity score, and LLM call counts.</li>
+        </ol>
+      </div>
+
+      <!-- ───────────────────────── CROSS-CUTTING ───────────────────────── -->
+      <h2 id="cross">Cross-cutting concerns</h2>
+      <div class="callout note">
+        <strong>Format-/ontology-agnostic.</strong> Handled by Pass A discovery + open vocabularies + the
+        <code class="inline">unmapped_directives</code> catch-all + the corpus-validated schema (Phase 0a). The product must
+        work for a trainer who never mentions "factions" or "stages" &mdash; their concepts land in
+        <code class="inline">trainer_concepts</code>/<code class="inline">unmapped_directives</code> and are surfaced for review,
+        not lost.
+      </div>
+      <div class="callout safety">
+        <strong>Safety is non-overridable.</strong> The existing containment guardrails (no real orgs/ideology/slogans,
+        no calls to violence, paraphrase-only extremist representation) sit <em>above</em> the blueprint. A document's
+        extremist sections are treated as "intent to represent," never reproduced verbatim &mdash; e.g. the sample doc's
+        4chan link and explicit "Great Replacement" slogans are dropped by the same hard rules already enforced in
+        <code class="inline">extremistDoctrine.ts</code> (357&ndash;362).
+      </div>
+      <div class="callout fallback">
+        <strong>Graceful fallback (two floors).</strong> (1) Empty/low-confidence blueprint sections route to the existing
+        AI generators exactly as today. (2) An alien/novel format with low <code class="inline">structure_confidence</code>
+        falls back to raw-excerpt context &mdash; still no worse than today. No document means the Director is a no-op and
+        generation is byte-for-byte the current behavior.
+      </div>
+      <div class="callout note">
+        <strong>Cost control.</strong> The real driver is call <em>count</em>, not token ceilings &mdash; Pass B runs N
+        parallel calls (one per chunk) and the Director fires each bounded tick. Control via chunk size + Director cadence
+        + caching extraction per upload + repairing only weak sections. Raising <code class="inline">max_completion_tokens</code>
+        does not add cost on its own.
+      </div>
+
+      <!-- ───────────────────────── SEQUENCING ───────────────────────── -->
+      <h2 id="seq">Sequencing &amp; value</h2>
+      <table>
+        <thead><tr><th>Phases</th><th>Outcome</th><th>Effort / risk</th></tr></thead>
+        <tbody>
+          <tr><td>0a (corpus validation)</td><td>Validates the schema against multiple real trainer docs so the rest is not over-fit to one sample. Do first.</td><td>Low effort, high de-risking.</td></tr>
+          <tr><td>0&ndash;3 (core)</td><td>Raw ~45% &rarr; ~75% fidelity. Structured extraction + editable review + blueprint-driven generation.</td><td>Moderate effort, no runtime risk.</td></tr>
+          <tr><td>4 (fidelity loop)</td><td>Measurable score + targeted auto-repair; trainer trust.</td><td>Low&ndash;moderate effort.</td></tr>
+          <tr><td>5 (runtime)</td><td>Closes to ~90% on dynamic rules (live triggers, stages, distinct factions).</td><td>Heaviest &mdash; touches the live tick &amp; adversary engines.</td></tr>
+        </tbody>
+      </table>
+
+      <div class="panel">
+        <h4 style="margin-top:0">Todo checklist</h4>
+        <ol class="steps">
+          <li><strong>Phase 0a</strong> &mdash; schema corpus validation against 5&ndash;10 differently-structured trainer docs (do first).</li>
+          <li><strong>Phase 0</strong> &mdash; format-agnostic <code class="inline">ScenarioBlueprint</code> type (open vocab, discovery + catch-all fields), migration 192, faction-aware <code class="inline">NPCPersona</code>.</li>
+          <li><strong>Phase 1</strong> &mdash; two-pass extraction (discovery + chunked map-reduce) with catch-all + raw-excerpt floor; async <code class="inline">/extract-blueprint</code> route.</li>
+          <li><strong>Phase 2</strong> &mdash; editable Blueprint Review wizard step + Gap Report + re-routed <code class="inline">goNext</code>.</li>
+          <li><strong>Phase 3</strong> &mdash; blueprint-driven generators + persist blueprint.</li>
+          <li><strong>Phase 4</strong> &mdash; fidelity check service (incl. unmapped honored) + auto-repair + score surfacing.</li>
+          <li><strong>Phase 5</strong> &mdash; data-driven doctrine, trigger mapping, Scenario Director on the tick.</li>
+        </ol>
+      </div>
+
+      <div class="footer">
+        Plan reference: <code class="inline">.cursor/plans/document-driven_scenario_fidelity_6ea4e152.plan.md</code>.
+        All code snippets are illustrative of the proposed change shape and cite the real files/line ranges to edit; they are not yet applied.
+      </div>
+    </div>
+
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "strict" });
+    </script>
+  </body>
+</html>

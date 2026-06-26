@@ -1,0 +1,192 @@
+import { BLUEPRINT_CHUNK_CHARS, BLUEPRINT_CHUNK_OVERLAP_CHARS } from './blueprintConfig.js';
+import { emptyBlueprint, type ScenarioBlueprint, type BlueprintFaction } from './blueprintTypes.js';
+
+/**
+ * Pure (no network, no env) blueprint helpers: chunking, merge of per-chunk
+ * partials, and coverage/structure scoring. Isolated here so they can be unit
+ * tested directly and so the orchestration service stays thin.
+ */
+
+/** Split text into overlapping chunks. Returns [] for empty, [text] when short. */
+export function chunkText(
+  text: string,
+  size = BLUEPRINT_CHUNK_CHARS,
+  overlap = BLUEPRINT_CHUNK_OVERLAP_CHARS,
+): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.length <= size) return [trimmed];
+  const step = Math.max(1, size - overlap);
+  const chunks: string[] = [];
+  for (let start = 0; start < trimmed.length; start += step) {
+    chunks.push(trimmed.slice(start, start + size));
+    if (start + size >= trimmed.length) break;
+  }
+  return chunks;
+}
+
+const norm = (s: string): string => s.trim().toLowerCase();
+
+/** Union of string arrays, de-duplicated case-insensitively, original casing kept. */
+export function unionStrings(...lists: string[][]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const list of lists) {
+    for (const raw of list) {
+      const value = raw.trim();
+      if (!value) continue;
+      const key = norm(value);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(value);
+    }
+  }
+  return out;
+}
+
+function mergeFactions(parts: ScenarioBlueprint[]): BlueprintFaction[] {
+  const byKey = new Map<string, BlueprintFaction>();
+  for (const part of parts) {
+    for (const faction of part.factions) {
+      const key = norm(faction.id || faction.name);
+      if (!key) continue;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, { ...faction });
+        continue;
+      }
+      existing.emotional_drivers = unionStrings(
+        existing.emotional_drivers,
+        faction.emotional_drivers,
+      );
+      existing.behaviour_patterns = unionStrings(
+        existing.behaviour_patterns,
+        faction.behaviour_patterns,
+      );
+      existing.typical_narratives = unionStrings(
+        existing.typical_narratives,
+        faction.typical_narratives,
+      );
+      existing.escalation_triggers = unionStrings(
+        existing.escalation_triggers,
+        faction.escalation_triggers,
+      );
+      existing.deescalation_triggers = unionStrings(
+        existing.deescalation_triggers,
+        faction.deescalation_triggers,
+      );
+      existing.alignment = existing.alignment || faction.alignment;
+      existing.tone_guidance = existing.tone_guidance || faction.tone_guidance;
+      existing.name = existing.name || faction.name;
+      existing.headcount_hint = existing.headcount_hint ?? faction.headcount_hint;
+      existing.confidence = Math.max(existing.confidence, faction.confidence);
+    }
+  }
+  return Array.from(byKey.values());
+}
+
+/** Merge per-chunk partial blueprints into one, de-duplicating across chunks. */
+export function mergeBlueprints(parts: ScenarioBlueprint[]): ScenarioBlueprint {
+  const merged = emptyBlueprint();
+  if (parts.length === 0) return merged;
+
+  merged.factions = mergeFactions(parts);
+
+  // Timeline: dedupe by stage name, keep first description, then sort by order.
+  const stageByKey = new Map<string, { stage: string; description: string; order: number }>();
+  for (const part of parts) {
+    for (const t of part.timeline) {
+      const key = norm(t.stage);
+      if (!key) continue;
+      const existing = stageByKey.get(key);
+      if (!existing) stageByKey.set(key, { ...t });
+      else existing.description = existing.description || t.description;
+    }
+  }
+  merged.timeline = Array.from(stageByKey.values()).sort((a, b) => a.order - b.order);
+
+  // Escalation tiers: dedupe by name, union indicators.
+  const tierByKey = new Map<string, { name: string; indicators: string[] }>();
+  for (const part of parts) {
+    for (const tier of part.escalation_model.tiers) {
+      const key = norm(tier.name);
+      if (!key) continue;
+      const existing = tierByKey.get(key);
+      if (!existing) tierByKey.set(key, { ...tier });
+      else existing.indicators = unionStrings(existing.indicators, tier.indicators);
+    }
+  }
+  merged.escalation_model = { tiers: Array.from(tierByKey.values()) };
+
+  merged.narrative_mutations = unionStrings(...parts.map((p) => p.narrative_mutations));
+  merged.objectives = unionStrings(...parts.map((p) => p.objectives));
+  merged.participant_decisions = unionStrings(...parts.map((p) => p.participant_decisions));
+  merged.ground_rules = unionStrings(...parts.map((p) => p.ground_rules));
+  merged.safety_constraints = unionStrings(...parts.map((p) => p.safety_constraints));
+  merged.advanced_injects = unionStrings(...parts.map((p) => p.advanced_injects));
+
+  // Trainer concepts: union items per concept name.
+  const conceptByKey = new Map<string, { name: string; items: string[] }>();
+  for (const part of parts) {
+    for (const concept of part.trainer_concepts) {
+      const key = norm(concept.name);
+      if (!key) continue;
+      const existing = conceptByKey.get(key);
+      if (!existing) conceptByKey.set(key, { name: concept.name, items: [...concept.items] });
+      else existing.items = unionStrings(existing.items, concept.items);
+    }
+  }
+  merged.trainer_concepts = Array.from(conceptByKey.values());
+
+  // Catch-all + warnings: concat, dedupe by content.
+  const seenUnmapped = new Set<string>();
+  for (const part of parts) {
+    for (const d of part.unmapped_directives) {
+      const key = norm(`${d.source_excerpt}|${d.note}`);
+      if (key === '|' || seenUnmapped.has(key)) continue;
+      seenUnmapped.add(key);
+      merged.unmapped_directives.push(d);
+    }
+  }
+  const seenWarn = new Set<string>();
+  for (const part of parts) {
+    for (const w of part.warnings) {
+      const key = norm(`${w.field}|${w.issue}`);
+      if (key === '|' || seenWarn.has(key)) continue;
+      seenWarn.add(key);
+      merged.warnings.push(w);
+    }
+  }
+
+  // Premise / scalars: take the most confident / first non-empty.
+  const premise = parts
+    .map((p) => p.premise)
+    .reduce((best, cur) => (cur.confidence > best.confidence ? cur : best), parts[0].premise);
+  merged.premise = { ...premise };
+  merged.detected_framework_kind =
+    parts.map((p) => p.detected_framework_kind).find((v) => v.trim()) || '';
+  merged.crisis_cluster = parts.map((p) => p.crisis_cluster).find((v) => v.trim()) || '';
+
+  return merged;
+}
+
+const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
+
+/** Heuristic per-section completeness (0..1) used to drive honor-vs-generate. */
+export function scoreCoverage(bp: ScenarioBlueprint): Record<string, number> {
+  return {
+    premise: bp.premise.crisis_type.trim() ? 1 : 0,
+    factions: clamp01(bp.factions.length / 3),
+    timeline: clamp01(bp.timeline.length / 4),
+    escalation_model: clamp01(bp.escalation_model.tiers.length / 2),
+    narrative_mutations: clamp01(bp.narrative_mutations.length / 3),
+    objectives: clamp01(bp.objectives.length / 2),
+    participant_decisions: clamp01(bp.participant_decisions.length / 2),
+  };
+}
+
+/** Overall confidence that the document fit a structured shape at all. */
+export function scoreStructure(bp: ScenarioBlueprint): number {
+  const coverage = scoreCoverage(bp);
+  return clamp01(0.3 * coverage.premise + 0.4 * coverage.factions + 0.3 * coverage.timeline);
+}
