@@ -517,3 +517,18 @@ export function resolveFrame(
   }
   return selectGrievanceFrame(crisisText, sessionId);
 }
+
+/**
+ * The single per-session agitator roster, read by BOTH the hive (who posts) and
+ * computeSocialState (whose posts get the 3x designed-NPC weight). With a
+ * blueprint it is the synthetic faction cell; without one it resolves to the
+ * fixed EXTREMIST_CELL, so `handles` is value-equal to EXTREMIST_HANDLES and a
+ * no-blueprint session is byte-identical to before.
+ */
+export function hiveRosterFor(blueprint?: ScenarioBlueprint | null): {
+  cell: ExtremistPersona[];
+  handles: Set<string>;
+} {
+  const cell = resolveCell(blueprint);
+  return { cell, handles: new Set(cell.map((p) => p.handle)) };
+}

@@ -1,6 +1,12 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveCell, resolveFrame, EXTREMIST_CELL } from './extremistDoctrine.js';
+import {
+  resolveCell,
+  resolveFrame,
+  hiveRosterFor,
+  EXTREMIST_CELL,
+  EXTREMIST_HANDLES,
+} from './extremistDoctrine.js';
 import { coerceBlueprint, emptyBlueprint } from './blueprint/blueprintTypes.js';
 
 describe('resolveCell (blueprint-gated, fallback to fixed cell)', () => {
@@ -50,5 +56,38 @@ describe('resolveFrame (blueprint wedge, else built-in)', () => {
     });
     const frame = resolveFrame('terror attack', 'sess-2', bp);
     assert.match(frame.wedge, /elite conspiracy/);
+  });
+});
+
+describe('hiveRosterFor (single source for hive + scoring)', () => {
+  test('no blueprint -> fixed cell + handles equal to EXTREMIST_HANDLES (no regression)', () => {
+    const roster = hiveRosterFor(null);
+    assert.deepEqual(roster.cell, EXTREMIST_CELL);
+    assert.deepEqual([...roster.handles].sort(), [...EXTREMIST_HANDLES].sort());
+  });
+
+  test('empty blueprint also resolves to the fixed roster', () => {
+    const roster = hiveRosterFor(emptyBlueprint());
+    assert.deepEqual([...roster.handles].sort(), [...EXTREMIST_HANDLES].sort());
+  });
+
+  test('blueprint hostile factions -> synthetic faction-slug handles', () => {
+    const bp = coerceBlueprint({
+      factions: [
+        { id: 'far_right', name: 'Far Right', alignment: 'hostile' },
+        { id: 'jihadist', name: 'Jihadist exploiters', alignment: 'hostile' },
+      ],
+    });
+    const roster = hiveRosterFor(bp);
+    assert.equal(roster.cell.length, 2);
+    assert.ok(roster.handles.has('@far_right'));
+    assert.ok(roster.handles.has('@jihadist'));
+    // and NOT the fixed cell's handles
+    assert.ok(!roster.handles.has('@unfiltered_truth'));
+  });
+
+  test('handles are deterministic across calls', () => {
+    const bp = coerceBlueprint({ factions: [{ id: 'far_right', alignment: 'hostile' }] });
+    assert.deepEqual([...hiveRosterFor(bp).handles], [...hiveRosterFor(bp).handles]);
   });
 });

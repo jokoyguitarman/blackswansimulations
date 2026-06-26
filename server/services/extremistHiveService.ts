@@ -9,8 +9,6 @@ import {
   generateVideoThumbnail,
 } from './mediaGenerationService.js';
 import {
-  EXTREMIST_CELL,
-  EXTREMIST_HANDLES,
   EXTREMIST_MOVES,
   REPLY_MOVES,
   buildSystemPrompt,
@@ -18,6 +16,7 @@ import {
   getMove,
   getStageProfile,
   resolveFrame,
+  hiveRosterFor,
   type ExtremistMove,
   type ExtremistPersona,
 } from './extremistDoctrine.js';
@@ -232,6 +231,7 @@ export async function runExtremistHive(sessionId: string, elapsedMinutes: number
   const orgName = String(initialState.org_name || '');
   const country = String(initialState.country || '');
   const crisisDescription = String(scenario.description || '');
+  const roster = hiveRosterFor((initialState.blueprint as ScenarioBlueprint | undefined) ?? null);
 
   // Recent feed context + recent harmful posts (used by the gate).
   const { data: recentPosts } = await supabaseAdmin
@@ -283,15 +283,15 @@ export async function runExtremistHive(sessionId: string, elapsedMinutes: number
     .eq('session_id', sessionId)
     .eq('event_type', 'extremist_post')
     .order('created_at', { ascending: false })
-    .limit(EXTREMIST_CELL.length);
+    .limit(roster.cell.length);
   const recentlyUsed = new Set(
     (priorEvents || [])
-      .slice(0, EXTREMIST_CELL.length - 1)
+      .slice(0, roster.cell.length - 1)
       .map((e) => String((e.metadata as { handle?: string })?.handle || '')),
   );
   const persona =
-    EXTREMIST_CELL.find((p) => !recentlyUsed.has(p.handle)) ||
-    EXTREMIST_CELL[Math.floor(Math.random() * EXTREMIST_CELL.length)];
+    roster.cell.find((p) => !recentlyUsed.has(p.handle)) ||
+    roster.cell[Math.floor(Math.random() * roster.cell.length)];
 
   // Escalation stage from the total number of prior hive posts this session.
   const { count: priorPostCount } = await supabaseAdmin
@@ -490,6 +490,16 @@ export async function runHiveThreadReplies(
   const socialState = (currentState.social_state as Record<string, unknown>) || {};
   const escalationRisk = Number(socialState.escalation_risk ?? 20);
 
+  // Per-session agitator roster (blueprint factions, else the fixed cell). Loaded
+  // up front because the cadence gate and thread scoring below depend on it.
+  const { data: scenario } = await supabaseAdmin
+    .from('scenarios')
+    .select('description, initial_state')
+    .eq('id', sessionRow.scenario_id)
+    .single();
+  const initialState = (scenario?.initial_state as Record<string, unknown>) || {};
+  const roster = hiveRosterFor((initialState.blueprint as ScenarioBlueprint | undefined) ?? null);
+
   // Reply cadence gate (independent of the top-level post pass).
   const { data: lastReplyEvents } = await supabaseAdmin
     .from('session_events')
@@ -497,7 +507,7 @@ export async function runHiveThreadReplies(
     .eq('session_id', sessionId)
     .eq('event_type', 'extremist_reply')
     .order('created_at', { ascending: false })
-    .limit(EXTREMIST_CELL.length);
+    .limit(roster.cell.length);
   const lastReplyMin = (lastReplyEvents?.[0]?.metadata as { elapsed_minutes?: number })
     ?.elapsed_minutes;
   if (
@@ -537,7 +547,7 @@ export async function runHiveThreadReplies(
     let score = Number(r.reply_count) * 0.5;
     if (rootType === 'player' || rootType === 'official_account') score += 3; // responder thread to bait
     if (harmful) score += 2; // amplify an existing divisive thread
-    if (EXTREMIST_HANDLES.has(String(r.author_handle))) score += 1.5; // keep heat on own post
+    if (roster.handles.has(String(r.author_handle))) score += 1.5; // keep heat on own post
     if (ageMin <= 15) score += 2;
     else if (ageMin <= 30) score += 1;
     return {
@@ -559,12 +569,6 @@ export async function runHiveThreadReplies(
   if (viable.length === 0) return;
 
   // Shared context (computed once per pass, reused for every thread we reply in).
-  const { data: scenario } = await supabaseAdmin
-    .from('scenarios')
-    .select('description, initial_state')
-    .eq('id', sessionRow.scenario_id)
-    .single();
-  const initialState = (scenario?.initial_state as Record<string, unknown>) || {};
   const orgName = String(initialState.org_name || '');
   const country = String(initialState.country || '');
   const crisisDescription = String(scenario?.description || '');
@@ -592,7 +596,7 @@ export async function runHiveThreadReplies(
   // reusing the same member twice within this pass.
   const recentlyUsed = new Set(
     (lastReplyEvents || [])
-      .slice(0, EXTREMIST_CELL.length - 1)
+      .slice(0, roster.cell.length - 1)
       .map((e) => String((e.metadata as { handle?: string })?.handle || '')),
   );
   const usedThisPass = new Set<string>();
@@ -613,10 +617,10 @@ export async function runHiveThreadReplies(
     const replyRows = (replies || []) as Array<Record<string, unknown>>;
     const last = replyRows[replyRows.length - 1];
     // Skip threads where the hive already has the last word (don't talk to ourselves).
-    if (last && EXTREMIST_HANDLES.has(String(last.author_handle))) continue;
+    if (last && roster.handles.has(String(last.author_handle))) continue;
 
     // Pick who to @-tag: most recent non-hive reply, preferring a player/official.
-    const nonHive = replyRows.filter((r) => !EXTREMIST_HANDLES.has(String(r.author_handle)));
+    const nonHive = replyRows.filter((r) => !roster.handles.has(String(r.author_handle)));
     const responderReply = [...nonHive]
       .reverse()
       .find((r) => r.author_type === 'player' || r.author_type === 'official_account');
@@ -626,9 +630,9 @@ export async function runHiveThreadReplies(
 
     // Choose a cell member not used recently and not already used this pass.
     const persona =
-      EXTREMIST_CELL.find((p) => !recentlyUsed.has(p.handle) && !usedThisPass.has(p.handle)) ||
-      EXTREMIST_CELL.find((p) => !usedThisPass.has(p.handle)) ||
-      EXTREMIST_CELL[Math.floor(Math.random() * EXTREMIST_CELL.length)];
+      roster.cell.find((p) => !recentlyUsed.has(p.handle) && !usedThisPass.has(p.handle)) ||
+      roster.cell.find((p) => !usedThisPass.has(p.handle)) ||
+      roster.cell[Math.floor(Math.random() * roster.cell.length)];
 
     // Move: prefer a reply-suited move this persona favors.
     const personaReplyMoves = persona.primary_moves.filter((m) => REPLY_MOVES.includes(m));

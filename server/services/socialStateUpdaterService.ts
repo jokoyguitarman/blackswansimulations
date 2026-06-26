@@ -1,7 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getWebSocketService } from './websocketService.js';
 import { logger } from '../lib/logger.js';
-import { EXTREMIST_HANDLES } from './extremistDoctrine.js';
+import { hiveRosterFor } from './extremistDoctrine.js';
+import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 
 export interface SocialState {
   total_posts: number;
@@ -164,6 +165,10 @@ export async function computeSocialState(
     victim_centring?: { match?: string; score?: number };
   };
   let npcHandles: Set<string> = new Set();
+  // Per-session agitator handles, weighted 3x like designed NPCs. Defaults to the
+  // fixed cell (value-equal to the old EXTREMIST_HANDLES); overridden from the
+  // blueprint below so synthetic hive personas score correctly.
+  let agitatorHandles: Set<string> = hiveRosterFor(null).handles;
   let dimensionLabels:
     | {
         public_trust: string;
@@ -183,6 +188,9 @@ export async function computeSocialState(
     const is = (scenario?.initial_state || {}) as Record<string, unknown>;
     const personas = (is.npc_personas || []) as Array<Record<string, unknown>>;
     npcHandles = new Set(personas.map((p) => String(p.handle || '')).filter(Boolean));
+    agitatorHandles = hiveRosterFor(
+      (is.blueprint as ScenarioBlueprint | undefined) ?? null,
+    ).handles;
 
     const dl = is.dimension_labels as Record<string, string> | undefined;
     if (dl) {
@@ -248,7 +256,7 @@ export async function computeSocialState(
       !!p.inject_id ||
       npcHandles.has(handle) ||
       antagonistHandles.has(handle) ||
-      EXTREMIST_HANDLES.has(handle)
+      agitatorHandles.has(handle)
     );
   };
 
@@ -291,7 +299,7 @@ export async function computeSocialState(
       !!post.inject_id ||
       npcHandles.has(handle) ||
       antagonistHandles.has(handle) ||
-      EXTREMIST_HANDLES.has(handle);
+      agitatorHandles.has(handle);
     const weight = isDesignedNPC ? 3 : 1;
 
     let ageTier = 0;
