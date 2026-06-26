@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Phase 5 — Runtime Scenario Director (with samples)</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      :root {
+        --bg: #0e1116; --panel: #161b22; --panel-2: #1c2230; --border: #2b3340;
+        --text: #e6edf3; --muted: #9aa7b4; --accent: #4ea1ff; --accent-2: #7ee787;
+        --warn: #ffb454; --danger: #ff7b72; --add-border: #2ea043; --del-border: #f85149;
+        --code-bg: #0b0f14; --radius: 10px;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 120px; }
+      header.hero { background: linear-gradient(135deg, #11203a 0%, #161b22 60%); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; margin-bottom: 28px; }
+      header.hero h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.02em; }
+      header.hero p { margin: 0; color: var(--muted); font-size: 16px; max-width: 800px; }
+      .badges { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; }
+      .badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
+      .badge.ok { color: var(--accent-2); border-color: var(--add-border); }
+      .badge.warn { color: var(--warn); border-color: #6b4a1f; }
+      h2 { margin: 44px 0 12px; font-size: 22px; letter-spacing: -0.01em; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+      h3 { margin: 26px 0 8px; font-size: 17px; color: #cdd9e5; }
+      h4 { margin: 16px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      p, li { color: var(--text); }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      code.inline { font-family: var(--mono); font-size: 13px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; color: #d8e0ea; }
+      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin: 16px 0; }
+      .grid { display: grid; gap: 16px; }
+      .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+      @media (max-width: 760px) { .grid.cols-2 { grid-template-columns: 1fr; } }
+      .filemeta { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .pill { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+      .pill.new { background: rgba(126,231,135,0.12); color: var(--accent-2); border: 1px solid var(--add-border); }
+      .pill.edit { background: rgba(255,180,84,0.12); color: var(--warn); border: 1px solid #6b4a1f; }
+      pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 8px 0 18px; }
+      pre code { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: #d8e0ea; white-space: pre; }
+      .diff .add { display: block; background: rgba(126,231,135,0.08); border-left: 3px solid var(--add-border); padding-left: 8px; margin-left: -16px; }
+      .diff .del { display: block; background: rgba(255,123,114,0.08); border-left: 3px solid var(--del-border); padding-left: 8px; margin-left: -16px; }
+      .cmt { color: #6e7681; } .kw { color: #ff7b72; } .str { color: #a5d6ff; } .fn { color: #d2a8ff; } .typ { color: #7ee787; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 14px; }
+      th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .callout { border-radius: 8px; padding: 14px 16px; margin: 16px 0; border: 1px solid; }
+      .callout.safety { background: rgba(255,123,114,0.06); border-color: #6b2b27; }
+      .callout.fallback { background: rgba(126,231,135,0.06); border-color: #1f5c2e; }
+      .callout.note { background: rgba(78,161,255,0.06); border-color: #1f3b5c; }
+      .callout strong { color: var(--text); }
+      .toc { columns: 2; column-gap: 28px; }
+      .toc a { display: block; padding: 3px 0; font-size: 14px; }
+      @media (max-width: 600px) { .toc { columns: 1; } }
+      .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin: 16px 0; }
+      .io-in { background: rgba(78,161,255,0.12); color: var(--accent); border: 1px solid #1f3b5c; }
+      .io-out { background: rgba(126,231,135,0.12); color: var(--accent-2); border: 1px solid var(--add-border); }
+      .footer { margin-top: 56px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 16px; }
+      ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+      ol.steps > li { position: relative; padding: 6px 0 6px 36px; }
+      ol.steps > li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 6px; width: 24px; height: 24px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 50%; text-align: center; line-height: 24px; font-size: 12px; font-weight: 700; color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <h1>Phase 5 — Runtime Scenario Director</h1>
+        <p>
+          Phases 0-3 made the trainer's document shape <em>generation</em> (who exists, the fact sheet, the timed
+          injects). Phase 5 makes it shape the <strong>live, running session</strong>: an LLM "Director" reads the
+          persisted blueprint every bounded tick and drives faction-appropriate posts, stage progression, and trigger
+          reactions in real time. It also lets the extremist engine render the document's <em>distinct</em> factions
+          instead of a generic fixed cast.
+        </p>
+        <div class="badges">
+          <span class="badge">Separate PR</span>
+          <span class="badge ok">Flag default OFF</span>
+          <span class="badge ok">No-blueprint = unchanged</span>
+          <span class="badge warn">Touches the live tick</span>
+          <span class="badge">LLM-driven</span>
+        </div>
+      </header>
+
+      <div class="panel">
+        <h4 style="margin-top:0">Contents</h4>
+        <nav class="toc">
+          <a href="#what">1. What Phase 5 is (and isn't)</a>
+          <a href="#decisions">2. The two locked decisions</a>
+          <a href="#flow">3. The runtime tick flow</a>
+          <a href="#director">4. The Director, with samples</a>
+          <a href="#doctrine">5. Data-driven doctrine, with samples</a>
+          <a href="#safety">6. Safety container</a>
+          <a href="#code">7. Where the code changes</a>
+          <a href="#rollout">8. Rollout safety + flags</a>
+          <a href="#tests">9. Tests</a>
+        </nav>
+      </div>
+
+      <!-- 1 -->
+      <h2 id="what">1. What Phase 5 is (and isn't)</h2>
+      <div class="grid cols-2">
+        <div class="panel">
+          <h4 style="margin-top:0; color: var(--accent-2)">What it IS</h4>
+          <p style="margin:0">A live "game master." During a running social-crisis session it watches the state of play and makes the document's factions <em>act</em> over time — escalating, mutating rumours, reacting to player moves — following the blueprint's stages and triggers.</p>
+        </div>
+        <div class="panel">
+          <h4 style="margin-top:0; color: var(--accent)">What it ISN'T</h4>
+          <p style="margin:0">It is not the one-time generation step (that's Phases 0-3, already shipped). It does not change the no-document experience, and it never runs unless the feature flag is on and a blueprint exists.</p>
+        </div>
+      </div>
+      <p>
+        Today, three engines already run live on a 30-second tick — the <strong>antagonist engine</strong> (rival brand
+        pages), the <strong>extremist hive</strong> (a fixed 6-bot agitator cell), and <strong>NPC reactions</strong> to
+        player posts. They are powerful but <em>scenario-agnostic</em>: they don't read the trainer's document. Phase 5
+        adds a Director that does, and teaches the hive to use the document's factions.
+      </p>
+
+      <!-- 2 -->
+      <h2 id="decisions">2. The two locked decisions</h2>
+      <table>
+        <thead><tr><th>Decision</th><th>Choice</th><th>What it means</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>How triggers/stages are evaluated</td>
+            <td><strong>LLM-only Director</strong></td>
+            <td>Each bounded tick, one LLM call judges the current stage, whether a faction's escalation/de-escalation trigger has fired, and what that faction should post. No brittle keyword rules — the model reads the live situation and the blueprint and decides.</td>
+          </tr>
+          <tr>
+            <td>Should the extremist doctrine be data-driven?</td>
+            <td><strong>Yes, blueprint-gated</strong></td>
+            <td>When a blueprint exists, the hive renders the document's distinct hostile factions. When it doesn't, the existing fixed 6-bot cell runs exactly as today (zero change).</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 3 -->
+      <h2 id="flow">3. The runtime tick flow</h2>
+      <p>The Director slots into the existing scheduler tick, after the current engines, fully guarded:</p>
+      <div class="mermaid">
+flowchart TD
+  tick["processSession() every ~30s"] --> social{"sim_mode == social_media?"}
+  social -->|no| done[skip social engines]
+  social -->|yes| css["computeSocialState() writes social_state"]
+  css --> eng["antagonist + hive + thread replies (existing)"]
+  eng --> gate{"flag ON + blueprint present + cadence elapsed?"}
+  gate -->|no| noop["Director no-op"]
+  gate -->|yes| ctx["gather: stage + social_state + recent feed/events"]
+  ctx --> llm["1 bounded LLM call -> decision JSON"]
+  llm --> act{"action?"}
+  act -->|none| rec["record director_action (cadence)"]
+  act -->|post / mutation| post["insert social_post as faction actor"]
+  post --> ws["broadcast websocket + triggerNPCReactions"]
+  ws --> rec
+      </div>
+      <div class="callout note"><strong>Why a cadence gate:</strong> the tick fires every 30s, but the Director should not post that often. Like the hive/antagonist, it records a <code class="inline">director_action</code> event and only acts again after a gap that shrinks as <code class="inline">escalation_risk</code> rises — so it speaks more as the crisis heats up, and the cost stays bounded.</div>
+
+      <!-- 4 -->
+      <h2 id="director">4. The Director, with samples</h2>
+      <p>We use the <em>Interfaith Firestorm</em> blueprint (the Far-Right faction) so you can see real values move through. Each box is <span class="pill io-in">INPUT</span> (what the Director reads) or <span class="pill io-out">OUTPUT</span> (what it decides / writes).</p>
+
+      <div class="panel">
+        <div class="filemeta"><span class="pill io-in">INPUT 1</span> the current blueprint stage (computed from elapsed time)</div>
+        <pre><code><span class="cmt">// stageForElapsed(timeline, elapsedMinutes=30, durationMinutes=60)</span>
+<span class="cmt">// 10 stages across 60 min -> minute 30 lands on stage 5</span>
+{ <span class="str">"stage"</span>: <span class="str">"Extremist Exploitation"</span>, <span class="str">"order"</span>: <span class="str">5</span> }</code></pre>
+      </div>
+
+      <div class="panel">
+        <div class="filemeta"><span class="pill io-in">INPUT 2</span> the live <code class="inline">social_state</code> (written by computeSocialState this tick)</div>
+        <pre><code>{
+  <span class="str">"escalation_risk"</span>: <span class="str">58</span>,
+  <span class="str">"narrative_control"</span>: <span class="str">24</span>,        <span class="cmt">// official narrative is losing</span>
+  <span class="str">"community_safety"</span>: <span class="str">33</span>,
+  <span class="str">"unaddressed_hate_count"</span>: <span class="str">3</span>,
+  <span class="str">"official_statement_published"</span>: <span class="kw">false</span>,  <span class="cmt">// silence the agitator can exploit</span>
+  <span class="str">"rally_call_active"</span>: <span class="kw">true</span>
+}</code></pre>
+      </div>
+
+      <div class="panel">
+        <div class="filemeta"><span class="pill io-in">INPUT 3</span> the faction definition from the blueprint + recent feed</div>
+        <pre><code><span class="cmt">// blueprint.factions -> "far_right_great_replacement"</span>
+{ <span class="str">"alignment"</span>: <span class="str">"hostile"</span>,
+  <span class="str">"escalation_triggers"</span>: [<span class="str">"unverified rumours about suspect background"</span>,
+      <span class="str">"police seen protecting minorities"</span>],
+  <span class="str">"tone_guidance"</span>: <span class="str">"paraphrase; emphasise conspiratorial distortion"</span> }
+
+<span class="cmt">// recent feed (last few posts), summarized for the prompt:</span>
+[player] OfficialGov: "We urge the public not to speculate while the investigation continues."
+[npc]    @just_asking_jay: "Why won't they say the suspect's name though?"</code></pre>
+      </div>
+
+      <div class="panel">
+        <div class="filemeta"><span class="pill io-out">OUTPUT</span> the Director's bounded decision (gpt-5.2, JSON)</div>
+        <pre><code>{
+  <span class="str">"faction_id"</span>: <span class="str">"far_right_great_replacement"</span>,
+  <span class="str">"trigger_fired"</span>: <span class="str">"official silence + rumours unaddressed -> exploit"</span>,
+  <span class="str">"stage"</span>: <span class="str">"Extremist Exploitation"</span>,
+  <span class="str">"action"</span>: <span class="str">"post"</span>,                 <span class="cmt">// post | mutation | none</span>
+  <span class="str">"platform"</span>: <span class="str">"x_twitter"</span>,
+  <span class="str">"content"</span>: <span class="str">"Funny how 'wait for facts' only applies when it's convenient. They've had hours. What aren't they telling us? #TellTheTruth"</span>,
+  <span class="str">"content_flags"</span>: { <span class="str">"is_harmful_narrative"</span>: <span class="kw">true</span>, <span class="str">"is_inflammatory"</span>: <span class="kw">true</span>, <span class="str">"incites_violence"</span>: <span class="kw">false</span> }
+}</code></pre>
+      </div>
+
+      <div class="panel">
+        <div class="filemeta"><span class="pill io-out">OUTPUT</span> what actually lands in the feed (reuses the hive/antagonist write pattern)</div>
+        <pre><code><span class="cmt">// inserted into social_posts, then broadcast over websocket; NPCs pile on</span>
+{
+  <span class="str">"session_id"</span>: <span class="str">"...",</span>
+  <span class="str">"platform"</span>: <span class="str">"x_twitter"</span>,
+  <span class="str">"author_handle"</span>: <span class="str">"@real_demographics_watch"</span>,   <span class="cmt">// a persona from this faction</span>
+  <span class="str">"author_display_name"</span>: <span class="str">"Heartland Truth Watch"</span>,
+  <span class="str">"author_type"</span>: <span class="str">"npc_influencer"</span>,
+  <span class="str">"content"</span>: <span class="str">"Funny how 'wait for facts' only applies when it's convenient..."</span>,
+  <span class="str">"sentiment"</span>: <span class="str">"inflammatory"</span>,
+  <span class="str">"content_flags"</span>: { <span class="str">"is_harmful_narrative"</span>: <span class="kw">true</span>, <span class="str">"incites_violence"</span>: <span class="kw">false</span> },
+  <span class="str">"posted_by_display_name"</span>: <span class="str">"Scenario Director AI"</span>
+}
+<span class="cmt">// + a session_events row { event_type: "director_action", metadata: { elapsed_minutes: 30, faction_id, stage } }</span></code></pre>
+      </div>
+
+      <div class="callout note"><strong>De-escalation works too.</strong> If the player had published a clear, empathetic official update (so <code class="inline">narrative_control</code> rose and <code class="inline">official_statement_published</code> became true), the same call would more likely return <code class="inline">"action": "none"</code> or a lower-intensity beat — because the faction's <em>de-escalation triggers</em> are in the prompt. The Director rewards good player play by going quiet.</div>
+
+      <!-- 5 -->
+      <h2 id="doctrine">5. Data-driven doctrine, with samples</h2>
+      <p>Today the hive always uses a fixed 6-bot cell and one of two generic "wedges." Phase 5b lets the blueprint supply the cast — but only when a blueprint exists.</p>
+      <div class="filemeta"><span class="pill edit">EDIT</span> server/services/extremistDoctrine.ts</div>
+      <pre class="diff"><code><span class="cmt">// EXTREMIST_CELL / GRIEVANCE_FRAMES become DEFAULTS, not the only option.</span>
+<span class="kw">export function</span> <span class="fn">resolveCell</span>(blueprint?: <span class="typ">ScenarioBlueprint</span>): <span class="typ">ExtremistPersona</span>[] {
+<span class="add">  <span class="kw">const</span> hostiles = blueprint?.factions?.<span class="fn">filter</span>((f) =&gt; f.alignment === <span class="str">'hostile'</span>) ?? [];</span>
+<span class="add">  <span class="kw">if</span> (hostiles.length) <span class="kw">return</span> hostiles.<span class="fn">map</span>(factionToPersona);  <span class="cmt">// document's distinct factions</span></span>
+  <span class="kw">return</span> EXTREMIST_CELL;   <span class="cmt">// fallback: existing fixed 6-bot cell (unchanged)</span>
+}</code></pre>
+      <div class="grid cols-2">
+        <div class="panel">
+          <h4 style="margin-top:0">No blueprint (today's behavior)</h4>
+          <pre><code>@unfiltered_truth (ideologue)
+@frontline_wire (pseudo_news)
+@realtalk_rae (amplifier)
+@clips_that_land (meme_maker)
+@just_asking_jay (provocateur)
+@watching_quietly (scout)</code></pre>
+        </div>
+        <div class="panel">
+          <h4 style="margin-top:0; color: var(--accent-2)">With Interfaith blueprint</h4>
+          <pre><code>Far-Right / Great Replacement  (hostile)
+Jihadist exploiters            (hostile)
+<span class="cmt">// distinct, document-defined factions --
+// each with its own narratives/wedge,
+// still bound by the safety container below</span></code></pre>
+        </div>
+      </div>
+
+      <!-- 6 -->
+      <h2 id="safety">6. Safety container (non-overridable)</h2>
+      <div class="callout safety">
+        Both the Director and the data-driven hive reuse the existing hard rules from <code class="inline">buildSystemPrompt</code>. The blueprint can influence <em>tone and target</em>, never the guardrails.
+      </div>
+      <pre><code>HARD RULES (a training tool — stay within them, at EVERY stage):
+- Be RECOGNIZABLY divisive bait a sharp responder should flag.
+- DO NOT name/quote/praise any real terrorist org, extremist movement, ideology,
+  scripture, or real political figure.
+- DO NOT include slogans, recruitment language, instructions, addresses, targets,
+  or any operational/violent how-to.
+- NO explicit calls to violence, ever. "incites_violence" must remain false.</code></pre>
+      <p>So the Interfaith document's literal "Great Replacement" slogan and its 4chan link never become content — exactly as in generation. The Director inherits the same containment.</p>
+
+      <!-- 7 -->
+      <h2 id="code">7. Where the code changes</h2>
+      <table>
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">server/env.ts</code></td><td><span class="pill edit">EDIT</span> add <code class="inline">ENABLE_SCENARIO_DIRECTOR</code> flag (default OFF)</td></tr>
+          <tr><td><code class="inline">server/services/blueprint/blueprintConfig.ts</code></td><td><span class="pill edit">EDIT</span> Director cadence bands + token budget</td></tr>
+          <tr><td><code class="inline">server/services/blueprint/scenarioDirectorService.ts</code></td><td><span class="pill new">NEW</span> <code class="inline">runScenarioDirector()</code>: guards, cadence gate, stage mapping, bounded LLM decision, faction-post dispatch</td></tr>
+          <tr><td><code class="inline">server/services/injectSchedulerService.ts</code> (982-1021)</td><td><span class="pill edit">EDIT</span> flag-gated call in the social block, own try/catch</td></tr>
+          <tr><td><code class="inline">server/services/extremistDoctrine.ts</code></td><td><span class="pill edit">EDIT</span> <code class="inline">resolveCell()</code>/<code class="inline">resolveFrame()</code> (blueprint-gated, fallback to fixed cell)</td></tr>
+          <tr><td><code class="inline">server/services/extremistHiveService.ts</code></td><td><span class="pill edit">EDIT</span> pass the loaded blueprint into persona/frame selection</td></tr>
+        </tbody>
+      </table>
+      <div class="filemeta"><span class="pill edit">EDIT</span> the tick hook (mirrors the existing per-engine isolation)</div>
+      <pre class="diff"><code>      <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runExtremistHive</span>(session.id, elapsedMinutes); } <span class="kw">catch</span> { <span class="cmt">/* ... */</span> }
+<span class="add">      <span class="kw">if</span> (env.enableScenarioDirector) {</span>
+<span class="add">        <span class="kw">try</span> { <span class="kw">await</span> <span class="fn">runScenarioDirector</span>(session.id, elapsedMinutes); }</span>
+<span class="add">        <span class="kw">catch</span> (e) { logger.<span class="fn">warn</span>({ err: e, sessionId: session.id }, <span class="str">'Scenario director error'</span>); }</span>
+<span class="add">      }</span></code></pre>
+
+      <!-- 8 -->
+      <h2 id="rollout">8. Rollout safety + flags</h2>
+      <div class="callout fallback">
+        <strong>Three independent off-switches.</strong> The Director no-ops unless <em>all</em> hold: <code class="inline">ENABLE_SCENARIO_DIRECTOR=true</code>, a usable blueprint exists on the scenario, and the session is <code class="inline">social_media</code>. Any miss = exactly today's behavior.
+      </div>
+      <ul>
+        <li><strong>Own try/catch</strong> in the tick so a Director failure logs and the tick continues for every other session.</li>
+        <li><strong>Doctrine is blueprint-gated</strong> — no-blueprint sessions keep the fixed cell unchanged.</li>
+        <li><strong>Cadence-bounded</strong> LLM calls (not every 30s) keep cost/latency in check; reuses the <code class="inline">gpt-5.2</code> / 10k config.</li>
+        <li><strong>Separate PR</strong>, default OFF; enable in prod only after a live test.</li>
+      </ul>
+
+      <!-- 9 -->
+      <h2 id="tests">9. Tests</h2>
+      <ul>
+        <li><code class="inline">stageForElapsed</code> — timeline + elapsed + duration maps to the right stage; empty timeline returns null.</li>
+        <li>Cadence-gate bands shrink with <code class="inline">escalation_risk</code>.</li>
+        <li><code class="inline">resolveCell</code>/<code class="inline">resolveFrame</code> fallback: no/empty blueprint returns the fixed cell (no-regression); hostile factions return faction-derived personas.</li>
+        <li>Director no-op guarantees: flag off, no blueprint, or non-social returns with no LLM/DB calls.</li>
+        <li>(LLM decision + DB dispatch are validated manually / in integration, not unit-tested.)</li>
+      </ul>
+
+      <div class="footer">
+        Plan reference: <code class="inline">.cursor/plans/phase_5_scenario_director_0b5960a4.plan.md</code>.
+        Samples are illustrative of the intended data shapes (social_state, blueprint factions, the decision JSON, and the social_posts row) and cite real files/line ranges; code is not yet applied. Mermaid diagrams render with internet on first load.
+      </div>
+    </div>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "strict" });
+    </script>
+  </body>
+</html>

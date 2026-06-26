@@ -19,7 +19,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "prepare": "husky install",
-    "test": "node --import tsx --test server/services/blueprint/blueprintMerge.test.ts server/services/blueprint/blueprintTypes.test.ts"
+    "test": "node --import tsx --test server/services/blueprint/blueprintMerge.test.ts server/services/blueprint/blueprintTypes.test.ts server/services/blueprint/directorLogic.test.ts server/services/extremistDoctrine.test.ts"
   },
   "repository": {
     "type": "git",

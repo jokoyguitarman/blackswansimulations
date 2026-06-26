@@ -32,3 +32,24 @@ export const BLUEPRINT_HONOR_THRESHOLD = 0.5;
 
 /** Below this overall structure score, fall back to the raw-excerpt floor. */
 export const BLUEPRINT_MIN_STRUCTURE_CONFIDENCE = 0.15;
+
+// ─── Runtime Scenario Director (Phase 5) ─────────────────────────────────────
+
+/** Completion ceiling for a single Director decision (small, bounded output). */
+export const DIRECTOR_MAX_COMPLETION_TOKENS = 1200;
+
+/** Some improvisation, but grounded. */
+export const DIRECTOR_TEMPERATURE = 0.5;
+
+/**
+ * Minimum sim-minutes between Director actions, tightening as escalation rises
+ * (mirrors the extremist hive cadence so the feed never floods).
+ */
+export function directorGapMinutes(escalationRisk: number): number {
+  if (escalationRisk >= 60) return 3;
+  if (escalationRisk >= 35) return 6;
+  return 9;
+}
+
+/** Let the crisis breathe before the Director starts acting. */
+export const DIRECTOR_MIN_ELAPSED_MINUTES = 2;
