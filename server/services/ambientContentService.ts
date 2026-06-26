@@ -10,7 +10,8 @@ import {
 } from './mediaGenerationService.js';
 import { triggerNPCMessages } from './npcMessengerService.js';
 import { normalizeOrgPages } from './socialCrisisGeneratorService.js';
-import { EXTREMIST_CELL } from './extremistDoctrine.js';
+import { hiveRosterFor } from './extremistDoctrine.js';
+import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 
 interface RegisteredNPC {
   handle: string;
@@ -61,9 +62,13 @@ function loadDesignedPersonas(initialState: Record<string, unknown>, sessionId: 
     });
   }
 
-  // Register the fixed extremist cell so thread continuation (simulateThreadActivity)
-  // addresses them in-character rather than as empty handles.
-  for (const c of EXTREMIST_CELL) {
+  // Register the session's agitator roster (blueprint factions when present, else
+  // the fixed cell) so thread continuation (simulateThreadActivity) addresses them
+  // in-character rather than as empty handles.
+  const agitatorRoster = hiveRosterFor(
+    (initialState.blueprint as ScenarioBlueprint | undefined) ?? null,
+  );
+  for (const c of agitatorRoster.cell) {
     registerNPC(sessionId, {
       handle: c.handle,
       display_name: c.name,
