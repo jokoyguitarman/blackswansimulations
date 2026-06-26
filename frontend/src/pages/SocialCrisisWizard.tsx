@@ -50,13 +50,33 @@ interface ObjectiveDef {
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
+// Feature flag (default off): when enabled and a document is uploaded, an extra
+// "Blueprint Review" step is inserted between Setup and Building. When off, the
+// wizard behaves exactly as before.
+const DOC_BLUEPRINT_ENABLED = import.meta.env.VITE_ENABLE_DOC_BLUEPRINT === 'true';
+
 const STEP_LABELS: Record<number, string> = {
   1: 'Scenario Setup',
+  3: 'Blueprint Review',
   2: 'Building',
   7: 'Review & Compile',
 };
 
-const VISIBLE_STEPS = [1, 2, 7];
+const VISIBLE_STEPS = DOC_BLUEPRINT_ENABLED ? [1, 3, 2, 7] : [1, 2, 7];
+
+interface BlueprintView {
+  detected_framework_kind?: string;
+  structure_confidence?: number;
+  crisis_cluster?: string;
+  factions?: Array<{ id?: string; name?: string; alignment?: string; confidence?: number }>;
+  timeline?: Array<{ stage?: string; order?: number }>;
+  narrative_mutations?: string[];
+  objectives?: string[];
+  warnings?: Array<{ field?: string; issue?: string; suggested_fix?: string[] }>;
+  unmapped_directives?: Array<{ source_excerpt?: string; note?: string }>;
+  trainer_concepts?: Array<{ name?: string; items?: string[] }>;
+  coverage?: Record<string, number>;
+}
 
 const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social media crisis simulation.
 
@@ -124,6 +144,11 @@ export const SocialCrisisWizard = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /* Step 3 — Blueprint Review (feature-flagged) */
+  const [blueprint, setBlueprint] = useState<BlueprintView | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractError, setExtractError] = useState<string | null>(null);
 
   const crisisDescription = useMemo(() => {
     const parts: string[] = [];
@@ -370,6 +395,9 @@ export const SocialCrisisWizard = () => {
     switch (step) {
       case 1:
         return crisisDescription.length >= 50;
+      case 3:
+        // Blueprint Review: can proceed once extraction settles.
+        return !extracting;
       case 2:
         // Building runs automatically and auto-advances; no manual Next.
         return false;
@@ -378,7 +406,7 @@ export const SocialCrisisWizard = () => {
       default:
         return false;
     }
-  }, [step, crisisDescription]);
+  }, [step, crisisDescription, extracting]);
 
   /* ─── File upload ───────────────────────────────────────────────────── */
 
@@ -453,6 +481,58 @@ export const SocialCrisisWizard = () => {
 
   /* ─── API calls ──────────────────────────────────────────────────── */
 
+  const runExtraction = useCallback(async () => {
+    setExtracting(true);
+    setExtractError(null);
+    setBlueprint(null);
+    try {
+      const headers = await authHeaders();
+      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/extract-blueprint'), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text: uploadedDocText }),
+      });
+      if (!res.ok) {
+        setExtractError('Failed to start blueprint extraction.');
+        setExtracting(false);
+        return;
+      }
+      const json = await res.json();
+      const jobId = json.job_id;
+      if (!jobId) {
+        setExtracting(false);
+        return;
+      }
+      for (let i = 0; i < 90; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        try {
+          const pollRes = await fetchJSON(
+            apiUrl(`/api/warroom/social-crisis/job-status/${jobId}`),
+            { headers },
+          );
+          if (!pollRes.ok) continue;
+          const pj = await pollRes.json();
+          if (pj.status === 'completed' && pj.data) {
+            setBlueprint((pj.data.blueprint as BlueprintView) ?? null);
+            setExtracting(false);
+            return;
+          }
+          if (pj.status === 'failed') {
+            setExtractError(pj.error || 'Blueprint extraction failed.');
+            setExtracting(false);
+            return;
+          }
+        } catch {
+          /* continue polling */
+        }
+      }
+      setExtractError('Blueprint extraction timed out.');
+    } catch {
+      setExtractError('Network error during blueprint extraction.');
+    }
+    setExtracting(false);
+  }, [uploadedDocText]);
+
   type NpcResult = { personas: NPCPersona[]; factSheet: FactSheet; communities: string[] };
 
   const generateNPCs = useCallback(async (): Promise<NpcResult | null> => {
@@ -482,6 +562,7 @@ export const SocialCrisisWizard = () => {
           country,
           context: crisisDescription,
           org_name: orgName || undefined,
+          blueprint: blueprint ?? undefined,
         }),
       });
       if (!res.ok) {
@@ -533,7 +614,7 @@ export const SocialCrisisWizard = () => {
     }
     setStep2Loading(false);
     return null;
-  }, [crisisDescription, country, orgName]);
+  }, [crisisDescription, country, orgName, blueprint]);
 
   const generateStoryline = useCallback(
     async (
@@ -832,6 +913,7 @@ export const SocialCrisisWizard = () => {
           dimension_labels: dimensionLabels,
           org_page: orgPage,
           duration: 60,
+          blueprint: blueprint ?? undefined,
         }),
       });
 
@@ -909,6 +991,7 @@ export const SocialCrisisWizard = () => {
     orgName,
     dimensionLabels,
     orgPage,
+    blueprint,
   ]);
 
   /* ─── Step transition ────────────────────────────────────────────── */
@@ -927,8 +1010,15 @@ export const SocialCrisisWizard = () => {
   };
 
   const goNext = async () => {
-    // Leaving Setup kicks off the combined Build step, which auto-advances to Compile.
-    if (step === 1) {
+    // With the feature on and a document uploaded, route through Blueprint Review.
+    if (step === 1 && DOC_BLUEPRINT_ENABLED && uploadedDocText.trim()) {
+      await saveDraftState(3);
+      setStep(3);
+      void runExtraction();
+      return;
+    }
+    // Leaving Setup (or Blueprint Review) kicks off the Build step, which auto-advances.
+    if (step === 1 || step === 3) {
       await saveDraftState(2);
       setStep(2);
       void generateAll();
@@ -1319,6 +1409,128 @@ export const SocialCrisisWizard = () => {
 
   /* ── Step 2: Building (combined generation, progress-only) ─────────── */
 
+  const renderBlueprintReview = () => {
+    const pct = (n?: number) => `${Math.round((n ?? 0) * 100)}%`;
+    return (
+      <div className="space-y-4">
+        <div>
+          <h2 className="text-lg terminal-text text-robotic-yellow uppercase mb-1">
+            Blueprint Review
+          </h2>
+          <p className="text-xs terminal-text text-robotic-yellow/50">
+            Structured from your uploaded document. Empty or low-confidence fields will be
+            AI-generated. Press [NEXT] to build the scenario.
+          </p>
+        </div>
+
+        {extracting && <Spinner text="Analyzing document and extracting blueprint..." />}
+
+        {extractError && !extracting && (
+          <div className="border border-red-500/40 p-3 text-xs terminal-text text-red-400">
+            {extractError}
+            <button
+              onClick={() => void runExtraction()}
+              className="ml-3 underline text-robotic-yellow/70"
+            >
+              [RETRY]
+            </button>
+          </div>
+        )}
+
+        {!extracting && blueprint && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3 text-xs terminal-text">
+              <div className="military-border p-3">
+                <div className="text-robotic-yellow/40 uppercase mb-1">Framework</div>
+                <div className="text-robotic-yellow/80">
+                  {blueprint.detected_framework_kind || 'unstructured'}
+                </div>
+              </div>
+              <div className="military-border p-3">
+                <div className="text-robotic-yellow/40 uppercase mb-1">Structure confidence</div>
+                <div className="text-robotic-yellow/80">{pct(blueprint.structure_confidence)}</div>
+              </div>
+            </div>
+
+            {blueprint.warnings && blueprint.warnings.length > 0 && (
+              <div className="border border-amber-500/40 p-3 text-xs terminal-text">
+                <div className="text-amber-400 uppercase mb-2">Gap Report — please review</div>
+                {blueprint.warnings.map((w, i) => (
+                  <div key={i} className="mb-2 text-robotic-yellow/70">
+                    <span className="text-amber-400">{w.field}:</span> {w.issue}
+                    {w.suggested_fix && w.suggested_fix.length > 0 && (
+                      <div className="text-robotic-yellow/40">
+                        Suggested: {w.suggested_fix.join(' → ')}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="military-border p-3 text-xs terminal-text">
+              <div className="text-robotic-yellow/40 uppercase mb-2">
+                Factions ({blueprint.factions?.length ?? 0})
+              </div>
+              {(blueprint.factions ?? []).map((f, i) => (
+                <div key={i} className="text-robotic-yellow/70 mb-1">
+                  {f.name || f.id}{' '}
+                  <span className="text-robotic-yellow/40">
+                    [{f.alignment || 'n/a'} · {pct(f.confidence)}]
+                  </span>
+                </div>
+              ))}
+              {(blueprint.factions?.length ?? 0) === 0 && (
+                <div className="text-robotic-yellow/40">None detected — will be AI-generated.</div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs terminal-text">
+              <div className="military-border p-3">
+                <div className="text-robotic-yellow/40 uppercase mb-1">
+                  Timeline ({blueprint.timeline?.length ?? 0})
+                </div>
+                <div className="text-robotic-yellow/70">
+                  {(blueprint.timeline ?? [])
+                    .map((t) => t.stage)
+                    .filter(Boolean)
+                    .join(' → ') || 'AI-generated'}
+                </div>
+              </div>
+              <div className="military-border p-3">
+                <div className="text-robotic-yellow/40 uppercase mb-1">
+                  Narrative mutations ({blueprint.narrative_mutations?.length ?? 0})
+                </div>
+                <div className="text-robotic-yellow/70">
+                  {(blueprint.narrative_mutations ?? []).slice(0, 4).join(', ') || 'AI-generated'}
+                </div>
+              </div>
+            </div>
+
+            {blueprint.unmapped_directives && blueprint.unmapped_directives.length > 0 && (
+              <div className="military-border p-3 text-xs terminal-text">
+                <div className="text-robotic-yellow/40 uppercase mb-2">
+                  Unmapped ({blueprint.unmapped_directives.length}) — kept for context
+                </div>
+                {blueprint.unmapped_directives.slice(0, 5).map((u, i) => (
+                  <div key={i} className="text-robotic-yellow/60 mb-1">
+                    • {u.note || u.source_excerpt}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {!extracting && !blueprint && !extractError && (
+          <div className="text-xs terminal-text text-robotic-yellow/40 py-6 text-center">
+            No blueprint extracted. Press [NEXT] to build from the description directly.
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderBuilding = () => {
     const stages: Array<{
       key: 'characters' | 'storyline' | 'convergence' | 'pages';
@@ -1596,6 +1808,7 @@ export const SocialCrisisWizard = () => {
 
         <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6">
           {step === 1 && renderStep1()}
+          {step === 3 && renderBlueprintReview()}
           {step === 2 && renderBuilding()}
           {step === 7 && renderStep7()}
         </div>

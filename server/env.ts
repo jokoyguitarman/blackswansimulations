@@ -66,4 +66,7 @@ export const env = {
   // AAR report format: legacy (single summary + insights) or sections (per-section data + AI analysis). Default legacy for safe revert.
   aarReportFormat:
     process.env.AAR_REPORT_FORMAT === 'sections' ? 'sections' : ('legacy' as 'legacy' | 'sections'),
+  // Document-driven scenario blueprint feature. Default OFF: when disabled the
+  // social-crisis War Room behaves exactly as before (raw document text only).
+  enableDocumentBlueprint: process.env.ENABLE_DOCUMENT_BLUEPRINT === 'true',
 };

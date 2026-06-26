@@ -23,6 +23,9 @@ import {
 import { RESPONSE_STANDARDS } from '../config/responseStandards.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { env } from '../env.js';
+import { extractBlueprint } from '../services/blueprint/blueprintExtractionService.js';
+import { emptyBlueprint, coerceBlueprint } from '../services/blueprint/blueprintTypes.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
 
@@ -62,11 +65,12 @@ router.post(
         country: z.string().default('Singapore'),
         location: z.string().default(''),
         org_name: z.string().optional(),
+        blueprint: z.unknown().optional(),
       }),
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
-    const { crisis_type, context, country, location, org_name } = req.body;
+    const { crisis_type, context, country, location, org_name, blueprint } = req.body;
     const jobId = `npc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
@@ -80,6 +84,7 @@ router.post(
           country,
           location,
           org_name,
+          env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
         );
         aiJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
         logger.info({ jobId }, 'NPC generation completed');
@@ -437,6 +442,7 @@ router.post(
           .optional(),
         org_page: z.unknown().optional(),
         duration: z.number().default(60),
+        blueprint: z.unknown().optional(),
       }),
     }),
   ),
@@ -499,6 +505,7 @@ router.post(
             | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
             | undefined) || null,
           body.org_name || undefined,
+          env.enableDocumentBlueprint && body.blueprint ? coerceBlueprint(body.blueprint) : null,
         );
 
         if (body.country) {
@@ -811,6 +818,56 @@ router.post(
       logger.error({ err }, 'Document upload/parse failed');
       res.status(500).json({ error: 'Failed to parse document' });
     }
+  },
+);
+
+// Extract a structured Scenario Blueprint from raw document text (async job).
+// Feature-flagged: when disabled, returns an empty blueprint so the wizard
+// transparently falls back to today's raw-text behavior.
+router.post(
+  '/extract-blueprint',
+  requireAuth,
+  validate(
+    z.object({
+      body: z.object({
+        text: z.string().default(''),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    const { text } = req.body;
+    const jobId = `bp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    if (!env.enableDocumentBlueprint) {
+      aiJobs.set(jobId, {
+        status: 'completed',
+        data: { blueprint: emptyBlueprint(), enabled: false },
+        startedAt: Date.now(),
+      });
+      return res.json({ job_id: jobId, status: 'completed', enabled: false });
+    }
+
+    aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
+    res.json({ job_id: jobId, status: 'generating', enabled: true });
+
+    void (async () => {
+      try {
+        const blueprint = await extractBlueprint(text || '');
+        aiJobs.set(jobId, {
+          status: 'completed',
+          data: { blueprint, enabled: true },
+          startedAt: Date.now(),
+        });
+        logger.info({ jobId }, 'Blueprint extraction completed');
+      } catch (err) {
+        logger.error({ err, jobId }, 'Blueprint extraction failed');
+        aiJobs.set(jobId, {
+          status: 'failed',
+          error: 'Failed to extract blueprint',
+          startedAt: Date.now(),
+        });
+      }
+    })();
   },
 );
 

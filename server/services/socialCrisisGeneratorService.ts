@@ -1,5 +1,7 @@
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
+import { BLUEPRINT_HONOR_THRESHOLD } from './blueprint/blueprintConfig.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -16,6 +18,11 @@ export interface NPCPersona {
   image_prompts?: string[];
   tier?: 'key' | 'background';
   normal_interests?: string[];
+  // Document-driven blueprint linkage (optional, backward-compatible): ties a
+  // persona to a blueprint faction so the trainer's groups survive as first-class
+  // entities. Absent for personas generated without a document.
+  faction_id?: string;
+  alignment?: string;
 }
 
 export interface FactSheetEntry {
@@ -271,6 +278,8 @@ export interface SocialCrisisPayload {
       org_name?: string;
       org_page?: OrgPageConfig;
       facebook_groups?: Array<{ name: string; group_type: string; member_count: number }>;
+      // Document-driven blueprint (optional). Runtime engines read it from here.
+      blueprint?: ScenarioBlueprint;
     };
   };
   teams: TeamDef[];
@@ -328,13 +337,29 @@ function orgNameLine(orgName?: string): string {
 
 // ─── Stage 1: NPCs + Fact Sheet + Communities ───────────────────────────────
 
+function buildFactionGuidance(blueprint?: ScenarioBlueprint | null): string {
+  if (!blueprint) return '';
+  const coverage = blueprint.coverage?.factions ?? 0;
+  if (blueprint.factions.length === 0 || coverage < BLUEPRINT_HONOR_THRESHOLD) return '';
+  const lines = blueprint.factions
+    .map((f) => {
+      const drivers = f.emotional_drivers.slice(0, 4).join(', ');
+      const narratives = f.typical_narratives.slice(0, 3).join(' | ');
+      return `- id="${f.id}" name="${f.name}" alignment="${f.alignment}"; drivers: ${drivers}; narratives: ${narratives}`;
+    })
+    .join('\n');
+  return `\n\nBLUEPRINT FACTIONS (the trainer's document defined these groups -- honor them). For EACH persona you create, set "faction_id" to the matching faction id below and "alignment" to that faction's alignment. Distribute the key personas across these factions in proportion to their importance:\n${lines}`;
+}
+
 export async function generateNPCsAndFactSheet(
   crisisType: string,
   context: string,
   country: string,
   location: string,
   orgName?: string,
+  blueprint?: ScenarioBlueprint | null,
 ): Promise<{ personas: NPCPersona[]; factSheet: FactSheet; communities: string[] }> {
+  const factionGuidance = buildFactionGuidance(blueprint);
   // Call 1: Generate 18-20 key NPCs + fact sheet + communities
   const keyResult = await callAI(
     `You are an expert social media crisis simulation designer. You are creating a CHARACTER BIBLE for a crisis response training exercise.
@@ -381,7 +406,7 @@ Return ONLY valid JSON:
     "crisis_cluster": "victim|accidental|preventable"
   }
 }`,
-    `Crisis scenario: ${crisisType}${orgNameLine(orgName)}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nDetailed context: ${context}`,
+    `Crisis scenario: ${crisisType}${orgNameLine(orgName)}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nDetailed context: ${context}${factionGuidance}`,
     8000,
     0.8,
   );
@@ -1444,6 +1469,7 @@ export function assemblePayload(
   } | null,
   orgPageConfig?: OrgPageConfig | null,
   orgName?: string,
+  blueprint?: ScenarioBlueprint | null,
 ): SocialCrisisPayload {
   const allStoryInjects: SocialInject[] = storylineInjects || [];
   if (!storylineInjects) {
@@ -1504,6 +1530,7 @@ export function assemblePayload(
           group_type: i === 0 ? 'community' : i === 1 ? 'neighborhood' : 'official',
           member_count: 200 + Math.floor(Math.random() * 2000),
         })),
+        ...(blueprint ? { blueprint } : {}),
       },
     },
     teams,
