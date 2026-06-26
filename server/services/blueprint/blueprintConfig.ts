@@ -20,9 +20,14 @@ export const BLUEPRINT_MAX_COMPLETION_TOKENS = 10000;
  */
 export const BLUEPRINT_EXTRACTION_TEMPERATURE = 0.2;
 
-/** Map-reduce chunking for documents that exceed a single comfortable prompt. */
-export const BLUEPRINT_CHUNK_CHARS = 6000;
-export const BLUEPRINT_CHUNK_OVERLAP_CHARS = 400;
+/**
+ * Map-reduce chunking for documents that exceed a single comfortable prompt.
+ * Sized so typical trainer documents (10-25k chars) extract in ONE chunk with no
+ * internal truncation; only larger docs are split, and then section-aware so a
+ * faction is never cut mid-section.
+ */
+export const BLUEPRINT_CHUNK_CHARS = 25000;
+export const BLUEPRINT_CHUNK_OVERLAP_CHARS = 1000;
 
 /** Bounded parallelism for per-chunk extraction so we never fan out unbounded. */
 export const BLUEPRINT_MAX_PARALLEL_CHUNKS = 4;

@@ -7,7 +7,39 @@ import { emptyBlueprint, type ScenarioBlueprint, type BlueprintFaction } from '.
  * tested directly and so the orchestration service stays thin.
  */
 
-/** Split text into overlapping chunks. Returns [] for empty, [text] when short. */
+/**
+ * Fixed-window splitter (last resort): used only for a single block that is
+ * itself larger than `size` and has no internal boundary to break on.
+ */
+function hardSplit(text: string, size: number, overlap: number): string[] {
+  const step = Math.max(1, size - overlap);
+  const chunks: string[] = [];
+  for (let start = 0; start < text.length; start += step) {
+    chunks.push(text.slice(start, start + size));
+    if (start + size >= text.length) break;
+  }
+  return chunks;
+}
+
+/**
+ * Split a document into blocks at section/paragraph boundaries (blank lines),
+ * so headers stay attached to their content rather than being cut mid-sentence.
+ */
+function splitIntoBlocks(text: string): string[] {
+  return text
+    .split(/\n\s*\n/)
+    .map((b) => b.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Split text into chunks for extraction.
+ *  - Empty -> [].
+ *  - Fits in one chunk (<= size) -> [text]  (typical trainer docs; no truncation).
+ *  - Larger -> SECTION-AWARE: pack whole paragraphs/sections greedily up to size,
+ *    breaking only at blank-line boundaries (never mid-sentence). A single block
+ *    bigger than `size` falls back to a fixed-window hard split.
+ */
 export function chunkText(
   text: string,
   size = BLUEPRINT_CHUNK_CHARS,
@@ -16,12 +48,33 @@ export function chunkText(
   const trimmed = text.trim();
   if (!trimmed) return [];
   if (trimmed.length <= size) return [trimmed];
-  const step = Math.max(1, size - overlap);
+
+  const blocks = splitIntoBlocks(trimmed);
   const chunks: string[] = [];
-  for (let start = 0; start < trimmed.length; start += step) {
-    chunks.push(trimmed.slice(start, start + size));
-    if (start + size >= trimmed.length) break;
+  let current = '';
+
+  const flush = () => {
+    if (current.trim()) chunks.push(current.trim());
+    current = '';
+  };
+
+  for (const block of blocks) {
+    if (block.length > size) {
+      // Oversized single section: flush, then hard-split this block.
+      flush();
+      for (const piece of hardSplit(block, size, overlap)) chunks.push(piece);
+      continue;
+    }
+    if (current && current.length + block.length + 2 > size) {
+      // Carry a small tail of the previous chunk for cross-boundary context.
+      const tail = overlap > 0 ? current.slice(-overlap) : '';
+      flush();
+      current = tail ? `${tail}\n\n${block}` : block;
+    } else {
+      current = current ? `${current}\n\n${block}` : block;
+    }
   }
+  flush();
   return chunks;
 }
 
