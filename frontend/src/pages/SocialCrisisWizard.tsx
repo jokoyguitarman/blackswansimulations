@@ -1513,30 +1513,46 @@ export const SocialCrisisWizard = () => {
             )}
 
             {/* Editable fields — these drive generation */}
-            <div className="military-border p-3 text-xs terminal-text space-y-3">
-              <div className="text-robotic-yellow/40 uppercase">
-                Editable fields <Drives />
+            <div className="military-border p-3 text-xs terminal-text space-y-4">
+              <div>
+                <div className="text-robotic-yellow/40 uppercase">
+                  Editable fields <Drives />
+                </div>
+                <div className="text-robotic-yellow/35 mt-1">
+                  These were extracted from your document and feed scenario generation. Review and
+                  edit them. Leave a field empty to let the AI generate it.
+                </div>
               </div>
 
               <div>
-                <label className="text-robotic-yellow/60">
-                  Incident types (one per line) — seeds the fact sheet
-                </label>
+                <label className="text-robotic-yellow/70">Incident types</label>
+                <div className="text-robotic-yellow/35">
+                  The specific kinds of incident this crisis involves. Seeds the fact sheet
+                  (confirmed facts vs. rumours). One per line.
+                </div>
                 <textarea
-                  rows={2}
+                  rows={3}
                   className={editArea}
+                  placeholder={
+                    'e.g.\nVehicle attack at a public market\nRumours of a second attacker'
+                  }
                   value={(blueprint.incident_types ?? []).join('\n')}
                   onChange={(e) => editField('incident_types', linesToArr(e.target.value))}
                 />
               </div>
 
               <div>
-                <label className="text-robotic-yellow/60">
-                  Cross-stakeholder dynamics (one per line) — shapes convergence gates
-                </label>
+                <label className="text-robotic-yellow/70">Cross-stakeholder dynamics</label>
+                <div className="text-robotic-yellow/35">
+                  How the groups react to and provoke each other. Designs the convergence gates
+                  (inter-group pile-ons) and live Director beats. One interaction per line.
+                </div>
                 <textarea
                   rows={3}
                   className={editArea}
+                  placeholder={
+                    'e.g.\nFar-right blames the community -> left-wing groups counter-protest\nMedia naming religion early inflames residents'
+                  }
                   value={(blueprint.cross_stakeholder_dynamics ?? []).join('\n')}
                   onChange={(e) =>
                     editField('cross_stakeholder_dynamics', linesToArr(e.target.value))
@@ -1545,12 +1561,18 @@ export const SocialCrisisWizard = () => {
               </div>
 
               <div>
-                <label className="text-robotic-yellow/60">
-                  Cross-cutting constraints ("area: consideration" per line) — objectives + briefing
-                </label>
+                <label className="text-robotic-yellow/70">Cross-cutting constraints</label>
+                <div className="text-robotic-yellow/35">
+                  Competing priorities the response must balance, written as &quot;area:
+                  consideration&quot;. Fed into the objectives and briefing as context. One per
+                  line.
+                </div>
                 <textarea
                   rows={3}
                   className={editArea}
+                  placeholder={
+                    'e.g.\nlegal: protect investigation integrity\npublic_order: avoid disorder\ncommunity: prevent hate-crime backlash'
+                  }
                   value={constraintsToText(blueprint.cross_cutting_constraints)}
                   onChange={(e) =>
                     editField('cross_cutting_constraints', textToConstraints(e.target.value))
@@ -1559,24 +1581,34 @@ export const SocialCrisisWizard = () => {
               </div>
 
               <div>
-                <label className="text-robotic-yellow/60">
-                  Global tone &amp; realism — applied to every generated voice
-                </label>
+                <label className="text-robotic-yellow/70">Global tone &amp; realism</label>
+                <div className="text-robotic-yellow/35">
+                  Document-wide style guidance applied to every generated voice (on top of
+                  per-faction tone). Free text.
+                </div>
                 <textarea
-                  rows={2}
+                  rows={3}
                   className={editArea}
+                  placeholder={
+                    'e.g. emotional, uncertain, internet-native; allow credible voices to calm things; represent extremists without amplifying them'
+                  }
                   value={blueprint.global_tone_guidance ?? ''}
                   onChange={(e) => editField('global_tone_guidance', e.target.value)}
                 />
               </div>
 
               <div>
-                <label className="text-robotic-yellow/60">
-                  Example vignettes (one per line) — few-shot for the storyline arc
-                </label>
+                <label className="text-robotic-yellow/70">Example vignettes</label>
+                <div className="text-robotic-yellow/35">
+                  Short worked-example scenes the storyline should emulate. Used as few-shot
+                  examples when generating injects. One per line.
+                </div>
                 <textarea
                   rows={3}
                   className={editArea}
+                  placeholder={
+                    'e.g.\nRumour of more attackers -> school-safety panic -> far-right blames community -> interfaith joint statement'
+                  }
                   value={(blueprint.example_vignettes ?? []).join('\n')}
                   onChange={(e) => editField('example_vignettes', linesToArr(e.target.value))}
                 />
