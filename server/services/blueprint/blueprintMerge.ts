@@ -178,6 +178,26 @@ export function mergeBlueprints(parts: ScenarioBlueprint[]): ScenarioBlueprint {
   merged.safety_constraints = unionStrings(...parts.map((p) => p.safety_constraints));
   merged.advanced_injects = unionStrings(...parts.map((p) => p.advanced_injects));
 
+  // Option A fields: array fields union; constraints dedupe by area; tone is first non-empty.
+  merged.incident_types = unionStrings(...parts.map((p) => p.incident_types));
+  merged.cross_stakeholder_dynamics = unionStrings(
+    ...parts.map((p) => p.cross_stakeholder_dynamics),
+  );
+  merged.example_vignettes = unionStrings(...parts.map((p) => p.example_vignettes));
+  const constraintByKey = new Map<string, { area: string; consideration: string }>();
+  for (const part of parts) {
+    for (const c of part.cross_cutting_constraints) {
+      const key = norm(c.area || c.consideration);
+      if (!key) continue;
+      const existing = constraintByKey.get(key);
+      if (!existing) constraintByKey.set(key, { ...c });
+      else existing.consideration = existing.consideration || c.consideration;
+    }
+  }
+  merged.cross_cutting_constraints = Array.from(constraintByKey.values());
+  merged.global_tone_guidance =
+    parts.map((p) => p.global_tone_guidance).find((v) => v.trim()) || '';
+
   // Trainer concepts: union items per concept name.
   const conceptByKey = new Map<string, { name: string; items: string[] }>();
   for (const part of parts) {
@@ -235,6 +255,11 @@ export function scoreCoverage(bp: ScenarioBlueprint): Record<string, number> {
     narrative_mutations: clamp01(bp.narrative_mutations.length / 3),
     objectives: clamp01(bp.objectives.length / 2),
     participant_decisions: clamp01(bp.participant_decisions.length / 2),
+    incident_types: clamp01(bp.incident_types.length / 2),
+    cross_cutting_constraints: clamp01(bp.cross_cutting_constraints.length / 2),
+    cross_stakeholder_dynamics: clamp01(bp.cross_stakeholder_dynamics.length / 2),
+    global_tone_guidance: bp.global_tone_guidance.trim() ? 1 : 0,
+    example_vignettes: clamp01(bp.example_vignettes.length / 2),
   };
 }
 

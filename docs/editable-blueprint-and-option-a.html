@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Editable Blueprint Review + Option A fields</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      :root {
+        --bg: #0e1116; --panel: #161b22; --panel-2: #1c2230; --border: #2b3340;
+        --text: #e6edf3; --muted: #9aa7b4; --accent: #4ea1ff; --accent-2: #7ee787;
+        --warn: #ffb454; --danger: #ff7b72; --add-border: #2ea043; --del-border: #f85149;
+        --code-bg: #0b0f14; --radius: 10px;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; }
+      .wrap { max-width: 1100px; margin: 0 auto; padding: 40px 24px 120px; }
+      header.hero { background: linear-gradient(135deg, #11203a 0%, #161b22 60%); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; margin-bottom: 28px; }
+      header.hero h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.02em; }
+      header.hero p { margin: 0; color: var(--muted); font-size: 16px; max-width: 840px; }
+      .badges { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; }
+      .badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
+      .badge.ok { color: var(--accent-2); border-color: var(--add-border); }
+      .badge.warn { color: var(--warn); border-color: #6b4a1f; }
+      h2 { margin: 44px 0 12px; font-size: 22px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+      h3 { margin: 24px 0 8px; font-size: 17px; color: #cdd9e5; }
+      h4 { margin: 14px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      p, li { color: var(--text); }
+      a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+      code.inline { font-family: var(--mono); font-size: 13px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; color: #d8e0ea; }
+      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin: 16px 0; }
+      .grid { display: grid; gap: 16px; } .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+      @media (max-width: 820px) { .grid.cols-2 { grid-template-columns: 1fr; } }
+      .filemeta { font-family: var(--mono); font-size: 12px; color: var(--muted); margin: 14px 0 6px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+      .pill { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 4px; }
+      .pill.new { background: rgba(126,231,135,0.12); color: var(--accent-2); border: 1px solid var(--add-border); }
+      .pill.edit { background: rgba(255,180,84,0.12); color: var(--warn); border: 1px solid #6b4a1f; }
+      pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 8px 0 18px; }
+      pre code { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: #d8e0ea; white-space: pre; }
+      .diff .add { display: block; background: rgba(126,231,135,0.08); border-left: 3px solid var(--add-border); padding-left: 8px; margin-left: -16px; }
+      .cmt { color: #6e7681; } .kw { color: #ff7b72; } .str { color: #a5d6ff; } .fn { color: #d2a8ff; } .typ { color: #7ee787; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 14px; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .callout { border-radius: 8px; padding: 14px 16px; margin: 16px 0; border: 1px solid; }
+      .callout.safety { background: rgba(255,123,114,0.06); border-color: #6b2b27; }
+      .callout.note { background: rgba(78,161,255,0.06); border-color: #1f3b5c; }
+      .callout.fallback { background: rgba(126,231,135,0.06); border-color: #1f5c2e; }
+      .callout.warnb { background: rgba(255,180,84,0.06); border-color: #6b4a1f; }
+      .callout strong { color: var(--text); }
+      .toc { columns: 2; column-gap: 28px; } .toc a { display: block; padding: 3px 0; font-size: 14px; }
+      @media (max-width: 600px) { .toc { columns: 1; } }
+      .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin: 16px 0; }
+      .tagdrive { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--add-border); color: var(--accent-2); }
+      .tagref { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+      .footer { margin-top: 56px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 16px; }
+      ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+      ol.steps > li { position: relative; padding: 6px 0 6px 36px; }
+      ol.steps > li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 6px; width: 24px; height: 24px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 50%; text-align: center; line-height: 24px; font-size: 12px; font-weight: 700; color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <h1>Editable Blueprint Review + Option A fields</h1>
+        <p>
+          Two changes that only make sense together: <strong>add five recurring concepts as first-class blueprint
+          fields</strong> (so the things that used to land in "Unmapped" have a home), <strong>wire each to a real
+          generation consumer</strong> (so they actually change the scenario), and <strong>make the Blueprint Review step
+          editable</strong> (type a value or accept an AI suggestion) so the trainer can correct/extend the blueprint
+          before it drives generation.
+        </p>
+        <div class="badges">
+          <span class="badge">Option A (5 fields)</span>
+          <span class="badge">Editable review</span>
+          <span class="badge ok">No new flag · no migration</span>
+          <span class="badge ok">No-blueprint = unchanged</span>
+        </div>
+      </header>
+
+      <div class="panel">
+        <h4 style="margin-top:0">Contents</h4>
+        <nav class="toc">
+          <a href="#why">1. Why these two go together</a>
+          <a href="#fields">2. The five new fields</a>
+          <a href="#registry">3. Field -&gt; consumer registry</a>
+          <a href="#flow">4. How an edit travels to output</a>
+          <a href="#backend">5. Backend changes</a>
+          <a href="#ui">6. The editable review UI</a>
+          <a href="#safety">7. Safety, gating &amp; the traps</a>
+          <a href="#tests">8. Tests</a>
+          <a href="#worked">9. Worked example: Post-Terrorism doc</a>
+        </nav>
+      </div>
+
+      <!-- 1 -->
+      <h2 id="why">1. Why these two go together</h2>
+      <p>
+        An edit only matters if something <em>consumes</em> the field. Today only <code class="inline">factions</code>
+        (persona generation) and <code class="inline">timeline</code> (the live Director) are consumed; the concepts in
+        your "Unmapped" panels (misconduct types, cross-cutting constraints, cross-stakeholder dynamics, global tone,
+        example vignettes) have <strong>no field and no consumer</strong>. So this feature does both halves: it gives
+        those concepts fields, routes each to a generator, and exposes them as editable. Editing without consumers would
+        be a "I changed it and nothing happened" trap; consumers without editing would leave the trainer unable to fix a
+        bad extraction. Together they close the loop.
+      </p>
+
+      <!-- 2 -->
+      <h2 id="fields">2. The five new fields</h2>
+      <div class="filemeta"><span class="pill new">ADD</span> server/services/blueprint/blueprintTypes.ts (all optional, defaulted -&gt; backward-compatible, no migration)</div>
+      <pre class="diff"><code><span class="add">incident_types: z.array(z.string()).default([]),</span>
+<span class="add">cross_cutting_constraints: z</span>
+<span class="add">  .array(z.object({ area: z.string().default(''), consideration: z.string().default('') }))</span>
+<span class="add">  .default([]),</span>
+<span class="add">cross_stakeholder_dynamics: z.array(z.string()).default([]),</span>
+<span class="add">global_tone_guidance: z.string().default(''),</span>
+<span class="add">example_vignettes: z.array(z.string()).default([]),</span></code></pre>
+      <p>For the Professional Misconduct doc those would populate like:</p>
+      <pre><code>incident_types: [<span class="str">"workplace harassment"</span>, <span class="str">"abuse of authority"</span>, <span class="str">"discrimination"</span>, <span class="str">"financial impropriety"</span>, <span class="str">"retaliation"</span>, <span class="str">"cover-up"</span>]
+cross_cutting_constraints: [{ area: <span class="str">"legal"</span>, consideration: <span class="str">"manage litigation risk"</span> }, { area: <span class="str">"morale"</span>, consideration: <span class="str">"protect internal trust"</span> }, ...]
+cross_stakeholder_dynamics: [<span class="str">"investors criticise governance -&gt; activists amplify employee stories -&gt; loyalists cry 'cancel culture'"</span>]
+global_tone_guidance: <span class="str">"vary tone/intelligence; internet-native slang, sarcasm, disbelief; avoid uniformly polished"</span>
+example_vignettes: [<span class="str">"Former employees post allegations -&gt; influencers amplify -&gt; board pressured -&gt; activists demand resignations"</span>]</code></pre>
+
+      <!-- 3 -->
+      <h2 id="registry">3. Field -&gt; consumer registry (explicit routing)</h2>
+      <p>With Option A, routing is a deliberate, documented mapping (no auto-router). Each field is hand-wired to the generation stage that owns the artifact it shapes:</p>
+      <table>
+        <thead><tr><th>Field</th><th>Consumer</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td><code class="inline">incident_types</code></td><td><code class="inline">generateNPCsAndFactSheet</code></td><td>Seeds the fact sheet / lets the scenario pin a specific subtype</td></tr>
+          <tr><td><code class="inline">cross_cutting_constraints</code></td><td><code class="inline">generateConvergenceLayer</code></td><td>Feeds <strong>objectives + briefing as CONTEXT</strong> (not weight surgery) so trainees are scored on balancing them</td></tr>
+          <tr><td><code class="inline">cross_stakeholder_dynamics</code></td><td><code class="inline">generateConvergenceLayer</code> + Scenario Director</td><td>Shapes convergence gates (inter-faction pile-ons) and live cross-faction beats</td></tr>
+          <tr><td><code class="inline">global_tone_guidance</code></td><td>NPC + storyline + convergence prompts</td><td>A global style directive appended to every generator (complements per-faction tone)</td></tr>
+          <tr><td><code class="inline">example_vignettes</code></td><td><code class="inline">generateUnifiedStoryline</code></td><td>Few-shot examples so the generated arc matches the trainer's illustrated dynamics</td></tr>
+        </tbody>
+      </table>
+
+      <!-- 4 -->
+      <h2 id="flow">4. How an edit travels to output</h2>
+      <p>The send-path already exists: the wizard posts the <code class="inline">blueprint</code> object to the generation endpoints. So a typed edit is just a state mutation before that POST.</p>
+      <div class="mermaid">
+flowchart TD
+  type["Trainer types an edit / clicks 'Apply suggestion'"] --> state["setBlueprint(updated) in wizard state"]
+  state --> proceed["Press NEXT"]
+  proceed --> npc["POST /generate-npcs (blueprint)"]
+  proceed --> story["POST /generate-storyline (blueprint) [NEW]"]
+  proceed --> conv["POST /generate-convergence (blueprint) [NEW]"]
+  proceed --> compile["POST /compile (blueprint) -> persisted"]
+  npc --> guide["build*Guidance(blueprint) -> appended to prompt only when non-empty"]
+  story --> guide
+  conv --> guide
+      </div>
+
+      <!-- 5 -->
+      <h2 id="backend">5. Backend changes</h2>
+
+      <h3>5a. Fields survive extraction (merge + coverage + extraction prompt)</h3>
+      <p>A field added to the schema but not to the merge gets <strong>dropped at merge time</strong> (the merge starts from an empty blueprint and only copies known fields). So three coordinated edits:</p>
+      <pre class="diff"><code><span class="cmt">// blueprintMerge.ts -- mergeBlueprints: array fields follow the unionStrings template</span>
+<span class="add">merged.incident_types = unionStrings(...parts.map((p) =&gt; p.incident_types));</span>
+<span class="add">merged.cross_stakeholder_dynamics = unionStrings(...parts.map((p) =&gt; p.cross_stakeholder_dynamics));</span>
+<span class="add">merged.example_vignettes = unionStrings(...parts.map((p) =&gt; p.example_vignettes));</span>
+<span class="add">merged.global_tone_guidance = parts.map((p) =&gt; p.global_tone_guidance).find((v) =&gt; v.trim()) || '';</span>
+<span class="add">merged.cross_cutting_constraints = mergeConstraints(parts); // dedupe by area</span>
+<span class="cmt">// scoreCoverage: add a coverage entry per new field (drives non-empty gating)</span>
+<span class="cmt">// blueprintExtractionService.ts: add the 5 keys to the Pass B JSON template</span></code></pre>
+
+      <h3>5b. Consumers (thread blueprint into the two generators that lack it)</h3>
+      <p>Today only <code class="inline">generateNPCsAndFactSheet</code> receives the blueprint. <code class="inline">generateUnifiedStoryline</code> and <code class="inline">generateConvergenceLayer</code> need it threaded through (function param + route + wizard body). Each consumer uses a guidance helper that <strong>mirrors <code class="inline">buildFactionGuidance</code> -- returns an empty string when the field is empty</strong> (this is the no-regression hinge):</p>
+      <pre class="diff"><code><span class="kw">function</span> <span class="fn">buildStorylineGuidance</span>(blueprint?: <span class="typ">ScenarioBlueprint</span> | <span class="kw">null</span>): <span class="typ">string</span> {
+  <span class="kw">if</span> (!blueprint) <span class="kw">return</span> <span class="str">''</span>;
+  <span class="kw">const</span> parts: <span class="typ">string</span>[] = [];
+  <span class="kw">if</span> (blueprint.example_vignettes.length) parts.push(<span class="str">`EXAMPLE DYNAMICS to emulate:\n- ${blueprint.example_vignettes.join('\n- ')}`</span>);
+  <span class="kw">if</span> (blueprint.global_tone_guidance.trim()) parts.push(<span class="str">`GLOBAL TONE: ${blueprint.global_tone_guidance}`</span>);
+  <span class="kw">return</span> parts.length ? <span class="str">`\n\n${parts.join('\n\n')}`</span> : <span class="str">''</span>;   <span class="cmt">// empty -> prompt unchanged</span>
+}</code></pre>
+      <div class="filemeta"><span class="pill edit">EDIT</span> routes: /generate-storyline + /generate-convergence (mirror the /generate-npcs gating)</div>
+      <pre class="diff"><code>blueprint: z.unknown().optional(),    <span class="cmt">// add to body schema</span>
+<span class="cmt">// pass through:</span> env.enableDocumentBlueprint &amp;&amp; blueprint ? coerceBlueprint(blueprint) : null</code></pre>
+      <div class="callout warnb"><strong>Objectives caution:</strong> <code class="inline">cross_cutting_constraints</code> feeds the objectives generator and the briefing <em>as context</em> -- it does NOT append hard objective rows or change weights, because objectives flow into scoring/AAR. Context-only keeps scoring stable.</div>
+
+      <!-- 6 -->
+      <h2 id="ui">6. The editable review UI</h2>
+      <p>Mostly frontend, because the POST path already carries the blueprint. The work:</p>
+      <ol class="steps">
+        <li><strong>Widen the frontend blueprint state.</strong> Today <code class="inline">BlueprintView</code> is a partial display subset; carry the full blueprint so edits round-trip to generation/compile.</li>
+        <li><strong>Editable inputs bound to <code class="inline">setBlueprint</code></strong> for the consumed fields (factions, timeline, the 5 new fields, global tone). Keep <code class="inline">unmapped_directives</code> read-only.</li>
+        <li><strong>Accept-suggestion:</strong> each Gap Report warning with a <code class="inline">suggested_fix</code> gets an "Apply" button that writes the suggestion into the target field -- the same state mutation as typing.</li>
+        <li><strong>Live-vs-reference badges:</strong> mark each field <span class="tagdrive">drives generation</span> or <span class="tagref">reference only</span> so trainers know what actually changes the scenario.</li>
+        <li><strong>Send the edits:</strong> add <code class="inline">blueprint</code> to the <code class="inline">generateStoryline</code> + <code class="inline">generateConvergence</code> request bodies (NPC + compile already send it); the server re-validates with <code class="inline">coerceBlueprint</code>.</li>
+      </ol>
+      <div class="callout note"><strong>Accept-suggestion and typing are the same action</strong> -- both just mutate the blueprint state before it's sent. So the AI proposes, the human approves or overrides; the AI never silently rewrites the blueprint.</div>
+
+      <!-- 7 -->
+      <h2 id="safety">7. Safety, gating &amp; the traps</h2>
+      <div class="callout fallback"><strong>No-regression hinge:</strong> every guidance helper returns <code class="inline">''</code> when its field/blueprint is empty, so an empty or no-document blueprint produces byte-identical prompts to today. Enforced by a test.</div>
+      <ul>
+        <li><strong>No new flag</strong> -- rides under <code class="inline">enableDocumentBlueprint</code> (already on in prod). <strong>No migration</strong> (jsonb; whole blueprint persists in <code class="inline">initial_state</code>).</li>
+        <li><strong>Trap #1:</strong> forgetting to extend <code class="inline">mergeBlueprints</code>/<code class="inline">scoreCoverage</code> -&gt; per-chunk values silently dropped. Done in the same change.</li>
+        <li><strong>Trap #2:</strong> wiring a consumer without threading the blueprint into the storyline/convergence generators (+ routes + wizard) -&gt; edit has no effect. Covered in Phase B.</li>
+        <li><strong>Scoring:</strong> constraints are context-only (see caution above).</li>
+      </ul>
+
+      <!-- 8 -->
+      <h2 id="tests">8. Tests</h2>
+      <ul>
+        <li><code class="inline">mergeBlueprints</code> unions/merges the 5 new fields; empty -&gt; empty (no-regression).</li>
+        <li><code class="inline">scoreCoverage</code> includes the new fields.</li>
+        <li>Each <code class="inline">build*Guidance</code> helper returns <code class="inline">''</code> for an empty blueprint, and the expected text when populated.</li>
+        <li><code class="inline">coerceBlueprint</code> round-trips the 5 fields.</li>
+        <li>Manual: edit a field in review -&gt; proceed -&gt; the generated scenario reflects the edit; a no-document run is unchanged.</li>
+      </ul>
+
+      <!-- 9 -->
+      <h2 id="worked">9. Worked example: the Post-Terrorism Communications Crisis doc</h2>
+      <p>
+        Concretely, here is how <em>this</em> document (the interfaith/terrorism firestorm) flows through the editable
+        review with the five new fields. Useful contrast: unlike the misconduct doc, this one populates some of the new
+        fields richly and leaves others nearly empty &mdash; which is exactly where the editable step earns its keep.
+      </p>
+
+      <h3>What each new field holds for this document</h3>
+      <table>
+        <thead><tr><th>Field</th><th>What this doc yields</th><th>Pre-filled?</th><th>Consumer &rarr; trainee-facing effect</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code class="inline">cross_stakeholder_dynamics</code></td>
+            <td>"far-right mobilisation provokes left-wing counter-protests; jihadists exploit anti-Muslim backlash; media framing of religion inflames Islamophobic residents; Marxists accuse interfaith leaders of being state-co-opted"</td>
+            <td><span class="tagdrive">rich</span></td>
+            <td>convergence gates + Director &rarr; live inter-faction pile-ons fire as the crisis heats up</td>
+          </tr>
+          <tr>
+            <td><code class="inline">global_tone_guidance</code></td>
+            <td>"focus on emotions, mobilisation, mistrust; include uncertainty, contradiction, evolving info; represent extremist exploitation WITHOUT amplifying it; allow credible voices to de-escalate"</td>
+            <td><span class="tagdrive">rich</span></td>
+            <td>all prompts &rarr; every NPC/agitator post carries that emotional, uncertain, internet-native register</td>
+          </tr>
+          <tr>
+            <td><code class="inline">cross_cutting_constraints</code></td>
+            <td>[{legal/process: "protect investigation integrity"}, {public order: "avoid disorder"}, {community: "prevent hate-crime backlash"}, {comms: "speed vs accuracy"}]</td>
+            <td><span class="tagdrive">partial</span></td>
+            <td>convergence objectives + briefing context &rarr; trainees are scored on balancing these</td>
+          </tr>
+          <tr>
+            <td><code class="inline">example_vignettes</code></td>
+            <td>the escalation chain + participant-challenge scenarios (e.g. "rumour of more attackers &rarr; school-safety panic &rarr; far-right blames community &rarr; interfaith joint statement")</td>
+            <td><span class="tagref">thin</span></td>
+            <td>storyline few-shot &rarr; the generated arc mirrors the trainer's illustrated dynamics</td>
+          </tr>
+          <tr>
+            <td><code class="inline">incident_types</code></td>
+            <td>doc says "a serious violent incident <em>as described by the trainer</em>" &mdash; deliberately unspecified</td>
+            <td><span class="tagref">empty</span></td>
+            <td>fact-sheet seed &rarr; <strong>this is the field the trainer types in the editable step</strong> (e.g. "vehicle attack at a market"), otherwise AI-generated</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout note">
+        Note the spread: <code class="inline">cross_stakeholder_dynamics</code> and <code class="inline">global_tone_guidance</code>
+        extract richly here (the doc is explicit about them), <code class="inline">incident_types</code> is intentionally
+        empty (the doc defers the specific incident to the trainer), and <code class="inline">example_vignettes</code> is thin.
+        That uneven fill is the whole reason the review is editable.
+      </div>
+
+      <h3>The editable review experience for this doc</h3>
+      <ol class="steps">
+        <li><strong>Pre-filled, editable:</strong> the rich fields (cross-stakeholder dynamics, global tone) come populated; the trainer can tweak wording &mdash; e.g. soften the Marxist faction's "sympathetic to extremists" phrasing the Gap Report flagged.</li>
+        <li><strong>Empty, type it in:</strong> <code class="inline">incident_types</code> is blank, so the trainer types the specific incident here instead of leaving it to the AI &mdash; the one field this doc explicitly hands to the human.</li>
+        <li><strong>Accept-suggestion on the Gap items:</strong> the three warnings for this doc become one-click fixes:
+          <div class="callout warnb" style="margin:8px 0 0">
+            (1) Government/Media conflicting drivers &rarr; "Apply" rewrites them to a coherent "accurate but occasionally over-corrects under pressure." (2) Far-Right 4chan link &rarr; "Apply" swaps it for "fringe forums" (the safety layer drops it regardless). (3) Time Progression vs intensity ladder &rarr; surfaced for the trainer to reconcile stage timing.
+          </div>
+        </li>
+        <li><strong>Proceed:</strong> the edited blueprint is POSTed to generate-npcs / generate-storyline / generate-convergence / compile &mdash; so every edit above actually shapes the generated scenario.</li>
+      </ol>
+
+      <h3>Who consumes what, end to end (this doc)</h3>
+      <div class="mermaid">
+flowchart TD
+  doc["Post-Terrorism doc"] --> bp["Blueprint (editable)"]
+  bp -->|factions: 13| npc["generateNPCsAndFactSheet -> personas"]
+  bp -->|incident_types typed by trainer| npc
+  bp -->|global_tone| npc
+  bp -->|example_vignettes| story["generateUnifiedStoryline -> timed injects"]
+  bp -->|global_tone| story
+  bp -->|cross_stakeholder_dynamics| conv["generateConvergenceLayer -> gates + objectives"]
+  bp -->|cross_cutting_constraints| conv
+  bp -->|timeline 10 stages + hostile factions| dir["Runtime Director + hive (live)"]
+  bp -->|narrative_mutations| fact["fact sheet false claims"]
+      </div>
+      <div class="callout fallback">
+        Net for this document: the trainer opens the review, sees the firestorm's stakeholder dynamics and tone already
+        captured, <strong>types the one thing the doc left open (the specific incident)</strong>, one-click-fixes the
+        three Gap items, and proceeds &mdash; and each of those edits flows to a real consumer (personas, storyline,
+        convergence, fact sheet, live Director) rather than sitting as inert context.
+      </div>
+
+      <div class="footer">
+        Plan reference: <code class="inline">.cursor/plans/editable_blueprint_+_option_a_fields_084165e5.plan.md</code>. Code snippets are illustrative of the change shape and cite real files/line ranges; not yet applied. Mermaid renders with internet on first load.
+      </div>
+    </div>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "strict" });
+    </script>
+  </body>
+</html>
