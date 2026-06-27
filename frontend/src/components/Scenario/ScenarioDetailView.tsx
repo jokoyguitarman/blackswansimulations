@@ -534,6 +534,8 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       | Record<string, unknown>
                       | undefined;
                     const app = dc?.app ? String(dc.app) : inj.type;
+                    const isFacebook =
+                      app === 'social_feed' && String(dc?.platform ?? 'x_twitter') === 'facebook';
                     return (
                       <div
                         key={inj.id}
@@ -544,10 +546,12 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                             T+{inj.trigger_time_minutes}m
                           </span>
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded ${app === 'social_feed' ? 'bg-black text-white border border-gray-600' : app === 'email' ? 'bg-blue-600 text-white' : app === 'news' ? 'bg-red-600 text-white' : app === 'group_chat' ? 'bg-green-600 text-white' : 'bg-gray-600 text-white'}`}
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${app === 'social_feed' ? (isFacebook ? 'bg-blue-700 text-white border border-blue-500' : 'bg-black text-white border border-gray-600') : app === 'email' ? 'bg-blue-600 text-white' : app === 'news' ? 'bg-red-600 text-white' : app === 'group_chat' ? 'bg-green-600 text-white' : 'bg-gray-600 text-white'}`}
                           >
                             {app === 'social_feed'
-                              ? 'X Post'
+                              ? isFacebook
+                                ? 'Fakebook'
+                                : 'X Post'
                               : app === 'email'
                                 ? 'Email'
                                 : app === 'news'
