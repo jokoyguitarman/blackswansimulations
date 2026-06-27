@@ -105,6 +105,38 @@ describe('mergeBlueprints', () => {
       'cover-up claims',
     ]);
   });
+
+  test('merges Option A fields across chunks (union arrays, dedupe constraints, first-non-empty tone)', () => {
+    const a = coerceBlueprint({
+      incident_types: ['harassment'],
+      cross_stakeholder_dynamics: ['investors -> activists'],
+      example_vignettes: ['v1'],
+      cross_cutting_constraints: [{ area: 'legal', consideration: 'litigation risk' }],
+      global_tone_guidance: '',
+    });
+    const b = coerceBlueprint({
+      incident_types: ['Harassment', 'cover-up'],
+      cross_stakeholder_dynamics: ['loyalists push back'],
+      example_vignettes: ['v1', 'v2'],
+      cross_cutting_constraints: [
+        { area: 'legal', consideration: 'dup' },
+        { area: 'morale', consideration: 'trust' },
+      ],
+      global_tone_guidance: 'sarcastic, internet-native',
+    });
+    const m = mergeBlueprints([a, b]);
+    assert.deepEqual(m.incident_types, ['harassment', 'cover-up']);
+    assert.deepEqual(m.cross_stakeholder_dynamics, [
+      'investors -> activists',
+      'loyalists push back',
+    ]);
+    assert.deepEqual(m.example_vignettes, ['v1', 'v2']);
+    assert.deepEqual(
+      m.cross_cutting_constraints.map((c) => c.area),
+      ['legal', 'morale'],
+    );
+    assert.equal(m.global_tone_guidance, 'sarcastic, internet-native');
+  });
 });
 
 describe('scoreCoverage / scoreStructure', () => {
@@ -127,5 +159,21 @@ describe('scoreCoverage / scoreStructure', () => {
     assert.equal(scoreCoverage(bp).premise, 1);
     assert.equal(scoreCoverage(bp).factions, 1);
     assert.ok(scoreStructure(bp) > 0.6);
+  });
+
+  test('coverage includes Option A fields', () => {
+    const cov = scoreCoverage(
+      coerceBlueprint({
+        incident_types: ['a', 'b'],
+        global_tone_guidance: 'x',
+        cross_stakeholder_dynamics: ['d'],
+      }),
+    );
+    assert.equal(cov.incident_types, 1);
+    assert.equal(cov.global_tone_guidance, 1);
+    assert.ok('cross_stakeholder_dynamics' in cov);
+    const empty = scoreCoverage(coerceBlueprint({}));
+    assert.equal(empty.incident_types, 0);
+    assert.equal(empty.global_tone_guidance, 0);
   });
 });

@@ -76,6 +76,14 @@ interface BlueprintView {
   unmapped_directives?: Array<{ source_excerpt?: string; note?: string }>;
   trainer_concepts?: Array<{ name?: string; items?: string[] }>;
   coverage?: Record<string, number>;
+  // Option A editable fields (drive generation; see field->consumer registry)
+  incident_types?: string[];
+  cross_cutting_constraints?: Array<{ area?: string; consideration?: string }>;
+  cross_stakeholder_dynamics?: string[];
+  global_tone_guidance?: string;
+  example_vignettes?: string[];
+  // any other server fields ride along untouched on the round-trip
+  [key: string]: unknown;
 }
 
 const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social media crisis simulation.
@@ -643,6 +651,7 @@ export const SocialCrisisWizard = () => {
             duration: 60,
             personas: personasIn,
             fact_sheet: factSheetIn,
+            blueprint: blueprint ?? undefined,
           }),
         });
 
@@ -684,7 +693,7 @@ export const SocialCrisisWizard = () => {
       setStep3Loading(false);
       return result;
     },
-    [crisisDescription, country, orgName, personas, factSheet],
+    [crisisDescription, country, orgName, personas, factSheet, blueprint],
   );
 
   const generateConvergence = useCallback(
@@ -731,6 +740,7 @@ export const SocialCrisisWizard = () => {
             // Feed the storyline so convergence designs shared injects and gates
             // as organic consequences of the actual storyline beats.
             team_storylines: storylineIn.length > 0 ? { storyline: storylineIn } : {},
+            blueprint: blueprint ?? undefined,
           }),
         });
 
@@ -785,7 +795,16 @@ export const SocialCrisisWizard = () => {
       setStep4Loading(false);
       return false;
     },
-    [crisisDescription, country, orgName, communities, personas, factSheet, storylineInjects],
+    [
+      crisisDescription,
+      country,
+      orgName,
+      communities,
+      personas,
+      factSheet,
+      storylineInjects,
+      blueprint,
+    ],
   );
 
   const generateOrgPage = useCallback(async (): Promise<boolean> => {
@@ -1411,6 +1430,28 @@ export const SocialCrisisWizard = () => {
 
   const renderBlueprintReview = () => {
     const pct = (n?: number) => `${Math.round((n ?? 0) * 100)}%`;
+    const editField = (key: keyof BlueprintView, value: unknown) =>
+      setBlueprint((bp) => ({ ...(bp || {}), [key]: value }) as BlueprintView);
+    const linesToArr = (v: string) => v.split('\n').map((s) => s.trim());
+    const constraintsToText = (cs?: Array<{ area?: string; consideration?: string }>) =>
+      (cs ?? []).map((c) => `${c.area || ''}: ${c.consideration || ''}`).join('\n');
+    const textToConstraints = (v: string) =>
+      v
+        .split('\n')
+        .map((line) => {
+          const idx = line.indexOf(':');
+          return idx === -1
+            ? { area: line.trim(), consideration: '' }
+            : { area: line.slice(0, idx).trim(), consideration: line.slice(idx + 1).trim() };
+        })
+        .filter((c) => c.area || c.consideration);
+    const Drives = () => (
+      <span className="text-[10px] terminal-text text-green-400/80 border border-green-500/40 rounded px-1 ml-2">
+        drives generation
+      </span>
+    );
+    const editArea =
+      'w-full bg-black/30 border border-robotic-gray-200 text-robotic-yellow/80 text-xs p-2 mt-1';
     return (
       <div className="space-y-4">
         <div>
@@ -1465,8 +1506,82 @@ export const SocialCrisisWizard = () => {
                     )}
                   </div>
                 ))}
+                <div className="text-robotic-yellow/30 mt-1">
+                  Suggestions are advisory — edit the fields below to incorporate them.
+                </div>
               </div>
             )}
+
+            {/* Editable fields — these drive generation */}
+            <div className="military-border p-3 text-xs terminal-text space-y-3">
+              <div className="text-robotic-yellow/40 uppercase">
+                Editable fields <Drives />
+              </div>
+
+              <div>
+                <label className="text-robotic-yellow/60">
+                  Incident types (one per line) — seeds the fact sheet
+                </label>
+                <textarea
+                  rows={2}
+                  className={editArea}
+                  value={(blueprint.incident_types ?? []).join('\n')}
+                  onChange={(e) => editField('incident_types', linesToArr(e.target.value))}
+                />
+              </div>
+
+              <div>
+                <label className="text-robotic-yellow/60">
+                  Cross-stakeholder dynamics (one per line) — shapes convergence gates
+                </label>
+                <textarea
+                  rows={3}
+                  className={editArea}
+                  value={(blueprint.cross_stakeholder_dynamics ?? []).join('\n')}
+                  onChange={(e) =>
+                    editField('cross_stakeholder_dynamics', linesToArr(e.target.value))
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="text-robotic-yellow/60">
+                  Cross-cutting constraints ("area: consideration" per line) — objectives + briefing
+                </label>
+                <textarea
+                  rows={3}
+                  className={editArea}
+                  value={constraintsToText(blueprint.cross_cutting_constraints)}
+                  onChange={(e) =>
+                    editField('cross_cutting_constraints', textToConstraints(e.target.value))
+                  }
+                />
+              </div>
+
+              <div>
+                <label className="text-robotic-yellow/60">
+                  Global tone &amp; realism — applied to every generated voice
+                </label>
+                <textarea
+                  rows={2}
+                  className={editArea}
+                  value={blueprint.global_tone_guidance ?? ''}
+                  onChange={(e) => editField('global_tone_guidance', e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="text-robotic-yellow/60">
+                  Example vignettes (one per line) — few-shot for the storyline arc
+                </label>
+                <textarea
+                  rows={3}
+                  className={editArea}
+                  value={(blueprint.example_vignettes ?? []).join('\n')}
+                  onChange={(e) => editField('example_vignettes', linesToArr(e.target.value))}
+                />
+              </div>
+            </div>
 
             <div className="military-border p-3 text-xs terminal-text">
               <div className="text-robotic-yellow/40 uppercase mb-2">

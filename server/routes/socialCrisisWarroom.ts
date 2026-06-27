@@ -169,12 +169,14 @@ router.post(
           confirmed_facts: z.array(z.string()),
           unconfirmed_claims: z.array(z.unknown()),
         }),
+        blueprint: z.unknown().optional(),
       }),
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
     try {
-      const { crisis_type, country, context, duration, personas, fact_sheet, org_name } = req.body;
+      const { crisis_type, country, context, duration, personas, fact_sheet, org_name, blueprint } =
+        req.body;
 
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
@@ -194,6 +196,7 @@ router.post(
         (msg: string) => {
           res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
         },
+        env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
       );
 
       res.write(JSON.stringify({ type: 'complete', injects }) + '\n');
@@ -296,6 +299,7 @@ router.post(
           confirmed_facts: z.array(z.string()),
           unconfirmed_claims: z.array(z.unknown()),
         }),
+        blueprint: z.unknown().optional(),
       }),
     }),
   ),
@@ -309,6 +313,7 @@ router.post(
       team_storylines,
       personas,
       fact_sheet,
+      blueprint,
     } = req.body;
     const jobId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
@@ -323,6 +328,7 @@ router.post(
           personas as NPCPersona[],
           fact_sheet as FactSheet,
           crisisContext,
+          env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
         );
         aiJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
         logger.info({ jobId }, 'Convergence generation completed');

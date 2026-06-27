@@ -56,6 +56,11 @@ const warningSchema = z.object({
   suggested_fix: z.array(z.string()).optional(),
 });
 
+const crossCuttingConstraintSchema = z.object({
+  area: z.string().default(''),
+  consideration: z.string().default(''),
+});
+
 export const scenarioBlueprintSchema = z.object({
   premise: z
     .object({
@@ -76,6 +81,12 @@ export const scenarioBlueprintSchema = z.object({
   ground_rules: z.array(z.string()).default([]),
   safety_constraints: z.array(z.string()).default([]),
   advanced_injects: z.array(z.string()).default([]),
+  // Option A: cross-cutting concepts with dedicated consumers (see field->consumer registry)
+  incident_types: z.array(z.string()).default([]),
+  cross_cutting_constraints: z.array(crossCuttingConstraintSchema).default([]),
+  cross_stakeholder_dynamics: z.array(z.string()).default([]),
+  global_tone_guidance: z.string().default(''),
+  example_vignettes: z.array(z.string()).default([]),
   // Discovery + never-lose
   detected_framework_kind: z.string().default(''),
   trainer_concepts: z.array(trainerConceptSchema).default([]),

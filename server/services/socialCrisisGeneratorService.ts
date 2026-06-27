@@ -351,6 +351,66 @@ function buildFactionGuidance(blueprint?: ScenarioBlueprint | null): string {
   return `\n\nBLUEPRINT FACTIONS (the trainer's document defined these groups -- honor them). For EACH persona you create, set "faction_id" to the matching faction id below and "alignment" to that faction's alignment. Distribute the key personas across these factions in proportion to their importance:\n${lines}`;
 }
 
+// ─── Option A blueprint guidance helpers ────────────────────────────────────
+// Each returns '' when its field/blueprint is empty, so an empty blueprint leaves
+// the prompt byte-identical to before (no-regression hinge).
+//
+// FIELD -> CONSUMER REGISTRY (explicit routing):
+//   incident_types             -> generateNPCsAndFactSheet (fact-sheet seed)
+//   cross_cutting_constraints  -> generateConvergenceLayer (objectives + briefing CONTEXT)
+//   cross_stakeholder_dynamics -> generateConvergenceLayer (convergence gates) + runtime Director
+//   global_tone_guidance       -> NPC + storyline + convergence prompts (global style)
+//   example_vignettes          -> generateUnifiedStoryline (few-shot arc)
+
+/** Document-wide tone/realism guidance applied across all generators. */
+function buildGlobalToneGuidance(blueprint?: ScenarioBlueprint | null): string {
+  const tone = blueprint?.global_tone_guidance?.trim();
+  return tone ? `\n\nGLOBAL TONE & REALISM (apply to every post/voice): ${tone}` : '';
+}
+
+/** Incident sub-types -> fact-sheet seeding for the NPC/fact-sheet generator. */
+function buildIncidentTypesGuidance(blueprint?: ScenarioBlueprint | null): string {
+  const types = blueprint?.incident_types ?? [];
+  if (types.length === 0) return '';
+  return `\n\nINCIDENT TYPES this crisis may involve (ground the fact sheet in these): ${types.join('; ')}`;
+}
+
+/** example_vignettes + global tone -> storyline few-shot guidance. */
+function buildStorylineGuidance(blueprint?: ScenarioBlueprint | null): string {
+  if (!blueprint) return '';
+  const parts: string[] = [];
+  if (blueprint.example_vignettes.length > 0) {
+    parts.push(
+      `EXAMPLE DYNAMICS to emulate in the inject arc:\n- ${blueprint.example_vignettes.join('\n- ')}`,
+    );
+  }
+  const tone = blueprint.global_tone_guidance?.trim();
+  if (tone) parts.push(`GLOBAL TONE & REALISM: ${tone}`);
+  return parts.length > 0 ? `\n\n${parts.join('\n\n')}` : '';
+}
+
+/** cross_stakeholder_dynamics + cross_cutting_constraints (as context) + tone -> convergence. */
+function buildConvergenceGuidance(blueprint?: ScenarioBlueprint | null): string {
+  if (!blueprint) return '';
+  const parts: string[] = [];
+  if (blueprint.cross_stakeholder_dynamics.length > 0) {
+    parts.push(
+      `CROSS-STAKEHOLDER DYNAMICS (design convergence gates around these inter-group interactions):\n- ${blueprint.cross_stakeholder_dynamics.join('\n- ')}`,
+    );
+  }
+  if (blueprint.cross_cutting_constraints.length > 0) {
+    const lines = blueprint.cross_cutting_constraints
+      .map((c) => `${c.area}: ${c.consideration}`)
+      .join('; ');
+    parts.push(
+      `CROSS-CUTTING CONSTRAINTS the response must balance (reflect in objectives & briefing -- do NOT invent extra weighted objectives): ${lines}`,
+    );
+  }
+  const tone = blueprint.global_tone_guidance?.trim();
+  if (tone) parts.push(`GLOBAL TONE & REALISM: ${tone}`);
+  return parts.length > 0 ? `\n\n${parts.join('\n\n')}` : '';
+}
+
 export async function generateNPCsAndFactSheet(
   crisisType: string,
   context: string,
@@ -406,7 +466,7 @@ Return ONLY valid JSON:
     "crisis_cluster": "victim|accidental|preventable"
   }
 }`,
-    `Crisis scenario: ${crisisType}${orgNameLine(orgName)}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nDetailed context: ${context}${factionGuidance}`,
+    `Crisis scenario: ${crisisType}${orgNameLine(orgName)}\n${location ? `Location: ${location}, ` : ''}Country: ${country}\nDetailed context: ${context}${factionGuidance}${buildIncidentTypesGuidance(blueprint)}${buildGlobalToneGuidance(blueprint)}`,
     8000,
     0.8,
   );
@@ -663,6 +723,7 @@ export async function generateUnifiedStoryline(
   npcs: NPCPersona[],
   factSheet: FactSheet,
   onProgress?: (msg: string) => void,
+  blueprint?: ScenarioBlueprint | null,
 ): Promise<SocialInject[]> {
   const npcContext = npcs
     .map(
@@ -715,7 +776,7 @@ ${factsContext}
 
 Return ONLY valid JSON:
 { "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "email_category": "verified_facts|sitrep_request|general", "from_name": "...", "from_address": "...", "priority": "normal|high|urgent", ... } }] }`,
-    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes${buildStorylineGuidance(blueprint)}`,
     12000,
     0.8,
   );
@@ -744,6 +805,7 @@ export async function generateConvergenceLayer(
     duration: number;
     orgName?: string;
   },
+  blueprint?: ScenarioBlueprint | null,
 ): Promise<{
   sharedInjects: SocialInject[];
   convergenceGates: SocialInject[];
@@ -817,7 +879,7 @@ Return ONLY valid JSON:
   "convergence_gates": [{ "title": "...", "content": "...", "type": "social_post", "severity": "critical", "inject_scope": "universal", "target_teams": [], "delivery_config": { "app": "social_feed", "author_handle": "@npc", "author_display_name": "Name", "author_type": "npc_public", ... }, "conditions_to_appear": { "threshold": 1, "conditions": ["..."] }, "conditions_to_cancel": ["..."], "eligible_after_minutes": 10 }],
   "dimension_labels": { "public_trust": "...", "community_safety": "...", "narrative_control": "...", "escalation_risk": "..." }
 }`,
-    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)} in ${crisisContext.location}, ${crisisContext.country}\nDuration: ${crisisContext.duration} minutes\nContext: ${crisisContext.context}`,
+    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)} in ${crisisContext.location}, ${crisisContext.country}\nDuration: ${crisisContext.duration} minutes\nContext: ${crisisContext.context}${buildConvergenceGuidance(blueprint)}`,
     8000,
     0.8,
   );

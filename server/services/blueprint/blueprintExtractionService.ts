@@ -45,6 +45,11 @@ Return ONLY JSON with any of these keys you can populate from THIS chunk:
   "ground_rules": ["..."],
   "safety_constraints": ["..."],
   "advanced_injects": ["..."],
+  "incident_types": ["specific incident/sub-types this crisis could involve"],
+  "cross_cutting_constraints": [{ "area": "legal|morale|investor|public_order|reputational|...", "consideration": "..." }],
+  "cross_stakeholder_dynamics": ["how groups interact/escalate against each other"],
+  "global_tone_guidance": "document-wide tone/realism guidance that applies across ALL factions",
+  "example_vignettes": ["worked example scenes illustrating the dynamics"],
   "crisis_cluster": "victim|accidental|preventable",
   "unmapped_directives": [{ "source_excerpt": "...", "note": "why it did not fit a field" }]
 }
