@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Round 1 Fix Plan — Explained for Humans</title>
+<style>
+  :root {
+    --bg: #0a0e14; --bg2: #0f1620; --panel: #131c28; --panel2: #182030;
+    --line: #233143; --ink: #e8eef6; --muted: #8aa0b8; --dim: #5d7186;
+    --cyan: #2dd4bf; --cyan2: #22d3ee; --amber: #f5b942; --violet: #a78bfa;
+    --pink: #f472b6; --green: #34d399; --red: #f87171; --orange: #fb923c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace;
+    font-size: 15px; line-height: 1.65; overflow-x: hidden; }
+  a { color: var(--cyan); }
+  h1,h2,h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  .sec-num { font-size: 13px; color: var(--cyan); letter-spacing: 0.25em; text-transform: uppercase; margin-bottom: 10px; font-weight: 700; }
+  .sec-title { font-size: 28px; margin: 0 0 6px; }
+  .sec-sub { color: var(--muted); margin: 0 0 28px; max-width: 900px; }
+
+  header.hero { position: relative; min-height: 54vh; display: flex; align-items: center; overflow: hidden; border: none; padding: 66px 0; }
+  .hero-bg { position: absolute; inset: 0; z-index: 0;
+    background: radial-gradient(1100px 520px at 18% 8%, rgba(245,185,66,0.10), transparent 60%),
+      radial-gradient(900px 520px at 88% 22%, rgba(167,139,250,0.16), transparent 60%),
+      radial-gradient(900px 600px at 60% 100%, rgba(45,212,191,0.10), transparent 60%); }
+  .grid-lines { position: absolute; inset: 0; z-index: 0; opacity: 0.25;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 46px 46px; mask-image: radial-gradient(ellipse at 50% 40%, #000 35%, transparent 78%); }
+  .hero-content { position: relative; z-index: 2; }
+  .kicker { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--amber); border: 1px solid #5a4420; padding: 6px 14px; border-radius: 999px; background: rgba(245,185,66,0.06); margin-bottom: 22px; }
+  .hero h1 { font-size: clamp(28px,4.6vw,46px); margin: 0 0 16px; }
+  .hero h1 .grad { background: linear-gradient(100deg, var(--amber), var(--violet) 55%, var(--cyan) 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lead { font-size: 17px; color: var(--muted); max-width: 820px; margin: 0 0 26px; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; min-width: 150px; }
+  .stat b { font-size: 21px; color: var(--ink); display: block; }
+  .stat span { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  nav.toc { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(10px); background: rgba(10,14,20,0.82); border-bottom: 1px solid var(--line); }
+  nav.toc .wrap { display: flex; gap: 6px; overflow-x: auto; padding: 10px 24px; scrollbar-width: none; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 12.5px; padding: 7px 12px; border-radius: 8px; white-space: nowrap; transition: 0.15s; }
+  nav.toc a:hover { color: var(--ink); background: var(--panel2); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h3 { margin: 0 0 8px; font-size: 16px; }
+  .card p { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; }
+  .card p:last-child { margin-bottom: 0; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2,1fr); }
+  .g3 { grid-template-columns: repeat(3,1fr); }
+  @media (max-width: 920px){ .g2,.g3 { grid-template-columns: 1fr; } }
+
+  .pill { display:inline-block; font-size: 11.5px; padding: 3px 10px; border-radius: 6px; background: #16202e; border: 1px solid #243345; color: var(--ink); margin-left: 8px; vertical-align: middle; }
+  .pill.bad { color: var(--red); border-color: #5a2a2a; background: rgba(248,113,113,0.08); }
+  .pill.good { color: var(--green); border-color: #1f4338; background: rgba(52,211,153,0.08); }
+  .pill.warn { color: var(--amber); border-color: #5a4420; background: rgba(245,185,66,0.08); }
+
+  .analogy { border: 1px solid var(--line); border-left: 3px solid var(--violet); background: var(--bg2); border-radius: 0 12px 12px 0; padding: 16px 20px; margin: 18px 0; font-size: 14px; color: var(--muted); }
+  .analogy b { color: var(--ink); }
+  .analogy .tag { display: block; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--violet); margin-bottom: 6px; }
+
+  .flowbox { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; margin-top: 16px; }
+  .flowbox h4 { margin: 0 0 14px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.1em; }
+  .flowbox.before h4 { color: var(--red); }
+  .flowbox.after h4 { color: var(--green); }
+  .flow { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
+  .flow .node { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 12px; min-width: 120px; flex: 1; }
+  .flow .node b { display: block; color: var(--ink); font-size: 12.5px; margin-bottom: 3px; }
+  .flow .node span { color: var(--muted); }
+  .flow .node.bad { border-color: #5a2a2a; background: rgba(248,113,113,0.06); }
+  .flow .node.good { border-color: #1f4338; background: rgba(52,211,153,0.06); }
+  .flow .node.dead { opacity: 0.55; border-style: dashed; }
+  .flow .arrow { display: flex; align-items: center; color: var(--dim); font-size: 16px; padding: 0 2px; }
+  @media (max-width: 920px){ .flow { flex-direction: column; } .flow .arrow { transform: rotate(90deg); justify-content: center; } }
+
+  .queue-visual { display: flex; gap: 4px; flex-wrap: wrap; margin: 14px 0; }
+  .queue-visual .box { width: 26px; height: 26px; border-radius: 5px; background: rgba(248,113,113,0.15); border: 1px solid #5a2a2a; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--red); }
+  .queue-visual .box.one { width: auto; padding: 0 14px; background: rgba(52,211,153,0.12); border-color: #1f4338; color: var(--green); font-size: 11.5px; }
+  .queue-visual .lbl { width: 100%; font-size: 12px; color: var(--dim); margin-bottom: 4px; }
+
+  table.matrix { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  table.matrix th, table.matrix td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.matrix th { color: var(--cyan); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  table.matrix td { color: var(--muted); } table.matrix td b { color: var(--ink); }
+  table.matrix tr:last-child td { border-bottom: none; }
+
+  .steps { counter-reset: step; margin-top: 20px; }
+  .step { display: flex; gap: 18px; padding: 16px 0; border-bottom: 1px dashed #1c2836; }
+  .step:last-child { border-bottom: none; }
+  .step-n { flex: 0 0 42px; height: 42px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--cyan); font-size: 16px; }
+  .step-body h3 { margin: 2px 0 6px; font-size: 15.5px; }
+  .step-body p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+  .verdict { border: 1px solid var(--line); border-left: 3px solid var(--green); background: var(--bg2); border-radius: 0 12px 12px 0; padding: 14px 18px; margin-top: 18px; font-size: 13.5px; color: var(--muted); }
+  .verdict.warn { border-left-color: var(--amber); }
+  .verdict b { color: var(--ink); }
+
+  ul.tight { margin: 8px 0 0; padding-left: 18px; } ul.tight li { margin: 6px 0; color: var(--muted); font-size: 13.5px; }
+  ul.tight li b { color: var(--ink); }
+  .note { font-size: 12.5px; color: var(--dim); }
+  code { background: var(--bg2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 12.5px; }
+  footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker">Round 1 &middot; Planned Fixes</div>
+    <h1>The Fix Plan<br /><span class="grad">explained without the jargon</span></h1>
+    <p class="lead">
+      Our load test showed the social crisis game slows down badly at 100 players. We traced it to
+      specific lines of code. This page explains what those lines do wrong, how we'll fix them, what
+      could go wrong, and how we'll prove the fix worked &mdash; in plain language.
+    </p>
+    <div class="hero-stats">
+      <div class="stat"><b>3</b><span>changes planned</span></div>
+      <div class="stat"><b>2</b><span>files + 1 migration</span></div>
+      <div class="stat"><b>1 bug</b><span>fixed for free</span></div>
+      <div class="stat"><b>~10 min</b><span>to re-test after deploy</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#problem">The problem</a>
+    <a href="#fix1">Fix: the 100 letters</a>
+    <a href="#fix2">Fix: the stubborn announcer</a>
+    <a href="#fix3">Fix: the ledger</a>
+    <a href="#risks">What could go wrong</a>
+    <a href="#proof">How we prove it worked</a>
+  </div>
+</nav>
+
+<section id="problem">
+  <div class="wrap">
+    <div class="sec-num">01 &middot; Recap</div>
+    <h2 class="sec-title">What the load test told us</h2>
+    <p class="sec-sub">
+      On 2 July we simulated 100 players against the live server. Field operations sailed through.
+      The social crisis game was fine at 50 players but at 100, updates that normally arrive in
+      about 1.5 seconds took up to <b style="color:var(--red)">7&ndash;9 seconds</b>. Nothing crashed and nothing
+      was lost &mdash; things just queued up. Why?
+    </p>
+
+    <div class="analogy">
+      <span class="tag">The picture to keep in mind</span>
+      Your server is <b>one worker at one desk</b> (the Render instance has a single CPU).
+      Every job &mdash; delivering messages to players, writing to the database, running the AI social feed &mdash;
+      goes through that one desk. The worker is fast, but when too many jobs pile up at once,
+      everything behind them waits in line. At 100 players in social mode, the line got long.
+      These fixes remove the <b>biggest unnecessary jobs</b> from the desk.
+    </div>
+
+    <p class="sec-sub" style="margin-top:10px;">
+      While building the test we also discovered a bug that has been silently misbehaving in production
+      for a while. It costs nothing extra to fix it in the same round &mdash; and fixing it makes the
+      system more honest about failures in the future.
+    </p>
+  </div>
+</section>
+
+<section id="fix1">
+  <div class="wrap">
+    <div class="sec-num">02 &middot; Change 1 of 3</div>
+    <h2 class="sec-title">Stop sending 100 letters one at a time <span class="pill warn">the big performance win</span></h2>
+    <p class="sec-sub">File: <code>server/routes/channels.ts</code> and <code>server/services/notificationService.ts</code></p>
+
+    <div class="analogy">
+      <span class="tag">Analogy</span>
+      When anyone sends a chat message, every other player in the session should get a little
+      notification (the red bell dot). Today the code does this like someone mailing 100 letters by
+      <b>driving to the post office, mailing one letter, driving home, driving back, mailing the next
+      letter... 100 round trips.</b> Each "trip" is a call to our database, which takes a fraction of
+      a second &mdash; but 100 of them, one after another, adds up to several seconds of the worker's time
+      <b>per chat message</b>. The fix: write all 100 letters, drive to the post office <b>once</b>, and
+      hand over the whole stack.
+    </div>
+
+    <div class="queue-visual">
+      <div class="lbl">Today &mdash; one database write per participant, one after another (~5+ seconds of desk time per message):</div>
+      <div class="box">1</div><div class="box">2</div><div class="box">3</div><div class="box">4</div><div class="box">5</div><div class="box">6</div><div class="box">7</div><div class="box">8</div><div class="box">9</div><div class="box">10</div><div class="box">&hellip;</div><div class="box">98</div><div class="box">99</div><div class="box">100</div>
+    </div>
+    <div class="queue-visual">
+      <div class="lbl">After the fix &mdash; one database write containing all 100 notifications (~a tenth of a second):</div>
+      <div class="box one">1 batched write &#10003;</div>
+    </div>
+
+    <p class="sec-sub" style="margin-top:16px;">
+      The evidence this matters: during the load test, the chat-message API call took <b>7&ndash;12 seconds</b>
+      to respond at 100 players &mdash; and most of that time is this exact loop. Every real chat message in a
+      big session pays this cost today.
+    </p>
+
+    <div class="card">
+      <h3>A bonus bug gets fixed for free</h3>
+      <p>
+        The codebase already has a "send a stack of letters at once" function &mdash; it's used elsewhere. But it has a flaw:
+        the copy it shows players in real time is missing the notification's <b>ID number</b>. The notification
+        bell in the app uses that ID to mark things as read and to avoid showing duplicates &mdash; so right now,
+        notifications delivered this way are quietly <b>ignored by the app</b> until the next page refresh.
+        Our fix upgrades this function to include the ID, which fixes that too.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section id="fix2">
+  <div class="wrap">
+    <div class="sec-num">03 &middot; Change 2 of 3</div>
+    <h2 class="sec-title">The announcer who refuses to speak <span class="pill bad">live bug, fixed</span></h2>
+    <p class="sec-sub">File: <code>server/services/eventService.ts</code></p>
+
+    <div class="analogy">
+      <span class="tag">Analogy</span>
+      When something happens in a session, the server does two jobs: <b>announce it</b> to all connected
+      players (instant, what players actually feel) and <b>write it in the record book</b> (the database,
+      for the after-action review timeline). The code currently does them in a strange order: the announcer
+      <b>refuses to say anything until the record book entry is accepted</b>. Some time ago, a database rule
+      change made the record book start rejecting entries of the type "chat message" &mdash; and since then,
+      the announcer has been silently skipping those announcements in production. No error, no crash.
+      Just&hellip; silence on that particular channel.
+    </div>
+
+    <div class="flowbox before">
+      <h4>Before &mdash; logging failure kills the announcement</h4>
+      <div class="flow">
+        <div class="node"><b>Something happens</b><span>e.g. chat message sent</span></div>
+        <div class="arrow">&#8594;</div>
+        <div class="node bad"><b>1. Write record book</b><span>database REJECTS "message" type</span></div>
+        <div class="arrow">&#8594;</div>
+        <div class="node dead"><b>2. Announce to players</b><span>never happens &mdash; skipped silently</span></div>
+      </div>
+    </div>
+
+    <div class="flowbox after">
+      <h4>After &mdash; announce first, log independently</h4>
+      <div class="flow">
+        <div class="node"><b>Something happens</b><span>e.g. chat message sent</span></div>
+        <div class="arrow">&#8594;</div>
+        <div class="node good"><b>1. Announce to players</b><span>always happens, instantly</span></div>
+        <div class="arrow">&#8594;</div>
+        <div class="node"><b>2. Write record book</b><span>if it fails, a loud error is logged &mdash; but players already got the news</span></div>
+      </div>
+    </div>
+
+    <p class="sec-sub" style="margin-top:16px;">
+      Why players haven't complained: chat luckily has a <em>second</em> announcement path (to the chat-room
+      channel) that still works &mdash; it's how our load test measured latency. But the session-wide announcement,
+      which other parts of the app can listen to, has been dead. The deeper value of this fix: <b>a bookkeeping
+      problem can never again silence the real-time layer.</b> If the record book breaks in the future, we'll
+      see a loud error in the logs instead of mystery silence.
+    </p>
+  </div>
+</section>
+
+<section id="fix3">
+  <div class="wrap">
+    <div class="sec-num">04 &middot; Change 3 of 3</div>
+    <h2 class="sec-title">Teach the record book to accept chat messages <span class="pill good">small migration</span></h2>
+    <p class="sec-sub">New file: <code>migrations/190_allow_message_event_type.sql</code></p>
+
+    <div class="analogy">
+      <span class="tag">Analogy</span>
+      The record book (the <code>session_events</code> database table) has a strict list of entry types
+      it accepts &mdash; "decision", "inject", "incident", and so on. "Chat message" isn't on the list, which is
+      what set off the announcer problem above. This change simply <b>adds "message" to the approved list</b>.
+      It's one small database script, run the same way as the 189 migration scripts before it.
+    </div>
+
+    <p class="sec-sub">
+      With this in place, chat messages will start appearing in the session timeline again &mdash; which the
+      timeline code was already written to display (it has been expecting them all along). Change 2 protects
+      us even if this list ever drifts again; change 3 restores the record-keeping itself.
+    </p>
+  </div>
+</section>
+
+<section id="risks">
+  <div class="wrap">
+    <div class="sec-num">05 &middot; Honest risk assessment</div>
+    <h2 class="sec-title">What could go wrong, and the safety nets</h2>
+    <div class="grid g3">
+      <div class="card">
+        <h3>Batched letters: one bad address <span class="pill warn">managed</span></h3>
+        <p>
+          With 100 letters in one stack, a single invalid recipient (say, a deleted user still listed in a
+          session) could make the post office reject the whole stack &mdash; today only that one letter would fail.
+          <b>Safety net:</b> notifications are already wrapped so a failure never blocks the chat message itself;
+          worst case is missing bell-dots for one message, visible in server logs. We'll verify with real
+          sessions before and after deploy.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Announcer reorder: double news? <span class="pill good">low</span></h3>
+        <p>
+          Announcing before logging means players can briefly know about an event that failed to reach the
+          record book. For a training simulation this is the correct trade &mdash; players seeing the event
+          matters more than the archive row. The function's callers don't change at all; they already treat
+          it as fire-and-forget.
+        </p>
+      </div>
+      <div class="card">
+        <h3>The migration <span class="pill good">lowest</span></h3>
+        <p>
+          Adding one value to an allowed-types list can't break existing rows or code &mdash; it only permits
+          something that was previously rejected. It follows the exact same pattern as five earlier
+          migrations that extended this same list (044, 052, 155, 156&hellip;).
+        </p>
+      </div>
+    </div>
+    <div class="verdict warn">
+      <b>Overall confidence:</b> ~95% nothing breaks (the batching function already exists and is used in production;
+      we're upgrading, not inventing). The main honest uncertainty is <b>how much faster</b> the social game gets:
+      the chat API time will collapse for near-certain, but the feed engine also contributes to the 100-player slowdown.
+      That's exactly why the last step below exists &mdash; we measure instead of guess. If social mode still degrades at 100,
+      Round 2 (batching the AI feed's announcements) is the prepared next move.
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <div class="sec-num">06 &middot; Verification</div>
+    <h2 class="sec-title">How we prove it worked</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-body">
+          <h3>Local check</h3>
+          <p>Run the type checker, start the server locally, send chat messages in a test session, and confirm notifications arrive with working "mark as read".</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-body">
+          <h3>Deploy + run the migration</h3>
+          <p>Push to git (Render redeploys automatically) and run <code>migrations/190</code> in the Supabase SQL editor &mdash; same routine as every previous migration.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-body">
+          <h3>Re-run the exact same load test</h3>
+          <p>Same command, same stages (25 &#8594; 50 &#8594; 100 players), same time of night, both game types. Takes about 10 minutes and cleans up after itself.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">4</div>
+        <div class="step-body">
+          <h3>Compare before / after</h3>
+          <p>The 2 July results are the baseline. Success looks like: chat API time drops from 7&ndash;12s to ~1&ndash;2s, and the social game's 100-player latency spike (7.3s) shrinks &mdash; ideally under the 2s health threshold. The results page gets a before/after section either way.</p>
+        </div>
+      </div>
+    </div>
+
+    <table class="matrix">
+      <tr><th>Metric</th><th>Baseline (2 Jul)</th><th>Target after Round 1</th></tr>
+      <tr><td><b>Chat API response (100 players)</b></td><td>7&ndash;12 seconds</td><td><b>~1&ndash;2 seconds</b> (high confidence)</td></tr>
+      <tr><td><b>Social fan-out p95 (100 players)</b></td><td>7.3 seconds</td><td><b>Under 2 seconds hoped;</b> measured, not promised</td></tr>
+      <tr><td><b>Field fan-out p95 (100 players)</b></td><td>1.7 seconds (already healthy)</td><td>Same or slightly better</td></tr>
+      <tr><td><b>Notifications via live update</b></td><td>Dropped by the app (missing ID)</td><td>Displayed correctly</td></tr>
+      <tr><td><b>Chat in session timeline</b></td><td>Silently rejected since the constraint change</td><td>Recorded again</td></tr>
+    </table>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Round 1 fix plan &middot; prepared 2 Jul 2026 &middot; baseline data: <code>loadtest-report-prod.json</code> &middot; results page: <code>docs/load-test-results-2026-07-02.html</code>.
+    Round 2 (feed-engine broadcast batching + shared event contracts) stays on the shelf unless the re-test says it's needed.
+  </div>
+</footer>
+
+</body>
+</html>

@@ -77,15 +77,20 @@ export async function createNotification(params: CreateNotificationParams): Prom
       return null;
     }
 
-    // Send WebSocket notification to the user
+    // Send WebSocket notification to the user. Must include user_id and
+    // session_id: the frontend NotificationContext filters incoming socket
+    // notifications on both before displaying them.
     getWebSocketService().notificationCreated(userId, {
       id: data.id,
+      user_id: userId,
+      session_id: sessionId,
       type,
       title,
       message,
       priority,
       metadata,
       action_url: actionUrl,
+      read: false,
       created_at: new Date().toISOString(),
     });
 
@@ -98,13 +103,20 @@ export async function createNotification(params: CreateNotificationParams): Prom
 }
 
 /**
- * Create notifications for multiple users
+ * Create notifications for multiple users.
+ *
+ * Single bulk insert (one DB round-trip regardless of recipient count), then
+ * one websocket emit per user carrying that user's own row — including `id`,
+ * `user_id` and `session_id`, which the frontend NotificationContext requires
+ * to display, dedupe and mark-as-read socket-delivered notifications.
  */
 export async function createNotificationsForUsers(
   userIds: string[],
   params: Omit<CreateNotificationParams, 'userId'>,
 ): Promise<void> {
   try {
+    if (userIds.length === 0) return;
+
     const notifications = userIds.map((userId) => ({
       session_id: params.sessionId,
       user_id: userId,
@@ -117,27 +129,31 @@ export async function createNotificationsForUsers(
       read: false,
     }));
 
-    const { error } = await supabaseAdmin.from('notifications').insert(notifications);
+    const { data: inserted, error } = await supabaseAdmin
+      .from('notifications')
+      .insert(notifications)
+      .select('id, user_id, created_at');
 
     if (error) {
       logger.error({ error, params, userIds }, 'Failed to create notifications for users');
       return;
     }
 
-    // Send WebSocket notifications to all users
-    const notificationData = {
-      type: params.type,
-      title: params.title,
-      message: params.message,
-      priority: params.priority || 'medium',
-      metadata: params.metadata || {},
-      action_url: params.actionUrl,
-      created_at: new Date().toISOString(),
-    };
-
-    userIds.forEach((userId) => {
-      getWebSocketService().notificationCreated(userId, notificationData);
-    });
+    for (const row of inserted ?? []) {
+      getWebSocketService().notificationCreated(row.user_id, {
+        id: row.id,
+        user_id: row.user_id,
+        session_id: params.sessionId,
+        type: params.type,
+        title: params.title,
+        message: params.message,
+        priority: params.priority || 'medium',
+        metadata: params.metadata || {},
+        action_url: params.actionUrl,
+        read: false,
+        created_at: row.created_at ?? new Date().toISOString(),
+      });
+    }
 
     logger.debug({ userIds: userIds.length, type: params.type }, 'Notifications created for users');
   } catch (err) {

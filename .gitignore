@@ -35,3 +35,7 @@ logs/
 docs/Sample of Radical Messages*/
 docs/Sample of Radical Messages*.zip
 
+
+# Load test output
+loadtest-report*.json
+loadtest/.token-cache.json

@@ -19,7 +19,8 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "prepare": "husky install",
-    "test": "node --import tsx --test server/services/blueprint/blueprintMerge.test.ts server/services/blueprint/blueprintTypes.test.ts server/services/blueprint/directorLogic.test.ts server/services/extremistDoctrine.test.ts"
+    "test": "node --import tsx --test server/services/blueprint/blueprintMerge.test.ts server/services/blueprint/blueprintTypes.test.ts server/services/blueprint/directorLogic.test.ts server/services/extremistDoctrine.test.ts",
+    "loadtest": "tsx loadtest/run.ts"
   },
   "repository": {
     "type": "git",
@@ -55,6 +56,7 @@
     "lint-staged": "^16.2.6",
     "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
+    "socket.io-client": "^4.8.3",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",

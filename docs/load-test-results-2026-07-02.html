@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Production Load Test Results — 2 Jul 2026</title>
+<style>
+  :root {
+    --bg: #0a0e14; --bg2: #0f1620; --panel: #131c28; --panel2: #182030;
+    --line: #233143; --ink: #e8eef6; --muted: #8aa0b8; --dim: #5d7186;
+    --cyan: #2dd4bf; --cyan2: #22d3ee; --amber: #f5b942; --violet: #a78bfa;
+    --pink: #f472b6; --green: #34d399; --red: #f87171; --orange: #fb923c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace;
+    font-size: 15px; line-height: 1.6; overflow-x: hidden; }
+  a { color: var(--cyan); }
+  h1,h2,h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 56px 0; border-top: 1px solid var(--line); }
+  .sec-num { font-size: 13px; color: var(--cyan); letter-spacing: 0.25em; text-transform: uppercase; margin-bottom: 10px; font-weight: 700; }
+  .sec-title { font-size: 28px; margin: 0 0 6px; }
+  .sec-sub { color: var(--muted); margin: 0 0 28px; max-width: 880px; }
+
+  header.hero { position: relative; min-height: 52vh; display: flex; align-items: center; overflow: hidden; border: none; padding: 64px 0; }
+  .hero-bg { position: absolute; inset: 0; z-index: 0;
+    background: radial-gradient(1100px 520px at 18% 8%, rgba(45,212,191,0.13), transparent 60%),
+      radial-gradient(900px 520px at 88% 22%, rgba(167,139,250,0.16), transparent 60%),
+      radial-gradient(900px 600px at 60% 100%, rgba(248,113,113,0.08), transparent 60%); }
+  .grid-lines { position: absolute; inset: 0; z-index: 0; opacity: 0.25;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 46px 46px; mask-image: radial-gradient(ellipse at 50% 40%, #000 35%, transparent 78%); }
+  .hero-content { position: relative; z-index: 2; }
+  .kicker { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--green); border: 1px solid #1f4338; padding: 6px 14px; border-radius: 999px; background: rgba(52,211,153,0.06); margin-bottom: 22px; }
+  .hero h1 { font-size: clamp(28px,4.6vw,46px); margin: 0 0 16px; }
+  .hero h1 .grad { background: linear-gradient(100deg, var(--cyan), var(--violet) 55%, var(--amber) 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lead { font-size: 17px; color: var(--muted); max-width: 800px; margin: 0 0 26px; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; min-width: 150px; }
+  .stat b { font-size: 21px; color: var(--ink); display: block; }
+  .stat span { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .stat.good b { color: var(--green); } .stat.warn b { color: var(--amber); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h3 { margin: 0 0 8px; font-size: 16px; }
+  .card p { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2,1fr); }
+  .g3 { grid-template-columns: repeat(3,1fr); }
+  @media (max-width: 920px){ .g2,.g3 { grid-template-columns: 1fr; } }
+
+  .pill { display:inline-block; font-size: 11.5px; padding: 3px 10px; border-radius: 6px; background: #16202e; border: 1px solid #243345; color: var(--ink); margin-left: 8px; vertical-align: middle; }
+  .pill.bad { color: var(--red); border-color: #5a2a2a; background: rgba(248,113,113,0.08); }
+  .pill.good { color: var(--green); border-color: #1f4338; background: rgba(52,211,153,0.08); }
+  .pill.warn { color: var(--amber); border-color: #5a4420; background: rgba(245,185,66,0.08); }
+
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 22px; margin-top: 18px; }
+  .stage.degraded { border-color: #5a2a2a; background: linear-gradient(180deg, rgba(248,113,113,0.05), var(--panel)); }
+  .stage-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 14px; }
+  .stage-head .n { font-size: 30px; font-weight: 700; color: var(--cyan); }
+  .stage.degraded .stage-head .n { color: var(--red); }
+  .stage-head .lbl { color: var(--muted); font-size: 13px; }
+  .metrics { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; margin-bottom: 14px; }
+  @media (max-width: 920px){ .metrics { grid-template-columns: repeat(3, 1fr); } }
+  .metric { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+  .metric b { display: block; font-size: 17px; color: var(--ink); }
+  .metric span { font-size: 10.5px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.06em; }
+  .metric.bad b { color: var(--red); } .metric.good b { color: var(--green); } .metric.warn b { color: var(--amber); }
+  .stage p.read { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .stage p.read b { color: var(--ink); }
+
+  .chart { margin-top: 8px; margin-bottom: 14px; }
+  .chart .row { display: grid; grid-template-columns: 130px 1fr 110px; align-items: center; gap: 12px; padding: 5px 0; }
+  .chart .lbl { color: var(--muted); font-size: 12.5px; text-align: right; }
+  .chart .track { background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; height: 20px; overflow: hidden; }
+  .chart .bar { height: 100%; border-radius: 5px 0 0 5px; background: linear-gradient(90deg, var(--cyan), var(--cyan2)); }
+  .chart .bar.warn { background: linear-gradient(90deg, var(--amber), var(--orange)); }
+  .chart .bar.bad { background: linear-gradient(90deg, var(--orange), var(--red)); }
+  .chart .val { color: var(--ink); font-size: 12.5px; }
+
+  .verdict { border: 1px solid var(--line); border-left: 3px solid var(--green); background: var(--bg2); border-radius: 0 12px 12px 0; padding: 14px 18px; margin-top: 18px; font-size: 13.5px; color: var(--muted); }
+  .verdict.warn { border-left-color: var(--amber); }
+  .verdict b { color: var(--ink); }
+
+  table.matrix { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  table.matrix th, table.matrix td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.matrix th { color: var(--cyan); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  table.matrix td { color: var(--muted); } table.matrix td b { color: var(--ink); }
+  table.matrix tr:last-child td { border-bottom: none; }
+
+  ul.tight { margin: 8px 0 0; padding-left: 18px; } ul.tight li { margin: 6px 0; color: var(--muted); font-size: 13.5px; }
+  ul.tight li b { color: var(--ink); }
+  .note { font-size: 12.5px; color: var(--dim); }
+  code { background: var(--bg2); border: 1px solid var(--line); border-radius: 5px; padding: 1px 6px; font-size: 12.5px; }
+  footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker">Production Run &middot; Real Measurements</div>
+    <h1>Load Test Results<br /><span class="grad">100 simulated players vs. production</span></h1>
+    <p class="lead">
+      Run on 2 Jul 2026, 22:02&ndash;22:12 SGT against <b>blackswansimulations-backend.onrender.com</b>
+      (Render Standard: 1 CPU / 2 GB). Ramp: 25 &#8594; 50 &#8594; 100 players, 12 probes per stage,
+      both game types tested back-to-back on live sessions.
+    </p>
+    <div class="hero-stats">
+      <div class="stat good"><b>100+</b><span>Field ops: healthy</span></div>
+      <div class="stat warn"><b>50</b><span>Social: last healthy stage</span></div>
+      <div class="stat"><b>100%</b><span>Overall delivery</span></div>
+      <div class="stat"><b>0</b><span>Disconnects / conn failures</span></div>
+    </div>
+  </div>
+</header>
+
+<section id="tldr">
+  <div class="wrap">
+    <div class="sec-num">01 &middot; TL;DR</div>
+    <h2 class="sec-title">The two capacity numbers</h2>
+    <div class="grid g2">
+      <div class="card">
+        <h3>Field Operations <span class="pill good">no knee found up to 100</span></h3>
+        <p>
+          Latency stayed essentially flat as players quadrupled &mdash; p95 went 1.34s &#8594; 1.63s &#8594; 1.67s
+          from 25 to 100 players, with 100% delivery and zero drops throughout. The socket fan-out layer
+          isn't close to its limit. <b>Safe to run 100-player field exercises today;</b> the real ceiling
+          is somewhere above, unmeasured.
+        </p>
+      </div>
+      <div class="card">
+        <h3>Social Media Crisis <span class="pill bad">degraded at 100</span></h3>
+        <p>
+          Healthy at 25 and 50 players, then p95 jumped from 1.6s to <b>7.3s at 100 players</b> &mdash; a 4.5&times;
+          spike. Nothing was dropped and no one disconnected, but updates would feel visibly laggy.
+          <b>Keep social sessions at ~50 players</b> (or ~35 with comfortable headroom) until the
+          bottleneck below is addressed.
+        </p>
+      </div>
+    </div>
+    <div class="verdict">
+      <b>Why they differ:</b> in social mode the feed engine runs continuously on the server &mdash; AI-generated
+      NPC posts, comments and likes, each broadcast to every player (3,508 passive events reached spectators
+      during the 100-player stage vs 2,100 in field mode). All of that shares one CPU core with the probe
+      broadcasts, and at 100 players the queue starts backing up.
+    </div>
+  </div>
+</section>
+
+<section id="field">
+  <div class="wrap">
+    <div class="sec-num">02 &middot; Increment by increment</div>
+    <h2 class="sec-title">Field Operations <span class="pill good">PASS</span></h2>
+    <p class="sec-sub">Scenario: "Atrium Blast at Midtown Corporate Plaza" &middot; session created, ramped and torn down automatically.</p>
+
+    <div class="stage">
+      <div class="stage-head"><span class="n">25</span><span class="lbl">players &middot; 60s &middot; 12 probes &middot; 300 expected deliveries</span><span class="pill good">healthy</span></div>
+      <div class="metrics">
+        <div class="metric"><b>1252 ms</b><span>p50 latency</span></div>
+        <div class="metric"><b>1339 ms</b><span>p95 latency</span></div>
+        <div class="metric"><b>1343 ms</b><span>p99 latency</span></div>
+        <div class="metric good"><b>100%</b><span>delivery</span></div>
+        <div class="metric good"><b>0</b><span>drops</span></div>
+        <div class="metric"><b>525</b><span>passive events</span></div>
+      </div>
+      <p class="read">Baseline established: ~1.25s of the latency is fixed probe overhead (the REST call does two Supabase round-trips before broadcasting) &mdash; the number to watch is growth <b>above</b> this baseline, and there is virtually none.</p>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="n">50</span><span class="lbl">players &middot; 60s &middot; 12 probes &middot; 600 expected deliveries</span><span class="pill good">healthy</span></div>
+      <div class="metrics">
+        <div class="metric"><b>1254 ms</b><span>p50 latency</span></div>
+        <div class="metric"><b>1626 ms</b><span>p95 latency</span></div>
+        <div class="metric"><b>1626 ms</b><span>p99 latency</span></div>
+        <div class="metric good"><b>100%</b><span>delivery</span></div>
+        <div class="metric good"><b>0</b><span>drops</span></div>
+        <div class="metric"><b>750</b><span>passive events</span></div>
+      </div>
+      <p class="read">Doubling the audience added ~290ms to the p95 tail while the median didn't move at all. Every one of the 600 expected deliveries arrived.</p>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="n">100</span><span class="lbl">players &middot; 60s &middot; 12 probes &middot; 1,200 expected deliveries</span><span class="pill good">healthy</span></div>
+      <div class="metrics">
+        <div class="metric"><b>1228 ms</b><span>p50 latency</span></div>
+        <div class="metric"><b>1674 ms</b><span>p95 latency</span></div>
+        <div class="metric"><b>1880 ms</b><span>p99 latency</span></div>
+        <div class="metric good"><b>100%</b><span>delivery</span></div>
+        <div class="metric good"><b>0</b><span>drops</span></div>
+        <div class="metric"><b>2100</b><span>passive events</span></div>
+      </div>
+      <p class="read">Quadruple the starting audience: median <b>unchanged</b>, p95 up just 25% over baseline, all 1,200 deliveries received. One outlier probe hit 6.6s max, but the distribution stayed tight. The fan-out layer has room to spare.</p>
+    </div>
+
+    <div class="chart">
+      <div class="row"><div class="lbl">25 players</div><div class="track"><div class="bar" style="width:18%"></div></div><div class="val">p95 1339 ms</div></div>
+      <div class="row"><div class="lbl">50 players</div><div class="track"><div class="bar" style="width:22%"></div></div><div class="val">p95 1626 ms</div></div>
+      <div class="row"><div class="lbl">100 players</div><div class="track"><div class="bar" style="width:23%"></div></div><div class="val">p95 1674 ms</div></div>
+    </div>
+    <div class="verdict">
+      <b>Field verdict: no knee found up to 100 players.</b> The curve is nearly flat &mdash; if the trend holds,
+      the true ceiling is well above 100. A follow-up run with <code>--users 200 --stages 100,150,200</code>
+      would locate it.
+    </div>
+  </div>
+</section>
+
+<section id="social">
+  <div class="wrap">
+    <div class="sec-num">03 &middot; Increment by increment</div>
+    <h2 class="sec-title">Social Media Crisis <span class="pill bad">KNEE AT 100</span></h2>
+    <p class="sec-sub">Scenario: "Locked Out: Singapore's Banking Blackout &amp; the Lazarus Rumour" &middot; feed engine live (NPC posts/comments generated by the server throughout).</p>
+
+    <div class="stage">
+      <div class="stage-head"><span class="n">25</span><span class="lbl">players &middot; 60s &middot; 12 probes &middot; 300 expected deliveries</span><span class="pill good">healthy</span></div>
+      <div class="metrics">
+        <div class="metric"><b>1238 ms</b><span>p50 latency</span></div>
+        <div class="metric"><b>1344 ms</b><span>p95 latency</span></div>
+        <div class="metric"><b>1404 ms</b><span>p99 latency</span></div>
+        <div class="metric good"><b>100%</b><span>delivery</span></div>
+        <div class="metric good"><b>0</b><span>drops</span></div>
+        <div class="metric"><b>695</b><span>passive events</span></div>
+      </div>
+      <p class="read">Identical baseline to field ops even with the feed engine running &mdash; at 25 players the extra broadcast traffic (695 passive events, ~32% more than field's stage) is absorbed without a trace.</p>
+    </div>
+
+    <div class="stage">
+      <div class="stage-head"><span class="n">50</span><span class="lbl">players &middot; 60s &middot; 12 probes &middot; 600 expected deliveries</span><span class="pill warn">first tremor</span></div>
+      <div class="metrics">
+        <div class="metric"><b>1238 ms</b><span>p50 latency</span></div>
+        <div class="metric"><b>1609 ms</b><span>p95 latency</span></div>
+        <div class="metric warn"><b>2579 ms</b><span>p99 latency</span></div>
+        <div class="metric good"><b>99.7%</b><span>delivery</span></div>
+        <div class="metric good"><b>0</b><span>drops</span></div>
+        <div class="metric"><b>2037</b><span>passive events</span></div>
+      </div>
+      <p class="read">Still healthy, but the tail is starting to stretch: p99 crossed 2.5s and 2 of 600 deliveries went missing during a feed-activity burst. Passive traffic nearly tripled vs the 25-player stage &mdash; the feed engine had ramped up.</p>
+    </div>
+
+    <div class="stage degraded">
+      <div class="stage-head"><span class="n">100</span><span class="lbl">players &middot; 60s &middot; 12 probes &middot; 1,200 expected deliveries</span><span class="pill bad">degraded</span></div>
+      <div class="metrics">
+        <div class="metric"><b>1264 ms</b><span>p50 latency</span></div>
+        <div class="metric bad"><b>7259 ms</b><span>p95 latency</span></div>
+        <div class="metric bad"><b>7264 ms</b><span>p99 latency</span></div>
+        <div class="metric good"><b>100%</b><span>delivery</span></div>
+        <div class="metric good"><b>0</b><span>drops</span></div>
+        <div class="metric"><b>3508</b><span>passive events</span></div>
+      </div>
+      <p class="read">The knee. Half the probes still arrived at normal speed (median unchanged at 1.26s), but the slow half took <b>5&ndash;9 seconds</b> &mdash; the classic signature of a single CPU core periodically saturating and queueing broadcasts behind feed-engine work. Probe HTTP calls also slowed to 12.5s p95 (vs ~7s elsewhere). Nothing was lost, but a real player would see the feed and injects stutter.</p>
+    </div>
+
+    <div class="chart">
+      <div class="row"><div class="lbl">25 players</div><div class="track"><div class="bar" style="width:18%"></div></div><div class="val">p95 1344 ms</div></div>
+      <div class="row"><div class="lbl">50 players</div><div class="track"><div class="bar warn" style="width:22%"></div></div><div class="val">p95 1609 ms</div></div>
+      <div class="row"><div class="lbl">100 players</div><div class="track"><div class="bar bad" style="width:100%"></div></div><div class="val">p95 7259 ms</div></div>
+    </div>
+    <div class="verdict warn">
+      <b>Social verdict: last healthy stage is 50 players.</b> Recommended operating size for social sessions
+      today: <b>~35&ndash;50 players</b>. The degradation is queueing, not failure &mdash; delivery stayed at 100% &mdash;
+      so a modest fix buys real headroom (see below).
+    </div>
+  </div>
+</section>
+
+<section id="method">
+  <div class="wrap">
+    <div class="sec-num">04 &middot; How to read these numbers</div>
+    <h2 class="sec-title">Methodology &amp; caveats</h2>
+    <div class="grid g3">
+      <div class="card">
+        <h3>What a probe measures</h3>
+        <p>Every 5s the trainer account posts a chat message via the production REST API; the harness timestamps the send and each of the N spectators' receive on the same clock. Latency = send &#8594; receive, so it includes ~1.2s of fixed REST overhead (two Supabase round-trips before the broadcast). Growth above that baseline is the real signal.</p>
+      </div>
+      <div class="card">
+        <h3>Real connections</h3>
+        <p>Every spectator is a genuine authenticated Socket.io connection joining the session and channel rooms exactly like the browser client. Due to a Supabase sign-in rate limit, 24 distinct JWTs were minted and shared round-robin across the 100 sockets &mdash; connection count, room membership and fan-out cost are unaffected.</p>
+      </div>
+      <div class="card">
+        <h3>What wasn't measured</h3>
+        <p>Write load from many players acting simultaneously (decisions, placements, posts). Spectators are passive receivers; server-generated activity (feed engine) provided the background traffic. Also: one big session was tested &mdash; ten sessions of 10 players would spread fan-out differently.</p>
+      </div>
+    </div>
+    <table class="matrix">
+      <tr><th>Parameter</th><th>Value</th></tr>
+      <tr><td><b>Server</b></td><td>blackswansimulations-backend.onrender.com &mdash; Render Standard (1 CPU / 2 GB)</td></tr>
+      <tr><td><b>Ramp</b></td><td>25 &#8594; 50 &#8594; 100 players, 60s per stage, 12 probes per stage (5s interval), 3s straggler grace</td></tr>
+      <tr><td><b>Game types</b></td><td>Field: regular session, no demo bots. Social: <code>sim_mode='social_media'</code>, feed engine active.</td></tr>
+      <tr><td><b>Cleanup</b></td><td>Both sessions closed automatically after their run; loadtest-* users retained for reuse.</td></tr>
+      <tr><td><b>Raw data</b></td><td><code>loadtest-report-prod.json</code> (per-stage aggregates, thresholds, session ids)</td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="next">
+  <div class="wrap">
+    <div class="sec-num">05 &middot; Recommendations</div>
+    <h2 class="sec-title">What to do with these numbers</h2>
+    <ul class="tight">
+      <li><b>Plan events within today's envelope:</b> field exercises up to ~100 players are safe now; keep social sessions to ~35&ndash;50 players.</li>
+      <li><b>Cheapest code win &mdash; the notification loop:</b> every chat message inserts a notification row per participant sequentially (<code>server/routes/channels.ts</code>). At 100 participants that's 100 serial DB writes per message, which is why probe HTTP p95 sat at 7&ndash;12s. Batching into a single bulk insert would cut most of that and free CPU for broadcasts.</li>
+      <li><b>Social-mode headroom:</b> the feed engine competes with broadcast fan-out for the single core. Batching its per-event broadcasts, or upgrading the Render instance (Pro, 2 CPU / 4 GB &mdash; note Node uses one core unless clustered, but the faster core and scheduler headroom still help), should push the social knee past 100. Re-run the harness after either change to confirm what it bought.</li>
+      <li><b>Find the field ceiling:</b> when convenient, run <code>npm run loadtest -- --users 200 --stages 100,150,200 --gametype field --url https://blackswansimulations-backend.onrender.com</code> off-hours.</li>
+      <li><b>Re-test ritual:</b> one command, ~10 minutes, zero manual steps &mdash; run it before every large training event and after every infra change.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Production load test &middot; 2 Jul 2026 22:02&ndash;22:12 SGT &middot; harness: <code>loadtest/</code> &middot; raw data: <code>loadtest-report-prod.json</code>. All figures are real measurements.
+  </div>
+</footer>
+
+</body>
+</html>
