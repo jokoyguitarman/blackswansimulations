@@ -52,7 +52,7 @@ let lastGridsKey = '';
 let lastGrids: StudGrid[] = [];
 
 /**
- * GET /api/debug/building-studs?lat=...&lng=...&radius=300
+ * GET /api/debug/building-studs?lat=...&lng=...&radius=500
  *   &hazardLat=...&hazardLng=...&weaponClass=explosive
  *   &scenarioId=...  (optional — loads cached buildings from DB instead of Overpass)
  *
@@ -62,10 +62,14 @@ let lastGrids: StudGrid[] = [];
  */
 router.get('/building-studs', requireAuth, async (req, res) => {
   const scenarioId = (req.query.scenarioId as string) || undefined;
+  const includeStuds =
+    req.query.includeStuds == null
+      ? true
+      : !['0', 'false', 'no'].includes(String(req.query.includeStuds).toLowerCase());
 
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
-  const radius = parseInt(req.query.radius as string, 10) || 300;
+  const radius = parseInt(req.query.radius as string, 10) || 500;
 
   if (!scenarioId && (Number.isNaN(lat) || Number.isNaN(lng))) {
     return res.status(400).json({ error: 'lat and lng query params are required (or scenarioId)' });
@@ -145,7 +149,21 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   let gridMs = 0;
   if (withPolygon.length > 0) {
     const t1 = Date.now();
-    grids.push(...generateStudGrids(withPolygon, undefined, undefined, true));
+    if (includeStuds) {
+      grids.push(...generateStudGrids(withPolygon, undefined, undefined, true));
+    } else {
+      grids.push(
+        ...withPolygon.map((b, index) => ({
+          buildingIndex: index,
+          buildingName: b.name,
+          polygon: b.footprint_polygon ?? [],
+          floors: [],
+          studs: [],
+          spacingM: 0,
+          isIncidentBuilding: false,
+        })),
+      );
+    }
     gridMs = Date.now() - t1;
   }
 
@@ -198,6 +216,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
       totalStuds,
       buildingStuds,
       outdoorStuds: blastStudCount,
+      includeStuds,
       bandCounts,
       weaponClass: weaponClass ?? 'default',
       blastBands: blastBandsUsed.map((b) => ({ band: b.band, minM: b.minM, maxM: b.maxM })),

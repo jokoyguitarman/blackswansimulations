@@ -110,7 +110,7 @@ export function DebugEvacuationSim() {
   // ---- Phase 1: Map state ----
   const [lat, setLat] = useState('1.2989008');
   const [lng, setLng] = useState('103.855176');
-  const [radius, setRadius] = useState('300');
+  const [radius, setRadius] = useState('500');
   const [loading, setLoading] = useState(false);
   const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -415,7 +415,7 @@ export function DebugEvacuationSim() {
   const selectedExit = exits.find((e) => e.id === selectedExitId) ?? null;
   const parsedLat = parseFloat(lat);
   const parsedLng = parseFloat(lng);
-  const parsedRadius = parseInt(radius, 10) || 300;
+  const parsedRadius = parseInt(radius, 10) || 500;
   const selectedGrid = selectedGridIdx != null ? fetchResult?.grids[selectedGridIdx] : null;
 
   // ===========================================================================

@@ -264,7 +264,7 @@ export function SceneEditor({
   // GPS + Map search state
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
-  const [radius, setRadius] = useState('300');
+  const [radius, setRadius] = useState('500');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<
     Array<{ lat: string; lon: string; display_name: string }>
@@ -590,6 +590,7 @@ export function SceneEditor({
       if (lat) params.set('lat', lat);
       if (lng) params.set('lng', lng);
       if (radius) params.set('radius', radius);
+      params.set('includeStuds', '0');
       const res = await fetch(apiUrl(`/api/debug/building-studs?${params}`), { headers });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -796,10 +797,7 @@ export function SceneEditor({
       const snapped = snapToStud(sim);
       const sp = snapped.pos;
       const ctx = (snapped.stud?.spatialContext ?? undefined) as
-        | 'inside_building'
-        | 'road'
-        | 'open_air'
-        | undefined;
+        'inside_building' | 'road' | 'open_air' | undefined;
       if (drag.type === 'blastSite') {
         setBlastSite(sp);
         // Move zones that haven't been individually repositioned
@@ -1654,7 +1652,7 @@ export function SceneEditor({
               <>
                 <Circle
                   center={[parseFloat(lat), parseFloat(lng)]}
-                  radius={parseFloat(radius) || 300}
+                  radius={parseFloat(radius) || 500}
                   pathOptions={{
                     color: '#22c55e',
                     weight: 1,

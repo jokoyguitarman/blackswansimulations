@@ -308,7 +308,7 @@ export function DebugRTSSim() {
   // ── Map state ─────────────────────────────────────────────────────────
   const [lat, setLat] = useState(warroomLat || '');
   const [lng, setLng] = useState(warroomLng || '');
-  const [radius, setRadius] = useState('300');
+  const [radius, setRadius] = useState('500');
   const [loading, setLoading] = useState(false);
   const [fetchResult, setFetchResult] = useState<FetchResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -1161,8 +1161,7 @@ export function DebugRTSSim() {
       setBlastSite(sc.blast_site);
       // Backward compatibility: convert old casualty_clusters to individual pins
       const rawPins = (sc as unknown as Record<string, unknown>).casualty_pins as
-        | CasualtyPin[]
-        | undefined;
+        CasualtyPin[] | undefined;
       const rawClusters = sc.casualty_clusters as CasualtyCluster[] | undefined;
       if (rawPins && rawPins.length > 0) {
         setCasualtyPins(
@@ -2511,7 +2510,7 @@ export function DebugRTSSim() {
   const phaseLabel = rts.phaseLabel();
   const parsedLat = parseFloat(lat);
   const parsedLng = parseFloat(lng);
-  const parsedRadius = parseInt(radius, 10) || 300;
+  const parsedRadius = parseInt(radius, 10) || 500;
 
   const initEffectsEngine = useCallback(() => {
     const studs = simStudsRef.current;

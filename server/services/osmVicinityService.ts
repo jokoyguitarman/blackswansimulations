@@ -568,8 +568,7 @@ export async function fetchVenueBuilding(
   radiusMeters?: number,
   opts?: { withLog?: boolean },
 ): Promise<OsmBuilding[] | FetchVenueBuildingResult> {
-  const MAX_BUILDINGS = 5;
-  const radius = Math.min(radiusMeters ?? 300, 1000);
+  const radius = Math.min(radiusMeters ?? 500, 1000);
   const fetchLog: FetchLogEntry[] = [];
   const wantLog = opts?.withLog === true;
 
@@ -591,8 +590,7 @@ out body geom center bb;
         .map((el) => parseOsmBuildingElement(el, lat, lng))
         .filter(Boolean) as OsmBuilding[];
       results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
-      const slice = results.slice(0, MAX_BUILDINGS);
-      const withPoly = slice.filter(
+      const withPoly = results.filter(
         (b) => b.footprint_polygon && b.footprint_polygon.length >= 3,
       ).length;
 
@@ -601,23 +599,23 @@ out body geom center bb;
           phase: 'phase1',
           status: 'ok',
           latencyMs: Date.now() - p1Start,
-          detail: `Full geometry query returned ${elements.length} elements → ${slice.length} buildings (${withPoly} with polygon)`,
+          detail: `Full geometry query returned ${elements.length} elements → ${results.length} buildings (${withPoly} with polygon)`,
         });
         logger.info(
-          { total: results.length, returned: slice.length, radius, mode: 'geom' },
+          { total: results.length, returned: results.length, radius, mode: 'geom' },
           'OSM venue buildings fetched (full geometry)',
         );
-        return wantLog ? { buildings: slice, fetchLog } : slice;
+        return wantLog ? { buildings: results, fetchLog } : results;
       }
 
       fetchLog.push({
         phase: 'phase1',
         status: 'empty',
         latencyMs: Date.now() - p1Start,
-        detail: `Full geometry query returned ${elements.length} elements → ${slice.length} buildings but 0 with polygon — falling through to Phase 2/3`,
+        detail: `Full geometry query returned ${elements.length} elements → ${results.length} buildings but 0 with polygon — falling through to Phase 2/3`,
       });
       logger.warn(
-        { total: results.length, returned: slice.length, radius },
+        { total: results.length, returned: results.length, radius },
         'OSM Phase 1 returned buildings without polygons; falling through to Phase 2/3',
       );
     } else {
@@ -721,8 +719,7 @@ out body center bb;
   const candidates = bbElements
     .map((el) => ({ el, parsed: parseOsmBuildingElement(el, lat, lng) }))
     .filter((c) => c.parsed !== null)
-    .sort((a, b) => a.parsed!.distance_from_center_m - b.parsed!.distance_from_center_m)
-    .slice(0, MAX_BUILDINGS);
+    .sort((a, b) => a.parsed!.distance_from_center_m - b.parsed!.distance_from_center_m);
 
   const withGeomAlready = candidates.filter(
     (c) => c.parsed!.footprint_polygon && c.parsed!.footprint_polygon.length >= 3,
@@ -778,8 +775,7 @@ out geom;
         }
         // Handle relation members (multipolygon buildings)
         const members = (el as Record<string, unknown>).members as
-          | Array<{ role?: string; geometry?: Array<{ lat: number; lon: number }> }>
-          | undefined;
+          Array<{ role?: string; geometry?: Array<{ lat: number; lon: number }> }> | undefined;
         if (members?.length && !geomById.has(el.id as number)) {
           const outerPoints: Array<{ lat: number; lon: number }> = [];
           for (const m of members) {
