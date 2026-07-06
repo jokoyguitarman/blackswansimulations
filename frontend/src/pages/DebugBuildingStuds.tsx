@@ -182,7 +182,7 @@ function ClickHandler({
 export function DebugBuildingStuds() {
   const [lat, setLat] = useState('1.2989008');
   const [lng, setLng] = useState('103.855176');
-  const [radius, setRadius] = useState('300');
+  const [radius, setRadius] = useState('500');
   const [scenarioId, setScenarioId] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DebugResult | null>(null);
@@ -317,7 +317,7 @@ export function DebugBuildingStuds() {
 
   const parsedLat = parseFloat(lat);
   const parsedLng = parseFloat(lng);
-  const parsedRadius = parseInt(radius, 10) || 300;
+  const parsedRadius = parseInt(radius, 10) || 500;
 
   const handleStudClick = useCallback((stud: StudItem & { _gridName: string | null }) => {
     setSelectedStud(stud);
