@@ -87,24 +87,11 @@ export const SignUp = () => {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-black scanline relative">
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255, 184, 0, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 107, 53, 0.1) 1px, transparent 1px)',
-            backgroundSize: '50px 50px',
-          }}
-        ></div>
-        <div className="max-w-md w-full mx-4 relative z-10">
-          <div className="military-border bg-black/90 p-8 text-center">
-            <div className="inline-flex items-center justify-center w-16 h-16 border-2 border-robotic-yellow mb-4">
-              <svg
-                className="w-8 h-8 text-robotic-yellow"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+      <div className="min-h-screen flex items-center justify-center relative px-4">
+        <div className="max-w-md w-full relative z-10">
+          <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 text-center">
+            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-success/10 text-success mb-4">
+              <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -113,15 +100,9 @@ export const SignUp = () => {
                 />
               </svg>
             </div>
-            <h2 className="text-2xl font-bold terminal-text mb-2 uppercase">
-              Access Request Approved
-            </h2>
-            <p className="text-sm terminal-text text-robotic-yellow/70 mb-4">
-              [SYSTEM] Credentials registered
-            </p>
-            <p className="text-xs terminal-text text-robotic-yellow/50">
-              Redirecting to authentication...
-            </p>
+            <h2 className="text-2xl font-extrabold text-brand mb-2">Access request approved</h2>
+            <p className="text-sm text-muted mb-4">Your credentials have been registered.</p>
+            <p className="text-xs text-muted">Redirecting to sign in…</p>
           </div>
         </div>
       </div>
@@ -129,36 +110,27 @@ export const SignUp = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-black scanline relative py-12 px-4">
-      {/* Background grid */}
-      <div
-        className="absolute inset-0 opacity-10"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(0, 255, 0, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 0, 0.1) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-        }}
-      ></div>
-
+    <div className="min-h-screen flex items-center justify-center relative py-12 px-4">
       <div className="max-w-md w-full relative z-10">
-        <div className="military-border bg-black/90 p-8 space-y-6">
+        <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 space-y-6">
           {/* Header */}
-          <div className="text-center border-b-2 border-robotic-yellow pb-4 mb-6">
-            <div className="classified-stamp text-xl mb-2 inline-block">
-              {inviteToken ? 'INVITATION ACCEPTANCE' : 'ACCESS REQUEST'}
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand text-white font-extrabold text-lg mb-4">
+              BS
             </div>
-            <div className="terminal-text text-xs tracking-widest mt-2 text-robotic-yellow/70">
-              NEW USER REGISTRATION
-            </div>
+            <h2 className="text-2xl font-extrabold text-brand mb-1">
+              {inviteToken ? 'Accept invitation' : 'Request access'}
+            </h2>
+            <p className="text-sm text-muted">New user registration</p>
           </div>
 
           {/* Invitation Info */}
           {inviteToken && invitationInfo && (
-            <div className="border-l-4 border-robotic-yellow bg-robotic-yellow/10 p-4 mb-6">
-              <div className="text-xs terminal-text text-robotic-yellow uppercase mb-2">
-                [INVITATION_DETECTED]
+            <div className="border-l-4 border-accent bg-accent/10 p-4 rounded-md">
+              <div className="text-xs font-bold text-accent uppercase tracking-wide mb-2">
+                Invitation detected
               </div>
-              <div className="text-sm terminal-text space-y-1">
+              <div className="text-sm text-ink space-y-1">
                 <p>
                   <strong>Session:</strong> {invitationInfo.sessionTitle}
                 </p>
@@ -166,55 +138,37 @@ export const SignUp = () => {
                   <strong>Scenario:</strong> {invitationInfo.scenarioTitle}
                 </p>
                 <p>
-                  <strong>Assigned Role:</strong>{' '}
+                  <strong>Assigned role:</strong>{' '}
                   {invitationInfo.role.toUpperCase().replace('_', ' ')}
                 </p>
                 <p>
                   <strong>Trainer:</strong> {invitationInfo.trainerName}
                 </p>
               </div>
-              <p className="text-xs terminal-text text-robotic-yellow/70 mt-2">
+              <p className="text-xs text-muted mt-2">
                 After signing up, you will automatically be added to this session.
               </p>
             </div>
           )}
 
           {inviteToken && loadingInvitation && (
-            <div className="text-center py-4 mb-6">
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                [LOADING_INVITATION...]
-              </p>
+            <div className="text-center py-4">
+              <p className="text-xs text-muted">Loading invitation…</p>
             </div>
           )}
 
           {/* Error Message */}
           {error && (
-            <div className="border-l-4 border-red-500 bg-red-900/20 p-4">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-                    <path
-                      fillRule="evenodd"
-                      d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-                <div className="ml-3">
-                  <p className="text-sm terminal-text text-red-400">[ERROR] {error}</p>
-                </div>
-              </div>
+            <div className="border-l-4 border-danger bg-danger/10 p-4 rounded-md">
+              <p className="text-sm text-danger">{error}</p>
             </div>
           )}
 
           {/* Form */}
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
-              <label
-                htmlFor="fullName"
-                className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase tracking-wider"
-              >
-                [FULL_NAME]
+              <label htmlFor="fullName" className="block text-xs font-semibold text-ink mb-2">
+                Full name
               </label>
               <input
                 id="fullName"
@@ -223,17 +177,14 @@ export const SignUp = () => {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full px-4 py-3 military-input terminal-text text-sm"
-                placeholder="LAST, FIRST M."
+                className="w-full px-4 py-3 military-input text-sm"
+                placeholder="Last, First M."
               />
             </div>
 
             <div>
-              <label
-                htmlFor="email"
-                className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase tracking-wider"
-              >
-                [EMAIL]
+              <label htmlFor="email" className="block text-xs font-semibold text-ink mb-2">
+                Email
               </label>
               <input
                 id="email"
@@ -243,17 +194,14 @@ export const SignUp = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 military-input terminal-text text-sm"
-                placeholder="user@domain.mil"
+                className="w-full px-4 py-3 military-input text-sm"
+                placeholder="you@agency.gov"
               />
             </div>
 
             <div>
-              <label
-                htmlFor="password"
-                className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase tracking-wider"
-              >
-                [PASSWORD]
+              <label htmlFor="password" className="block text-xs font-semibold text-ink mb-2">
+                Password
               </label>
               <input
                 id="password"
@@ -264,20 +212,15 @@ export const SignUp = () => {
                 minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-3 military-input terminal-text text-sm"
+                className="w-full px-4 py-3 military-input text-sm"
                 placeholder="••••••••"
               />
-              <p className="mt-1 text-xs terminal-text text-robotic-yellow/50">
-                [MIN] 6 characters required
-              </p>
+              <p className="mt-1 text-xs text-muted">Minimum 6 characters.</p>
             </div>
 
             <div>
-              <label
-                htmlFor="agencyName"
-                className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase tracking-wider"
-              >
-                [AGENCY/ORGANIZATION]
+              <label htmlFor="agencyName" className="block text-xs font-semibold text-ink mb-2">
+                Agency / organization
               </label>
               <input
                 id="agencyName"
@@ -286,37 +229,29 @@ export const SignUp = () => {
                 required
                 value={agencyName}
                 onChange={(e) => setAgencyName(e.target.value)}
-                className="w-full px-4 py-3 military-input terminal-text text-sm"
-                placeholder="MINISTRY_OF_DEFENCE"
+                className="w-full px-4 py-3 military-input text-sm"
+                placeholder="e.g. Ministry of Defence"
               />
             </div>
 
             <button
               type="submit"
               disabled={loading}
-              className="w-full military-button py-3 px-4 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              className="w-full military-button py-3 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? (
-                <span className="flex items-center justify-center">
-                  <span className="animate-pulse mr-2">[</span>
-                  <span className="animate-pulse">PROCESSING</span>
-                  <span className="animate-pulse ml-2">]</span>
-                </span>
-              ) : (
-                '[SUBMIT_REQUEST]'
-              )}
+              {loading ? 'Processing…' : 'Submit request'}
             </button>
           </form>
 
           {/* Login Link */}
-          <div className="text-center pt-4 border-t border-robotic-yellow/30">
-            <p className="text-xs terminal-text text-robotic-yellow/70">
-              [EXISTING_USER]{' '}
+          <div className="text-center pt-4 border-t border-border">
+            <p className="text-sm text-muted">
+              Already have an account?{' '}
               <Link
                 to="/login"
-                className="text-robotic-yellow hover:text-robotic-yellow underline transition-colors"
+                className="text-brand hover:text-accent font-semibold transition-colors"
               >
-                Authenticate
+                Sign in
               </Link>
             </p>
           </div>

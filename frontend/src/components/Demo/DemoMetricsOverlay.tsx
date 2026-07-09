@@ -189,10 +189,10 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
   const heatTeams = Object.entries(heatMeter).filter(([, v]) => v?.heat_percentage !== undefined);
 
   return (
-    <div className="absolute top-16 left-4 z-[999] flex flex-col gap-1.5 w-[200px] max-h-[calc(100vh-280px)] overflow-y-auto scrollbar-thin scrollbar-thumb-robotic-yellow/30">
+    <div className="absolute top-16 left-4 z-[999] flex flex-col gap-1.5 w-[200px] max-h-[calc(100vh-280px)] overflow-y-auto scrollbar-thin scrollbar-thumb-border">
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="self-start px-2 py-1 text-[10px] terminal-text uppercase tracking-wider bg-robotic-gray-300/90 border border-robotic-yellow/40 rounded backdrop-blur-sm text-robotic-yellow/70 hover:text-robotic-yellow"
+        className="self-start px-2 py-1 text-[10px] terminal-text uppercase tracking-wider bg-surface/90 border border-border rounded backdrop-blur-sm text-muted hover:text-ink"
       >
         {collapsed ? '▶ METRICS' : '▼ METRICS'}
       </button>
@@ -200,12 +200,12 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
       {!collapsed && (
         <>
           {/* Heat Meter */}
-          <div className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm">
-            <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1.5 tracking-wider">
+          <div className="bg-surface/90 border border-border rounded p-2.5 backdrop-blur-sm">
+            <div className="text-[10px] terminal-text uppercase text-muted mb-1.5 tracking-wider">
               HEAT METER
             </div>
             {heatTeams.length === 0 ? (
-              <div className="text-[10px] terminal-text text-robotic-yellow/30 italic">
+              <div className="text-[10px] terminal-text text-muted italic">
                 Awaiting first decisions...
               </div>
             ) : (
@@ -230,10 +230,10 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
                           : 'text-green-400';
                   return (
                     <div key={name} className="flex items-center gap-2">
-                      <span className="text-[10px] terminal-text text-robotic-yellow/60 uppercase w-16 shrink-0 truncate">
+                      <span className="text-[10px] terminal-text text-muted uppercase w-16 shrink-0 truncate">
                         {name}
                       </span>
-                      <div className="flex-1 h-2 bg-robotic-gray-100 rounded-sm overflow-hidden">
+                      <div className="flex-1 h-2 bg-surface-2 rounded-sm overflow-hidden">
                         <div
                           className={`h-full ${barColor} transition-all duration-700`}
                           style={{ width: `${Math.min(100, pct)}%` }}
@@ -273,17 +273,16 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
             return (
               <div
                 key={panel.stateKey}
-                className="bg-robotic-gray-300/90 border border-robotic-yellow/30 rounded p-2.5 backdrop-blur-sm"
+                className="bg-surface/90 border border-border rounded p-2.5 backdrop-blur-sm"
               >
-                <div className="text-[10px] terminal-text uppercase text-robotic-yellow/60 mb-1 tracking-wider">
+                <div className="text-[10px] terminal-text uppercase text-muted mb-1 tracking-wider">
                   {panel.title}
                 </div>
                 {rows.length > 0 && (
                   <div className="space-y-0.5">
                     {rows.map(({ key, label, value, color, alert }) => {
                       const isAlert = alert && value > 0;
-                      const textClass =
-                        color ?? (isAlert ? 'text-red-400' : 'text-robotic-gray-50/80');
+                      const textClass = color ?? (isAlert ? 'text-danger' : 'text-muted');
                       return (
                         <div
                           key={key}
@@ -298,12 +297,12 @@ export function DemoMetricsOverlay({ sessionId, currentState }: DemoMetricsOverl
                 )}
                 {flagRows.length > 0 && (
                   <>
-                    {rows.length > 0 && <div className="border-t border-robotic-yellow/10 my-1" />}
+                    {rows.length > 0 && <div className="border-t border-border my-1" />}
                     <div className="space-y-0.5">
                       {flagRows.map(({ key, label, done }) => (
                         <div
                           key={key}
-                          className={`flex items-center gap-1.5 text-[10px] terminal-text ${done ? 'text-green-400' : 'text-robotic-gray-50/30'}`}
+                          className={`flex items-center gap-1.5 text-[10px] terminal-text ${done ? 'text-success' : 'text-muted'}`}
                         >
                           <span className="shrink-0 w-3 text-center">
                             {done ? '\u2713' : '\u2022'}

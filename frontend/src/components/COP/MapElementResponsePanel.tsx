@@ -529,24 +529,19 @@ export const MapElementResponsePanel = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-black/95 border border-robotic-yellow/40 rounded-lg max-w-3xl w-full max-h-[92vh] flex flex-col">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4">
+      <div className="bg-surface border border-border rounded-lg max-w-3xl w-full max-h-[92vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-robotic-yellow/20">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border">
           <div>
-            <h2 className="text-sm font-semibold terminal-text text-robotic-yellow uppercase">
-              {element.title}
-            </h2>
+            <h2 className="text-sm font-semibold terminal-text text-ink">{element.title}</h2>
             {element.subtitle && (
-              <span className="text-xs terminal-text text-robotic-yellow/60 capitalize">
+              <span className="text-xs terminal-text text-muted capitalize">
                 {element.subtitle}
               </span>
             )}
           </div>
-          <button
-            onClick={onClose}
-            className="text-robotic-yellow/50 hover:text-robotic-yellow text-lg leading-none"
-          >
+          <button onClick={onClose} className="text-muted hover:text-ink text-lg leading-none">
             ✕
           </button>
         </div>
@@ -555,7 +550,7 @@ export const MapElementResponsePanel = ({
         <div className="flex-1 overflow-y-auto min-h-0">
           {/* Image */}
           {element.imageUrl && (
-            <div className="w-full bg-gray-900 border-b border-robotic-yellow/20">
+            <div className="w-full bg-surface-2 border-b border-border">
               <img
                 src={element.imageUrl}
                 alt={element.title}
@@ -570,7 +565,7 @@ export const MapElementResponsePanel = ({
           {/* Description */}
           {element.description && (
             <div className="px-5 py-2 bg-red-900/20 border-b border-red-500/20">
-              <p className="text-xs terminal-text text-red-300 leading-relaxed">
+              <p className="text-xs terminal-text text-danger leading-relaxed">
                 {element.description}
               </p>
             </div>
@@ -578,15 +573,15 @@ export const MapElementResponsePanel = ({
 
           {/* Situation details */}
           {element.details.length > 0 && (
-            <div className="px-5 py-3 border-b border-robotic-yellow/20">
-              <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
+            <div className="px-5 py-3 border-b border-border">
+              <h3 className="text-xs font-medium terminal-text text-muted mb-2 uppercase">
                 Situation Details
               </h3>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
                 {element.details.map(({ label, value }) => (
                   <div key={label} className="text-xs terminal-text">
-                    <span className="text-robotic-yellow/50 capitalize">{label}: </span>
-                    <span className="text-robotic-yellow/90">{value}</span>
+                    <span className="text-muted capitalize">{label}: </span>
+                    <span className="text-ink">{value}</span>
                   </div>
                 ))}
               </div>
@@ -595,9 +590,9 @@ export const MapElementResponsePanel = ({
 
           {/* Status */}
           {element.status && (
-            <div className="px-5 py-2 border-b border-robotic-yellow/20">
-              <span className="text-xs terminal-text text-robotic-yellow/60">Status: </span>
-              <span className="text-xs terminal-text text-robotic-yellow capitalize">
+            <div className="px-5 py-2 border-b border-border">
+              <span className="text-xs terminal-text text-muted">Status: </span>
+              <span className="text-xs terminal-text text-ink capitalize">
                 {element.status.replace(/_/g, ' ')}
               </span>
             </div>
@@ -605,11 +600,11 @@ export const MapElementResponsePanel = ({
 
           {/* ── Triage Assessment (casualty only) ── */}
           {isCasualty && (
-            <div className="px-5 py-3 border-b border-robotic-yellow/20">
-              <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase flex items-center gap-2">
+            <div className="px-5 py-3 border-b border-border">
+              <h3 className="text-xs font-medium terminal-text text-muted mb-2 uppercase flex items-center gap-2">
                 Triage Assessment
                 {!triageEnabled && (
-                  <span className="text-[10px] font-normal text-robotic-yellow/40 normal-case">
+                  <span className="text-[10px] font-normal text-muted normal-case">
                     {!isTriageTeam
                       ? '— only triage personnel can assess'
                       : '— deploy a triage officer near this patient'}
@@ -626,10 +621,10 @@ export const MapElementResponsePanel = ({
                       onClick={() => setTriageColor(isSelected ? null : opt.color)}
                       className={`flex-1 py-2 rounded border-2 text-xs font-bold terminal-text uppercase transition-all ${
                         !triageEnabled
-                          ? 'opacity-25 cursor-not-allowed border-transparent bg-white/5 text-robotic-yellow/30'
+                          ? 'opacity-25 cursor-not-allowed border-transparent bg-surface-2 text-muted'
                           : isSelected
                             ? `${opt.activeBg} ${opt.border} text-white shadow-lg`
-                            : `${opt.bg} border-transparent text-robotic-yellow/70 hover:border-robotic-yellow/30`
+                            : `${opt.bg} border-transparent text-muted hover:border-border`
                       }`}
                     >
                       {opt.label}
@@ -642,8 +637,8 @@ export const MapElementResponsePanel = ({
 
           {/* ── Destination Picker (casualty + crowd) ── */}
           {(isCasualty || isCrowd) && destinations.length > 0 && (
-            <div className="px-5 py-3 border-b border-robotic-yellow/20">
-              <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
+            <div className="px-5 py-3 border-b border-border">
+              <h3 className="text-xs font-medium terminal-text text-muted mb-2 uppercase">
                 {isCrowd ? 'Direct Crowd To' : 'Move Patient To'}
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -655,8 +650,8 @@ export const MapElementResponsePanel = ({
                       onClick={() => setSelectedDestination(isSelected ? null : dest)}
                       className={`px-3 py-2 rounded border text-xs terminal-text transition-all flex items-center gap-1.5 ${
                         isSelected
-                          ? 'border-robotic-yellow bg-robotic-yellow/20 text-robotic-yellow shadow-lg'
-                          : 'border-robotic-yellow/20 bg-robotic-yellow/5 text-robotic-yellow/70 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/10'
+                          ? 'border-accent bg-accent/10 text-ink shadow-lg'
+                          : 'border-border bg-accent/10 text-muted hover:border-border-strong hover:bg-accent/20'
                       }`}
                     >
                       <span
@@ -665,7 +660,7 @@ export const MapElementResponsePanel = ({
                       />
                       <span className="truncate max-w-[140px]">{dest.label}</span>
                       {dest.type === 'hospital' && (
-                        <span className="text-[9px] text-robotic-yellow/40 ml-0.5">HOSPITAL</span>
+                        <span className="text-[9px] text-muted ml-0.5">Hospital</span>
                       )}
                     </button>
                   );
@@ -676,8 +671,8 @@ export const MapElementResponsePanel = ({
 
           {/* ── Team Actions (contextual per team) ── */}
           {teamActions.length > 0 && (
-            <div className="px-5 py-3 border-b border-robotic-yellow/20">
-              <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
+            <div className="px-5 py-3 border-b border-border">
+              <h3 className="text-xs font-medium terminal-text text-muted mb-2 uppercase">
                 Team Actions — {teamName}
               </h3>
               <div className="flex flex-wrap gap-1.5">
@@ -690,8 +685,8 @@ export const MapElementResponsePanel = ({
                       title={action.description}
                       className={`px-2.5 py-1.5 rounded border text-xs terminal-text transition-all flex items-center gap-1.5 ${
                         isSelected
-                          ? 'border-robotic-yellow bg-robotic-yellow/20 text-robotic-yellow shadow-lg'
-                          : 'border-robotic-yellow/20 bg-robotic-yellow/5 text-robotic-yellow/70 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/10'
+                          ? 'border-accent bg-accent/10 text-ink shadow-lg'
+                          : 'border-border bg-accent/10 text-muted hover:border-border-strong hover:bg-accent/20'
                       }`}
                     >
                       <span
@@ -706,7 +701,7 @@ export const MapElementResponsePanel = ({
                 })}
               </div>
               {selectedActions.size > 0 && (
-                <div className="mt-2 text-[10px] terminal-text text-robotic-yellow/50">
+                <div className="mt-2 text-[10px] terminal-text text-muted">
                   {selectedActions.size} action{selectedActions.size !== 1 ? 's' : ''} selected
                 </div>
               )}
@@ -715,15 +710,15 @@ export const MapElementResponsePanel = ({
         </div>
 
         {/* ── Response section (fixed at bottom) ── */}
-        <div className="px-5 py-4 shrink-0 border-t border-robotic-yellow/20 space-y-3">
-          <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 uppercase">
+        <div className="px-5 py-4 shrink-0 border-t border-border space-y-3">
+          <h3 className="text-xs font-medium terminal-text text-muted uppercase">
             Deploy Resources
           </h3>
 
           {/* Available assets grid — taller */}
           {pointAssets.length > 0 && (
             <div>
-              <div className="text-[11px] terminal-text text-robotic-yellow/50 mb-1.5">
+              <div className="text-[11px] terminal-text text-muted mb-1.5">
                 Drag to the deploy zone below, or click to add:
               </div>
               <div className="flex flex-wrap gap-1.5 max-h-[120px] overflow-y-auto">
@@ -736,7 +731,7 @@ export const MapElementResponsePanel = ({
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
                     onClick={() => addAsset(asset)}
-                    className="px-2 py-1.5 rounded border border-robotic-yellow/20 bg-robotic-yellow/5 text-xs terminal-text text-robotic-yellow/80 cursor-grab active:cursor-grabbing hover:border-robotic-yellow/40 hover:bg-robotic-yellow/10 transition-colors select-none flex items-center gap-1"
+                    className="px-2 py-1.5 rounded border border-border bg-accent/10 text-xs terminal-text text-ink cursor-grab active:cursor-grabbing hover:border-border-strong hover:bg-accent/20 transition-colors select-none flex items-center gap-1"
                     title={`Click or drag to deploy ${asset.label}`}
                   >
                     <span
@@ -758,14 +753,14 @@ export const MapElementResponsePanel = ({
             onDrop={handleDrop}
             className={`min-h-[64px] rounded border-2 border-dashed p-2 transition-colors ${
               isDragOver
-                ? 'border-robotic-yellow/60 bg-robotic-yellow/10'
+                ? 'border-accent bg-accent/10'
                 : deployed.length > 0
-                  ? 'border-robotic-yellow/30 bg-robotic-yellow/5'
-                  : 'border-robotic-yellow/15 bg-transparent'
+                  ? 'border-border bg-accent/10'
+                  : 'border-border bg-transparent'
             }`}
           >
             {deployed.length === 0 ? (
-              <div className="text-center text-[11px] terminal-text text-robotic-yellow/30 py-3">
+              <div className="text-center text-[11px] terminal-text text-muted py-3">
                 {isDragOver ? 'Drop here to deploy' : 'Drop resources here or click above to add'}
               </div>
             ) : (
@@ -773,7 +768,7 @@ export const MapElementResponsePanel = ({
                 {deployed.map((d) => (
                   <div
                     key={d.assetType}
-                    className="flex items-center gap-1 px-2 py-1 rounded bg-robotic-yellow/15 border border-robotic-yellow/30 text-xs terminal-text text-robotic-yellow"
+                    className="flex items-center gap-1 px-2 py-1 rounded bg-accent/10 border border-border text-xs terminal-text text-ink"
                   >
                     <span
                       className="inline-flex"
@@ -791,7 +786,7 @@ export const MapElementResponsePanel = ({
                             label: d.label,
                           })
                         }
-                        className="w-4 h-4 flex items-center justify-center rounded bg-robotic-yellow/20 hover:bg-robotic-yellow/40 text-[10px] leading-none"
+                        className="w-4 h-4 flex items-center justify-center rounded bg-accent/10 hover:bg-accent/20 text-[10px] leading-none"
                       >
                         +
                       </button>
@@ -814,7 +809,7 @@ export const MapElementResponsePanel = ({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe your approach, tactics, or instructions..."
-              className="w-full h-20 px-3 py-2 pr-10 bg-black/50 border border-robotic-yellow/30 rounded text-xs terminal-text text-robotic-yellow placeholder-robotic-yellow/30 focus:border-robotic-yellow/60 focus:outline-none resize-none"
+              className="w-full h-20 px-3 py-2 pr-10 bg-surface-2 border border-border rounded text-xs terminal-text text-ink placeholder-muted focus:border-accent focus:outline-none resize-none"
             />
             <VoiceMicButton
               onTranscript={(text) => setDescription((prev) => (prev ? `${prev} ${text}` : text))}
@@ -827,8 +822,8 @@ export const MapElementResponsePanel = ({
             <div
               className={`p-2 rounded text-xs terminal-text ${
                 result.success
-                  ? 'bg-green-900/30 text-green-400 border border-green-500/30'
-                  : 'bg-red-900/30 text-red-400 border border-red-500/30'
+                  ? 'bg-green-900/30 text-success border border-green-500/30'
+                  : 'bg-red-900/30 text-danger border border-red-500/30'
               }`}
             >
               {result.message}
@@ -838,14 +833,14 @@ export const MapElementResponsePanel = ({
           <div className="flex justify-end gap-2">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs terminal-text text-robotic-yellow/60 border border-robotic-yellow/20 rounded hover:border-robotic-yellow/40"
+              className="px-3 py-1.5 text-xs terminal-text text-muted border border-border rounded hover:border-border-strong"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={!hasContent || isSubmitting || result?.success === true}
-              className="px-5 py-1.5 text-xs font-mono font-medium bg-robotic-yellow rounded hover:bg-robotic-yellow/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-5 py-1.5 text-xs font-mono font-medium bg-accent rounded hover:bg-accent-strong disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ color: '#0f0f0f' }}
             >
               {isSubmitting ? 'Executing...' : 'Execute Response'}

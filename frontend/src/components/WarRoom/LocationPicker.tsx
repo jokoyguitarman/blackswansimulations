@@ -334,13 +334,13 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
       {/* Search row */}
       <div className="flex gap-2 items-end flex-wrap">
         <div className="flex-shrink-0">
-          <label className="text-[10px] terminal-text text-robotic-yellow/50 uppercase block mb-1">
+          <label className="text-[10px] terminal-text text-muted uppercase block mb-1">
             Country Filter
           </label>
           <select
             value={countryCode}
             onChange={(e) => setCountryCode(e.target.value)}
-            className="px-2 py-[6px] bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs terminal-text w-40"
+            className="px-2 py-[6px] bg-surface-2 border border-border text-ink text-xs terminal-text w-40"
           >
             {COUNTRIES.map(([code, name]) => (
               <option key={code} value={code}>
@@ -351,7 +351,7 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
         </div>
 
         <div className="flex-1 relative" ref={dropdownRef}>
-          <label className="text-[10px] terminal-text text-robotic-yellow/50 uppercase block mb-1">
+          <label className="text-[10px] terminal-text text-muted uppercase block mb-1">
             Search Location / Building
           </label>
           <input
@@ -360,20 +360,20 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
             onChange={(e) => handleQueryChange(e.target.value)}
             onFocus={() => results.length > 0 && setShowDropdown(true)}
             placeholder="Type a location, venue, or building name..."
-            className="w-full px-3 py-[6px] bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs terminal-text placeholder:text-robotic-yellow/30"
+            className="w-full px-3 py-[6px] bg-surface-2 border border-border text-ink text-xs terminal-text placeholder:text-muted"
           />
           {searching && (
-            <span className="absolute right-2 top-[26px] text-[10px] terminal-text text-robotic-yellow/50">
+            <span className="absolute right-2 top-[26px] text-[10px] terminal-text text-muted">
               searching...
             </span>
           )}
           {showDropdown && results.length > 0 && (
-            <div className="absolute z-[9999] w-full mt-1 bg-black border border-robotic-yellow/40 max-h-48 overflow-y-auto">
+            <div className="absolute z-[9999] w-full mt-1 bg-surface border border-border max-h-48 overflow-y-auto">
               {results.map((r) => (
                 <button
                   key={r.place_id}
                   onClick={() => selectResult(r)}
-                  className="w-full text-left px-3 py-2 text-xs terminal-text text-robotic-yellow/80 hover:bg-robotic-yellow/10 border-b border-robotic-yellow/10 last:border-b-0"
+                  className="w-full text-left px-3 py-2 text-xs terminal-text text-ink hover:bg-accent/10 border-b border-border last:border-b-0"
                 >
                   {r.display_name}
                 </button>
@@ -385,43 +385,41 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
         <button
           onClick={handleGps}
           disabled={gpsLoading}
-          className="flex-shrink-0 px-3 py-[6px] text-xs terminal-text uppercase border border-robotic-yellow/30 text-robotic-yellow/70 hover:border-robotic-yellow/60 hover:text-robotic-yellow disabled:opacity-50 self-end"
+          className="flex-shrink-0 px-3 py-[6px] text-xs terminal-text border border-border text-muted hover:border-border hover:text-ink disabled:opacity-50 self-end"
           title="Use your current GPS location"
         >
-          {gpsLoading ? 'LOCATING...' : 'USE MY LOCATION'}
+          {gpsLoading ? 'Locating…' : 'Use my location'}
         </button>
 
         {picked && (
           <button
             onClick={handleClear}
-            className="flex-shrink-0 px-3 py-[6px] text-xs terminal-text uppercase border border-red-500/30 text-red-400/70 hover:border-red-500/60 hover:text-red-400 self-end"
+            className="flex-shrink-0 px-3 py-[6px] text-xs terminal-text border border-danger/40 text-danger hover:border-danger hover:text-danger self-end"
           >
-            CLEAR
+            Clear
           </button>
         )}
       </div>
 
-      {gpsError && <p className="text-[10px] terminal-text text-red-400">{gpsError}</p>}
+      {gpsError && <p className="text-[10px] terminal-text text-danger">{gpsError}</p>}
 
       {/* Selected location display */}
       {picked && (
-        <div className="text-xs terminal-text text-robotic-yellow/80 flex gap-4">
+        <div className="text-xs terminal-text text-ink flex gap-4">
           <span>
-            Lat: <span className="text-robotic-yellow">{picked.lat.toFixed(6)}</span>
+            Lat: <span className="text-ink">{picked.lat.toFixed(6)}</span>
           </span>
           <span>
-            Lng: <span className="text-robotic-yellow">{picked.lng.toFixed(6)}</span>
+            Lng: <span className="text-ink">{picked.lng.toFixed(6)}</span>
           </span>
           {picked.display_name && !picked.display_name.match(/^-?\d/) && (
-            <span className="text-robotic-yellow/60 truncate max-w-[400px]">
-              {picked.display_name}
-            </span>
+            <span className="text-ink/60 truncate max-w-[400px]">{picked.display_name}</span>
           )}
         </div>
       )}
 
       {/* Map */}
-      <div className="border border-robotic-yellow/20" style={{ height: 300 }}>
+      <div className="border border-border" style={{ height: 300 }}>
         <MapContainer
           center={mapCenter}
           zoom={mapZoom}
@@ -446,7 +444,7 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
         </MapContainer>
       </div>
 
-      <p className="text-[10px] terminal-text text-robotic-yellow/40">
+      <p className="text-[10px] terminal-text text-muted">
         Search for a location above, use GPS, or click/drag on the map to set the scenario centroid.
         This location will be used for OSM data fetching.
       </p>

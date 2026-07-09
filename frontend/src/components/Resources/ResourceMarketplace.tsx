@@ -94,13 +94,13 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
-        return 'bg-robotic-yellow/20 text-robotic-yellow border-robotic-yellow';
+        return 'bg-accent/10 text-ink border-border';
       case 'rejected':
-        return 'bg-robotic-orange/20 text-robotic-orange border-robotic-orange';
+        return 'bg-accent/10 text-accent border-accent';
       case 'pending':
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
+        return 'bg-surface-2 text-muted border-border';
       default:
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
+        return 'bg-surface-2 text-muted border-border';
     }
   };
 
@@ -114,9 +114,7 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
     return (
       <div className="military-border p-6">
         <div className="text-center">
-          <div className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-            [LOADING_RESOURCES]
-          </div>
+          <div className="text-sm terminal-text text-muted animate-pulse">Loading resources…</div>
         </div>
       </div>
     );
@@ -127,27 +125,25 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
       {/* My Resources */}
       <div className="military-border p-6">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-lg terminal-text uppercase">[INVENTORY] My Agency Resources</h3>
+          <h3 className="text-lg terminal-text">My agency resources</h3>
           <button
             onClick={() => setShowRequestModal(true)}
             className="military-button px-4 py-2 text-sm"
           >
-            [REQUEST_RESOURCES]
+            Request resources
           </button>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {myAgencyResources.map((resource, idx) => (
             <div key={idx} className="military-border p-4">
-              <div className="text-sm terminal-text uppercase mb-2">{resource.resource_type}</div>
-              <div className="text-xs terminal-text text-robotic-yellow/70">
+              <div className="text-sm terminal-text mb-2">{resource.resource_type}</div>
+              <div className="text-xs terminal-text text-muted">
                 Total: {resource.quantity} | Available: {resource.available}
               </div>
             </div>
           ))}
           {myAgencyResources.length === 0 && (
-            <p className="text-sm terminal-text text-robotic-yellow/50 col-span-full">
-              [NO_RESOURCES] No resources assigned
-            </p>
+            <p className="text-sm terminal-text text-muted col-span-full">No resources assigned</p>
           )}
         </div>
       </div>
@@ -155,9 +151,7 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
       {/* Incoming Requests */}
       {incomingRequests.length > 0 && (
         <div className="military-border p-6">
-          <h3 className="text-lg terminal-text uppercase mb-4">
-            [PENDING_REQUESTS] Requests for My Resources
-          </h3>
+          <h3 className="text-lg terminal-text mb-4">Requests for my resources</h3>
           <div className="space-y-3">
             {incomingRequests.map((request) => (
               <div key={request.id} className="military-border p-4">
@@ -166,12 +160,12 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
                     <h4 className="text-sm terminal-text font-semibold">
                       {request.quantity}x {request.resource_type}
                     </h4>
-                    <p className="text-xs terminal-text text-robotic-yellow/70">
+                    <p className="text-xs terminal-text text-muted">
                       From: {request.to_agency} • Requested by:{' '}
                       {request.requester?.full_name || 'Unknown'}
                     </p>
                     {request.conditions && (
-                      <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+                      <p className="text-xs terminal-text text-muted mt-1">
                         Conditions:{' '}
                         {typeof request.conditions === 'string'
                           ? request.conditions
@@ -182,15 +176,15 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
                   <div className="flex gap-2">
                     <button
                       onClick={() => handleApproveRequest(request.id)}
-                      className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10"
+                      className="px-3 py-1 text-xs terminal-text border border-border text-ink hover:bg-accent/10"
                     >
-                      [APPROVE]
+                      Approve
                     </button>
                     <button
                       onClick={() => handleRejectRequest(request.id)}
-                      className="px-3 py-1 text-xs terminal-text border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                      className="px-3 py-1 text-xs terminal-text border border-accent text-accent hover:bg-accent/10"
                     >
-                      [REJECT]
+                      Reject
                     </button>
                   </div>
                 </div>
@@ -203,9 +197,7 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
       {/* Outgoing Requests */}
       {outgoingRequests.length > 0 && (
         <div className="military-border p-6">
-          <h3 className="text-lg terminal-text uppercase mb-4">
-            [MY_REQUESTS] My Resource Requests
-          </h3>
+          <h3 className="text-lg terminal-text mb-4">My resource requests</h3>
           <div className="space-y-3">
             {outgoingRequests.map((request) => (
               <div key={request.id} className="military-border p-4">
@@ -214,9 +206,7 @@ export const ResourceMarketplace = ({ sessionId }: ResourceMarketplaceProps) => 
                     <h4 className="text-sm terminal-text font-semibold">
                       {request.quantity}x {request.resource_type}
                     </h4>
-                    <p className="text-xs terminal-text text-robotic-yellow/70">
-                      From: {request.from_agency}
-                    </p>
+                    <p className="text-xs terminal-text text-muted">From: {request.from_agency}</p>
                   </div>
                   <span
                     className={`text-xs terminal-text px-2 py-1 border ${getStatusColor(request.status)}`}

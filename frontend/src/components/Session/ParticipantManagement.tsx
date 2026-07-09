@@ -191,7 +191,7 @@ export const ParticipantManagement = ({
   return (
     <div className="military-border p-6">
       <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg terminal-text uppercase">[PARTICIPANTS] Role Assignments</h3>
+        <h3 className="text-lg terminal-text">Participants — Role assignments</h3>
         <div className="flex gap-2 flex-wrap">
           <button
             onClick={() => {
@@ -200,31 +200,31 @@ export const ParticipantManagement = ({
             }}
             className="military-button px-4 py-2 text-sm"
           >
-            [ADD_USER]
+            Add user
           </button>
           <button
             onClick={() => {
               setModalMode('email');
               setShowAddModal(true);
             }}
-            className="military-button-outline px-4 py-2 text-sm border border-robotic-yellow text-robotic-yellow"
+            className="military-button-outline px-4 py-2 text-sm border border-border text-ink"
           >
-            [INVITE_BY_EMAIL]
+            Invite by email
           </button>
           <button
             onClick={handleProcessAllInvitations}
             disabled={processingInvitations}
-            className="military-button-outline px-4 py-2 text-sm border border-robotic-green text-robotic-green disabled:opacity-50"
+            className="military-button-outline px-4 py-2 text-sm border border-success text-success disabled:opacity-50"
           >
-            {processingInvitations ? '[PROCESSING...]' : '[PROCESS_INVITATIONS]'}
+            {processingInvitations ? 'Processing…' : 'Process invitations'}
           </button>
         </div>
       </div>
 
       {participants.length === 0 ? (
         <div className="text-center py-8">
-          <p className="text-sm terminal-text text-robotic-yellow/50">[NO_PARTICIPANTS]</p>
-          <p className="text-xs terminal-text text-robotic-yellow/30 mt-2">
+          <p className="text-sm terminal-text text-muted">No participants</p>
+          <p className="text-xs terminal-text text-muted mt-2">
             Add participants to assign roles for this session
           </p>
         </div>
@@ -233,23 +233,23 @@ export const ParticipantManagement = ({
           {participants.map((participant) => (
             <div
               key={participant.user_id}
-              className="military-border p-4 bg-robotic-gray-300 flex justify-between items-center"
+              className="military-border p-4 bg-surface flex justify-between items-center"
             >
               <div className="flex-1">
                 <div className="text-sm terminal-text font-semibold">
                   {participant.user?.full_name || 'Unknown User'}
                 </div>
-                <div className="text-xs terminal-text text-robotic-yellow/70 mt-1">
-                  [{participant.role.toUpperCase().replace('_', ' ')}]
+                <div className="text-xs terminal-text text-muted mt-1">
+                  {participant.role.toUpperCase().replace('_', ' ')}
                   {participant.user?.email && ` • ${participant.user.email}`}
                   {participant.user?.agency_name && ` • ${participant.user.agency_name}`}
                 </div>
               </div>
               <button
                 onClick={() => handleRemoveParticipant(participant.user_id)}
-                className="px-3 py-1 text-xs terminal-text border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                className="px-3 py-1 text-xs terminal-text border border-accent text-accent hover:bg-accent/10"
               >
-                [REMOVE]
+                Remove
               </button>
             </div>
           ))}
@@ -259,33 +259,33 @@ export const ParticipantManagement = ({
       {/* Add Participant Modal — portal to body so fixed positioning works regardless of parent transforms */}
       {showAddModal &&
         createPortal(
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-            <div className="military-border bg-robotic-gray-300 p-8 max-w-lg w-full max-h-[85vh] flex flex-col">
-              <h3 className="text-xl terminal-text uppercase mb-4">
-                {modalMode === 'email' ? '[INVITE_BY_EMAIL]' : '[ADD_PARTICIPANTS]'}
+          <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+            <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 max-w-lg w-full max-h-[85vh] flex flex-col">
+              <h3 className="text-xl terminal-text mb-4">
+                {modalMode === 'email' ? 'Invite by email' : 'Add participants'}
               </h3>
 
               {/* Mode Toggle */}
-              <div className="flex gap-2 mb-4 border-b border-robotic-yellow/30 pb-4">
+              <div className="flex gap-2 mb-4 border-b border-border pb-4">
                 <button
                   onClick={() => setModalMode('existing')}
                   className={`px-4 py-2 text-xs terminal-text ${
                     modalMode === 'existing'
-                      ? 'bg-robotic-yellow text-black'
-                      : 'border border-robotic-yellow/50 text-robotic-yellow/70 hover:bg-robotic-yellow/10'
+                      ? 'bg-accent text-white'
+                      : 'border border-border text-muted hover:bg-accent/10'
                   }`}
                 >
-                  [EXISTING_USERS]
+                  Existing users
                 </button>
                 <button
                   onClick={() => setModalMode('email')}
                   className={`px-4 py-2 text-xs terminal-text ${
                     modalMode === 'email'
-                      ? 'bg-robotic-yellow text-black'
-                      : 'border border-robotic-yellow/50 text-robotic-yellow/70 hover:bg-robotic-yellow/10'
+                      ? 'bg-accent text-white'
+                      : 'border border-border text-muted hover:bg-accent/10'
                   }`}
                 >
-                  [INVITE_BY_EMAIL]
+                  Invite by email
                 </button>
               </div>
 
@@ -303,11 +303,11 @@ export const ParticipantManagement = ({
                     </div>
 
                     {selectedUserIds.size > 0 && (
-                      <div className="text-xs terminal-text text-robotic-yellow/80">
+                      <div className="text-xs terminal-text text-ink">
                         {selectedUserIds.size} user{selectedUserIds.size > 1 ? 's' : ''} selected
                         <button
                           onClick={() => setSelectedUserIds(new Set())}
-                          className="ml-2 text-robotic-orange hover:underline"
+                          className="ml-2 text-accent hover:underline"
                         >
                           clear
                         </button>
@@ -316,7 +316,7 @@ export const ParticipantManagement = ({
 
                     <div className="flex-1 overflow-y-auto space-y-1 min-h-0 max-h-[40vh] pr-1">
                       {availableToAdd.length === 0 ? (
-                        <p className="text-xs terminal-text text-robotic-yellow/50 text-center py-4">
+                        <p className="text-xs terminal-text text-muted text-center py-4">
                           All users are already participants
                         </p>
                       ) : (
@@ -332,7 +332,7 @@ export const ParticipantManagement = ({
                             : availableToAdd;
                           if (filtered.length === 0) {
                             return (
-                              <p className="text-xs terminal-text text-robotic-yellow/50 text-center py-4">
+                              <p className="text-xs terminal-text text-muted text-center py-4">
                                 No matching users
                               </p>
                             );
@@ -345,16 +345,16 @@ export const ParticipantManagement = ({
                                 onClick={() => toggleUser(user.id)}
                                 className={`w-full text-left px-3 py-2 rounded border text-xs terminal-text transition-colors ${
                                   isSelected
-                                    ? 'border-robotic-yellow bg-robotic-yellow/15 text-robotic-yellow'
-                                    : 'border-robotic-yellow/20 text-robotic-yellow/70 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/5'
+                                    ? 'border-accent bg-accent/10 text-ink'
+                                    : 'border-border text-muted hover:border-accent/40 hover:bg-accent/5'
                                 }`}
                               >
                                 <div className="flex items-center gap-2">
                                   <span
                                     className={`w-4 h-4 border rounded flex items-center justify-center flex-shrink-0 text-[10px] ${
                                       isSelected
-                                        ? 'border-robotic-yellow bg-robotic-yellow text-black'
-                                        : 'border-robotic-yellow/40'
+                                        ? 'border-accent bg-accent text-white'
+                                        : 'border-border'
                                     }`}
                                   >
                                     {isSelected ? '✓' : ''}
@@ -363,7 +363,7 @@ export const ParticipantManagement = ({
                                     <div className="font-medium truncate">
                                       {user.full_name || user.email || 'Unknown user'}
                                     </div>
-                                    <div className="text-robotic-yellow/50 truncate">
+                                    <div className="text-muted truncate">
                                       {user.email}
                                       {user.agency_name ? ` · ${user.agency_name}` : ''}
                                     </div>
@@ -382,7 +382,7 @@ export const ParticipantManagement = ({
                           onClick={() =>
                             setSelectedUserIds(new Set(availableToAdd.map((u) => u.id)))
                           }
-                          className="text-[10px] terminal-text text-robotic-yellow/60 hover:text-robotic-yellow underline"
+                          className="text-[10px] terminal-text text-muted hover:text-ink underline"
                         >
                           Select all
                         </button>
@@ -391,8 +391,8 @@ export const ParticipantManagement = ({
                   </>
                 ) : (
                   <div>
-                    <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                      [EMAIL_ADDRESS]
+                    <label className="block text-xs terminal-text text-ink mb-2">
+                      Email address
                     </label>
                     <input
                       type="email"
@@ -401,7 +401,7 @@ export const ParticipantManagement = ({
                       placeholder="participant@example.com"
                       className="w-full px-4 py-3 military-input terminal-text"
                     />
-                    <p className="text-xs terminal-text text-robotic-yellow/50 mt-2">
+                    <p className="text-xs terminal-text text-muted mt-2">
                       They will receive an email with a signup link if not registered
                     </p>
                   </div>
@@ -418,10 +418,10 @@ export const ParticipantManagement = ({
                     className="military-button px-6 py-3 flex-1 disabled:opacity-50"
                   >
                     {loading
-                      ? `[ADDING ${selectedUserIds.size}...]`
+                      ? `Adding ${selectedUserIds.size}…`
                       : modalMode === 'email'
-                        ? '[SEND_INVITATION]'
-                        : `[ADD ${selectedUserIds.size > 0 ? selectedUserIds.size + ' ' : ''}USER${selectedUserIds.size !== 1 ? 'S' : ''}]`}
+                        ? 'Send invitation'
+                        : `Add ${selectedUserIds.size > 0 ? selectedUserIds.size + ' ' : ''}user${selectedUserIds.size !== 1 ? 's' : ''}`}
                   </button>
                   <button
                     onClick={() => {
@@ -431,9 +431,9 @@ export const ParticipantManagement = ({
                       setSearchFilter('');
                       setModalMode('existing');
                     }}
-                    className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
+                    className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent"
                   >
-                    [CANCEL]
+                    Cancel
                   </button>
                 </div>
               </div>

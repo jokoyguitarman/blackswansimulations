@@ -51,22 +51,20 @@ export function CompileStep({ wizardDraftId, onComplete }: CompileStepProps) {
 
     return (
       <div className="flex flex-col items-center justify-center h-[400px]">
-        <div className="text-lg terminal-text text-cyan-400 animate-pulse mb-4">
-          COMPILING SCENARIO
+        <div className="text-lg terminal-text text-accent animate-pulse mb-4">
+          Compiling scenario
         </div>
-        <div className="text-xs terminal-text text-robotic-yellow/50 mb-2">
-          {currentPhase.label}
-        </div>
-        <div className="text-[10px] terminal-text text-robotic-yellow/30 mb-6">
+        <div className="text-xs terminal-text text-muted mb-2">{currentPhase.label}</div>
+        <div className="text-[10px] terminal-text text-muted mb-6">
           {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')} elapsed
         </div>
-        <div className="w-64 h-1.5 bg-robotic-gray-200 rounded overflow-hidden">
+        <div className="w-64 h-1.5 bg-surface-2 rounded overflow-hidden">
           <div
-            className="h-full bg-cyan-500 transition-all duration-1000"
+            className="h-full bg-accent transition-all duration-1000"
             style={{ width: `${Math.min((elapsed / 180) * 100, 95)}%` }}
           />
         </div>
-        <div className="mt-8 text-[10px] terminal-text text-robotic-yellow/20 max-w-md text-center">
+        <div className="mt-8 text-[10px] terminal-text text-muted max-w-md text-center">
           This may take 2-5 minutes. The system is generating the full scenario including all pins,
           casualties, injects, crowd dynamics, and adversary behavior.
         </div>
@@ -77,10 +75,8 @@ export function CompileStep({ wizardDraftId, onComplete }: CompileStepProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-[300px]">
-        <div className="text-lg terminal-text text-red-400 mb-4">COMPILATION FAILED</div>
-        <div className="text-xs terminal-text text-red-300/70 max-w-md text-center mb-6">
-          {error}
-        </div>
+        <div className="text-lg terminal-text text-danger mb-4">Compilation failed</div>
+        <div className="text-xs terminal-text text-danger max-w-md text-center mb-6">{error}</div>
         <button onClick={compile} className="military-button px-6 py-2 text-xs">
           Retry Compilation
         </button>
@@ -91,22 +87,20 @@ export function CompileStep({ wizardDraftId, onComplete }: CompileStepProps) {
   if (scenarioId) {
     return (
       <div className="flex flex-col items-center justify-center h-[400px]">
-        <div className="text-2xl terminal-text text-green-400 mb-4">SCENARIO COMPILED</div>
-        <div className="text-xs terminal-text text-robotic-yellow/50 mb-2">
+        <div className="text-2xl terminal-text text-success mb-4">Scenario compiled</div>
+        <div className="text-xs terminal-text text-muted mb-2">
           Your scenario has been created and saved.
         </div>
-        <div className="text-[10px] terminal-text text-robotic-yellow/30 mb-8">
-          Scenario ID: {scenarioId}
-        </div>
+        <div className="text-[10px] terminal-text text-muted mb-8">Scenario ID: {scenarioId}</div>
         <div className="flex gap-4">
           <a href="/scenarios" className="military-button px-8 py-3 text-sm text-center">
-            VIEW SCENARIOS
+            View scenarios
           </a>
           <a
             href="/warroom"
-            className="px-8 py-3 text-sm terminal-text border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50 text-center"
+            className="px-8 py-3 text-sm terminal-text border border-border text-muted hover:border-border text-center"
           >
-            CREATE ANOTHER
+            Create another
           </a>
         </div>
       </div>
@@ -115,7 +109,7 @@ export function CompileStep({ wizardDraftId, onComplete }: CompileStepProps) {
 
   return (
     <div className="flex flex-col items-center justify-center h-[300px]">
-      <div className="text-sm terminal-text text-robotic-yellow/60 mb-6 max-w-lg text-center">
+      <div className="text-sm terminal-text text-muted mb-6 max-w-lg text-center">
         All research and analysis is complete. Click below to compile the full scenario. This will
         generate all scenario pins, casualties, injects, crowd dynamics, and adversary behavior. The
         process takes 2-5 minutes.
@@ -125,10 +119,10 @@ export function CompileStep({ wizardDraftId, onComplete }: CompileStepProps) {
         disabled={!wizardDraftId}
         className="military-button px-10 py-4 text-sm disabled:opacity-30"
       >
-        COMPILE SCENARIO
+        Compile scenario
       </button>
       {!wizardDraftId && (
-        <div className="text-[10px] terminal-text text-red-400/50 mt-2">
+        <div className="text-[10px] terminal-text text-danger mt-2">
           Draft not available -- complete previous steps first.
         </div>
       )}

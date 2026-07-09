@@ -74,7 +74,7 @@ const SOURCE_BADGE: Record<string, { label: string; color: string }> = {
   },
   war_room: {
     label: 'WAR ROOM',
-    color: 'border-purple-400/60 text-purple-400/80 bg-purple-400/10',
+    color: 'border-brand/60 text-brand/80 bg-brand/10',
   },
   trainer: { label: 'TRAINER', color: 'border-blue-400/60 text-blue-400/80 bg-blue-400/10' },
   matrix_friction: {
@@ -125,7 +125,7 @@ export const IncidentCard = ({
   return (
     <div
       className={`military-border p-4 transition-all cursor-pointer ${
-        isSelected ? 'border-robotic-yellow bg-robotic-yellow/10' : 'hover:border-robotic-yellow'
+        isSelected ? 'border-accent bg-accent/10' : 'hover:border-accent'
       }`}
       onClick={onSelect}
     >
@@ -141,7 +141,7 @@ export const IncidentCard = ({
               </span>
             )}
           </div>
-          <div ref={descriptionRef} className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+          <div ref={descriptionRef} className="text-xs terminal-text text-muted mb-2">
             {incident.description.length > 150 ? (
               <>
                 <p className={isExpanded ? 'whitespace-pre-wrap break-words' : 'line-clamp-2'}>
@@ -152,16 +152,16 @@ export const IncidentCard = ({
                     e.stopPropagation();
                     setIsExpanded(!isExpanded);
                   }}
-                  className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
+                  className="text-xs terminal-text text-muted hover:text-ink mt-1"
                 >
-                  {isExpanded ? '[SHOW LESS]' : '[SHOW MORE]'}
+                  {isExpanded ? 'Show less' : 'Show more'}
                 </button>
               </>
             ) : (
               <p className="whitespace-pre-wrap break-words">{incident.description}</p>
             )}
           </div>
-          <div className="flex flex-wrap gap-2 text-xs terminal-text text-robotic-yellow/50">
+          <div className="flex flex-wrap gap-2 text-xs terminal-text text-muted">
             <span>For: {incident.for_teams_display ?? 'All teams'}</span>
             {incident.casualty_count !== undefined && incident.casualty_count > 0 && (
               <span>Casualties: {incident.casualty_count}</span>
@@ -187,7 +187,7 @@ export const IncidentCard = ({
                 return (
                   <span
                     key={idx}
-                    className="text-xs terminal-text px-2 py-1 bg-robotic-gray-200 border border-robotic-yellow/30"
+                    className="text-xs terminal-text px-2 py-1 bg-surface-2 border border-border"
                     title={assignment.notes || undefined}
                   >
                     {typeof displayValue === 'string' && displayValue.includes('_')
@@ -202,22 +202,22 @@ export const IncidentCard = ({
       </div>
 
       {/* Actions */}
-      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-robotic-yellow/30">
+      <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-border">
         {onDecisionClick != null &&
           incident.requires_response !== false &&
           (hasExecutedDecision ? (
             <span
-              className="px-3 py-1 text-xs terminal-text border border-green-400/50 text-green-400/80 bg-green-400/10 whitespace-nowrap cursor-default"
+              className="px-3 py-1 text-xs terminal-text border border-success text-success bg-success/10 whitespace-nowrap cursor-default"
               title="This incident has already been addressed with a decision"
             >
-              [DONE]
+              Done
             </span>
           ) : isTrainer ? (
             <span
-              className="px-3 py-1 text-xs terminal-text border border-robotic-yellow/40 text-robotic-yellow/40 whitespace-nowrap cursor-not-allowed"
+              className="px-3 py-1 text-xs terminal-text border border-border text-muted whitespace-nowrap cursor-not-allowed"
               title="Requires a player decision"
             >
-              [DECISION]
+              Decision
             </span>
           ) : (
             <button
@@ -225,9 +225,9 @@ export const IncidentCard = ({
                 e.stopPropagation();
                 onDecisionClick(incident.id);
               }}
-              className="px-3 py-1 text-xs terminal-text border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 whitespace-nowrap"
+              className="px-3 py-1 text-xs terminal-text border border-border text-ink hover:bg-accent/10 whitespace-nowrap"
             >
-              [DECISION]
+              Decision
             </button>
           ))}
         {/* Respond with map action */}
@@ -240,9 +240,9 @@ export const IncidentCard = ({
                 e.stopPropagation();
                 onRespondWithAction(incident.id, incident.title);
               }}
-              className="px-3 py-1 text-xs terminal-text border border-cyan-400/70 text-cyan-400 hover:bg-cyan-400/10 whitespace-nowrap"
+              className="px-3 py-1 text-xs terminal-text border border-accent text-accent hover:bg-accent/10 whitespace-nowrap"
             >
-              [MAP ACTION]
+              Map action
             </button>
           )}
         {incident.status === 'under_control' && (
@@ -252,9 +252,9 @@ export const IncidentCard = ({
               handleStatusChange('resolved');
             }}
             disabled={updating}
-            className="px-3 py-1 text-xs terminal-text border border-green-400 text-green-400 hover:bg-green-400/10 disabled:opacity-50 whitespace-nowrap"
+            className="px-3 py-1 text-xs terminal-text border border-success text-success hover:bg-success/10 disabled:opacity-50 whitespace-nowrap"
           >
-            [RESOLVE]
+            Resolve
           </button>
         )}
       </div>

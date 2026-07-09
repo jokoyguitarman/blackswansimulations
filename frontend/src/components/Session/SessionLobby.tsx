@@ -234,20 +234,16 @@ export const SessionLobby = ({
   return (
     <div className="space-y-6">
       {/* Status Header */}
-      <div className="military-border p-6 bg-robotic-gray-300">
+      <div className="bg-surface border border-border rounded-xl shadow-sm p-6">
         <div className="flex justify-between items-start mb-4">
           <div>
-            <h2 className="text-xl terminal-text uppercase mb-2">[SESSION_LOBBY]</h2>
-            <p className="text-sm terminal-text text-robotic-yellow/70">
-              Waiting for trainer to start the session...
-            </p>
+            <h2 className="text-xl font-extrabold text-brand mb-1">Session lobby</h2>
+            <p className="text-sm text-muted">Waiting for trainer to start the session…</p>
           </div>
           {scheduledTime && (
             <div className="text-right">
-              <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                Scheduled Start
-              </div>
-              <div className="text-sm terminal-text">
+              <div className="text-xs text-muted uppercase tracking-wide">Scheduled start</div>
+              <div className="text-sm font-semibold text-ink">
                 {timeUntilStart && timeUntilStart > 0
                   ? `${Math.floor(timeUntilStart / 60000)} minutes`
                   : scheduledTime.toLocaleString()}
@@ -258,11 +254,11 @@ export const SessionLobby = ({
 
         {/* Trainer Instructions */}
         {session.trainer_instructions && (
-          <div className="military-border p-4 bg-robotic-yellow/10 border-robotic-yellow mt-4">
-            <h3 className="text-sm terminal-text uppercase mb-2 text-robotic-yellow">
-              [TRAINER_INSTRUCTIONS]
+          <div className="border-l-4 border-accent bg-accent/10 rounded-md p-4 mt-4">
+            <h3 className="text-xs font-bold uppercase tracking-wide mb-2 text-accent">
+              Trainer instructions
             </h3>
-            <div className="text-sm terminal-text text-robotic-yellow/90 whitespace-pre-wrap">
+            <div className="text-sm text-ink whitespace-pre-wrap">
               {session.trainer_instructions}
             </div>
           </div>
@@ -270,19 +266,25 @@ export const SessionLobby = ({
 
         {/* Ready Status for Trainer */}
         {isTrainer && readyStatus && (
-          <div className="military-border p-4 bg-robotic-gray-300 mt-4">
+          <div className="bg-surface-2 border border-border rounded-lg p-4 mt-4">
             <div className="flex justify-between items-center mb-2">
-              <span className="text-sm terminal-text uppercase">[READY_STATUS]</span>
-              <span className="text-sm terminal-text">
-                {readyStatus.ready} / {readyStatus.total} Ready
+              <span className="text-sm font-semibold text-ink">Ready status</span>
+              <span className="text-sm font-bold text-brand">
+                {readyStatus.ready} / {readyStatus.total} ready
               </span>
             </div>
             <div className="space-y-1 mb-4">
               {readyStatus.participants.map((p) => (
-                <div key={p.user_id} className="flex justify-between text-xs terminal-text">
-                  <span>{p.user?.full_name || 'Unknown'}</span>
-                  <span className={p.is_ready ? 'text-robotic-yellow' : 'text-robotic-yellow/50'}>
-                    {p.is_ready ? '[READY]' : '[NOT_READY]'}
+                <div key={p.user_id} className="flex justify-between text-sm">
+                  <span className="text-ink">{p.user?.full_name || 'Unknown'}</span>
+                  <span
+                    className={
+                      p.is_ready
+                        ? 'text-xs font-bold uppercase text-success'
+                        : 'text-xs font-bold uppercase text-muted'
+                    }
+                  >
+                    {p.is_ready ? 'Ready' : 'Not ready'}
                   </span>
                 </div>
               ))}
@@ -293,8 +295,8 @@ export const SessionLobby = ({
               className="military-button w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {readyStatus.all_ready
-                ? '[START_SESSION]'
-                : `[WAITING] ${readyStatus.total - readyStatus.ready} participant(s) not ready`}
+                ? 'Start session'
+                : `Waiting · ${readyStatus.total - readyStatus.ready} participant(s) not ready`}
             </button>
           </div>
         )}
@@ -320,14 +322,14 @@ export const SessionLobby = ({
               onClick={handleToggleReady}
               disabled={loading}
               className={`military-button w-full py-3 ${
-                isReady ? 'bg-robotic-yellow/20 border-robotic-yellow' : ''
+                isReady ? '!bg-success !border-success' : ''
               }`}
             >
-              {loading ? '[UPDATING...]' : isReady ? '[READY] ✓' : '[MARK_AS_READY]'}
+              {loading ? 'Updating…' : isReady ? 'Ready ✓' : 'Mark me as ready'}
             </button>
             {isReady && (
-              <p className="text-xs terminal-text text-robotic-yellow/70 mt-2 text-center">
-                You are ready. Waiting for trainer to start the session...
+              <p className="text-xs text-muted mt-2 text-center">
+                You are ready. Waiting for trainer to start the session…
               </p>
             )}
           </div>
@@ -336,55 +338,51 @@ export const SessionLobby = ({
         {/* Team Assignments - Show to all participants */}
         <div className="mt-4">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm terminal-text uppercase text-robotic-green">
-              [TEAM_ASSIGNMENTS]
+            <h3 className="text-sm font-bold uppercase tracking-wide text-brand">
+              Team assignments
             </h3>
             {isTrainer && (
               <div className="flex gap-2">
                 {isSocialSim && (
                   <button
                     onClick={() => setShowPageAssignmentModal(true)}
-                    className="military-button px-4 py-2 text-xs"
+                    className="military-button-outline px-4 py-2 text-xs"
                   >
-                    [MANAGE_PAGES]
+                    Manage pages
                   </button>
                 )}
                 <button
                   onClick={() => setShowTeamAssignmentModal(true)}
                   className="military-button px-4 py-2 text-xs"
                 >
-                  [MANAGE_TEAMS]
+                  Manage teams
                 </button>
               </div>
             )}
           </div>
 
           {myTeams.length > 0 ? (
-            <div className="military-border p-4 bg-robotic-green/10 border-robotic-green">
+            <div className="border-l-4 border-success bg-success/10 rounded-md p-4">
               <div className="space-y-2">
                 {myTeams.map((team, idx) => (
                   <div key={idx} className="flex items-center gap-2">
-                    <span className="text-sm terminal-text font-semibold">
-                      {team.team_name.toUpperCase()}
-                    </span>
+                    <span className="text-sm font-bold text-ink">{team.team_name}</span>
                     {team.team_role && (
-                      <span className="text-xs terminal-text text-robotic-yellow/70">
-                        ({team.team_role})
-                      </span>
+                      <span className="text-xs text-muted">({team.team_role})</span>
                     )}
                   </div>
                 ))}
               </div>
-              <p className="text-xs terminal-text text-robotic-yellow/70 mt-2">
+              <p className="text-xs text-muted mt-2">
                 You will receive team-specific information during the session.
               </p>
             </div>
           ) : (
-            <div className="military-border p-4 bg-robotic-gray-200">
-              <p className="text-xs terminal-text text-robotic-yellow/50 text-center">
+            <div className="bg-surface-2 border border-border rounded-lg p-4">
+              <p className="text-xs text-muted text-center">
                 {isTrainer
-                  ? 'No team assignments yet. Click [MANAGE_TEAMS] to assign teams.'
-                  : 'No team assignments yet. Waiting for trainer to assign teams...'}
+                  ? 'No team assignments yet. Click “Manage teams” to assign teams.'
+                  : 'No team assignments yet. Waiting for trainer to assign teams…'}
               </p>
             </div>
           )}
@@ -392,8 +390,8 @@ export const SessionLobby = ({
       </div>
 
       {/* Briefing Materials */}
-      <div className="military-border p-6">
-        <h3 className="text-lg terminal-text uppercase mb-4">[BRIEFING_MATERIALS]</h3>
+      <div className="bg-surface border border-border rounded-xl shadow-sm p-6">
+        <h3 className="text-lg font-bold text-brand mb-4">Briefing materials</h3>
         <BriefingView sessionId={sessionId} />
       </div>
 

@@ -38,9 +38,9 @@ export const ExpandableText = ({ text, maxLines = 2, className = '' }: Expandabl
       </p>
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
+        className="text-xs font-semibold text-brand hover:text-accent mt-1"
       >
-        {isExpanded ? '[SHOW LESS]' : '[SHOW MORE]'}
+        {isExpanded ? 'Show less' : 'Show more'}
       </button>
     </div>
   );

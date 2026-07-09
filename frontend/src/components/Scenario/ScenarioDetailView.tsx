@@ -174,10 +174,10 @@ interface Props {
 }
 
 const SEVERITY_COLORS: Record<string, string> = {
-  critical: 'text-red-400 border-red-400',
-  high: 'text-orange-400 border-orange-400',
-  medium: 'text-robotic-yellow border-robotic-yellow',
-  low: 'text-green-400 border-green-400',
+  critical: 'text-danger border-danger',
+  high: 'text-accent border-accent',
+  medium: 'text-warning border-warning',
+  low: 'text-success border-success',
 };
 
 function itemLabel(item: unknown): string {
@@ -216,7 +216,7 @@ function itemLabel(item: unknown): string {
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div className="mb-6">
-    <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase tracking-widest mb-3 border-b border-robotic-yellow/20 pb-1">
+    <h3 className="text-xs terminal-text text-muted uppercase tracking-widest mb-3 border-b border-border pb-1">
       {title}
     </h3>
     {children}
@@ -360,19 +360,21 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-        <div className="text-lg terminal-text animate-pulse">[LOADING SCENARIO DATA...]</div>
+      <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+        <div className="bg-surface border border-border rounded-2xl shadow-lg px-8 py-6">
+          <div className="text-lg text-ink animate-pulse">Loading scenario data…</div>
+        </div>
       </div>
     );
   }
 
   if (!scenario) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50">
         <div className="military-border p-8 text-center">
-          <p className="terminal-text text-red-400">[ERROR] Failed to load scenario</p>
+          <p className="terminal-text text-danger">Failed to load scenario</p>
           <button onClick={onClose} className="mt-4 military-button px-4 py-2 text-sm">
-            [CLOSE]
+            Close
           </button>
         </div>
       </div>
@@ -396,45 +398,42 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
     const caseStudies = (groupWide.case_studies || []) as Array<Record<string, unknown>>;
 
     return (
-      <div className="fixed inset-0 bg-black/90 z-50 overflow-y-auto">
-        <div className="max-w-4xl mx-auto py-8 px-6">
+      <div className="fixed inset-0 bg-ink/50 z-50 overflow-y-auto p-4 sm:p-6">
+        <div className="max-w-4xl mx-auto my-2 bg-surface border border-border rounded-2xl shadow-lg p-6 sm:p-8">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
               <span className="text-2xl">📱</span>
               <div>
-                <h1 className="text-xl text-blue-100 font-bold">{scenario.title}</h1>
+                <h1 className="text-xl text-ink font-bold">{scenario.title}</h1>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-300 rounded">
+                  <span className="text-xs px-2 py-0.5 bg-brand/10 text-brand rounded">
                     Social Media Crisis
                   </span>
-                  <span className="text-xs text-gray-500">{scenario.duration_minutes}min</span>
-                  <span className="text-xs text-gray-500">{teams.length} teams</span>
+                  <span className="text-xs text-muted">{scenario.duration_minutes}min</span>
+                  <span className="text-xs text-muted">{teams.length} teams</span>
                 </div>
               </div>
             </div>
-            <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl px-2">
-              x
+            <button onClick={onClose} className="text-muted hover:text-ink text-2xl px-2">
+              ×
             </button>
           </div>
 
-          <p className="text-sm text-gray-300 mb-6 leading-relaxed">{scenario.description}</p>
+          <p className="text-sm text-muted mb-6 leading-relaxed">{scenario.description}</p>
 
           {scenario.briefing && (
-            <div className="bg-blue-950/30 border border-blue-500/20 rounded-lg p-4 mb-6">
-              <h3 className="text-sm font-bold text-blue-300 mb-2">Briefing</h3>
-              <p className="text-xs text-blue-200/70 whitespace-pre-wrap">{scenario.briefing}</p>
+            <div className="bg-brand/10 border border-brand/30 rounded-lg p-4 mb-6">
+              <h3 className="text-sm font-bold text-ink mb-2">Briefing</h3>
+              <p className="text-xs text-ink whitespace-pre-wrap">{scenario.briefing}</p>
             </div>
           )}
 
           {communities.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-bold text-gray-300 mb-2">Affected Communities</h3>
+              <h3 className="text-sm font-bold text-muted mb-2">Affected Communities</h3>
               <div className="flex flex-wrap gap-2">
                 {communities.map((c: string, i: number) => (
-                  <span
-                    key={i}
-                    className="text-xs px-2 py-1 bg-purple-500/20 text-purple-300 rounded"
-                  >
+                  <span key={i} className="text-xs px-2 py-1 bg-brand/10 text-brand rounded">
                     {c}
                   </span>
                 ))}
@@ -444,13 +443,13 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
           {teams.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-bold text-gray-300 mb-3">Response Teams</h3>
+              <h3 className="text-sm font-bold text-muted mb-3">Response Teams</h3>
               <div className="grid grid-cols-2 gap-3">
                 {teams.map((t) => (
-                  <div key={t.id} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
-                    <div className="text-sm font-semibold text-white">{t.team_name}</div>
-                    <div className="text-xs text-gray-400 mt-1">{t.team_description}</div>
-                    <div className="text-xs text-gray-500 mt-1">
+                  <div key={t.id} className="bg-surface-2 border border-border rounded-lg p-3">
+                    <div className="text-sm font-semibold text-ink">{t.team_name}</div>
+                    <div className="text-xs text-muted mt-1">{t.team_description}</div>
+                    <div className="text-xs text-muted mt-1">
                       {t.min_participants}-{t.max_participants} participants
                     </div>
                   </div>
@@ -461,26 +460,26 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
           {npcPersonas.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-bold text-gray-300 mb-3">
+              <h3 className="text-sm font-bold text-muted mb-3">
                 NPC Personas ({npcPersonas.length})
               </h3>
               <div className="grid grid-cols-2 gap-3">
                 {npcPersonas.map((npc, i) => (
-                  <div key={i} className="bg-gray-800/50 border border-gray-700 rounded-lg p-3">
+                  <div key={i} className="bg-surface-2 border border-border rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-1">
                       <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-white text-xs font-bold">
                         {String(npc.name || '?').charAt(0)}
                       </div>
                       <div>
-                        <div className="text-sm font-semibold text-white">{String(npc.name)}</div>
-                        <div className="text-xs text-gray-500">{String(npc.handle)}</div>
+                        <div className="text-sm font-semibold text-ink">{String(npc.name)}</div>
+                        <div className="text-xs text-muted">{String(npc.handle)}</div>
                       </div>
                     </div>
-                    <div className="text-xs text-gray-400 mt-1">
+                    <div className="text-xs text-muted mt-1">
                       {String(npc.personality || '').substring(0, 100)}
                     </div>
                     {!!npc.bias && String(npc.bias) !== 'none' && (
-                      <span className="text-[10px] px-1.5 py-0.5 bg-red-900/30 text-red-400 rounded mt-1 inline-block">
+                      <span className="text-[10px] px-1.5 py-0.5 bg-accent/10 text-accent rounded mt-1 inline-block">
                         bias: {String(npc.bias)}
                       </span>
                     )}
@@ -492,29 +491,29 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
           {confirmedFacts.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-bold text-gray-300 mb-2">Fact Sheet</h3>
-              <div className="bg-green-950/20 border border-green-500/20 rounded-lg p-4 mb-3">
-                <h4 className="text-xs font-bold text-green-400 mb-2">Confirmed Facts</h4>
+              <h3 className="text-sm font-bold text-muted mb-2">Fact Sheet</h3>
+              <div className="bg-success/10 border border-success/30 rounded-lg p-4 mb-3">
+                <h4 className="text-xs font-bold text-success mb-2">Confirmed Facts</h4>
                 {confirmedFacts.map((f: string, i: number) => (
-                  <div key={i} className="text-xs text-green-200/70 mb-1 flex items-start gap-2">
-                    <span className="text-green-400 mt-0.5">+</span> {f}
+                  <div key={i} className="text-xs text-muted mb-1 flex items-start gap-2">
+                    <span className="text-success mt-0.5">+</span> {f}
                   </div>
                 ))}
               </div>
               {unconfirmedClaims.length > 0 && (
-                <div className="bg-red-950/20 border border-red-500/20 rounded-lg p-4">
-                  <h4 className="text-xs font-bold text-red-400 mb-2">False/Unverified Claims</h4>
+                <div className="bg-danger/10 border border-danger/30 rounded-lg p-4">
+                  <h4 className="text-xs font-bold text-danger mb-2">False/Unverified Claims</h4>
                   {unconfirmedClaims.map((c: Record<string, unknown>, i: number) => (
                     <div key={i} className="text-xs mb-2">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`px-1 py-0.5 rounded text-[10px] font-bold ${String(c.status) === 'FALSE' ? 'bg-red-600 text-white' : 'bg-yellow-600 text-black'}`}
+                          className={`px-1 py-0.5 rounded text-[10px] font-bold ${String(c.status) === 'FALSE' ? 'bg-danger text-white' : 'bg-warning text-black'}`}
                         >
                           {String(c.status)}
                         </span>
-                        <span className="text-red-200/70">{String(c.claim)}</span>
+                        <span className="text-muted">{String(c.claim)}</span>
                       </div>
-                      <div className="text-gray-500 ml-10 mt-0.5">Truth: {String(c.truth)}</div>
+                      <div className="text-muted ml-10 mt-0.5">Truth: {String(c.truth)}</div>
                     </div>
                   ))}
                 </div>
@@ -524,7 +523,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
           {injects.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-bold text-gray-300 mb-3">Injects ({injects.length})</h3>
+              <h3 className="text-sm font-bold text-muted mb-3">Injects ({injects.length})</h3>
               <div className="space-y-2 max-h-[400px] overflow-y-auto">
                 {injects
                   .filter((inj) => inj.trigger_time_minutes != null)
@@ -539,14 +538,14 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                     return (
                       <div
                         key={inj.id}
-                        className="bg-gray-800/50 border border-gray-700 rounded-lg p-3"
+                        className="bg-surface-2 border border-border rounded-lg p-3"
                       >
                         <div className="flex items-center gap-2 mb-1">
-                          <span className="text-xs text-cyan-400 font-mono">
+                          <span className="text-xs text-accent font-mono">
                             T+{inj.trigger_time_minutes}m
                           </span>
                           <span
-                            className={`text-[10px] px-1.5 py-0.5 rounded ${app === 'social_feed' ? (isFacebook ? 'bg-blue-700 text-white border border-blue-500' : 'bg-black text-white border border-gray-600') : app === 'email' ? 'bg-blue-600 text-white' : app === 'news' ? 'bg-red-600 text-white' : app === 'group_chat' ? 'bg-green-600 text-white' : 'bg-gray-600 text-white'}`}
+                            className={`text-[10px] px-1.5 py-0.5 rounded ${app === 'social_feed' ? (isFacebook ? 'bg-blue-700 text-white border border-blue-500' : 'bg-black text-white border border-border') : app === 'email' ? 'bg-blue-600 text-white' : app === 'news' ? 'bg-danger text-white' : app === 'group_chat' ? 'bg-success text-white' : 'bg-surface-2 text-ink'}`}
                           >
                             {app === 'social_feed'
                               ? isFacebook
@@ -561,26 +560,24 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                                     : app}
                           </span>
                           {inj.severity === 'critical' && (
-                            <span className="text-[10px] px-1 py-0.5 bg-red-900 text-red-300 rounded">
-                              CRITICAL
+                            <span className="text-[10px] px-1 py-0.5 bg-danger/10 text-danger rounded">
+                              Critical
                             </span>
                           )}
                           {!!(inj as unknown as Record<string, unknown>).requires_response && (
-                            <span className="text-[10px] px-1 py-0.5 bg-amber-900 text-amber-300 rounded">
-                              REQUIRES RESPONSE
+                            <span className="text-[10px] px-1 py-0.5 bg-accent/10 text-accent rounded">
+                              Requires response
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-gray-300 font-medium">{inj.title}</div>
-                        <div className="text-xs text-gray-500 mt-0.5 line-clamp-2">
-                          {inj.content}
-                        </div>
+                        <div className="text-xs text-muted font-medium">{inj.title}</div>
+                        <div className="text-xs text-muted mt-0.5 line-clamp-2">{inj.content}</div>
                         {inj.target_teams && inj.target_teams.length > 0 && (
                           <div className="flex gap-1 mt-1">
                             {inj.target_teams.map((team: string, ti: number) => (
                               <span
                                 key={ti}
-                                className="text-[10px] px-1 py-0.5 bg-gray-700 text-gray-400 rounded"
+                                className="text-[10px] px-1 py-0.5 bg-surface-2 text-muted rounded"
                               >
                                 {team}
                               </span>
@@ -596,20 +593,20 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
           {perTeam.length > 0 && (
             <div className="mb-6">
-              <h3 className="text-sm font-bold text-gray-300 mb-3">Research Guidelines</h3>
+              <h3 className="text-sm font-bold text-muted mb-3">Research Guidelines</h3>
               {perTeam.map((team, ti) => (
                 <div key={ti} className="mb-3">
-                  <h4 className="text-xs font-bold text-blue-300 mb-1">{String(team.team_name)}</h4>
+                  <h4 className="text-xs font-bold text-ink mb-1">{String(team.team_name)}</h4>
                   <div className="space-y-1">
                     {((team.guidelines || []) as Array<Record<string, unknown>>).map((g, gi) => (
                       <div
                         key={gi}
-                        className="text-xs text-gray-400 flex items-start gap-2 bg-gray-800/30 rounded p-2"
+                        className="text-xs text-muted flex items-start gap-2 bg-surface-2 rounded p-2"
                       >
-                        <span className="text-blue-400 mt-0.5">*</span>
+                        <span className="text-brand mt-0.5">*</span>
                         <div>
-                          <div className="text-gray-300">{String(g.best_practice)}</div>
-                          <div className="text-gray-600 text-[10px] mt-0.5">
+                          <div className="text-muted">{String(g.best_practice)}</div>
+                          <div className="text-muted text-[10px] mt-0.5">
                             {String(g.source_basis)}
                           </div>
                         </div>
@@ -620,11 +617,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
               ))}
               {caseStudies.length > 0 && (
                 <div className="mt-3">
-                  <h4 className="text-xs font-bold text-blue-300 mb-1">Case Studies</h4>
+                  <h4 className="text-xs font-bold text-ink mb-1">Case Studies</h4>
                   {caseStudies.map((cs, ci) => (
-                    <div key={ci} className="text-xs text-gray-400 bg-gray-800/30 rounded p-2 mb-1">
-                      <span className="text-gray-300 font-medium">{String(cs.name)}</span>
-                      <span className="text-gray-500"> - {String(cs.summary)}</span>
+                    <div key={ci} className="text-xs text-muted bg-surface-2 rounded p-2 mb-1">
+                      <span className="text-muted font-medium">{String(cs.name)}</span>
+                      <span className="text-muted"> - {String(cs.summary)}</span>
                     </div>
                   ))}
                 </div>
@@ -632,7 +629,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             </div>
           )}
 
-          <div className="text-xs text-gray-600 mt-8">
+          <div className="text-xs text-muted mt-8">
             Created {new Date(scenario.created_at).toLocaleDateString()} |{' '}
             {scenario.objectives.length} objectives | {injects.length} injects
           </div>
@@ -648,49 +645,44 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const flatStandards = typeof ik?.sector_standards === 'string' ? ik.sector_standards : null;
 
   return (
-    <div className="fixed inset-0 bg-black/85 flex items-start justify-center z-50 p-4 overflow-y-auto">
-      <div className="military-border bg-robotic-gray-300 w-full max-w-5xl my-4">
+    <div className="fixed inset-0 bg-ink/40 flex items-start justify-center z-50 p-4 overflow-y-auto">
+      <div className="military-border bg-surface w-full max-w-5xl my-4">
         {/* Header */}
-        <div className="border-b border-robotic-yellow/30 p-6 flex justify-between items-start">
+        <div className="border-b border-border p-6 flex justify-between items-start">
           <div className="flex-1 pr-4">
             <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-xl terminal-text uppercase">{scenario.title}</h1>
+              <h1 className="text-xl terminal-text">{scenario.title}</h1>
               <span
                 className={`text-xs terminal-text px-2 py-0.5 border ${
-                  scenario.is_active
-                    ? 'border-robotic-yellow text-robotic-yellow'
-                    : 'border-robotic-gray-200 text-robotic-gray-50'
+                  scenario.is_active ? 'border-accent text-ink' : 'border-border text-muted'
                 }`}
               >
-                {scenario.is_active ? 'ACTIVE' : 'DRAFT'}
+                {scenario.is_active ? 'Active' : 'Draft'}
               </span>
             </div>
-            <div className="flex gap-4 text-xs terminal-text text-robotic-yellow/50">
-              <span>[{scenario.category.toUpperCase()}]</span>
-              <span>[{scenario.difficulty.toUpperCase()}]</span>
-              <span>[{scenario.duration_minutes}MIN]</span>
-              <span>[{teams.length} TEAMS]</span>
-              <span>[{injects.length} INJECTS]</span>
+            <div className="flex gap-4 text-xs terminal-text text-muted">
+              <span>{scenario.category.replace(/_/g, ' ')}</span>
+              <span>{scenario.difficulty}</span>
+              <span>{scenario.duration_minutes} min</span>
+              <span>{teams.length} teams</span>
+              <span>{injects.length} injects</span>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="text-robotic-orange hover:text-robotic-yellow terminal-text text-sm"
-          >
-            [CLOSE]
+          <button onClick={onClose} className="text-accent hover:text-ink terminal-text text-lg">
+            ×
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="border-b border-robotic-yellow/20 flex overflow-x-auto">
+        <div className="border-b border-border flex overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-xs terminal-text uppercase whitespace-nowrap transition-all ${
+              className={`px-5 py-3 text-xs terminal-text whitespace-nowrap transition-all ${
                 activeTab === tab
-                  ? 'border-b-2 border-robotic-yellow text-robotic-yellow'
-                  : 'text-robotic-yellow/50 hover:text-robotic-yellow/80'
+                  ? 'border-b-2 border-accent text-ink'
+                  : 'text-muted hover:text-ink'
               }`}
             >
               {tab}
@@ -719,7 +711,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                 <ul className="space-y-1">
                   {scenario.objectives.map((obj, i) => (
                     <li key={i} className="text-sm terminal-text flex gap-2">
-                      <span className="text-robotic-yellow/40">{i + 1}.</span>
+                      <span className="text-muted">{i + 1}.</span>
                       {obj}
                     </li>
                   ))}
@@ -732,7 +724,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                     <div className="space-y-3">
                       {Object.entries(scenario.role_specific_briefs).map(([role, brief]) => (
                         <div key={role}>
-                          <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-1">
+                          <div className="text-xs terminal-text text-muted uppercase mb-1">
                             {role}
                           </div>
                           <p className="text-sm terminal-text">{brief}</p>
@@ -745,8 +737,8 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
               <Section title="Intelligence / Custom Facts">
                 {(!ik?.custom_facts || ik.custom_facts.length === 0) && (
                   <div className="flex items-center gap-3 mb-3">
-                    <p className="text-sm terminal-text text-robotic-yellow/50">
-                      [NO CUSTOM FACTS] Generate research-oriented facility/area facts for this
+                    <p className="text-sm terminal-text text-muted">
+                      No custom facts yet. Generate research-oriented facility/area facts for this
                       scenario.
                     </p>
                     <button
@@ -773,14 +765,14 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                         }
                       }}
                       disabled={customFactsLoading}
-                      className="ml-auto px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-50"
+                      className="ml-auto px-4 py-1.5 text-xs terminal-text bg-brand hover:bg-brand-strong text-white rounded border border-brand disabled:opacity-50"
                     >
-                      {customFactsLoading ? 'GENERATING...' : 'GENERATE CUSTOM FACTS'}
+                      {customFactsLoading ? 'Generating…' : 'Generate custom facts'}
                     </button>
                   </div>
                 )}
                 {customFactsMsg && (
-                  <div className="text-xs terminal-text text-green-400 p-1 mb-2">
+                  <div className="text-xs terminal-text text-success p-1 mb-2">
                     {customFactsMsg}
                   </div>
                 )}
@@ -816,19 +808,19 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                           }
                         }}
                         disabled={customFactsLoading}
-                        className="px-3 py-1 text-xs terminal-text bg-robotic-yellow/10 hover:bg-robotic-yellow/20 text-robotic-yellow rounded border border-robotic-yellow/40 disabled:opacity-50"
+                        className="px-3 py-1 text-xs terminal-text bg-accent/10 hover:bg-accent/20 text-ink rounded border border-accent/40 disabled:opacity-50"
                       >
-                        {customFactsLoading ? 'REGENERATING…' : 'REGENERATE CUSTOM FACTS'}
+                        {customFactsLoading ? 'Regenerating…' : 'Regenerate custom facts'}
                       </button>
                     </div>
                     {ik.custom_facts.map((fact, i) => (
                       <div key={i} className="military-border p-3">
-                        <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-1">
+                        <div className="text-xs terminal-text text-muted uppercase mb-1">
                           {fact.topic}
                         </div>
                         <p className="text-sm terminal-text">{fact.summary}</p>
                         {fact.detail && (
-                          <p className="text-xs terminal-text text-robotic-yellow/60 mt-1 whitespace-pre-wrap">
+                          <p className="text-xs terminal-text text-muted mt-1 whitespace-pre-wrap">
                             {fact.detail}
                           </p>
                         )}
@@ -844,17 +836,13 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                     {ik.baseline_escalation_factors.map((f, i) => (
                       <div key={i} className="flex gap-3 items-start">
                         <span
-                          className={`text-xs terminal-text px-1.5 py-0.5 border shrink-0 ${SEVERITY_COLORS[f.severity] ?? 'text-robotic-yellow border-robotic-yellow'}`}
+                          className={`text-xs terminal-text px-1.5 py-0.5 border shrink-0 ${SEVERITY_COLORS[f.severity] ?? 'text-warning border-warning'}`}
                         >
                           {f.severity.toUpperCase()}
                         </span>
                         <div>
-                          <div className="text-xs terminal-text text-robotic-yellow font-medium">
-                            {f.name}
-                          </div>
-                          <p className="text-xs terminal-text text-robotic-yellow/70">
-                            {f.description}
-                          </p>
+                          <div className="text-xs terminal-text text-ink font-medium">{f.name}</div>
+                          <p className="text-xs terminal-text text-muted">{f.description}</p>
                         </div>
                       </div>
                     ))}
@@ -868,63 +856,63 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
           {activeTab === 'Teams' && (
             <div>
               {teams.length === 0 ? (
-                <p className="text-sm terminal-text text-robotic-yellow/50">[NO TEAMS DEFINED]</p>
+                <p className="text-sm terminal-text text-muted">No teams defined</p>
               ) : (
                 <div className="space-y-4">
                   {teams.map((team) => (
                     <div key={team.id} className="military-border p-4">
-                      <div className="text-sm terminal-text text-robotic-yellow font-medium uppercase mb-1 flex items-center gap-2">
+                      <div className="text-sm terminal-text text-ink font-medium mb-1 flex items-center gap-2">
                         {team.team_name}
                         {team.is_investigative && (
-                          <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded border border-purple-500/60 bg-purple-500/20 text-purple-300">
-                            INVESTIGATIVE
+                          <span className="px-2 py-0.5 text-[9px] font-bold rounded border border-brand/60 bg-brand/10 text-brand">
+                            Investigative
                           </span>
                         )}
                       </div>
-                      <p className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+                      <p className="text-xs terminal-text text-muted mb-2">
                         {team.team_description}
                       </p>
-                      <div className="text-xs terminal-text text-robotic-yellow/50 mb-3">
+                      <div className="text-xs terminal-text text-muted mb-3">
                         {team.min_participants}–{team.max_participants} participants
                       </div>
                       {team.counter_definitions && team.counter_definitions.length > 0 && (
-                        <div className="border-t border-robotic-yellow/15 pt-3 mt-2">
-                          <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2 tracking-wider">
+                        <div className="border-t border-border pt-3 mt-2">
+                          <div className="text-xs terminal-text text-muted uppercase mb-2 tracking-wider">
                             Counters ({team.counter_definitions.length})
                           </div>
                           <div className="space-y-2">
                             {team.counter_definitions.map((cd) => (
                               <div
                                 key={cd.key}
-                                className="bg-black/30 border border-robotic-yellow/10 rounded px-3 py-2"
+                                className="bg-surface-2 border border-border rounded px-3 py-2"
                               >
                                 <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs terminal-text text-robotic-yellow/90 font-medium">
+                                  <span className="text-xs terminal-text text-ink font-medium">
                                     {cd.label}
                                   </span>
-                                  <span className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+                                  <span className="text-[10px] terminal-text text-muted uppercase">
                                     {cd.type}
                                     {cd.behavior ? ` · ${cd.behavior.replace(/_/g, ' ')}` : ''}
                                   </span>
                                 </div>
-                                <div className="text-[10px] terminal-text text-robotic-yellow/40 font-mono">
+                                <div className="text-[10px] terminal-text text-muted font-mono">
                                   key: {cd.key}
                                   {cd.initial_value !== undefined &&
                                     ` · initial: ${String(cd.initial_value)}`}
                                   {cd.visible_to === 'trainer_only' && ' · trainer only'}
                                 </div>
                                 {cd.config?.keywords && cd.config.keywords.length > 0 && (
-                                  <div className="text-[10px] terminal-text text-robotic-yellow/35 mt-1">
+                                  <div className="text-[10px] terminal-text text-muted mt-1">
                                     triggers: {cd.config.keywords.join(', ')}
                                   </div>
                                 )}
                                 {cd.config?.base_rate_per_min != null && (
-                                  <div className="text-[10px] terminal-text text-robotic-yellow/35 mt-1">
+                                  <div className="text-[10px] terminal-text text-muted mt-1">
                                     rate: {cd.config.base_rate_per_min}/min
                                   </div>
                                 )}
                                 {cd.config?.values && cd.config.values.length > 0 && (
-                                  <div className="text-[10px] terminal-text text-robotic-yellow/35 mt-1">
+                                  <div className="text-[10px] terminal-text text-muted mt-1">
                                     values: {cd.config.values.join(' | ')}
                                   </div>
                                 )}
@@ -945,7 +933,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
             <div className="space-y-6">
               {/* Time-based */}
               <div>
-                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-3">
+                <div className="text-xs terminal-text text-muted uppercase mb-3">
                   Time-based injects ({timeInjects.length})
                 </div>
                 <div className="space-y-2">
@@ -967,7 +955,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
               {/* Decision-triggered */}
               {decisionInjects.length > 0 && (
                 <div>
-                  <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-3">
+                  <div className="text-xs terminal-text text-muted uppercase mb-3">
                     Decision-triggered injects ({decisionInjects.length})
                   </div>
                   <div className="space-y-2">
@@ -988,7 +976,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
               {/* Condition-driven */}
               {conditionInjects.length > 0 && (
                 <div>
-                  <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-3">
+                  <div className="text-xs terminal-text text-muted uppercase mb-3">
                     Condition-driven injects ({conditionInjects.length})
                   </div>
                   <div className="space-y-2">
@@ -1034,9 +1022,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                 return (
                   <>
                     {!hasRoutes && (
-                      <p className="text-sm terminal-text text-robotic-yellow/50 mb-3">
-                        [NO ROUTE DATA]
-                      </p>
+                      <p className="text-sm terminal-text text-muted mb-3">No route data</p>
                     )}
                     <div className="flex items-center gap-3 mb-3">
                       <button
@@ -1061,23 +1047,21 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                           }
                         }}
                         disabled={retryingRoutes || hasRoutes}
-                        className="px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                        className="px-4 py-1.5 text-xs terminal-text bg-brand hover:bg-brand-strong text-white rounded border border-brand disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {retryingRoutes
-                          ? 'FETCHING ROUTES...'
+                          ? 'Fetching routes…'
                           : hasRoutes
-                            ? 'ROUTES AVAILABLE'
-                            : 'RETRY ROUTE FETCH'}
+                            ? 'Routes available'
+                            : 'Retry route fetch'}
                       </button>
                       {retryRoutesMsg && (
-                        <span className="text-xs terminal-text text-green-400">
-                          {retryRoutesMsg}
-                        </span>
+                        <span className="text-xs terminal-text text-success">{retryRoutesMsg}</span>
                       )}
                     </div>
                     {hasRoutes && (
                       <div className="space-y-2">
-                        <p className="text-xs terminal-text text-robotic-yellow/60 mb-3">
+                        <p className="text-xs terminal-text text-muted mb-3">
                           Enriched route conditions — used by transport outcome service and
                           environmental condition management.
                         </p>
@@ -1085,22 +1069,22 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                           const c = (r.conditions ?? {}) as Record<string, unknown>;
                           return (
                             <div key={r.id ?? i} className="military-border p-3">
-                              <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                              <div className="text-sm terminal-text text-ink font-medium">
                                 {r.label}
                               </div>
                               <div className="text-xs terminal-text mt-1 space-y-0.5">
                                 <div>
                                   {c.problem ? (
-                                    <span className="text-orange-400">{String(c.problem)}</span>
+                                    <span className="text-warning">{String(c.problem)}</span>
                                   ) : (
-                                    <span className="text-green-400">Clear</span>
+                                    <span className="text-success">Clear</span>
                                   )}
                                   {' — '}
                                   {c.managed ? 'managed' : 'unmanaged'}
                                 </div>
                                 <div>
                                   {c.highway_type ? `${String(c.highway_type)} ` : null}
-                                  {c.one_way ? '[one-way] ' : ''}
+                                  {c.one_way ? 'one-way ' : ''}
                                   {c.distance_m != null ? `${c.distance_m}m ` : null}
                                   {c.travel_time_minutes != null
                                     ? `~${c.travel_time_minutes} min`
@@ -1108,7 +1092,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                                 </div>
                                 {Array.isArray(c.connects_to) &&
                                   (c.connects_to as string[]).length > 0 && (
-                                    <div className="text-robotic-yellow/50">
+                                    <div className="text-muted">
                                       Connects to: {(c.connects_to as string[]).join(', ')}
                                     </div>
                                   )}
@@ -1133,14 +1117,14 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                   <div className="space-y-3 mb-6">
                     {Object.entries(ik.team_doctrines).map(([teamName, findings]) => (
                       <div key={teamName} className="military-border p-3">
-                        <div className="text-sm terminal-text text-robotic-yellow font-medium uppercase mb-2">
+                        <div className="text-sm terminal-text text-ink font-medium uppercase mb-2">
                           {teamName}
                         </div>
                         <div className="flex flex-wrap gap-2">
                           {(findings as StandardsFinding[]).map((f, i) => (
                             <span
                               key={i}
-                              className="text-xs terminal-text bg-robotic-yellow/10 border border-robotic-yellow/20 px-2 py-1"
+                              className="text-xs terminal-text bg-accent/10 border border-border px-2 py-1"
                             >
                               {f.source}
                             </span>
@@ -1175,15 +1159,15 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
                     if (isEditing && editDraft) {
                       return (
-                        <div key={i} className="military-border p-4 border-robotic-yellow/60">
+                        <div key={i} className="military-border p-4 border-accent">
                           <div className="space-y-3">
                             <div className="grid grid-cols-2 gap-3">
                               <div>
-                                <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                                <label className="text-xs terminal-text text-muted uppercase block mb-1">
                                   Source
                                 </label>
                                 <input
-                                  className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                                  className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
                                   value={editDraft.source}
                                   onChange={(e) =>
                                     setEditDraft({ ...editDraft, source: e.target.value })
@@ -1191,11 +1175,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                                 />
                               </div>
                               <div>
-                                <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                                <label className="text-xs terminal-text text-muted uppercase block mb-1">
                                   Domain
                                 </label>
                                 <input
-                                  className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                                  className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
                                   value={editDraft.domain}
                                   onChange={(e) =>
                                     setEditDraft({ ...editDraft, domain: e.target.value })
@@ -1204,13 +1188,13 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                               </div>
                             </div>
                             <div>
-                              <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                              <label className="text-xs terminal-text text-muted uppercase block mb-1">
                                 Key Points
                               </label>
                               {editDraft.key_points.map((pt, j) => (
                                 <div key={j} className="flex gap-2 mb-1">
                                   <input
-                                    className="flex-1 bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                                    className="flex-1 bg-surface-2 border border-border text-xs terminal-text p-2"
                                     value={pt}
                                     onChange={(e) => {
                                       const pts = [...editDraft.key_points];
@@ -1219,7 +1203,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                                     }}
                                   />
                                   <button
-                                    className="text-red-400 text-xs px-2"
+                                    className="text-danger text-xs px-2"
                                     onClick={() => {
                                       const pts = editDraft.key_points.filter((_, k) => k !== j);
                                       setEditDraft({
@@ -1228,12 +1212,12 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                                       });
                                     }}
                                   >
-                                    X
+                                    ×
                                   </button>
                                 </div>
                               ))}
                               <button
-                                className="text-xs terminal-text text-robotic-yellow/60 mt-1"
+                                className="text-xs terminal-text text-muted mt-1"
                                 onClick={() =>
                                   setEditDraft({
                                     ...editDraft,
@@ -1245,11 +1229,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                               </button>
                             </div>
                             <div>
-                              <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                              <label className="text-xs terminal-text text-muted uppercase block mb-1">
                                 Decision Thresholds
                               </label>
                               <textarea
-                                className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2 h-16"
+                                className="w-full bg-surface-2 border border-border text-xs terminal-text p-2 h-16"
                                 value={editDraft.decision_thresholds ?? ''}
                                 onChange={(e) =>
                                   setEditDraft({
@@ -1274,16 +1258,16 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                                   saveDoctrine(updated);
                                 }}
                               >
-                                [SAVE]
+                                Save
                               </button>
                               <button
-                                className="text-xs terminal-text text-robotic-yellow/50 px-3 py-1"
+                                className="text-xs terminal-text text-muted px-3 py-1"
                                 onClick={() => {
                                   setEditingStandard(null);
                                   setEditDraft(null);
                                 }}
                               >
-                                [CANCEL]
+                                Cancel
                               </button>
                             </div>
                           </div>
@@ -1295,46 +1279,46 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       <div key={i} className="military-border p-4">
                         <div className="flex gap-3 items-start mb-3 justify-between">
                           <div>
-                            <div className="text-sm terminal-text text-robotic-yellow font-medium">
+                            <div className="text-sm terminal-text text-ink font-medium">
                               {source}
                             </div>
-                            <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
+                            <div className="text-xs terminal-text text-muted uppercase">
                               {domain}
                             </div>
                           </div>
                           <div className="flex gap-2 shrink-0">
                             <button
-                              className="text-xs terminal-text text-robotic-yellow/50 hover:text-robotic-yellow"
+                              className="text-xs terminal-text text-muted hover:text-ink"
                               onClick={() => {
                                 setEditingStandard(i);
                                 setEditDraft({ ...finding, key_points: [...keyPoints] });
                               }}
                             >
-                              [EDIT]
+                              Edit
                             </button>
                             <button
-                              className="text-xs terminal-text text-red-400/60 hover:text-red-400"
+                              className="text-xs terminal-text text-danger/60 hover:text-danger"
                               disabled={savingDoctrine}
                               onClick={() => {
                                 const updated = structuredStandards.filter((_, k) => k !== i);
                                 saveDoctrine(updated);
                               }}
                             >
-                              [REMOVE]
+                              Remove
                             </button>
                           </div>
                         </div>
                         <ul className="space-y-1 mb-2">
                           {keyPoints.map((pt, j) => (
                             <li key={j} className="text-xs terminal-text flex gap-2">
-                              <span className="text-robotic-yellow/40 shrink-0">▸</span>
+                              <span className="text-muted shrink-0">▸</span>
                               {typeof pt === 'string' ? pt : JSON.stringify(pt)}
                             </li>
                           ))}
                         </ul>
                         {finding.decision_thresholds && (
-                          <div className="mt-2 border-t border-robotic-yellow/20 pt-2">
-                            <span className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                          <div className="mt-2 border-t border-border pt-2">
+                            <span className="text-xs terminal-text text-muted uppercase">
                               Decision thresholds:{' '}
                             </span>
                             <span className="text-xs terminal-text">
@@ -1361,25 +1345,23 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                   </pre>
                 </Section>
               ) : (
-                <p className="text-sm terminal-text text-robotic-yellow/50">
-                  [NO STANDARDS DATA] — Standards are researched during scenario generation.
+                <p className="text-sm terminal-text text-muted">
+                  No standards data — standards are researched during scenario generation.
                 </p>
               )}
 
               {/* Add new standard */}
               {addingStandard ? (
-                <div className="military-border p-4 mt-4 border-robotic-yellow/60">
-                  <div className="text-sm terminal-text text-robotic-yellow mb-3 uppercase">
-                    Add Doctrine / Standard
-                  </div>
+                <div className="military-border p-4 mt-4 border-accent">
+                  <div className="text-sm terminal-text text-ink mb-3">Add doctrine / standard</div>
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                        <label className="text-xs terminal-text text-muted uppercase block mb-1">
                           Source
                         </label>
                         <input
-                          className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                          className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
                           placeholder="e.g. AIIMS, START Triage Protocol"
                           value={newStandard.source}
                           onChange={(e) =>
@@ -1388,11 +1370,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                         />
                       </div>
                       <div>
-                        <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                        <label className="text-xs terminal-text text-muted uppercase block mb-1">
                           Domain
                         </label>
                         <input
-                          className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                          className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
                           placeholder="e.g. Incident Command, Medical Triage"
                           value={newStandard.domain}
                           onChange={(e) =>
@@ -1402,13 +1384,13 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       </div>
                     </div>
                     <div>
-                      <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                      <label className="text-xs terminal-text text-muted uppercase block mb-1">
                         Key Points
                       </label>
                       {newStandard.key_points.map((pt, j) => (
                         <div key={j} className="flex gap-2 mb-1">
                           <input
-                            className="flex-1 bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2"
+                            className="flex-1 bg-surface-2 border border-border text-xs terminal-text p-2"
                             placeholder="Protocol point or procedure"
                             value={pt}
                             onChange={(e) => {
@@ -1419,7 +1401,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                           />
                           {newStandard.key_points.length > 1 && (
                             <button
-                              className="text-red-400 text-xs px-2"
+                              className="text-danger text-xs px-2"
                               onClick={() =>
                                 setNewStandard({
                                   ...newStandard,
@@ -1427,13 +1409,13 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                                 })
                               }
                             >
-                              X
+                              ×
                             </button>
                           )}
                         </div>
                       ))}
                       <button
-                        className="text-xs terminal-text text-robotic-yellow/60 mt-1"
+                        className="text-xs terminal-text text-muted mt-1"
                         onClick={() =>
                           setNewStandard({
                             ...newStandard,
@@ -1445,11 +1427,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       </button>
                     </div>
                     <div>
-                      <label className="text-xs terminal-text text-robotic-yellow/50 uppercase block mb-1">
+                      <label className="text-xs terminal-text text-muted uppercase block mb-1">
                         Decision Thresholds (optional)
                       </label>
                       <textarea
-                        className="w-full bg-black/40 border border-robotic-yellow/30 text-xs terminal-text p-2 h-16"
+                        className="w-full bg-surface-2 border border-border text-xs terminal-text p-2 h-16"
                         placeholder="e.g. Category 1: immediate treatment, Category 2: within 10 minutes"
                         value={newStandard.decision_thresholds ?? ''}
                         onChange={(e) =>
@@ -1479,16 +1461,16 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                           setNewStandard({ domain: '', source: '', key_points: [''] });
                         }}
                       >
-                        [ADD STANDARD]
+                        Add standard
                       </button>
                       <button
-                        className="text-xs terminal-text text-robotic-yellow/50 px-3 py-1"
+                        className="text-xs terminal-text text-muted px-3 py-1"
                         onClick={() => {
                           setAddingStandard(false);
                           setNewStandard({ domain: '', source: '', key_points: [''] });
                         }}
                       >
-                        [CANCEL]
+                        Cancel
                       </button>
                     </div>
                   </div>
@@ -1498,14 +1480,12 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                   className="military-button px-4 py-2 text-xs mt-4"
                   onClick={() => setAddingStandard(true)}
                 >
-                  [+ ADD DOCTRINE / STANDARD]
+                  + Add doctrine / standard
                 </button>
               )}
 
               {savingDoctrine && (
-                <div className="text-xs terminal-text text-robotic-yellow/60 mt-2 animate-pulse">
-                  [SAVING...]
-                </div>
+                <div className="text-xs terminal-text text-muted mt-2 animate-pulse">Saving…</div>
               )}
             </div>
           )}
@@ -1513,28 +1493,26 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
           {activeTab === 'Research' && (
             <div className="space-y-4">
               {researchCases.length === 0 ? (
-                <p className="text-sm terminal-text text-robotic-yellow/50">
-                  [NO RESEARCH DATA] — Research cases are gathered during scenario generation.
+                <p className="text-sm terminal-text text-muted">
+                  No research data — research cases are gathered during scenario generation.
                 </p>
               ) : (
                 researchCases.map((rc) => (
                   <div
                     key={rc.id}
-                    className="military-border p-4 border-robotic-yellow/30 bg-black/20 space-y-3"
+                    className="military-border p-4 border-border bg-surface-2 space-y-3"
                   >
                     {/* Header */}
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-sm terminal-text text-robotic-yellow font-bold uppercase">
-                        {rc.name}
-                      </h3>
+                      <h3 className="text-sm terminal-text text-ink font-bold">{rc.name}</h3>
                       {rc.relevance_score != null && (
                         <span
                           className={`shrink-0 px-2 py-0.5 text-[10px] terminal-text uppercase border ${
                             rc.relevance_score >= 8
-                              ? 'text-green-400 border-green-400/50 bg-green-400/10'
+                              ? 'text-success border-success/50 bg-success/10'
                               : rc.relevance_score >= 5
-                                ? 'text-robotic-orange border-robotic-orange/50 bg-robotic-orange/10'
-                                : 'text-robotic-yellow/60 border-robotic-yellow/30 bg-robotic-yellow/5'
+                                ? 'text-accent border-accent/50 bg-accent/10'
+                                : 'text-muted border-border bg-accent/5'
                           }`}
                         >
                           {rc.relevance_score}/10 match
@@ -1543,57 +1521,55 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                     </div>
 
                     {/* Summary */}
-                    <p className="text-xs terminal-text text-robotic-yellow/80 leading-relaxed">
-                      {rc.summary}
-                    </p>
+                    <p className="text-xs terminal-text text-ink leading-relaxed">{rc.summary}</p>
 
                     {/* Stats chips */}
                     <div className="flex flex-wrap gap-2">
                       {rc.casualties_killed != null && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-red-900/40 border border-red-500/30 text-red-300">
-                          {rc.casualties_killed} KILLED
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-danger/10 border border-danger/30 text-danger">
+                          {rc.casualties_killed} killed
                         </span>
                       )}
                       {rc.casualties_injured != null && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-orange-900/40 border border-orange-500/30 text-orange-300">
-                          {rc.casualties_injured} INJURED
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-accent/10 border border-accent/30 text-accent">
+                          {rc.casualties_injured} injured
                         </span>
                       )}
                       {rc.num_attackers != null && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-purple-900/40 border border-purple-500/30 text-purple-300">
-                          {rc.num_attackers} ATTACKER{rc.num_attackers !== 1 ? 'S' : ''}
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-ink/10 border border-ink/30 text-ink">
+                          {rc.num_attackers} attacker{rc.num_attackers !== 1 ? 's' : ''}
                         </span>
                       )}
                       {rc.response_time_minutes != null && rc.response_time_minutes > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-blue-900/40 border border-blue-500/30 text-blue-300">
-                          RESPONSE: {rc.response_time_minutes} MIN
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-brand/10 border border-brand/30 text-brand">
+                          Response: {rc.response_time_minutes} min
                         </span>
                       )}
                       {rc.containment_time_minutes != null && rc.containment_time_minutes > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-cyan-900/40 border border-cyan-500/30 text-cyan-300">
-                          CONTAINED: {rc.containment_time_minutes} MIN
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-accent/10 border border-accent/30 text-accent">
+                          Contained: {rc.containment_time_minutes} min
                         </span>
                       )}
                       {rc.damage_radius_m != null && rc.damage_radius_m > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-yellow-900/40 border border-yellow-500/30 text-yellow-300">
-                          RADIUS: {Math.round(rc.damage_radius_m * 3.28084)} FT
+                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-warning/10 border border-warning/30 text-warning">
+                          Radius: {Math.round(rc.damage_radius_m * 3.28084)} ft
                         </span>
                       )}
                     </div>
 
                     {/* Weapon section */}
                     {(rc.weapon_description || rc.weapon_forensics) && (
-                      <div className="border-l-2 border-robotic-orange/40 pl-3">
-                        <div className="text-[10px] terminal-text text-robotic-orange/70 uppercase mb-1">
+                      <div className="border-l-2 border-accent/40 pl-3">
+                        <div className="text-[10px] terminal-text text-accent uppercase mb-1">
                           WEAPON PROFILE
                         </div>
                         {rc.weapon_description && (
-                          <p className="text-xs terminal-text text-robotic-yellow/70">
+                          <p className="text-xs terminal-text text-muted">
                             {rc.weapon_description}
                           </p>
                         )}
                         {rc.weapon_forensics && (
-                          <p className="text-xs terminal-text text-robotic-yellow/60 mt-1">
+                          <p className="text-xs terminal-text text-muted mt-1">
                             Forensics: {rc.weapon_forensics}
                           </p>
                         )}
@@ -1606,9 +1582,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                         <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
                           INJURY BREAKDOWN
                         </div>
-                        <p className="text-xs terminal-text text-robotic-yellow/70">
-                          {rc.injury_breakdown}
-                        </p>
+                        <p className="text-xs terminal-text text-muted">{rc.injury_breakdown}</p>
                       </div>
                     )}
 
@@ -1622,7 +1596,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                           {rc.hazards_triggered.map((h, i) => (
                             <span
                               key={i}
-                              className="px-2 py-0.5 text-[10px] terminal-text bg-yellow-900/30 border border-yellow-500/20 text-yellow-300"
+                              className="px-2 py-0.5 text-[10px] terminal-text bg-warning/10 border border-warning/30 text-warning"
                             >
                               {h.replace(/_/g, ' ')}
                             </span>
@@ -1633,13 +1607,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
                     {/* Crowd response */}
                     {rc.crowd_response && (
-                      <div className="border-l-2 border-purple-500/40 pl-3">
-                        <div className="text-[10px] terminal-text text-purple-400/70 uppercase mb-1">
+                      <div className="border-l-2 border-brand/40 pl-3">
+                        <div className="text-[10px] terminal-text text-brand/70 uppercase mb-1">
                           CROWD BEHAVIOR
                         </div>
-                        <p className="text-xs terminal-text text-robotic-yellow/70">
-                          {rc.crowd_response}
-                        </p>
+                        <p className="text-xs terminal-text text-muted">{rc.crowd_response}</p>
                       </div>
                     )}
 
@@ -1651,7 +1623,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                         </div>
                         <ul className="space-y-0.5">
                           {rc.secondary_effects.map((e, i) => (
-                            <li key={i} className="text-xs terminal-text text-robotic-yellow/70">
+                            <li key={i} className="text-xs terminal-text text-muted">
                               ▸ {e.replace(/_/g, ' ')}
                             </li>
                           ))}
@@ -1661,11 +1633,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
                     {/* Timeline */}
                     {rc.timeline && (
-                      <div className="border-l-2 border-robotic-yellow/30 pl-3">
-                        <div className="text-[10px] terminal-text text-robotic-yellow/50 uppercase mb-1">
+                      <div className="border-l-2 border-border pl-3">
+                        <div className="text-[10px] terminal-text text-muted uppercase mb-1">
                           TIMELINE
                         </div>
-                        <p className="text-xs terminal-text text-robotic-yellow/60 leading-relaxed">
+                        <p className="text-xs terminal-text text-muted leading-relaxed">
                           {rc.timeline}
                         </p>
                       </div>
@@ -1677,7 +1649,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                         <div className="text-[10px] terminal-text text-red-400/50 uppercase mb-1">
                           ADVERSARY BEHAVIOR
                         </div>
-                        <p className="text-xs terminal-text text-robotic-yellow/60 leading-relaxed">
+                        <p className="text-xs terminal-text text-muted leading-relaxed">
                           {rc.adversary_behavior}
                         </p>
                       </div>
@@ -1693,7 +1665,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                           {rc.environment_factors.map((f, i) => (
                             <span
                               key={i}
-                              className="px-2 py-0.5 text-[10px] terminal-text bg-green-900/20 border border-green-500/20 text-green-300/80"
+                              className="px-2 py-0.5 text-[10px] terminal-text bg-success/10 border border-success/30 text-success"
                             >
                               {f.replace(/_/g, ' ')}
                             </span>
@@ -1704,11 +1676,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
                     {/* Outcome */}
                     {rc.outcome && (
-                      <div className="border-l-2 border-robotic-yellow/20 pl-3">
-                        <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
+                      <div className="border-l-2 border-border pl-3">
+                        <div className="text-[10px] terminal-text text-muted uppercase mb-1">
                           OUTCOME
                         </div>
-                        <p className="text-xs terminal-text text-robotic-yellow/60 leading-relaxed">
+                        <p className="text-xs terminal-text text-muted leading-relaxed">
                           {rc.outcome}
                         </p>
                       </div>
@@ -2362,7 +2334,7 @@ const MapPinsTab = ({
 
   const totalPins = locations.length + hazards.length + casualties.length;
   if (totalPins === 0 && equipment.length === 0) {
-    return <p className="text-sm terminal-text text-robotic-yellow/50">[NO MAP DATA]</p>;
+    return <p className="text-sm terminal-text text-muted">No map data</p>;
   }
 
   // Separate zone locations and blast zone locations from regular pins
@@ -2431,9 +2403,7 @@ const MapPinsTab = ({
     <div className="space-y-4">
       {/* Summary counts + save bar */}
       <div className="flex flex-wrap items-center gap-3 text-xs terminal-text">
-        {locations.length > 0 && (
-          <span className="text-robotic-yellow/70">{locations.length} locations</span>
-        )}
+        {locations.length > 0 && <span className="text-muted">{locations.length} locations</span>}
         {hazards.length > 0 && <span className="text-red-400">{hazards.length} hazards</span>}
         {patients.length > 0 && (
           <span className="text-amber-400">{patients.length} casualties</span>
@@ -2447,13 +2417,13 @@ const MapPinsTab = ({
           <span className="text-cyan-400">{equipment.length} equipment types</span>
         )}
         {floorPlans.length > 1 && <span className="text-blue-400">{floorPlans.length} floors</span>}
-        <span className="ml-auto text-robotic-yellow/40">drag pins to reposition</span>
+        <span className="ml-auto text-muted">drag pins to reposition</span>
       </div>
 
       {hasSceneCanvas === false &&
         (deteriorationMissing || hazards.length > 0 || casualties.length > 0) && (
-          <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
-            <div className="text-xs terminal-text text-robotic-yellow/70">
+          <div className="flex items-center gap-3 p-2 military-border bg-accent/5">
+            <div className="text-xs terminal-text text-muted">
               {deteriorationMissing
                 ? 'Deterioration data is missing (no timelines/spawn pins). You can generate it from the current map pins.'
                 : 'Regenerate deterioration timelines/spawn pins after adding/removing map pins.'}
@@ -2491,23 +2461,23 @@ const MapPinsTab = ({
                 }
               }}
               disabled={retryDetLoading}
-              className="ml-auto px-4 py-1.5 text-xs terminal-text bg-blue-700 hover:bg-blue-600 text-white rounded border border-blue-500 disabled:opacity-50"
+              className="ml-auto px-4 py-1.5 text-xs terminal-text bg-brand hover:bg-brand-strong text-white rounded border border-brand disabled:opacity-50"
             >
               {retryDetLoading
-                ? 'GENERATING...'
+                ? 'Generating…'
                 : deteriorationMissing
-                  ? 'GENERATE DETERIORATION'
-                  : 'REGENERATE DETERIORATION'}
+                  ? 'Generate deterioration'
+                  : 'Regenerate deterioration'}
             </button>
           </div>
         )}
-      {retryDetMsg && <div className="text-xs terminal-text text-green-400 p-1">{retryDetMsg}</div>}
+      {retryDetMsg && <div className="text-xs terminal-text text-success p-1">{retryDetMsg}</div>}
 
       {/* Backfill buildings toolbar (legacy only) */}
       {hasSceneCanvas === false && (
         <>
-          <div className="flex items-center gap-3 p-2 military-border bg-cyan-900/10">
-            <div className="text-xs terminal-text text-robotic-yellow/70">
+          <div className="flex items-center gap-3 p-2 military-border bg-accent/10">
+            <div className="text-xs terminal-text text-muted">
               Missing building studs? Fetch buildings from OpenStreetMap.
             </div>
             <button
@@ -2531,23 +2501,23 @@ const MapPinsTab = ({
                 }
               }}
               disabled={backfillLoading}
-              className="ml-auto px-4 py-1.5 text-xs terminal-text bg-cyan-700 hover:bg-cyan-600 text-white rounded border border-cyan-500 disabled:opacity-50"
+              className="ml-auto px-4 py-1.5 text-xs terminal-text bg-accent hover:bg-accent-strong text-white rounded border border-accent disabled:opacity-50"
             >
-              {backfillLoading ? 'LOADING...' : 'BACKFILL BUILDINGS'}
+              {backfillLoading ? 'Loading…' : 'Backfill buildings'}
             </button>
             <button
               onClick={() => setInspectStudsMode((v) => !v)}
               className={`px-4 py-1.5 text-xs terminal-text rounded border ${
                 inspectStudsMode
-                  ? 'bg-amber-600 border-amber-400 text-white'
-                  : 'bg-gray-700 hover:bg-gray-600 border-gray-500 text-gray-200'
+                  ? 'bg-accent border-accent text-white'
+                  : 'bg-surface-2 hover:bg-surface border-border text-muted'
               }`}
             >
-              {inspectStudsMode ? 'INSPECT: ON' : 'INSPECT STUDS'}
+              {inspectStudsMode ? 'Inspect: on' : 'Inspect studs'}
             </button>
           </div>
           {backfillMsg && (
-            <div className="text-xs terminal-text text-green-400 p-1">{backfillMsg}</div>
+            <div className="text-xs terminal-text text-success p-1">{backfillMsg}</div>
           )}
         </>
       )}
@@ -2555,8 +2525,8 @@ const MapPinsTab = ({
       {/* Add Pin toolbar (legacy only) */}
       {hasSceneCanvas === false && (
         <>
-          <div className="flex flex-wrap items-center gap-2 p-2 military-border bg-black/30">
-            <span className="text-xs terminal-text text-robotic-yellow/60 mr-1">ADD PIN:</span>
+          <div className="flex flex-wrap items-center gap-2 p-2 military-border bg-surface-2">
+            <span className="text-xs terminal-text text-muted mr-1">Add pin:</span>
             {ADD_PIN_OPTIONS.map((opt) => (
               <button
                 key={opt.mode}
@@ -2568,7 +2538,7 @@ const MapPinsTab = ({
                 className={`px-2.5 py-1 text-[10px] terminal-text rounded border transition-all ${
                   addPinMode === opt.mode
                     ? `${opt.color} text-white ring-1 ring-white/40`
-                    : 'bg-gray-800 hover:bg-gray-700 border-gray-600 text-gray-300'
+                    : 'bg-surface-2 hover:bg-surface border-border text-muted'
                 }`}
               >
                 {opt.label}
@@ -2581,14 +2551,14 @@ const MapPinsTab = ({
                   setPendingPin(null);
                   setAddPinForm({});
                 }}
-                className="px-2 py-1 text-[10px] terminal-text bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-400 rounded ml-auto"
+                className="px-2 py-1 text-[10px] terminal-text bg-surface-2 hover:bg-surface border border-border text-muted rounded ml-auto"
               >
-                CANCEL
+                Cancel
               </button>
             )}
           </div>
           {addPinMode && !pendingPin && (
-            <div className="text-xs terminal-text text-robotic-yellow animate-pulse p-1.5 bg-robotic-yellow/5 military-border">
+            <div className="text-xs terminal-text text-ink animate-pulse p-1.5 bg-accent/5 military-border">
               Click on the map to place a{' '}
               {ADD_PIN_OPTIONS.find((o) => o.mode === addPinMode)?.label || 'pin'}
             </div>
@@ -2597,20 +2567,18 @@ const MapPinsTab = ({
       )}
 
       {dirty && (
-        <div className="flex items-center gap-3 p-2 military-border bg-robotic-yellow/5">
-          <span className="text-xs terminal-text text-robotic-yellow animate-pulse">
-            Unsaved pin changes
-          </span>
+        <div className="flex items-center gap-3 p-2 military-border bg-accent/5">
+          <span className="text-xs terminal-text text-ink animate-pulse">Unsaved pin changes</span>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="ml-auto px-4 py-1.5 text-xs terminal-text bg-green-700 hover:bg-green-600 text-white rounded border border-green-500 disabled:opacity-50"
+            className="ml-auto px-4 py-1.5 text-xs terminal-text bg-success hover:bg-success text-white rounded border border-success disabled:opacity-50"
           >
-            {saving ? 'SAVING...' : 'SAVE CHANGES'}
+            {saving ? 'Saving…' : 'Save changes'}
           </button>
         </div>
       )}
-      {saveMsg && <div className="text-xs terminal-text text-green-400 p-1">{saveMsg}</div>}
+      {saveMsg && <div className="text-xs terminal-text text-success p-1">{saveMsg}</div>}
 
       {/* RTS Scene Canvas (when trainer scene exists) */}
       <div style={{ height: 'min(600px, 70vw)', minHeight: 300 }}>
@@ -2977,7 +2945,7 @@ const MapPinsTab = ({
                           cursor: addingPin ? 'wait' : 'pointer',
                         }}
                       >
-                        {addingPin ? 'GENERATING PROFILE...' : 'ADD PIN'}
+                        {addingPin ? 'Generating profile…' : 'Add pin'}
                       </button>
                       <button
                         onClick={() => {
@@ -3488,7 +3456,7 @@ const MapPinsTab = ({
               className="inline-block w-3 h-3 rounded-full border border-white/40 shrink-0"
               style={{ backgroundColor: item.color }}
             />
-            <span className="text-xs terminal-text text-robotic-yellow/60">{item.label}</span>
+            <span className="text-xs terminal-text text-muted">{item.label}</span>
           </div>
         ))}
       </div>
@@ -3524,18 +3492,18 @@ const MapPinsTab = ({
                 <div key={loc.id} className="military-border">
                   <div className="p-4 flex gap-4">
                     <div className="shrink-0 w-28">
-                      <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                      <div className="text-xs terminal-text text-muted uppercase">
                         {pinCat ?? loc.location_type.replace(/_/g, ' ')}
                       </div>
                       {loc.coordinates.lat != null && (
-                        <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                        <div className="text-xs terminal-text text-muted mt-0.5">
                           {loc.coordinates.lat.toFixed(4)}, {loc.coordinates.lng?.toFixed(4)}
                         </div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <div className="text-sm terminal-text text-robotic-yellow font-medium flex-1">
+                        <div className="text-sm terminal-text text-ink font-medium flex-1">
                           {loc.label}
                         </div>
                         <button
@@ -3544,19 +3512,17 @@ const MapPinsTab = ({
                             handleDeletePin(loc.id, 'location');
                           }}
                           disabled={deletingPin === loc.id}
-                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-danger/60 hover:text-danger hover:bg-danger/10 rounded transition-colors text-xs"
                           title="Delete pin"
                         >
                           {deletingPin === loc.id ? '...' : '✕'}
                         </button>
                       </div>
                       {narrativeDesc && (
-                        <p className="text-xs terminal-text text-robotic-yellow/70 mt-0.5">
-                          {narrativeDesc}
-                        </p>
+                        <p className="text-xs terminal-text text-muted mt-0.5">{narrativeDesc}</p>
                       )}
                       {quickFacts.length > 0 && (
-                        <div className="text-xs terminal-text text-robotic-yellow/50 mt-0.5">
+                        <div className="text-xs terminal-text text-muted mt-0.5">
                           {quickFacts.join(' · ')}
                         </div>
                       )}
@@ -3565,28 +3531,28 @@ const MapPinsTab = ({
                           {potentialUses.map((u) => (
                             <span
                               key={u}
-                              className="text-xs terminal-text bg-robotic-yellow/10 text-robotic-yellow/70 px-1 py-0.5 rounded"
+                              className="text-xs terminal-text bg-accent/10 text-muted px-1 py-0.5 rounded"
                             >
                               {u.replace(/_/g, ' ')}
                             </span>
                           ))}
                         </div>
                       )}
-                      <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
+                      <div className="text-xs terminal-text text-muted mt-0.5">
                         type: {loc.location_type}
                       </div>
                     </div>
                     {hasConditions && (
                       <button
                         onClick={() => setExpandedPin(isExpanded ? null : loc.id)}
-                        className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                        className="text-muted hover:text-ink terminal-text text-xs shrink-0 self-start"
                       >
                         {isExpanded ? '▲' : '▼'}
                       </button>
                     )}
                   </div>
                   {isExpanded && hasConditions && (
-                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2">
+                    <div className="px-4 pb-3 border-t border-border pt-2">
                       <ConditionsSummary conditions={loc.conditions} />
                     </div>
                   )}
@@ -3615,7 +3581,7 @@ const MapPinsTab = ({
                         />
                         {h.hazard_type.replace(/_/g, ' ')}
                       </div>
-                      <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                      <div className="text-xs terminal-text text-muted mt-0.5">
                         {h.location_lat.toFixed(4)}, {h.location_lng.toFixed(4)}
                       </div>
                       {h.appears_at_minutes > 0 && (
@@ -3628,7 +3594,7 @@ const MapPinsTab = ({
                       <div className="flex items-start gap-2">
                         <div className="flex-1">
                           {h.enriched_description && (
-                            <p className="text-xs terminal-text text-robotic-yellow/80">
+                            <p className="text-xs terminal-text text-ink">
                               {h.enriched_description}
                             </p>
                           )}
@@ -3639,7 +3605,7 @@ const MapPinsTab = ({
                             handleDeletePin(h.id, 'hazard');
                           }}
                           disabled={deletingPin === h.id}
-                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-danger/60 hover:text-danger hover:bg-danger/10 rounded transition-colors text-xs"
                           title="Delete hazard"
                         >
                           {deletingPin === h.id ? '...' : '✕'}
@@ -3656,20 +3622,20 @@ const MapPinsTab = ({
                             {h.debris_type}
                           </span>
                         )}
-                        <span className="text-xs terminal-text text-robotic-yellow/40">
+                        <span className="text-xs terminal-text text-muted">
                           floor: {h.floor_level}
                         </span>
                       </div>
                     </div>
                     <button
                       onClick={() => setExpandedPin(isExpanded ? null : `haz-${h.id}`)}
-                      className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                      className="text-muted hover:text-ink terminal-text text-xs shrink-0 self-start"
                     >
                       {isExpanded ? '▲' : '▼'}
                     </button>
                   </div>
                   {isExpanded && (
-                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-3">
+                    <div className="px-4 pb-3 border-t border-border pt-2 space-y-3">
                       {/* Ideal Response Sequence */}
                       {Array.isArray(
                         (h.resolution_requirements as Record<string, unknown>)
@@ -3689,18 +3655,15 @@ const MapPinsTab = ({
                             ).map((step, i) => (
                               <div
                                 key={i}
-                                className="flex gap-2 text-xs terminal-text text-robotic-yellow/70 mb-0.5"
+                                className="flex gap-2 text-xs terminal-text text-muted mb-0.5"
                               >
                                 <span className="text-cyan-400/60 shrink-0 w-5">
                                   {(step.step as number) ?? i + 1}.
                                 </span>
                                 <span className="flex-1">
-                                  <b className="text-robotic-yellow/90">{String(step.action)}</b>
+                                  <b className="text-ink">{String(step.action)}</b>
                                   {step.detail ? (
-                                    <span className="text-robotic-yellow/50">
-                                      {' '}
-                                      — {String(step.detail)}
-                                    </span>
+                                    <span className="text-muted"> — {String(step.detail)}</span>
                                   ) : null}
                                   {step.responsible_team ? (
                                     <span className="text-cyan-400/50 ml-1">
@@ -3747,9 +3710,9 @@ const MapPinsTab = ({
                       {/* Estimated Resolution Time */}
                       {(h.resolution_requirements as Record<string, unknown>)
                         ?.estimated_resolution_minutes != null && (
-                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                        <div className="text-xs terminal-text text-muted">
                           Est. resolution:{' '}
-                          <b className="text-robotic-yellow/90">
+                          <b className="text-ink">
                             {
                               (h.resolution_requirements as Record<string, unknown>)
                                 .estimated_resolution_minutes as number
@@ -3770,7 +3733,7 @@ const MapPinsTab = ({
                                 (eq, i) => (
                                   <div
                                     key={i}
-                                    className="text-xs terminal-text text-robotic-yellow/60 flex gap-2"
+                                    className="text-xs terminal-text text-muted flex gap-2"
                                   >
                                     <span className="text-green-400/60">
                                       ×{Number(eq.quantity ?? 1)}
@@ -3780,7 +3743,7 @@ const MapPinsTab = ({
                                       <span className="text-red-400/60">critical</span>
                                     ) : null}
                                     {Array.isArray(eq.applicable_teams) && (
-                                      <span className="text-robotic-yellow/40">
+                                      <span className="text-muted">
                                         [{(eq.applicable_teams as string[]).join(', ')}]
                                       </span>
                                     )}
@@ -3794,17 +3757,12 @@ const MapPinsTab = ({
                       {h.personnel_requirements &&
                         Object.keys(h.personnel_requirements).length > 0 && (
                           <div>
-                            <div className="text-xs terminal-text text-purple-400/80 uppercase mb-1 font-bold">
+                            <div className="text-xs terminal-text text-brand/80 uppercase mb-1 font-bold">
                               Personnel
                             </div>
                             {Object.entries(h.personnel_requirements).map(([role, details]) => (
-                              <div
-                                key={role}
-                                className="text-xs terminal-text text-robotic-yellow/60 mb-0.5"
-                              >
-                                <span className="text-purple-400/60">
-                                  {role.replace(/_/g, ' ')}:
-                                </span>{' '}
+                              <div key={role} className="text-xs terminal-text text-muted mb-0.5">
+                                <span className="text-brand/60">{role.replace(/_/g, ' ')}:</span>{' '}
                                 {typeof details === 'object' && details !== null
                                   ? Object.entries(details as Record<string, unknown>)
                                       .filter(([k]) => k !== 'role')
@@ -3823,10 +3781,7 @@ const MapPinsTab = ({
                               Deterioration Timeline
                             </div>
                             {Object.entries(h.deterioration_timeline).map(([stage, info]) => (
-                              <div
-                                key={stage}
-                                className="text-xs terminal-text text-robotic-yellow/60 mb-0.5"
-                              >
+                              <div key={stage} className="text-xs terminal-text text-muted mb-0.5">
                                 <span className="text-red-400/60">{stage.replace(/_/g, ' ')}:</span>{' '}
                                 {typeof info === 'object' && info !== null
                                   ? Object.entries(info as Record<string, unknown>)
@@ -3865,7 +3820,7 @@ const MapPinsTab = ({
                       >
                         {triageColor.toUpperCase()}
                       </div>
-                      <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                      <div className="text-xs terminal-text text-muted mt-0.5">
                         {c.location_lat.toFixed(4)}, {c.location_lng.toFixed(4)}
                       </div>
                       {c.appears_at_minutes > 0 && (
@@ -3876,7 +3831,7 @@ const MapPinsTab = ({
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-2">
-                        <p className="text-xs terminal-text text-robotic-yellow/80 flex-1">
+                        <p className="text-xs terminal-text text-ink flex-1">
                           {(conds.visible_description as string) || 'Patient'}
                         </p>
                         <button
@@ -3885,33 +3840,33 @@ const MapPinsTab = ({
                             handleDeletePin(c.id, 'casualty');
                           }}
                           disabled={deletingPin === c.id}
-                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-danger/60 hover:text-danger hover:bg-danger/10 rounded transition-colors text-xs"
                           title="Delete casualty"
                         >
                           {deletingPin === c.id ? '...' : '✕'}
                         </button>
                       </div>
                       <div className="flex gap-2 flex-wrap mt-1">
-                        <span className="text-xs terminal-text text-robotic-yellow/50">
+                        <span className="text-xs terminal-text text-muted">
                           {(conds.mobility as string)?.replace(/_/g, ' ') ?? '?'}
                         </span>
-                        <span className="text-xs terminal-text text-robotic-yellow/50">
+                        <span className="text-xs terminal-text text-muted">
                           {(conds.accessibility as string)?.replace(/_/g, ' ') ?? 'open'}
                         </span>
-                        <span className="text-xs terminal-text text-robotic-yellow/50">
+                        <span className="text-xs terminal-text text-muted">
                           {(conds.consciousness as string) ?? '?'}
                         </span>
                       </div>
                     </div>
                     <button
                       onClick={() => setExpandedPin(isExpanded ? null : `cas-${c.id}`)}
-                      className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                      className="text-muted hover:text-ink terminal-text text-xs shrink-0 self-start"
                     >
                       {isExpanded ? '▲' : '▼'}
                     </button>
                   </div>
                   {isExpanded && (
-                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-3">
+                    <div className="px-4 pb-3 border-t border-border pt-2 space-y-3">
                       {/* Injuries */}
                       {injuries.length > 0 && (
                         <div>
@@ -3920,21 +3875,14 @@ const MapPinsTab = ({
                           </div>
                           <div className="space-y-0.5">
                             {injuries.map((inj, i) => (
-                              <div
-                                key={i}
-                                className="text-xs terminal-text text-robotic-yellow/60 flex gap-2"
-                              >
-                                <span className="text-robotic-yellow/40">
-                                  {inj.severity as string}
-                                </span>
+                              <div key={i} className="text-xs terminal-text text-muted flex gap-2">
+                                <span className="text-muted">{inj.severity as string}</span>
                                 <span>
                                   {(inj.type as string)?.replace(/_/g, ' ')} —{' '}
                                   {inj.body_part as string}
                                 </span>
                                 {typeof inj.visible_signs === 'string' && (
-                                  <span className="text-robotic-yellow/40">
-                                    ({inj.visible_signs})
-                                  </span>
+                                  <span className="text-muted">({inj.visible_signs})</span>
                                 )}
                               </div>
                             ))}
@@ -4028,16 +3976,14 @@ const MapPinsTab = ({
                               (eq, i) => (
                                 <div
                                   key={i}
-                                  className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                                  className="text-xs terminal-text text-muted flex gap-2 mb-0.5"
                                 >
                                   <span className="text-cyan-400/60">
                                     ×{Number(eq.quantity ?? 1)}
                                   </span>
                                   <span>{String(eq.item ?? '')}</span>
                                   {eq.purpose ? (
-                                    <span className="text-robotic-yellow/40">
-                                      ({String(eq.purpose)})
-                                    </span>
+                                    <span className="text-muted">({String(eq.purpose)})</span>
                                   ) : null}
                                 </div>
                               ),
@@ -4056,18 +4002,15 @@ const MapPinsTab = ({
                               (step, i) => (
                                 <div
                                   key={i}
-                                  className="flex gap-2 text-xs terminal-text text-robotic-yellow/70 mb-0.5"
+                                  className="flex gap-2 text-xs terminal-text text-muted mb-0.5"
                                 >
                                   <span className="text-cyan-400/60 shrink-0 w-5">
                                     {Number(step.step ?? i + 1)}.
                                   </span>
                                   <span>
-                                    <b className="text-robotic-yellow/90">{String(step.action)}</b>
+                                    <b className="text-ink">{String(step.action)}</b>
                                     {step.detail ? (
-                                      <span className="text-robotic-yellow/50">
-                                        {' '}
-                                        — {String(step.detail)}
-                                      </span>
+                                      <span className="text-muted"> — {String(step.detail)}</span>
                                     ) : null}
                                   </span>
                                 </div>
@@ -4077,9 +4020,9 @@ const MapPinsTab = ({
                         )}
                       {/* Expected Time to Treat */}
                       {typeof conds.expected_time_to_treat_minutes === 'number' && (
-                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                        <div className="text-xs terminal-text text-muted">
                           Est. treatment time:{' '}
-                          <b className="text-robotic-yellow/90">
+                          <b className="text-ink">
                             {conds.expected_time_to_treat_minutes as number} min
                           </b>
                         </div>
@@ -4110,13 +4053,13 @@ const MapPinsTab = ({
                       <div className="text-xs terminal-text text-violet-400/80 uppercase">
                         {c.headcount} people
                       </div>
-                      <div className="text-xs terminal-text text-robotic-yellow/30 mt-0.5">
+                      <div className="text-xs terminal-text text-muted mt-0.5">
                         {c.location_lat.toFixed(4)}, {c.location_lng.toFixed(4)}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start gap-2">
-                        <p className="text-xs terminal-text text-robotic-yellow/80 flex-1">
+                        <p className="text-xs terminal-text text-ink flex-1">
                           {(conds.visible_description as string) || `Group of ${c.headcount}`}
                         </p>
                         <button
@@ -4125,7 +4068,7 @@ const MapPinsTab = ({
                             handleDeletePin(c.id, 'casualty');
                           }}
                           disabled={deletingPin === c.id}
-                          className="shrink-0 w-5 h-5 flex items-center justify-center text-red-500/60 hover:text-red-400 hover:bg-red-900/30 rounded transition-colors text-xs"
+                          className="shrink-0 w-5 h-5 flex items-center justify-center text-danger/60 hover:text-danger hover:bg-danger/10 rounded transition-colors text-xs"
                           title="Delete crowd"
                         >
                           {deletingPin === c.id ? '...' : '✕'}
@@ -4153,16 +4096,16 @@ const MapPinsTab = ({
                     </div>
                     <button
                       onClick={() => setExpandedPin(isExpanded ? null : `crowd-${c.id}`)}
-                      className="text-robotic-yellow/40 hover:text-robotic-yellow terminal-text text-xs shrink-0 self-start"
+                      className="text-muted hover:text-ink terminal-text text-xs shrink-0 self-start"
                     >
                       {isExpanded ? '▲' : '▼'}
                     </button>
                   </div>
                   {isExpanded && (
-                    <div className="px-4 pb-3 border-t border-robotic-yellow/15 pt-2 space-y-3">
+                    <div className="px-4 pb-3 border-t border-border pt-2 space-y-3">
                       {/* Management Priority */}
                       {conds.management_priority ? (
-                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                        <div className="text-xs terminal-text text-muted">
                           Priority:{' '}
                           <b className="text-violet-400">
                             {String(conds.management_priority).replace(/_/g, ' ').toUpperCase()}
@@ -4181,18 +4124,15 @@ const MapPinsTab = ({
                               (step, i) => (
                                 <div
                                   key={i}
-                                  className="flex gap-2 text-xs terminal-text text-robotic-yellow/70 mb-0.5"
+                                  className="flex gap-2 text-xs terminal-text text-muted mb-0.5"
                                 >
                                   <span className="text-cyan-400/60 shrink-0 w-5">
                                     {Number(step.step ?? i + 1)}.
                                   </span>
                                   <span>
-                                    <b className="text-robotic-yellow/90">{String(step.action)}</b>
+                                    <b className="text-ink">{String(step.action)}</b>
                                     {step.detail ? (
-                                      <span className="text-robotic-yellow/50">
-                                        {' '}
-                                        — {String(step.detail)}
-                                      </span>
+                                      <span className="text-muted"> — {String(step.detail)}</span>
                                     ) : null}
                                   </span>
                                 </div>
@@ -4204,23 +4144,19 @@ const MapPinsTab = ({
                       {Array.isArray(conds.required_personnel) &&
                         (conds.required_personnel as Array<Record<string, unknown>>).length > 0 && (
                           <div>
-                            <div className="text-xs terminal-text text-purple-400/80 uppercase mb-1 font-bold">
+                            <div className="text-xs terminal-text text-brand/80 uppercase mb-1 font-bold">
                               Required Personnel
                             </div>
                             {(conds.required_personnel as Array<Record<string, unknown>>).map(
                               (p, i) => (
                                 <div
                                   key={i}
-                                  className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                                  className="text-xs terminal-text text-muted flex gap-2 mb-0.5"
                                 >
-                                  <span className="text-purple-400/60">
-                                    ×{Number(p.count ?? 1)}
-                                  </span>
+                                  <span className="text-brand/60">×{Number(p.count ?? 1)}</span>
                                   <span>{String(p.role ?? p.type ?? '')}</span>
                                   {p.purpose ? (
-                                    <span className="text-robotic-yellow/40">
-                                      ({String(p.purpose)})
-                                    </span>
+                                    <span className="text-muted">({String(p.purpose)})</span>
                                   ) : null}
                                 </div>
                               ),
@@ -4238,16 +4174,14 @@ const MapPinsTab = ({
                               (eq, i) => (
                                 <div
                                   key={i}
-                                  className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                                  className="text-xs terminal-text text-muted flex gap-2 mb-0.5"
                                 >
                                   <span className="text-green-400/60">
                                     ×{Number(eq.quantity ?? 1)}
                                   </span>
                                   <span>{String(eq.item ?? eq.type ?? '')}</span>
                                   {eq.purpose ? (
-                                    <span className="text-robotic-yellow/40">
-                                      ({String(eq.purpose)})
-                                    </span>
+                                    <span className="text-muted">({String(eq.purpose)})</span>
                                   ) : null}
                                 </div>
                               ),
@@ -4256,9 +4190,9 @@ const MapPinsTab = ({
                         )}
                       {/* Estimated Resolution Time */}
                       {typeof conds.estimated_resolution_minutes === 'number' && (
-                        <div className="text-xs terminal-text text-robotic-yellow/60">
+                        <div className="text-xs terminal-text text-muted">
                           Est. resolution:{' '}
-                          <b className="text-robotic-yellow/90">
+                          <b className="text-ink">
                             {conds.estimated_resolution_minutes as number} min
                           </b>
                         </div>
@@ -4272,7 +4206,7 @@ const MapPinsTab = ({
                           {wounded.map((w, i) => (
                             <div
                               key={i}
-                              className="text-xs terminal-text text-robotic-yellow/60 flex gap-2 mb-0.5"
+                              className="text-xs terminal-text text-muted flex gap-2 mb-0.5"
                             >
                               <span className="text-amber-400/60">
                                 ×{(w.count as number) ?? '?'}
@@ -4303,11 +4237,11 @@ const MapPinsTab = ({
                   {eq.icon && <span className="mr-1">{eq.icon}</span>}
                   {eq.label}
                 </div>
-                <div className="text-xs terminal-text text-robotic-yellow/40 mt-0.5">
+                <div className="text-xs terminal-text text-muted mt-0.5">
                   {eq.equipment_type.replace(/_/g, ' ')}
                 </div>
                 {eq.properties && Object.keys(eq.properties).length > 0 && (
-                  <div className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+                  <div className="text-xs terminal-text text-muted mt-1">
                     {Object.entries(eq.properties)
                       .map(([k, v]) => `${k.replace(/_/g, ' ')}: ${v}`)
                       .join(' · ')}
@@ -4323,10 +4257,10 @@ const MapPinsTab = ({
 };
 
 const SEVERITY_BADGE: Record<string, string> = {
-  critical: 'bg-red-900/40 text-red-400 border-red-400/50',
-  high: 'bg-orange-900/40 text-orange-400 border-orange-400/50',
-  medium: 'bg-yellow-900/40 text-robotic-yellow border-robotic-yellow/50',
-  low: 'bg-green-900/40 text-green-400 border-green-400/50',
+  critical: 'bg-danger/10 text-danger border-danger/50',
+  high: 'bg-accent/10 text-accent border-accent/50',
+  medium: 'bg-warning/10 text-warning border-warning/50',
+  low: 'bg-success/10 text-success border-success/50',
 };
 
 const InjectRow = ({
@@ -4342,8 +4276,8 @@ const InjectRow = ({
     inject.trigger_time_minutes != null
       ? `T+${inject.trigger_time_minutes}min`
       : inject.trigger_condition
-        ? `DECISION: ${inject.trigger_condition}`
-        : 'CONDITION-DRIVEN';
+        ? `Decision: ${inject.trigger_condition}`
+        : 'Condition-driven';
 
   const condAppear = inject.conditions_to_appear as
     | { threshold?: number; conditions?: string[]; all?: string[] }
@@ -4354,47 +4288,43 @@ const InjectRow = ({
     <div className="military-border">
       <button
         onClick={onToggle}
-        className="w-full p-3 flex items-start gap-3 text-left hover:bg-robotic-yellow/5 transition-all"
+        className="w-full p-3 flex items-start gap-3 text-left hover:bg-accent/5 transition-all"
       >
         <div className="shrink-0 w-28">
-          <div className="text-xs terminal-text text-robotic-yellow/60">{triggerLabel}</div>
+          <div className="text-xs terminal-text text-muted">{triggerLabel}</div>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm terminal-text text-robotic-yellow">{inject.title}</div>
+          <div className="text-sm terminal-text text-ink">{inject.title}</div>
           <div className="flex gap-2 mt-1 flex-wrap">
             <span
               className={`text-xs terminal-text px-1.5 py-0.5 border ${SEVERITY_BADGE[inject.severity] ?? SEVERITY_BADGE.medium}`}
             >
               {inject.severity.toUpperCase()}
             </span>
-            <span className="text-xs terminal-text text-robotic-yellow/40">
+            <span className="text-xs terminal-text text-muted">
               {inject.type.replace(/_/g, ' ')}
             </span>
-            <span className="text-xs terminal-text text-robotic-yellow/40">
-              [{inject.inject_scope}]
-            </span>
+            <span className="text-xs terminal-text text-muted">{inject.inject_scope}</span>
             {inject.target_teams && inject.target_teams.length > 0 && (
-              <span className="text-xs terminal-text text-robotic-yellow/40">
+              <span className="text-xs terminal-text text-muted">
                 → {inject.target_teams.join(', ')}
               </span>
             )}
           </div>
         </div>
-        <span className="text-robotic-yellow/40 terminal-text text-xs shrink-0">
-          {expanded ? '▲' : '▼'}
-        </span>
+        <span className="text-muted terminal-text text-xs shrink-0">{expanded ? '▲' : '▼'}</span>
       </button>
 
       {expanded && (
-        <div className="px-4 pb-4 border-t border-robotic-yellow/15 pt-3 space-y-3">
+        <div className="px-4 pb-4 border-t border-border pt-3 space-y-3">
           <p className="text-xs terminal-text leading-relaxed">{inject.content}</p>
 
           {condAppear && (
             <div>
-              <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+              <div className="text-xs terminal-text text-muted uppercase mb-1">
                 Conditions to appear
               </div>
-              <div className="text-xs terminal-text font-mono bg-black/30 p-2 rounded">
+              <div className="text-xs terminal-text font-mono bg-surface-2 p-2 rounded">
                 {JSON.stringify(condAppear, null, 2)}
               </div>
             </div>
@@ -4402,14 +4332,14 @@ const InjectRow = ({
 
           {inject.conditions_to_cancel && inject.conditions_to_cancel.length > 0 && (
             <div>
-              <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
+              <div className="text-xs terminal-text text-muted uppercase mb-1">
                 Conditions to cancel
               </div>
               <div className="flex gap-1 flex-wrap">
                 {inject.conditions_to_cancel.map((c, i) => (
                   <span
                     key={i}
-                    className="text-xs terminal-text px-1.5 py-0.5 border border-robotic-orange/50 text-robotic-orange/80"
+                    className="text-xs terminal-text px-1.5 py-0.5 border border-accent/50 text-accent"
                   >
                     {c}
                   </span>
@@ -4419,13 +4349,13 @@ const InjectRow = ({
           )}
 
           {inject.eligible_after_minutes != null && (
-            <div className="text-xs terminal-text text-robotic-yellow/50">
+            <div className="text-xs terminal-text text-muted">
               Eligible after: T+{inject.eligible_after_minutes}min
             </div>
           )}
 
           {inject.objective_penalty != null && (
-            <div className="text-xs terminal-text text-red-400">
+            <div className="text-xs terminal-text text-danger">
               {'Penalty: ' + JSON.stringify(inject.objective_penalty as Record<string, unknown>)}
             </div>
           )}
@@ -4433,10 +4363,8 @@ const InjectRow = ({
           {inject.state_effect != null &&
             Object.keys(inject.state_effect as Record<string, unknown>).length > 0 && (
               <div>
-                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
-                  State effect
-                </div>
-                <pre className="text-xs terminal-text font-mono bg-black/30 p-2 rounded whitespace-pre-wrap">
+                <div className="text-xs terminal-text text-muted uppercase mb-1">State effect</div>
+                <pre className="text-xs terminal-text font-mono bg-surface-2 p-2 rounded whitespace-pre-wrap">
                   {JSON.stringify(inject.state_effect as Record<string, unknown>, null, 2)}
                 </pre>
               </div>
@@ -4493,9 +4421,7 @@ const EnvTruthsTab = ({
   const hasNewModel = candidateSpaces.length > 0 || poiPolice.length > 0 || poiFire.length > 0;
 
   if (!hasNewModel && locations.length === 0) {
-    return (
-      <p className="text-sm terminal-text text-robotic-yellow/50">[NO ENVIRONMENTAL TRUTH DATA]</p>
-    );
+    return <p className="text-sm terminal-text text-muted">No environmental truth data</p>;
   }
 
   return (
@@ -4508,14 +4434,12 @@ const EnvTruthsTab = ({
               <div key={loc.id} className="military-border p-3">
                 <div className="flex items-start gap-3">
                   <div className="shrink-0 w-24">
-                    <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
+                    <div className="text-xs terminal-text text-muted uppercase">
                       {getPinCat(loc) ?? loc.location_type.replace(/_/g, ' ')}
                     </div>
                   </div>
                   <div className="flex-1">
-                    <div className="text-sm terminal-text text-robotic-yellow font-medium">
-                      {loc.label}
-                    </div>
+                    <div className="text-sm terminal-text text-ink font-medium">{loc.label}</div>
                     <ConditionsSummary conditions={loc.conditions} />
                   </div>
                 </div>
@@ -4528,7 +4452,7 @@ const EnvTruthsTab = ({
       {/* Candidate Spaces */}
       {candidateSpaces.length > 0 && (
         <Section title={`Candidate spaces (${candidateSpaces.length})`}>
-          <p className="text-xs terminal-text text-robotic-yellow/50 mb-3">
+          <p className="text-xs terminal-text text-muted mb-3">
             Physical spaces players must evaluate and assign a purpose to.
           </p>
           <div className="space-y-3">
@@ -4538,20 +4462,15 @@ const EnvTruthsTab = ({
                 ? (cond.potential_uses as string[])
                 : [];
               return (
-                <div
-                  key={loc.id}
-                  className="military-border p-3 border-l-2 border-l-robotic-yellow/30"
-                >
+                <div key={loc.id} className="military-border p-3 border-l-2 border-l-border">
                   <div className="flex items-start justify-between gap-2 mb-1">
-                    <span className="text-sm terminal-text text-robotic-yellow font-medium">
-                      {loc.label}
-                    </span>
+                    <span className="text-sm terminal-text text-ink font-medium">{loc.label}</span>
                     {uses.length > 0 && (
                       <div className="flex gap-1 flex-wrap justify-end">
                         {uses.map((u) => (
                           <span
                             key={u}
-                            className="text-xs terminal-text bg-robotic-yellow/10 text-robotic-yellow/80 px-1.5 py-0.5 rounded"
+                            className="text-xs terminal-text bg-accent/10 text-ink px-1.5 py-0.5 rounded"
                           >
                             {u.replace(/_/g, ' ')}
                           </span>
@@ -4559,7 +4478,7 @@ const EnvTruthsTab = ({
                       </div>
                     )}
                   </div>
-                  <div className="text-xs terminal-text text-robotic-yellow/60">
+                  <div className="text-xs terminal-text text-muted">
                     {[
                       cond.area_m2 != null && `${cond.area_m2}m²`,
                       cond.capacity_persons != null && `capacity ${cond.capacity_persons}`,
@@ -4578,7 +4497,7 @@ const EnvTruthsTab = ({
                       .join(' · ')}
                   </div>
                   {cond.notes != null && (
-                    <div className="text-xs terminal-text text-robotic-yellow/40 italic mt-1">
+                    <div className="text-xs terminal-text text-muted italic mt-1">
                       {String(cond.notes)}
                     </div>
                   )}
@@ -4589,14 +4508,14 @@ const EnvTruthsTab = ({
 
           {/* Site requirements comparison */}
           {siteRequirements && Object.keys(siteRequirements).length > 0 && (
-            <div className="mt-4 pt-3 border-t border-robotic-yellow/15">
-              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+            <div className="mt-4 pt-3 border-t border-border">
+              <div className="text-xs terminal-text text-muted uppercase mb-2">
                 Site requirements (from standards)
               </div>
               <div className="space-y-1">
                 {Object.entries(siteRequirements).map(([useType, req]) => (
-                  <div key={useType} className="text-xs terminal-text text-robotic-yellow/50">
-                    <span className="text-robotic-yellow/70">{useType.replace(/_/g, ' ')}:</span>{' '}
+                  <div key={useType} className="text-xs terminal-text text-muted">
+                    <span className="text-muted">{useType.replace(/_/g, ' ')}:</span>{' '}
                     {[
                       req.min_area_m2 != null && `min ${req.min_area_m2}m²`,
                       req.min_capacity != null && `min cap ${req.min_capacity}`,
@@ -4624,7 +4543,7 @@ const EnvTruthsTab = ({
         >
           {poiHospitals.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-1">
+              <div className="text-xs terminal-text text-muted uppercase mb-1">
                 Hospitals ({poiHospitals.length})
               </div>
               <div className="space-y-1">
@@ -4632,8 +4551,8 @@ const EnvTruthsTab = ({
                   const c = loc.conditions ?? {};
                   return (
                     <div key={loc.id} className="text-xs terminal-text flex gap-2 items-baseline">
-                      <span className="text-robotic-yellow/80 font-medium">{loc.label}</span>
-                      <span className="text-robotic-yellow/50">
+                      <span className="text-ink font-medium">{loc.label}</span>
+                      <span className="text-muted">
                         {[
                           c.distance_from_incident_m != null && `${c.distance_from_incident_m}m`,
                           c.trauma_center_level && String(c.trauma_center_level),
@@ -4655,7 +4574,7 @@ const EnvTruthsTab = ({
 
           {poiPolice.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-1">
+              <div className="text-xs terminal-text text-muted uppercase mb-1">
                 Police ({poiPolice.length})
               </div>
               <div className="space-y-1">
@@ -4663,8 +4582,8 @@ const EnvTruthsTab = ({
                   const c = loc.conditions ?? {};
                   return (
                     <div key={loc.id} className="text-xs terminal-text flex gap-2 items-baseline">
-                      <span className="text-robotic-yellow/80 font-medium">{loc.label}</span>
-                      <span className="text-robotic-yellow/50">
+                      <span className="text-ink font-medium">{loc.label}</span>
+                      <span className="text-muted">
                         {[
                           c.distance_from_incident_m != null && `${c.distance_from_incident_m}m`,
                           c.facility_type && String(c.facility_type).replace(/_/g, ' '),
@@ -4686,7 +4605,7 @@ const EnvTruthsTab = ({
 
           {poiFire.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-1">
+              <div className="text-xs terminal-text text-muted uppercase mb-1">
                 Fire stations ({poiFire.length})
               </div>
               <div className="space-y-1">
@@ -4694,8 +4613,8 @@ const EnvTruthsTab = ({
                   const c = loc.conditions ?? {};
                   return (
                     <div key={loc.id} className="text-xs terminal-text flex gap-2 items-baseline">
-                      <span className="text-robotic-yellow/80 font-medium">{loc.label}</span>
-                      <span className="text-robotic-yellow/50">
+                      <span className="text-ink font-medium">{loc.label}</span>
+                      <span className="text-muted">
                         {[
                           c.distance_from_incident_m != null && `${c.distance_from_incident_m}m`,
                           c.appliance_count != null && `${c.appliance_count} appliances`,
@@ -4728,10 +4647,10 @@ const ConditionsSummary = ({ conditions }: { conditions?: Record<string, unknown
   if (entries.length === 0) return null;
 
   return (
-    <div className="mt-1 text-xs terminal-text text-robotic-yellow/50 space-y-0.5">
+    <div className="mt-1 text-xs terminal-text text-muted space-y-0.5">
       {entries.map(([key, val]) => (
         <div key={key}>
-          <span className="text-robotic-yellow/40">{key.replace(/_/g, ' ')}: </span>
+          <span className="text-muted">{key.replace(/_/g, ' ')}: </span>
           {Array.isArray(val) ? (
             <span>{(val as unknown[]).map((v) => itemLabel(v)).join(', ')}</span>
           ) : typeof val === 'boolean' ? (

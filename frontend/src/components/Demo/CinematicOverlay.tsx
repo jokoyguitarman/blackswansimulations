@@ -133,7 +133,7 @@ export function CinematicOverlay({ sessionId }: CinematicOverlayProps) {
           return (
             <div
               key={card.id}
-              className="bg-robotic-gray-300/95 backdrop-blur-md border border-robotic-yellow/30 rounded-lg p-3 shadow-2xl pointer-events-auto"
+              className="bg-surface/90 backdrop-blur-md border border-border rounded-lg p-3 shadow-2xl pointer-events-auto"
               style={{
                 borderLeftWidth: 4,
                 borderLeftColor: color,
@@ -142,10 +142,8 @@ export function CinematicOverlay({ sessionId }: CinematicOverlayProps) {
             >
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-sm">{typeIcon}</span>
-                <span className="text-xs terminal-text uppercase text-robotic-yellow/70">
-                  {card.type}
-                </span>
-                <span className="ml-auto text-[10px] terminal-text text-robotic-yellow/40">
+                <span className="text-xs terminal-text uppercase text-muted">{card.type}</span>
+                <span className="ml-auto text-[10px] terminal-text text-muted">
                   {card.timestamp.toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit',
@@ -153,11 +151,11 @@ export function CinematicOverlay({ sessionId }: CinematicOverlayProps) {
                   })}
                 </span>
               </div>
-              <div className="text-sm terminal-text text-robotic-yellow font-semibold truncate">
+              <div className="text-sm terminal-text text-ink font-semibold truncate">
                 {card.title}
               </div>
               {card.description && (
-                <div className="text-xs terminal-text text-robotic-yellow/60 mt-0.5 line-clamp-3">
+                <div className="text-xs terminal-text text-muted mt-0.5 line-clamp-3">
                   {card.description}
                 </div>
               )}

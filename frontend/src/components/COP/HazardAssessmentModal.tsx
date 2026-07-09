@@ -69,22 +69,17 @@ export const HazardAssessmentModal = ({
   const properties = hazard.properties;
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-black/95 border border-robotic-yellow/40 rounded-lg max-w-xl w-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4">
+      <div className="bg-surface border border-border rounded-lg max-w-xl w-full max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-robotic-yellow/20">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <div>
-            <h2 className="text-sm font-semibold terminal-text text-robotic-yellow uppercase">
-              Hazard Assessment
-            </h2>
-            <span className="text-xs terminal-text text-robotic-yellow/60 capitalize">
+            <h2 className="text-sm font-semibold terminal-text text-ink">Hazard Assessment</h2>
+            <span className="text-xs terminal-text text-muted capitalize">
               {hazard.hazard_type.replace(/_/g, ' ')} — {hazard.status}
             </span>
           </div>
-          <button
-            onClick={onClose}
-            className="text-robotic-yellow/50 hover:text-robotic-yellow text-lg leading-none"
-          >
+          <button onClick={onClose} className="text-muted hover:text-ink text-lg leading-none">
             ✕
           </button>
         </div>
@@ -93,7 +88,7 @@ export const HazardAssessmentModal = ({
         <div className="flex-1 overflow-y-auto min-h-0">
           {/* Hazard Image */}
           {imageUrl && (
-            <div className="w-full bg-gray-900 border-b border-robotic-yellow/20">
+            <div className="w-full bg-surface-2 border-b border-border">
               <img
                 src={imageUrl}
                 alt={`${hazard.hazard_type} hazard`}
@@ -108,13 +103,13 @@ export const HazardAssessmentModal = ({
           {/* Current description (from time-evolving sequence) */}
           {hazard.current_description && (
             <div className="px-4 py-2 bg-red-900/20 border-b border-red-500/20">
-              <p className="text-xs terminal-text text-red-300">{hazard.current_description}</p>
+              <p className="text-xs terminal-text text-danger">{hazard.current_description}</p>
             </div>
           )}
 
           {/* Properties */}
-          <div className="px-4 py-3 border-b border-robotic-yellow/20">
-            <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
+          <div className="px-4 py-3 border-b border-border">
+            <h3 className="text-xs font-medium terminal-text text-muted mb-2 uppercase">
               Situation Details
             </h3>
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
@@ -132,8 +127,8 @@ export const HazardAssessmentModal = ({
 
                 return (
                   <div key={key} className="text-xs terminal-text">
-                    <span className="text-robotic-yellow/50 capitalize">{label}: </span>
-                    <span className="text-robotic-yellow/90">{displayValue}</span>
+                    <span className="text-muted capitalize">{label}: </span>
+                    <span className="text-ink">{displayValue}</span>
                   </div>
                 );
               })}
@@ -142,11 +137,11 @@ export const HazardAssessmentModal = ({
         </div>
 
         {/* Decision Input — always visible at bottom */}
-        <div className="px-4 py-3 shrink-0 border-t border-robotic-yellow/20">
-          <h3 className="text-xs font-medium terminal-text text-robotic-yellow/70 mb-2 uppercase">
+        <div className="px-4 py-3 shrink-0 border-t border-border">
+          <h3 className="text-xs font-medium terminal-text text-muted mb-2 uppercase">
             Your Response
           </h3>
-          <p className="text-xs terminal-text text-robotic-yellow/50 mb-2">
+          <p className="text-xs terminal-text text-muted mb-2">
             Based on the hazard assessment above, describe how your team would respond to this{' '}
             {hazard.hazard_type.replace(/_/g, ' ')}.
           </p>
@@ -154,11 +149,11 @@ export const HazardAssessmentModal = ({
             value={decision}
             onChange={(e) => setDecision(e.target.value)}
             placeholder={`Describe your response to this ${hazard.hazard_type.replace(/_/g, ' ')}...`}
-            className="w-full h-24 px-3 py-2 bg-black/50 border border-robotic-yellow/30 rounded text-xs terminal-text text-robotic-yellow placeholder-robotic-yellow/30 focus:border-robotic-yellow/60 focus:outline-none resize-none"
+            className="w-full h-24 px-3 py-2 bg-surface-2 border border-border rounded text-xs terminal-text text-ink placeholder-muted focus:border-accent focus:outline-none resize-none"
           />
           {result && (
             <div
-              className={`mt-2 p-2 rounded text-xs terminal-text ${result.success ? 'bg-green-900/30 text-green-400 border border-green-500/30' : 'bg-red-900/30 text-red-400 border border-red-500/30'}`}
+              className={`mt-2 p-2 rounded text-xs terminal-text ${result.success ? 'bg-green-900/30 text-success border border-green-500/30' : 'bg-red-900/30 text-danger border border-red-500/30'}`}
             >
               {result.message}
             </div>
@@ -166,14 +161,14 @@ export const HazardAssessmentModal = ({
           <div className="flex justify-end gap-2 mt-3">
             <button
               onClick={onClose}
-              className="px-3 py-1.5 text-xs terminal-text text-robotic-yellow/60 border border-robotic-yellow/20 rounded hover:border-robotic-yellow/40"
+              className="px-3 py-1.5 text-xs terminal-text text-muted border border-border rounded hover:border-border-strong"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={!decision.trim() || isSubmitting || result?.success === true}
-              className="px-4 py-1.5 text-xs font-mono font-medium bg-robotic-yellow rounded hover:bg-robotic-yellow/90 disabled:opacity-40 disabled:cursor-not-allowed"
+              className="px-4 py-1.5 text-xs font-mono font-medium bg-accent rounded hover:bg-accent-strong disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ color: '#0f0f0f' }}
             >
               {isSubmitting ? 'Executing...' : 'Execute Decision'}

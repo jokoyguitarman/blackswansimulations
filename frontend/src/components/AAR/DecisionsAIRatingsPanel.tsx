@@ -81,8 +81,8 @@ export const DecisionsAIRatingsPanel = ({
     return (
       <div className="military-border p-6">
         <div className="text-center">
-          <div className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-            [LOADING_DECISIONS_AND_RATINGS]
+          <div className="text-sm terminal-text text-muted animate-pulse">
+            Loading decisions and ratings…
           </div>
         </div>
       </div>
@@ -92,9 +92,7 @@ export const DecisionsAIRatingsPanel = ({
   if (!data) {
     return (
       <div className="military-border p-6">
-        <p className="text-sm terminal-text text-robotic-yellow/50">
-          [ERROR] Failed to load decisions and AI ratings
-        </p>
+        <p className="text-sm terminal-text text-muted">Failed to load decisions and AI ratings</p>
       </div>
     );
   }
@@ -148,12 +146,12 @@ export const DecisionsAIRatingsPanel = ({
 
   return (
     <div className="space-y-4">
-      <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-        [DECISIONS_AND_SCORING_HISTORY] ({decisionsSorted.length})
+      <h4 className="text-sm terminal-text text-muted mb-2">
+        Decisions and scoring history ({decisionsSorted.length})
       </h4>
       <div className="space-y-2">
         {decisionsSorted.length === 0 ? (
-          <p className="text-robotic-yellow/70 text-sm">No decisions in this session.</p>
+          <p className="text-muted text-sm">No decisions in this session.</p>
         ) : (
           decisionsSorted.map((d) => {
             const robustness = robustnessByDecisionId[d.id];
@@ -167,7 +165,7 @@ export const DecisionsAIRatingsPanel = ({
             return (
               <div
                 key={d.id}
-                className="border border-robotic-yellow/30 bg-robotic-gray-300/80 font-mono text-xs cursor-pointer hover:border-robotic-yellow/50 transition-colors"
+                className="border border-border bg-surface font-mono text-xs cursor-pointer hover:border-accent transition-colors"
                 role="button"
                 tabIndex={0}
                 onClick={() => toggleExpanded(d.id)}
@@ -180,33 +178,29 @@ export const DecisionsAIRatingsPanel = ({
                 aria-expanded={isExpanded}
               >
                 <div className="p-3">
-                  <div className="text-robotic-green font-semibold">{d.title}</div>
-                  <div className="text-robotic-yellow/70 mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">
-                    <span className="text-robotic-yellow/50">Decider:</span>
+                  <div className="text-success font-semibold">{d.title}</div>
+                  <div className="text-muted mt-1 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5 text-xs">
+                    <span className="text-muted">Decider:</span>
                     <span>{deciderName}</span>
-                    <span className="text-robotic-yellow/50">Executed:</span>
+                    <span className="text-muted">Executed:</span>
                     <span>{executedAt}</span>
                     {robustness !== undefined && (
                       <>
-                        <span className="text-robotic-yellow/50">Robustness:</span>
-                        <span className="text-robotic-gold">{robustness}/10</span>
+                        <span className="text-muted">Robustness:</span>
+                        <span className="text-accent">{robustness}/10</span>
                       </>
                     )}
                   </div>
                   {reasoning && (
-                    <div
-                      className={`mt-2 text-robotic-yellow/80 ${!isExpanded ? 'line-clamp-2' : ''}`}
-                    >
-                      <span className="text-robotic-yellow/50">Reasoning: </span>
+                    <div className={`mt-2 text-ink ${!isExpanded ? 'line-clamp-2' : ''}`}>
+                      <span className="text-muted">Reasoning: </span>
                       {reasoning}
                     </div>
                   )}
                   {isExpanded && d.description && (
-                    <div className="mt-2 text-robotic-yellow/70 whitespace-pre-wrap">
-                      {d.description}
-                    </div>
+                    <div className="mt-2 text-muted whitespace-pre-wrap">{d.description}</div>
                   )}
-                  <div className="text-robotic-yellow/50 mt-1" aria-hidden>
+                  <div className="text-muted mt-1" aria-hidden>
                     {isExpanded ? '▼' : '▶'}
                   </div>
                 </div>

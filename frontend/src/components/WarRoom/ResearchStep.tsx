@@ -61,24 +61,24 @@ function Section({
 }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
   return (
-    <div className="border border-robotic-gray-200 rounded mb-3">
+    <div className="border border-border rounded mb-3">
       <button
         onClick={() => setOpen(!open)}
-        className="w-full text-left px-4 py-3 flex justify-between items-center hover:bg-robotic-gray-200/20"
+        className="w-full text-left px-4 py-3 flex justify-between items-center hover:bg-surface-2/20"
       >
         <span className="text-xs terminal-text uppercase" style={{ color: color || '#d4a017' }}>
           {title}
         </span>
         <div className="flex items-center gap-2">
           {badge !== undefined && (
-            <span className="text-[10px] terminal-text text-robotic-yellow/30 bg-robotic-gray-200/50 px-1.5 py-0.5 rounded">
+            <span className="text-[10px] terminal-text text-muted bg-surface-2 px-1.5 py-0.5 rounded">
               {badge}
             </span>
           )}
-          <span className="text-robotic-yellow/40 text-sm">{open ? '−' : '+'}</span>
+          <span className="text-muted text-sm">{open ? '−' : '+'}</span>
         </div>
       </button>
-      {open && <div className="px-4 pb-4 border-t border-robotic-gray-200">{children}</div>}
+      {open && <div className="px-4 pb-4 border-t border-border">{children}</div>}
     </div>
   );
 }
@@ -128,22 +128,18 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
 
     return (
       <div className="flex flex-col items-center justify-center h-[400px]">
-        <div className="text-lg terminal-text text-cyan-400 animate-pulse mb-4">
-          AI RESEARCH IN PROGRESS
+        <div className="text-lg terminal-text text-accent animate-pulse mb-4">
+          AI research in progress
         </div>
-        <div className="text-xs terminal-text text-robotic-yellow/50 mb-2">
-          {currentPhase.label}
-        </div>
-        <div className="text-[10px] terminal-text text-robotic-yellow/30 mb-6">
-          {elapsed}s elapsed
-        </div>
-        <div className="w-64 h-1.5 bg-robotic-gray-200 rounded overflow-hidden">
+        <div className="text-xs terminal-text text-muted mb-2">{currentPhase.label}</div>
+        <div className="text-[10px] terminal-text text-muted mb-6">{elapsed}s elapsed</div>
+        <div className="w-64 h-1.5 bg-surface-2 rounded overflow-hidden">
           <div
-            className="h-full bg-cyan-500 transition-all duration-1000"
+            className="h-full bg-accent transition-all duration-1000"
             style={{ width: `${Math.min((elapsed / 90) * 100, 95)}%` }}
           />
         </div>
-        <div className="mt-8 text-[10px] terminal-text text-robotic-yellow/20 max-w-md text-center">
+        <div className="mt-8 text-[10px] terminal-text text-muted max-w-md text-center">
           This may take 1-2 minutes. The AI is researching real-world incident data, team doctrines,
           and analyzing blast physics for your scene.
         </div>
@@ -155,10 +151,8 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-[300px]">
-        <div className="text-lg terminal-text text-red-400 mb-4">RESEARCH FAILED</div>
-        <div className="text-xs terminal-text text-red-300/70 max-w-md text-center mb-6">
-          {error}
-        </div>
+        <div className="text-lg terminal-text text-danger mb-4">Research failed</div>
+        <div className="text-xs terminal-text text-danger max-w-md text-center mb-6">{error}</div>
         <button onClick={startResearch} className="military-button px-6 py-2 text-xs">
           Retry Research
         </button>
@@ -170,7 +164,7 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
   if (!data) {
     return (
       <div className="flex flex-col items-center justify-center h-[300px]">
-        <div className="text-sm terminal-text text-robotic-yellow/60 mb-6 max-w-lg text-center">
+        <div className="text-sm terminal-text text-muted mb-6 max-w-lg text-center">
           The AI will research similar real-world incidents, generate a scenario narrative, analyze
           hazard physics, and produce per-team doctrines and workflows.
         </div>
@@ -179,10 +173,10 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
           disabled={!wizardDraftId}
           className="military-button px-8 py-3 text-sm disabled:opacity-30"
         >
-          START RESEARCH
+          Start research
         </button>
         {!wizardDraftId && (
-          <div className="text-[10px] terminal-text text-red-400/50 mt-2">
+          <div className="text-[10px] terminal-text text-danger mt-2">
             Draft not available -- complete previous steps first.
           </div>
         )}
@@ -204,21 +198,17 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
         {scenario && (
           <div className="space-y-3 pt-3">
             <div>
-              <div className="text-sm terminal-text text-cyan-300 font-bold">{scenario.title}</div>
+              <div className="text-sm terminal-text text-accent font-bold">{scenario.title}</div>
             </div>
             <div>
-              <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
-                Synopsis
-              </div>
-              <div className="text-xs terminal-text text-robotic-yellow/70 whitespace-pre-wrap">
+              <div className="text-[10px] terminal-text text-muted uppercase mb-1">Synopsis</div>
+              <div className="text-xs terminal-text text-muted whitespace-pre-wrap">
                 {scenario.description}
               </div>
             </div>
             <div>
-              <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
-                Briefing
-              </div>
-              <div className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
+              <div className="text-[10px] terminal-text text-muted uppercase mb-1">Briefing</div>
+              <div className="text-xs terminal-text text-muted whitespace-pre-wrap">
                 {scenario.briefing}
               </div>
             </div>
@@ -227,14 +217,14 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
       </Section>
 
       {/* Teams & Objectives */}
-      <Section title="Teams & Objectives" badge={teams.length} color="#a855f7">
+      <Section title="Teams & Objectives" badge={teams.length} color="#1E3A5F">
         <div className="pt-3 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {teams.map((t, i) => (
-              <div key={i} className="border border-robotic-gray-200 rounded px-3 py-2">
-                <div className="text-xs terminal-text text-purple-400 font-bold">{t.team_name}</div>
+              <div key={i} className="border border-border rounded px-3 py-2">
+                <div className="text-xs terminal-text text-brand font-bold">{t.team_name}</div>
                 {t.team_description && (
-                  <div className="text-[10px] terminal-text text-robotic-yellow/40 mt-1">
+                  <div className="text-[10px] terminal-text text-muted mt-1">
                     {t.team_description}
                   </div>
                 )}
@@ -243,13 +233,13 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
           </div>
           {objectives.length > 0 && (
             <div>
-              <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
+              <div className="text-[10px] terminal-text text-muted uppercase mb-1">
                 Objectives ({objectives.length})
               </div>
               <div className="space-y-1">
                 {objectives.map((obj, i) => (
-                  <div key={i} className="text-xs terminal-text text-robotic-yellow/60 flex gap-2">
-                    <span className="text-robotic-yellow/30">{i + 1}.</span>
+                  <div key={i} className="text-xs terminal-text text-muted flex gap-2">
+                    <span className="text-muted">{i + 1}.</span>
                     <span>
                       {((obj as Record<string, unknown>).description as string) ||
                         JSON.stringify(obj)}
@@ -270,36 +260,31 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
               const findings = doctrines.perTeamDoctrines[teamName] ?? [];
               const workflow = doctrines.teamWorkflows?.[teamName];
               return (
-                <div key={teamName} className="border border-robotic-gray-200 rounded p-3">
-                  <div className="text-xs terminal-text text-orange-400 font-bold mb-2">
-                    {teamName}
-                  </div>
+                <div key={teamName} className="border border-border rounded p-3">
+                  <div className="text-xs terminal-text text-accent font-bold mb-2">{teamName}</div>
 
                   {/* Doctrine findings */}
                   {findings.length === 0 && !workflow && (
-                    <div className="text-[10px] terminal-text text-robotic-yellow/20 italic">
+                    <div className="text-[10px] terminal-text text-muted italic">
                       No doctrine data returned for this team. The AI research may have timed out --
                       try re-running.
                     </div>
                   )}
                   {findings.map((f, i) => (
                     <div key={i} className="mb-2">
-                      <div className="text-[10px] terminal-text text-robotic-yellow/40">
+                      <div className="text-[10px] terminal-text text-muted">
                         {f.domain} — <span className="italic">{f.source}</span>
                       </div>
                       <ul className="mt-1 space-y-0.5">
                         {f.key_points.map((kp, j) => (
-                          <li
-                            key={j}
-                            className="text-[10px] terminal-text text-robotic-yellow/60 flex gap-1"
-                          >
-                            <span className="text-robotic-yellow/30">-</span>
+                          <li key={j} className="text-[10px] terminal-text text-muted flex gap-1">
+                            <span className="text-muted">-</span>
                             <span>{kp}</span>
                           </li>
                         ))}
                       </ul>
                       {f.decision_thresholds && (
-                        <div className="text-[10px] terminal-text text-yellow-500/60 mt-1">
+                        <div className="text-[10px] terminal-text text-accent mt-1">
                           Threshold: {f.decision_thresholds}
                         </div>
                       )}
@@ -308,34 +293,26 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
 
                   {/* Workflow */}
                   {workflow && (
-                    <div className="border-t border-robotic-gray-200 pt-2 mt-2">
-                      <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
+                    <div className="border-t border-border pt-2 mt-2">
+                      <div className="text-[10px] terminal-text text-muted uppercase mb-1">
                         Workflow
                       </div>
-                      <div className="text-[10px] terminal-text text-cyan-400/70 mb-1">
+                      <div className="text-[10px] terminal-text text-accent mb-1">
                         Endgame: {workflow.endgame}
                       </div>
                       <ol className="space-y-0.5">
                         {workflow.steps.map((step, j) => (
-                          <li
-                            key={j}
-                            className="text-[10px] terminal-text text-robotic-yellow/50 flex gap-1"
-                          >
-                            <span className="text-robotic-yellow/30 w-4">{j + 1}.</span>
+                          <li key={j} className="text-[10px] terminal-text text-muted flex gap-1">
+                            <span className="text-muted w-4">{j + 1}.</span>
                             <span>{step}</span>
                           </li>
                         ))}
                       </ol>
                       {workflow.sop_checklist && workflow.sop_checklist.length > 0 && (
                         <div className="mt-1">
-                          <div className="text-[10px] terminal-text text-robotic-yellow/30">
-                            SOP Checklist:
-                          </div>
+                          <div className="text-[10px] terminal-text text-muted">SOP Checklist:</div>
                           {workflow.sop_checklist.map((item, j) => (
-                            <div
-                              key={j}
-                              className="text-[10px] terminal-text text-robotic-yellow/40 ml-2"
-                            >
+                            <div key={j} className="text-[10px] terminal-text text-muted ml-2">
                               - {item}
                             </div>
                           ))}
@@ -355,16 +332,12 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
         <Section title="General Standards & References" badge={doctrines.standardsFindings.length}>
           <div className="pt-3 space-y-2">
             {doctrines.standardsFindings.map((f, i) => (
-              <div key={i} className="border-b border-robotic-gray-200 pb-2 last:border-b-0">
-                <div className="text-[10px] terminal-text text-robotic-yellow/50 font-bold">
-                  {f.domain}
-                </div>
-                <div className="text-[10px] terminal-text text-robotic-yellow/30 italic">
-                  {f.source}
-                </div>
+              <div key={i} className="border-b border-border pb-2 last:border-b-0">
+                <div className="text-[10px] terminal-text text-muted font-bold">{f.domain}</div>
+                <div className="text-[10px] terminal-text text-muted italic">{f.source}</div>
                 <ul className="mt-1 space-y-0.5">
                   {f.key_points.map((kp, j) => (
-                    <li key={j} className="text-[10px] terminal-text text-robotic-yellow/50">
+                    <li key={j} className="text-[10px] terminal-text text-muted">
                       - {kp}
                     </li>
                   ))}
@@ -380,16 +353,16 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
         <Section title="Hazard & Environmental Analysis" color="#ef4444">
           <div className="pt-3 space-y-3">
             <div>
-              <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
+              <div className="text-[10px] terminal-text text-muted uppercase mb-1">
                 Overall Assessment
               </div>
-              <div className="text-xs terminal-text text-robotic-yellow/60 whitespace-pre-wrap">
+              <div className="text-xs terminal-text text-muted whitespace-pre-wrap">
                 {enrichment.overallAssessment}
               </div>
             </div>
             {enrichment.hazardAnalysis.length > 0 && (
               <div>
-                <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
+                <div className="text-[10px] terminal-text text-muted uppercase mb-1">
                   Hazard Analyses ({enrichment.hazardAnalysis.length})
                 </div>
                 {enrichment.hazardAnalysis.map((ha, i) => {
@@ -404,9 +377,9 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                   const description = (ha.generatedDescription as string) || '';
 
                   return (
-                    <div key={i} className="border border-robotic-gray-200 rounded p-3 mb-2">
+                    <div key={i} className="border border-border rounded p-3 mb-2">
                       <div className="flex justify-between items-center mb-2">
-                        <div className="text-xs terminal-text font-bold text-red-400">
+                        <div className="text-xs terminal-text font-bold text-danger">
                           {material || hazardId || `Hazard ${i + 1}`}
                         </div>
                         {riskLevel && (
@@ -427,17 +400,17 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                       </div>
 
                       {description && (
-                        <div className="text-[10px] terminal-text text-robotic-yellow/60 mb-2 whitespace-pre-wrap">
+                        <div className="text-[10px] terminal-text text-muted mb-2 whitespace-pre-wrap">
                           {description}
                         </div>
                       )}
 
                       {blastInteraction && (
                         <div className="mb-1.5">
-                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                          <span className="text-[9px] terminal-text text-muted uppercase">
                             Blast Interaction:{' '}
                           </span>
-                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
+                          <span className="text-[10px] terminal-text text-muted">
                             {blastInteraction}
                           </span>
                         </div>
@@ -445,10 +418,10 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
 
                       {secondaryEffects.length > 0 && (
                         <div className="mb-1.5">
-                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                          <span className="text-[9px] terminal-text text-muted uppercase">
                             Secondary Effects:{' '}
                           </span>
-                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
+                          <span className="text-[10px] terminal-text text-muted">
                             {secondaryEffects.join('; ')}
                           </span>
                         </div>
@@ -456,34 +429,28 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
 
                       {timeline && (
                         <div className="mb-1.5">
-                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                          <span className="text-[9px] terminal-text text-muted uppercase">
                             Progression:{' '}
                           </span>
-                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
-                            {timeline}
-                          </span>
+                          <span className="text-[10px] terminal-text text-muted">{timeline}</span>
                         </div>
                       )}
 
                       {chainRisk && (
                         <div className="mb-1.5">
-                          <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                          <span className="text-[9px] terminal-text text-muted uppercase">
                             Chain Reaction Risk:{' '}
                           </span>
-                          <span className="text-[10px] terminal-text text-robotic-yellow/50">
-                            {chainRisk}
-                          </span>
+                          <span className="text-[10px] terminal-text text-muted">{chainRisk}</span>
                         </div>
                       )}
 
                       {guidance && (
-                        <div className="mt-2 border-t border-robotic-gray-200 pt-1.5">
-                          <span className="text-[9px] terminal-text text-cyan-500/70 uppercase">
+                        <div className="mt-2 border-t border-border pt-1.5">
+                          <span className="text-[9px] terminal-text text-accent uppercase">
                             Responder Guidance:{' '}
                           </span>
-                          <span className="text-[10px] terminal-text text-cyan-400/60">
-                            {guidance}
-                          </span>
+                          <span className="text-[10px] terminal-text text-accent">{guidance}</span>
                         </div>
                       )}
                     </div>
@@ -493,7 +460,7 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
             )}
             {enrichment.generatedCasualties && enrichment.generatedCasualties.length > 0 && (
               <div>
-                <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-2">
+                <div className="text-[10px] terminal-text text-muted uppercase mb-2">
                   Generated Casualties ({enrichment.generatedCasualties.length})
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -511,12 +478,9 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                     const tc = tagColors[tag] || tagColors.green;
 
                     return (
-                      <div
-                        key={i}
-                        className={`border border-robotic-gray-200 rounded p-2 ${tc.bg}`}
-                      >
+                      <div key={i} className={`border border-border rounded p-2 ${tc.bg}`}>
                         <div className="flex justify-between items-center mb-1">
-                          <span className="text-[10px] terminal-text text-robotic-yellow/30">
+                          <span className="text-[10px] terminal-text text-muted">
                             {(c.id as string) || `Casualty ${i + 1}`}
                           </span>
                           <span
@@ -526,50 +490,44 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                           </span>
                         </div>
                         {desc && (
-                          <div className="text-[10px] terminal-text text-robotic-yellow/60 mb-1.5">
-                            {desc}
-                          </div>
+                          <div className="text-[10px] terminal-text text-muted mb-1.5">{desc}</div>
                         )}
                         {Object.keys(signs).length > 0 && (
                           <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[9px] terminal-text">
                             {signs.breathing && (
                               <div>
-                                <span className="text-robotic-yellow/30">Breathing:</span>{' '}
-                                <span className="text-robotic-yellow/50">{signs.breathing}</span>
+                                <span className="text-muted">Breathing:</span>{' '}
+                                <span className="text-muted">{signs.breathing}</span>
                               </div>
                             )}
                             {signs.pulse && (
                               <div>
-                                <span className="text-robotic-yellow/30">Pulse:</span>{' '}
-                                <span className="text-robotic-yellow/50">{signs.pulse}</span>
+                                <span className="text-muted">Pulse:</span>{' '}
+                                <span className="text-muted">{signs.pulse}</span>
                               </div>
                             )}
                             {signs.consciousness && (
                               <div>
-                                <span className="text-robotic-yellow/30">Conscious:</span>{' '}
-                                <span className="text-robotic-yellow/50">
-                                  {signs.consciousness}
-                                </span>
+                                <span className="text-muted">Conscious:</span>{' '}
+                                <span className="text-muted">{signs.consciousness}</span>
                               </div>
                             )}
                             {signs.mobility && (
                               <div>
-                                <span className="text-robotic-yellow/30">Mobility:</span>{' '}
-                                <span className="text-robotic-yellow/50">{signs.mobility}</span>
+                                <span className="text-muted">Mobility:</span>{' '}
+                                <span className="text-muted">{signs.mobility}</span>
                               </div>
                             )}
                             {signs.bleeding && (
                               <div>
-                                <span className="text-robotic-yellow/30">Bleeding:</span>{' '}
-                                <span className="text-robotic-yellow/50">{signs.bleeding}</span>
+                                <span className="text-muted">Bleeding:</span>{' '}
+                                <span className="text-muted">{signs.bleeding}</span>
                               </div>
                             )}
                             {signs.visibleInjuries && (
                               <div className="col-span-2">
-                                <span className="text-robotic-yellow/30">Injuries:</span>{' '}
-                                <span className="text-robotic-yellow/50">
-                                  {signs.visibleInjuries}
-                                </span>
+                                <span className="text-muted">Injuries:</span>{' '}
+                                <span className="text-muted">{signs.visibleInjuries}</span>
                               </div>
                             )}
                           </div>
@@ -588,31 +546,28 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                 const challenges = syn.keyChallenges as string[] | undefined;
                 if (!chainReactions?.length && !escalation && !challenges?.length) return null;
                 return (
-                  <div className="border-t border-robotic-gray-200 pt-3 mt-2">
-                    <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-2">
+                  <div className="border-t border-border pt-3 mt-2">
+                    <div className="text-[10px] terminal-text text-muted uppercase mb-2">
                       Scene Synthesis
                     </div>
                     {escalation && (
                       <div className="mb-2">
-                        <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                        <span className="text-[9px] terminal-text text-muted uppercase">
                           Escalation Timeline:{' '}
                         </span>
-                        <div className="text-[10px] terminal-text text-robotic-yellow/50 whitespace-pre-wrap mt-0.5">
+                        <div className="text-[10px] terminal-text text-muted whitespace-pre-wrap mt-0.5">
                           {escalation}
                         </div>
                       </div>
                     )}
                     {chainReactions && chainReactions.length > 0 && (
                       <div className="mb-2">
-                        <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                        <span className="text-[9px] terminal-text text-muted uppercase">
                           Chain Reactions:{' '}
                         </span>
                         <ul className="mt-0.5">
                           {chainReactions.map((cr, j) => (
-                            <li
-                              key={j}
-                              className="text-[10px] terminal-text text-robotic-yellow/50"
-                            >
+                            <li key={j} className="text-[10px] terminal-text text-muted">
                               - {cr}
                             </li>
                           ))}
@@ -621,15 +576,12 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
                     )}
                     {challenges && challenges.length > 0 && (
                       <div>
-                        <span className="text-[9px] terminal-text text-robotic-yellow/30 uppercase">
+                        <span className="text-[9px] terminal-text text-muted uppercase">
                           Key Challenges:{' '}
                         </span>
                         <ul className="mt-0.5">
                           {challenges.map((ch, j) => (
-                            <li
-                              key={j}
-                              className="text-[10px] terminal-text text-robotic-yellow/50"
-                            >
+                            <li key={j} className="text-[10px] terminal-text text-muted">
                               - {ch}
                             </li>
                           ))}
@@ -646,7 +598,7 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
       {/* Area Summary */}
       {areaSummary && (
         <Section title="Area Research Summary">
-          <div className="pt-3 text-xs terminal-text text-robotic-yellow/50 whitespace-pre-wrap max-h-48 overflow-y-auto">
+          <div className="pt-3 text-xs terminal-text text-muted whitespace-pre-wrap max-h-48 overflow-y-auto">
             {areaSummary}
           </div>
         </Section>
@@ -654,15 +606,15 @@ export function ResearchStep({ wizardDraftId, onComplete }: ResearchStepProps) {
 
       {/* Completion indicator + re-run option */}
       <div className="text-center py-4 space-y-3">
-        <div className="text-xs terminal-text text-green-500/70">
-          Research complete. Click [NEXT] to proceed.
+        <div className="text-xs terminal-text text-success">
+          Research complete. Click Next to proceed.
         </div>
         <button
           onClick={() => {
             setData(null);
             setElapsed(0);
           }}
-          className="text-[10px] terminal-text text-robotic-yellow/30 hover:text-robotic-yellow/60 border border-robotic-gray-200 px-3 py-1 rounded"
+          className="text-[10px] terminal-text text-muted hover:text-ink border border-border px-3 py-1 rounded"
         >
           Re-run Research (if results are incomplete)
         </button>

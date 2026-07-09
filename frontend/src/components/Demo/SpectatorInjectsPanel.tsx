@@ -205,38 +205,30 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
       <button
         onClick={() => setCollapsed((c) => !c)}
         className={`flex items-center justify-between px-3 py-2 rounded-t-lg border backdrop-blur-md transition-all ${
-          newFlash
-            ? 'bg-red-600/30 border-red-500/60'
-            : 'bg-robotic-gray-300/90 border-robotic-yellow/40'
+          newFlash ? 'bg-danger/20 border-danger/60' : 'bg-surface/90 border-border'
         }`}
       >
         <div className="flex items-center gap-2">
-          <span className="text-xs terminal-text uppercase text-robotic-yellow font-bold">
-            INJECTS
-          </span>
+          <span className="text-xs terminal-text uppercase text-ink font-bold">INJECTS</span>
           {injects.length > 0 && (
-            <span className="px-1.5 py-0.5 text-[10px] terminal-text bg-robotic-red/80 text-white rounded-full min-w-[18px] text-center">
+            <span className="px-1.5 py-0.5 text-[10px] terminal-text bg-danger/80 text-white rounded-full min-w-[18px] text-center">
               {injects.length}
             </span>
           )}
         </div>
-        <span className="text-xs terminal-text text-robotic-yellow/50">
-          {collapsed ? '▲' : '▼'}
-        </span>
+        <span className="text-xs terminal-text text-muted">{collapsed ? '▲' : '▼'}</span>
       </button>
 
       {/* Inject list */}
       {!collapsed && (
         <div
           ref={listRef}
-          className="w-72 overflow-y-auto rounded-b-lg border border-t-0 border-robotic-yellow/30 bg-robotic-gray-300/90 backdrop-blur-md scrollbar-thin scrollbar-thumb-robotic-yellow/30"
+          className="w-72 overflow-y-auto rounded-b-lg border border-t-0 border-border bg-surface/90 backdrop-blur-md scrollbar-thin scrollbar-thumb-border"
           style={{ maxHeight: '340px' }}
         >
           {injects.length === 0 && (
             <div className="px-3 py-6 text-center">
-              <span className="text-xs terminal-text text-robotic-yellow/40">
-                No injects yet...
-              </span>
+              <span className="text-xs terminal-text text-muted">No injects yet...</span>
             </div>
           )}
 
@@ -246,7 +238,7 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
             return (
               <div
                 key={inj.id}
-                className={`px-3 py-2.5 border-b border-robotic-yellow/10 ${style.bg} transition-all ${
+                className={`px-3 py-2.5 border-b border-border ${style.bg} transition-all ${
                   isNew ? 'animate-pulse' : ''
                 }`}
                 style={{ borderLeftWidth: 3, borderLeftColor: style.borderColor }}
@@ -258,7 +250,7 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
                   >
                     {inj.severity}
                   </span>
-                  <span className="px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded bg-robotic-gray-200/50 text-robotic-yellow/70 border border-robotic-yellow/20">
+                  <span className="px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded bg-surface-2/50 text-muted border border-border">
                     {formatTriggerType(inj.triggerType)}
                   </span>
                   {inj.natoGrade && (
@@ -282,7 +274,7 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
                       {inj.natoGrade}
                     </span>
                   )}
-                  <span className="ml-auto text-[9px] terminal-text text-robotic-yellow/40">
+                  <span className="ml-auto text-[9px] terminal-text text-muted">
                     {inj.timestamp.toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -290,11 +282,11 @@ export function SpectatorInjectsPanel({ sessionId }: SpectatorInjectsPanelProps)
                     })}
                   </span>
                 </div>
-                <div className="text-xs terminal-text text-robotic-yellow font-semibold leading-tight">
+                <div className="text-xs terminal-text text-ink font-semibold leading-tight">
                   {inj.title}
                 </div>
                 {inj.description && (
-                  <div className="text-[10px] terminal-text text-robotic-yellow/50 mt-1 leading-snug line-clamp-3">
+                  <div className="text-[10px] terminal-text text-muted mt-1 leading-snug line-clamp-3">
                     {inj.description}
                   </div>
                 )}

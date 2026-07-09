@@ -51,13 +51,13 @@ export const MediaFeed = ({ sessionId }: MediaFeedProps) => {
   const getSentimentColor = (sentiment: string) => {
     switch (sentiment) {
       case 'positive':
-        return 'bg-robotic-yellow/20 text-robotic-yellow border-robotic-yellow';
+        return 'bg-accent/10 text-ink border-border';
       case 'negative':
-        return 'bg-robotic-orange/20 text-robotic-orange border-robotic-orange';
+        return 'bg-accent/10 text-accent border-accent';
       case 'critical':
-        return 'bg-red-900/20 text-red-400 border-red-400';
+        return 'bg-danger/10 text-danger border-danger';
       default:
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
+        return 'bg-surface-2 text-muted border-border';
     }
   };
 
@@ -65,9 +65,7 @@ export const MediaFeed = ({ sessionId }: MediaFeedProps) => {
     return (
       <div className="military-border p-6">
         <div className="text-center">
-          <div className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-            [LOADING_MEDIA]
-          </div>
+          <div className="text-sm terminal-text text-muted animate-pulse">Loading media…</div>
         </div>
       </div>
     );
@@ -76,7 +74,7 @@ export const MediaFeed = ({ sessionId }: MediaFeedProps) => {
   return (
     <div className="space-y-4">
       <div className="military-border p-4">
-        <h3 className="text-lg terminal-text uppercase">[MEDIA_FEED] News & Social Media</h3>
+        <h3 className="text-lg terminal-text">News &amp; social media</h3>
       </div>
       <div className="space-y-3">
         {posts.map((post) => (
@@ -84,31 +82,29 @@ export const MediaFeed = ({ sessionId }: MediaFeedProps) => {
             key={post.id}
             className={`military-border p-4 border-l-4 ${
               post.is_misinformation
-                ? 'border-red-500 bg-red-900/10'
+                ? 'border-danger bg-danger/10'
                 : getSentimentColor(post.sentiment)
             }`}
           >
             <div className="flex justify-between items-start mb-2">
               <div className="flex-1">
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-                    {post.source}
-                  </span>
+                  <span className="text-xs terminal-text text-muted uppercase">{post.source}</span>
                   {post.is_misinformation && (
-                    <span className="text-xs terminal-text text-red-400 px-2 py-1 bg-red-900/20 border border-red-400">
-                      [MISINFORMATION]
+                    <span className="text-xs terminal-text text-danger px-2 py-1 bg-danger/10 border border-danger">
+                      Misinformation
                     </span>
                   )}
                 </div>
                 <h4 className="text-sm terminal-text font-semibold mb-1">{post.headline}</h4>
-                <p className="text-xs terminal-text text-robotic-yellow/70 mb-2">{post.content}</p>
+                <p className="text-xs terminal-text text-muted mb-2">{post.content}</p>
                 <div className="flex items-center gap-2">
                   <span
                     className={`text-xs terminal-text px-2 py-1 border ${getSentimentColor(post.sentiment)}`}
                   >
                     {post.sentiment.toUpperCase()}
                   </span>
-                  <span className="text-xs terminal-text text-robotic-yellow/50">
+                  <span className="text-xs terminal-text text-muted">
                     {new Date(post.created_at).toLocaleString()}
                   </span>
                 </div>
@@ -118,9 +114,7 @@ export const MediaFeed = ({ sessionId }: MediaFeedProps) => {
         ))}
         {posts.length === 0 && (
           <div className="military-border p-8 text-center">
-            <p className="text-sm terminal-text text-robotic-yellow/50">
-              [NO_MEDIA] No media posts yet
-            </p>
+            <p className="text-sm terminal-text text-muted">No media posts yet</p>
           </div>
         )}
       </div>

@@ -63,9 +63,9 @@ function statusBadge(status: string): { text: string; cls: string } {
 }
 
 function verdictStyle(v: string): { icon: string; cls: string } {
-  if (v === 'positive' || v === 'correct') return { icon: '\u2713', cls: 'text-green-400' };
-  if (v === 'negative' || v === 'issue_detected') return { icon: '\u2717', cls: 'text-red-400' };
-  return { icon: '\u25CB', cls: 'text-yellow-400' };
+  if (v === 'positive' || v === 'correct') return { icon: '\u2713', cls: 'text-success' };
+  if (v === 'negative' || v === 'issue_detected') return { icon: '\u2717', cls: 'text-danger' };
+  return { icon: '\u25CB', cls: 'text-warning' };
 }
 
 export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelProps) {
@@ -196,23 +196,19 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
     <div className="absolute bottom-[30px] left-0 right-0 z-[998] flex flex-col">
       {/* Header bar */}
       <div
-        className={`flex items-center px-4 py-1.5 border-t border-x border-robotic-yellow/40 rounded-t-lg mx-4 backdrop-blur-md transition-all cursor-pointer ${
-          newFlash
-            ? 'bg-blue-600/30 border-blue-500/60'
-            : 'bg-robotic-gray-300/95 border-robotic-yellow/40'
+        className={`flex items-center px-4 py-1.5 border-t border-x border-border rounded-t-lg mx-4 backdrop-blur-md transition-all cursor-pointer ${
+          newFlash ? 'bg-brand/20 border-brand/60' : 'bg-surface/90 border-border'
         }`}
         onClick={() => setCollapsed((c) => !c)}
       >
         <div className="flex items-center gap-2">
-          <span className="text-xs terminal-text uppercase text-robotic-yellow font-bold">
-            ACTIVITY
-          </span>
+          <span className="text-xs terminal-text uppercase text-ink font-bold">ACTIVITY</span>
           {decisions.length > 0 && (
-            <span className="px-1.5 py-0.5 text-[10px] terminal-text bg-blue-600/80 text-white rounded-full min-w-[18px] text-center">
+            <span className="px-1.5 py-0.5 text-[10px] terminal-text bg-brand/80 text-white rounded-full min-w-[18px] text-center">
               {decisions.length}
             </span>
           )}
-          <span className="text-xs terminal-text text-robotic-yellow/50">
+          <span className="text-xs terminal-text text-muted">
             {collapsed ? '\u25B2' : '\u25BC'}
           </span>
         </div>
@@ -220,7 +216,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
 
       {/* Horizontal scrollable cards */}
       {!collapsed && (
-        <div className="bg-robotic-gray-300/95 border-t border-robotic-yellow/30 backdrop-blur-md">
+        <div className="bg-surface/90 border-t border-border backdrop-blur-md">
           <div
             ref={scrollRef}
             className="flex gap-3 px-4 py-2 overflow-x-auto"
@@ -228,9 +224,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
           >
             {decisions.length === 0 && (
               <div className="flex items-center justify-center w-full py-4">
-                <span className="text-xs terminal-text text-robotic-yellow/40">
-                  No decisions yet...
-                </span>
+                <span className="text-xs terminal-text text-muted">No decisions yet...</span>
               </div>
             )}
 
@@ -244,7 +238,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
               return (
                 <div
                   key={dec.id}
-                  className={`shrink-0 rounded-lg border border-robotic-yellow/20 bg-black/30 cursor-pointer hover:bg-black/40 transition-all ${
+                  className={`shrink-0 rounded-lg border border-border bg-bg cursor-pointer hover:bg-surface-2 transition-all ${
                     isNew ? 'animate-pulse' : ''
                   } ${isExpanded ? 'w-[400px]' : 'w-[280px]'}`}
                   style={{ borderTopWidth: 3, borderTopColor: color }}
@@ -266,14 +260,14 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
                         {badge.text}
                       </span>
                       {dec.type && (
-                        <span className="px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded bg-robotic-gray-200/50 text-robotic-yellow/70 border border-robotic-yellow/20">
+                        <span className="px-1.5 py-0.5 text-[9px] terminal-text uppercase rounded bg-surface-2/50 text-muted border border-border">
                           {dec.type.replace(/_/g, ' ')}
                         </span>
                       )}
                       {verdict && (
                         <span className={`text-xs font-bold ${verdict.cls}`}>{verdict.icon}</span>
                       )}
-                      <span className="ml-auto text-[9px] terminal-text text-robotic-yellow/40 shrink-0">
+                      <span className="ml-auto text-[9px] terminal-text text-muted shrink-0">
                         {dec.timestamp.toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -283,14 +277,14 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
                     </div>
 
                     {/* Title */}
-                    <div className="text-xs terminal-text text-robotic-yellow font-semibold leading-tight mb-1">
+                    <div className="text-xs terminal-text text-ink font-semibold leading-tight mb-1">
                       {dec.title}
                     </div>
 
                     {/* Description */}
                     {dec.description && (
                       <div
-                        className={`text-[11px] terminal-text text-robotic-yellow/60 leading-snug whitespace-pre-wrap overflow-y-auto ${
+                        className={`text-[11px] terminal-text text-muted leading-snug whitespace-pre-wrap overflow-y-auto ${
                           isExpanded ? 'max-h-[100px]' : 'line-clamp-2'
                         }`}
                       >
@@ -300,11 +294,11 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
 
                     {/* AI Evaluation */}
                     {isExpanded && dec.aiNote && (
-                      <div className="mt-2 px-2 py-1.5 rounded bg-black/40 border border-robotic-yellow/15">
-                        <div className="text-[9px] terminal-text text-robotic-yellow/40 uppercase mb-0.5">
+                      <div className="mt-2 px-2 py-1.5 rounded bg-surface-2 border border-border">
+                        <div className="text-[9px] terminal-text text-muted uppercase mb-0.5">
                           AI Evaluation
                         </div>
-                        <div className="text-[11px] terminal-text text-robotic-yellow/70 leading-snug whitespace-pre-wrap">
+                        <div className="text-[11px] terminal-text text-muted leading-snug whitespace-pre-wrap">
                           {dec.aiNote}
                         </div>
                       </div>
@@ -312,7 +306,7 @@ export function SpectatorDecisionsPanel({ sessionId }: SpectatorDecisionsPanelPr
 
                     {/* Expand hint */}
                     {!isExpanded && dec.description && dec.description.length > 100 && (
-                      <div className="text-[9px] terminal-text text-robotic-yellow/30 mt-1">
+                      <div className="text-[9px] terminal-text text-muted mt-1">
                         Click to expand...
                       </div>
                     )}

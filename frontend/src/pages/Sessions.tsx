@@ -96,55 +96,50 @@ export const Sessions = () => {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'in_progress':
-        return 'bg-robotic-yellow/20 text-robotic-yellow border-robotic-yellow';
+        return 'bg-success/10 text-success';
       case 'completed':
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
+        return 'bg-surface-2 text-muted';
       case 'paused':
-        return 'bg-robotic-orange/20 text-robotic-orange border-robotic-orange';
+        return 'bg-accent/10 text-accent';
       default:
-        return 'bg-robotic-gray-200 text-robotic-gray-50 border-robotic-gray-200';
+        return 'bg-brand/10 text-brand';
     }
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center scanline">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg terminal-text mb-2 animate-pulse">[LOADING]</div>
-          <div className="text-xs terminal-text text-robotic-yellow/50">Loading sessions...</div>
+          <div className="text-lg text-ink mb-2 animate-pulse">Loading</div>
+          <div className="text-xs text-muted">Loading sessions…</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen scanline">
+    <div className="min-h-screen">
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-4 mb-4">
-          <Link
-            to="/dashboard"
-            className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow"
-          >
-            ← [HOME]
+          <Link to="/dashboard" className="text-sm text-muted hover:text-brand">
+            ← Home
           </Link>
         </div>
         {/* Header */}
-        <div className="military-border p-6 mb-6">
+        <div className="bg-surface border border-border rounded-xl shadow-sm p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl terminal-text uppercase tracking-wider mb-2">
-                [SESSIONS] Active Exercises
-              </h1>
-              <p className="text-xs terminal-text text-robotic-yellow/70">
+              <h1 className="text-2xl font-extrabold text-brand mb-1">Active exercises</h1>
+              <p className="text-sm text-muted">
                 {sessions.length} session{sessions.length !== 1 ? 's' : ''} available
               </p>
             </div>
             {isTrainer && (
               <button
                 onClick={() => setShowCreateModal(true)}
-                className="military-button px-6 py-3"
+                className="military-button px-5 py-2.5"
               >
-                [CREATE_SESSION]
+                + Create session
               </button>
             )}
           </div>
@@ -153,34 +148,55 @@ export const Sessions = () => {
         {/* Sessions List */}
         <div className="space-y-4">
           {sessions.map((session) => (
-            <div key={session.id} className="military-border p-6">
+            <div
+              key={session.id}
+              className="bg-surface border border-border rounded-xl shadow-sm p-6"
+            >
               <div className="flex justify-between items-start mb-4">
                 <div className="flex-1">
-                  <div className="flex items-center gap-4 mb-2">
-                    <h3 className="text-lg terminal-text uppercase">
-                      {session.scenarios?.title || 'Unknown Scenario'}
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-lg font-bold text-ink">
+                      {session.scenarios?.title || 'Unknown scenario'}
                     </h3>
                     {session.join_token?.startsWith('demo-') && (
-                      <span className="text-[10px] terminal-text px-2 py-0.5 bg-robotic-red/20 text-robotic-red border border-robotic-red rounded uppercase font-bold">
-                        DEMO
+                      <span className="text-[10px] px-2 py-0.5 bg-accent/10 text-accent rounded-full uppercase font-bold tracking-wide">
+                        Demo
                       </span>
                     )}
                     <span
-                      className={`text-xs terminal-text px-2 py-1 border ${getStatusColor(session.status)}`}
+                      className={`text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${getStatusColor(session.status)}`}
                     >
-                      {session.status.toUpperCase().replace('_', ' ')}
+                      {session.status.replace('_', ' ')}
                     </span>
                   </div>
-                  <div className="flex flex-wrap gap-4 text-xs terminal-text text-robotic-yellow/70 mb-4">
-                    <span>[CATEGORY] {session.scenarios?.category}</span>
-                    <span>[DIFFICULTY] {session.scenarios?.difficulty}</span>
-                    <span>[TRAINER] {session.trainer?.full_name || 'Unknown'}</span>
+                  <div className="flex flex-wrap gap-4 text-xs text-muted mb-4">
+                    <span>
+                      Category ·{' '}
+                      <span className="text-ink font-medium capitalize">
+                        {session.scenarios?.category}
+                      </span>
+                    </span>
+                    <span>
+                      Difficulty ·{' '}
+                      <span className="text-ink font-medium capitalize">
+                        {session.scenarios?.difficulty}
+                      </span>
+                    </span>
+                    <span>
+                      Trainer ·{' '}
+                      <span className="text-ink font-medium">
+                        {session.trainer?.full_name || 'Unknown'}
+                      </span>
+                    </span>
                     {session.participants && (
-                      <span>[PARTICIPANTS] {session.participants.length}</span>
+                      <span>
+                        Participants ·{' '}
+                        <span className="text-ink font-medium">{session.participants.length}</span>
+                      </span>
                     )}
                   </div>
                   {session.start_time && (
-                    <div className="text-xs terminal-text text-robotic-yellow/50">
+                    <div className="text-xs text-muted">
                       Started: {new Date(session.start_time).toLocaleString()}
                     </div>
                   )}
@@ -191,7 +207,7 @@ export const Sessions = () => {
                       onClick={() => handleStartSession(session.id)}
                       className="military-button px-4 py-2 text-sm"
                     >
-                      [START]
+                      Start
                     </button>
                   )}
                   {(session.status === 'in_progress' ||
@@ -202,10 +218,10 @@ export const Sessions = () => {
                       className="military-button px-4 py-2 text-sm"
                     >
                       {session.status === 'completed'
-                        ? '[VIEW_AAR]'
+                        ? 'View AAR'
                         : session.status === 'in_progress'
-                          ? '[JOIN]'
-                          : '[VIEW]'}
+                          ? 'Join'
+                          : 'View'}
                     </button>
                   )}
                   {session.status === 'in_progress' && session.join_token?.startsWith('demo-') && (
@@ -213,9 +229,9 @@ export const Sessions = () => {
                       onClick={() =>
                         navigate(`/sessions/${session.id}?spectator=true&mode=cinematic`)
                       }
-                      className="px-4 py-2 text-sm terminal-text uppercase border border-robotic-red text-robotic-red hover:bg-robotic-red/10 transition-all"
+                      className="px-4 py-2 text-sm font-semibold rounded-lg border border-danger/40 text-danger hover:bg-danger/10 transition-all"
                     >
-                      [SPECTATE]
+                      Spectate
                     </button>
                   )}
                 </div>
@@ -225,14 +241,10 @@ export const Sessions = () => {
         </div>
 
         {sessions.length === 0 && (
-          <div className="military-border p-12 text-center">
-            <p className="text-lg terminal-text text-robotic-yellow/50 mb-2">
-              [NO_SESSIONS] No sessions available
-            </p>
+          <div className="bg-surface border border-border rounded-xl shadow-sm p-12 text-center">
+            <p className="text-lg text-muted mb-2">No sessions available</p>
             {isTrainer && (
-              <p className="text-sm terminal-text text-robotic-yellow/30">
-                Create a session from a scenario to get started
-              </p>
+              <p className="text-sm text-muted">Create a session from a scenario to get started</p>
             )}
           </div>
         )}

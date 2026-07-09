@@ -26,34 +26,29 @@ export class ErrorBoundary extends Component<Props, State> {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen flex items-center justify-center scanline p-4">
-          <div
-            className="absolute inset-0 opacity-10"
-            style={{
-              backgroundImage:
-                'linear-gradient(rgba(255, 107, 53, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 107, 53, 0.1) 1px, transparent 1px)',
-              backgroundSize: '50px 50px',
-            }}
-          ></div>
-          <div className="max-w-md w-full military-border p-6 relative z-10 border-robotic-orange">
-            <div className="classified-stamp text-xl mb-4 text-center">SYSTEM ERROR</div>
-            <h1 className="text-xl terminal-text text-robotic-orange mb-4 uppercase tracking-wider text-center">
-              [CRITICAL_FAILURE]
-            </h1>
-            <div className="border-l-4 border-robotic-orange bg-robotic-orange/20 p-4 mb-4">
-              <p className="text-sm terminal-text text-robotic-orange">
-                {this.state.error?.message || '[ERROR] An unexpected error occurred'}
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="max-w-md w-full bg-surface border border-border rounded-2xl shadow-lg p-6 relative z-10">
+            <div className="text-xl font-extrabold text-danger mb-4 text-center">
+              Something went wrong
+            </div>
+            <div className="border-l-4 border-danger bg-danger/10 p-4 mb-4 rounded-md">
+              <p className="text-sm text-danger">
+                {this.state.error?.message || 'An unexpected error occurred'}
               </p>
             </div>
             {this.state.error?.message?.includes('Supabase') && (
-              <div className="military-border bg-robotic-yellow/20 border-robotic-yellow p-4 mb-4">
-                <p className="text-xs terminal-text text-robotic-yellow font-semibold mb-2 uppercase">
-                  [CONFIG_ERROR] Missing Supabase Configuration
+              <div className="border-l-4 border-accent bg-accent/10 p-4 mb-4 rounded-md">
+                <p className="text-xs font-semibold text-accent mb-2 uppercase tracking-wide">
+                  Missing Supabase configuration
                 </p>
-                <p className="text-xs terminal-text text-robotic-yellow/70 mb-2">
-                  Create <code className="bg-robotic-gray-300/50 px-1">frontend/.env.local</code>:
+                <p className="text-xs text-muted mb-2">
+                  Create{' '}
+                  <code className="bg-surface-2 border border-border rounded px-1">
+                    frontend/.env.local
+                  </code>
+                  :
                 </p>
-                <pre className="text-xs terminal-text bg-robotic-gray-300 p-2 border border-robotic-yellow/50 overflow-x-auto text-robotic-yellow">
+                <pre className="text-xs font-mono bg-surface-2 p-2 rounded border border-border overflow-x-auto text-ink">
                   {`VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
                 </pre>
@@ -63,7 +58,7 @@ VITE_SUPABASE_ANON_KEY=your-anon-key-here`}
               onClick={() => window.location.reload()}
               className="w-full military-button py-2 px-4"
             >
-              [RELOAD_SYSTEM]
+              Reload
             </button>
           </div>
         </div>

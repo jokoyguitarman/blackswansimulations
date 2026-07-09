@@ -4,18 +4,42 @@ export default {
   theme: {
     extend: {
       colors: {
-        'robotic-yellow': '#FFB800',
-        'robotic-orange': '#FF6B35',
-        'robotic-gold': '#FFD700',
-        'robotic-dark': '#0f0f0f',
-        'robotic-green': '#00FF88',
-        'robotic-red': '#FF4444',
+        // ── Semantic design tokens (light theme; driven by CSS vars) ──
+        bg: 'var(--bg)',
+        surface: 'var(--surface)',
+        'surface-2': 'var(--surface-2)',
+        ink: 'var(--ink)',
+        muted: 'var(--muted)',
+        brand: {
+          DEFAULT: 'var(--brand)',
+          strong: 'var(--brand-strong)',
+        },
+        accent: {
+          DEFAULT: 'var(--accent)',
+          strong: 'var(--accent-strong)',
+        },
+        border: {
+          DEFAULT: 'var(--border)',
+          strong: 'var(--border-strong)',
+        },
+        success: 'var(--success)',
+        warning: 'var(--warning)',
+        danger: 'var(--danger)',
+        // ── Legacy robotic-* names, temporarily aliased to the new
+        //    tokens so un-migrated screens still render in the new skin.
+        //    Removed in Phase 3 once no references remain. ──
+        'robotic-yellow': 'var(--ink)',
+        'robotic-orange': 'var(--accent)',
+        'robotic-gold': 'var(--accent)',
+        'robotic-dark': 'var(--bg)',
+        'robotic-green': 'var(--success)',
+        'robotic-red': 'var(--danger)',
         'robotic-gray': {
-          50: '#4a4a4a',
-          100: '#3a3a3a',
-          200: '#2d2d2d',
-          300: '#1a1a1a',
-          400: '#0f0f0f',
+          50: 'var(--muted)',
+          100: 'var(--border-strong)',
+          200: 'var(--surface-2)',
+          300: 'var(--surface)',
+          400: 'var(--bg)',
         },
         wa: {
           bg: '#0B141A',
@@ -30,14 +54,9 @@ export default {
           border: '#86969626',
         },
       },
-      backgroundImage: {
-        'gradient-robotic': 'linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%)',
-        'gradient-yellow-orange': 'linear-gradient(135deg, #FFB800 0%, #FF6B35 100%)',
-        'gradient-grey': 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
-      },
       fontFamily: {
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
-        orbitron: ['Orbitron', 'sans-serif'],
       },
     },
   },

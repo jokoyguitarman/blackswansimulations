@@ -66,15 +66,15 @@ export const NotificationBanner = () => {
   const getBannerStyles = () => {
     switch (topNotification.priority) {
       case 'critical':
-        return 'bg-red-900 border-red-500 text-red-100';
+        return 'bg-danger border-danger text-white';
       case 'high':
-        return 'bg-robotic-orange/90 border-robotic-orange text-white';
+        return 'bg-accent border-accent text-white';
       case 'medium':
-        return 'bg-robotic-yellow/90 border-robotic-yellow text-robotic-gray-300';
+        return 'bg-brand border-brand text-white';
       case 'low':
-        return 'bg-green-900/90 border-green-500 text-green-100';
+        return 'bg-success border-success text-white';
       default:
-        return 'bg-robotic-gray-200 border-robotic-gray-50 text-robotic-yellow';
+        return 'bg-surface-2 border-border text-ink';
     }
   };
 
@@ -107,37 +107,33 @@ export const NotificationBanner = () => {
 
   return (
     <div
-      className={`fixed top-0 left-0 right-0 z-50 military-border border-b-4 ${getBannerStyles()} p-4 shadow-lg`}
+      className={`fixed top-0 left-0 right-0 z-50 border-b-4 ${getBannerStyles()} p-4 shadow-lg`}
       role="alert"
     >
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 flex-1">
           <span className="text-2xl">{getIcon()}</span>
           <div className="flex-1">
-            <h3 className="text-sm terminal-text font-semibold uppercase mb-1">
-              {topNotification.title}
-            </h3>
-            <p className="text-xs terminal-text opacity-90">{topNotification.message}</p>
+            <h3 className="text-sm font-bold mb-1">{topNotification.title}</h3>
+            <p className="text-xs opacity-90">{topNotification.message}</p>
           </div>
-          {unreadCount > 1 && (
-            <span className="text-xs terminal-text opacity-70">+{unreadCount - 1} more</span>
-          )}
+          {unreadCount > 1 && <span className="text-xs opacity-70">+{unreadCount - 1} more</span>}
         </div>
         <div className="flex items-center gap-2">
           {topNotification.action_url && (
             <button
               onClick={handleAction}
-              className="px-3 py-1 text-xs terminal-text uppercase border border-current hover:bg-white/20 transition-colors"
+              className="px-3 py-1 text-xs font-semibold rounded-md border border-current hover:bg-white/20 transition-colors"
             >
-              [VIEW]
+              View
             </button>
           )}
           <button
             onClick={handleClose}
-            className="px-2 py-1 text-xs terminal-text uppercase hover:bg-white/20 transition-colors"
+            className="px-2 py-1 text-xs font-semibold rounded-md hover:bg-white/20 transition-colors"
             aria-label="Close notification"
           >
-            [CLOSE]
+            Close
           </button>
         </div>
       </div>

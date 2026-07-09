@@ -157,9 +157,9 @@ export const TeamAssignmentModal = ({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-        <div className="military-border bg-robotic-gray-300 p-8">
-          <p className="terminal-text text-robotic-yellow">Loading...</p>
+      <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50">
+        <div className="bg-surface border border-border rounded-2xl shadow-lg p-8">
+          <p className="terminal-text text-ink">Loading…</p>
         </div>
       </div>
     );
@@ -169,12 +169,12 @@ export const TeamAssignmentModal = ({
   const assigned = participants.filter((p) => getEffectiveTeams(p.user_id).length > 0);
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-6 max-w-5xl w-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg p-6 max-w-5xl w-full max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl terminal-text uppercase">[TEAM_ASSIGNMENTS]</h2>
+          <h2 className="text-xl terminal-text">Team assignments</h2>
           {pendingChanges.length > 0 && (
-            <span className="text-xs terminal-text text-robotic-orange px-2 py-1 border border-robotic-orange/50 rounded">
+            <span className="text-xs terminal-text text-accent px-2 py-1 border border-accent/50 rounded">
               {pendingChanges.length} unsaved change{pendingChanges.length !== 1 ? 's' : ''}
             </span>
           )}
@@ -183,16 +183,14 @@ export const TeamAssignmentModal = ({
         <div className="flex-1 overflow-y-auto min-h-0 space-y-1 pr-1">
           {/* Header row */}
           <div
-            className="grid gap-2 items-center sticky top-0 bg-robotic-gray-300 z-10 py-2 border-b border-robotic-yellow/30"
+            className="grid gap-2 items-center sticky top-0 bg-surface z-10 py-2 border-b border-border"
             style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
           >
-            <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
-              Participant
-            </div>
+            <div className="text-xs terminal-text text-muted uppercase">Participant</div>
             {availableTeams.map((team) => (
               <div
                 key={team}
-                className="text-xs terminal-text text-robotic-yellow/60 uppercase text-center truncate px-1"
+                className="text-xs terminal-text text-muted uppercase text-center truncate px-1"
                 title={team}
               >
                 {team}
@@ -207,7 +205,7 @@ export const TeamAssignmentModal = ({
             return (
               <div
                 key={participant.user_id}
-                className="grid gap-2 items-center py-2 border-b border-robotic-yellow/10"
+                className="grid gap-2 items-center py-2 border-b border-border"
                 style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
               >
                 <div className="min-w-0">
@@ -215,9 +213,7 @@ export const TeamAssignmentModal = ({
                     {getUserName(participant.user_id)}
                   </div>
                   {effectiveTeams.length === 0 && (
-                    <div className="text-[10px] terminal-text text-robotic-yellow/40">
-                      unassigned
-                    </div>
+                    <div className="text-[10px] terminal-text text-muted">unassigned</div>
                   )}
                 </div>
 
@@ -234,11 +230,11 @@ export const TeamAssignmentModal = ({
                         className={`w-8 h-8 rounded border text-xs font-bold transition-all ${
                           isActive
                             ? hasPending
-                              ? 'border-green-500 bg-green-500/30 text-green-300 ring-1 ring-green-400/50'
-                              : 'border-robotic-yellow bg-robotic-yellow/20 text-robotic-yellow'
+                              ? 'border-success bg-success/20 text-success ring-1 ring-success/50'
+                              : 'border-accent bg-accent/10 text-accent'
                             : hasPending
-                              ? 'border-red-500/60 bg-red-500/10 text-red-400 ring-1 ring-red-400/30 line-through'
-                              : 'border-robotic-yellow/20 text-robotic-yellow/30 hover:border-robotic-yellow/40 hover:bg-robotic-yellow/5'
+                              ? 'border-danger/60 bg-danger/10 text-danger ring-1 ring-danger/30 line-through'
+                              : 'border-border text-muted hover:border-accent/40 hover:bg-accent/5'
                         }`}
                         title={
                           isActive
@@ -258,16 +254,16 @@ export const TeamAssignmentModal = ({
 
         {/* Summary */}
         {(unassigned.length > 0 || assigned.length > 0) && (
-          <div className="flex gap-4 text-[10px] terminal-text text-robotic-yellow/50 mt-3 pt-2 border-t border-robotic-yellow/20">
+          <div className="flex gap-4 text-[10px] terminal-text text-muted mt-3 pt-2 border-t border-border">
             <span>{assigned.length} assigned</span>
             {unassigned.length > 0 && (
-              <span className="text-robotic-orange/70">{unassigned.length} unassigned</span>
+              <span className="text-accent/70">{unassigned.length} unassigned</span>
             )}
           </div>
         )}
 
         {/* Actions */}
-        <div className="flex gap-4 pt-4 mt-2 border-t border-robotic-yellow/30 flex-shrink-0">
+        <div className="flex gap-4 pt-4 mt-2 border-t border-border flex-shrink-0">
           <button
             onClick={handleSaveAll}
             disabled={saving}
@@ -276,18 +272,18 @@ export const TeamAssignmentModal = ({
             } disabled:opacity-50`}
           >
             {saving
-              ? '[SAVING...]'
+              ? 'Saving…'
               : pendingChanges.length > 0
-                ? `[SAVE ${pendingChanges.length} CHANGE${pendingChanges.length !== 1 ? 'S' : ''}]`
-                : '[CLOSE]'}
+                ? `Save ${pendingChanges.length} change${pendingChanges.length !== 1 ? 's' : ''}`
+                : 'Close'}
           </button>
           {pendingChanges.length > 0 && (
             <button
               onClick={handleCancel}
               disabled={saving}
-              className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange disabled:opacity-50"
+              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent disabled:opacity-50"
             >
-              [DISCARD_CHANGES]
+              Discard changes
             </button>
           )}
         </div>

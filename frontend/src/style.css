@@ -1,23 +1,48 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Orbitron:wght@400;500;600;700;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 @import 'leaflet/dist/leaflet.css';
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+/* ─────────────────────────────────────────────────────────────
+   Design tokens — light theme (semantic, CSS-variable based).
+   A future dark theme only needs a `:root[data-theme="dark"]`
+   override block; no component changes required.
+   ───────────────────────────────────────────────────────────── */
 :root {
-  font-family: 'JetBrains Mono', 'Courier New', monospace;
+  --bg: #FAF8F4;
+  --surface: #FFFFFF;
+  --surface-2: #F4F1EA;
+  --ink: #172033;
+  --muted: #6B7280;
+  --brand: #1E3A5F;
+  --brand-strong: #18304E;
+  --accent: #D97706;
+  --accent-strong: #B45309;
+  --border: #E4DFD4;
+  --border-strong: #D6CFC0;
+  --success: #15803D;
+  --warning: #D97706;
+  --danger: #B91C1C;
+  --overlay: rgba(23, 32, 51, 0.45);
+
+  --shadow-sm: 0 1px 2px rgba(23, 32, 51, 0.06), 0 1px 3px rgba(23, 32, 51, 0.04);
+  --shadow-md: 0 4px 12px rgba(23, 32, 51, 0.08), 0 2px 4px rgba(23, 32, 51, 0.04);
+  --shadow-lg: 0 12px 32px rgba(23, 32, 51, 0.12);
+
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%);
+  background: var(--bg);
   background-attachment: fixed;
-  color: #FFB800;
+  color: var(--ink);
   overflow-x: hidden;
 }
 
@@ -28,12 +53,11 @@ body {
 
 /* Futuristic Robotic Military aesthetic */
 @layer utilities {
+  /* Reskinned: was amber monospace glow; now clean Inter ink text. */
   .terminal-text {
-    font-family: 'JetBrains Mono', monospace;
-    color: #FFB800;
-    text-shadow: 
-      0 0 10px rgba(255, 184, 0, 0.6),
-      0 0 20px rgba(255, 184, 0, 0.3);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    color: var(--ink);
+    text-shadow: none;
   }
 
   /* Environmental truths panel: no glow for better readability */
@@ -43,43 +67,17 @@ body {
   }
   
   .classified-stamp {
-    font-family: 'Orbitron', sans-serif;
-    font-weight: 900;
-    color: #FF6B35;
-    text-shadow: 
-      0 0 10px rgba(255, 107, 53, 0.8),
-      0 0 20px rgba(255, 107, 53, 0.4);
+    font-family: 'Inter', sans-serif;
+    font-weight: 800;
+    color: var(--danger);
+    text-shadow: none;
     letter-spacing: 0.2em;
     transform: rotate(-15deg);
   }
   
+  /* Reskinned: scanline glow removed; kept as a no-op so markup is safe. */
   .scanline {
     position: relative;
-    overflow: hidden;
-  }
-  
-  .scanline::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: linear-gradient(
-      90deg, 
-      transparent, 
-      rgba(255, 184, 0, 0.4), 
-      rgba(255, 107, 53, 0.4),
-      transparent
-    );
-    animation: scan 4s linear infinite;
-    pointer-events: none;
-  }
-  
-  @keyframes scan {
-    0% { transform: translateY(0); opacity: 0.3; }
-    50% { opacity: 0.8; }
-    100% { transform: translateY(100vh); opacity: 0.3; }
   }
 
   @keyframes incident-pulse {
@@ -120,86 +118,82 @@ body {
     animation: adversary-radius-expand 3s ease-in-out infinite;
   }
   
+  /* Reskinned: panel/card surface. */
   .military-border {
-    border: 1px solid;
-    border-image: linear-gradient(135deg, #FFB800, #FF6B35, #FFB800) 1;
-    background: linear-gradient(135deg, rgba(26, 26, 26, 0.95) 0%, rgba(45, 45, 45, 0.95) 100%);
-    box-shadow: 
-      0 0 20px rgba(255, 184, 0, 0.2),
-      inset 0 0 20px rgba(255, 184, 0, 0.05),
-      0 4px 6px rgba(0, 0, 0, 0.3);
-    backdrop-filter: blur(10px);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    border-radius: 12px;
   }
   
   .military-input {
-    background: linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%);
-    border: 1px solid rgba(255, 184, 0, 0.3);
-    color: #FFB800;
-    font-family: 'JetBrains Mono', monospace;
-    transition: all 0.3s ease;
+    background: var(--surface);
+    border: 1px solid var(--border-strong);
+    color: var(--ink);
+    font-family: inherit;
+    border-radius: 8px;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
   }
   
   .military-input:focus {
     outline: none;
-    border-color: #FFB800;
-    box-shadow: 
-      0 0 15px rgba(255, 184, 0, 0.4),
-      inset 0 0 10px rgba(255, 184, 0, 0.1);
-    background: linear-gradient(135deg, #2d2d2d 0%, #3a3a3a 100%);
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(30, 58, 95, 0.12);
+    background: var(--surface);
   }
   
   .military-input::placeholder {
-    color: rgba(255, 184, 0, 0.4);
+    color: #9CA3AF;
   }
   
+  /* Reskinned: primary (accent) button. */
   .military-button {
-    background: linear-gradient(135deg, #FFB800 0%, #FF6B35 100%);
-    border: 1px solid rgba(255, 184, 0, 0.5);
-    color: #0f0f0f;
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    box-shadow: 
-      0 4px 15px rgba(255, 184, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
-    transition: all 0.3s ease;
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #FFFFFF;
+    font-family: inherit;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    border-radius: 8px;
+    box-shadow: var(--shadow-sm);
+    transition: background 0.15s ease, box-shadow 0.15s ease, transform 0.05s ease;
   }
   
   .military-button:hover {
-    background: linear-gradient(135deg, #FFD700 0%, #FF8C42 100%);
-    box-shadow: 
-      0 6px 25px rgba(255, 184, 0, 0.5),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3);
-    transform: translateY(-1px);
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    box-shadow: var(--shadow-md);
   }
   
   .military-button:active {
-    transform: translateY(0);
-    box-shadow: 
-      0 2px 10px rgba(255, 184, 0, 0.3),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    transform: translateY(1px);
+    box-shadow: var(--shadow-sm);
   }
   
   .military-button:disabled {
-    background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
-    border-color: rgba(255, 184, 0, 0.2);
-    color: rgba(255, 184, 0, 0.4);
+    background: var(--surface-2);
+    border-color: var(--border);
+    color: var(--muted);
     box-shadow: none;
     cursor: not-allowed;
   }
 
   .military-button-outline {
-    background: transparent;
-    font-family: 'JetBrains Mono', monospace;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.15em;
-    transition: all 0.3s ease;
+    background: var(--surface);
+    color: var(--brand);
+    border: 1px solid var(--border-strong);
+    font-family: inherit;
+    font-weight: 600;
+    text-transform: none;
+    letter-spacing: 0;
+    border-radius: 8px;
+    transition: background 0.15s ease, border-color 0.15s ease;
   }
 
   .military-button-outline:hover {
-    background: rgba(255, 184, 0, 0.1);
+    background: var(--surface-2);
+    border-color: var(--brand);
   }
 
   .military-button-outline:disabled {
@@ -210,12 +204,12 @@ body {
 
 a {
   font-weight: 500;
-  color: #FFB800;
+  color: var(--brand);
   text-decoration: inherit;
   transition: color 0.3s ease;
 }
 a:hover {
-  color: #FFD700;
+  color: var(--accent);
 }
 
 h1 {
@@ -256,130 +250,42 @@ button {
   transition: border-color 0.25s;
 }
 button:hover {
-  border-color: #646cff;
+  border-color: var(--brand);
 }
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-/* Custom Military Retro Scrollbar Styles - Sharp corners with buttons */
+/* Clean neutral scrollbar */
 ::-webkit-scrollbar {
-  width: 17px;
-  height: 17px;
+  width: 12px;
+  height: 12px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f0f0f;
-  border: 1px solid rgba(220, 38, 38, 0.5);
-  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.8);
+  background: var(--surface-2);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #dc2626;
-  border: 1px solid rgba(255, 0, 0, 0.8);
-  box-shadow: 
-    0 0 8px rgba(220, 38, 38, 0.8),
-    inset 0 0 8px rgba(0, 0, 0, 0.4),
-    /* Grip lines - 3 horizontal white lines */
-    inset 0 -6px 0 -3px rgba(255, 255, 255, 0.6),
-    inset 0 0px 0 -3px rgba(255, 255, 255, 0.6),
-    inset 0 6px 0 -3px rgba(255, 255, 255, 0.6);
-  border-radius: 0;
+  background: var(--border-strong);
+  border: 3px solid var(--surface-2);
+  border-radius: 999px;
   min-height: 30px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #ef4444;
-  box-shadow: 
-    0 0 12px rgba(239, 68, 68, 1),
-    inset 0 0 8px rgba(0, 0, 0, 0.4),
-    /* Grip lines - brighter on hover */
-    inset 0 -6px 0 -3px rgba(255, 255, 255, 0.8),
-    inset 0 0px 0 -3px rgba(255, 255, 255, 0.8),
-    inset 0 6px 0 -3px rgba(255, 255, 255, 0.8);
-}
-
-::-webkit-scrollbar-thumb:active {
-  background: #b91c1c;
-}
-
-/* Scrollbar buttons (top and bottom) */
-::-webkit-scrollbar-button {
-  display: block !important;
-  height: 17px !important;
-  width: 17px !important;
-  background: #dc2626;
-  border: 1px solid rgba(255, 0, 0, 0.8);
-  box-shadow: 
-    0 0 5px rgba(220, 38, 38, 0.6),
-    inset 0 0 5px rgba(0, 0, 0, 0.4);
-  border-radius: 0;
-}
-
-::-webkit-scrollbar-button:hover {
-  background: #ef4444;
-  box-shadow: 
-    0 0 8px rgba(239, 68, 68, 0.8),
-    inset 0 0 5px rgba(0, 0, 0, 0.4);
-}
-
-::-webkit-scrollbar-button:active {
-  background: #b91c1c;
-}
-
-/* Top button arrow (up) - red triangle pointing up */
-::-webkit-scrollbar-button:vertical:start:decrement,
-::-webkit-scrollbar-button:single-button:vertical:decrement {
-  display: block !important;
-  background-image: 
-    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='5,2 8,7 2,7'/%3E%3C/svg%3E");
-  background-repeat: no-repeat, no-repeat;
-  background-position: center, center;
-  background-size: 100% 100%, 10px 10px;
-}
-
-/* Bottom button arrow (down) - red triangle pointing down */
-::-webkit-scrollbar-button:vertical:end:increment,
-::-webkit-scrollbar-button:single-button:vertical:increment {
-  display: block !important;
-  background-image: 
-    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='5,8 8,3 2,3'/%3E%3C/svg%3E");
-  background-repeat: no-repeat, no-repeat;
-  background-position: center, center;
-  background-size: 100% 100%, 10px 10px;
-}
-
-/* Horizontal scrollbar buttons */
-::-webkit-scrollbar-button:horizontal:start:decrement {
-  background-image: 
-    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='2,5 7,2 7,8'/%3E%3C/svg%3E");
-  background-repeat: no-repeat, no-repeat;
-  background-position: center, center;
-  background-size: 100% 100%, 10px 10px;
-}
-
-::-webkit-scrollbar-button:horizontal:end:increment {
-  background-image: 
-    linear-gradient(135deg, #dc2626 0%, #991b1b 50%, #7f1d1d 100%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'%3E%3Cpolygon fill='white' points='8,5 3,2 3,8'/%3E%3C/svg%3E");
-  background-repeat: no-repeat, no-repeat;
-  background-position: center, center;
-  background-size: 100% 100%, 10px 10px;
+  background: #b8af9c;
 }
 
 ::-webkit-scrollbar-corner {
-  background: #0f0f0f;
-  border: 1px solid rgba(220, 38, 38, 0.5);
+  background: var(--surface-2);
 }
 
 /* Firefox scrollbar styles */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #dc2626 rgba(15, 15, 15, 0.8);
+  scrollbar-color: var(--border-strong) var(--surface-2);
 }
 
 /* Leaflet tooltip overrides for map pin tooltips */

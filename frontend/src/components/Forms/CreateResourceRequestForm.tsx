@@ -60,14 +60,12 @@ export const CreateResourceRequestForm = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-2xl w-full">
-        <h2 className="text-xl terminal-text uppercase mb-6">[REQUEST_RESOURCES]</h2>
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="military-border bg-surface p-8 max-w-2xl w-full">
+        <h2 className="text-xl terminal-text mb-6">Request resources</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [RESOURCE_TYPE]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Resource type</label>
             <input
               type="text"
               required
@@ -80,9 +78,7 @@ export const CreateResourceRequestForm = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [QUANTITY]
-              </label>
+              <label className="block text-xs terminal-text text-ink mb-2">Quantity</label>
               <input
                 type="number"
                 required
@@ -94,16 +90,14 @@ export const CreateResourceRequestForm = ({
             </div>
 
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [FROM_AGENCY]
-              </label>
+              <label className="block text-xs terminal-text text-ink mb-2">From agency</label>
               <select
                 required
                 value={formData.from_agency}
                 onChange={(e) => setFormData({ ...formData, from_agency: e.target.value })}
                 className="w-full px-4 py-3 military-input terminal-text"
               >
-                <option value="">Select agency...</option>
+                <option value="">Select agency…</option>
                 {agencies
                   .filter((agency) => agency !== formData.to_agency)
                   .map((agency) => (
@@ -116,8 +110,8 @@ export const CreateResourceRequestForm = ({
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [CONDITIONS] (Optional)
+            <label className="block text-xs terminal-text text-ink mb-2">
+              Conditions (optional)
             </label>
             <textarea
               value={formData.conditions}
@@ -128,20 +122,20 @@ export const CreateResourceRequestForm = ({
             />
           </div>
 
-          <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">
+          <div className="flex gap-4 pt-4 border-t border-border">
             <button
               type="submit"
               disabled={loading}
               className="military-button px-6 py-3 flex-1 disabled:opacity-50"
             >
-              {loading ? '[SUBMITTING...]' : '[SUBMIT_REQUEST]'}
+              {loading ? 'Submitting…' : 'Submit request'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
+              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent"
             >
-              [CANCEL]
+              Cancel
             </button>
           </div>
         </form>

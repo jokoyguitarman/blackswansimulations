@@ -137,31 +137,29 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl terminal-text uppercase">[CREATE_SCENARIO]</h2>
+          <h2 className="text-xl terminal-text">Create scenario</h2>
           {isTrainer && (
             <button
               type="button"
               onClick={() => setShowAIGenerator(!showAIGenerator)}
-              className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+              className="px-4 py-2 text-xs terminal-text border border-border text-ink hover:bg-accent/10 transition-all"
             >
-              {showAIGenerator ? '[HIDE_AI]' : '[AI_GENERATE]'}
+              {showAIGenerator ? 'Hide AI' : 'AI generate'}
             </button>
           )}
         </div>
 
         {/* AI Generator Panel */}
         {showAIGenerator && isTrainer && (
-          <div className="military-border p-6 mb-6 bg-robotic-yellow/10 border-robotic-yellow">
-            <h3 className="text-sm terminal-text uppercase mb-4 text-robotic-yellow">
-              [AI_SCENARIO_GENERATOR]
-            </h3>
+          <div className="military-border p-6 mb-6 bg-accent/10 border-accent">
+            <h3 className="text-sm terminal-text mb-4 text-ink">AI scenario generator</h3>
             <div className="space-y-4">
               <div>
-                <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                  [CONTEXT] (Optional)
+                <label className="block text-xs terminal-text text-ink mb-2">
+                  Context (optional)
                 </label>
                 <textarea
                   value={aiPrompt.context}
@@ -172,8 +170,8 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
                 />
               </div>
               <div>
-                <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                  [SPECIFIC_REQUIREMENTS] (Optional)
+                <label className="block text-xs terminal-text text-ink mb-2">
+                  Specific requirements (optional)
                 </label>
                 <textarea
                   value={aiPrompt.specific_requirements}
@@ -192,20 +190,20 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
                   disabled={generating}
                   className="military-button px-6 py-3 flex-1 disabled:opacity-50"
                 >
-                  {generating ? '[GENERATING...]' : '[GENERATE_SCENARIO]'}
+                  {generating ? 'Generating…' : 'Generate scenario'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setShowAIGenerator(false)}
-                  className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
+                  className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent"
                 >
-                  [CANCEL]
+                  Cancel
                 </button>
               </div>
               {generating && (
                 <div className="text-center py-4">
-                  <div className="text-sm terminal-text text-robotic-yellow/70 animate-pulse">
-                    [AI_THINKING] Generating scenario with AI...
+                  <div className="text-sm terminal-text text-muted animate-pulse">
+                    Generating scenario with AI…
                   </div>
                 </div>
               )}
@@ -216,9 +214,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Basic scenario fields - will be auto-filled by AI if used */}
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [TITLE]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Title</label>
             <input
               type="text"
               required
@@ -230,9 +226,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [DESCRIPTION]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Description</label>
             <textarea
               required
               value={formData.description}
@@ -245,9 +239,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [CATEGORY]
-              </label>
+              <label className="block text-xs terminal-text text-ink mb-2">Category</label>
               <select
                 value={formData.category}
                 onChange={(e) => setFormData({ ...formData, category: e.target.value })}
@@ -264,9 +256,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
             </div>
 
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [DIFFICULTY]
-              </label>
+              <label className="block text-xs terminal-text text-ink mb-2">Difficulty</label>
               <select
                 value={formData.difficulty}
                 onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
@@ -281,9 +271,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [DURATION_MINUTES]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Duration (minutes)</label>
             <input
               type="number"
               required
@@ -298,9 +286,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [OBJECTIVES]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Objectives</label>
             <div className="space-y-2">
               {formData.objectives.map((obj, index) => (
                 <div key={index} className="flex gap-2">
@@ -315,9 +301,9 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
                     <button
                       type="button"
                       onClick={() => removeObjective(index)}
-                      className="px-3 py-2 text-robotic-orange border border-robotic-orange hover:bg-robotic-orange/10"
+                      className="px-3 py-2 text-accent border border-accent hover:bg-accent/10"
                     >
-                      [X]
+                      ×
                     </button>
                   )}
                 </div>
@@ -325,9 +311,9 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
               <button
                 type="button"
                 onClick={addObjective}
-                className="text-xs terminal-text text-robotic-yellow hover:text-robotic-orange"
+                className="text-xs terminal-text text-ink hover:text-accent"
               >
-                [+ ADD_OBJECTIVE]
+                + Add objective
               </button>
             </div>
           </div>
@@ -335,15 +321,15 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
           {/* Briefing Section */}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [BRIEFING_MATERIALS]
+              <label className="block text-xs terminal-text text-ink mb-2">
+                Briefing materials
               </label>
               <button
                 type="button"
                 onClick={() => setShowRoleBriefs(!showRoleBriefs)}
-                className="text-xs terminal-text text-robotic-yellow hover:text-robotic-orange"
+                className="text-xs terminal-text text-ink hover:text-accent"
               >
-                {showRoleBriefs ? '[HIDE_ROLE_BRIEFS]' : '[ADD_ROLE_BRIEFS]'}
+                {showRoleBriefs ? 'Hide role briefs' : 'Add role briefs'}
               </button>
             </div>
             <textarea
@@ -353,16 +339,14 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
               rows={6}
               placeholder="General briefing material visible to all participants..."
             />
-            <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+            <p className="text-xs terminal-text text-muted mt-1">
               This briefing will be visible to all participants before the session starts.
             </p>
 
             {/* Role-Specific Briefs */}
             {showRoleBriefs && (
               <div className="mt-4 space-y-3">
-                <p className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                  [ROLE_SPECIFIC_BRIEFINGS]
-                </p>
+                <p className="text-xs terminal-text text-muted mb-2">Role-specific briefings</p>
                 {[
                   'defence',
                   'health',
@@ -375,7 +359,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
                   'legal_oversight',
                 ].map((role) => (
                   <div key={role}>
-                    <label className="block text-xs terminal-text text-robotic-yellow/70 mb-1">
+                    <label className="block text-xs terminal-text text-muted mb-1">
                       {role.toUpperCase().replace('_', ' ')}
                     </label>
                     <textarea
@@ -401,21 +385,21 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
 
           {/* Show suggested injects if available */}
           {suggestedInjects.length > 0 && (
-            <div className="military-border p-4 bg-robotic-yellow/10 border-robotic-yellow">
-              <h3 className="text-sm terminal-text uppercase mb-3 text-robotic-yellow">
-                [AI_SUGGESTED_INJECTS] {suggestedInjects.length} Suggested Event Injections
+            <div className="military-border p-4 bg-accent/10 border-accent">
+              <h3 className="text-sm terminal-text mb-3 text-ink">
+                AI suggested injects — {suggestedInjects.length} suggested event injections
               </h3>
-              <p className="text-xs terminal-text text-robotic-yellow/70 mb-3">
+              <p className="text-xs terminal-text text-muted mb-3">
                 These injects will be created automatically when you save this scenario.
               </p>
               <div className="space-y-2 max-h-40 overflow-y-auto">
                 {suggestedInjects.map((inject, idx) => (
-                  <div key={idx} className="military-border p-2 bg-robotic-gray-300">
+                  <div key={idx} className="military-border p-2 bg-surface">
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
                         <div className="text-xs terminal-text font-semibold">{inject.title}</div>
-                        <div className="text-xs terminal-text text-robotic-yellow/50">
-                          [{inject.type}] • {inject.trigger_time_minutes}min • {inject.severity}
+                        <div className="text-xs terminal-text text-muted">
+                          {inject.type} • {inject.trigger_time_minutes}min • {inject.severity}
                         </div>
                       </div>
                     </div>
@@ -425,20 +409,20 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
             </div>
           )}
 
-          <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">
+          <div className="flex gap-4 pt-4 border-t border-border">
             <button
               type="submit"
               disabled={loading}
               className="military-button px-6 py-3 flex-1 disabled:opacity-50"
             >
-              {loading ? '[CREATING...]' : '[CREATE_SCENARIO]'}
+              {loading ? 'Creating…' : 'Create scenario'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
+              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent"
             >
-              [CANCEL]
+              Cancel
             </button>
           </div>
         </form>

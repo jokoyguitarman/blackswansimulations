@@ -452,9 +452,7 @@ export const IncidentsPanel = ({
     return (
       <div className="military-border p-6">
         <div className="text-center">
-          <div className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-            [LOADING_INCIDENTS]
-          </div>
+          <div className="text-sm terminal-text text-muted animate-pulse">Loading incidents…</div>
         </div>
       </div>
     );
@@ -464,7 +462,7 @@ export const IncidentsPanel = ({
     <div className="space-y-4">
       {/* Header */}
       <div className="military-border p-4 flex justify-between items-center">
-        <h3 className="text-lg terminal-text uppercase">[INCIDENTS] Active Incidents</h3>
+        <h3 className="text-lg terminal-text">Active incidents</h3>
       </div>
 
       {/* Incidents List */}
@@ -487,10 +485,10 @@ export const IncidentsPanel = ({
         ))}
         {filteredIncidents.length === 0 && (
           <div className="military-border p-8 text-center">
-            <p className="text-sm terminal-text text-robotic-yellow/50">
+            <p className="text-sm terminal-text text-muted">
               {incidents.length === 0
-                ? '[NO_INCIDENTS] No incidents reported yet'
-                : '[NO_MATCHES] No incidents match the selected filters'}
+                ? 'No incidents reported yet'
+                : 'No incidents match the selected filters'}
             </p>
           </div>
         )}

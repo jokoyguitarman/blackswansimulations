@@ -41,14 +41,12 @@ export const CreateSessionModal = ({ scenarios, onClose, onSuccess }: CreateSess
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl terminal-text uppercase mb-4">[CREATE_SESSION]</h2>
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl terminal-text mb-4">Create session</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [SELECT_SCENARIO] *
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Select scenario *</label>
             <select
               value={formData.scenario_id}
               onChange={(e) => setFormData({ ...formData, scenario_id: e.target.value })}
@@ -65,8 +63,8 @@ export const CreateSessionModal = ({ scenarios, onClose, onSuccess }: CreateSess
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [SCHEDULED_START_TIME] (Optional)
+            <label className="block text-xs terminal-text text-ink mb-2">
+              Scheduled start time (optional)
             </label>
             <input
               type="datetime-local"
@@ -74,14 +72,14 @@ export const CreateSessionModal = ({ scenarios, onClose, onSuccess }: CreateSess
               onChange={(e) => setFormData({ ...formData, scheduled_start_time: e.target.value })}
               className="w-full px-4 py-3 military-input terminal-text"
             />
-            <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+            <p className="text-xs terminal-text text-muted mt-1">
               Participants will see this time in their invitation. You can start early if needed.
             </p>
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [TRAINER_INSTRUCTIONS] (Optional)
+            <label className="block text-xs terminal-text text-ink mb-2">
+              Trainer instructions (optional)
             </label>
             <textarea
               value={formData.trainer_instructions}
@@ -91,25 +89,25 @@ export const CreateSessionModal = ({ scenarios, onClose, onSuccess }: CreateSess
               placeholder="Final instructions for participants before the session starts..."
               maxLength={5000}
             />
-            <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
+            <p className="text-xs terminal-text text-muted mt-1">
               These instructions will be visible in the lobby before the session starts.
             </p>
           </div>
 
-          <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">
+          <div className="flex gap-4 pt-4 border-t border-border">
             <button
               type="submit"
               disabled={loading || !formData.scenario_id}
               className="military-button px-6 py-3 flex-1 disabled:opacity-50"
             >
-              {loading ? '[CREATING...]' : '[CREATE]'}
+              {loading ? 'Creating…' : 'Create'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
+              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent"
             >
-              [CANCEL]
+              Cancel
             </button>
           </div>
         </form>

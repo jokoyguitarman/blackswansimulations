@@ -99,7 +99,7 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8 text-robotic-yellow/40 font-mono text-sm">
+      <div className="flex items-center justify-center p-8 text-muted font-mono text-sm">
         Loading pursuit intelligence data...
       </div>
     );
@@ -130,16 +130,16 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
   );
 
   return (
-    <div className="bg-gray-900/80 border border-robotic-yellow/20 rounded-lg p-4 mt-4">
-      <h3 className="text-sm font-bold terminal-text text-robotic-yellow tracking-wider mb-3">
-        PURSUIT INTELLIGENCE ANALYSIS
+    <div className="bg-surface-2 border border-border rounded-lg p-4 mt-4">
+      <h3 className="text-sm font-bold terminal-text text-ink mb-3">
+        Pursuit intelligence analysis
       </h3>
 
       {/* Per-team summary cards (only if investigative teams exist) */}
       {hasInvestigativeTeams && Object.keys(pursuitMetrics).length > 0 && (
         <div className="mb-4 space-y-3">
-          <div className="text-[10px] text-purple-300/60 uppercase tracking-wider font-bold mb-2">
-            Investigative Team Performance
+          <div className="text-[10px] text-brand/60 font-bold mb-2">
+            Investigative team performance
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {displayTeams.map((teamName) => {
@@ -154,12 +154,12 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
                   onClick={() => setSelectedTeam(isSelected ? null : teamName)}
                   className={`text-left border rounded p-3 transition-all ${
                     isSelected
-                      ? 'border-purple-500 bg-purple-500/10'
-                      : 'border-purple-500/20 bg-black/30 hover:border-purple-500/40'
+                      ? 'border-brand bg-brand/10'
+                      : 'border-brand/30 bg-surface-2 hover:border-brand/40'
                   }`}
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs terminal-text text-purple-300 uppercase font-bold">
+                    <span className="text-xs terminal-text text-brand font-bold">
                       {teamName.replace(/_/g, ' ')}
                     </span>
                     <div className="flex items-center gap-2">
@@ -178,39 +178,39 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
 
                   <div className="grid grid-cols-4 gap-1 mt-2">
                     <div className="text-center">
-                      <div className="text-xs font-bold text-purple-300 font-mono">
+                      <div className="text-xs font-bold text-brand font-mono">
                         {m.tips_received}
                       </div>
-                      <div className="text-[7px] text-purple-300/50 uppercase">Tips</div>
+                      <div className="text-[7px] text-brand/50">Tips</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs font-bold text-green-400 font-mono">
+                      <div className="text-xs font-bold text-success font-mono">
                         {m.true_leads_committed}
                       </div>
-                      <div className="text-[7px] text-purple-300/50 uppercase">Correct</div>
+                      <div className="text-[7px] text-brand/50">Correct</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs font-bold text-red-400 font-mono">
+                      <div className="text-xs font-bold text-danger font-mono">
                         {m.false_leads_committed}
                       </div>
-                      <div className="text-[7px] text-purple-300/50 uppercase">Traps</div>
+                      <div className="text-[7px] text-brand/50">Traps</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xs font-bold text-red-400 font-mono">
+                      <div className="text-xs font-bold text-danger font-mono">
                         {m.time_wasted_sec > 0 ? `${Math.round(m.time_wasted_sec / 60)}m` : '0m'}
                       </div>
-                      <div className="text-[7px] text-purple-300/50 uppercase">Wasted</div>
+                      <div className="text-[7px] text-brand/50">Wasted</div>
                     </div>
                   </div>
 
-                  <div className="flex gap-3 mt-2 text-[9px] text-purple-300/50 font-mono">
+                  <div className="flex gap-3 mt-2 text-[9px] text-brand/50 font-mono">
                     <span>Avg resp: {m.avg_response_time_sec}s</span>
                     <span>Deployed: {m.resources_deployed}</span>
                     <span>Missed: {m.true_leads_ignored}</span>
                   </div>
 
                   {isSelected && (
-                    <div className="mt-2 text-[9px] text-purple-400/70 text-center">
+                    <div className="mt-2 text-[9px] text-brand/70 text-center">
                       ▼ Showing timeline for this team
                     </div>
                   )}
@@ -226,22 +226,22 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
         <div className="flex gap-2 mb-3 flex-wrap">
           <button
             onClick={() => setSelectedTeam(null)}
-            className={`px-2 py-1 text-[10px] terminal-text uppercase rounded border transition-all ${
+            className={`px-2 py-1 text-[10px] terminal-text rounded border transition-all ${
               !selectedTeam
-                ? 'border-robotic-yellow bg-robotic-yellow/10 text-robotic-yellow'
-                : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/50'
+                ? 'border-accent bg-accent/10 text-ink'
+                : 'border-border text-muted hover:border-accent'
             }`}
           >
-            All Teams
+            All teams
           </button>
           {uniqueTeams.map((t) => (
             <button
               key={t}
               onClick={() => setSelectedTeam(selectedTeam === t ? null : t)}
-              className={`px-2 py-1 text-[10px] terminal-text uppercase rounded border transition-all ${
+              className={`px-2 py-1 text-[10px] terminal-text rounded border transition-all ${
                 selectedTeam === t
-                  ? 'border-robotic-yellow bg-robotic-yellow/10 text-robotic-yellow'
-                  : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/50'
+                  ? 'border-accent bg-accent/10 text-ink'
+                  : 'border-border text-muted hover:border-accent'
               }`}
             >
               {t.replace(/_/g, ' ')}
@@ -252,15 +252,15 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
 
       {/* Summary Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-        <div className="bg-gray-800/60 rounded p-2 text-center">
-          <div className="text-lg font-bold text-robotic-yellow font-mono">{totalSightings}</div>
-          <div className="text-[10px] text-robotic-yellow/50 uppercase">Total Sightings</div>
+        <div className="bg-surface-2 rounded p-2 text-center">
+          <div className="text-lg font-bold text-ink font-mono">{totalSightings}</div>
+          <div className="text-[10px] text-muted">Total Sightings</div>
         </div>
-        <div className="bg-gray-800/60 rounded p-2 text-center">
-          <div className="text-lg font-bold text-amber-400 font-mono">{falseLeads}</div>
-          <div className="text-[10px] text-robotic-yellow/50 uppercase">False Leads</div>
+        <div className="bg-surface-2 rounded p-2 text-center">
+          <div className="text-lg font-bold text-warning font-mono">{falseLeads}</div>
+          <div className="text-[10px] text-muted">False Leads</div>
         </div>
-        <div className="bg-gray-800/60 rounded p-2 text-center">
+        <div className="bg-surface-2 rounded p-2 text-center">
           <div
             className="text-lg font-bold font-mono"
             style={{
@@ -269,35 +269,35 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
           >
             {intelScore}%
           </div>
-          <div className="text-[10px] text-robotic-yellow/50 uppercase">Intel Score</div>
+          <div className="text-[10px] text-muted">Intel Score</div>
         </div>
-        <div className="bg-gray-800/60 rounded p-2 text-center">
-          <div className="text-lg font-bold text-red-400 font-mono">
+        <div className="bg-surface-2 rounded p-2 text-center">
+          <div className="text-lg font-bold text-danger font-mono">
             {totalWastedSeconds > 0 ? `${Math.round(totalWastedSeconds / 60)}m` : '0m'}
           </div>
-          <div className="text-[10px] text-robotic-yellow/50 uppercase">Time Wasted</div>
+          <div className="text-[10px] text-muted">Time Wasted</div>
         </div>
       </div>
 
       {/* Detailed Breakdown */}
-      <div className="flex gap-4 mb-4 text-[10px] text-robotic-yellow/60 font-mono flex-wrap">
+      <div className="flex gap-4 mb-4 text-[10px] text-muted font-mono flex-wrap">
         <span>
-          Correct Commits: <b className="text-green-400">{correctCommits}</b>
+          Correct Commits: <b className="text-success">{correctCommits}</b>
         </span>
         <span>
-          False Commits: <b className="text-red-400">{falseCommits}</b>
+          False Commits: <b className="text-danger">{falseCommits}</b>
         </span>
         <span>
-          Good Caution: <b className="text-green-400">{goodCaution}</b>
+          Good Caution: <b className="text-success">{goodCaution}</b>
         </span>
         <span>
-          Missed Leads: <b className="text-red-400">{missedLeads}</b>
+          Missed Leads: <b className="text-danger">{missedLeads}</b>
         </span>
       </div>
 
       {/* Timeline */}
       <div className="relative">
-        <div className="absolute left-4 top-0 bottom-0 w-px bg-robotic-yellow/20" />
+        <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
 
         {filteredResponses.map((r, idx) => {
           const scoreStyle = r.score_impact ? SCORE_STYLES[r.score_impact] : null;
@@ -326,7 +326,7 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
                 }}
               />
 
-              <div className="bg-gray-800/40 rounded border border-gray-700/50 p-3">
+              <div className="bg-surface-2 rounded border border-border p-3">
                 <div className="flex items-center gap-2 flex-wrap">
                   {/* NATO Grade */}
                   <span
@@ -341,9 +341,7 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
                   </span>
 
                   {/* Time */}
-                  <span className="text-[10px] text-robotic-yellow/50 font-mono">
-                    T+{minutesMark}min
-                  </span>
+                  <span className="text-[10px] text-muted font-mono">T+{minutesMark}min</span>
 
                   {/* Truth tag */}
                   <span
@@ -358,7 +356,7 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
 
                   {/* Debunked */}
                   {r.sighting_status === 'debunked' && (
-                    <span className="px-1 py-0.5 text-[9px] font-bold rounded bg-red-900/30 text-red-400 line-through">
+                    <span className="px-1 py-0.5 text-[9px] font-bold rounded bg-danger/10 text-danger line-through">
                       DEBUNKED
                     </span>
                   )}
@@ -366,11 +364,11 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
                   {/* Team name + investigative badge */}
                   {!selectedTeam && (
                     <span className="flex items-center gap-1 ml-auto">
-                      <span className="text-[10px] text-robotic-yellow/40 font-mono">
+                      <span className="text-[10px] text-muted font-mono">
                         {r.team_name.replace(/_/g, ' ')}
                       </span>
                       {isInvestigative && (
-                        <span className="px-1 py-0.5 text-[8px] font-bold rounded border border-purple-500/40 bg-purple-500/15 text-purple-300">
+                        <span className="px-1 py-0.5 text-[8px] font-bold rounded border border-brand/40 bg-brand/10 text-brand">
                           INV
                         </span>
                       )}
@@ -379,25 +377,23 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
 
                   {/* Sighting # */}
                   {selectedTeam && (
-                    <span className="text-[10px] text-robotic-yellow/40 font-mono ml-auto">
+                    <span className="text-[10px] text-muted font-mono ml-auto">
                       Sighting #{idx + 1}
                     </span>
                   )}
                 </div>
 
                 {/* Zone */}
-                {r.zone_label && (
-                  <div className="text-xs text-robotic-yellow/70 mt-1">{r.zone_label}</div>
-                )}
+                {r.zone_label && <div className="text-xs text-muted mt-1">{r.zone_label}</div>}
 
                 {/* Response */}
                 <div className="flex items-center gap-2 mt-2">
-                  <span className="text-[10px] text-robotic-yellow/50">Team response:</span>
-                  <span className="text-[10px] font-bold text-robotic-yellow/80">
+                  <span className="text-[10px] text-muted">Team response:</span>
+                  <span className="text-[10px] font-bold text-ink">
                     {RESPONSE_LABELS[r.response_type] || r.response_type}
                   </span>
                   {r.decisions_committed?.length > 0 && (
-                    <span className="text-[9px] text-robotic-yellow/40">
+                    <span className="text-[9px] text-muted">
                       ({r.decisions_committed.length} decision
                       {r.decisions_committed.length > 1 ? 's' : ''})
                     </span>
@@ -413,7 +409,7 @@ export const PursuitTimeline: React.FC<PursuitTimelineProps> = ({ sessionId }) =
                     <span>{scoreStyle.icon}</span>
                     <span>{scoreStyle.label}</span>
                     {r.time_wasted_seconds > 0 && (
-                      <span className="text-red-400/60 ml-1">
+                      <span className="text-danger/60 ml-1">
                         ({Math.round(r.time_wasted_seconds / 60)}m wasted)
                       </span>
                     )}
