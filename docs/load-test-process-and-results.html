@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Load Test Harness - Process &amp; Results</title>
+<style>
+  :root {
+    --bg: #0a0e14; --bg2: #0f1620; --panel: #131c28; --panel2: #182030;
+    --line: #233143; --ink: #e8eef6; --muted: #8aa0b8; --dim: #5d7186;
+    --cyan: #2dd4bf; --cyan2: #22d3ee; --amber: #f5b942; --violet: #a78bfa;
+    --pink: #f472b6; --green: #34d399; --red: #f87171; --orange: #fb923c; --dead: #6b7280;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+    font-family: "SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace;
+    font-size: 15px; line-height: 1.6; overflow-x: hidden; }
+  a { color: var(--cyan); }
+  h1,h2,h3 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+  code,.mono { font-family: ui-monospace,Menlo,Consolas,monospace; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 60px 0; border-top: 1px solid var(--line); position: relative; }
+  .sec-num { font-size: 13px; color: var(--cyan); letter-spacing: 0.25em; text-transform: uppercase; margin-bottom: 10px; font-weight: 700; }
+  .sec-title { font-size: 28px; margin: 0 0 6px; }
+  .sec-sub { color: var(--muted); margin: 0 0 30px; max-width: 880px; }
+
+  header.hero { position: relative; min-height: 58vh; display: flex; align-items: center; overflow: hidden; border: none; padding: 70px 0; }
+  .hero-bg { position: absolute; inset: 0; z-index: 0;
+    background: radial-gradient(1100px 520px at 18% 8%, rgba(45,212,191,0.13), transparent 60%),
+      radial-gradient(900px 520px at 88% 22%, rgba(167,139,250,0.16), transparent 60%),
+      radial-gradient(900px 600px at 60% 100%, rgba(245,185,66,0.08), transparent 60%); }
+  .grid-lines { position: absolute; inset: 0; z-index: 0; opacity: 0.25;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 46px 46px; mask-image: radial-gradient(ellipse at 50% 40%, #000 35%, transparent 78%); }
+  .hero-content { position: relative; z-index: 2; }
+  .kicker { display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cyan); border: 1px solid #1f4338; padding: 6px 14px; border-radius: 999px; background: rgba(45,212,191,0.06); margin-bottom: 24px; }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); box-shadow: 0 0 0 0 rgba(45,212,191,0.7); animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(45,212,191,0.6);} 70% { box-shadow: 0 0 0 12px rgba(45,212,191,0);} 100% { box-shadow: 0 0 0 0 rgba(45,212,191,0);} }
+  .hero h1 { font-size: clamp(30px,5vw,50px); margin: 0 0 18px; }
+  .hero h1 .grad { background: linear-gradient(100deg, var(--cyan), var(--violet) 55%, var(--amber) 95%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero p.lead { font-size: 18px; color: var(--muted); max-width: 780px; margin: 0 0 28px; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; min-width: 130px; }
+  .stat b { font-size: 22px; color: var(--ink); display: block; }
+  .stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  nav.toc { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(10px); background: rgba(10,14,20,0.82); border-bottom: 1px solid var(--line); }
+  nav.toc .wrap { display: flex; gap: 6px; overflow-x: auto; padding: 10px 24px; scrollbar-width: none; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 12.5px; padding: 7px 12px; border-radius: 8px; white-space: nowrap; transition: 0.15s; }
+  nav.toc a:hover { color: var(--ink); background: var(--panel2); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .card h3 { margin: 0 0 8px; font-size: 16px; }
+  .card p { color: var(--muted); font-size: 13.5px; margin: 0; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2,1fr); }
+  .g3 { grid-template-columns: repeat(3,1fr); }
+  .g4 { grid-template-columns: repeat(4,1fr); }
+  @media (max-width: 920px){ .g2,.g3,.g4 { grid-template-columns: 1fr; } }
+
+  pre { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; overflow-x: auto; font-size: 12.5px; line-height: 1.55; margin: 12px 0 0; }
+  pre code { color: #cfe0f0; white-space: pre; }
+  .c-key { color: var(--violet); } .c-str { color: var(--green); } .c-com { color: var(--dim); } .c-fn { color: var(--cyan); } .c-num { color: var(--amber); }
+  .note { font-size: 12.5px; color: var(--dim); }
+  ul.tight { margin: 8px 0 0; padding-left: 18px; } ul.tight li { margin: 5px 0; color: var(--muted); font-size: 13.5px; }
+  ul.tight li b { color: var(--ink); }
+  .pill { display:inline-block; font-size: 11.5px; padding: 3px 9px; border-radius: 6px; background: #16202e; border: 1px solid #243345; color: var(--ink); margin: 2px 3px 0 0; }
+  .pill.bad { color: var(--red); border-color: #5a2a2a; background: rgba(248,113,113,0.08); }
+  .pill.good { color: var(--green); border-color: #1f4338; background: rgba(52,211,153,0.08); }
+  .pill.warn { color: var(--amber); border-color: #5a4420; background: rgba(245,185,66,0.08); }
+
+  table.matrix { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+  table.matrix th, table.matrix td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.matrix th { color: var(--cyan); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  table.matrix td { color: var(--muted); } table.matrix td b { color: var(--ink); }
+  table.matrix tr:last-child td { border-bottom: none; }
+  tr.knee td { background: rgba(248,113,113,0.06); }
+  tr.knee td:first-child { border-left: 3px solid var(--red); }
+
+  .steps { counter-reset: step; margin-top: 20px; }
+  .step { display: flex; gap: 18px; padding: 18px 0; border-bottom: 1px dashed #1c2836; }
+  .step:last-child { border-bottom: none; }
+  .step-n { flex: 0 0 44px; height: 44px; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--cyan); font-size: 17px; }
+  .step-body h3 { margin: 2px 0 6px; font-size: 16px; }
+  .step-body p { margin: 0; color: var(--muted); font-size: 13.5px; }
+
+  .flow { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; margin-top: 18px; }
+  .flow .node { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; font-size: 12.5px; min-width: 150px; flex: 1; }
+  .flow .node b { display: block; color: var(--ink); font-size: 13px; margin-bottom: 4px; }
+  .flow .node span { color: var(--muted); }
+  .flow .arrow { display: flex; align-items: center; color: var(--dim); font-size: 18px; padding: 0 2px; }
+  @media (max-width: 920px){ .flow { flex-direction: column; } .flow .arrow { transform: rotate(90deg); justify-content: center; } }
+
+  .banner { border: 1px dashed var(--amber); background: rgba(245,185,66,0.06); color: var(--amber);
+    border-radius: 12px; padding: 12px 16px; font-size: 13px; margin: 0 0 22px; }
+
+  .chart { margin-top: 18px; }
+  .chart .row { display: grid; grid-template-columns: 110px 1fr 90px; align-items: center; gap: 12px; padding: 7px 0; }
+  .chart .lbl { color: var(--muted); font-size: 12.5px; text-align: right; }
+  .chart .track { background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; height: 22px; overflow: hidden; }
+  .chart .bar { height: 100%; border-radius: 5px 0 0 5px; background: linear-gradient(90deg, var(--cyan), var(--cyan2)); }
+  .chart .bar.warn { background: linear-gradient(90deg, var(--amber), var(--orange)); }
+  .chart .bar.bad { background: linear-gradient(90deg, var(--orange), var(--red)); }
+  .chart .val { color: var(--ink); font-size: 12.5px; }
+
+  .verdict { border: 1px solid var(--line); border-left: 3px solid var(--green); background: var(--bg2); border-radius: 0 12px 12px 0; padding: 14px 18px; margin-top: 16px; font-size: 13.5px; color: var(--muted); }
+  .verdict b { color: var(--ink); }
+
+  footer { padding: 40px 0 60px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker"><span class="pulse-dot"></span> Capacity Testing</div>
+    <h1>Load Test Harness<br /><span class="grad">How many players can we handle?</span></h1>
+    <p class="lead">
+      A one-command harness that spawns hundreds of simulated players over real Socket.io connections,
+      ramps them up in stages against a live session, and reports exactly where the platform starts to strain —
+      for both game types.
+    </p>
+    <div class="hero-stats">
+      <div class="stat"><b>1</b><span>command to run</span></div>
+      <div class="stat"><b>2</b><span>game types tested</span></div>
+      <div class="stat"><b>25&#8594;200+</b><span>ramp stages</span></div>
+      <div class="stat"><b>p95</b><span>latency verdict</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#why">Why test</a>
+    <a href="#process">The process</a>
+    <a href="#gametypes">Two game types</a>
+    <a href="#metrics">What we measure</a>
+    <a href="#results">Sample results</a>
+    <a href="#run">How to run</a>
+    <a href="#reading">Reading the verdict</a>
+  </div>
+</nav>
+
+<section id="why">
+  <div class="wrap">
+    <div class="sec-num">01 &middot; Why</div>
+    <h2 class="sec-title">What actually limits concurrent players</h2>
+    <p class="sec-sub">
+      The React frontend is static and effectively unlimited. The ceiling comes from the realtime backend.
+      The harness is designed to stress exactly these four choke points.
+    </p>
+    <div class="grid g4">
+      <div class="card">
+        <h3>Socket.io server</h3>
+        <p>One Node process. Every broadcast fans out to every connected client in the session &mdash; cost grows with users &times; message rate. Almost always the first bottleneck.</p>
+      </div>
+      <div class="card">
+        <h3>Supabase limits</h3>
+        <p>Plan-tier caps on Postgres connections and Realtime channels. Heavy RLS policies make every query more expensive under load.</p>
+      </div>
+      <div class="card">
+        <h3>Hosting tier</h3>
+        <p>The CPU/memory of wherever the Node server runs matters more than the code. Node pegging one core is the classic failure mode.</p>
+      </div>
+      <div class="card">
+        <h3>OpenAI rate limits</h3>
+        <p>Social-mode feed engine and AI injects call OpenAI continuously. Many simultaneous sessions can hit rate limits before sockets do.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="process">
+  <div class="wrap">
+    <div class="sec-num">02 &middot; Process</div>
+    <h2 class="sec-title">The test, end to end</h2>
+    <p class="sec-sub">
+      Fully automated: you run one command, wait a few minutes, read the report. No manual session
+      creation, no team assignment, no clicking around.
+    </p>
+
+    <div class="flow">
+      <div class="node"><b>Setup</b><span>Create/reuse test users, mint real Supabase JWTs</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="node"><b>Session</b><span>Auto-create &amp; start a live session per game type</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="node"><b>Ramp</b><span>Connect players in stages: 25 &#8594; 50 &#8594; 100 &#8594; 200</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="node"><b>Probe</b><span>Trainer sends a message every 5s; time its fan-out to every socket</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="node"><b>Report</b><span>Latency percentiles + errors per stage; knee detection</span></div>
+      <div class="arrow">&#8594;</div>
+      <div class="node"><b>Teardown</b><span>Disconnect all, close the session, keep users for next run</span></div>
+    </div>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-n">1</div>
+        <div class="step-body">
+          <h3>Provision simulated players (one-time, reused after)</h3>
+          <p>Using the Supabase service-role key, the harness creates a pool of test users (<code>loadtest-*</code> emails) plus one trainer account, then signs each in to mint <b>real JWTs</b>. Every simulated player authenticates exactly like a real browser would &mdash; the server's websocket auth middleware validates each token.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">2</div>
+        <div class="step-body">
+          <h3>Spin up a live session</h3>
+          <p><b>Field ops:</b> via <code>POST /api/demo/start</code> (optionally with the existing demo AI bots generating decisions, placements and chat). <b>Social crisis:</b> via the normal sessions API so <code>sim_mode = 'social_media'</code> is set and the feed engine, NPC repliers and watchdog actually run. Test users are registered as session participants.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">3</div>
+        <div class="step-body">
+          <h3>Ramp up connections in stages</h3>
+          <p>The harness opens Socket.io connections in waves (default 25 &#8594; 50 &#8594; 100 &#8594; 200), each joining the session room like a real player. Each stage holds for ~60 seconds while measurements accumulate before the next wave connects.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">4</div>
+        <div class="step-body">
+          <h3>Measure fan-out latency with probes</h3>
+          <p>Every 5 seconds the trainer account posts a chat message via the REST API, which the server broadcasts to the whole session room. The harness timestamps the send and every receive <b>on the same clock</b>, so latency numbers are exact &mdash; no server clock-skew. In social mode it also counts the feed engine's own broadcasts (posts, comments, likes) as delivered-vs-expected.</p>
+        </div>
+      </div>
+      <div class="step">
+        <div class="step-n">5</div>
+        <div class="step-body">
+          <h3>Report and tear down</h3>
+          <p>A per-stage table prints to the console and a <code>loadtest-report.json</code> is written. The session is stopped, sockets disconnected. Test users stay behind so the next run skips provisioning.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="gametypes">
+  <div class="wrap">
+    <div class="sec-num">03 &middot; Game types</div>
+    <h2 class="sec-title">Field ops vs. social crisis: different stress profiles</h2>
+    <p class="sec-sub">
+      Both game types ride the same Socket.io session rooms, so one harness covers both &mdash; but the
+      traffic shape is very different, which is why the harness reports a separate capacity number for each.
+    </p>
+    <table class="matrix">
+      <tr><th></th><th>Field Operations / Evacuation</th><th>Social Media Crisis</th></tr>
+      <tr>
+        <td><b>Who generates traffic</b></td>
+        <td>Players and trainers (decisions, placements, pins, injects). Optional demo AI bots simulate this.</td>
+        <td><b>The server itself.</b> The feed engine continuously produces NPC posts, comments, likes and virality updates &mdash; regardless of player count.</td>
+      </tr>
+      <tr>
+        <td><b>Broadcast volume</b></td>
+        <td>Moderate, bursty &mdash; follows human action pace.</td>
+        <td>High, continuous &mdash; every feed event fans out to every connected player.</td>
+      </tr>
+      <tr>
+        <td><b>Server-side AI load</b></td>
+        <td>Only if AI injects / demo bots are active.</td>
+        <td>Constant &mdash; feed engine, NPC repliers, statement watchdog, chat surveillance all call OpenAI while the session runs.</td>
+      </tr>
+      <tr>
+        <td><b>Expected ceiling</b></td>
+        <td>Higher player count before strain.</td>
+        <td>Likely hits the ceiling sooner &mdash; both fan-out and CPU/AI pressure.</td>
+      </tr>
+      <tr>
+        <td><b>Session creation path</b></td>
+        <td><code>POST /api/demo/start</code></td>
+        <td><code>POST /api/sessions</code> + start (so <code>sim_mode</code> and the social engines activate)</td>
+      </tr>
+    </table>
+    <p class="note" style="margin-top:14px;">
+      Also worth testing separately: one big session (100 players, every message fans out to 100 clients) vs. many
+      small sessions (10 &times; 10 players). The harness's default is one big session &mdash; the harsher of the two.
+    </p>
+  </div>
+</section>
+
+<section id="metrics">
+  <div class="wrap">
+    <div class="sec-num">04 &middot; Metrics</div>
+    <h2 class="sec-title">What we measure at every stage</h2>
+    <p class="sec-sub">Four numbers tell the whole story. Latency is what players feel; the rest confirm why.</p>
+    <div class="grid g4">
+      <div class="card">
+        <h3>Fan-out latency</h3>
+        <p><b>p50 / p95 / p99</b> time from probe sent to each socket receiving it. Healthy: well under 500ms. The knee is where p95 jumps from ~150ms to seconds.</p>
+      </div>
+      <div class="card">
+        <h3>Delivery rate</h3>
+        <p>Messages received &divide; expected (sockets &times; probes). Anything under 100% means broadcasts are being dropped &mdash; players missing injects and chat.</p>
+      </div>
+      <div class="card">
+        <h3>Connection health</h3>
+        <p>Failed connects, auth rejections, and unexpected mid-stage disconnects. Rising disconnects = the server shedding load.</p>
+      </div>
+      <div class="card">
+        <h3>HTTP errors</h3>
+        <p>Probe REST calls that fail or time out (5xx/429). Signals the API side is saturating, not just the socket layer.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <div class="sec-num">05 &middot; Results</div>
+    <h2 class="sec-title">What the report looks like</h2>
+    <div class="banner">
+      &#9888; The numbers below are <b>illustrative sample data</b> to show the report format &mdash; the harness has not
+      been run yet. Real numbers depend on your hosting tier and Supabase plan, and must come from a run against
+      the deployed server (localhost runs are smoke tests only).
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>Field Operations session <span class="pill good">sample</span></h3>
+        <table class="matrix">
+          <tr><th>Players</th><th>p50</th><th>p95</th><th>p99</th><th>Delivery</th><th>Drops</th></tr>
+          <tr><td><b>25</b></td><td>38 ms</td><td>74 ms</td><td>102 ms</td><td>100%</td><td>0</td></tr>
+          <tr><td><b>50</b></td><td>41 ms</td><td>89 ms</td><td>131 ms</td><td>100%</td><td>0</td></tr>
+          <tr><td><b>100</b></td><td>57 ms</td><td>142 ms</td><td>238 ms</td><td>100%</td><td>0</td></tr>
+          <tr><td><b>200</b></td><td>96 ms</td><td>387 ms</td><td>942 ms</td><td>99.8%</td><td>1</td></tr>
+          <tr class="knee"><td><b>300</b></td><td>410 ms</td><td>2,610 ms</td><td>6,150 ms</td><td>96.1%</td><td>14</td></tr>
+        </table>
+        <div class="chart">
+          <div class="row"><div class="lbl">25 players</div><div class="track"><div class="bar" style="width:4%"></div></div><div class="val">p95 74 ms</div></div>
+          <div class="row"><div class="lbl">50 players</div><div class="track"><div class="bar" style="width:5%"></div></div><div class="val">p95 89 ms</div></div>
+          <div class="row"><div class="lbl">100 players</div><div class="track"><div class="bar" style="width:8%"></div></div><div class="val">p95 142 ms</div></div>
+          <div class="row"><div class="lbl">200 players</div><div class="track"><div class="bar warn" style="width:19%"></div></div><div class="val">p95 387 ms</div></div>
+          <div class="row"><div class="lbl">300 players</div><div class="track"><div class="bar bad" style="width:100%"></div></div><div class="val">p95 2.6 s</div></div>
+        </div>
+        <div class="verdict">
+          <b>Verdict (sample):</b> comfortable at 200 concurrent players; knee between 200 and 300.
+          Recommended operating ceiling with headroom: <b>~200 players</b>.
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Social Media Crisis session <span class="pill warn">sample</span></h3>
+        <table class="matrix">
+          <tr><th>Players</th><th>p50</th><th>p95</th><th>p99</th><th>Delivery</th><th>Drops</th></tr>
+          <tr><td><b>25</b></td><td>44 ms</td><td>96 ms</td><td>149 ms</td><td>100%</td><td>0</td></tr>
+          <tr><td><b>50</b></td><td>63 ms</td><td>171 ms</td><td>290 ms</td><td>100%</td><td>0</td></tr>
+          <tr><td><b>100</b></td><td>128 ms</td><td>486 ms</td><td>1,120 ms</td><td>99.6%</td><td>2</td></tr>
+          <tr class="knee"><td><b>200</b></td><td>540 ms</td><td>3,280 ms</td><td>8,400 ms</td><td>93.4%</td><td>21</td></tr>
+        </table>
+        <div class="chart">
+          <div class="row"><div class="lbl">25 players</div><div class="track"><div class="bar" style="width:4%"></div></div><div class="val">p95 96 ms</div></div>
+          <div class="row"><div class="lbl">50 players</div><div class="track"><div class="bar" style="width:7%"></div></div><div class="val">p95 171 ms</div></div>
+          <div class="row"><div class="lbl">100 players</div><div class="track"><div class="bar warn" style="width:16%"></div></div><div class="val">p95 486 ms</div></div>
+          <div class="row"><div class="lbl">200 players</div><div class="track"><div class="bar bad" style="width:100%"></div></div><div class="val">p95 3.3 s</div></div>
+        </div>
+        <div class="verdict">
+          <b>Verdict (sample):</b> the feed engine's constant broadcasts pull the knee down to between 100 and 200.
+          Recommended operating ceiling with headroom: <b>~100 players</b> per social session.
+        </div>
+      </div>
+    </div>
+
+    <p class="note" style="margin-top:18px;">
+      The console prints the same tables live during the run; <code>loadtest-report.json</code> holds the raw
+      per-probe measurements for deeper analysis or graphing.
+    </p>
+  </div>
+</section>
+
+<section id="run">
+  <div class="wrap">
+    <div class="sec-num">06 &middot; Running it</div>
+    <h2 class="sec-title">One command, a few flags</h2>
+    <p class="sec-sub">After a one-time <code>.env</code> setup (the same Supabase URL and keys the server already uses), it's fire-and-forget.</p>
+
+<pre><code><span class="c-com"># Test both game types against a local server, up to 200 players</span>
+<span class="c-fn">npm run loadtest</span> -- --users <span class="c-num">200</span> --url <span class="c-str">http://localhost:3001</span> --gametype <span class="c-str">both</span>
+
+<span class="c-com"># The real capacity number: point at the deployed staging/production server</span>
+<span class="c-fn">npm run loadtest</span> -- --users <span class="c-num">300</span> --url <span class="c-str">https://your-server.example.com</span> --gametype <span class="c-str">social</span>
+
+<span class="c-com"># Field ops with AI bots generating realistic player activity on top</span>
+<span class="c-fn">npm run loadtest</span> -- --users <span class="c-num">150</span> --gametype <span class="c-str">field</span> --demo <span class="c-str">ai</span></code></pre>
+
+    <table class="matrix">
+      <tr><th>Flag</th><th>Default</th><th>Meaning</th></tr>
+      <tr><td><b>--users</b></td><td>100</td><td>Maximum simulated players (caps the ramp)</td></tr>
+      <tr><td><b>--url</b></td><td>http://localhost:3001</td><td>Server to test. Localhost = smoke test; deployed = real capacity</td></tr>
+      <tr><td><b>--gametype</b></td><td>both</td><td><code>field</code>, <code>social</code>, or <code>both</code> (back-to-back, reported separately)</td></tr>
+      <tr><td><b>--stages</b></td><td>25,50,100,200</td><td>Ramp stages (player counts)</td></tr>
+      <tr><td><b>--stage-duration</b></td><td>60</td><td>Seconds to hold and measure at each stage</td></tr>
+      <tr><td><b>--demo</b></td><td>off</td><td>Field only: <code>scripted</code> or <code>ai</code> starts the existing demo bots for realistic background activity</td></tr>
+      <tr><td><b>--scenario</b></td><td>auto</td><td>Specific scenario ID; otherwise auto-picked per game type</td></tr>
+    </table>
+
+    <ul class="tight" style="margin-top:16px;">
+      <li><b>Prerequisites:</b> server running (or a staging URL), <code>.env</code> with Supabase URL + anon key + service-role key, at least one seeded scenario per game type being tested.</li>
+      <li><b>Costs:</b> a running social session makes OpenAI calls (feed engine); <code>--demo ai</code> does too. Pure field runs with <code>--demo off</code> cost nothing.</li>
+      <li><b>Cleanup:</b> sessions are closed automatically; <code>loadtest-*</code> test users are kept and reused on the next run.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="reading">
+  <div class="wrap">
+    <div class="sec-num">07 &middot; Interpretation</div>
+    <h2 class="sec-title">Reading the verdict &amp; what to do next</h2>
+    <div class="grid g3">
+      <div class="card">
+        <h3><span class="pill good">healthy</span> p95 &lt; 500 ms, 100% delivery</h3>
+        <p>Players get every update essentially instantly. This stage's player count is safely within capacity.</p>
+      </div>
+      <div class="card">
+        <h3><span class="pill warn">strained</span> p95 0.5&ndash;2 s, occasional drops</h3>
+        <p>Playable but degrading &mdash; injects and chat visibly lag. Treat the previous stage as your operating ceiling.</p>
+      </div>
+      <div class="card">
+        <h3><span class="pill bad">knee</span> p95 &gt; 2 s, drops &amp; disconnects</h3>
+        <p>The server is shedding load. Real players here would see frozen feeds and missed events.</p>
+      </div>
+    </div>
+    <ul class="tight" style="margin-top:22px;">
+      <li><b>Plan events with headroom:</b> run real sessions at ~60&ndash;70% of the measured knee.</li>
+      <li><b>If the knee is too low:</b> in rough order of payoff &mdash; bigger hosting tier for the Node server, trimming per-broadcast DB work, Supabase plan upgrade, then horizontal scaling of the socket layer (requires a Socket.io adapter, e.g. Redis).</li>
+      <li><b>Re-run after changes:</b> the harness is repeatable &mdash; run it after every infra or performance change and before big training events.</li>
+    </ul>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Load Test Harness &mdash; process &amp; report format briefer. Sample figures are illustrative placeholders, not measurements.
+  </div>
+</footer>
+
+</body>
+</html>

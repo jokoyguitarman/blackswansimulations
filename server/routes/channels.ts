@@ -6,7 +6,10 @@ import { logger } from '../lib/logger.js';
 import { validate, schemas } from '../lib/validation.js';
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { getWebSocketService } from '../services/websocketService.js';
-import { createNotification } from '../services/notificationService.js';
+import {
+  createNotification,
+  createNotificationsForUsers,
+} from '../services/notificationService.js';
 import { createDefaultChannels } from '../services/channelService.js';
 import { assertSessionAccess } from '../lib/access.js';
 import { io } from '../index.js';
@@ -869,51 +872,36 @@ router.post(
             });
           }
         } else {
-          // For channel messages, notify all members except the sender
-          // Get channel members (for role_specific channels, get users with that role)
-          let memberIds: string[] = [];
+          // For channel messages, notify all session participants except the sender
+          const { data: participants } = await supabaseAdmin
+            .from('session_participants')
+            .select('user_id')
+            .eq('session_id', channel.session_id);
 
-          if (channel.type === 'role_specific') {
-            // Get users with the role specified in the channel
-            // This assumes role is stored somewhere - you may need to adjust based on your schema
-            const { data: participants } = await supabaseAdmin
-              .from('session_participants')
-              .select('user_id, user_profiles!inner(role)')
-              .eq('session_id', channel.session_id);
+          const memberIds = [
+            ...new Set(
+              (participants || [])
+                .map((p) => p.user_id)
+                .filter((id): id is string => !!id && id !== user.id),
+            ),
+          ];
 
-            // Filter by role if channel has role_filter
-            // Note: You may need to adjust this based on how role_specific channels work
-            memberIds = (participants || [])
-              .map((p) => p.user_id)
-              .filter((id): id is string => !!id && id !== user.id);
-          } else {
-            // For public/inter_agency/command channels, notify all session participants
-            const { data: participants } = await supabaseAdmin
-              .from('session_participants')
-              .select('user_id')
-              .eq('session_id', channel.session_id);
-
-            memberIds = (participants || [])
-              .map((p) => p.user_id)
-              .filter((id): id is string => !!id && id !== user.id);
-          }
-
-          // Create notifications for all members (batch)
-          for (const memberId of memberIds) {
-            await createNotification({
-              sessionId: channel.session_id,
-              userId: memberId,
-              type: 'chat_message',
-              title: `New message in ${channel.name || 'channel'}`,
-              message: `${senderData.full_name || 'Unknown'}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
-              priority: 'low',
-              metadata: {
-                channel_id: channelId,
-                message_id: messageData.id,
-              },
-              actionUrl: `/sessions/${channel.session_id}#chat`,
-            });
-          }
+          // Single bulk insert + per-user socket emit. The previous per-member
+          // createNotification loop cost one sequential DB round-trip per
+          // participant (~100 at large sessions), which dominated this route's
+          // response time under load.
+          await createNotificationsForUsers(memberIds, {
+            sessionId: channel.session_id,
+            type: 'chat_message',
+            title: `New message in ${channel.name || 'channel'}`,
+            message: `${senderData.full_name || 'Unknown'}: ${content.substring(0, 100)}${content.length > 100 ? '...' : ''}`,
+            priority: 'low',
+            metadata: {
+              channel_id: channelId,
+              message_id: messageData.id,
+            },
+            actionUrl: `/sessions/${channel.session_id}#chat`,
+          });
         }
       } catch (notifErr) {
         logger.error(

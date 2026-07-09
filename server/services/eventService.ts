@@ -89,6 +89,17 @@ export const logAndBroadcastEvent = async (
   eventData: Record<string, unknown>,
   createdBy: string,
 ): Promise<void> => {
-  await logEvent(sessionId, eventType, eventData, createdBy);
+  // Broadcast FIRST: realtime delivery to players must never depend on audit
+  // logging. A session_events check-constraint drift once silently killed all
+  // session-room 'message' broadcasts because logEvent threw before the
+  // broadcast line was reached.
   broadcastEvent(io, sessionId, eventType, eventData);
+  try {
+    await logEvent(sessionId, eventType, eventData, createdBy);
+  } catch (err) {
+    logger.error(
+      { error: err, sessionId, eventType },
+      'Event broadcast succeeded but audit logging failed — check session_events constraints',
+    );
+  }
 };
