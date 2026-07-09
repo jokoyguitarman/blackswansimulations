@@ -21,6 +21,7 @@ coverage/
 # Editor / OS
 .DS_Store
 Thumbs.db
+~$*
 .vscode/
 .idea/
 *.swp
