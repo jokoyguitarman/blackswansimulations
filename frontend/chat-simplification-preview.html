@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat UI Simplification - Before & After Preview</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #111;
+      color: #E9EDEF;
+      padding: 40px;
+      line-height: 1.5;
+    }
+    h1 { font-size: 28px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+    h2 { font-size: 22px; font-weight: 600; color: #E9EDEF; margin-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 8px; }
+    h3 { font-size: 14px; font-weight: 600; color: #8696A0; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 12px; }
+    .subtitle { color: #8696A0; font-size: 14px; margin-bottom: 40px; }
+    section { margin-bottom: 60px; }
+    .section-divider { height: 1px; background: rgba(255,255,255,0.08); margin: 60px 0; }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+    }
+    @media (max-width: 900px) { .comparison { grid-template-columns: 1fr; } }
+
+    .phone {
+      width: 340px;
+      margin: 0 auto;
+      border-radius: 36px;
+      overflow: hidden;
+      border: 7px solid #333;
+      box-shadow: 0 20px 50px rgba(0,0,0,0.4);
+      background: #0B141A;
+    }
+
+    .wa-header {
+      background: #1F2C34;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .wa-header .avatar {
+      width: 36px; height: 36px; border-radius: 50%; background: #00A884;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .wa-header .info { flex: 1; }
+    .wa-header .info .name { font-size: 15px; font-weight: 600; color: #E9EDEF; }
+    .wa-header .info .status { font-size: 12px; color: #8696A0; }
+
+    .tab-bar {
+      background: #1F2C34;
+      padding: 8px 12px;
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid rgba(134,150,160,0.1);
+    }
+    .tab {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .tab.active { background: #00A884; color: #fff; }
+    .tab.inactive { background: #2A3942; color: #8696A0; }
+
+    .channel-chips {
+      background: #1F2C34;
+      padding: 8px 12px 12px;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      border-bottom: 1px solid rgba(134,150,160,0.1);
+    }
+    .chip {
+      padding: 5px 12px;
+      border-radius: 16px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+    .chip.active { background: rgba(0,168,132,0.15); color: #00A884; border: 1px solid rgba(0,168,132,0.3); }
+    .chip.inactive { background: #2A3942; color: #D1D7DB; border: 1px solid transparent; }
+
+    .messages {
+      background: #0B141A;
+      padding: 16px 12px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    }
+    .messages.tall { min-height: 380px; }
+
+    .bubble {
+      max-width: 80%;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    .bubble.sent { align-self: flex-end; background: #005C4B; border-top-right-radius: 0; color: #E9EDEF; }
+    .bubble.received { align-self: flex-start; background: #202C33; border-top-left-radius: 0; color: #E9EDEF; }
+    .bubble .sender { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+    .bubble .sender.teal { color: #06CF9C; }
+    .bubble .sender.blue { color: #53BDEB; }
+    .bubble .sender.pink { color: #FC7B92; }
+    .bubble .time { font-size: 10px; color: rgba(233,237,239,0.5); text-align: right; margin-top: 4px; }
+
+    .input-area {
+      background: #1F2C34;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .input-field {
+      flex: 1;
+      background: #2A3942;
+      border: none;
+      border-radius: 20px;
+      padding: 10px 16px;
+      font-size: 13px;
+      color: #E9EDEF;
+      outline: none;
+    }
+    .send-btn {
+      width: 36px; height: 36px; border-radius: 50%; background: #00A884;
+      display: flex; align-items: center; justify-content: center; border: none;
+    }
+
+    .calls-btn-minimal {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
+      background: #2A3942;
+      color: #8696A0;
+      border: none;
+      cursor: pointer;
+    }
+
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-left: 8px; }
+    .badge-before { background: #EF4444; color: #fff; }
+    .badge-after { background: #10B981; color: #fff; }
+
+    .card-header {
+      padding: 12px 16px;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #fff;
+    }
+
+    .comparison-card {
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+
+    .code-block {
+      background: #1a1a2e;
+      border-radius: 8px;
+      padding: 16px;
+      font-family: 'JetBrains Mono', 'Fira Code', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      overflow-x: auto;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .code-block .comment { color: #6A9955; }
+    .code-block .keyword { color: #569CD6; }
+    .code-block .string { color: #CE9178; }
+    .code-block .removed { background: rgba(239,68,68,0.15); display: block; padding: 2px 4px; margin: 1px 0; border-left: 3px solid #EF4444; }
+    .code-block .added { background: rgba(16,185,129,0.15); display: block; padding: 2px 4px; margin: 1px 0; border-left: 3px solid #10B981; }
+
+    .change-list {
+      list-style: none;
+      padding: 0;
+    }
+    .change-list li {
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .change-list .icon-remove { color: #EF4444; font-weight: bold; }
+    .change-list .icon-add { color: #10B981; font-weight: bold; }
+    .change-list .icon-change { color: #F59E0B; font-weight: bold; }
+  </style>
+</head>
+<body>
+
+  <h1>Chat UI Simplification</h1>
+  <p class="subtitle">Social crisis mode (WhatsApp variant) -- removing clutter, showing only team group chat + calls</p>
+
+  <!-- ═══════════ SECTION: BEFORE & AFTER ═══════════ -->
+  <section>
+    <h2>Before & After</h2>
+
+    <div class="comparison">
+      <!-- BEFORE -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: #EF4444;">
+          Current (Cluttered) <span class="badge badge-before">BEFORE</span>
+        </div>
+        <div class="phone">
+          <div class="wa-header">
+            <div class="avatar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">Crisis Response Team</div>
+              <div class="status">8 members, 3 online</div>
+            </div>
+          </div>
+
+          <!-- 3 Tab buttons -->
+          <div class="tab-bar">
+            <div class="tab active">Chats</div>
+            <div class="tab inactive">DMs</div>
+            <div class="tab inactive">Calls</div>
+          </div>
+
+          <!-- Channel chips -->
+          <div class="channel-chips">
+            <div class="chip active">Command Channel</div>
+            <div class="chip inactive">All Teams</div>
+            <div class="chip inactive">Public Channel</div>
+            <div class="chip inactive">Trainer Channel</div>
+          </div>
+
+          <!-- Messages -->
+          <div class="messages">
+            <div style="text-align: center; color: #8696A0; font-size: 13px; padding: 20px 0;">No messages yet</div>
+          </div>
+
+          <div class="input-area">
+            <input class="input-field" placeholder="Type a message" readonly>
+            <div class="send-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- AFTER -->
+      <div class="comparison-card">
+        <div class="card-header" style="background: #10B981;">
+          Simplified (Clean) <span class="badge badge-after">AFTER</span>
+        </div>
+        <div class="phone">
+          <div class="wa-header">
+            <div class="avatar">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            </div>
+            <div class="info">
+              <div class="name">Crisis Response Team</div>
+              <div class="status">8 members, 3 online</div>
+            </div>
+          </div>
+
+          <!-- Minimal header: just Calls button -->
+          <div style="display: flex; align-items: center; justify-content: flex-end; padding: 8px 12px; background: #1F2C34; border-bottom: 1px solid rgba(134,150,160,0.1);">
+            <button class="calls-btn-minimal">Calls</button>
+          </div>
+
+          <!-- Messages - more space! -->
+          <div class="messages tall">
+            <div class="bubble received">
+              <div class="sender teal">Sarah Chen</div>
+              <div>Has anyone coordinated with the police liaison yet? We need their latest update before the briefing.</div>
+              <div class="time">2:30 PM</div>
+            </div>
+            <div class="bubble received">
+              <div class="sender blue">Marcus Lee</div>
+              <div>I just got off the phone with SPF. They're confirming 3 casualties, no fatalities. Cordon extends to Bayfront Ave.</div>
+              <div class="time">2:32 PM</div>
+            </div>
+            <div class="bubble sent">
+              <div>Got it. Let's use that for the holding statement. I'll draft something now.</div>
+              <div class="time">2:33 PM</div>
+            </div>
+            <div class="bubble received">
+              <div class="sender pink">Priya Sharma</div>
+              <div>Legal says we can confirm the number but NOT the cause until SCDF completes their assessment.</div>
+              <div class="time">2:34 PM</div>
+            </div>
+          </div>
+
+          <div class="input-area">
+            <input class="input-field" placeholder="Type a message" readonly>
+            <div class="send-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: WHAT'S REMOVED ═══════════ -->
+  <section>
+    <h2>What Changes</h2>
+
+    <ul class="change-list">
+      <li><span class="icon-remove">&#10005;</span> <strong>Chats tab</strong> -- Removed (always in group chat mode)</li>
+      <li><span class="icon-remove">&#10005;</span> <strong>DMs tab</strong> -- Hidden in social crisis mode</li>
+      <li><span class="icon-remove">&#10005;</span> <strong>Channel chips</strong> -- Removed (auto-selects "All Teams")</li>
+      <li><span class="icon-remove">&#10005;</span> <strong>Insider DM</strong> -- Hidden in social crisis mode</li>
+      <li><span class="icon-remove">&#10005;</span> <strong>Hospital DMs</strong> -- Hidden in social crisis mode</li>
+      <li><span class="icon-remove">&#10005;</span> <strong>"+ New" DM button</strong> -- Hidden in social crisis mode</li>
+      <li><span class="icon-change">&#9998;</span> <strong>Calls button</strong> -- Moved to minimal position (top-right corner)</li>
+      <li><span class="icon-add">&#10003;</span> <strong>Auto-select "All Teams"</strong> -- Messages load immediately on open</li>
+      <li><span class="icon-add">&#10003;</span> <strong>More message space</strong> -- ~80px gained from removing tabs/chips</li>
+    </ul>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: CODE CHANGES ═══════════ -->
+  <section>
+    <h2>Code Changes (ChatInterface.tsx)</h2>
+
+    <h3>Change 1: Auto-select "All Teams" on load</h3>
+    <div class="code-block">
+      <span class="comment">// In loadChannels() function:</span><br><br>
+      <span class="removed">  if (result.data && result.data.length > 0 && !selectedChannel && !selectedDM) {</span>
+      <span class="removed">    setSelectedChannel((result.data[0] as Channel).id);</span>
+      <span class="removed">  }</span>
+      <br>
+      <span class="added">  if (isWA) {</span>
+      <span class="added">    const allTeams = (result.data as Channel[]).find(c => c.name === 'All Teams' || c.type === 'inter_agency');</span>
+      <span class="added">    setSelectedChannel(allTeams?.id || (result.data[0] as Channel).id);</span>
+      <span class="added">  } else {</span>
+      <span class="added">    if (result.data && result.data.length > 0 && !selectedChannel && !selectedDM) {</span>
+      <span class="added">      setSelectedChannel((result.data[0] as Channel).id);</span>
+      <span class="added">    }</span>
+      <span class="added">  }</span>
+    </div>
+
+    <h3 style="margin-top: 24px;">Change 2: Replace tab bar with minimal Calls button</h3>
+    <div class="code-block">
+      <span class="comment">// Replace the entire tab bar + channel chips section:</span><br><br>
+      <span class="added">  {isWA ? (</span>
+      <span class="added">    &lt;div className="flex items-center justify-end px-3 py-2"&gt;</span>
+      <span class="added">      &lt;button onClick={toggleVoice} className={s.voiceTabButton(viewMode === 'voice')}&gt;</span>
+      <span class="added">        {webrtc.state.isInCall ? 'In Call' : 'Calls'}</span>
+      <span class="added">      &lt;/button&gt;</span>
+      <span class="added">    &lt;/div&gt;</span>
+      <span class="added">  ) : (</span>
+      <span class="comment">    // ... original tab bar + channel chips for terminal mode ...</span>
+      <span class="added">  )}</span>
+    </div>
+
+    <h3 style="margin-top: 24px;">Change 3: Skip DM loading</h3>
+    <div class="code-block">
+      <span class="comment">// In initialization useEffect:</span><br><br>
+      <span class="removed">  const initialize = async () => {</span>
+      <span class="removed">    await loadParticipants();</span>
+      <span class="removed">    loadChannels();</span>
+      <span class="removed">    loadDMs();</span>
+      <span class="removed">  };</span>
+      <br>
+      <span class="added">  const initialize = async () => {</span>
+      <span class="added">    await loadParticipants();</span>
+      <span class="added">    loadChannels();</span>
+      <span class="added">    if (!isWA) loadDMs();</span>
+      <span class="added">  };</span>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: CALLS VIEW ═══════════ -->
+  <section>
+    <h2>Calls View (When "Calls" Tapped)</h2>
+
+    <div style="display: flex; justify-content: center;">
+      <div class="phone">
+        <div class="wa-header">
+          <div class="avatar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+          </div>
+          <div class="info">
+            <div class="name">Crisis Response Team</div>
+            <div class="status">8 members, 3 online</div>
+          </div>
+        </div>
+
+        <!-- Calls active -->
+        <div style="display: flex; align-items: center; justify-content: flex-end; padding: 8px 12px; background: #1F2C34; border-bottom: 1px solid rgba(134,150,160,0.1);">
+          <button class="calls-btn-minimal" style="background: #00A884; color: #fff;">Calls</button>
+        </div>
+
+        <!-- Voice panel content -->
+        <div style="padding: 16px; background: #0B141A; min-height: 350px;">
+          <div style="font-size: 13px; color: #8696A0; margin-bottom: 12px;">Select participants to call</div>
+
+          <div style="background: #202C33; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 8px; border: 1px solid rgba(0,168,132,0.3);">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: rgba(0,168,132,0.2); display: flex; align-items: center; justify-content: center; font-size: 12px; color: #00A884;">&#10003;</div>
+            <div style="flex: 1;">
+              <div style="font-size: 14px; color: #E9EDEF; font-weight: 500;">Sarah Chen</div>
+              <div style="font-size: 11px; color: #8696A0;">Communications</div>
+            </div>
+          </div>
+
+          <div style="background: #202C33; border-radius: 10px; padding: 12px 16px; display: flex; align-items: center; gap: 12px; margin-bottom: 8px;">
+            <div style="width: 32px; height: 32px; border-radius: 50%; background: #2A3942; display: flex; align-items: center; justify-content: center; font-size: 12px; color: #8696A0;">&#9900;</div>
+            <div style="flex: 1;">
+              <div style="font-size: 14px; color: #E9EDEF; font-weight: 500;">Marcus Lee</div>
+              <div style="font-size: 11px; color: #8696A0;">Legal</div>
+            </div>
+          </div>
+
+          <button style="width: 100%; padding: 12px; border-radius: 24px; background: #00A884; color: #fff; font-size: 14px; font-weight: 600; border: none; margin-top: 16px; cursor: pointer;">
+            Call (1)
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ SECTION: WHAT STAYS ═══════════ -->
+  <section>
+    <h2>What Stays the Same</h2>
+    <ul class="change-list">
+      <li><span class="icon-add">&#10003;</span> Terminal mode (field ops) -- completely unchanged, keeps all tabs/channels/DMs</li>
+      <li><span class="icon-add">&#10003;</span> Voice calls -- still accessible via "Calls" button</li>
+      <li><span class="icon-add">&#10003;</span> WhatsApp header -- Crisis Response Team, 8 members</li>
+      <li><span class="icon-add">&#10003;</span> Message bubbles, send, mic button -- all unchanged</li>
+      <li><span class="icon-add">&#10003;</span> Chat surveillance -- still monitors all channels</li>
+      <li><span class="icon-add">&#10003;</span> Real-time messages -- Supabase realtime still works</li>
+      <li><span class="icon-add">&#10003;</span> Backend -- zero changes needed</li>
+    </ul>
+  </section>
+
+</body>
+</html>

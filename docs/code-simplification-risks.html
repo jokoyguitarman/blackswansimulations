@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>What Will Break — Risk Companion to the Code Simplification Guide</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#161b22; --panel2:#1c232d; --ink:#e6edf3; --muted:#9aa7b4;
+    --line:#2a323d; --accent:#4cc2ff; --good:#3fb950; --bad:#f85149; --warn:#d29922;
+    --old:#3a1d1d; --oldline:#5b2a2a; --new:#13301c; --newline:#23532f;
+    --kw:#ff7b72; --str:#a5d6ff; --com:#8b949e; --fn:#d2a8ff; --num:#79c0ff; --type:#7ee787;
+    --radius:12px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0; background:var(--bg); color:var(--ink); font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  .layout{display:grid; grid-template-columns:300px 1fr; min-height:100vh}
+  nav{position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto; background:var(--panel); border-right:1px solid var(--line); padding:24px 18px;}
+  nav h2{font-size:13px; letter-spacing:.08em; text-transform:uppercase; color:var(--muted); margin:22px 0 8px}
+  nav a{display:block; color:var(--ink); text-decoration:none; padding:6px 10px; border-radius:8px; font-size:14px}
+  nav a:hover{background:var(--panel2); color:var(--accent)}
+  nav .brand{font-weight:700; font-size:17px; margin-bottom:4px}
+  nav .brand small{display:block; color:var(--muted); font-weight:400; font-size:12px; margin-top:2px}
+  nav .backlink{display:inline-block; margin-top:10px; font-size:13px; color:var(--accent); text-decoration:none; border:1px solid var(--line); border-radius:8px; padding:6px 10px}
+  main{padding:48px 56px; max-width:1100px}
+  h1{font-size:34px; line-height:1.2; margin:0 0 8px}
+  .lede{color:var(--muted); font-size:18px; margin:0 0 28px; max-width:780px}
+  section{margin:0 0 56px; padding-top:18px; border-top:1px solid var(--line)}
+  section:first-of-type{border-top:none}
+  h2.sec{font-size:26px; margin:8px 0 6px}
+  h3{font-size:20px; margin:30px 0 10px; color:#fff}
+  h4{font-size:16px; margin:22px 0 8px; color:var(--accent)}
+  p{margin:12px 0}
+  .muted{color:var(--muted)}
+  code.inline{background:var(--panel2); border:1px solid var(--line); padding:1px 6px; border-radius:6px; font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:13.5px; color:#ffd9a8}
+  .pill{display:inline-block; font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; padding:3px 9px; border-radius:999px; vertical-align:middle}
+  .pill.crit{background:rgba(248,81,73,.15); color:var(--bad); border:1px solid rgba(248,81,73,.45)}
+  .pill.med{background:rgba(210,153,34,.15); color:var(--warn); border:1px solid rgba(210,153,34,.4)}
+  .pill.low{background:rgba(63,185,80,.15); color:var(--good); border:1px solid rgba(63,185,80,.4)}
+  .box{border:1px solid var(--line); border-radius:var(--radius); padding:16px 18px; margin:18px 0; background:var(--panel)}
+  .box.break{border-left:4px solid var(--bad)}
+  .box.why{border-left:4px solid var(--accent)}
+  .box.fix{border-left:4px solid var(--good)}
+  .box.warn{border-left:4px solid var(--warn)}
+  .box .label{font-size:12px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-bottom:6px; font-weight:700}
+  pre{margin:0; padding:16px 18px; overflow-x:auto; font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:13.5px; line-height:1.6; border-radius:10px; background:#0b0f14; border:1px solid var(--line)}
+  .filemeta{font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:var(--muted); margin:18px 0 6px}
+  .cmp{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin:14px 0}
+  @media(max-width:980px){.cmp{grid-template-columns:1fr}}
+  .cmp .col .head{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; padding:8px 12px; border-radius:8px 8px 0 0}
+  .cmp .old .head{background:var(--old); color:#ffb4b4; border:1px solid var(--oldline); border-bottom:none}
+  .cmp .new .head{background:var(--new); color:#9be9af; border:1px solid var(--newline); border-bottom:none}
+  .cmp .old pre{border-radius:0 0 8px 8px; border-color:var(--oldline)}
+  .cmp .new pre{border-radius:0 0 8px 8px; border-color:var(--newline)}
+  .k{color:var(--kw)} .s{color:var(--str)} .c{color:var(--com)} .f{color:var(--fn)} .n{color:var(--num)} .t{color:var(--type)}
+  table{border-collapse:collapse; width:100%; margin:14px 0; font-size:14px}
+  th,td{border:1px solid var(--line); padding:9px 12px; text-align:left; vertical-align:top}
+  th{background:var(--panel2); color:#fff; font-size:13px; text-transform:uppercase; letter-spacing:.04em}
+  td code{background:var(--panel2); padding:1px 5px; border-radius:5px; color:#ffd9a8; font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; font-size:13px}
+  .annot{list-style:none; padding:0; margin:10px 0}
+  .annot li{padding:8px 0; border-bottom:1px dashed var(--line)}
+  .annot li:last-child{border-bottom:none}
+  .annot .ln{display:inline-block; min-width:64px; font-family:"SF Mono",ui-monospace,Menlo,Consolas,monospace; color:var(--accent); font-size:12px}
+  .toc-num{color:var(--muted); font-variant-numeric:tabular-nums; margin-right:8px}
+  .scorecard{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; margin:18px 0}
+  .scorecard .card{background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:14px 16px}
+  .scorecard .big{font-size:30px; font-weight:800}
+  .scorecard .big.crit{color:var(--bad)} .scorecard .big.med{color:var(--warn)} .scorecard .big.low{color:var(--good)}
+  .scorecard .lbl{color:var(--muted); font-size:13px}
+  footer{color:var(--muted); font-size:13px; padding:30px 0 0; border-top:1px solid var(--line)}
+  .check{list-style:none; padding:0; margin:12px 0}
+  .check li{padding:8px 12px; margin:6px 0; background:var(--panel); border:1px solid var(--line); border-radius:8px}
+  .check li::before{content:"☐"; margin-right:10px; color:var(--accent); font-weight:700}
+</style>
+</head>
+<body>
+<div class="layout">
+  <nav>
+    <div class="brand">What Will Break<small>Risk companion · read before you refactor</small></div>
+    <a class="backlink" href="code-simplification-guide.html">← Back to the main guide</a>
+    <h2>Read first</h2>
+    <a href="#tldr">The one-paragraph truth</a>
+    <a href="#global">Global gotchas (hit every refactor)</a>
+    <h2>Per-refactor breakage</h2>
+    <a href="#b1"><span class="toc-num">1</span>Access check helper</a>
+    <a href="#b2"><span class="toc-num">2</span>dbFail logger</a>
+    <a href="#b3"><span class="toc-num">3</span>getMembers helper</a>
+    <a href="#b4"><span class="toc-num">4</span>asyncHandler wrapper</a>
+    <a href="#b5"><span class="toc-num">5</span>getTeamNameMap</a>
+    <a href="#b6"><span class="toc-num">6</span>loadSession extraction</a>
+    <h2>Before you commit</h2>
+    <a href="#severity">Severity at a glance</a>
+    <a href="#preflight">Pre-flight checklist</a>
+  </nav>
+
+  <main>
+    <h1>What Will Break If You Make These Changes</h1>
+    <p class="lede">A companion to the Code Simplification Guide. Each refactor in that guide is <em>safe when done correctly</em> — but each also has a "naive way" that silently breaks something. This document is the list of traps, in plain English, with the exact fix for each.</p>
+
+    <div class="scorecard">
+      <div class="card"><div class="big crit">3</div><div class="lbl">global traps that affect every refactor</div></div>
+      <div class="card"><div class="big crit">1</div><div class="lbl">pre-existing bug that breaks refactor #4</div></div>
+      <div class="card"><div class="big med">4</div><div class="lbl">behavior changes to watch for</div></div>
+      <div class="card"><div class="big low">6</div><div class="lbl">refactors, all fixable</div></div>
+    </div>
+
+    <!-- TLDR -->
+    <section id="tldr">
+      <h2 class="sec">The one-paragraph truth</h2>
+      <p>A refactor is supposed to change <em>how the code is written</em>, not <em>what it does</em>. Nothing in the guide breaks the app <strong>if</strong> you (a) keep the special-case behaviors the originals had, and (b) get past the project's automated gatekeepers (TypeScript, ESLint, and the pre-commit hook). The breakage almost always comes from <strong>over-simplifying</strong> — deleting a behavior you didn't notice — or from <strong>tooling rules</strong> rejecting the new code before it ever runs. Below, "What breaks" = the symptom, "Why" = the cause, "Safe version" = exactly what to do instead.</p>
+    </section>
+
+    <!-- GLOBAL -->
+    <section id="global">
+      <h2 class="sec">Global gotchas — these hit <em>every</em> refactor</h2>
+      <p>Three things in your project's setup will bite any new file or edit, regardless of which refactor you're doing. Learn these once.</p>
+
+      <h3>G1 · New imports must end in <code class="inline">.js</code> <span class="pill crit">will crash on start</span></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">If you create a helper and import it as <code class="inline">from '../lib/teams'</code> (no extension), the server throws <code class="inline">ERR_MODULE_NOT_FOUND</code> on startup and the whole backend fails to boot.</p></div>
+      <div class="box why"><div class="label">Why</div><p style="margin:0">Your <code class="inline">package.json</code> has <code class="inline">"type": "module"</code>, so the project uses real ES Modules. In that mode, import paths to your own files must include the file extension — and counter-intuitively it's <code class="inline">.js</code>, <em>not</em> <code class="inline">.ts</code>, even though your files are <code class="inline">.ts</code>. (The TypeScript compiler rewrites <code class="inline">.ts</code>→<code class="inline">.js</code>, so you write the name of the <em>output</em> file.) Every existing import in <code class="inline">server/index.ts</code> already does this, e.g. <code class="inline">from './lib/logger.js'</code>.</p></div>
+      <div class="box fix"><div class="label">Safe version</div>
+      <div class="cmp" style="margin-top:8px">
+        <div class="col old"><div class="head">BREAKS</div>
+<pre><span class="k">import</span> { getTeamNameMap }
+  <span class="k">from</span> <span class="s">'../lib/teams'</span>;     <span class="c">// no extension</span>
+<span class="k">import</span> { getMembers }
+  <span class="k">from</span> <span class="s">'../lib/teams.ts'</span>;  <span class="c">// wrong extension</span></pre>
+        </div>
+        <div class="col new"><div class="head">WORKS</div>
+<pre><span class="k">import</span> { getTeamNameMap }
+  <span class="k">from</span> <span class="s">'../lib/teams.js'</span>;  <span class="c">// .js, always</span></pre>
+        </div>
+      </div></div>
+
+      <h3>G2 · The <code class="inline">any</code> type will block your commit <span class="pill crit">can't commit</span></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">My example helpers in the guide used <code class="inline">any</code> for brevity (e.g. <code class="inline">(c: any)</code>, <code class="inline">fn: any</code>, <code class="inline">err: any</code>). If you copy those verbatim, <code class="inline">git commit</code> will be <strong>rejected</strong> by the pre-commit hook, and <code class="inline">npm run lint</code> will fail.</p></div>
+      <div class="box why"><div class="label">Why</div><p style="margin:0">Your <code class="inline">eslint.config.mjs</code> extends <code class="inline">typescript-eslint</code>'s <em>recommended</em> rules, which flag <code class="inline">@typescript-eslint/no-explicit-any</code>. And <code class="inline">package.json</code> runs <code class="inline">lint-staged</code> with <code class="inline">eslint --max-warnings=0</code> via a Husky pre-commit hook — so even a warning stops the commit. Same goes for leaving an <strong>unused</strong> import or variable behind (the <code class="inline">no-unused-vars</code> rule).</p></div>
+      <div class="box fix"><div class="label">Safe version — use real types instead of <code class="inline">any</code></div>
+      <div class="cmp" style="margin-top:8px">
+        <div class="col old"><div class="head">BLOCKED BY ESLINT</div>
+<pre><span class="k">export const</span> <span class="f">getMembers</span> =
+  (c: <span class="t">any</span>): <span class="t">string</span>[] =&gt;
+    Array.<span class="f">isArray</span>(c?.members)
+      ? c.members : [];</pre>
+        </div>
+        <div class="col new"><div class="head">PASSES</div>
+<pre><span class="c">// "unknown" = honest "we don't know yet",</span>
+<span class="c">// then we narrow it safely.</span>
+<span class="k">export const</span> <span class="f">getMembers</span> =
+  (c: { members?: <span class="t">unknown</span> }): <span class="t">string</span>[] =&gt;
+    Array.<span class="f">isArray</span>(c?.members)
+      ? (c.members <span class="k">as</span> <span class="t">string</span>[]) : [];</pre>
+        </div>
+      </div>
+      <p class="muted" style="margin:10px 0 0">Rule of thumb: replace <code class="inline">any</code> with <code class="inline">unknown</code> (then check the shape) or with a small inline type like <code class="inline">{ members?: unknown }</code>. The <code class="inline">asyncHandler</code> wrapper is the one place a single, contained <code class="inline">any</code> is hard to avoid — see refactor&nbsp;4 for a typed version and an eslint-disable line if needed.</p></div>
+
+      <h3>G3 · A refactor that changes the response shape is a "silent" break <span class="pill med">frontend may choke</span></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">If the JSON your backend returns changes shape (extra fields, different error text, different status code), the <strong>frontend</strong> or any saved test can break — even though the backend "works."</p></div>
+      <div class="box why"><div class="label">Why</div><p style="margin:0">The frontend reads specific fields (e.g. <code class="inline">res.data.data</code>, <code class="inline">res.error</code>). A refactor must return the <em>same shape</em>. This matters most for refactor&nbsp;2 (which can add a <code class="inline">details</code> field) and refactor&nbsp;4 (which can change a 500's body entirely). Both are covered below.</p></div>
+    </section>
+
+    <!-- B1 -->
+    <section id="b1">
+      <h2 class="sec">1 · Access check helper — what breaks <span class="pill med">behavior change risk</span></h2>
+      <p class="muted">Refactor: replace inline session checks with <code class="inline">assertSessionAccess</code>.</p>
+
+      <h3>Break A — You forget to capture <code class="inline">access.session</code>, then use <code class="inline">session</code> later</h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">Two routes in <code class="inline">channels.ts</code> use the session row <em>after</em> the access check. If you delete the inline fetch but don't keep a <code class="inline">session</code> variable, you get <code class="inline">ReferenceError: session is not defined</code> (or a TypeScript "Cannot find name 'session'" error).</p></div>
+      <div class="box why"><div class="label">Where exactly</div>
+      <ul style="margin:0">
+        <li><strong>GET <code class="inline">/session/:sessionId</code></strong> — line 101 uses <code class="inline">session.trainer_id</code> to self-heal default channels: <code class="inline">createDefaultChannels(sessionId, session.trainer_id ?? user.id)</code>.</li>
+        <li><strong>GET <code class="inline">/session/:sessionId/participants</code></strong> — line 358 uses <code class="inline">session.trainer_id</code> to add the trainer to the list.</li>
+      </ul></div>
+      <div class="box fix"><div class="label">Safe version</div>
+      <div class="cmp" style="margin-top:8px">
+        <div class="col old"><div class="head">BREAKS — session is gone</div>
+<pre><span class="k">const</span> access =
+  <span class="k">await</span> <span class="f">assertSessionAccess</span>(sessionId, user);
+<span class="k">if</span> (!access.ok)
+  <span class="k">return</span> res.<span class="f">status</span>(access.status)
+    .<span class="f">json</span>({ error: access.error });
+
+<span class="c">// ...later...</span>
+<span class="f">createDefaultChannels</span>(sessionId,
+  session.trainer_id ?? user.id); <span class="c">// ❌ session?</span></pre>
+        </div>
+        <div class="col new"><div class="head">WORKS — keep the row</div>
+<pre><span class="k">const</span> access =
+  <span class="k">await</span> <span class="f">assertSessionAccess</span>(sessionId, user);
+<span class="k">if</span> (!access.ok)
+  <span class="k">return</span> res.<span class="f">status</span>(access.status)
+    .<span class="f">json</span>({ error: access.error });
+<span class="k">const</span> session = access.session!; <span class="c">// ✅ reuse</span>
+
+<span class="f">createDefaultChannels</span>(sessionId,
+  session.trainer_id ?? user.id);</pre>
+        </div>
+      </div>
+      <p class="muted" style="margin:10px 0 0">The <code class="inline">!</code> after <code class="inline">access.session!</code> tells TypeScript "I know this exists here" — it's safe because <code class="inline">ok: true</code> always comes with a session. If you need a column beyond <code class="inline">id, trainer_id</code>, pass it: <code class="inline">assertSessionAccess(sessionId, user, 'id, trainer_id, status')</code>.</p></div>
+
+      <h3>Break B — You lose the detailed 500 errors in the DMs route <span class="pill med">debuggability loss</span></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">The <strong>GET <code class="inline">/session/:sessionId/dms</code></strong> route (lines 124–180) currently does something special: when the <em>database itself</em> errors (not just "session missing"), it returns <strong>HTTP 500</strong> with the DB message for debugging. The helper collapses every failure into a plain <strong>404 "Session not found."</strong></p></div>
+      <div class="box why"><div class="label">Why it matters</div><p style="margin:0">This isn't an app crash — it's a <em>behavior change</em>. If that endpoint ever fails due to a real DB problem, you'll now see a misleading "404 not found" instead of the actual error. Functionally fine for users; annoying for you when debugging.</p></div>
+      <div class="box fix"><div class="label">Safe version</div><p style="margin:0">Acceptable trade-off for most routes — the helper's behavior is cleaner. Just <em>know</em> you're giving up that diagnostic. If you specifically want to keep rich errors on this one route, leave it inline, or extend the helper later to optionally return the underlying error. Don't silently assume behavior is identical.</p></div>
+
+      <h3>Break C — Rolling out to all 13 files at once <span class="pill med">blast radius</span></h3>
+      <p>The same pattern lives in 13 route files, but the variants differ (some <code class="inline">.single()</code>, some <code class="inline">.maybeSingle()</code>, some return 500). If you "find &amp; replace" everywhere in one commit and one slips through, you could change auth behavior on a route you didn't test. <strong>Do one route, test, commit. Repeat.</strong></p>
+    </section>
+
+    <!-- B2 -->
+    <section id="b2">
+      <h2 class="sec">2 · dbFail logger — what breaks <span class="pill med">response shape</span></h2>
+
+      <h3>Break A — It adds a <code class="inline">details</code> field where there wasn't one</h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">Some current 500s return only <code class="inline">{ error: 'Failed to fetch channels' }</code> (e.g. lines 91–94, 339–341) — no <code class="inline">details</code>. The <code class="inline">dbFail</code> helper always adds <code class="inline">details: err?.message</code>. That (1) changes the response shape, and (2) leaks raw database messages to the client, which is a mild security smell.</p></div>
+      <div class="box why"><div class="label">Why</div><p style="margin:0">Your central error handler in <code class="inline">server/index.ts</code> deliberately hides DB messages in production (<code class="inline">env.nodeEnv === 'production' ? 'Internal Server Error' : error.message</code>). A blanket <code class="inline">details</code> field works against that intent.</p></div>
+      <div class="box fix"><div class="label">Safe version — make <code class="inline">details</code> opt-in / dev-only</div>
+<pre><span class="k">export function</span> <span class="f">dbFail</span>(
+  res: <span class="t">Response</span>, err: <span class="t">unknown</span>, message: <span class="t">string</span>,
+  context: <span class="t">Record</span>&lt;<span class="t">string</span>, <span class="t">unknown</span>&gt; = {},
+) {
+  <span class="k">const</span> e = err <span class="k">as</span> { code?: <span class="t">string</span>; message?: <span class="t">string</span>; details?: <span class="t">string</span>; hint?: <span class="t">string</span> };
+  logger.<span class="f">error</span>({ error: err, errorCode: e?.code, errorMessage: e?.message,
+    errorDetails: e?.details, errorHint: e?.hint, ...context }, message);
+  <span class="k">const</span> body: <span class="t">Record</span>&lt;<span class="t">string</span>, <span class="t">unknown</span>&gt; = { error: message };
+  <span class="k">if</span> (process.env.NODE_ENV !== <span class="s">'production'</span>) body.details = e?.message; <span class="c">// dev only</span>
+  <span class="k">return</span> res.<span class="f">status</span>(<span class="n">500</span>).<span class="f">json</span>(body);
+}</pre>
+      <p class="muted" style="margin:10px 0 0">Note this also drops the <code class="inline">any</code> (uses <code class="inline">unknown</code> + a narrow cast) so it passes ESLint per global gotcha&nbsp;G2.</p></div>
+
+      <h3>Break B — Blindly replacing a 500 that had special logic <span class="pill crit">feature loss</span></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">In <strong>POST <code class="inline">/session/:sessionId/dm</code></strong> (lines 491–518), the error block isn't generic — it inspects <code class="inline">error.code === '23514'</code> (a database constraint) to return a helpful "run the migration" message. If you replace the whole block with <code class="inline">dbFail(...)</code>, that guidance disappears and a real setup problem becomes a confusing generic 500.</p></div>
+      <div class="filemeta">server/routes/channels.ts · lines 507–513 (must NOT be lost)</div>
+<pre><span class="k">if</span> (error.code === <span class="s">'23514'</span> || error.message?.<span class="f">includes</span>(<span class="s">'check constraint'</span>)) {
+  <span class="k">return</span> res.<span class="f">status</span>(<span class="n">500</span>).<span class="f">json</span>({
+    error: <span class="s">'Direct messaging not enabled. Please run migration 017_add_direct_messaging.sql'</span>,
+    details: error.message,
+  });
+}</pre>
+      <div class="box fix"><div class="label">Safe version</div><p style="margin:0">Only swap in <code class="inline">dbFail</code> for the <em>plain</em> "log and 500" blocks. Where a block has extra logic (special-case codes, custom status, custom message), keep that logic — call <code class="inline">dbFail</code> only as the final fallback, or leave the block alone. <strong>Read each error block before replacing it.</strong></p></div>
+    </section>
+
+    <!-- B3 -->
+    <section id="b3">
+      <h2 class="sec">3 · getMembers helper — what breaks <span class="pill low">low risk</span></h2>
+      <h3>Break A — The <code class="inline">any</code> in the example (see G2)</h3>
+      <p>Already covered: use <code class="inline">{ members?: unknown }</code> instead of <code class="inline">any</code> so ESLint doesn't block the commit. Functionally this refactor is the safest of the six.</p>
+      <h3>Break B — A tiny behavior difference on weird data <span class="pill low">edge case</span></h3>
+      <div class="box why"><div class="label">Subtle but harmless</div><p style="margin:0">Old code <code class="inline">(channel.members as string[]) || []</code> would pass through a <em>non-array truthy</em> value (e.g. if <code class="inline">members</code> were somehow an object). New <code class="inline">getMembers</code> returns <code class="inline">[]</code> for anything that isn't a real array. This is <em>more</em> correct, not less — but it's technically a behavior change, so if any code elsewhere relied on the old loose behavior (none does in <code class="inline">channels.ts</code>), be aware.</p></div>
+      <div class="box warn"><div class="label">Don't over-apply it</div><p style="margin:0">One spot that <em>looks</em> like a member cast isn't one: the DM-existence check builds <code class="inline">[user.id, recipient_id].sort()</code> (line 447). That's a brand-new array, not <code class="inline">channel.members</code> — leave it alone.</p></div>
+    </section>
+
+    <!-- B4 -->
+    <section id="b4">
+      <h2 class="sec">4 · asyncHandler wrapper — what breaks <span class="pill crit">highest risk</span></h2>
+      <p class="muted">This is the refactor most likely to break things. Here's the big one first.</p>
+
+      <h3>Break A — Your error handler is silently mis-wired <span class="pill crit">pre-existing bug</span></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">If you wrap routes in <code class="inline">asyncHandler</code> (which forwards errors via <code class="inline">next(err)</code>), the errors will <strong>not</strong> become your clean JSON 500. Instead Express falls back to its <em>default</em> handler, which returns an <strong>HTML error page</strong> — and the frontend, expecting JSON, breaks.</p></div>
+      <div class="box why"><div class="label">Why — the real cause is already in your code</div><p style="margin:0 0 8px">Express only treats a middleware as an <em>error handler</em> if it has <strong>exactly four parameters</strong> <code class="inline">(err, req, res, next)</code>. Your handler in <code class="inline">server/index.ts</code> (lines 227–237) has only <strong>three</strong>:</p>
+<pre><span class="c">// server/index.ts lines 227–237 — only 3 params!</span>
+app.<span class="f">use</span>((err: <span class="t">unknown</span>, _req: express.<span class="t">Request</span>, res: express.<span class="t">Response</span>) =&gt; {
+  <span class="k">const</span> error = err <span class="k">as</span> <span class="t">Error</span>;
+  logger.<span class="f">error</span>({ error: error.message, stack: error.stack }, <span class="s">'Request error'</span>);
+  res.<span class="f">status</span>(<span class="n">500</span>).<span class="f">json</span>({ error: <span class="c">/* ... */</span> });
+});</pre>
+      <p style="margin:8px 0 0">Because it has 3 params, Express thinks it's a <em>normal</em> middleware, not an error handler — so <code class="inline">next(err)</code> skips right past it. (Today this is dormant because every route catches its own errors. The moment you adopt <code class="inline">asyncHandler</code>, it matters.)</p></div>
+      <div class="box fix"><div class="label">Safe version — add the missing <code class="inline">next</code> parameter first</div>
+      <div class="cmp" style="margin-top:8px">
+        <div class="col old"><div class="head">CURRENT (mis-registered)</div>
+<pre>app.<span class="f">use</span>((err: <span class="t">unknown</span>,
+  _req: express.<span class="t">Request</span>,
+  res: express.<span class="t">Response</span>) =&gt; {
+  <span class="c">// never runs on next(err)</span>
+});</pre>
+        </div>
+        <div class="col new"><div class="head">FIXED (4 params)</div>
+<pre>app.<span class="f">use</span>((err: <span class="t">unknown</span>,
+  _req: express.<span class="t">Request</span>,
+  res: express.<span class="t">Response</span>,
+  _next: express.<span class="t">NextFunction</span>) =&gt; {
+  <span class="c">// now Express calls this</span>
+});</pre>
+        </div>
+      </div>
+      <p class="muted" style="margin:10px 0 0">Even though <code class="inline">_next</code> is unused, it must be <em>declared</em> for Express to recognize the handler. The leading underscore tells ESLint "intentionally unused" so it won't complain.</p></div>
+
+      <h3>Break B — You lose the per-route log message</h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">Each route's catch logs a specific label like <code class="inline">'Error in GET /channels/session/:sessionId'</code>. A central handler logs one generic <code class="inline">'Request error'</code>. You don't lose error <em>capture</em>, but you lose the "which route" breadcrumb unless you add it back (e.g. log <code class="inline">req.method</code> + <code class="inline">req.originalUrl</code> in the central handler).</p></div>
+
+      <h3>Break C — TypeScript loses <code class="inline">req.user</code> <span class="pill med">type errors</span></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">Your routes use <code class="inline">req.user!</code> via the custom <code class="inline">AuthenticatedRequest</code> type. A generic <code class="inline">asyncHandler</code> typed with plain Express <code class="inline">Request</code> can make TypeScript forget about <code class="inline">.user</code>, producing compile errors across many routes at once.</p></div>
+      <div class="box fix"><div class="label">Safe version — type the wrapper to allow your request type</div>
+<pre><span class="k">import type</span> { <span class="t">Request</span>, <span class="t">Response</span>, <span class="t">NextFunction</span>, <span class="t">RequestHandler</span> } <span class="k">from</span> <span class="s">'express'</span>;
+
+<span class="c">// Accepts a handler that may be async; keeps Express's typing.</span>
+<span class="k">export const</span> <span class="f">asyncHandler</span> =
+  (fn: (req: <span class="t">Request</span>, res: <span class="t">Response</span>, next: <span class="t">NextFunction</span>) =&gt; <span class="t">Promise</span>&lt;<span class="t">unknown</span>&gt;): <span class="t">RequestHandler</span> =&gt;
+  (req, res, next) =&gt; { <span class="f">fn</span>(req, res, next).<span class="f">catch</span>(next); };</pre>
+      <p class="muted" style="margin:10px 0 0">Inside each route you keep casting as you do today (<code class="inline">async (req: AuthenticatedRequest, res) =&gt; ...</code>) — that still works because <code class="inline">AuthenticatedRequest</code> extends <code class="inline">Request</code>. Because of this typing complexity, the guide rates this refactor "do last."</p></div>
+
+      <h3>Break D — Routes that don't actually <code class="inline">return</code> their res calls</h3>
+      <p>Most handlers <code class="inline">return res.status(...)</code> on early exits, which is good. If any route does work <em>after</em> sending a response (rare), removing its try/catch could expose a "headers already sent" warning. Test each wrapped route once.</p>
+    </section>
+
+    <!-- B5 -->
+    <section id="b5">
+      <h2 class="sec">5 · getTeamNameMap — what breaks <span class="pill low">low risk</span></h2>
+      <h3>Break A — Passing a non-string <code class="inline">session_id</code></h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">In the messages route, <code class="inline">channel.session_id</code> is typed as <code class="inline">unknown</code> (it came from a loosely-typed query). If the helper's parameter is <code class="inline">sessionId: string</code>, TypeScript will error: "unknown is not assignable to string."</p></div>
+      <div class="box fix"><div class="label">Safe version</div>
+<pre><span class="c">// cast at the call site, like the existing code already does on line 583:</span>
+<span class="k">const</span> userTeamMap = <span class="k">await</span> <span class="f">getTeamNameMap</span>(
+  channel.session_id <span class="k">as</span> <span class="t">string</span>,
+  senderIds,
+);</pre></div>
+      <h3>Break B — Don't drop the surrounding guards prematurely</h3>
+      <div class="box why"><div class="label">Why it's fine</div><p style="margin:0">Both call sites currently wrap the logic in <code class="inline">if (ids.length &gt; 0)</code>. The helper already returns an empty Map for an empty list, so you <em>can</em> remove those guards — but the behavior is identical either way. No breakage; just don't accidentally remove the <em>use</em> of the map (the loop that applies <code class="inline">team_name</code> onto each sender/participant).</p></div>
+    </section>
+
+    <!-- B6 -->
+    <section id="b6">
+      <h2 class="sec">6 · loadSession extraction — what breaks <span class="pill low">low risk</span></h2>
+      <h3>Break A — Forgetting that <code class="inline">assertSessionOwner</code> still needs the session row</h3>
+      <div class="box break"><div class="label">What breaks</div><p style="margin:0">Both <code class="inline">assertSessionAccess</code> and <code class="inline">assertSessionOwner</code> return <code class="inline">{ ok: true, session }</code> on success. If your extracted <code class="inline">loadSession</code> returns the row but you forget to pass it back out in the success object, callers that rely on <code class="inline">access.session</code> (refactor&nbsp;1, Break A) suddenly get <code class="inline">undefined</code>.</p></div>
+      <div class="box fix"><div class="label">Safe version — preserve the public return shape exactly</div>
+<pre><span class="k">const</span> session = <span class="k">await</span> <span class="f">loadSession</span>(sessionId, select);
+<span class="k">if</span> (!session) <span class="k">return</span> { ok: <span class="k">false</span>, status: <span class="n">404</span>, error: <span class="s">'Session not found'</span> };
+<span class="c">// ...checks...</span>
+<span class="k">return</span> { ok: <span class="k">true</span>, session }; <span class="c">// ✅ keep returning the row</span></pre></div>
+      <h3>Break B — Error vs missing are merged</h3>
+      <div class="box why"><div class="label">Equivalent, but know it</div><p style="margin:0">The original returns 404 for both a DB error and a missing row (<code class="inline">if (error || !session)</code>). The extracted version returns <code class="inline">null</code> for both, and the caller maps <code class="inline">null</code>→404. Same outcome. This is the lowest-risk refactor because it's one self-contained file and doesn't change the exported function signatures.</p></div>
+    </section>
+
+    <!-- SEVERITY -->
+    <section id="severity">
+      <h2 class="sec">Severity at a glance</h2>
+      <table>
+        <tr><th>Refactor</th><th>Worst-case symptom</th><th>Likelihood</th><th>Severity</th><th>The fix in one line</th></tr>
+        <tr><td>G1 · <code>.js</code> imports</td><td>Server won't start</td><td>High if new file</td><td><span class="pill crit">Critical</span></td><td>Always import with <code>.js</code>.</td></tr>
+        <tr><td>G2 · <code>any</code> / unused</td><td>Can't commit / lint fails</td><td>High</td><td><span class="pill crit">Critical</span></td><td>Use <code>unknown</code> + narrow; remove dead imports.</td></tr>
+        <tr><td>G3 · response shape</td><td>Frontend misreads reply</td><td>Medium</td><td><span class="pill med">Medium</span></td><td>Keep the same JSON shape &amp; status codes.</td></tr>
+        <tr><td>1 · access helper</td><td>ReferenceError / weaker error info</td><td>Medium</td><td><span class="pill med">Medium</span></td><td>Keep <code>access.session</code>; roll out one route at a time.</td></tr>
+        <tr><td>2 · dbFail</td><td>Lost special-case messages / info leak</td><td>Medium</td><td><span class="pill med">Medium</span></td><td>Only replace plain blocks; gate <code>details</code> to dev.</td></tr>
+        <tr><td>3 · getMembers</td><td>ESLint <code>any</code> block</td><td>Low</td><td><span class="pill low">Low</span></td><td>Type it; don't touch the <code>.sort()</code> array.</td></tr>
+        <tr><td>4 · asyncHandler</td><td>HTML 500s / type errors everywhere</td><td>High if naive</td><td><span class="pill crit">Critical</span></td><td>Fix the 3-param error handler first; type the wrapper.</td></tr>
+        <tr><td>5 · getTeamNameMap</td><td>Type error on <code>session_id</code></td><td>Low</td><td><span class="pill low">Low</span></td><td>Cast <code>session_id as string</code> at call site.</td></tr>
+        <tr><td>6 · loadSession</td><td>Callers lose <code>session</code></td><td>Low</td><td><span class="pill low">Low</span></td><td>Keep returning <code>{ ok:true, session }</code>.</td></tr>
+      </table>
+    </section>
+
+    <!-- PREFLIGHT -->
+    <section id="preflight">
+      <h2 class="sec">Pre-flight checklist — run before every commit</h2>
+      <p>If all of these pass, you've avoided essentially every breakage in this document:</p>
+      <ul class="check">
+        <li>Did every new import end in <code class="inline">.js</code>? (G1)</li>
+        <li>Did I avoid <code class="inline">any</code> (used <code class="inline">unknown</code> + a narrow type instead)? (G2)</li>
+        <li>Did I delete any imports/variables that are now unused? (G2)</li>
+        <li>Does the response still have the same fields, status codes, and error text as before? (G3)</li>
+        <li>Did I keep a <code class="inline">session</code> variable anywhere the route uses it later? (Refactor 1)</li>
+        <li>Did I preserve special-case error blocks (like the <code class="inline">23514</code> migration message)? (Refactor 2)</li>
+        <li>If I touched <code class="inline">asyncHandler</code>: did I fix the 4-parameter error handler in <code class="inline">index.ts</code> first? (Refactor 4)</li>
+        <li>Did I run <code class="inline">npm run typecheck</code> and see zero errors?</li>
+        <li>Did I run <code class="inline">npm run lint</code> and see zero warnings?</li>
+        <li>Did I start the app (<code class="inline">npm run dev</code>) and click through the one feature I changed?</li>
+        <li>Did I change exactly <em>one</em> refactor in this commit, so a problem is easy to trace?</li>
+      </ul>
+      <div class="box fix"><div class="label">The two commands that catch most problems before they reach the browser</div>
+<pre>npm run typecheck   <span class="c"># TypeScript: catches missing vars, wrong types, .js issues</span>
+npm run lint        <span class="c"># ESLint: catches any, unused vars (the commit blockers)</span></pre>
+      </div>
+    </section>
+
+    <footer>
+      <p>Companion to <a href="code-simplification-guide.html" style="color:var(--accent)">code-simplification-guide.html</a>. Every file path, line number, and rule cited here was verified against your actual source (<code class="inline">server/routes/channels.ts</code>, <code class="inline">server/lib/access.ts</code>, <code class="inline">server/index.ts</code>, <code class="inline">eslint.config.mjs</code>, <code class="inline">package.json</code>). Bottom line: none of the six refactors break the app when done carefully — the traps are over-simplification (deleting unnoticed behavior) and the project's own quality gates (TypeScript, ESLint, the pre-commit hook). Work one refactor at a time and run the two commands above.</p>
+    </footer>
+  </main>
+</div>
+</body>
+</html>

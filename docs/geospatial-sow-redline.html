@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BSS Geospatial SOW &mdash; Redlined &amp; Annotated</title>
+<style>
+  :root {
+    --bg: #070b14; --bg-2: #0c1220; --panel: #111a2b; --panel-2: #16233b;
+    --ink: #e8eefb; --ink-dim: #9fb0cc; --ink-faint: #6c7e9c; --line: #1f3050;
+    --brand: #36c5f0; --brand-2: #6d8bff; --accent: #b07bff;
+    --good: #2dd4a7; --good-dim: #1d7a63; --warn: #ffc24b; --warn-dim: #8a6a1f;
+    --bad: #ff6b7d; --bad-dim: #8a2f3c; --info: #6d8bff;
+    --radius: 16px; --shadow: 0 18px 50px -18px rgba(0,0,0,0.75);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "JetBrains Mono", "Fira Code", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; font-family: var(--font); color: var(--ink); line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    background:
+      radial-gradient(1200px 700px at 12% -8%, rgba(54,197,240,0.12), transparent 60%),
+      radial-gradient(1100px 800px at 100% 0%, rgba(176,123,255,0.12), transparent 55%),
+      radial-gradient(900px 700px at 50% 120%, rgba(109,139,255,0.10), transparent 60%),
+      var(--bg);
+  }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 28px; }
+
+  /* Hero */
+  .hero { position: relative; padding: 84px 0 56px; border-bottom: 1px solid var(--line); overflow: hidden; }
+  .hero::before {
+    content:""; position:absolute; inset:0;
+    background-image: linear-gradient(rgba(54,197,240,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(54,197,240,0.06) 1px, transparent 1px);
+    background-size: 46px 46px; mask-image: radial-gradient(900px 500px at 30% 20%, #000 30%, transparent 75%); pointer-events:none;
+  }
+  .eyebrow { display:inline-flex; align-items:center; gap:9px; font-size:12px; letter-spacing:2.5px; text-transform:uppercase; color:var(--brand);
+    background:rgba(54,197,240,0.08); border:1px solid rgba(54,197,240,0.25); padding:7px 14px; border-radius:999px; font-weight:600; }
+  .pulse { width:8px; height:8px; border-radius:50%; background:var(--brand); animation:pulse 2.4s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(54,197,240,0.5);}70%{box-shadow:0 0 0 12px rgba(54,197,240,0);}100%{box-shadow:0 0 0 0 rgba(54,197,240,0);} }
+  h1.title { font-size:clamp(32px,5vw,54px); line-height:1.06; margin:22px 0 0; letter-spacing:-1.1px; font-weight:800;
+    background:linear-gradient(120deg,#fff 10%,var(--brand) 55%,var(--accent) 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .subtitle { color:var(--ink-dim); font-size:clamp(15px,2vw,19px); max-width:740px; margin:18px 0 0; }
+  .meta-row { display:flex; flex-wrap:wrap; gap:10px; margin-top:26px; }
+  .chip { font-size:12.5px; color:var(--ink-dim); background:var(--panel); border:1px solid var(--line); padding:8px 13px; border-radius:10px; }
+  .chip b { color:var(--ink); font-weight:600; }
+
+  /* Legend / key */
+  .key { display:grid; gap:14px; margin-top:30px; }
+  @media (min-width:760px){ .key { grid-template-columns: repeat(4,1fr); } }
+  .key-card { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px 16px 18px; position:relative; overflow:hidden; }
+  .key-card .tag { display:inline-block; font-size:11px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; padding:4px 9px; border-radius:6px; }
+  .key-card p { margin:10px 0 0; font-size:13px; color:var(--ink-dim); }
+  .t-cut { color:var(--bad); background:rgba(255,107,125,0.12); border:1px solid rgba(255,107,125,0.3); }
+  .t-keep { color:var(--good); background:rgba(45,212,167,0.12); border:1px solid rgba(45,212,167,0.3); }
+  .t-reframe { color:var(--warn); background:rgba(255,194,75,0.12); border:1px solid rgba(255,194,75,0.3); }
+  .t-bss { color:var(--info); background:rgba(109,139,255,0.12); border:1px solid rgba(109,139,255,0.3); }
+
+  /* Document sections */
+  .doc { padding: 30px 0 10px; }
+  .clause-sec { margin: 40px 0 0; }
+  .clause-sec > h2 { font-size: clamp(21px,2.6vw,28px); letter-spacing:-0.5px; margin:0 0 4px; font-weight:750; display:flex; align-items:center; gap:12px; }
+  .clause-sec > h2 .n { font-family:var(--mono); font-size:13px; color:var(--brand); border:1px solid var(--line); border-radius:8px; padding:3px 8px; background:var(--panel); flex:none; }
+  .sec-note { color:var(--ink-faint); font-size:14px; margin:0 0 18px; }
+
+  /* Clause card — the redline unit */
+  .clause { display:grid; grid-template-columns: 6px 1fr; gap:0; margin:14px 0; border:1px solid var(--line); border-radius:12px; overflow:hidden; background:var(--bg-2); box-shadow:var(--shadow); }
+  .clause .rail { width:6px; }
+  .clause.cut .rail { background:var(--bad); } .clause.keep .rail { background:var(--good); }
+  .clause.reframe .rail { background:var(--warn); } .clause.bss .rail { background:var(--info); }
+  .clause .body { padding:16px 20px 18px; }
+  .clause .head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:9px; }
+  .badge { font-size:11px; font-weight:800; letter-spacing:.5px; padding:4px 9px; border-radius:6px; text-transform:uppercase; }
+  .badge.cut { color:var(--bad); background:rgba(255,107,125,0.12); border:1px solid rgba(255,107,125,0.3); }
+  .badge.keep { color:var(--good); background:rgba(45,212,167,0.12); border:1px solid rgba(45,212,167,0.3); }
+  .badge.reframe { color:var(--warn); background:rgba(255,194,75,0.12); border:1px solid rgba(255,194,75,0.3); }
+  .badge.bss { color:var(--info); background:rgba(109,139,255,0.12); border:1px solid rgba(109,139,255,0.3); }
+  .clause .head .where { font-size:11.5px; color:var(--ink-faint); font-style:italic; }
+
+  /* Original SOW text rendering */
+  .orig { font-size:14.5px; color:var(--ink-dim); }
+  .orig.struck { text-decoration: line-through; text-decoration-color: rgba(255,107,125,0.7); text-decoration-thickness:2px; color:var(--ink-faint); }
+  .orig .hl-cut { background:rgba(255,107,125,0.14); text-decoration:line-through; text-decoration-color:rgba(255,107,125,0.8); padding:0 2px; border-radius:3px; }
+  .orig .hl-reframe { background:rgba(255,194,75,0.16); padding:0 3px; border-radius:3px; color:var(--ink); }
+  .orig .ins { color:var(--good); background:rgba(45,212,167,0.12); padding:0 3px; border-radius:3px; font-weight:600; }
+  .orig .ins::before { content:"+ "; opacity:.6; }
+
+  /* Annotation note */
+  .anno { margin:12px 0 0; padding:11px 14px; border-radius:9px; font-size:13.5px; background:var(--panel); border:1px solid var(--line); color:var(--ink-dim); display:flex; gap:10px; align-items:flex-start; }
+  .anno .ic { flex:none; font-size:15px; line-height:1.5; }
+  .anno b { color:var(--ink); }
+  .anno code { font-family:var(--mono); font-size:12px; background:#0a1322; border:1px solid var(--line); padding:1px 5px; border-radius:5px; color:#bfe3ff; }
+
+  ul.tight { margin:8px 0 0; padding-left:20px; } ul.tight li { margin:3px 0; font-size:14px; color:var(--ink-dim); }
+
+  /* Summary table */
+  .tbl-wrap { border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); margin-top:20px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  thead th { background:var(--panel-2); text-align:left; padding:13px 16px; font-weight:650; font-size:12px; text-transform:uppercase; letter-spacing:.6px; border-bottom:1px solid var(--line); }
+  tbody td { padding:12px 16px; border-bottom:1px solid rgba(31,48,80,0.55); color:var(--ink-dim); vertical-align:top; }
+  tbody tr:last-child td { border-bottom:none; }
+  tbody tr:hover { background:rgba(54,197,240,0.04); }
+  td b { color:var(--ink); }
+
+  /* counts banner */
+  .counts { display:grid; gap:14px; margin-top:30px; }
+  @media (min-width:760px){ .counts { grid-template-columns: repeat(4,1fr); } }
+  .count { text-align:center; background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  .count .big { font-size:38px; font-weight:800; letter-spacing:-1px; line-height:1; }
+  .count .lbl { font-size:12px; text-transform:uppercase; letter-spacing:1px; color:var(--ink-faint); margin-top:8px; }
+
+  .callout { border-left:3px solid var(--brand); background:var(--panel); border-radius:10px; padding:16px 20px; margin:22px 0; }
+  .callout h4 { margin:0 0 6px; font-size:15px; } .callout p { margin:0; color:var(--ink-dim); font-size:14px; }
+
+  footer { padding:46px 0 70px; color:var(--ink-faint); font-size:13px; border-top:1px solid rgba(31,48,80,0.5); margin-top:50px; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="pulse"></span> Black Swan Simulations &middot; Redlined Scope of Work</span>
+    <h1 class="title">Geospatial SOW &mdash; Clause-by-Clause Redline</h1>
+    <p class="subtitle">The original <b>BSS Geospatial Scope of Work (Lewis)</b>, annotated against what already exists in the codebase. Every clause is marked <b>Cut</b>, <b>Keep</b>, <b>Reframe</b>, or <b>BSS-owns</b> &mdash; so the engagement bills for genuine value, not duplication.</p>
+    <div class="meta-row">
+      <span class="chip"><b>Companion to:</b> geospatial-consultant-briefer.html</span>
+      <span class="chip"><b>Basis:</b> 4-stream source-code audit</span>
+      <span class="chip"><b>Use:</b> Negotiation / scope finalisation</span>
+    </div>
+
+    <div class="key">
+      <div class="key-card"><span class="tag t-cut">Cut</span><p>Already built &amp; battle-tested. Remove from scope; hand over existing code as the baseline instead of paying to rebuild.</p></div>
+      <div class="key-card"><span class="tag t-keep">Keep</span><p>Genuine greenfield work and the real reason to hire. Protect these hours.</p></div>
+      <div class="key-card"><span class="tag t-reframe">Reframe</span><p>Partially exists. Narrow the wording from "build" to "repackage / standardise / extend".</p></div>
+      <div class="key-card"><span class="tag t-bss">BSS-owns</span><p>Our internal responsibility (import shim, layer UI, contract). Don't bill the consultant for it.</p></div>
+    </div>
+
+    <div class="counts">
+      <div class="count"><div class="big" style="color:var(--bad)">9</div><div class="lbl">Clauses to Cut</div></div>
+      <div class="count"><div class="big" style="color:var(--good)">11</div><div class="lbl">Clauses to Keep</div></div>
+      <div class="count"><div class="big" style="color:var(--warn)">7</div><div class="lbl">Clauses to Reframe</div></div>
+      <div class="count"><div class="big" style="color:var(--info)">3</div><div class="lbl">BSS-owned</div></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap doc">
+
+<!-- BACKGROUND & OBJECTIVE -->
+<div class="clause-sec">
+  <h2><span class="n">A</span> Background &amp; Objective</h2>
+  <p class="sec-note">Context clauses &mdash; retain as written; they frame the engagement correctly.</p>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">SOW &sect; Background</span></div>
+    <p class="orig">"BSS requires a geospatial mapping capability that can convert external map and building data into a usable two-dimensional exercise environment." &mdash; engaging an external Consultant for selected geospatial and infrastructure components.</p>
+    <div class="anno"><span class="ic">✅</span><div>Accurate framing. The platform already converts external map data to a 2-D environment; the Consultant supplements specific components rather than building the capability wholesale.</div></div>
+  </div></div>
+
+  <div class="clause reframe"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge reframe">Reframe</span><span class="where">SOW &sect; Objective</span></div>
+    <p class="orig">Enable BSS to: <span class="hl-reframe">identify and convert OpenStreetMap building data into usable building outlines</span>; <span class="hl-reframe">integrate building blueprints, floor plans or site plans with the map environment</span>.</p>
+    <div class="anno"><span class="ic">✏️</span><div>Objective 1 (<b>OSM&rarr;outlines</b>) is <b>already ~75% delivered</b> in-house &mdash; reframe as "standardise &amp; package existing extraction." Objective 2 (<b>blueprint integration</b>) is the genuine target &mdash; keep it front and centre.</div></div>
+  </div></div>
+</div>
+
+<!-- WS1 -->
+<div class="clause-sec">
+  <h2><span class="n">1</span> Workstream 1 &mdash; OpenStreetMap to Building Outline</h2>
+  <p class="sec-note">Engine exists and is battle-tested (<code>osmVicinityService.ts</code>, <code>msBuildingFootprints.ts</code>, <code>geocodingService.ts</code>, <code>geoUtils.ts</code>). Cut the rebuild; reframe to packaging.</p>
+
+  <div class="clause cut"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge cut">Cut</span><span class="where">WS1 &sect; Scope / Required Activities</span></div>
+    <p class="orig"><span class="hl-cut">"Query and extract relevant OpenStreetMap building and road data within that radius"</span> &mdash; including the core querying, failover and footprint logic.</p>
+    <div class="anno"><span class="ic">🔁</span><div><b>Already built.</b> Overpass extraction for buildings <i>and</i> roads with 5-endpoint failover, retry/backoff, multipolygon handling and a Microsoft Building Footprints fallback all exist. Hand over the code; do not commission a rebuild.</div></div>
+  </div></div>
+
+  <div class="clause cut"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge cut">Cut</span><span class="where">WS1 &sect; Required Activities &mdash; location input</span></div>
+    <p class="orig"><span class="hl-cut">"Accept an identified location as an input"</span> (coordinates or location reference).</p>
+    <div class="anno"><span class="ic">🔁</span><div><b>Already built.</b> Functions accept lat/lng directly, and <code>geocodingService.ts</code> already resolves place names &rarr; coordinates via Nominatim. Only a thin "location reference" wrapper would be net-new.</div></div>
+  </div></div>
+
+  <div class="clause reframe"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge reframe">Reframe</span><span class="where">WS1 &sect; Required Activities &mdash; radius</span></div>
+    <p class="orig">"Define a <span class="hl-reframe">five-kilometre extraction radius</span> around the input location."</p>
+    <div class="anno"><span class="ic">✏️</span><div>Radius is fully parameterised today (300&nbsp;m&ndash;10&nbsp;km) but never fixed at 5&nbsp;km, and the per-building path is <b>hard-capped at 1&nbsp;km</b>. Reframe as: "standardise default to 5&nbsp;km and lift the 1&nbsp;km building cap."</div></div>
+  </div></div>
+
+  <div class="clause reframe"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge reframe">Reframe</span><span class="where">WS1 &sect; Outputs &mdash; reusable script &amp; format</span></div>
+    <p class="orig">"A <span class="hl-reframe">reusable extraction script or automated workflow</span>… export the resulting building and road layers <span class="hl-reframe">in JSON or other agreed formats</span>." <span class="ins">Deliver as standalone CLI + standard GeoJSON FeatureCollection (EPSG:4326).</span></p>
+    <div class="anno"><span class="ic">✏️</span><div>Logic is currently embedded in the Express app + DB pipeline and outputs bespoke <code>[lat,lng]</code> JSON. Reframe to: "<b>wrap existing functions as a standalone runner</b> and <b>emit RFC-7946 GeoJSON</b> with separate building/road layers." This is cheap glue, not engineering.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">WS1 &sect; Outputs &mdash; metadata, config &amp; quality note</span></div>
+    <p class="orig">"Metadata files recording the input location, extraction radius, data source, extraction date, coordinate reference system, output format and any relevant OpenStreetMap attribution"; a "configuration template"; and a "brief data-quality note."</p>
+    <div class="anno"><span class="ic">✅</span><div><b>Genuinely missing &mdash; keep.</b> No CRS declaration, extraction date, or OSM/ODbL attribution is captured today, and there's no config template or compiled data-quality note (only transient fetch logs). This is the legitimate remainder of WS1.</div></div>
+  </div></div>
+</div>
+<!-- WS2 -->
+<div class="clause-sec">
+  <h2><span class="n">2</span> Workstream 2 &mdash; Blueprint Integration with Maps</h2>
+  <p class="sec-note">The core of the engagement. ~70% greenfield &mdash; mostly Keep. Display/schema scaffolding exists (<code>scenario_floor_plans</code>, <code>FloorSelector</code>, <code>FloorPlanOverlay</code>, feature taxonomy), so a few sub-clauses reframe.</p>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">WS2 &sect; Required Activities &mdash; ingestion</span></div>
+    <p class="orig">"Ingest blueprint, floor-plan or site-plan files provided by BSS in agreed formats, which may include <b>PDF, image files, CAD-derived exports</b> or other compatible formats."</p>
+    <div class="anno"><span class="ic">✅</span><div><b>Entirely missing &mdash; keep.</b> There is no upload/ingestion endpoint for plans at all. <code>plan_image_url</code> exists in the schema but nothing populates it. This is the heart of the engagement.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">WS2 &sect; Required Activities &mdash; georeferencing</span></div>
+    <p class="orig">"Align each floor or level to the relevant building outline or site map using <b>georeferencing, scaling, rotation and positioning</b> methods."</p>
+    <div class="anno"><span class="ic">✅</span><div><b>Missing &mdash; keep (highest value).</b> Today there is only a crude bounding-box stretch &mdash; no rotation, affine/Helmert transform, control points or scale solver. Rigorous georeferencing is the single most valuable deliverable.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">WS2 &sect; Required Activities &mdash; discrepancy flagging</span></div>
+    <p class="orig">"<b>Flag discrepancies</b> between the building outline derived from map data and the blueprint-derived building layout, including differences in scale, orientation, footprint, floor arrangement or missing information."</p>
+    <div class="anno"><span class="ic">✅</span><div><b>Missing entirely &mdash; keep.</b> Nothing compares a blueprint footprint to the OSM/map outline. This validation step is net-new and genuinely useful.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">WS2 &sect; Required Activities &mdash; vertical connectivity</span></div>
+    <p class="orig">"<b>Link vertical movement points</b>, including staircases, lifts, escalators or other connectors, across relevant floors or levels."</p>
+    <div class="anno"><span class="ic">✅</span><div><b>Mostly missing &mdash; keep.</b> A <code>Stairwell.connectsFloors</code> field exists in the RTS types, but the multi-floor overlay has <b>no enforced cross-floor linkage graph</b>. Keep the connectivity-graph work.</div></div>
+  </div></div>
+
+  <div class="clause reframe"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge reframe">Reframe</span><span class="where">WS2 &sect; Required Activities &mdash; feature digitisation</span></div>
+    <p class="orig">"<span class="hl-reframe">Digitise or extract agreed internal features</span> from each floor: walls, rooms, corridors, entrances, exits, emergency exits, staircases, lifts, access routes, restricted areas."</p>
+    <div class="anno"><span class="ic">✏️</span><div>The <b>feature taxonomy &amp; icons already exist</b> (<code>floorPlanSvgService.ts</code>: emergency_exit, exit, escalator, elevator, stairs, corridor, room…) and a hand-draw editor exists in <code>SceneEditor.tsx</code>. Reframe to: "extract features <b>into the existing taxonomy/schema</b>" &mdash; don't redefine the model, populate it.</div></div>
+  </div></div>
+
+  <div class="clause reframe"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge reframe">Reframe</span><span class="where">WS2 &sect; Required Activities &mdash; floor hierarchy &amp; toggling</span></div>
+    <p class="orig">"Maintain a clear <span class="hl-reframe">floor-level hierarchy</span>… produce editable geospatial layers that allow BSS to <span class="hl-reframe">view, toggle, review and update</span> building layouts by floor or level."</p>
+    <div class="anno"><span class="ic">✏️</span><div>Multi-floor display + floor switcher already exist (<code>FloorSelector.tsx</code> understands B-levels/ground/upper floors; per-floor filtering in <code>MapView</code>). Reframe to "<b>output into the existing floor-hierarchy model</b>"; the multi-floor overlay is currently read-only, so per-floor <i>editing</i> UI is BSS-owned (see &sect;C).</div></div>
+  </div></div>
+
+  <div class="clause reframe"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge reframe">Reframe</span><span class="where">WS2 &sect; Required Activities &mdash; export &amp; metadata</span></div>
+    <p class="orig">"Export the processed multi-level blueprint layers in agreed formats… <span class="hl-reframe">editable output files in JSON</span>… <span class="hl-reframe">metadata files</span> recording source blueprint, ingestion date, floor/level id, alignment assumptions, CRS, processing notes."</p>
+    <div class="anno"><span class="ic">✏️</span><div>Reframe export to the <b>standard GeoJSON FeatureCollection contract</b> (see &sect;D) with <code>properties.floor_level</code>. Metadata/provenance is missing today &mdash; keep the metadata sub-requirement; reframe only the format wording.</div></div>
+  </div></div>
+
+  <div class="clause bss"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge bss">BSS-owns</span><span class="where">WS2 &mdash; gotchas to disclose, not bill</span></div>
+    <p class="orig">Resolving the <b>two un-unified interior models</b> (<code>scenario_floor_plans.features</code> vs <code>rts_scene_configs</code> interior arrays) and the dormant/hardcoded-off AI floor-plan generator.</p>
+    <div class="anno"><span class="ic">🏛️</span><div>Tell the Consultant which model to target (<code>rts_scene_configs</code> is the more "live" path) up front. Choosing/normalising the canonical interior model is an architectural decision <b>BSS should own</b>, not delegate.</div></div>
+  </div></div>
+</div>
+<!-- TECHNICAL REQUIREMENTS -->
+<div class="clause-sec">
+  <h2><span class="n">3</span> Technical Requirements</h2>
+  <p class="sec-note">Mostly keep as guardrails; one critical insertion about the delivery format and one BSS-owned item.</p>
+
+  <div class="clause bss"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge bss">BSS-owns</span><span class="where">Tech Req &mdash; platform compatibility</span></div>
+    <p class="orig">"Are <b>compatible with the BSS simulation platform</b> or agreed development environment." <span class="ins">Deliver one GeoJSON FeatureCollection in EPSG:4326 (standard [lng,lat]) with a properties.layer discriminator.</span></p>
+    <div class="anno"><span class="ic">🏛️</span><div>There is <b>no GeoJSON/KML/shapefile importer in the product today</b> &mdash; the import shim is <b>BSS-owned, net-new work</b>. Compatibility is achieved by mandating the standard format below, not by asking the Consultant to write into our JSONB tables (whose coordinate ordering is internally inconsistent).</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">Tech Req &mdash; editability, separation, attribution</span></div>
+    <p class="orig">Outputs must be editable/versionable; keep clear separation of raw vs processed vs simulation-ready data; preserve source attribution &amp; licence metadata; be suitable for downstream evacuation/traffic/hazard/responder modules.</p>
+    <div class="anno"><span class="ic">✅</span><div>Keep as standard quality guardrails. Note: the downstream <b>evacuation, hazard and responder modules already exist</b> &mdash; "suitable for integration with" is correct, but do not let it expand into building those modules.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">Tech Req &mdash; no sensitive data</span></div>
+    <p class="orig">"Do not contain classified, restricted or sensitive operational information unless expressly approved by BSS in writing."</p>
+    <div class="anno"><span class="ic">✅</span><div>Keep verbatim &mdash; important compliance guardrail given the bombing/evacuation subject matter.</div></div>
+  </div></div>
+</div>
+
+<!-- DELIVERABLES -->
+<div class="clause-sec">
+  <h2><span class="n">4</span> Deliverables</h2>
+  <p class="sec-note">The deliverables list mixes "already built" with "genuinely needed." Redlined item-by-item below.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>SOW Deliverable</th><th>Disposition</th><th>Why</th></tr></thead>
+      <tbody>
+        <tr><td>Building outline extraction &amp; conversion script</td><td><span class="badge reframe">Reframe</span></td><td>Engine exists &mdash; deliver as standalone runner + GeoJSON only.</td></tr>
+        <tr><td>Processed building footprint &amp; exterior infrastructure layers</td><td><span class="badge reframe">Reframe</span></td><td>Already produced internally; re-export to standard GeoJSON with metadata.</td></tr>
+        <tr><td><b>Blueprint / floor-plan integration workflow</b></td><td><span class="badge keep">Keep</span></td><td>Greenfield &mdash; the core deliverable.</td></tr>
+        <tr><td><b>Georeferenced blueprint / floor-plan overlays</b></td><td><span class="badge keep">Keep</span></td><td>Only crude bbox stretch exists; true georeferencing needed.</td></tr>
+        <tr><td><b>Digitised internal infrastructure layers</b></td><td><span class="badge keep">Keep</span></td><td>Schema exists but is unpopulated from real plans.</td></tr>
+        <tr><td>Threat, hazard and scenario object schema</td><td><span class="badge cut">Cut</span></td><td>Full schema already exists (DB tables + TS types).</td></tr>
+        <tr><td>Populated threat / hazard / scenario map layers</td><td><span class="badge cut">Cut</span></td><td>Placement, editing, persistence &amp; rendering already exist.</td></tr>
+        <tr><td>Sample files for platform integration testing</td><td><span class="badge keep">Keep</span></td><td>Useful regardless; cheap and aids the import shim.</td></tr>
+        <tr><td>Technical documentation &amp; data dictionary</td><td><span class="badge keep">Keep</span></td><td>Needed for the new ingestion/georeferencing work.</td></tr>
+        <tr><td>Assumptions, limitations &amp; data-quality report</td><td><span class="badge keep">Keep</span></td><td>Genuinely missing today.</td></tr>
+        <tr><td>Handover session</td><td><span class="badge keep">Keep</span></td><td>Standard close-out.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <h4>Net effect on deliverables</h4>
+    <p><b>2 cut, 4 reframed, 5 kept.</b> The two threat/hazard deliverables are pure duplication of existing code; the building-extraction items shrink to packaging; the blueprint items carry the engagement.</p>
+  </div>
+</div>
+
+<!-- ACCEPTANCE CRITERIA -->
+<div class="clause-sec">
+  <h2><span class="n">5</span> Acceptance Criteria</h2>
+  <p class="sec-note">Keep most; tighten two so acceptance is tested against our actual import path and tolerances.</p>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">Acceptance &mdash; import &amp; alignment</span></div>
+    <p class="orig">"Building outlines… can be imported into the BSS simulation environment"; "blueprint overlays are aligned to the relevant building outlines <b>within an agreed tolerance</b>."</p>
+    <div class="anno"><span class="ic">✅</span><div>Keep &mdash; but <b>define the tolerance numerically</b> (e.g. &le;2&nbsp;m positional, &le;3&deg; rotational) and test against the GeoJSON contract + BSS import shim, not a hand-wave.</div></div>
+  </div></div>
+
+  <div class="clause reframe"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge reframe">Reframe</span><span class="where">Acceptance &mdash; threat objects</span></div>
+    <p class="orig">"<span class="hl-reframe">Threat, hazard and scenario objects are populated and can be displayed, edited and referenced</span> within the agreed map environment."</p>
+    <div class="anno"><span class="ic">✏️</span><div>Display/edit/reference of threat objects <b>already works</b>. Reframe acceptance to: "delivered threat zones import via the GeoJSON contract and render on the existing layers" &mdash; don't re-test capability we already own.</div></div>
+  </div></div>
+</div>
+<!-- RESPONSIBILITIES -->
+<div class="clause-sec">
+  <h2><span class="n">6</span> Responsibilities, Exclusions &amp; Commercial Clauses</h2>
+  <p class="sec-note">Mostly standard boilerplate &mdash; keep. A few items need a BSS action or a tightening.</p>
+
+  <div class="clause bss"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge bss">BSS-owns</span><span class="where">&sect; BSS Responsibilities</span></div>
+    <p class="orig">BSS to provide site locations, available blueprints/floor plans, "<b>required data schemas, platform interface requirements or sample data structures</b>," feedback, and dev/test access.</p>
+    <div class="anno"><span class="ic">🏛️</span><div><b>Action for BSS:</b> hand over (a) the GeoJSON FeatureCollection contract, (b) the existing schema docs for <code>scenario_floor_plans</code> / <code>rts_scene_configs</code>, and (c) the existing OSM extraction code as the WS1 baseline. Doing this well is what prevents the Consultant rebuilding what we have.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">&sect; Consultant Responsibilities</span></div>
+    <p class="orig">Reasonable skill &amp; care; qualified geospatial personnel; version control; protect confidential data; flag data gaps/risks; avoid restrictive third-party tools; deliver in editable formats.</p>
+    <div class="anno"><span class="ic">✅</span><div>Keep verbatim. The "avoid restrictive third-party data/tools" clause matters &mdash; ensures deliverables stay reusable in our OSM/MS-footprint pipeline.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">&sect; Exclusions</span></div>
+    <p class="orig">Excludes engineering-certified blast/fire/structural modelling, certified safety assessment, classified data, live-system integration, real-time sensor integration, unlimited revisions/sites, paid datasets, and "development of the full BSS platform beyond the geospatial workstreams."</p>
+    <div class="anno"><span class="ic">✅</span><div><b>Keep &mdash; and lean on it.</b> The last exclusion is the firewall that stops scope creep into our existing evacuation/bombing/hazard engines. Pair it with the cut deliverables so "populate threat layers" can't balloon into "build the sim."</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">&sect; IP &amp; Usage Rights / Confidentiality</span></div>
+    <p class="orig">BSS retains pre-existing IP &amp; platform architecture; Consultant assigns/licenses work products to BSS; identifies open-source/third-party components; treats site plans &amp; security-relevant data with heightened care.</p>
+    <div class="anno"><span class="ic">✅</span><div>Keep verbatim. The "BSS retains pre-existing platform architecture" wording explicitly protects the extraction engine, schema and sim code the Consultant is told to reuse.</div></div>
+  </div></div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">&sect; Project Management / Change Control</span></div>
+    <p class="orig">Periodic progress updates (completed / in-progress / risks / data-quality / decisions needed); interim demos; changes to sites, complexity, formats or deliverables subject to mutual agreement with cost/timeline impact.</p>
+    <div class="anno"><span class="ic">✅</span><div>Keep. Change-control is the lever that lets BSS formally remove the cut items (threat schema, sim engines) from the agreed deliverables without dispute.</div></div>
+  </div></div>
+</div>
+
+<!-- MILESTONES -->
+<div class="clause-sec">
+  <h2><span class="n">7</span> Proposed Milestones</h2>
+  <p class="sec-note">Re-weight the milestones to reflect that M2 shrinks (packaging) and M3 carries the engagement.</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>Milestone</th><th>Original</th><th>Redlined disposition</th></tr></thead>
+      <tbody>
+        <tr><td><b>M1</b></td><td>Requirements confirmation &amp; data review</td><td><span class="badge keep">Keep</span> &mdash; add: BSS hands over GeoJSON contract + existing extraction code + schema docs.</td></tr>
+        <tr><td><b>M2</b></td><td>OSM extraction &amp; building outline processing</td><td><span class="badge reframe">Reframe</span> &mdash; shrink to "package existing engine as script + GeoJSON + metadata." Smaller than originally scoped.</td></tr>
+        <tr><td><b>M3</b></td><td>Blueprint integration</td><td><span class="badge keep">Keep / expand</span> &mdash; ingestion + true georeferencing + discrepancy report + vertical linkage. The bulk of effort lives here.</td></tr>
+        <tr><td><b>M4</b></td><td>Testing &amp; handover</td><td><span class="badge keep">Keep</span> &mdash; test against BSS import shim; data dictionary; handover session.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="clause keep"><div class="rail"></div><div class="body">
+    <div class="head"><span class="badge keep">Keep</span><span class="where">&sect; Final Handover</span></div>
+    <p class="orig">All final files, editable source materials, processed outputs, documentation, data dictionaries and supporting notes required for BSS to maintain, update and integrate the deliverables.</p>
+    <div class="anno"><span class="ic">✅</span><div>Keep verbatim. Ensure the handover includes the georeferencing parameters/control points so BSS can re-run alignment on future plans without the Consultant.</div></div>
+  </div></div>
+</div>
+
+<!-- BOTTOM LINE -->
+<div class="clause-sec">
+  <h2><span class="n">&Sigma;</span> Bottom line</h2>
+  <div class="callout">
+    <h4>How the redline changes the engagement</h4>
+    <p>The SOW as written would pay for a substantial rebuild of capability we already own (OSM extraction, threat/hazard schema, evacuation &amp; bombing sim). Redlined, the Consultant's hours concentrate on <b>Workstream&nbsp;2 &mdash; real blueprint ingestion and rigorous georeferencing</b> &mdash; with Workstream&nbsp;1 reduced to packaging and Workstream&nbsp;3's overlap cut entirely. BSS retains the import shim, the unified layer UI, and the canonical interior-model decision as internal work.</p>
+  </div>
+</div>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p>Black Swan Simulations &mdash; Redlined annotation of the Geospatial Scope of Work (Lewis). Companion to <b>geospatial-consultant-briefer.html</b>. Dispositions derive from a four-stream source-code audit of the field-operations / bombing / evacuation map stack. For internal scope negotiation only; not a security-cleared deliverable.</p>
+  </div>
+</footer>
+</body>
+</html>

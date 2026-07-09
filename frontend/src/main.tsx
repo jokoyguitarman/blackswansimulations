@@ -42,12 +42,10 @@ const ProtectedRoute = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center  scanline">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg terminal-text mb-2 animate-pulse">[AUTHENTICATING]</div>
-          <div className="text-xs terminal-text text-robotic-yellow/50">
-            Verifying credentials...
-          </div>
+          <div className="text-lg text-ink mb-2 animate-pulse">Authenticating</div>
+          <div className="text-xs text-muted">Verifying credentials…</div>
         </div>
       </div>
     );

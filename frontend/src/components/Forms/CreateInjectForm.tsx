@@ -101,14 +101,12 @@ export const CreateInjectForm = ({
   // };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl terminal-text uppercase mb-6">[CREATE_INJECT]</h2>
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="military-border bg-surface p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <h2 className="text-xl terminal-text mb-6">Create inject</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [TITLE]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Title</label>
             <input
               type="text"
               required
@@ -120,9 +118,7 @@ export const CreateInjectForm = ({
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [CONTENT]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Content</label>
             <textarea
               required
               value={formData.content}
@@ -135,9 +131,7 @@ export const CreateInjectForm = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [TYPE]
-              </label>
+              <label className="block text-xs terminal-text text-ink mb-2">Type</label>
               <select
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
@@ -154,9 +148,7 @@ export const CreateInjectForm = ({
             </div>
 
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [SEVERITY]
-              </label>
+              <label className="block text-xs terminal-text text-ink mb-2">Severity</label>
               <select
                 value={formData.severity}
                 onChange={(e) => setFormData({ ...formData, severity: e.target.value })}
@@ -172,8 +164,8 @@ export const CreateInjectForm = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [TRIGGER_TIME_MINUTES] (Optional)
+              <label className="block text-xs terminal-text text-ink mb-2">
+                Trigger time minutes (optional)
               </label>
               <input
                 type="number"
@@ -191,9 +183,7 @@ export const CreateInjectForm = ({
             </div>
 
             <div>
-              <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-                [REQUIRES_RESPONSE]
-              </label>
+              <label className="block text-xs terminal-text text-ink mb-2">Requires response</label>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -209,9 +199,7 @@ export const CreateInjectForm = ({
           </div>
 
           <div>
-            <label className="block text-xs terminal-text text-robotic-yellow mb-2 uppercase">
-              [AFFECTED_ROLES]
-            </label>
+            <label className="block text-xs terminal-text text-ink mb-2">Affected roles</label>
             <div className="grid grid-cols-2 gap-2">
               {ROLES.map((role) => (
                 <label key={role} className="flex items-center gap-2 cursor-pointer">
@@ -222,27 +210,27 @@ export const CreateInjectForm = ({
                     className="w-4 h-4"
                   />
                   <span className="text-xs terminal-text">
-                    {role.replace(/_/g, ' ').toUpperCase()}
+                    {role.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase())}
                   </span>
                 </label>
               ))}
             </div>
           </div>
 
-          <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">
+          <div className="flex gap-4 pt-4 border-t border-border">
             <button
               type="submit"
               disabled={loading}
               className="military-button px-6 py-3 flex-1 disabled:opacity-50"
             >
-              {loading ? '[CREATING...]' : '[CREATE_INJECT]'}
+              {loading ? 'Creating…' : 'Create inject'}
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="military-button-outline px-6 py-3 flex-1 border border-robotic-orange text-robotic-orange"
+              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent"
             >
-              [CANCEL]
+              Cancel
             </button>
           </div>
         </form>

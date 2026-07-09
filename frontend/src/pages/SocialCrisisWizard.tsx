@@ -124,8 +124,8 @@ async function authHeadersMultipart(): Promise<Record<string, string>> {
 function Spinner({ text }: { text: string }) {
   return (
     <div className="flex items-center gap-3 py-8 justify-center">
-      <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-      <span className="text-sm terminal-text text-robotic-yellow/60 animate-pulse">{text}</span>
+      <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+      <span className="text-sm terminal-text text-muted animate-pulse">{text}</span>
     </div>
   );
 }
@@ -1066,7 +1066,7 @@ export const SocialCrisisWizard = () => {
   /* ─── Render ─────────────────────────────────────────────────────── */
 
   const progressBar = (
-    <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-robotic-gray-300 flex-shrink-0">
+    <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0">
       <div className="flex items-center gap-1 overflow-x-auto">
         {VISIBLE_STEPS.map((s, i) => {
           const isCurrent = s === step;
@@ -1074,26 +1074,24 @@ export const SocialCrisisWizard = () => {
           return (
             <div key={s} className="flex items-center">
               {i > 0 && (
-                <div
-                  className={`w-4 h-px mx-1 ${isPast ? 'bg-robotic-yellow' : 'bg-robotic-gray-200'}`}
-                />
+                <div className={`w-4 h-px mx-1 ${isPast ? 'bg-accent' : 'bg-surface-2'}`} />
               )}
               <div
-                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] terminal-text uppercase whitespace-nowrap ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] terminal-text whitespace-nowrap ${
                   isCurrent
-                    ? 'border border-robotic-yellow bg-robotic-yellow/10 text-robotic-yellow'
+                    ? 'border border-accent bg-accent/10 text-ink'
                     : isPast
-                      ? 'text-robotic-yellow/70'
-                      : 'text-robotic-yellow/30'
+                      ? 'text-muted'
+                      : 'text-muted'
                 }`}
               >
                 <span
                   className={`w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold ${
                     isCurrent
-                      ? 'bg-robotic-yellow text-black'
+                      ? 'bg-accent text-white'
                       : isPast
-                        ? 'bg-robotic-yellow/30 text-robotic-yellow'
-                        : 'bg-robotic-gray-200 text-robotic-yellow/30'
+                        ? 'bg-accent/10 text-ink'
+                        : 'bg-surface-2 text-muted'
                   }`}
                 >
                   {isPast ? '✓' : i + 1}
@@ -1111,15 +1109,15 @@ export const SocialCrisisWizard = () => {
 
   const renderStep1 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: SCENARIO SETUP]</h2>
-      <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+      <h2 className="text-lg terminal-text mb-4">Step 1 · Scenario setup</h2>
+      <p className="text-xs terminal-text text-muted mb-6">
         Describe any crisis scenario in detail. The AI will analyze your description to understand
         the crisis dynamics and generate an appropriate simulation. You can also upload a document
         with a detailed scenario brief.
       </p>
 
       <div className="mb-6">
-        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
           Crisis Scenario Description
         </label>
         <textarea
@@ -1127,10 +1125,10 @@ export const SocialCrisisWizard = () => {
           onChange={(e) => setContext(e.target.value)}
           rows={10}
           placeholder={SCENARIO_PLACEHOLDER}
-          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none resize-none"
+          className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none resize-none"
         />
         <div className="flex justify-between mt-1">
-          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+          <span className="text-[9px] terminal-text text-muted">
             {context.length < 50
               ? `Minimum 50 characters required (${50 - context.length} more)`
               : `${context.length} characters`}
@@ -1140,7 +1138,7 @@ export const SocialCrisisWizard = () => {
 
       {/* Document Upload */}
       <div className="mb-6">
-        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
           Upload Scenario Document (optional)
         </label>
         {!uploadedDocText ? (
@@ -1148,7 +1146,7 @@ export const SocialCrisisWizard = () => {
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-robotic-gray-200 rounded p-8 text-center cursor-pointer hover:border-robotic-yellow/50 transition-colors"
+            className="border-2 border-dashed border-border rounded p-8 text-center cursor-pointer hover:border-accent transition-colors"
           >
             <input
               ref={fileInputRef}
@@ -1161,22 +1159,22 @@ export const SocialCrisisWizard = () => {
               <Spinner text="Extracting document text..." />
             ) : (
               <>
-                <div className="text-3xl mb-3 text-robotic-yellow/30">+</div>
-                <div className="text-xs terminal-text text-robotic-yellow/50 mb-1">
+                <div className="text-3xl mb-3 text-muted">+</div>
+                <div className="text-xs terminal-text text-muted mb-1">
                   Drag & drop or click to upload
                 </div>
-                <div className="text-[10px] terminal-text text-robotic-yellow/30">
+                <div className="text-[10px] terminal-text text-muted">
                   PDF, DOCX, or TXT (max 10MB)
                 </div>
               </>
             )}
           </div>
         ) : (
-          <div className="border border-cyan-400/30 rounded p-4 bg-cyan-900/10">
+          <div className="border border-accent/30 rounded p-4 bg-accent/10">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <span className="text-cyan-400 text-sm">&#128196;</span>
-                <span className="text-xs terminal-text text-cyan-400 font-bold">
+                <span className="text-accent text-sm">&#128196;</span>
+                <span className="text-xs terminal-text text-accent font-bold">
                   {uploadedDocName}
                 </span>
               </div>
@@ -1186,39 +1184,39 @@ export const SocialCrisisWizard = () => {
                   setUploadedDocName('');
                   setUploadError(null);
                 }}
-                className="text-[10px] terminal-text text-red-400 hover:text-red-300 border border-red-400/30 px-2 py-0.5 rounded"
+                className="text-[10px] terminal-text text-danger hover:opacity-80 border border-danger/30 px-2 py-0.5 rounded"
               >
                 Remove
               </button>
             </div>
-            <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-2">
+            <div className="text-[10px] terminal-text text-muted mb-2">
               {uploadedDocText.split(/\s+/).length.toLocaleString()} words extracted
             </div>
-            <div className="text-[10px] terminal-text text-robotic-yellow/50 max-h-24 overflow-y-auto border border-robotic-gray-200 rounded p-2 bg-black/20">
+            <div className="text-[10px] terminal-text text-muted max-h-24 overflow-y-auto border border-border rounded p-2 bg-surface-2">
               {uploadedDocText.slice(0, 500)}
               {uploadedDocText.length > 500 && '...'}
             </div>
           </div>
         )}
         {uploadError && (
-          <div className="mt-2 text-[10px] terminal-text text-yellow-400">{uploadError}</div>
+          <div className="mt-2 text-[10px] terminal-text text-danger">{uploadError}</div>
         )}
       </div>
 
       <div className="mb-4">
-        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
           Country
         </label>
         <input
           type="text"
           value={country}
           onChange={(e) => setCountry(e.target.value)}
-          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
+          className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
         />
       </div>
 
       <div className="mb-4">
-        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
           Organization Name (optional)
         </label>
         <input
@@ -1226,17 +1224,17 @@ export const SocialCrisisWizard = () => {
           value={orgName}
           onChange={(e) => setOrgName(e.target.value)}
           placeholder="e.g., Meridian Technologies, Acme Corp"
-          className="w-full bg-transparent border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow/70 focus:outline-none"
+          className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
         />
         <div className="mt-1">
-          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+          <span className="text-[9px] terminal-text text-muted">
             Leave blank to let the AI generate a company name
           </span>
         </div>
       </div>
 
       <div className="mb-4">
-        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2 block">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
           Brand Logo (optional)
         </label>
         <div className="flex items-center gap-3">
@@ -1244,10 +1242,10 @@ export const SocialCrisisWizard = () => {
             <img
               src={brandLogoUrl}
               alt="Brand logo"
-              className="w-12 h-12 rounded-lg object-cover border border-robotic-gray-200"
+              className="w-12 h-12 rounded-lg object-cover border border-border"
             />
           )}
-          <label className="cursor-pointer border border-robotic-gray-200 px-3 py-2 text-sm terminal-text text-robotic-yellow hover:border-robotic-yellow/70 transition-colors">
+          <label className="cursor-pointer border border-border px-3 py-2 text-sm terminal-text text-ink hover:border-accent transition-colors">
             {uploadingLogo ? 'Uploading...' : brandLogoUrl ? 'Change Logo' : 'Upload Logo'}
             <input
               type="file"
@@ -1282,14 +1280,14 @@ export const SocialCrisisWizard = () => {
           {brandLogoUrl && (
             <button
               onClick={() => setBrandLogoUrl('')}
-              className="text-[10px] terminal-text text-red-400 hover:text-red-300"
+              className="text-[10px] terminal-text text-danger hover:opacity-80"
             >
               Remove
             </button>
           )}
         </div>
         <div className="mt-1">
-          <span className="text-[9px] terminal-text text-robotic-yellow/30">
+          <span className="text-[9px] terminal-text text-muted">
             Upload a logo for the brand&apos;s social media pages. If none is provided, the AI will
             generate one.
           </span>
@@ -1297,11 +1295,11 @@ export const SocialCrisisWizard = () => {
       </div>
 
       {/* Brand pages: protagonist allies + antagonist competitors */}
-      <div className="mb-4 p-3 border border-robotic-yellow/20 rounded bg-robotic-gray-200/40">
-        <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-1 block">
+      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
           Brand Pages (optional)
         </label>
-        <p className="text-[10px] terminal-text text-robotic-yellow/40 mb-3">
+        <p className="text-[10px] terminal-text text-muted mb-3">
           Your crisis page is generated automatically. Add allied pages players can control, and
           rival competitor pages the AI drives against you.
         </p>
@@ -1311,19 +1309,19 @@ export const SocialCrisisWizard = () => {
             value={newPageName}
             onChange={(e) => setNewPageName(e.target.value)}
             placeholder="Page name"
-            className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
           />
           <input
             value={newPageFbHandle}
             onChange={(e) => setNewPageFbHandle(e.target.value)}
             placeholder="@FacebookHandle"
-            className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
           />
           <input
             value={newPageXHandle}
             onChange={(e) => setNewPageXHandle(e.target.value)}
             placeholder="@XHandle"
-            className="bg-robotic-gray-300 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-xs px-2 py-1 rounded"
+            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
           />
         </div>
         <div className="flex gap-2 mt-2">
@@ -1332,23 +1330,23 @@ export const SocialCrisisWizard = () => {
             disabled={!newPageName.trim()}
             className="military-button px-4 py-1.5 text-xs disabled:opacity-50"
           >
-            [ADD_ALLY]
+            Add ally
           </button>
           <button
             onClick={() => addRosterEntry('antagonist')}
             disabled={!newPageName.trim()}
-            className="px-4 py-1.5 text-xs terminal-text uppercase border border-red-400/50 text-red-400 hover:bg-red-400/10 rounded disabled:opacity-50"
+            className="px-4 py-1.5 text-xs terminal-text border border-danger/50 text-danger hover:bg-danger/10 rounded disabled:opacity-50"
           >
-            [ADD_COMPETITOR]
+            Add competitor
           </button>
         </div>
 
         <div className="mt-4">
-          <div className="text-[10px] terminal-text text-cyan-400/70 uppercase mb-1">
+          <div className="text-[10px] terminal-text text-accent uppercase mb-1">
             Your side &mdash; allied pages (assignable to players)
           </div>
           {allyEntries.length === 0 ? (
-            <div className="text-[10px] terminal-text text-robotic-yellow/30">
+            <div className="text-[10px] terminal-text text-muted">
               The crisis page is the required protagonist page. Add optional allies.
             </div>
           ) : (
@@ -1356,17 +1354,16 @@ export const SocialCrisisWizard = () => {
               {allyEntries.map((e, i) => (
                 <div
                   key={`ally-${i}`}
-                  className="flex items-center justify-between border-b border-robotic-yellow/10 py-1"
+                  className="flex items-center justify-between border-b border-border py-1"
                 >
                   <span className="text-xs terminal-text">
-                    {e.name}{' '}
-                    <span className="text-robotic-yellow/40">{e.facebook_handle || ''}</span>
+                    {e.name} <span className="text-muted">{e.facebook_handle || ''}</span>
                   </span>
                   <button
                     onClick={() => removeRosterEntry('protagonist', i)}
-                    className="text-[10px] terminal-text text-robotic-orange hover:underline"
+                    className="text-[10px] terminal-text text-accent hover:underline"
                   >
-                    [REMOVE]
+                    Remove
                   </button>
                 </div>
               ))}
@@ -1375,11 +1372,11 @@ export const SocialCrisisWizard = () => {
         </div>
 
         <div className="mt-4">
-          <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
+          <div className="text-[10px] terminal-text text-danger uppercase mb-1">
             Opposition &mdash; competitor pages (AI-driven, trainer can seize)
           </div>
           {competitorEntries.length === 0 ? (
-            <div className="text-[10px] terminal-text text-robotic-yellow/30">
+            <div className="text-[10px] terminal-text text-muted">
               {autoAntagonist
                 ? 'A hostile rival will be auto-generated. Add named competitors (up to 10) to stack the pressure.'
                 : 'No competitors. Add named competitors (up to 10).'}
@@ -1389,22 +1386,22 @@ export const SocialCrisisWizard = () => {
               {competitorEntries.map((e, i) => (
                 <div
                   key={`comp-${i}`}
-                  className="flex items-center justify-between border-b border-red-400/10 py-1"
+                  className="flex items-center justify-between border-b border-danger/10 py-1"
                 >
-                  <span className="text-xs terminal-text text-red-300">
-                    {e.name} <span className="text-red-400/40">{e.facebook_handle || ''}</span>
+                  <span className="text-xs terminal-text text-danger">
+                    {e.name} <span className="text-danger/60">{e.facebook_handle || ''}</span>
                   </span>
                   <button
                     onClick={() => removeRosterEntry('antagonist', i)}
-                    className="text-[10px] terminal-text text-robotic-orange hover:underline"
+                    className="text-[10px] terminal-text text-accent hover:underline"
                   >
-                    [REMOVE]
+                    Remove
                   </button>
                 </div>
               ))}
             </div>
           )}
-          <label className="flex items-center gap-2 mt-2 text-[10px] terminal-text text-robotic-yellow/50 cursor-pointer">
+          <label className="flex items-center gap-2 mt-2 text-[10px] terminal-text text-muted cursor-pointer">
             <input
               type="checkbox"
               checked={autoAntagonist}
@@ -1416,9 +1413,9 @@ export const SocialCrisisWizard = () => {
       </div>
 
       {crisisDescription.length >= 50 && (
-        <div className="mt-4 p-3 border border-green-400/30 rounded bg-green-900/10">
-          <p className="text-[10px] terminal-text text-green-400">
-            READY: The AI will analyze your scenario and generate appropriate crisis dynamics, NPCs,
+        <div className="mt-4 p-3 border border-success/30 rounded bg-success/10">
+          <p className="text-[10px] terminal-text text-success">
+            Ready: The AI will analyze your scenario and generate appropriate crisis dynamics, NPCs,
             social media narratives, and public sentiment patterns for {country}.
           </p>
         </div>
@@ -1446,34 +1443,28 @@ export const SocialCrisisWizard = () => {
         })
         .filter((c) => c.area || c.consideration);
     const Drives = () => (
-      <span className="text-[10px] terminal-text text-green-400/80 border border-green-500/40 rounded px-1 ml-2">
+      <span className="text-[10px] terminal-text text-success border border-success/40 rounded px-1 ml-2">
         drives generation
       </span>
     );
-    const editArea =
-      'w-full bg-black/30 border border-robotic-gray-200 text-robotic-yellow/80 text-xs p-2 mt-1';
+    const editArea = 'w-full bg-surface-2 border border-border text-ink text-xs p-2 mt-1';
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg terminal-text text-robotic-yellow uppercase mb-1">
-            Blueprint Review
-          </h2>
-          <p className="text-xs terminal-text text-robotic-yellow/50">
+          <h2 className="text-lg terminal-text text-ink mb-1">Blueprint Review</h2>
+          <p className="text-xs terminal-text text-muted">
             Structured from your uploaded document. Empty or low-confidence fields will be
-            AI-generated. Press [NEXT] to build the scenario.
+            AI-generated. Press Next to build the scenario.
           </p>
         </div>
 
         {extracting && <Spinner text="Analyzing document and extracting blueprint..." />}
 
         {extractError && !extracting && (
-          <div className="border border-red-500/40 p-3 text-xs terminal-text text-red-400">
+          <div className="border border-danger/40 p-3 text-xs terminal-text text-danger">
             {extractError}
-            <button
-              onClick={() => void runExtraction()}
-              className="ml-3 underline text-robotic-yellow/70"
-            >
-              [RETRY]
+            <button onClick={() => void runExtraction()} className="ml-3 underline text-muted">
+              Retry
             </button>
           </div>
         )}
@@ -1482,14 +1473,14 @@ export const SocialCrisisWizard = () => {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-xs terminal-text">
               <div className="military-border p-3">
-                <div className="text-robotic-yellow/40 uppercase mb-1">Framework</div>
-                <div className="text-robotic-yellow/80">
+                <div className="text-muted uppercase mb-1">Framework</div>
+                <div className="text-ink">
                   {blueprint.detected_framework_kind || 'unstructured'}
                 </div>
               </div>
               <div className="military-border p-3">
-                <div className="text-robotic-yellow/40 uppercase mb-1">Structure confidence</div>
-                <div className="text-robotic-yellow/80">{pct(blueprint.structure_confidence)}</div>
+                <div className="text-muted uppercase mb-1">Structure confidence</div>
+                <div className="text-ink">{pct(blueprint.structure_confidence)}</div>
               </div>
             </div>
 
@@ -1497,16 +1488,14 @@ export const SocialCrisisWizard = () => {
               <div className="border border-amber-500/40 p-3 text-xs terminal-text">
                 <div className="text-amber-400 uppercase mb-2">Gap Report — please review</div>
                 {blueprint.warnings.map((w, i) => (
-                  <div key={i} className="mb-2 text-robotic-yellow/70">
+                  <div key={i} className="mb-2 text-muted">
                     <span className="text-amber-400">{w.field}:</span> {w.issue}
                     {w.suggested_fix && w.suggested_fix.length > 0 && (
-                      <div className="text-robotic-yellow/40">
-                        Suggested: {w.suggested_fix.join(' → ')}
-                      </div>
+                      <div className="text-muted">Suggested: {w.suggested_fix.join(' → ')}</div>
                     )}
                   </div>
                 ))}
-                <div className="text-robotic-yellow/30 mt-1">
+                <div className="text-muted mt-1">
                   Suggestions are advisory — edit the fields below to incorporate them.
                 </div>
               </div>
@@ -1515,18 +1504,18 @@ export const SocialCrisisWizard = () => {
             {/* Editable fields — these drive generation */}
             <div className="military-border p-3 text-xs terminal-text space-y-4">
               <div>
-                <div className="text-robotic-yellow/40 uppercase">
+                <div className="text-muted uppercase">
                   Editable fields <Drives />
                 </div>
-                <div className="text-robotic-yellow/35 mt-1">
+                <div className="text-muted mt-1">
                   These were extracted from your document and feed scenario generation. Review and
                   edit them. Leave a field empty to let the AI generate it.
                 </div>
               </div>
 
               <div>
-                <label className="text-robotic-yellow/70">Incident types</label>
-                <div className="text-robotic-yellow/35">
+                <label className="text-ink">Incident types</label>
+                <div className="text-muted">
                   The specific kinds of incident this crisis involves. Seeds the fact sheet
                   (confirmed facts vs. rumours). One per line.
                 </div>
@@ -1542,8 +1531,8 @@ export const SocialCrisisWizard = () => {
               </div>
 
               <div>
-                <label className="text-robotic-yellow/70">Cross-stakeholder dynamics</label>
-                <div className="text-robotic-yellow/35">
+                <label className="text-ink">Cross-stakeholder dynamics</label>
+                <div className="text-muted">
                   How the groups react to and provoke each other. Designs the convergence gates
                   (inter-group pile-ons) and live Director beats. One interaction per line.
                 </div>
@@ -1561,8 +1550,8 @@ export const SocialCrisisWizard = () => {
               </div>
 
               <div>
-                <label className="text-robotic-yellow/70">Cross-cutting constraints</label>
-                <div className="text-robotic-yellow/35">
+                <label className="text-ink">Cross-cutting constraints</label>
+                <div className="text-muted">
                   Competing priorities the response must balance, written as &quot;area:
                   consideration&quot;. Fed into the objectives and briefing as context. One per
                   line.
@@ -1581,8 +1570,8 @@ export const SocialCrisisWizard = () => {
               </div>
 
               <div>
-                <label className="text-robotic-yellow/70">Global tone &amp; realism</label>
-                <div className="text-robotic-yellow/35">
+                <label className="text-ink">Global tone &amp; realism</label>
+                <div className="text-muted">
                   Document-wide style guidance applied to every generated voice (on top of
                   per-faction tone). Free text.
                 </div>
@@ -1598,8 +1587,8 @@ export const SocialCrisisWizard = () => {
               </div>
 
               <div>
-                <label className="text-robotic-yellow/70">Example vignettes</label>
-                <div className="text-robotic-yellow/35">
+                <label className="text-ink">Example vignettes</label>
+                <div className="text-muted">
                   Short worked-example scenes the storyline should emulate. Used as few-shot
                   examples when generating injects. One per line.
                 </div>
@@ -1616,28 +1605,28 @@ export const SocialCrisisWizard = () => {
             </div>
 
             <div className="military-border p-3 text-xs terminal-text">
-              <div className="text-robotic-yellow/40 uppercase mb-2">
+              <div className="text-muted uppercase mb-2">
                 Factions ({blueprint.factions?.length ?? 0})
               </div>
               {(blueprint.factions ?? []).map((f, i) => (
-                <div key={i} className="text-robotic-yellow/70 mb-1">
+                <div key={i} className="text-ink mb-1">
                   {f.name || f.id}{' '}
-                  <span className="text-robotic-yellow/40">
+                  <span className="text-muted">
                     [{f.alignment || 'n/a'} · {pct(f.confidence)}]
                   </span>
                 </div>
               ))}
               {(blueprint.factions?.length ?? 0) === 0 && (
-                <div className="text-robotic-yellow/40">None detected — will be AI-generated.</div>
+                <div className="text-muted">None detected — will be AI-generated.</div>
               )}
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs terminal-text">
               <div className="military-border p-3">
-                <div className="text-robotic-yellow/40 uppercase mb-1">
+                <div className="text-muted uppercase mb-1">
                   Timeline ({blueprint.timeline?.length ?? 0})
                 </div>
-                <div className="text-robotic-yellow/70">
+                <div className="text-ink">
                   {(blueprint.timeline ?? [])
                     .map((t) => t.stage)
                     .filter(Boolean)
@@ -1645,10 +1634,10 @@ export const SocialCrisisWizard = () => {
                 </div>
               </div>
               <div className="military-border p-3">
-                <div className="text-robotic-yellow/40 uppercase mb-1">
+                <div className="text-muted uppercase mb-1">
                   Narrative mutations ({blueprint.narrative_mutations?.length ?? 0})
                 </div>
-                <div className="text-robotic-yellow/70">
+                <div className="text-ink">
                   {(blueprint.narrative_mutations ?? []).slice(0, 4).join(', ') || 'AI-generated'}
                 </div>
               </div>
@@ -1656,11 +1645,11 @@ export const SocialCrisisWizard = () => {
 
             {blueprint.unmapped_directives && blueprint.unmapped_directives.length > 0 && (
               <div className="military-border p-3 text-xs terminal-text">
-                <div className="text-robotic-yellow/40 uppercase mb-2">
+                <div className="text-muted uppercase mb-2">
                   Unmapped ({blueprint.unmapped_directives.length}) — kept for context
                 </div>
                 {blueprint.unmapped_directives.slice(0, 5).map((u, i) => (
-                  <div key={i} className="text-robotic-yellow/60 mb-1">
+                  <div key={i} className="text-muted mb-1">
                     • {u.note || u.source_excerpt}
                   </div>
                 ))}
@@ -1670,8 +1659,8 @@ export const SocialCrisisWizard = () => {
         )}
 
         {!extracting && !blueprint && !extractError && (
-          <div className="text-xs terminal-text text-robotic-yellow/40 py-6 text-center">
-            No blueprint extracted. Press [NEXT] to build from the description directly.
+          <div className="text-xs terminal-text text-muted py-6 text-center">
+            No blueprint extracted. Press Next to build from the description directly.
           </div>
         )}
       </div>
@@ -1699,12 +1688,12 @@ export const SocialCrisisWizard = () => {
     const errorMsg = step2Error || step3Error || step4Error;
     return (
       <div>
-        <h2 className="text-lg terminal-text uppercase mb-4">[STEP 2: BUILDING SCENARIO]</h2>
-        <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+        <h2 className="text-lg terminal-text mb-4">Step 2 · Building scenario</h2>
+        <p className="text-xs terminal-text text-muted mb-6">
           Generating characters, storyline, convergence, and brand pages. This takes a few minutes;
           you will advance to compile automatically.
         </p>
-        <div className="border border-robotic-gray-200 rounded p-4 space-y-2 mb-4">
+        <div className="border border-border rounded p-4 space-y-2 mb-4">
           {stages.map((s) => {
             const idx = order.indexOf(s.key);
             const isDone = buildStage === 'done' || (curIdx > -1 && curIdx > idx);
@@ -1715,25 +1704,17 @@ export const SocialCrisisWizard = () => {
                 <span
                   className={`w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold ${
                     isErrored
-                      ? 'bg-red-900/40 text-red-400'
+                      ? 'bg-danger/10 text-danger'
                       : isDone
-                        ? 'bg-green-900/30 text-green-400'
+                        ? 'bg-success/10 text-success'
                         : isRunning
-                          ? 'bg-robotic-yellow/20 text-robotic-yellow animate-pulse'
-                          : 'bg-robotic-gray-200 text-robotic-yellow/30'
+                          ? 'bg-accent/10 text-ink animate-pulse'
+                          : 'bg-surface-2 text-muted'
                   }`}
                 >
                   {isErrored ? '!' : isDone ? '✓' : isRunning ? '●' : '·'}
                 </span>
-                <span
-                  className={
-                    isDone
-                      ? 'text-robotic-yellow/80'
-                      : isRunning
-                        ? 'text-robotic-yellow'
-                        : 'text-robotic-yellow/40'
-                  }
-                >
+                <span className={isDone ? 'text-ink' : isRunning ? 'text-ink' : 'text-muted'}>
                   {s.label}
                 </span>
               </div>
@@ -1743,25 +1724,24 @@ export const SocialCrisisWizard = () => {
 
         {/* Live storyline generation log */}
         {buildStage === 'storyline' && step3Progress.length > 0 && (
-          <div className="border border-robotic-gray-200 rounded p-3 bg-black/30 font-mono text-xs space-y-1 max-h-40 overflow-y-auto mb-4">
+          <div className="border border-border rounded p-3 bg-surface-2 font-mono text-xs space-y-1 max-h-40 overflow-y-auto mb-4">
             {step3Progress.map((msg, i) => (
-              <div key={i} className="text-robotic-yellow/70">
-                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
-                {msg}
+              <div key={i} className="text-muted">
+                <span className="text-muted">[{String(i + 1).padStart(2, '0')}]</span> {msg}
               </div>
             ))}
-            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
+            <div className="animate-pulse text-muted">&#9612;</div>
           </div>
         )}
 
         {buildError ? (
           <div className="text-center py-4">
-            <p className="text-sm terminal-text text-red-400 mb-4">
+            <p className="text-sm terminal-text text-danger mb-4">
               {errorMsg || `The ${buildError} stage failed.`} Retry to rebuild the scenario.
             </p>
             <button
               onClick={() => void generateAll()}
-              className="px-6 py-2 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+              className="px-6 py-2 text-xs terminal-text border border-accent text-ink hover:bg-accent/10"
             >
               Retry
             </button>
@@ -1777,65 +1757,55 @@ export const SocialCrisisWizard = () => {
 
   const renderStep7 = () => (
     <div>
-      <h2 className="text-lg terminal-text uppercase mb-4">[STEP 7: REVIEW & COMPILE]</h2>
+      <h2 className="text-lg terminal-text mb-4">Step 7 · Review &amp; compile</h2>
 
       {!scenarioId && !compiling && (
         <div className="space-y-6">
-          <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+          <p className="text-xs terminal-text text-muted mb-4">
             Review the full scenario summary, then compile to persist.
           </p>
 
-          <div className="border border-robotic-gray-200 rounded p-4 mb-4">
-            <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-4">
-              Scenario Summary
-            </h3>
+          <div className="border border-border rounded p-4 mb-4">
+            <h3 className="text-xs terminal-text text-muted uppercase mb-4">Scenario Summary</h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs terminal-text">
-              <div className="border border-robotic-gray-200 rounded p-3 text-center col-span-2 sm:col-span-3">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Crisis Scenario</div>
-                <div className="text-robotic-yellow text-xs mt-1 line-clamp-2">{crisisLabel}</div>
+              <div className="border border-border rounded p-3 text-center col-span-2 sm:col-span-3">
+                <div className="text-[10px] text-muted uppercase">Crisis Scenario</div>
+                <div className="text-ink text-xs mt-1 line-clamp-2">{crisisLabel}</div>
               </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Country</div>
-                <div className="text-robotic-yellow font-bold">{country}</div>
+              <div className="border border-border rounded p-3 text-center">
+                <div className="text-[10px] text-muted uppercase">Country</div>
+                <div className="text-ink font-bold">{country}</div>
               </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">
-                  Storyline Injects
-                </div>
-                <div className="text-robotic-yellow font-bold text-lg">
-                  {storylineInjects.length}
-                </div>
+              <div className="border border-border rounded p-3 text-center">
+                <div className="text-[10px] text-muted uppercase">Storyline Injects</div>
+                <div className="text-ink font-bold text-lg">{storylineInjects.length}</div>
               </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">NPC Count</div>
-                <div className="text-robotic-yellow font-bold text-lg">{personas.length}</div>
+              <div className="border border-border rounded p-3 text-center">
+                <div className="text-[10px] text-muted uppercase">NPC Count</div>
+                <div className="text-ink font-bold text-lg">{personas.length}</div>
               </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Team Injects</div>
-                <div className="text-robotic-yellow font-bold text-lg">{totalTeamInjects}</div>
+              <div className="border border-border rounded p-3 text-center">
+                <div className="text-[10px] text-muted uppercase">Team Injects</div>
+                <div className="text-ink font-bold text-lg">{totalTeamInjects}</div>
               </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Shared Injects</div>
-                <div className="text-robotic-yellow font-bold text-lg">{sharedInjects.length}</div>
+              <div className="border border-border rounded p-3 text-center">
+                <div className="text-[10px] text-muted uppercase">Shared Injects</div>
+                <div className="text-ink font-bold text-lg">{sharedInjects.length}</div>
               </div>
-              <div className="border border-robotic-gray-200 rounded p-3 text-center">
-                <div className="text-[10px] text-robotic-yellow/40 uppercase">Conv. Gates</div>
-                <div className="text-robotic-yellow font-bold text-lg">
-                  {convergenceGates.length}
-                </div>
+              <div className="border border-border rounded p-3 text-center">
+                <div className="text-[10px] text-muted uppercase">Conv. Gates</div>
+                <div className="text-ink font-bold text-lg">{convergenceGates.length}</div>
               </div>
             </div>
           </div>
 
           {narrative && (
-            <div className="border border-robotic-gray-200 rounded p-4 mb-4">
-              <h3 className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
-                Narrative
-              </h3>
-              <div className="text-sm terminal-text text-cyan-400 font-bold mb-1">
+            <div className="border border-border rounded p-4 mb-4">
+              <h3 className="text-xs terminal-text text-muted uppercase mb-2">Narrative</h3>
+              <div className="text-sm terminal-text text-accent font-bold mb-1">
                 {narrative.title}
               </div>
-              <div className="text-[10px] terminal-text text-robotic-yellow/50 leading-relaxed line-clamp-4">
+              <div className="text-[10px] terminal-text text-muted leading-relaxed line-clamp-4">
                 {narrative.description}
               </div>
             </div>
@@ -1845,7 +1815,7 @@ export const SocialCrisisWizard = () => {
             onClick={compileScenario}
             className="military-button px-8 py-3 w-full text-center"
           >
-            [COMPILE SCENARIO]
+            Compile scenario
           </button>
         </div>
       )}
@@ -1853,19 +1823,18 @@ export const SocialCrisisWizard = () => {
       {compiling && (
         <div className="py-6">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-5 h-5 border-2 border-robotic-yellow/30 border-t-robotic-yellow rounded-full animate-spin" />
-            <span className="text-sm terminal-text text-robotic-yellow animate-pulse">
+            <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+            <span className="text-sm terminal-text text-ink animate-pulse">
               Compiling scenario...
             </span>
           </div>
-          <div className="border border-robotic-gray-200 rounded p-4 bg-black/30 font-mono text-xs space-y-1 max-h-64 overflow-y-auto">
+          <div className="border border-border rounded p-4 bg-surface-2 font-mono text-xs space-y-1 max-h-64 overflow-y-auto">
             {compileProgress.map((msg, i) => (
-              <div key={i} className="text-robotic-yellow/70">
-                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
-                {msg}
+              <div key={i} className="text-muted">
+                <span className="text-muted">[{String(i + 1).padStart(2, '0')}]</span> {msg}
               </div>
             ))}
-            <div className="animate-pulse text-robotic-yellow/40">&#9612;</div>
+            <div className="animate-pulse text-muted">&#9612;</div>
           </div>
         </div>
       )}
@@ -1875,43 +1844,40 @@ export const SocialCrisisWizard = () => {
           <div className="text-4xl mb-4">&#9989;</div>
           <h3 className="text-lg terminal-text font-bold mb-2">Scenario Created Successfully</h3>
           {scenarioTitle && (
-            <p className="text-sm terminal-text text-cyan-400 mb-1">{scenarioTitle}</p>
+            <p className="text-sm terminal-text text-accent mb-1">{scenarioTitle}</p>
           )}
-          <p className="text-xs terminal-text text-robotic-yellow/50 mb-2">
-            Scenario ID: {scenarioId}
-          </p>
+          <p className="text-xs terminal-text text-muted mb-2">Scenario ID: {scenarioId}</p>
 
-          <div className="border border-robotic-gray-200 rounded p-4 bg-black/20 text-xs terminal-text mb-4 text-left max-w-md mx-auto">
+          <div className="border border-border rounded p-4 bg-surface-2 text-xs terminal-text mb-4 text-left max-w-md mx-auto">
             <div className="grid grid-cols-2 gap-2">
-              <span className="text-robotic-yellow/40">Injects:</span>
-              <span className="text-robotic-yellow">{storylineInjects.length}</span>
-              <span className="text-robotic-yellow/40">NPCs:</span>
-              <span className="text-robotic-yellow">{personas.length}</span>
-              <span className="text-robotic-yellow/40">Shared Injects:</span>
-              <span className="text-robotic-yellow">{sharedInjects.length}</span>
-              <span className="text-robotic-yellow/40">Convergence Gates:</span>
-              <span className="text-robotic-yellow">{convergenceGates.length}</span>
+              <span className="text-muted">Injects:</span>
+              <span className="text-ink">{storylineInjects.length}</span>
+              <span className="text-muted">NPCs:</span>
+              <span className="text-ink">{personas.length}</span>
+              <span className="text-muted">Shared Injects:</span>
+              <span className="text-ink">{sharedInjects.length}</span>
+              <span className="text-muted">Convergence Gates:</span>
+              <span className="text-ink">{convergenceGates.length}</span>
             </div>
           </div>
 
-          <div className="border border-robotic-gray-200 rounded p-4 bg-black/30 font-mono text-xs space-y-1 max-h-48 overflow-y-auto mb-6">
+          <div className="border border-border rounded p-4 bg-surface-2 font-mono text-xs space-y-1 max-h-48 overflow-y-auto mb-6">
             {compileProgress.map((msg, i) => (
-              <div key={i} className="text-robotic-yellow/70">
-                <span className="text-robotic-yellow/30">[{String(i + 1).padStart(2, '0')}]</span>{' '}
-                {msg}
+              <div key={i} className="text-muted">
+                <span className="text-muted">[{String(i + 1).padStart(2, '0')}]</span> {msg}
               </div>
             ))}
           </div>
 
           <div className="flex justify-center gap-4 flex-wrap">
             <a href="/scenarios" className="military-button px-8 py-3 text-center">
-              [VIEW SCENARIOS]
+              View scenarios
             </a>
             <button
               onClick={() => navigate('/sessions')}
-              className="px-8 py-3 text-xs terminal-text uppercase border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/20"
+              className="px-8 py-3 text-xs terminal-text border border-accent text-accent hover:bg-accent/10"
             >
-              [CREATE SESSION]
+              Create session
             </button>
             {wizardDraftId && (
               <button
@@ -1920,9 +1886,9 @@ export const SocialCrisisWizard = () => {
                   setCompileProgress([]);
                   setStep(1);
                 }}
-                className="px-8 py-3 text-xs terminal-text uppercase border border-robotic-yellow/50 text-robotic-yellow hover:bg-robotic-yellow/10"
+                className="px-8 py-3 text-xs terminal-text border border-accent text-ink hover:bg-accent/10"
               >
-                [MODIFY & RECOMPILE]
+                Modify &amp; recompile
               </button>
             )}
           </div>
@@ -1940,15 +1906,13 @@ export const SocialCrisisWizard = () => {
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate('/warroom')}
-              className="text-xs terminal-text text-robotic-yellow/50 hover:text-robotic-yellow border border-robotic-gray-200 px-2 py-1"
+              className="text-xs terminal-text text-muted hover:text-ink border border-border px-2 py-1"
             >
-              &#8592; WAR ROOM
+              &#8592; War Room
             </button>
-            <h1 className="text-2xl terminal-text uppercase tracking-wider">
-              [CRISIS SIMULATION WIZARD]
-            </h1>
+            <h1 className="text-2xl terminal-text">Crisis Simulation Wizard</h1>
           </div>
-          <span className="text-xs terminal-text text-robotic-yellow/50">Universal Mode</span>
+          <span className="text-xs terminal-text text-muted">Universal Mode</span>
         </div>
 
         {progressBar}
@@ -1963,21 +1927,21 @@ export const SocialCrisisWizard = () => {
         <div className="flex justify-between items-center flex-shrink-0 pt-2">
           <button
             onClick={goBack}
-            className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+            className="px-6 py-3 text-xs terminal-text border border-border text-muted hover:border-accent"
           >
-            {step === 1 ? '[&#8592; WAR ROOM]' : '[BACK]'}
+            {step === 1 ? '\u2190 War Room' : 'Back'}
           </button>
-          <span className="text-xs terminal-text text-robotic-yellow/40">
+          <span className="text-xs terminal-text text-muted">
             Step {currentStepIndex + 1} of {VISIBLE_STEPS.length}
           </span>
           {step === 7 ? (
             scenarioId ? (
               <a href="/scenarios" className="military-button px-8 py-3 text-center">
-                [VIEW SCENARIOS]
+                View scenarios
               </a>
             ) : (
-              <span className="text-xs terminal-text text-robotic-yellow/30">
-                {compiling ? 'Compiling...' : 'Review & compile above'}
+              <span className="text-xs terminal-text text-muted">
+                {compiling ? 'Compiling…' : 'Review & compile above'}
               </span>
             )
           ) : (
@@ -1986,7 +1950,7 @@ export const SocialCrisisWizard = () => {
               disabled={!canProceed}
               className="military-button px-8 py-3 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              [NEXT]
+              Next
             </button>
           )}
         </div>

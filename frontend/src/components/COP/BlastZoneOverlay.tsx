@@ -27,8 +27,8 @@ export const BlastZoneOverlay = ({
           center={center}
           radius={outerCordonRadius}
           pathOptions={{
-            color: '#7c3aed',
-            fillColor: '#7c3aed',
+            color: '#1E3A5F',
+            fillColor: '#1E3A5F',
             fillOpacity: 0.03,
             weight: 2,
             dashArray: '12, 8',
@@ -38,7 +38,7 @@ export const BlastZoneOverlay = ({
           {!nonInteractive && (
             <Popup>
               <div className="p-2 text-xs terminal-text">
-                <p className="font-semibold text-purple-400">OUTER CORDON</p>
+                <p className="font-semibold text-brand">OUTER CORDON</p>
                 <p>Radius: {Math.round(outerCordonRadius * 3.28084)} ft</p>
               </div>
             </Popup>

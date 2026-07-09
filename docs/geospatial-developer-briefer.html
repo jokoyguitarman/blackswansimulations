@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BSS Geospatial &mdash; Developer Gap Briefer</title>
+<style>
+  :root {
+    --bg:#070b14; --bg-2:#0c1220; --panel:#111a2b; --panel-2:#16233b;
+    --ink:#e8eefb; --ink-dim:#9fb0cc; --ink-faint:#6c7e9c; --line:#1f3050;
+    --brand:#36c5f0; --brand-2:#6d8bff; --accent:#b07bff;
+    --good:#2dd4a7; --good-dim:#1d7a63; --warn:#ffc24b; --warn-dim:#8a6a1f;
+    --bad:#ff6b7d; --bad-dim:#8a2f3c; --info:#6d8bff; --purple:#b07bff;
+    --radius:16px; --shadow:0 18px 50px -18px rgba(0,0,0,0.75);
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:"SF Mono","JetBrains Mono","Fira Code",Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body {
+    margin:0; font-family:var(--font); color:var(--ink); line-height:1.62; -webkit-font-smoothing:antialiased;
+    background:
+      radial-gradient(1200px 700px at 12% -8%, rgba(54,197,240,0.12), transparent 60%),
+      radial-gradient(1100px 800px at 100% 0%, rgba(176,123,255,0.12), transparent 55%),
+      radial-gradient(900px 700px at 50% 120%, rgba(109,139,255,0.10), transparent 60%),
+      var(--bg);
+  }
+  a { color:var(--brand); text-decoration:none; } a:hover { text-decoration:underline; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 28px; }
+
+  /* Hero */
+  .hero { position:relative; padding:84px 0 56px; border-bottom:1px solid var(--line); overflow:hidden; }
+  .hero::before { content:""; position:absolute; inset:0;
+    background-image:linear-gradient(rgba(54,197,240,0.06) 1px,transparent 1px),linear-gradient(90deg,rgba(54,197,240,0.06) 1px,transparent 1px);
+    background-size:46px 46px; mask-image:radial-gradient(900px 500px at 30% 20%,#000 30%,transparent 75%); pointer-events:none; }
+  .eyebrow { display:inline-flex; align-items:center; gap:9px; font-size:12px; letter-spacing:2.5px; text-transform:uppercase; color:var(--brand);
+    background:rgba(54,197,240,0.08); border:1px solid rgba(54,197,240,0.25); padding:7px 14px; border-radius:999px; font-weight:600; }
+  .pulse { width:8px; height:8px; border-radius:50%; background:var(--brand); animation:pulse 2.4s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(54,197,240,0.5);}70%{box-shadow:0 0 0 12px rgba(54,197,240,0);}100%{box-shadow:0 0 0 0 rgba(54,197,240,0);} }
+  h1.title { font-size:clamp(32px,5vw,54px); line-height:1.06; margin:22px 0 0; letter-spacing:-1.1px; font-weight:800;
+    background:linear-gradient(120deg,#fff 10%,var(--brand) 55%,var(--accent) 100%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .subtitle { color:var(--ink-dim); font-size:clamp(15px,2vw,19px); max-width:760px; margin:18px 0 0; }
+  .meta-row { display:flex; flex-wrap:wrap; gap:10px; margin-top:26px; }
+  .chip { font-size:12.5px; color:var(--ink-dim); background:var(--panel); border:1px solid var(--line); padding:8px 13px; border-radius:10px; }
+  .chip b { color:var(--ink); font-weight:600; }
+  .toc { display:flex; flex-wrap:wrap; gap:10px; margin-top:26px; }
+  .toc a { font-size:13px; color:var(--ink-dim); border:1px solid var(--line); background:var(--panel); padding:8px 13px; border-radius:9px; }
+  .toc a:hover { color:var(--ink); border-color:var(--brand); text-decoration:none; }
+
+  section { padding:58px 0; border-bottom:1px solid rgba(31,48,80,0.5); }
+  .sec-head { display:flex; align-items:center; gap:14px; margin-bottom:8px; }
+  .sec-num { font-family:var(--mono); font-size:13px; color:var(--brand); border:1px solid var(--line); border-radius:8px; padding:4px 9px; background:var(--panel); }
+  h2.sec-title { font-size:clamp(23px,3vw,32px); margin:0; letter-spacing:-0.6px; font-weight:750; }
+  .sec-lede { color:var(--ink-dim); max-width:840px; margin:10px 0 26px; font-size:16px; }
+
+  /* How-to-read key */
+  .legend { display:grid; gap:12px; margin:22px 0 0; }
+  @media (min-width:760px){ .legend { grid-template-columns:repeat(5,1fr); } }
+  .lg { background:var(--panel); border:1px solid var(--line); border-radius:11px; padding:13px 14px; }
+  .lg .tag { display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; padding:3px 8px; border-radius:6px; }
+  .lg p { margin:9px 0 0; font-size:12.5px; color:var(--ink-dim); }
+  .lab-want { color:var(--brand); background:rgba(54,197,240,0.12); border:1px solid rgba(54,197,240,0.3); }
+  .lab-have { color:var(--good); background:rgba(45,212,167,0.12); border:1px solid rgba(45,212,167,0.3); }
+  .lab-gap  { color:var(--bad); background:rgba(255,107,125,0.12); border:1px solid rgba(255,107,125,0.3); }
+  .lab-why  { color:var(--warn); background:rgba(255,194,75,0.12); border:1px solid rgba(255,194,75,0.3); }
+  .lab-how  { color:var(--purple); background:rgba(176,123,255,0.12); border:1px solid rgba(176,123,255,0.3); }
+
+  /* Context cards */
+  .grid { display:grid; gap:18px; }
+  @media (min-width:820px){ .g2 { grid-template-columns:1fr 1fr; } }
+  .card { background:linear-gradient(180deg,var(--panel),var(--bg-2)); border:1px solid var(--line); border-radius:var(--radius); padding:22px; box-shadow:var(--shadow); }
+  .card h3 { margin:0 0 8px; font-size:17px; }
+  .card p { margin:0; color:var(--ink-dim); font-size:14.5px; }
+  .callout { border-left:3px solid var(--brand); background:var(--panel); border-radius:10px; padding:16px 20px; margin:20px 0; }
+  .callout.warn { border-left-color:var(--warn); } .callout.bad { border-left-color:var(--bad); } .callout.purple { border-left-color:var(--purple); }
+  .callout h4 { margin:0 0 6px; font-size:15px; } .callout p { margin:0; color:var(--ink-dim); font-size:14px; }
+
+  /* GAP CARD */
+  .gap { border:1px solid var(--line); border-radius:18px; overflow:hidden; box-shadow:var(--shadow); margin:26px 0; background:var(--bg-2); }
+  .gap-head { padding:20px 26px; display:flex; gap:18px; align-items:center; border-bottom:1px solid var(--line); }
+  .gap-head.crit { background:linear-gradient(110deg,rgba(255,107,125,0.14),transparent 70%); }
+  .gap-head.high { background:linear-gradient(110deg,rgba(255,194,75,0.13),transparent 70%); }
+  .gap-head.med  { background:linear-gradient(110deg,rgba(54,197,240,0.12),transparent 70%); }
+  .gap-head.low  { background:linear-gradient(110deg,rgba(45,212,167,0.12),transparent 70%); }
+  .gap-num { font-family:var(--mono); font-weight:800; font-size:30px; letter-spacing:-1px; color:var(--ink); opacity:.32; flex:none; min-width:44px; }
+  .gap-head h3 { margin:0; font-size:20px; letter-spacing:-0.4px; }
+  .gap-head .meta { display:flex; gap:9px; flex-wrap:wrap; margin-top:7px; }
+  .gtag { font-size:11px; font-weight:700; letter-spacing:.4px; padding:3px 9px; border-radius:6px; text-transform:uppercase; }
+  .gtag.ws { color:var(--ink-dim); background:var(--panel); border:1px solid var(--line); }
+  .gtag.pc { color:var(--bad); background:rgba(255,107,125,0.12); border:1px solid rgba(255,107,125,0.3); }
+  .gtag.ph { color:var(--warn); background:rgba(255,194,75,0.12); border:1px solid rgba(255,194,75,0.3); }
+  .gtag.pm { color:var(--brand); background:rgba(54,197,240,0.12); border:1px solid rgba(54,197,240,0.3); }
+  .gtag.pl { color:var(--good); background:rgba(45,212,167,0.12); border:1px solid rgba(45,212,167,0.3); }
+
+  .facet { padding:18px 26px; border-bottom:1px dashed rgba(31,48,80,0.7); }
+  .facet:last-child { border-bottom:none; }
+  .facet-lab { display:inline-flex; align-items:center; gap:7px; font-size:11px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; padding:4px 10px; border-radius:7px; margin-bottom:11px; }
+  .facet-lab.want { color:var(--brand); background:rgba(54,197,240,0.10); border:1px solid rgba(54,197,240,0.3); }
+  .facet-lab.have { color:var(--good); background:rgba(45,212,167,0.10); border:1px solid rgba(45,212,167,0.3); }
+  .facet-lab.gap  { color:var(--bad); background:rgba(255,107,125,0.10); border:1px solid rgba(255,107,125,0.3); }
+  .facet-lab.why  { color:var(--warn); background:rgba(255,194,75,0.10); border:1px solid rgba(255,194,75,0.3); }
+  .facet-lab.how  { color:var(--purple); background:rgba(176,123,255,0.10); border:1px solid rgba(176,123,255,0.3); }
+  .facet-lab .opt { font-weight:600; opacity:.75; text-transform:none; letter-spacing:0; }
+  .facet p { margin:0 0 8px; font-size:14.5px; color:var(--ink-dim); }
+  .facet p:last-child { margin-bottom:0; }
+  .facet p b, .facet li b { color:var(--ink); }
+  .facet ul { margin:8px 0 0; padding-left:20px; } .facet li { margin:5px 0; font-size:14px; color:var(--ink-dim); }
+  .facet.how { background:rgba(176,123,255,0.04); }
+  code { font-family:var(--mono); font-size:12.5px; background:#0a1322; border:1px solid var(--line); padding:1.5px 6px; border-radius:6px; color:#bfe3ff; }
+
+  /* Code evidence */
+  .evi { margin:12px 0 0; border:1px solid var(--line); border-radius:11px; overflow:hidden; background:#060a12; }
+  .evi > summary { list-style:none; cursor:pointer; display:flex; align-items:center; gap:11px; flex-wrap:wrap; padding:11px 15px; background:var(--panel); user-select:none; }
+  .evi[open] > summary { border-bottom:1px solid var(--line); }
+  .evi > summary::-webkit-details-marker { display:none; }
+  .evi > summary::before { content:"▸"; color:var(--brand); font-size:12px; transition:transform .18s ease; }
+  .evi[open] > summary::before { transform:rotate(90deg); }
+  .evi > summary:hover { background:var(--panel-2); }
+  .evi-badge { font-size:10.5px; font-weight:800; letter-spacing:.5px; text-transform:uppercase; padding:3px 8px; border-radius:6px; white-space:nowrap; color:var(--good); background:rgba(45,212,167,0.12); border:1px solid rgba(45,212,167,0.3); }
+  .evi-badge.warn { color:var(--warn); background:rgba(255,194,75,0.12); border:1px solid rgba(255,194,75,0.3); }
+  .evi-file { font-family:var(--mono); font-size:11.5px; color:#bfe3ff; word-break:break-all; }
+  .evi-meta { font-family:var(--mono); font-size:11px; color:var(--ink-faint); margin-left:auto; }
+  pre { margin:0; background:#060a12; padding:16px 18px; overflow:auto; font-family:var(--mono); font-size:12.5px; line-height:1.6; color:#cfe6ff; border:none; }
+  .kw{color:#7fb4ff;} .str{color:#9ff0c5;} .com{color:var(--ink-faint);font-style:italic;} .fn{color:#ffd479;} .ty{color:#b07bff;} .num{color:#ff8fb0;}
+
+  /* Tables */
+  .tbl-wrap { border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); margin-top:20px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  thead th { background:var(--panel-2); text-align:left; padding:13px 16px; font-weight:650; font-size:12px; text-transform:uppercase; letter-spacing:.6px; border-bottom:1px solid var(--line); }
+  tbody td { padding:12px 16px; border-bottom:1px solid rgba(31,48,80,0.55); color:var(--ink-dim); vertical-align:top; }
+  tbody tr:last-child td { border-bottom:none; }
+  tbody tr:hover { background:rgba(54,197,240,0.04); }
+  td b { color:var(--ink); }
+  .mini { font-size:11px; font-weight:800; letter-spacing:.4px; padding:3px 8px; border-radius:6px; text-transform:uppercase; white-space:nowrap; }
+  .mini.c { color:var(--bad); background:rgba(255,107,125,0.12); border:1px solid rgba(255,107,125,0.3); }
+  .mini.h { color:var(--warn); background:rgba(255,194,75,0.12); border:1px solid rgba(255,194,75,0.3); }
+  .mini.m { color:var(--brand); background:rgba(54,197,240,0.12); border:1px solid rgba(54,197,240,0.3); }
+  .mini.l { color:var(--good); background:rgba(45,212,167,0.12); border:1px solid rgba(45,212,167,0.3); }
+
+  footer { padding:46px 0 70px; color:var(--ink-faint); font-size:13px; }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <span class="eyebrow"><span class="pulse"></span> Black Swan Simulations &middot; Developer Briefing</span>
+    <h1 class="title">Geospatial Gaps &mdash; A Build Briefer for the Developer</h1>
+    <p class="subtitle">For the engineer who will execute the geospatial workstreams. Each gap is explained the same way: <b>what we want</b> (the experience), <b>what we already have</b> (and how it works), <b>what's lacking</b>, <b>why it matters</b>, and <b>one way it could work</b> &mdash; so the intent is unambiguous without dictating your solution.</p>
+    <div class="meta-row">
+      <span class="chip"><b>Companion to:</b> consultant briefer &amp; SOW redline</span>
+      <span class="chip"><b>Audience:</b> implementing developer / consultant</span>
+      <span class="chip"><b>Basis:</b> 4-stream source-code audit</span>
+    </div>
+    <nav class="toc">
+      <a href="#read">How to read this</a>
+      <a href="#context">Product &amp; platform context</a>
+      <a href="#gaps">The gaps</a>
+      <a href="#g1">1 &middot; Blueprint ingestion</a>
+      <a href="#g2">2 &middot; Georeferencing</a>
+      <a href="#g3">3 &middot; Discrepancy detection</a>
+      <a href="#g4">4 &middot; Vertical connectivity</a>
+      <a href="#g5">5 &middot; Standalone runner</a>
+      <a href="#g6">6 &middot; 5&nbsp;km standard</a>
+      <a href="#g7">7 &middot; Metadata envelope</a>
+      <a href="#priority">Priority summary</a>
+    </nav>
+  </div>
+</header>
+
+<!-- HOW TO READ -->
+<section id="read">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">00</span><h2 class="sec-title">How to read this document</h2></div>
+    <p class="sec-lede">Every gap below is broken into five facets. The first four (<b>Want / Have / Lacking / Why</b>) are firm &mdash; they define the outcome BSS needs. The fifth (<b>How it could work</b>) is a <b>suggestion only</b>: a starting point you're free to improve on or replace. Where we say "already built", an expandable code block proves it with the real source.</p>
+    <div class="legend">
+      <div class="lg"><span class="tag lab-want">What we want</span><p>The product / user-experience target. The "so that&hellip;" &mdash; firm.</p></div>
+      <div class="lg"><span class="tag lab-have">What we have</span><p>Existing code and how it currently works. Reuse it; don't rebuild it.</p></div>
+      <div class="lg"><span class="tag lab-gap">What's lacking</span><p>The precise gap between the target and what exists today.</p></div>
+      <div class="lg"><span class="tag lab-why">Why it matters</span><p>What breaks in the product if it's skipped. The justification &mdash; firm.</p></div>
+      <div class="lg"><span class="tag lab-how">How it could work</span><p>One suggested approach + acceptance criteria. <b>Non-binding</b> &mdash; your call.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTEXT -->
+<section id="context">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">01</span><h2 class="sec-title">Product &amp; platform context (read first)</h2></div>
+    <p class="sec-lede">Black Swan Simulations is an AI-enabled crisis-simulation platform for war-room / tabletop exercises. The geospatial layer is the <b>physical stage</b> a scenario plays out on: a real location becomes a 2-D map that trainers author on and players act on, while evacuation, hazard, bombing and responder modules run on top of it. Three facts shape every gap below.</p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>🧭 Everything is WGS84 lat/long on Leaflet</h3>
+        <p>The map is real geographic <b>react-leaflet</b> over OpenStreetMap tiles (two surfaces: a plain <code>MapView</code> and the primary hybrid <code>SceneCanvasView</code>, which overlays a canvas re-projected from the live map). Persistence is <b>Supabase/Postgres JSONB</b> &mdash; no PostGIS. Deliverables must be in <b>WGS84 (EPSG:4326)</b>, never pixel/scene coordinates.</p>
+      </div>
+      <div class="card">
+        <h3>📦 There is no importer yet &mdash; we define the contract</h3>
+        <p>The product has <b>no GeoJSON/KML/shapefile import or export anywhere</b>. BSS will build the import shim; your job is to deliver into the agreed format below. This keeps the boundary clean and is why we mandate one standard format.</p>
+      </div>
+    </div>
+
+    <div class="callout purple">
+      <h4>The delivery contract — deliver one GeoJSON FeatureCollection (EPSG:4326)</h4>
+      <p>To avoid an internal coordinate-ordering trap (see below), all extracted/processed layers should be delivered as a single standard <b>GeoJSON <code>FeatureCollection</code></b> in <b>EPSG:4326 with the GeoJSON-standard <code>[lng,&nbsp;lat]</code> ordering</b>, each feature carrying <code>properties.layer</code> (<code>building_outline</code> / <code>road</code> / <code>floor_plan</code> / <code>threat_zone</code>) and <code>properties.floor_level</code> where relevant. BSS's shim fans these into the internal tables.</p>
+    </div>
+
+    <div class="callout bad">
+      <h4>⚠️ Why we insist on standard GeoJSON: our internal coordinate ordering is inconsistent</h4>
+      <p>Inside the platform, <code>building_polygon</code>, roads and hazard zones use <code>[lat,&nbsp;lng]</code>; <code>placed_assets</code> uses true GeoJSON <code>[lng,&nbsp;lat]</code>; <code>scenario_locations</code> uses a <code>{lat,lng}</code> object. Delivering in one standard format means the ambiguity is resolved once, in our shim &mdash; not silently baked into your output.</p>
+    </div>
+
+    <div class="callout warn">
+      <h4>One architectural decision BSS owns (not you)</h4>
+      <p>Two un-unified "interior" models exist: <code>scenario_floor_plans.features</code> (geographic, multi-floor, read-only overlay) and <code>rts_scene_configs</code> interior arrays (sim-metre, single-floor, editable &mdash; the more "live" path). For the blueprint work, <b>target <code>scenario_floor_plans</code> as the delivery shape</b> unless BSS directs otherwise; choosing the canonical model long-term is our call.</p>
+    </div>
+  </div>
+</section>
+<!-- GAPS -->
+<section id="gaps">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">02</span><h2 class="sec-title">The gaps</h2></div>
+    <p class="sec-lede">Ordered by weight. Gaps 1&ndash;4 are <b>Workstream&nbsp;2 (blueprints)</b> and carry the engagement. Gaps 5&ndash;7 are <b>Workstream&nbsp;1 (OSM extraction)</b> &mdash; mostly repackaging of code that already exists.</p>
+
+    <!-- GAP 1 -->
+    <div class="gap" id="g1">
+      <div class="gap-head crit">
+        <div class="gap-num">1</div>
+        <div>
+          <h3>Blueprint / floor-plan ingestion</h3>
+          <div class="meta"><span class="gtag ws">Workstream 2</span><span class="gtag pc">Priority: Critical</span><span class="gtag ws">Greenfield</span></div>
+        </div>
+      </div>
+
+      <div class="facet">
+        <span class="facet-lab want">🎯 What we want</span>
+        <p>A trainer building a scenario at a real venue can <b>upload that building's actual floor plans</b> (a PDF from facilities, an image of a fire-evacuation diagram, a CAD export) and have the system turn them into usable per-floor map layers &mdash; so the exercise plays out inside the <b>real interior</b> of the building, not a generic box.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab have">🧩 What we have &amp; how it works</span>
+        <p>The <b>storage and display side already exists</b>. There's a multi-floor table, a floor-switcher UI, and a defined feature taxonomy (exits, stairs, lifts, rooms, corridors). What feeds them today is AI-generated or hand-drawn data &mdash; never a real uploaded plan. The <code>plan_image_url</code> column even exists but nothing populates it.</p>
+        <details class="evi">
+          <summary><span class="evi-badge">Built</span><span class="evi-file">migrations/126_scenario_floor_plans.sql</span><span class="evi-meta">L4&ndash;20</span></summary>
+<pre><span class="kw">CREATE TABLE IF NOT EXISTS</span> scenario_floor_plans (
+  scenario_id <span class="ty">UUID</span> <span class="kw">NOT NULL REFERENCES</span> scenarios(id),
+  floor_level <span class="ty">TEXT</span> <span class="kw">NOT NULL</span>,        <span class="com">-- e.g. B1, G, L2</span>
+  floor_label <span class="ty">TEXT</span> <span class="kw">NOT NULL</span>,
+  plan_svg <span class="ty">TEXT</span>,
+  plan_image_url <span class="ty">TEXT</span>,            <span class="com">-- ⚠️ exists but never populated from an upload</span>
+  bounds <span class="ty">JSONB</span>,                  <span class="com">-- bbox to overlay on Leaflet</span>
+  features <span class="ty">JSONB</span> <span class="kw">NOT NULL DEFAULT</span> <span class="str">'[]'</span>   <span class="com">-- [{id, type, label, geometry}]</span>
+);</pre>
+        </details>
+      </div>
+      <div class="facet">
+        <span class="facet-lab gap">🚫 What's lacking</span>
+        <p>The <b>entire ingestion pipeline</b>: there is no upload endpoint for plans, no parsing of PDF/image/CAD, and no path from a source file to populated <code>plan_image_url</code> + <code>features</code>. This is the heart of the engagement.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab why">💡 Why it matters</span>
+        <p>The realism of every building-based scenario (an active-shooter floor sweep, a fire evacuation, a hostage room-clearance) depends on the <b>interior being the real one</b>. Without ingestion, trainers are stuck with invented layouts that don't match the venue they're rehearsing for &mdash; which undermines the core training value the platform sells.</p>
+      </div>
+      <div class="facet how">
+        <span class="facet-lab how">🛠️ How it could work <span class="opt">&mdash; suggested, for discussion</span></span>
+        <p>One possible shape:</p>
+        <ul>
+          <li>An upload step that accepts PDF/PNG/JPG (CAD/DXF optionally, later), stores the raw file, and records source metadata.</li>
+          <li>A per-floor extraction step (manual-assisted is fine for v1) that outputs the <b>raster/SVG overlay</b> plus a <code>features[]</code> list using the <b>existing taxonomy</b> &mdash; populate the model, don't redefine it.</li>
+          <li>Output as the standard GeoJSON contract with <code>properties.layer = "floor_plan"</code> and <code>properties.floor_level</code>.</li>
+        </ul>
+        <p><b>Acceptance criteria:</b> a BSS staffer can take a real floor plan, run it through the workflow, and end up with toggleable per-floor layers that render on our existing floor-switcher with exits/stairs/rooms tagged in the existing taxonomy.</p>
+      </div>
+    </div>
+
+    <!-- GAP 2 -->
+    <div class="gap" id="g2">
+      <div class="gap-head crit">
+        <div class="gap-num">2</div>
+        <div>
+          <h3>True georeferencing of plans to the map</h3>
+          <div class="meta"><span class="gtag ws">Workstream 2</span><span class="gtag pc">Priority: Critical</span><span class="gtag ws">Highest technical value</span></div>
+        </div>
+      </div>
+
+      <div class="facet">
+        <span class="facet-lab want">🎯 What we want</span>
+        <p>When a floor plan is placed on the map, it should sit <b>exactly where the real building is</b> &mdash; correct position, correct rotation, correct scale &mdash; so a player looking at the map sees the building's interior aligned with its real footprint, and a casualty pin "inside room 204" is genuinely inside room 204.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab have">🧩 What we have &amp; how it works</span>
+        <p>Today "alignment" is a <b>crude bounding-box stretch</b>: the plan SVG is squashed to fit the building's bounding box with <code>preserveAspectRatio="none"</code>. There's no rotation, no real scaling, no control points. Feature positions are stored as <b>normalised 0&ndash;1 fractions</b> of that box, then linearly mapped &mdash; so any building that isn't a perfect axis-aligned rectangle is misaligned.</p>
+        <details class="evi">
+          <summary><span class="evi-badge warn">Crude today</span><span class="evi-file">frontend/src/components/COP/FloorPlanOverlay.tsx</span><span class="evi-meta">L79&ndash;100</span></summary>
+<pre><span class="com">// "Alignment" = stretch SVG to a bbox. No rotation / scale solver / control points.</span>
+svgEl.setAttribute(<span class="str">'preserveAspectRatio'</span>, <span class="str">'none'</span>);   <span class="com">// distorts to fill bbox</span>
+<span class="kw">const</span> overlay = <span class="kw">new</span> <span class="fn">LeafletSVGOverlay</span>(sanitisedSvg, leafletBounds, {
+  opacity: <span class="num">0.85</span>, interactive: <span class="kw">false</span>, zIndex: <span class="num">100</span>,
+});</pre>
+        </details>
+        <details class="evi">
+          <summary><span class="evi-badge warn">Crude today</span><span class="evi-file">server/services/floorPlanSvgService.ts</span><span class="evi-meta">L13&ndash;24</span></summary>
+<pre><span class="kw">export interface</span> <span class="ty">FloorFeature</span> {
+  type: <span class="ty">string</span>;        <span class="com">// emergency_exit | exit | stairs | elevator | room …</span>
+  <span class="com">/** ⚠️ Normalised 0-1 position within bbox — not a true coordinate */</span>
+  position_x: <span class="ty">number</span>;
+  position_y: <span class="ty">number</span>;
+}</pre>
+        </details>
+      </div>
+      <div class="facet">
+        <span class="facet-lab gap">🚫 What's lacking</span>
+        <p>A real georeferencing capability: <b>control points / anchor points</b>, <b>scale solving</b>, <b>rotation</b> and an <b>affine (or similarity) transform</b> that maps plan coordinates to WGS84 &mdash; plus storing those transform parameters so alignment is reproducible.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab why">💡 Why it matters</span>
+        <p>Misalignment quietly corrupts <b>everything downstream</b>: evacuation routes cross walls that aren't really there, hazard/blast overlays sit over the wrong rooms, casualty and asset positions become meaningless. The map stops being a faithful stage. This is the single most valuable piece of the engagement precisely because so much depends on it being correct.</p>
+      </div>
+      <div class="facet how">
+        <span class="facet-lab how">🛠️ How it could work <span class="opt">&mdash; suggested, for discussion</span></span>
+        <p>One possible shape: let the user place a few <b>control points</b> matching plan landmarks to known map points (building corners, a marked entrance), solve a <b>similarity/affine transform</b> (scale + rotation + translation) from those pairs, then emit feature geometry as real lat/long via that transform &mdash; and persist the transform so it can be re-applied or refined later.</p>
+        <p><b>Acceptance criteria:</b> a placed floor plan aligns to its building outline within an agreed tolerance (e.g. <b>&le;2&nbsp;m positional, &le;3&deg; rotational</b>), holds up on non-rectangular buildings, and the alignment can be reproduced from stored parameters without redoing it by hand.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="wrap">
+    <!-- GAP 3 -->
+    <div class="gap" id="g3">
+      <div class="gap-head high">
+        <div class="gap-num">3</div>
+        <div>
+          <h3>Discrepancy detection: blueprint vs map outline</h3>
+          <div class="meta"><span class="gtag ws">Workstream 2</span><span class="gtag ph">Priority: High</span><span class="gtag ws">Greenfield</span></div>
+        </div>
+      </div>
+
+      <div class="facet">
+        <span class="facet-lab want">🎯 What we want</span>
+        <p>When a blueprint is ingested, the system should automatically <b>flag where it doesn't match reality</b> &mdash; e.g. the plan's footprint is a different scale or orientation than the building outline from the map, or floors/areas are missing &mdash; so a trainer trusts the data, or knows exactly what to fix, before running an exercise on it.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab gap">🚫 What's lacking</span>
+        <p><b>Nothing compares the two today.</b> We extract building outlines from OpenStreetMap/Microsoft, and (after Gap&nbsp;2) we'll have a blueprint-derived footprint &mdash; but there is no code that checks one against the other for scale, orientation, footprint shape or missing floors.</p>
+        <details class="evi">
+          <summary><span class="evi-badge">Built (the outline side only)</span><span class="evi-file">server/services/osmVicinityService.ts</span><span class="evi-meta">L903&ndash;928</span></summary>
+<pre><span class="com">// We already produce the map-derived building footprint to compare against:</span>
+<span class="kw">export async function</span> <span class="fn">fetchBuildingFootprints</span>(lat, lng, radiusMeters = <span class="num">8000</span>) {
+  <span class="com">// ... Overpass query for way["building"] ...</span>
+  footprints.push({ name: tags.name, polygon: geometry.map((pt) =&gt; [pt.lat, pt.lon]) });
+}</pre>
+        </details>
+      </div>
+      <div class="facet">
+        <span class="facet-lab why">💡 Why it matters</span>
+        <p>Real blueprints are messy &mdash; wrong scale bars, north arrows off, pages missing. Without a discrepancy check, those errors get <b>silently baked into the scenario</b> and surface mid-exercise as nonsensical geometry. The flag turns "we hope this is right" into "we know what's right and what to review", which is what makes the deliverable trustworthy for training.</p>
+      </div>
+      <div class="facet how">
+        <span class="facet-lab how">🛠️ How it could work <span class="opt">&mdash; suggested, for discussion</span></span>
+        <p>One possible shape: after georeferencing, compare the blueprint-derived footprint to the map outline and produce a short <b>discrepancy report</b> &mdash; area ratio, orientation delta, centroid offset, and a list of floors present vs expected. Surface it as a reviewable note, not a hard block.</p>
+        <p><b>Acceptance criteria:</b> ingesting a deliberately mis-scaled or rotated plan produces a clear, human-readable flag identifying the mismatch type and magnitude.</p>
+      </div>
+    </div>
+
+    <!-- GAP 4 -->
+    <div class="gap" id="g4">
+      <div class="gap-head med">
+        <div class="gap-num">4</div>
+        <div>
+          <h3>Cross-floor vertical connectivity</h3>
+          <div class="meta"><span class="gtag ws">Workstream 2</span><span class="gtag pm">Priority: Medium</span><span class="gtag ws">Partial</span></div>
+        </div>
+      </div>
+
+      <div class="facet">
+        <span class="facet-lab want">🎯 What we want</span>
+        <p>Staircases, lifts and escalators should be understood as <b>connections between floors</b>, not just dots on each floor &mdash; so the system can reason about movement <i>between</i> levels (an evacuation down 3 floors, responders going up to floor 5), and a route can traverse the building vertically.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab have">🧩 What we have &amp; how it works</span>
+        <p>The data model is <b>partly there</b>: the RTS scene types include a <code>Stairwell</code> with a <code>connectsFloors</code> field, used in the single-floor scene editor. But in the multi-floor overlay, stairs/lifts are just <b>independent per-floor points with no shared identity</b> across levels &mdash; floor 2's stairwell and floor 3's stairwell aren't linked.</p>
+        <details class="evi">
+          <summary><span class="evi-badge">Built (the field exists)</span><span class="evi-file">frontend/src/lib/rts/types.ts</span><span class="evi-meta">Stairwell type</span></summary>
+<pre><span class="kw">export interface</span> <span class="ty">Stairwell</span> {
+  id: <span class="ty">string</span>;
+  pos: <span class="ty">Vec2</span>;
+  connectsFloors: [<span class="ty">number</span>, <span class="ty">number</span>];   <span class="com">// the linkage concept exists…</span>
+}
+<span class="com">// …but the multi-floor overlay doesn't enforce shared IDs across floors.</span></pre>
+        </details>
+      </div>
+      <div class="facet">
+        <span class="facet-lab gap">🚫 What's lacking</span>
+        <p>An <b>enforced connectivity graph</b>: shared identifiers (or explicit links) so that a given stairwell/lift is the same object across the floors it serves, queryable as a vertical edge between levels.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab why">💡 Why it matters</span>
+        <p>Multi-storey scenarios (evacuating a tower, clearing floor by floor) only make sense if the simulation knows <b>how people move between floors</b>. Disconnected per-floor dots can't support vertical routing, evacuation timing across levels, or "which exits does floor 4 actually feed into" &mdash; the exact questions a high-rise exercise asks.</p>
+      </div>
+      <div class="facet how">
+        <span class="facet-lab how">🛠️ How it could work <span class="opt">&mdash; suggested, for discussion</span></span>
+        <p>One possible shape: give each vertical connector a stable <code>connector_id</code> and a list of the floor levels it serves, so the same staircase appears with the same id on every floor it touches; emit these as connectivity records alongside the floor features.</p>
+        <p><b>Acceptance criteria:</b> for a multi-floor building, you can query "what connects floor 2 to floor 3" and get the specific staircases/lifts, and a route can be expressed that changes floors through them.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<section>
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">03</span><h2 class="sec-title">Workstream 1 &mdash; mostly repackaging</h2></div>
+    <p class="sec-lede">The OSM/Microsoft extraction <b>engine already exists and is battle-tested</b> (Overpass querying, failover, footprint parsing, geocoding). Gaps 5&ndash;7 are about packaging that engine for repeatable, standards-compliant delivery &mdash; not rebuilding it.</p>
+
+    <!-- GAP 5 -->
+    <div class="gap" id="g5">
+      <div class="gap-head low">
+        <div class="gap-num">5</div>
+        <div>
+          <h3>Standalone extraction runner (CLI)</h3>
+          <div class="meta"><span class="gtag ws">Workstream 1</span><span class="gtag pl">Priority: Low (glue)</span><span class="gtag ws">Packaging</span></div>
+        </div>
+      </div>
+
+      <div class="facet">
+        <span class="facet-lab want">🎯 What we want</span>
+        <p>A BSS staffer can run a single command, give it a location, and get building + road files out &mdash; repeatably, without spinning up the whole application. A self-service "extract this place" tool.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab have">🧩 What we have &amp; how it works</span>
+        <p>The extraction <b>functions already exist and work</b> &mdash; but only as internals of the running web server. They're triggered as a side-effect of app flows (e.g. generating a scenario) and write straight into the database. There is <b>no command-line runner</b> to invoke them on demand.</p>
+        <details class="evi">
+          <summary><span class="evi-badge">Built (as a server function)</span><span class="evi-file">server/services/osmVicinityService.ts</span><span class="evi-meta">L495&ndash;518</span></summary>
+<pre><span class="com">// The capability exists — it just isn't runnable standalone</span>
+<span class="kw">export async function</span> <span class="fn">fetchRouteGeometries</span>(lat, lng, radiusMeters = <span class="num">6000</span>) {
+  <span class="kw">const</span> radius = Math.min(radiusMeters, <span class="num">10000</span>);
+  <span class="kw">const</span> query = `[out:json][timeout:90];
+    (way["highway"~"^(primary|secondary|...)"](around:${radius},${lat},${lng}););
+    out body geom;`;
+  <span class="kw">const</span> elements = <span class="kw">await</span> <span class="fn">runRawOverpassQuery</span>(query, <span class="num">95000</span>);
+  <span class="com">// returns { name, highway_type, one_way, coordinates:[lat,lng][] }</span>
+}</pre>
+        </details>
+      </div>
+      <div class="facet">
+        <span class="facet-lab gap">🚫 What's lacking</span>
+        <p>A thin <b>standalone script/CLI</b> that reads a location (arg or config), <b>calls the existing functions</b>, and writes the result to a file on disk. The hard work is done; this is the ignition switch.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab why">💡 Why it matters</span>
+        <p>The SOW explicitly asks for a reusable extraction tool, and BSS needs to extract new locations on demand without a developer running the app. It also makes the output <b>auditable and re-runnable</b> &mdash; the basis for the metadata and data-quality deliverables.</p>
+      </div>
+      <div class="facet how">
+        <span class="facet-lab how">🛠️ How it could work <span class="opt">&mdash; suggested, for discussion</span></span>
+        <p>One possible shape: a small Node script, e.g. <code>node extract-osm.js --lat 1.2931 --lng 103.8558 --radius 5000 --out site.geojson</code>, that imports the existing functions and serialises results to the GeoJSON contract.</p>
+        <p><b>Acceptance criteria:</b> one command, given a location, produces importable building + road files with no app/database involvement.</p>
+      </div>
+    </div>
+
+    <!-- GAP 6 -->
+    <div class="gap" id="g6">
+      <div class="gap-head low">
+        <div class="gap-num">6</div>
+        <div>
+          <h3>Standardise the extraction radius to 5&nbsp;km</h3>
+          <div class="meta"><span class="gtag ws">Workstream 1</span><span class="gtag pl">Priority: Low (glue)</span><span class="gtag ws">One-line-ish</span></div>
+        </div>
+      </div>
+
+      <div class="facet">
+        <span class="facet-lab want">🎯 What we want</span>
+        <p>A consistent, predictable extraction footprint: when BSS asks for a location, it gets everything within a <b>5&nbsp;km radius</b> &mdash; the SOW's agreed standard &mdash; every time.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab have">🧩 What we have &amp; how it works</span>
+        <p>Radius is already a first-class parameter throughout the extractor &mdash; but defaults vary (300&nbsp;m / 6&nbsp;km / 8&nbsp;km depending on the call), and the <b>per-building path is hard-capped at 1&nbsp;km</b>, so a 5&nbsp;km request silently gets clamped.</p>
+        <details class="evi">
+          <summary><span class="evi-badge warn">Capped today</span><span class="evi-file">server/services/osmVicinityService.ts</span><span class="evi-meta">L571&ndash;572</span></summary>
+<pre><span class="com">// ⚠️ a 5 km request is clamped to 1 km here</span>
+<span class="kw">const</span> radius = Math.min(radiusMeters ?? <span class="num">300</span>, <span class="num">1000</span>);</pre>
+        </details>
+      </div>
+      <div class="facet">
+        <span class="facet-lab gap">🚫 What's lacking</span>
+        <p>A standardised 5&nbsp;km default and <b>lifting the 1&nbsp;km cap</b> on the building path (with sensible performance limits at the larger radius).</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab why">💡 Why it matters</span>
+        <p>Consistency makes outputs comparable and predictable across sites, and matches the contract BSS agreed to. Without it, "extract this location" quietly returns different coverage depending on which path runs.</p>
+      </div>
+      <div class="facet how">
+        <span class="facet-lab how">🛠️ How it could work <span class="opt">&mdash; suggested, for discussion</span></span>
+        <p>One possible shape: make 5&nbsp;km the runner's default, raise the building-path cap, and guard against over-fetch (result limits / tiling) since a 5&nbsp;km building query is much larger than the current 1&nbsp;km one.</p>
+        <p><b>Acceptance criteria:</b> a 5&nbsp;km request returns buildings and roads across the full 5&nbsp;km, within acceptable time/size limits.</p>
+      </div>
+    </div>
+
+    <!-- GAP 7 -->
+    <div class="gap" id="g7">
+      <div class="gap-head med">
+        <div class="gap-num">7</div>
+        <div>
+          <h3>Metadata + attribution envelope</h3>
+          <div class="meta"><span class="gtag ws">Workstream 1</span><span class="gtag pm">Priority: Medium (correctness + legal)</span><span class="gtag ws">Greenfield</span></div>
+        </div>
+      </div>
+
+      <div class="facet">
+        <span class="facet-lab want">🎯 What we want</span>
+        <p>Every extracted file should be <b>self-describing and legally clean</b>: drop it into the platform and the buildings land in the right place first time (no coordinate guessing), and we can show that map to clients/government without breaching OpenStreetMap's licence.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab have">🧩 What we have &amp; how it works</span>
+        <p>The output keeps only the centre point and radius. The coordinates <b>are</b> WGS84, but nothing says so, nothing records when it was pulled, and the OSM/Microsoft attribution is dropped.</p>
+        <p>Today's shape: <code>{ center, radius_meters, buildings[], route_geometries[] }</code> &mdash; geometry but no label.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab gap">🚫 What's lacking</span>
+        <p>A small metadata block stating: <b>CRS</b> (EPSG:4326), <b>extraction date</b>, <b>data source</b> (OSM / Microsoft), and the required <b>OpenStreetMap (ODbL) attribution</b>.</p>
+      </div>
+      <div class="facet">
+        <span class="facet-lab why">💡 Why it matters</span>
+        <ul>
+          <li><b>CRS → lands in the right place.</b> Because our internal coordinate ordering is inconsistent, an undeclared system forces the importer to guess &mdash; and a wrong guess puts buildings in the sea or rotates the map. Declaring CRS makes import reliable.</li>
+          <li><b>Extraction date → is the map still true?</b> OSM changes weekly; a date lets trainers judge freshness and lets us reproduce/audit a layer later.</li>
+          <li><b>Attribution → we're allowed to show it.</b> OSM's ODbL licence legally <i>requires</i> "© OpenStreetMap contributors" wherever the data is shown. Shipping without it is a compliance exposure the moment we demo to a client.</li>
+        </ul>
+      </div>
+      <div class="facet how">
+        <span class="facet-lab how">🛠️ How it could work <span class="opt">&mdash; suggested, for discussion</span></span>
+        <p>One possible shape &mdash; wrap the features in a metadata envelope:</p>
+<pre>{
+  <span class="str">"metadata"</span>: {
+    <span class="str">"source"</span>: <span class="str">"OpenStreetMap (Overpass) + Microsoft Building Footprints"</span>,
+    <span class="str">"crs"</span>: <span class="str">"EPSG:4326"</span>,
+    <span class="str">"input_location"</span>: { <span class="str">"lat"</span>: <span class="num">1.2931</span>, <span class="str">"lng"</span>: <span class="num">103.8558</span> },
+    <span class="str">"extraction_radius_m"</span>: <span class="num">5000</span>,
+    <span class="str">"extraction_date"</span>: <span class="str">"2026-06-24T00:00:00Z"</span>,
+    <span class="str">"attribution"</span>: <span class="str">"© OpenStreetMap contributors (ODbL)"</span>
+  },
+  <span class="str">"type"</span>: <span class="str">"FeatureCollection"</span>,
+  <span class="str">"features"</span>: [ <span class="com">/* … */</span> ]
+}</pre>
+        <p><b>Acceptance criteria:</b> a delivered file is self-describing enough that an importer never guesses the coordinate system, and the OSM credit travels with the data.</p>
+      </div>
+    </div>
+  </div>
+</section>
+<!-- PRIORITY SUMMARY -->
+<section id="priority">
+  <div class="wrap">
+    <div class="sec-head"><span class="sec-num">04</span><h2 class="sec-title">Priority summary</h2></div>
+    <p class="sec-lede">Where the effort should go. The blueprint work (Gaps 1&ndash;4) is the substance of the engagement; the extraction work (Gaps 5&ndash;7) is light packaging of code that already exists.</p>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>#</th><th>Gap</th><th>WS</th><th>Priority</th><th>Starting from</th></tr></thead>
+        <tbody>
+          <tr><td><b>1</b></td><td>Blueprint / floor-plan ingestion</td><td>2</td><td><span class="mini c">Critical</span></td><td>Greenfield (schema/UI exists)</td></tr>
+          <tr><td><b>2</b></td><td>True georeferencing of plans</td><td>2</td><td><span class="mini c">Critical</span></td><td>Crude bbox-stretch today</td></tr>
+          <tr><td><b>3</b></td><td>Discrepancy detection vs map outline</td><td>2</td><td><span class="mini h">High</span></td><td>Greenfield (outline side exists)</td></tr>
+          <tr><td><b>4</b></td><td>Cross-floor vertical connectivity</td><td>2</td><td><span class="mini m">Medium</span></td><td>Partial (field exists, unlinked)</td></tr>
+          <tr><td><b>5</b></td><td>Standalone extraction runner (CLI)</td><td>1</td><td><span class="mini l">Low / glue</span></td><td>Functions exist; wrap them</td></tr>
+          <tr><td><b>6</b></td><td>Standardise radius to 5&nbsp;km</td><td>1</td><td><span class="mini l">Low / glue</span></td><td>Parameter exists; lift 1&nbsp;km cap</td></tr>
+          <tr><td><b>7</b></td><td>Metadata + attribution envelope</td><td>1</td><td><span class="mini m">Medium</span></td><td>Greenfield (correctness + legal)</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <h4>The one-line brief</h4>
+      <p>Don't rebuild the OSM/Microsoft extraction engine or the threat/evacuation/bombing simulations &mdash; those already exist and run. Spend the time on <b>turning real blueprints into correctly-aligned, trustworthy, multi-floor map layers</b> (Gaps 1&ndash;4), and on <b>packaging the existing extractor into a standards-compliant, self-describing tool</b> (Gaps 5&ndash;7). Deliver everything as the standard GeoJSON contract in &sect;01.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>Black Swan Simulations &mdash; Developer gap briefer for the Geospatial Scope of Work. Companion to <b>geospatial-consultant-briefer.html</b> (scoping) and <b>geospatial-sow-redline.html</b> (clause annotations). The "How it could work" facets are non-binding suggestions; the "Want / Have / Lacking / Why" facets define BSS's required outcome. Based on a four-stream source-code audit of the field-operations / bombing / evacuation map stack. Not a security-cleared deliverable.</p>
+  </div>
+</footer>
+</body>
+</html>

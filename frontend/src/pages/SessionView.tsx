@@ -1358,8 +1358,8 @@ export const SessionView = () => {
     return (
       <div className="min-h-screen flex items-center justify-center scanline">
         <div className="text-center">
-          <div className="text-lg terminal-text mb-2 animate-pulse">[LOADING]</div>
-          <div className="text-xs terminal-text text-robotic-yellow/50">Loading session...</div>
+          <div className="text-lg terminal-text mb-2 animate-pulse">Loading…</div>
+          <div className="text-xs terminal-text text-muted">Loading session...</div>
         </div>
       </div>
     );
@@ -1369,11 +1369,9 @@ export const SessionView = () => {
     return (
       <div className="min-h-screen flex items-center justify-center scanline">
         <div className="military-border p-8 text-center">
-          <h2 className="text-xl terminal-text text-robotic-orange mb-4">
-            [ERROR] Session Not Found
-          </h2>
+          <h2 className="text-xl terminal-text text-accent mb-4">Session Not Found</h2>
           <button onClick={() => navigate('/sessions')} className="military-button px-6 py-3">
-            [BACK_TO_SESSIONS]
+            Back to Sessions
           </button>
         </div>
       </div>
@@ -1385,14 +1383,14 @@ export const SessionView = () => {
     return (
       <div className="min-h-screen scanline">
         {/* Header */}
-        <div className="military-border border-b-2 border-robotic-yellow bg-robotic-gray-300">
+        <div className="military-border border-b-2 border-border bg-surface">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div>
                 <h1 className="text-lg terminal-text uppercase">
                   {session.scenarios?.title || 'Session'}
                 </h1>
-                <p className="text-xs terminal-text text-robotic-yellow/70">
+                <p className="text-xs terminal-text text-muted">
                   Status: {session.status.toUpperCase().replace('_', ' ')}
                 </p>
               </div>
@@ -1400,9 +1398,9 @@ export const SessionView = () => {
                 <NotificationBell />
                 <button
                   onClick={() => navigate('/sessions')}
-                  className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                  className="px-4 py-2 text-xs terminal-text uppercase border border-accent text-accent hover:bg-accent/10"
                 >
-                  [BACK]
+                  Back
                 </button>
               </div>
             </div>
@@ -1429,7 +1427,7 @@ export const SessionView = () => {
     const isGodView = spectatorMode === 'god';
 
     return (
-      <div className="h-screen w-screen overflow-hidden bg-robotic-gray-400 relative flex">
+      <div className="h-screen w-screen overflow-hidden bg-bg relative flex">
         {/* Map area */}
         <div className={isGodView ? 'relative flex-1' : 'absolute inset-0'}>
           {hasSceneConfig === true ? (
@@ -1530,25 +1528,23 @@ export const SessionView = () => {
 
         {/* Top-left: DEMO badge + scenario name */}
         <div className="absolute top-4 left-4 z-[1000] flex items-center gap-3">
-          <span className="px-3 py-1 text-xs font-bold uppercase tracking-widest bg-robotic-red text-white rounded">
+          <span className="px-3 py-1 text-xs font-bold uppercase tracking-widest bg-danger text-white rounded">
             DEMO
           </span>
-          <span className="px-3 py-1.5 text-sm terminal-text bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
+          <span className="px-3 py-1.5 text-sm terminal-text bg-surface/90 border border-border rounded backdrop-blur-sm">
             {session.scenarios?.title || 'Simulation'}
           </span>
         </div>
 
         {/* Top-right: Elapsed time + Music player */}
         <div className="absolute top-4 right-4 z-[1000] flex items-center gap-3">
-          <div className="px-3 py-2 bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
+          <div className="px-3 py-2 bg-surface/90 border border-border rounded backdrop-blur-sm">
             <BackgroundMusic src="/audio/detective-bgm.mp3" />
           </div>
           {elapsedTime && (
-            <div className="px-4 py-2 bg-robotic-gray-300/90 border border-robotic-yellow/50 rounded backdrop-blur-sm">
-              <span className="text-xs terminal-text text-robotic-yellow/70 uppercase mr-2">
-                ELAPSED
-              </span>
-              <span className="text-lg terminal-text text-robotic-yellow font-mono font-bold">
+            <div className="px-4 py-2 bg-surface/90 border border-border rounded backdrop-blur-sm">
+              <span className="text-xs terminal-text text-muted uppercase mr-2">ELAPSED</span>
+              <span className="text-lg terminal-text text-brand font-mono font-bold">
                 {String(elapsedTime.hours).padStart(2, '0')}:
                 {String(elapsedTime.minutes).padStart(2, '0')}:
                 {String(elapsedTime.seconds).padStart(2, '0')}
@@ -1575,8 +1571,8 @@ export const SessionView = () => {
                   }}
                   className={`px-2.5 py-1 text-[10px] terminal-text uppercase border rounded backdrop-blur-sm ${
                     spectatorMode === m
-                      ? 'bg-robotic-yellow/20 border-robotic-yellow text-robotic-yellow'
-                      : 'bg-robotic-gray-300/70 border-robotic-yellow/30 text-robotic-yellow/50 hover:text-robotic-yellow/80'
+                      ? 'bg-accent/10 border-accent text-accent'
+                      : 'bg-surface/70 border-border text-muted hover:text-ink'
                   }`}
                 >
                   {m === 'cinematic' ? 'CINE' : m === 'god' ? 'GOD' : 'TEAM'}
@@ -1585,7 +1581,7 @@ export const SessionView = () => {
             </div>
             <button
               onClick={() => navigate(`/sessions/${id}`)}
-              className="px-2.5 py-1 text-[10px] terminal-text uppercase border border-robotic-orange/50 text-robotic-orange/70 hover:text-robotic-orange rounded bg-robotic-gray-300/70 backdrop-blur-sm"
+              className="px-2.5 py-1 text-[10px] terminal-text uppercase border border-accent/50 text-accent/70 hover:text-accent rounded bg-surface/70 backdrop-blur-sm"
             >
               EXIT DEMO
             </button>
@@ -1598,7 +1594,7 @@ export const SessionView = () => {
   return (
     <div className="min-h-screen scanline">
       {/* Header */}
-      <div className="military-border border-b-2 border-robotic-yellow bg-robotic-gray-300">
+      <div className="military-border border-b-2 border-border bg-surface">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-6 flex-1">
@@ -1606,7 +1602,7 @@ export const SessionView = () => {
                 <h1 className="text-lg terminal-text uppercase">
                   {session.scenarios?.title || 'Session'}
                 </h1>
-                <p className="text-xs terminal-text text-robotic-yellow/70">
+                <p className="text-xs terminal-text text-muted">
                   Status: {session.status.toUpperCase().replace('_', ' ')}
                 </p>
               </div>
@@ -1615,10 +1611,8 @@ export const SessionView = () => {
                 {/* Player Name */}
                 {user && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-                      Player:
-                    </span>
-                    <span className="px-2 py-1 text-xs terminal-text military-border bg-robotic-gray-200 border-robotic-yellow">
+                    <span className="text-xs terminal-text text-muted uppercase">Player:</span>
+                    <span className="px-2 py-1 text-xs terminal-text military-border bg-surface-2 border-border">
                       {session?.participants?.find((p) => p.user_id === user.id)?.user?.full_name ||
                         user.displayName ||
                         user.email ||
@@ -1628,37 +1622,33 @@ export const SessionView = () => {
                 )}
                 {/* Team Assignments Badge */}
                 <div className="flex items-center gap-2">
-                  <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-                    Teams:
-                  </span>
+                  <span className="text-xs terminal-text text-muted uppercase">Teams:</span>
                   {myTeams.length > 0 ? (
                     <div className="flex gap-1">
                       {myTeams.map((team, idx) => (
                         <span
                           key={idx}
-                          className="px-2 py-1 text-xs terminal-text military-border bg-robotic-green/20 border-robotic-green"
+                          className="px-2 py-1 text-xs terminal-text military-border bg-success/20 border-success"
                         >
                           {team.team_name.toUpperCase()}
                           {team.team_role && (
-                            <span className="ml-1 text-robotic-yellow/70">({team.team_role})</span>
+                            <span className="ml-1 text-muted">({team.team_role})</span>
                           )}
                         </span>
                       ))}
                     </div>
                   ) : (
-                    <span className="px-2 py-1 text-xs terminal-text text-robotic-yellow/50 italic">
-                      [NO_TEAMS_ASSIGNED]
+                    <span className="px-2 py-1 text-xs terminal-text text-muted italic">
+                      No teams assigned
                     </span>
                   )}
                 </div>
               </div>
               {elapsedTime && (
-                <div className="military-border px-4 py-2 bg-robotic-gray-200 border-robotic-yellow">
+                <div className="military-border px-4 py-2 bg-surface-2 border-border">
                   <div className="flex items-center gap-2">
-                    <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-                      [ELAPSED_TIME]
-                    </span>
-                    <span className="text-lg terminal-text text-robotic-yellow font-mono font-bold">
+                    <span className="text-xs terminal-text text-muted uppercase">Elapsed</span>
+                    <span className="text-lg terminal-text text-brand font-mono font-bold">
                       {String(elapsedTime.hours).padStart(2, '0')}:
                       {String(elapsedTime.minutes).padStart(2, '0')}:
                       {String(elapsedTime.seconds).padStart(2, '0')}
@@ -1667,9 +1657,9 @@ export const SessionView = () => {
                 </div>
               )}
               {session.status === 'completed' && (
-                <div className="military-border px-4 py-2 bg-robotic-green/20 border-robotic-green">
-                  <span className="text-xs terminal-text text-robotic-green uppercase">
-                    [SESSION_COMPLETED]
+                <div className="military-border px-4 py-2 bg-success/20 border-success">
+                  <span className="text-xs terminal-text text-success uppercase">
+                    Session Completed
                   </span>
                 </div>
               )}
@@ -1682,16 +1672,16 @@ export const SessionView = () => {
               {isTrainer && session.status === 'in_progress' && (
                 <button
                   onClick={handleCompleteSession}
-                  className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-red text-robotic-red hover:bg-robotic-red/10"
+                  className="px-4 py-2 text-xs terminal-text uppercase border border-danger text-danger hover:bg-danger/10"
                 >
-                  [COMPLETE_SESSION]
+                  Complete Session
                 </button>
               )}
               <button
                 onClick={() => navigate('/sessions')}
-                className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+                className="px-4 py-2 text-xs terminal-text uppercase border border-accent text-accent hover:bg-accent/10"
               >
-                [BACK]
+                Back
               </button>
             </div>
           </div>
@@ -1701,30 +1691,28 @@ export const SessionView = () => {
       {/* Team Assignments Info Panel - Show during active session */}
       {session.status === 'in_progress' && myTeams.length > 0 && (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-          <div className="military-border p-4 bg-robotic-green/10 border-robotic-green">
+          <div className="military-border p-4 bg-success/10 border-success">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm terminal-text uppercase text-robotic-green">
-                [YOUR_TEAM_ASSIGNMENTS]
+              <span className="text-sm terminal-text uppercase text-success">
+                Your Team Assignments
               </span>
               <div className="flex gap-2 flex-wrap">
                 {myTeams.map((team, idx) => (
                   <div
                     key={idx}
-                    className="flex items-center gap-2 px-3 py-1 military-border bg-robotic-gray-200"
+                    className="flex items-center gap-2 px-3 py-1 military-border bg-surface-2"
                   >
                     <span className="text-sm terminal-text font-semibold">
                       {team.team_name.toUpperCase()}
                     </span>
                     {team.team_role && (
-                      <span className="text-xs terminal-text text-robotic-yellow/70">
-                        ({team.team_role})
-                      </span>
+                      <span className="text-xs terminal-text text-muted">({team.team_role})</span>
                     )}
                   </div>
                 ))}
               </div>
             </div>
-            <p className="text-xs terminal-text text-robotic-yellow/70 mt-2">
+            <p className="text-xs terminal-text text-muted mt-2">
               You will receive team-specific injects and information during the session.
             </p>
           </div>
@@ -1784,11 +1772,11 @@ export const SessionView = () => {
               if (visibleDefs.length === 0 && !isTrainer) continue;
 
               blocks.push(
-                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
-                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                <div key={stateKey} className="military-border p-3 bg-surface">
+                  <div className="text-xs terminal-text uppercase text-muted mb-2">
                     {displayName}
                   </div>
-                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                  <div className="text-sm terminal-text text-muted space-y-1">
                     {visibleDefs.map((def) => {
                       const val = state[def.key];
                       if (def.type === 'number') {
@@ -1802,7 +1790,7 @@ export const SessionView = () => {
                               <>
                                 {' / '}
                                 {capVal}
-                                <span className="text-robotic-yellow/70 ml-1">
+                                <span className="text-muted ml-1">
                                   ({Math.round((numVal / capVal) * 100)}%)
                                 </span>
                               </>
@@ -1850,11 +1838,11 @@ export const SessionView = () => {
                       ? '#22c55e'
                       : '#10b981';
               blocks.push(
-                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
-                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                <div key={stateKey} className="military-border p-3 bg-surface">
+                  <div className="text-xs terminal-text uppercase text-muted mb-2">
                     {displayName}
                   </div>
-                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                  <div className="text-sm terminal-text text-muted space-y-1">
                     <div>At assembly: {atAssembly}</div>
                     <div>Total evacuated: {totalEvac}</div>
                     <div>Still inside: {stillIn}</div>
@@ -1864,7 +1852,7 @@ export const SessionView = () => {
                         <span>Crowd compliance:</span>
                         <span style={{ color: complianceColor }}>{compliancePct}%</span>
                       </div>
-                      <div className="w-full h-2 rounded-full bg-robotic-gray-400 overflow-hidden">
+                      <div className="w-full h-2 rounded-full bg-bg overflow-hidden">
                         <div
                           className="h-full rounded-full transition-all duration-500"
                           style={{
@@ -1879,11 +1867,11 @@ export const SessionView = () => {
               );
             } else if (stateKey === 'triage_state') {
               blocks.push(
-                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
-                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                <div key={stateKey} className="military-border p-3 bg-surface">
+                  <div className="text-xs terminal-text uppercase text-muted mb-2">
                     {displayName}
                   </div>
-                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                  <div className="text-sm terminal-text text-muted space-y-1">
                     <div>
                       Awaiting triage:{' '}
                       {Math.max(
@@ -1900,10 +1888,10 @@ export const SessionView = () => {
                       {(Number(state.red_immediate) > 0 ||
                         Number(state.yellow_delayed) > 0 ||
                         Number(state.green_minor) > 0) && (
-                        <span className="text-robotic-yellow/70 ml-1">
+                        <span className="text-muted ml-1">
                           (
                           {Number(state.red_immediate) > 0 && (
-                            <span className="text-red-400">{Number(state.red_immediate)}R</span>
+                            <span className="text-danger">{Number(state.red_immediate)}R</span>
                           )}
                           {Number(state.yellow_delayed) > 0 && (
                             <span className="text-yellow-400 ml-1">
@@ -1911,9 +1899,7 @@ export const SessionView = () => {
                             </span>
                           )}
                           {Number(state.green_minor) > 0 && (
-                            <span className="text-green-400 ml-1">
-                              {Number(state.green_minor)}G
-                            </span>
+                            <span className="text-success ml-1">{Number(state.green_minor)}G</span>
                           )}
                           )
                         </span>
@@ -1936,11 +1922,11 @@ export const SessionView = () => {
             } else if (stateKey === 'media_state') {
               const unanswered = Math.max(0, Number(state.unanswered_challenges) || 0);
               blocks.push(
-                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
-                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                <div key={stateKey} className="military-border p-3 bg-surface">
+                  <div className="text-xs terminal-text uppercase text-muted mb-2">
                     {displayName}
                   </div>
-                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                  <div className="text-sm terminal-text text-muted space-y-1">
                     <div>
                       Statements issued: {Math.max(0, Number(state.statements_issued) || 0)}
                     </div>
@@ -1953,7 +1939,7 @@ export const SessionView = () => {
                       {state.public_sentiment != null ? Number(state.public_sentiment) : '–'} / 10
                       {state.sentiment_label != null ? (
                         <span
-                          className="ml-1 text-robotic-yellow/70"
+                          className="ml-1 text-muted"
                           title={String(state.sentiment_reason ?? '')}
                         >
                           ({String(state.sentiment_label)})
@@ -1961,18 +1947,18 @@ export const SessionView = () => {
                       ) : null}
                     </div>
                     {unanswered > 0 && (
-                      <div className="text-red-400">Unanswered challenges: {unanswered}</div>
+                      <div className="text-danger">Unanswered challenges: {unanswered}</div>
                     )}
                   </div>
                 </div>,
               );
             } else if (stateKey === 'fire_rescue_state') {
               blocks.push(
-                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
-                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                <div key={stateKey} className="military-border p-3 bg-surface">
+                  <div className="text-xs terminal-text uppercase text-muted mb-2">
                     {displayName}
                   </div>
-                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                  <div className="text-sm terminal-text text-muted space-y-1">
                     <div>Active fires: {Math.max(0, Number(state.active_fires) || 0)}</div>
                     <div>Fires contained: {Math.max(0, Number(state.fires_contained) || 0)}</div>
                     <div>Fires extinguished: {Math.max(0, Number(state.fires_resolved) || 0)}</div>
@@ -1991,14 +1977,12 @@ export const SessionView = () => {
               const activeThreats = Math.max(0, Number(state.active_threats) || 0);
               const detonations = Math.max(0, Number(state.detonations) || 0);
               blocks.push(
-                <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
-                  <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                <div key={stateKey} className="military-border p-3 bg-surface">
+                  <div className="text-xs terminal-text uppercase text-muted mb-2">
                     {displayName}
                   </div>
-                  <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
-                    <div
-                      className={activeThreats > 0 ? 'text-red-400 font-bold animate-pulse' : ''}
-                    >
+                  <div className="text-sm terminal-text text-muted space-y-1">
+                    <div className={activeThreats > 0 ? 'text-danger font-bold animate-pulse' : ''}>
                       Active Threats: {activeThreats}
                     </div>
                     <div>Tips Received: {Math.max(0, Number(state.tips_received) || 0)}</div>
@@ -2009,7 +1993,7 @@ export const SessionView = () => {
                     <div>
                       False Alarms Cleared: {Math.max(0, Number(state.false_alarms_cleared) || 0)}
                     </div>
-                    <div className={detonations > 0 ? 'text-red-500 font-bold' : ''}>
+                    <div className={detonations > 0 ? 'text-danger font-bold' : ''}>
                       Detonations: {detonations}
                     </div>
                     <div>Sweeps Completed: {Math.max(0, Number(state.sweeps_completed) || 0)}</div>
@@ -2029,11 +2013,11 @@ export const SessionView = () => {
               );
               if (entries.length > 0 || isTrainer) {
                 blocks.push(
-                  <div key={stateKey} className="military-border p-3 bg-robotic-gray-300">
-                    <div className="text-xs terminal-text uppercase text-robotic-yellow/80 mb-2">
+                  <div key={stateKey} className="military-border p-3 bg-surface">
+                    <div className="text-xs terminal-text uppercase text-muted mb-2">
                       {displayName}
                     </div>
-                    <div className="text-sm terminal-text text-robotic-gray-50 space-y-1">
+                    <div className="text-sm terminal-text text-muted space-y-1">
                       {entries.length > 0 ? (
                         entries.map(([k, v]) => (
                           <div key={k}>
@@ -2048,7 +2032,7 @@ export const SessionView = () => {
                           </div>
                         ))
                       ) : (
-                        <span className="text-robotic-gray-500 text-xs">No metrics yet</span>
+                        <span className="text-muted text-xs">No metrics yet</span>
                       )}
                     </div>
                   </div>,
@@ -2060,10 +2044,8 @@ export const SessionView = () => {
           if (blocks.length === 0) return null;
           return (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
-              <div className="military-border p-4 bg-robotic-gray-200">
-                <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
-                  [TEAM METRICS]
-                </h3>
+              <div className="military-border p-4 bg-surface-2">
+                <h3 className="text-sm terminal-text uppercase text-ink mb-3">Team Metrics</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                   {blocks}
                 </div>
@@ -2080,25 +2062,18 @@ export const SessionView = () => {
           if (!areaOccupancy?.length) return null;
           return (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-              <div className="military-border p-4 bg-robotic-gray-200">
-                <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
-                  [AREA OCCUPANCY]
-                </h3>
+              <div className="military-border p-4 bg-surface-2">
+                <h3 className="text-sm terminal-text uppercase text-ink mb-3">Area Occupancy</h3>
                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
                   {areaOccupancy.map((a) => (
-                    <div
-                      key={a.area_label}
-                      className="military-border p-2 bg-robotic-gray-300 text-center"
-                    >
-                      <div className="text-xs terminal-text text-robotic-yellow/80 uppercase truncate">
+                    <div key={a.area_label} className="military-border p-2 bg-surface text-center">
+                      <div className="text-xs terminal-text text-muted uppercase truncate">
                         {a.area_label}
                       </div>
-                      <div className="text-lg terminal-text text-robotic-gray-50 font-bold">
+                      <div className="text-lg terminal-text text-muted font-bold">
                         {a.headcount}
                       </div>
-                      <div className="text-[10px] terminal-text text-robotic-gray-500 uppercase">
-                        people
-                      </div>
+                      <div className="text-[10px] terminal-text text-muted uppercase">people</div>
                     </div>
                   ))}
                 </div>
@@ -2118,10 +2093,8 @@ export const SessionView = () => {
           if (!heatMeter || teamsToShow.length === 0) return null;
           return (
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
-              <div className="military-border p-4 bg-robotic-gray-200">
-                <h3 className="text-sm terminal-text uppercase text-robotic-yellow mb-3">
-                  [HEAT METER]
-                </h3>
+              <div className="military-border p-4 bg-surface-2">
+                <h3 className="text-sm terminal-text uppercase text-ink mb-3">Heat Meter</h3>
                 <div className="space-y-2">
                   {teamsToShow.map((tn) => {
                     const pct = heatMeter[tn]?.heat_percentage ?? 0;
@@ -2135,18 +2108,18 @@ export const SessionView = () => {
                             : 'bg-green-500';
                     const textColor =
                       pct >= 60
-                        ? 'text-red-400'
+                        ? 'text-danger'
                         : pct >= 40
                           ? 'text-orange-400'
                           : pct >= 20
                             ? 'text-yellow-400'
-                            : 'text-green-400';
+                            : 'text-success';
                     return (
                       <div key={tn} className="flex items-center gap-3">
-                        <span className="text-xs terminal-text text-robotic-yellow/70 uppercase w-24 shrink-0">
+                        <span className="text-xs terminal-text text-muted uppercase w-24 shrink-0">
                           {tn.toUpperCase()}
                         </span>
-                        <div className="flex-1 h-3 bg-robotic-gray-100 rounded-sm overflow-hidden">
+                        <div className="flex-1 h-3 bg-surface-2 rounded-sm overflow-hidden">
                           <div
                             className={`h-full ${barColor} transition-all duration-500`}
                             style={{ width: `${Math.min(100, pct)}%` }}
@@ -2172,15 +2145,15 @@ export const SessionView = () => {
           className={`max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 ${showMapModule ? '' : 'hidden'}`}
           aria-hidden={!showMapModule}
         >
-          <div className="military-border p-6 bg-robotic-gray-300 flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
+          <div className="military-border p-6 bg-surface flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
             <div className="flex justify-between items-center mb-3 flex-shrink-0">
-              <h3 className="text-lg terminal-text uppercase">[MAP]</h3>
+              <h3 className="text-lg terminal-text">Map</h3>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowMapDecisionForm(true)}
-                  className="military-button px-4 py-2 text-xs terminal-text whitespace-nowrap border-green-400 text-green-400 hover:bg-green-400/10"
+                  className="military-button px-4 py-2 text-xs terminal-text whitespace-nowrap border-success text-success hover:bg-success/10"
                 >
-                  [CREATE_DECISION]
+                  Create Decision
                 </button>
               </div>
             </div>
@@ -2193,7 +2166,7 @@ export const SessionView = () => {
                 />
               </div>
             )}
-            <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
+            <div className="flex-1 min-h-0 rounded border border-border overflow-hidden">
               {hasSceneConfig === true ? (
                 <SceneCanvasView
                   scenarioId={session?.scenarios?.id ?? session?.scenario_id}
@@ -2252,10 +2225,8 @@ export const SessionView = () => {
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Shared team filter */}
         {id && (
-          <div className="military-border p-3 mb-4 bg-robotic-gray-300 flex items-center gap-3">
-            <label className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-              [FILTER BY TEAM]
-            </label>
+          <div className="military-border p-3 mb-4 bg-surface flex items-center gap-3">
+            <label className="text-xs terminal-text text-muted uppercase">Filter by Team</label>
             <select
               value={filterTeam}
               onChange={(e) => setFilterTeam(e.target.value)}
@@ -2280,16 +2251,16 @@ export const SessionView = () => {
           {/* Row 1: Incidents Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('incidents')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[INCIDENTS]</h3>
+                <h3 className="text-lg terminal-text">Incidents</h3>
                 {cardNotifications['incidents'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                  <div className="w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['incidents'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                  <div className="w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2309,16 +2280,16 @@ export const SessionView = () => {
           {/* Media Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('media')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[MEDIA]</h3>
+                <h3 className="text-lg terminal-text">Media</h3>
                 {cardNotifications['media'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                  <div className="w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['media'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                  <div className="w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2330,16 +2301,16 @@ export const SessionView = () => {
           {/* Decisions Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('decisions')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[DECISIONS]</h3>
+                <h3 className="text-lg terminal-text">Decisions</h3>
                 {cardNotifications['decisions'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                  <div className="w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['decisions'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                  <div className="w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2356,16 +2327,16 @@ export const SessionView = () => {
           {/* Chat Card */}
           {id && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('chat')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[CHAT]</h3>
+                <h3 className="text-lg terminal-text">Chat</h3>
                 {cardNotifications['chat'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                  <div className="w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['chat'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                  <div className="w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2380,16 +2351,16 @@ export const SessionView = () => {
           {/* Injects Card - Trainer only */}
           {id && session.scenarios && session.scenarios.id && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('injects')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[INJECTS]</h3>
+                <h3 className="text-lg terminal-text">Injects</h3>
                 {cardNotifications['injects'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                  <div className="w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['injects'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                  <div className="w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2401,25 +2372,23 @@ export const SessionView = () => {
           {/* Participants Card - Trainer only */}
           {id && session && isTrainer && (
             <div
-              className="military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+              className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('participants')}
             >
               <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text uppercase">[PARTICIPANTS]</h3>
+                <h3 className="text-lg terminal-text">Participants</h3>
                 {cardNotifications['participants'] === 'new' && (
-                  <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                  <div className="w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['participants'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                  <div className="w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
                 <div className="space-y-4">
                   {isTrainer && (
                     <div className="flex justify-between items-center">
-                      <span className="text-sm terminal-text text-robotic-yellow/70">
-                        [MANAGE_TEAMS]
-                      </span>
+                      <span className="text-sm terminal-text text-muted">Manage Teams</span>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2427,7 +2396,7 @@ export const SessionView = () => {
                         }}
                         className="military-button px-4 py-2 text-sm"
                       >
-                        [MANAGE]
+                        Manage
                       </button>
                     </div>
                   )}
@@ -2466,12 +2435,12 @@ export const SessionView = () => {
             <>
               {/* Environmental truths / conditions - 2 columns width */}
               <div
-                className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative flex flex-col h-[750px]"
+                className="md:col-span-2 military-border p-6 bg-surface relative flex flex-col h-[750px]"
                 onClick={() => markCardViewed('env_truths')}
               >
                 <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                  <h3 className="text-lg terminal-text uppercase">
-                    [ENVIRONMENTAL TRUTHS] Conditions players are evaluated against
+                  <h3 className="text-lg terminal-text">
+                    Environmental Truths — conditions players are evaluated against
                   </h3>
                 </div>
                 <div
@@ -2483,11 +2452,9 @@ export const SessionView = () => {
               </div>
 
               {/* Trainer map - 2 columns, always visible, all pins */}
-              <div className="md:col-span-2 military-border p-6 bg-robotic-gray-300 flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
+              <div className="md:col-span-2 military-border p-6 bg-surface flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
                 <div className="flex justify-between items-center mb-3 flex-shrink-0">
-                  <h3 className="text-lg terminal-text uppercase">
-                    [TRAINER MAP] All markings and pins
-                  </h3>
+                  <h3 className="text-lg terminal-text">Trainer Map — all markings and pins</h3>
                   <div className="flex items-center gap-2">
                     <button
                       onClick={async () => {
@@ -2512,28 +2479,28 @@ export const SessionView = () => {
                         }
                       }}
                       disabled={backfillLoading}
-                      className="military-button px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap border-cyan-400 text-cyan-400 hover:bg-cyan-400/10 disabled:opacity-50"
+                      className="military-button px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap border-accent text-accent hover:bg-accent/10 disabled:opacity-50"
                     >
-                      {backfillLoading ? 'LOADING...' : '[BACKFILL_BUILDINGS]'}
+                      {backfillLoading ? 'Loading…' : 'Backfill Buildings'}
                     </button>
                     <button
                       onClick={() => setInspectStudsMode((v) => !v)}
                       className={`military-button px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap ${
                         inspectStudsMode
-                          ? 'border-amber-400 text-amber-400 bg-amber-400/20'
-                          : 'border-gray-500 text-gray-400 hover:bg-gray-400/10'
+                          ? 'border-accent text-accent bg-accent/10'
+                          : 'border-border text-muted hover:bg-surface-2'
                       }`}
                     >
-                      {inspectStudsMode ? '[INSPECT: ON]' : '[INSPECT_STUDS]'}
+                      {inspectStudsMode ? 'Inspect: On' : 'Inspect Studs'}
                     </button>
                     {backfillMsg && (
-                      <span className="text-[10px] terminal-text text-green-400 max-w-[200px] truncate">
+                      <span className="text-[10px] terminal-text text-success max-w-[200px] truncate">
                         {backfillMsg}
                       </span>
                     )}
                   </div>
                 </div>
-                <div className="flex-1 min-h-0 rounded border border-robotic-yellow/30 overflow-hidden">
+                <div className="flex-1 min-h-0 rounded border border-border overflow-hidden">
                   {hasSceneConfig === true ? (
                     <SceneCanvasView
                       scenarioId={session?.scenarios?.id ?? session?.scenario_id}
@@ -2597,16 +2564,16 @@ export const SessionView = () => {
               {/* Decisions & AI Ratings - 2 cols, before timeline (completed sessions only) */}
               {session.status === 'completed' && (
                 <div
-                  className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer overflow-visible flex flex-col h-[750px]"
+                  className="md:col-span-2 military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
                   onClick={() => markCardViewed('decisions_ai')}
                 >
                   <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                    <h3 className="text-lg terminal-text uppercase">[DECISIONS & AI RATINGS]</h3>
+                    <h3 className="text-lg terminal-text">Decisions & AI Ratings</h3>
                     {cardNotifications['decisions_ai'] === 'new' && (
-                      <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                      <div className="w-3 h-3 bg-success rounded-full"></div>
                     )}
                     {cardNotifications['decisions_ai'] === 'viewed' && (
-                      <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                      <div className="w-3 h-3 bg-accent rounded-full"></div>
                     )}
                   </div>
                   <div
@@ -2620,16 +2587,16 @@ export const SessionView = () => {
 
               {/* Timeline - 2 cols, fixed height (3 rows), scrollable */}
               <div
-                className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer flex flex-col h-[750px]"
+                className="md:col-span-2 military-border p-6 bg-surface relative cursor-pointer flex flex-col h-[750px]"
                 onClick={() => markCardViewed('timeline')}
               >
                 <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                  <h3 className="text-lg terminal-text uppercase">[TIMELINE] Session activity</h3>
+                  <h3 className="text-lg terminal-text">Timeline — Session activity</h3>
                   {cardNotifications['timeline'] === 'new' && (
-                    <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                    <div className="w-3 h-3 bg-success rounded-full"></div>
                   )}
                   {cardNotifications['timeline'] === 'viewed' && (
-                    <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                    <div className="w-3 h-3 bg-accent rounded-full"></div>
                   )}
                 </div>
                 <div
@@ -2637,90 +2604,84 @@ export const SessionView = () => {
                   onClick={(e) => e.stopPropagation()}
                 >
                   {session?.status !== 'in_progress' && session?.status !== 'completed' ? (
-                    <p className="text-robotic-yellow/70">
+                    <p className="text-muted">
                       No activity yet. Session activity (injects, impact matrix, escalation) will
                       appear here when the session is in progress.
                     </p>
                   ) : backendActivities.length === 0 ? (
-                    <p className="text-robotic-yellow/70">
+                    <p className="text-muted">
                       No activity yet. Injects and impact matrix will appear here.
                     </p>
                   ) : (
                     backendActivities.map((a, i) => (
                       <div
                         key={`${a.type}-${a.at}-${a.step ?? ''}-${i}`}
-                        className="border border-robotic-yellow/30 p-2 bg-robotic-gray-300/80 font-mono text-xs"
+                        className="border border-border p-2 bg-surface/80 font-mono text-xs"
                       >
-                        <span className="text-robotic-yellow/90">
-                          {new Date(a.at).toLocaleTimeString()}
-                        </span>
+                        <span className="text-muted">{new Date(a.at).toLocaleTimeString()}</span>
                         {' — '}
                         {a.type === 'inject_published' && (
-                          <span className="text-robotic-green">
-                            Inject published: {a.title ?? '—'}
-                          </span>
+                          <span className="text-success">Inject published: {a.title ?? '—'}</span>
                         )}
                         {a.type === 'inject_cancelled' && (
-                          <span className="text-robotic-yellow">
+                          <span className="text-ink">
                             Inject cancelled by AI. Reason: {a.reason ?? '—'}
                           </span>
                         )}
                         {a.type === 'ai_step_start' && (
-                          <span className="text-robotic-cyan/90">
+                          <span className="text-accent">
                             {a.title ?? `AI: ${a.step ?? 'step'} started`}
                           </span>
                         )}
                         {a.type === 'ai_step_end' && (
                           <div>
-                            <span className="text-robotic-green/90">
+                            <span className="text-success">
                               {a.title ?? `AI: ${a.step ?? 'step'} completed`}
                             </span>
                             {a.step === 'evaluating_inject_cancellation' && a.reason && (
-                              <div className="mt-1 text-robotic-yellow/80">Reason: {a.reason}</div>
+                              <div className="mt-1 text-muted">Reason: {a.reason}</div>
                             )}
                           </div>
                         )}
                         {a.type === 'state_effect_managed' && (
                           <div>
-                            <span className="text-robotic-gold">
+                            <span className="text-accent">
                               State effect managed{a.summary ? ` (${a.summary})` : ''}
                             </span>
                           </div>
                         )}
                         {a.type === 'escalation_factors_computed' && (
                           <div>
-                            <span className="text-robotic-gold">
+                            <span className="text-accent">
                               Escalation factors computed ({a.summary ?? '—'})
                             </span>
                             {(a.trigger_inject_title || a.target_team) && (
-                              <div className="text-robotic-yellow/70 text-xs mt-1">
+                              <div className="text-muted text-xs mt-1">
                                 {a.trigger_inject_title && (
                                   <>
                                     Triggered by:{' '}
-                                    <span className="text-robotic-green/90 font-semibold">
+                                    <span className="text-success font-semibold">
                                       {a.trigger_inject_title}
                                     </span>
                                   </>
                                 )}
                                 {a.target_team && (
-                                  <span className="ml-2 px-1.5 py-0.5 bg-robotic-yellow/20 text-robotic-yellow rounded text-[10px] uppercase">
+                                  <span className="ml-2 px-1.5 py-0.5 bg-accent/10 text-ink rounded text-[10px] uppercase">
                                     {a.target_team}
                                   </span>
                                 )}
                               </div>
                             )}
                             {a.factors && a.factors.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [ESCALATION FACTORS]
-                                </div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                              <div className="mt-2 pt-2 border-t border-border">
+                                <div className="text-muted mb-1">Escalation Factors</div>
+                                <ul className="list-disc pl-4 space-y-1 text-success text-xs break-words">
                                   {a.factors.map((f) => (
                                     <li key={f.id}>
                                       {f.name} ({f.severity}): {f.description}
                                       {(f as { consequence_for_inaction?: boolean })
                                         .consequence_for_inaction && (
-                                        <span className="ml-1 text-robotic-yellow/90 text-xs">
+                                        <span className="ml-1 text-muted text-xs">
                                           [Consequence for inaction]
                                         </span>
                                       )}
@@ -2730,11 +2691,9 @@ export const SessionView = () => {
                               </div>
                             )}
                             {a.de_escalation_factors && a.de_escalation_factors.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [DE-ESCALATION FACTORS]
-                                </div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                              <div className="mt-2 pt-2 border-t border-border">
+                                <div className="text-muted mb-1">De-escalation Factors</div>
+                                <ul className="list-disc pl-4 space-y-1 text-success text-xs break-words">
                                   {a.de_escalation_factors.map((f) => (
                                     <li key={f.id}>
                                       {f.name}: {f.description}
@@ -2747,30 +2706,30 @@ export const SessionView = () => {
                         )}
                         {a.type === 'escalation_pathways_computed' && (
                           <div>
-                            <span className="text-robotic-gold">
+                            <span className="text-accent">
                               Escalation pathways computed ({a.summary ?? '—'})
                             </span>
                             {(a.trigger_inject_title || a.target_team) && (
-                              <div className="text-robotic-yellow/70 text-xs mt-1">
+                              <div className="text-muted text-xs mt-1">
                                 {a.trigger_inject_title && (
                                   <>
                                     Triggered by:{' '}
-                                    <span className="text-robotic-green/90 font-semibold">
+                                    <span className="text-success font-semibold">
                                       {a.trigger_inject_title}
                                     </span>
                                   </>
                                 )}
                                 {a.target_team && (
-                                  <span className="ml-2 px-1.5 py-0.5 bg-robotic-yellow/20 text-robotic-yellow rounded text-[10px] uppercase">
+                                  <span className="ml-2 px-1.5 py-0.5 bg-accent/10 text-ink rounded text-[10px] uppercase">
                                     {a.target_team}
                                   </span>
                                 )}
                               </div>
                             )}
                             {a.pathways && a.pathways.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">[PATHWAYS]</div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                              <div className="mt-2 pt-2 border-t border-border">
+                                <div className="text-muted mb-1">Pathways</div>
+                                <ul className="list-disc pl-4 space-y-1 text-success text-xs break-words">
                                   {a.pathways.map((p) => (
                                     <li key={p.pathway_id}>
                                       {p.trajectory}
@@ -2779,7 +2738,7 @@ export const SessionView = () => {
                                         : ''}
                                       {(p as { consequence_for_inaction?: boolean })
                                         .consequence_for_inaction && (
-                                        <span className="ml-1 text-robotic-yellow/90 text-xs">
+                                        <span className="ml-1 text-muted text-xs">
                                           [Consequence for inaction]
                                         </span>
                                       )}
@@ -2789,11 +2748,9 @@ export const SessionView = () => {
                               </div>
                             )}
                             {a.de_escalation_pathways && a.de_escalation_pathways.length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [DE-ESCALATION PATHWAYS]
-                                </div>
-                                <ul className="list-disc pl-4 space-y-1 text-robotic-green/90 text-xs break-words">
+                              <div className="mt-2 pt-2 border-t border-border">
+                                <div className="text-muted mb-1">De-escalation Pathways</div>
+                                <ul className="list-disc pl-4 space-y-1 text-success text-xs break-words">
                                   {a.de_escalation_pathways.map((p) => (
                                     <li key={p.pathway_id}>{p.trajectory}</li>
                                   ))}
@@ -2804,43 +2761,38 @@ export const SessionView = () => {
                         )}
                         {a.type === 'impact_matrix_computed' && (
                           <div>
-                            <span className="text-robotic-gold">
+                            <span className="text-accent">
                               Impact matrix computed ({a.summary ?? '—'})
                               {a.computed_band && (
-                                <span className="ml-1 text-robotic-yellow/80 text-xs">
+                                <span className="ml-1 text-muted text-xs">
                                   [Band: {a.computed_band}]
                                 </span>
                               )}
                             </span>
                             {a.analysis?.overall && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20 break-words">
-                                <div className="text-robotic-yellow/80 mb-1">[AI REASONING]</div>
-                                <p className="text-robotic-green/90 text-xs whitespace-pre-wrap">
+                              <div className="mt-2 pt-2 border-t border-border break-words">
+                                <div className="text-muted mb-1">AI Reasoning</div>
+                                <p className="text-success text-xs whitespace-pre-wrap">
                                   {a.analysis.overall}
                                 </p>
                                 {a.analysis.matrix_reasoning && (
-                                  <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
+                                  <p className="text-success text-xs mt-1 whitespace-pre-wrap">
                                     Matrix: {a.analysis.matrix_reasoning}
                                   </p>
                                 )}
                                 {a.analysis.robustness_reasoning && (
-                                  <p className="text-robotic-green/80 text-xs mt-1 whitespace-pre-wrap">
+                                  <p className="text-success text-xs mt-1 whitespace-pre-wrap">
                                     Robustness: {a.analysis.robustness_reasoning}
                                   </p>
                                 )}
                               </div>
                             )}
                             {a.response_taxonomy && Object.keys(a.response_taxonomy).length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [RESPONSE TAXONOMY]
-                                </div>
+                              <div className="mt-2 pt-2 border-t border-border">
+                                <div className="text-muted mb-1">Response Taxonomy</div>
                                 <div className="flex flex-wrap gap-1">
                                   {Object.entries(a.response_taxonomy).map(([team, cat]) => (
-                                    <span
-                                      key={team}
-                                      className="bg-robotic-gray-400 px-1 rounded text-robotic-green/90"
-                                    >
+                                    <span key={team} className="bg-bg px-1 rounded text-success">
                                       {team}:{' '}
                                       {typeof cat === 'object' ? JSON.stringify(cat) : String(cat)}
                                     </span>
@@ -2849,13 +2801,11 @@ export const SessionView = () => {
                               </div>
                             )}
                             {a.matrix && Object.keys(a.matrix).length > 0 && (
-                              <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                <div className="text-robotic-yellow/80 mb-1">
-                                  [INTER-TEAM IMPACT -2..+2]
-                                </div>
+                              <div className="mt-2 pt-2 border-t border-border">
+                                <div className="text-muted mb-1">[INTER-TEAM IMPACT -2..+2]</div>
                                 <div className="overflow-x-auto space-y-2">
                                   {Object.entries(a.matrix).map(([acting, affectedMap]) => (
-                                    <div key={acting} className="text-robotic-green/90">
+                                    <div key={acting} className="text-success">
                                       {Object.entries(affectedMap as Record<string, number>).map(
                                         ([team, score]) => {
                                           const cellReason =
@@ -2863,7 +2813,7 @@ export const SessionView = () => {
                                           return (
                                             <div
                                               key={`${acting}-${team}`}
-                                              className="ml-2 mb-1 border-l-2 border-robotic-yellow/30 pl-2"
+                                              className="ml-2 mb-1 border-l-2 border-border pl-2"
                                             >
                                               <span className="font-medium">
                                                 {acting} → {team}:{' '}
@@ -2872,7 +2822,7 @@ export const SessionView = () => {
                                                   : String(score)}
                                               </span>
                                               {cellReason && (
-                                                <p className="text-robotic-green/80 text-xs mt-0.5 italic break-words whitespace-pre-wrap">
+                                                <p className="text-success text-xs mt-0.5 italic break-words whitespace-pre-wrap">
                                                   {typeof cellReason === 'object'
                                                     ? JSON.stringify(cellReason)
                                                     : String(cellReason)}
@@ -2889,9 +2839,9 @@ export const SessionView = () => {
                             )}
                             {a.robustness_by_decision &&
                               Object.keys(a.robustness_by_decision).length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                  <div className="text-robotic-yellow/80 mb-1">
-                                    [PER-DECISION ROBUSTNESS 1-10]
+                                <div className="mt-2 pt-2 border-t border-border">
+                                  <div className="text-muted mb-1">
+                                    Per-decision Robustness (1-10)
                                   </div>
                                   <div className="flex flex-wrap gap-1">
                                     {Object.entries(a.robustness_by_decision).map(
@@ -2903,7 +2853,7 @@ export const SessionView = () => {
                                         return (
                                           <span
                                             key={decId}
-                                            className="bg-robotic-gray-400 px-1 rounded break-all text-xs"
+                                            className="bg-bg px-1 rounded break-all text-xs"
                                             title={dec?.title ?? decId}
                                           >
                                             {label}:
@@ -2919,8 +2869,8 @@ export const SessionView = () => {
                               )}
                             {a.robustness_by_decision &&
                               Object.keys(a.robustness_by_decision).length > 0 && (
-                                <div className="mt-2 pt-2 border-t border-robotic-yellow/20">
-                                  <div className="text-robotic-yellow/80 mb-1">
+                                <div className="mt-2 pt-2 border-t border-border">
+                                  <div className="text-muted mb-1">
                                     [ROBUSTNESS PROCESS: RAW → CAPPED]
                                   </div>
                                   <ul className="list-none space-y-1.5 text-xs">
@@ -2934,9 +2884,9 @@ export const SessionView = () => {
                                       return (
                                         <li
                                           key={decId}
-                                          className="border-l-2 border-robotic-yellow/30 pl-2 text-robotic-green/90 break-words"
+                                          className="border-l-2 border-border pl-2 text-success break-words"
                                         >
-                                          <span className="font-mono text-robotic-gray-50">
+                                          <span className="font-mono text-muted">
                                             {decLabel.length > 35
                                               ? `${decLabel.slice(0, 35)}…`
                                               : decLabel}
@@ -2946,7 +2896,7 @@ export const SessionView = () => {
                                           {' → capped (used): '}
                                           {String(cappedScore)}
                                           {capDetail && (
-                                            <div className="mt-0.5 text-robotic-yellow/80 italic">
+                                            <div className="mt-0.5 text-muted italic">
                                               Below standard / mismatch — {capDetail.severity}{' '}
                                               {capDetail.mismatch_kind}.
                                               {capDetail.reason ? ` ${capDetail.reason}` : ''}
@@ -2969,16 +2919,16 @@ export const SessionView = () => {
               {/* AAR - same size as map (h-[700px]), under timeline (completed sessions only) */}
               {session.status === 'completed' && (
                 <div
-                  className="md:col-span-2 military-border p-6 bg-robotic-gray-300 relative cursor-pointer flex flex-col h-[700px]"
+                  className="md:col-span-2 military-border p-6 bg-surface relative cursor-pointer flex flex-col h-[700px]"
                   onClick={() => markCardViewed('aar')}
                 >
                   <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                    <h3 className="text-lg terminal-text uppercase">[AAR] After Action Review</h3>
+                    <h3 className="text-lg terminal-text">AAR — After Action Review</h3>
                     {cardNotifications['aar'] === 'new' && (
-                      <div className="w-3 h-3 bg-robotic-green rounded-full"></div>
+                      <div className="w-3 h-3 bg-success rounded-full"></div>
                     )}
                     {cardNotifications['aar'] === 'viewed' && (
-                      <div className="w-3 h-3 bg-robotic-yellow rounded-full"></div>
+                      <div className="w-3 h-3 bg-accent rounded-full"></div>
                     )}
                   </div>
                   <div

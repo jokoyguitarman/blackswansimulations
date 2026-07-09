@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blueprint Review fields — before / after</title>
+    <style>
+      :root {
+        --bg: #0c0d0a;
+        --panel: #14150f;
+        --border: #3a3a22;
+        --yellow: #e6c34a;
+        --green: #7ee787;
+        --amber: #ffb454;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: #070806; color: #e9e4cf; font-family: var(--sans); line-height: 1.5; }
+      .wrap { max-width: 1200px; margin: 0 auto; padding: 32px 20px 100px; }
+      h1 { font-size: 24px; margin: 0 0 6px; color: var(--yellow); }
+      .sub { color: #9a946f; font-size: 14px; margin: 0 0 8px; }
+      .legend { color: #9a946f; font-size: 12px; margin: 0 0 24px; }
+      .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+      @media (max-width: 860px) { .cols { grid-template-columns: 1fr; } }
+      .colhead { font-family: var(--mono); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 10px; border-radius: 4px; margin-bottom: 10px; display: inline-block; }
+      .colhead.before { color: var(--amber); border: 1px solid #6b4a1f; background: rgba(255,180,84,0.06); }
+      .colhead.after { color: var(--green); border: 1px solid #2ea043; background: rgba(126,231,135,0.06); }
+
+      /* mimic the in-app terminal panel */
+      .mil { border: 1px solid var(--border); background: var(--panel); padding: 14px 16px; font-family: var(--mono); }
+      .panel-title { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: rgba(230,195,74,0.45); margin-bottom: 4px; }
+      .drives { font-size: 10px; color: rgba(126,231,135,0.85); border: 1px solid rgba(46,160,67,0.5); border-radius: 3px; padding: 0 5px; margin-left: 8px; }
+      .intro { font-size: 11px; color: rgba(230,195,74,0.35); margin: 4px 0 14px; }
+      .field { margin-bottom: 16px; }
+      .label-terse { font-size: 12px; color: rgba(230,195,74,0.6); display: block; margin-bottom: 4px; }
+      .label-title { font-size: 12.5px; color: rgba(230,195,74,0.78); display: block; }
+      .desc { font-size: 11px; color: rgba(230,195,74,0.38); margin: 2px 0 4px; }
+      .ta { width: 100%; min-height: 46px; background: rgba(0,0,0,0.35); border: 1px solid var(--border); color: rgba(230,195,74,0.85); font-family: var(--mono); font-size: 11.5px; padding: 7px 8px; white-space: pre-wrap; }
+      .ta.tall { min-height: 64px; }
+      .ph { color: rgba(230,195,74,0.28); } /* placeholder look */
+      .note { margin-top: 22px; border: 1px solid #1f3b5c; background: rgba(78,161,255,0.06); border-radius: 8px; padding: 12px 14px; font-size: 13px; color: #cdd9e5; }
+      .note b { color: #fff; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <h1>Blueprint Review — editable fields: before / after</h1>
+      <p class="sub">Visual preview of PR #10 (help text + example placeholders for the five editable fields).</p>
+      <p class="legend">Left = what shipped in #9 (terse one-line labels). Right = the new version (title + plain-English description + greyed example placeholder shown inside each box). Static mockup styled to resemble the in-app terminal UI.</p>
+
+      <div class="cols">
+        <!-- BEFORE -->
+        <div>
+          <span class="colhead before">Before (#9)</span>
+          <div class="mil">
+            <div class="panel-title">Editable fields <span class="drives">drives generation</span></div>
+
+            <div class="field" style="margin-top:12px">
+              <span class="label-terse">Incident types (one per line) — seeds the fact sheet</span>
+              <div class="ta">Terrorist attack at a public location
+Misinformation/rumour surge following a violent incident</div>
+            </div>
+
+            <div class="field">
+              <span class="label-terse">Cross-stakeholder dynamics (one per line) — shapes convergence gates</span>
+              <div class="ta tall">Far-right extremists exploit unverified rumours to recruit
+Non-violent Islamophobic residents generalise blame</div>
+            </div>
+
+            <div class="field">
+              <span class="label-terse">Cross-cutting constraints ("area: consideration" per line) — objectives + briefing</span>
+              <div class="ta tall">public_order: anxiety over public disorder, hate incidents
+reputational: government/media credibility can be lost</div>
+            </div>
+
+            <div class="field">
+              <span class="label-terse">Global tone &amp; realism — applied to every generated voice</span>
+              <div class="ta">Simulate a volatile information environment with uncertainty...</div>
+            </div>
+
+            <div class="field" style="margin-bottom:0">
+              <span class="label-terse">Example vignettes (one per line) — few-shot for the storyline arc</span>
+              <div class="ta"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AFTER -->
+        <div>
+          <span class="colhead after">After (#10)</span>
+          <div class="mil">
+            <div class="panel-title">Editable fields <span class="drives">drives generation</span></div>
+            <div class="intro">These were extracted from your document and feed scenario generation. Review and edit them. Leave a field empty to let the AI generate it.</div>
+
+            <div class="field">
+              <span class="label-title">Incident types</span>
+              <div class="desc">The specific kinds of incident this crisis involves. Seeds the fact sheet (confirmed facts vs. rumours). One per line.</div>
+              <div class="ta">Terrorist attack at a public location
+Misinformation/rumour surge following a violent incident</div>
+            </div>
+
+            <div class="field">
+              <span class="label-title">Cross-stakeholder dynamics</span>
+              <div class="desc">How the groups react to and provoke each other. Designs the convergence gates (inter-group pile-ons) and live Director beats. One interaction per line.</div>
+              <div class="ta tall"><span class="ph">e.g.
+Far-right blames the community -&gt; left-wing groups counter-protest
+Media naming religion early inflames residents</span></div>
+            </div>
+
+            <div class="field">
+              <span class="label-title">Cross-cutting constraints</span>
+              <div class="desc">Competing priorities the response must balance, written as "area: consideration". Fed into the objectives and briefing as context. One per line.</div>
+              <div class="ta tall"><span class="ph">e.g.
+legal: protect investigation integrity
+public_order: avoid disorder
+community: prevent hate-crime backlash</span></div>
+            </div>
+
+            <div class="field">
+              <span class="label-title">Global tone &amp; realism</span>
+              <div class="desc">Document-wide style guidance applied to every generated voice (on top of per-faction tone). Free text.</div>
+              <div class="ta"><span class="ph">e.g. emotional, uncertain, internet-native; allow credible voices to calm things; represent extremists without amplifying them</span></div>
+            </div>
+
+            <div class="field" style="margin-bottom:0">
+              <span class="label-title">Example vignettes</span>
+              <div class="desc">Short worked-example scenes the storyline should emulate. Used as few-shot examples when generating injects. One per line.</div>
+              <div class="ta"><span class="ph">e.g.
+Rumour of more attackers -&gt; school-safety panic -&gt; far-right blames community -&gt; interfaith joint statement</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="note">
+        <b>What changed:</b> each field gained a plain-English title, a one-line "what it is / what it drives" description, and a greyed example placeholder (the italic-grey text) that appears inside empty boxes and disappears once the trainer types. Filled fields (e.g. the extracted "Incident types" on the right) show the real extracted values instead of the placeholder. No logic changed — this is purely guidance so trainers know what each field means and what to enter.
+      </div>
+    </div>
+  </body>
+</html>

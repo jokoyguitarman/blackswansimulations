@@ -35,45 +35,40 @@ export const SweepPanel = ({ sessionId, assetId, assetName, onClose }: SweepPane
   }, [sessionId, assetId, personnel, k9, robot]);
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60">
-      <div className="bg-gray-900 border border-robotic-yellow/50 p-6 max-w-md w-full mx-4 shadow-2xl">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink/40">
+      <div className="bg-surface border border-border p-6 max-w-md w-full mx-4 shadow-2xl">
         <div className="flex justify-between items-center mb-4">
-          <h3 className="text-sm terminal-text uppercase text-robotic-yellow tracking-wider">
-            [DEPLOY SWEEP RESOURCES]
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-robotic-yellow/60 hover:text-robotic-yellow text-xs"
-          >
-            [CLOSE]
+          <h3 className="text-sm terminal-text text-ink">Deploy sweep resources</h3>
+          <button onClick={onClose} className="text-muted hover:text-ink text-xs">
+            Close
           </button>
         </div>
-        <p className="text-xs terminal-text text-robotic-yellow/70 mb-4">
-          Target: <span className="text-robotic-yellow">{assetName}</span>
+        <p className="text-xs terminal-text text-muted mb-4">
+          Target: <span className="text-ink">{assetName}</span>
         </p>
 
         {!result ? (
           <>
             <div className="space-y-3 mb-5">
-              <label className="flex items-center gap-3 text-xs terminal-text text-robotic-yellow/80">
+              <label className="flex items-center gap-3 text-xs terminal-text text-ink">
                 <input
                   type="checkbox"
                   checked={k9}
                   onChange={(e) => setK9(e.target.checked)}
-                  className="accent-robotic-yellow"
+                  className="accent-accent"
                 />
                 K9 Explosive Detection Unit
               </label>
-              <label className="flex items-center gap-3 text-xs terminal-text text-robotic-yellow/80">
+              <label className="flex items-center gap-3 text-xs terminal-text text-ink">
                 <input
                   type="checkbox"
                   checked={robot}
                   onChange={(e) => setRobot(e.target.checked)}
-                  className="accent-robotic-yellow"
+                  className="accent-accent"
                 />
                 EOD Robot (ROV)
               </label>
-              <label className="flex items-center gap-3 text-xs terminal-text text-robotic-yellow/80">
+              <label className="flex items-center gap-3 text-xs terminal-text text-ink">
                 Personnel:
                 <input
                   type="number"
@@ -81,52 +76,50 @@ export const SweepPanel = ({ sessionId, assetId, assetName, onClose }: SweepPane
                   max={10}
                   value={personnel}
                   onChange={(e) => setPersonnel(parseInt(e.target.value, 10) || 1)}
-                  className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow text-sm"
+                  className="w-16 px-2 py-1 bg-surface-2 border border-border text-ink text-sm"
                 />
               </label>
             </div>
             <button
               onClick={initiateSweep}
               disabled={loading}
-              className="w-full py-2 text-sm terminal-text uppercase tracking-wider border border-robotic-orange bg-robotic-orange/10 text-robotic-orange hover:bg-robotic-orange/20 disabled:opacity-50 transition-colors"
+              className="w-full py-2 text-sm terminal-text border border-accent bg-accent/10 text-accent hover:bg-accent/20 disabled:opacity-50 transition-colors"
             >
-              {loading ? '[SWEEPING...]' : '[INITIATE SWEEP]'}
+              {loading ? 'Sweeping…' : 'Initiate sweep'}
             </button>
           </>
         ) : result.found ? (
           <div className="text-center space-y-3">
-            <div className="text-red-500 font-bold text-lg terminal-text animate-pulse">
-              SUSPICIOUS DEVICE FOUND
+            <div className="text-danger font-bold text-lg terminal-text animate-pulse">
+              Suspicious device found
             </div>
-            <p className="text-xs terminal-text text-robotic-yellow/80">
-              {result.device_description}
-            </p>
+            <p className="text-xs terminal-text text-ink">{result.device_description}</p>
             {result.is_live && result.detonation_deadline && (
-              <div className="text-red-400 text-xs terminal-text mt-2">
-                LIVE DEVICE — Detonation timer active
+              <div className="text-danger text-xs terminal-text mt-2">
+                Live device — detonation timer active
               </div>
             )}
-            <p className="text-[10px] terminal-text text-robotic-yellow/50">
+            <p className="text-[10px] terminal-text text-muted">
               Container: {result.container_type?.replace(/_/g, ' ')}
             </p>
             <button
               onClick={onClose}
-              className="mt-3 px-4 py-1 text-xs terminal-text border border-robotic-yellow/50 text-robotic-yellow/80 hover:bg-robotic-yellow/10"
+              className="mt-3 px-4 py-1 text-xs terminal-text border border-border text-ink hover:bg-accent/10"
             >
-              [ACKNOWLEDGE]
+              Acknowledge
             </button>
           </div>
         ) : (
           <div className="text-center space-y-3">
-            <div className="text-green-400 font-bold text-lg terminal-text">AREA CLEAR</div>
-            <p className="text-xs terminal-text text-robotic-yellow/70">
+            <div className="text-success font-bold text-lg terminal-text">Area clear</div>
+            <p className="text-xs terminal-text text-muted">
               {result.message || 'No suspicious items found in this area.'}
             </p>
             <button
               onClick={onClose}
-              className="mt-3 px-4 py-1 text-xs terminal-text border border-robotic-yellow/50 text-robotic-yellow/80 hover:bg-robotic-yellow/10"
+              className="mt-3 px-4 py-1 text-xs terminal-text border border-border text-ink hover:bg-accent/10"
             >
-              [ACKNOWLEDGE]
+              Acknowledge
             </button>
           </div>
         )}

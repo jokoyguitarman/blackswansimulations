@@ -446,10 +446,8 @@ export function SceneDesigner({
   if (buildingPhase === 'pick') {
     return (
       <div className="flex flex-col h-full">
-        <div className="flex items-center gap-3 p-3 border-b border-robotic-gray-200 flex-shrink-0">
-          <span className="text-xs terminal-text text-robotic-yellow/70 uppercase">
-            Select a building or draw one
-          </span>
+        <div className="flex items-center gap-3 p-3 border-b border-border flex-shrink-0">
+          <span className="text-xs terminal-text text-muted">Select a building or draw one</span>
           <button
             onClick={handleFetch}
             disabled={loading}
@@ -494,8 +492,8 @@ export function SceneDesigner({
                 ))}
             </MapContainer>
           </div>
-          <div className="w-64 overflow-y-auto p-3 border-l border-robotic-gray-200 space-y-2">
-            <div className="text-xs terminal-text text-robotic-yellow/50">
+          <div className="w-64 overflow-y-auto p-3 border-l border-border space-y-2">
+            <div className="text-xs terminal-text text-muted">
               {grids.filter((g) => g.polygon.length >= 3).length} buildings found
             </div>
             {grids
@@ -507,12 +505,12 @@ export function SceneDesigner({
                     setSelectedGridIdx(idx);
                     setBuildingPhase('design');
                   }}
-                  className="w-full text-left p-2 rounded border border-robotic-gray-200 text-xs terminal-text text-robotic-yellow/70 hover:border-robotic-yellow/50"
+                  className="w-full text-left p-2 rounded border border-border text-xs terminal-text text-muted hover:border-border"
                 >
                   <div className="font-bold">
                     {grid.buildingName || `Building #${grid.buildingIndex}`}
                   </div>
-                  <div className="text-robotic-yellow/40">{grid.polygon.length} pts</div>
+                  <div className="text-muted">{grid.polygon.length} pts</div>
                 </button>
               ))}
           </div>
@@ -524,80 +522,80 @@ export function SceneDesigner({
   // Design phase
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 p-2 border-b border-robotic-gray-200 flex-shrink-0">
+      <div className="flex items-center gap-2 p-2 border-b border-border flex-shrink-0">
         <button
           onClick={() => {
             setBuildingPhase('pick');
             setSimRunning(false);
             evacEngRef.current?.destroy();
           }}
-          className="text-xs terminal-text text-robotic-yellow/70 border border-robotic-gray-200 px-2 py-1 hover:border-robotic-yellow/50"
+          className="text-xs terminal-text text-muted border border-border px-2 py-1 hover:border-border"
         >
-          [BACK]
+          Back
         </button>
-        <span className="text-xs terminal-text text-robotic-yellow">
+        <span className="text-xs terminal-text text-ink">
           {selectedGrid?.buildingName || 'Building'}
         </span>
         <div className="flex-1" />
         <button
           onClick={handleDetonate}
           disabled={exits.length === 0}
-          className="bg-red-900/60 hover:bg-red-800 disabled:opacity-30 text-red-200 text-xs px-3 py-1 rounded border border-red-700"
+          className="bg-danger/10 hover:bg-danger/20 disabled:opacity-30 text-danger text-xs px-3 py-1 rounded border border-danger"
         >
           {simRunning ? 'Restart Preview' : 'Test Detonate'}
         </button>
         <button onClick={handleSave} className="military-button px-3 py-1 text-xs">
-          [SAVE SCENE]
+          Save scene
         </button>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         {/* Tools panel */}
-        <div className="w-52 overflow-y-auto p-2 space-y-2 border-r border-robotic-gray-200 flex-shrink-0 min-h-0">
-          <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">Scene Tools</div>
+        <div className="w-52 overflow-y-auto p-2 space-y-2 border-r border-border flex-shrink-0 min-h-0">
+          <div className="text-xs terminal-text text-muted uppercase">Scene Tools</div>
 
           <button
             onClick={() => setActiveMode('place_exit')}
-            className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_exit' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70'}`}
+            className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_exit' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted'}`}
           >
             Place Exit
           </button>
           <button
             onClick={() => setActiveMode('place_blast')}
-            className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_blast' ? 'border-red-400 bg-red-900/30 text-red-300' : 'border-robotic-gray-200 text-robotic-yellow/70'}`}
+            className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_blast' ? 'border-danger bg-danger/10 text-danger' : 'border-border text-muted'}`}
           >
             Blast Site {blastSite ? '(replace)' : ''}
           </button>
           {ENABLE_CASUALTY_PLACEMENT && (
             <button
               onClick={() => setActiveMode('place_casualty')}
-              className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_casualty' ? 'border-red-400 bg-red-900/30 text-red-300' : 'border-robotic-gray-200 text-robotic-yellow/70'}`}
+              className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_casualty' ? 'border-danger bg-danger/10 text-danger' : 'border-border text-muted'}`}
             >
               Place Casualty Pin
             </button>
           )}
           <button
             onClick={() => setActiveMode('place_stairwell')}
-            className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_stairwell' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70'}`}
+            className={`w-full text-left text-xs px-2 py-1.5 border rounded terminal-text ${activeMode === 'place_stairwell' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted'}`}
           >
             Place Stairwell
           </button>
 
-          <div className="text-xs terminal-text text-robotic-yellow/40 mt-1">Hazards:</div>
+          <div className="text-xs terminal-text text-muted mt-1">Hazards:</div>
           {(Object.keys(HAZARD_DEFS) as HazardType[]).map((ht) => (
             <button
               key={ht}
               onClick={() => setActiveMode(`place_hazard_${ht}`)}
-              className={`w-full text-left text-xs px-2 py-1 border rounded ${activeMode === `place_hazard_${ht}` ? 'border-cyan-400 bg-cyan-900/30' : 'border-robotic-gray-200'}`}
+              className={`w-full text-left text-xs px-2 py-1 border rounded ${activeMode === `place_hazard_${ht}` ? 'border-accent bg-accent/10' : 'border-border'}`}
               style={{ color: HAZARD_DEFS[ht].color }}
             >
               {HAZARD_DEFS[ht].icon} {HAZARD_DEFS[ht].label}
             </button>
           ))}
 
-          <div className="border-t border-robotic-gray-200 pt-2 mt-2 space-y-1.5">
+          <div className="border-t border-border pt-2 mt-2 space-y-1.5">
             <div>
-              <label className="text-xs terminal-text text-robotic-yellow/40 block mb-0.5">
+              <label className="text-xs terminal-text text-muted block mb-0.5">
                 Exit Width (m)
               </label>
               <input
@@ -609,24 +607,22 @@ export function SceneDesigner({
                 onChange={(e) => setNewExitWidth(Number(e.target.value))}
                 className="w-full"
               />
-              <span className="text-xs terminal-text text-robotic-yellow/70">{newExitWidth}m</span>
+              <span className="text-xs terminal-text text-muted">{newExitWidth}m</span>
             </div>
             <div>
-              <label className="text-xs terminal-text text-robotic-yellow/40 block mb-0.5">
-                Pedestrians
-              </label>
+              <label className="text-xs terminal-text text-muted block mb-0.5">Pedestrians</label>
               <input
                 type="number"
                 min={1}
                 step={10}
                 value={pedestrianCount}
                 onChange={(e) => setPedestrianCount(Math.max(1, Number(e.target.value) || 1))}
-                className="w-full bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs px-2 py-1 rounded"
+                className="w-full bg-surface-2 border border-border text-ink text-xs px-2 py-1 rounded"
               />
             </div>
             {blastSite && (
               <div>
-                <label className="text-xs terminal-text text-robotic-yellow/40 block mb-0.5">
+                <label className="text-xs terminal-text text-muted block mb-0.5">
                   Blast Radius (m)
                 </label>
                 <input
@@ -644,16 +640,16 @@ export function SceneDesigner({
                       { id: 'gz-cold', type: 'cold', radius: r * 3 },
                     ]);
                   }}
-                  className="w-full bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs px-2 py-1 rounded"
+                  className="w-full bg-surface-2 border border-border text-ink text-xs px-2 py-1 rounded"
                 />
-                <div className="text-xs terminal-text text-robotic-yellow/40 mt-1">
+                <div className="text-xs terminal-text text-muted mt-1">
                   Hot: {blastRadius}m · Warm: {blastRadius * 2}m · Cold: {blastRadius * 3}m
                 </div>
               </div>
             )}
           </div>
 
-          <div className="border-t border-robotic-gray-200 pt-2 space-y-1.5">
+          <div className="border-t border-border pt-2 space-y-1.5">
             <button
               onClick={async () => {
                 if (!selectedGrid) return;
@@ -693,11 +689,11 @@ export function SceneDesigner({
                   alert('Failed to load studs');
                 }
               }}
-              className="w-full text-left text-xs px-2 py-1.5 border rounded terminal-text border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+              className="w-full text-left text-xs px-2 py-1.5 border rounded terminal-text border-border text-muted hover:border-border"
             >
               Load Studs
             </button>
-            <div className="text-xs terminal-text text-robotic-yellow/40">
+            <div className="text-xs terminal-text text-muted">
               Exits: {exits.length} · Casualties: {casualtyPins.length} · Hazards:{' '}
               {hazardZones.length} · Walls: {interiorWalls.length}
             </div>
@@ -747,7 +743,7 @@ export function SceneDesigner({
           />
           {activeMode !== 'select' && (
             <div
-              className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1 text-xs terminal-text text-robotic-yellow pointer-events-none"
+              className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-surface-2 rounded px-3 py-1 text-xs terminal-text text-ink pointer-events-none"
               style={{ zIndex: 1001 }}
             >
               Click map to place — click another tool or press ESC to cancel

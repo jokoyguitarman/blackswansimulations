@@ -122,29 +122,29 @@ export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsP
     <div className="absolute top-[440px] right-4 z-[998] w-72">
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center justify-between px-3 py-2 bg-gray-900/95 border border-purple-500/40 rounded-t text-xs terminal-text text-purple-300 hover:bg-gray-800/95 transition-colors"
+        className="w-full flex items-center justify-between px-3 py-2 bg-surface/90 border border-brand/40 rounded-t text-xs terminal-text text-brand hover:bg-surface-2 transition-colors"
       >
         <span className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-purple-500 animate-pulse" />
-          PURSUIT METRICS
-          <span className="text-purple-400/60">
+          <span className="w-2 h-2 rounded-full bg-brand animate-pulse" />
+          Pursuit Metrics
+          <span className="text-brand/60">
             ({displayTeams.length} team{displayTeams.length !== 1 ? 's' : ''})
           </span>
         </span>
-        <span className="text-purple-400/60">{collapsed ? '▼' : '▲'}</span>
+        <span className="text-brand/60">{collapsed ? '▼' : '▲'}</span>
       </button>
 
       {!collapsed && (
-        <div className="bg-gray-900/95 border border-t-0 border-purple-500/40 rounded-b p-3 max-h-72 overflow-y-auto space-y-4">
+        <div className="bg-surface/90 border border-t-0 border-brand/40 rounded-b p-3 max-h-72 overflow-y-auto space-y-4">
           {displayTeams.map((teamName) => {
             const m = metrics[teamName] ?? emptyMetrics;
             const grade = gradeFromAccuracy(m.accuracy_pct);
             const color = accuracyColor(m.accuracy_pct);
 
             return (
-              <div key={teamName} className="border border-purple-500/20 rounded p-3 bg-black/30">
+              <div key={teamName} className="border border-brand/20 rounded p-3 bg-bg">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs terminal-text text-purple-300 uppercase font-bold">
+                  <span className="text-xs terminal-text text-brand uppercase font-bold">
                     {teamName.replace(/_/g, ' ')}
                   </span>
                   <span
@@ -157,11 +157,11 @@ export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsP
 
                 {/* Accuracy gauge */}
                 <div className="mb-3">
-                  <div className="flex justify-between text-[10px] text-purple-300/60 mb-1">
+                  <div className="flex justify-between text-[10px] text-brand/60 mb-1">
                     <span>Accuracy</span>
                     <span style={{ color }}>{m.accuracy_pct}%</span>
                   </div>
-                  <div className="w-full h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                  <div className="w-full h-1.5 bg-surface-2 rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-500"
                       style={{ width: `${m.accuracy_pct}%`, backgroundColor: color }}
@@ -171,51 +171,49 @@ export function PursuitMetricsPanel({ sessionId, currentState }: PursuitMetricsP
 
                 {/* Counters grid */}
                 <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-gray-800/60 rounded p-1.5">
-                    <div className="text-sm font-bold text-purple-300 font-mono">
-                      {m.tips_received}
-                    </div>
-                    <div className="text-[8px] text-purple-300/50 uppercase">Tips</div>
+                  <div className="bg-surface-2/60 rounded p-1.5">
+                    <div className="text-sm font-bold text-brand font-mono">{m.tips_received}</div>
+                    <div className="text-[8px] text-brand/50 uppercase">Tips</div>
                   </div>
-                  <div className="bg-gray-800/60 rounded p-1.5">
-                    <div className="text-sm font-bold text-green-400 font-mono">
+                  <div className="bg-surface-2/60 rounded p-1.5">
+                    <div className="text-sm font-bold text-success font-mono">
                       {m.tips_committed}
                     </div>
-                    <div className="text-[8px] text-purple-300/50 uppercase">Commits</div>
+                    <div className="text-[8px] text-brand/50 uppercase">Commits</div>
                   </div>
-                  <div className="bg-gray-800/60 rounded p-1.5">
-                    <div className="text-sm font-bold text-red-400 font-mono">{m.tips_ignored}</div>
-                    <div className="text-[8px] text-purple-300/50 uppercase">Ignored</div>
+                  <div className="bg-surface-2/60 rounded p-1.5">
+                    <div className="text-sm font-bold text-danger font-mono">{m.tips_ignored}</div>
+                    <div className="text-[8px] text-brand/50 uppercase">Ignored</div>
                   </div>
                 </div>
 
                 {/* Detail rows */}
                 <div className="mt-2 space-y-1 text-[10px] font-mono">
-                  <div className="flex justify-between text-purple-300/60">
+                  <div className="flex justify-between text-brand/60">
                     <span>False leads committed</span>
-                    <span className="text-red-400">{m.false_leads_committed}</span>
+                    <span className="text-danger">{m.false_leads_committed}</span>
                   </div>
-                  <div className="flex justify-between text-purple-300/60">
+                  <div className="flex justify-between text-brand/60">
                     <span>False leads avoided</span>
-                    <span className="text-green-400">{m.false_leads_avoided}</span>
+                    <span className="text-success">{m.false_leads_avoided}</span>
                   </div>
-                  <div className="flex justify-between text-purple-300/60">
+                  <div className="flex justify-between text-brand/60">
                     <span>Missed leads</span>
-                    <span className="text-red-400">{m.true_leads_ignored}</span>
+                    <span className="text-danger">{m.true_leads_ignored}</span>
                   </div>
-                  <div className="flex justify-between text-purple-300/60">
+                  <div className="flex justify-between text-brand/60">
                     <span>Avg response</span>
-                    <span className="text-purple-300">{m.avg_response_time_sec}s</span>
+                    <span className="text-brand">{m.avg_response_time_sec}s</span>
                   </div>
-                  <div className="flex justify-between text-purple-300/60">
+                  <div className="flex justify-between text-brand/60">
                     <span>Time wasted</span>
-                    <span className="text-red-400">
+                    <span className="text-danger">
                       {m.time_wasted_sec > 0 ? `${Math.round(m.time_wasted_sec / 60)}m` : '0m'}
                     </span>
                   </div>
-                  <div className="flex justify-between text-purple-300/60">
+                  <div className="flex justify-between text-brand/60">
                     <span>Resources deployed</span>
-                    <span className="text-purple-300">{m.resources_deployed}</span>
+                    <span className="text-brand">{m.resources_deployed}</span>
                   </div>
                 </div>
               </div>

@@ -29,31 +29,24 @@ export function ClassifiedBlocker({
   }
 
   return (
-    <div className="military-border border-robotic-orange p-6 relative overflow-hidden">
-      {/* Redacted overlay pattern */}
-      <div
-        className="absolute inset-0 opacity-20"
-        style={{
-          backgroundImage:
-            'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255, 107, 53, 0.1) 10px, rgba(255, 107, 53, 0.1) 20px)',
-        }}
-      />
+    <div className="bg-surface-2 border border-border rounded-lg p-6 relative overflow-hidden">
       <div className="relative z-10 text-center">
-        <div className="classified-stamp text-3xl mb-2">CLASSIFIED</div>
-        <div className="text-xs terminal-text text-robotic-orange uppercase mb-2">
-          [ACCESS_DENIED] Insufficient Clearance Level
+        <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-accent mb-3">
+          <span aria-hidden>🔒</span> Classified
         </div>
-        <div className="text-xs terminal-text text-robotic-orange/70 mb-4">
-          Information type: <code className="bg-robotic-gray-300/50 px-1">{informationType}</code>
+        <div className="text-sm font-semibold text-ink mb-1">Insufficient clearance level</div>
+        <div className="text-xs text-muted mb-4">
+          Information type:{' '}
+          <code className="bg-surface border border-border rounded px-1.5 py-0.5">
+            {informationType}
+          </code>
         </div>
         {showRequestAccess && (
-          <div className="text-xs terminal-text text-robotic-yellow/70">
-            [ACTION_REQUIRED] Request access from appropriate agency via communication channels
+          <div className="text-xs text-muted">
+            Request access from the appropriate agency via communication channels.
           </div>
         )}
-        <div className="mt-4 text-xs terminal-text text-robotic-gray-50">
-          [ROLE] {role.toUpperCase()}
-        </div>
+        <div className="mt-4 text-xs text-muted capitalize">Role: {role}</div>
       </div>
     </div>
   );

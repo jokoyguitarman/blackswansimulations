@@ -137,15 +137,13 @@ export function ActivityTicker({ sessionId }: ActivityTickerProps) {
   });
 
   return (
-    <div className="h-full flex flex-col bg-robotic-gray-400/95 border-l border-robotic-yellow/30">
-      <div className="px-4 py-3 border-b border-robotic-yellow/20">
-        <h3 className="text-sm terminal-text uppercase text-robotic-yellow tracking-wider">
-          Activity Feed
-        </h3>
+    <div className="h-full flex flex-col bg-bg/95 border-l border-border">
+      <div className="px-4 py-3 border-b border-border">
+        <h3 className="text-sm terminal-text uppercase text-ink tracking-wider">Activity Feed</h3>
       </div>
       <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1.5">
         {entries.length === 0 && (
-          <p className="text-xs terminal-text text-robotic-yellow/40 italic mt-4 text-center">
+          <p className="text-xs terminal-text text-muted italic mt-4 text-center">
             Waiting for activity...
           </p>
         )}
@@ -154,7 +152,7 @@ export function ActivityTicker({ sessionId }: ActivityTickerProps) {
           return (
             <div
               key={entry.id}
-              className="flex items-start gap-2 py-1.5 border-b border-robotic-yellow/10"
+              className="flex items-start gap-2 py-1.5 border-b border-border"
               style={{ animation: 'slideInDown 0.3s ease-out' }}
             >
               <span className="text-xs mt-0.5 shrink-0">{TYPE_ICONS[entry.type] ?? '•'}</span>
@@ -166,7 +164,7 @@ export function ActivityTicker({ sessionId }: ActivityTickerProps) {
                   >
                     {entry.team}
                   </span>
-                  <span className="text-[9px] text-robotic-yellow/30 shrink-0">
+                  <span className="text-[9px] text-muted shrink-0">
                     {entry.timestamp.toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -174,9 +172,7 @@ export function ActivityTicker({ sessionId }: ActivityTickerProps) {
                     })}
                   </span>
                 </div>
-                <p className="text-xs terminal-text text-robotic-yellow/80 line-clamp-2">
-                  {entry.text}
-                </p>
+                <p className="text-xs terminal-text text-ink line-clamp-2">{entry.text}</p>
               </div>
             </div>
           );

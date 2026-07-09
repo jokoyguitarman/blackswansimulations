@@ -92,26 +92,24 @@ export const AssignIncidentModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-lg w-full">
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="military-border bg-surface p-8 max-w-lg w-full">
         <div className="flex justify-between items-start mb-4">
-          <h2 className="text-xl terminal-text uppercase">[ASSIGN_INCIDENT]</h2>
-          <button onClick={onClose} className="text-robotic-orange hover:text-robotic-yellow">
-            [CLOSE]
+          <h2 className="text-xl terminal-text">Assign incident</h2>
+          <button onClick={onClose} className="text-accent hover:text-ink">
+            Close
           </button>
         </div>
 
         <div className="mb-4">
-          <p className="text-sm terminal-text text-robotic-yellow/70 mb-2">
+          <p className="text-sm terminal-text text-muted mb-2">
             Incident: <span className="font-semibold">{incident.title}</span>
           </p>
         </div>
 
         {existingUserIds.length > 0 && (
-          <div className="mb-4 p-3 bg-robotic-gray-200 border border-robotic-yellow/30">
-            <p className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [CURRENT_ASSIGNMENTS]
-            </p>
+          <div className="mb-4 p-3 bg-surface-2 border border-border">
+            <p className="text-xs terminal-text text-muted mb-2">Current assignments</p>
             <div className="flex flex-wrap gap-2">
               {incident.assignments
                 ?.filter((a) => !a.assignment_type || (a as any).user_id) // Filter for user assignments
@@ -122,7 +120,7 @@ export const AssignIncidentModal = ({
                   return (
                     <span
                       key={`user-${idx}`}
-                      className="text-xs terminal-text px-2 py-1 bg-robotic-gray-300 border border-robotic-yellow/30"
+                      className="text-xs terminal-text px-2 py-1 bg-surface border border-border"
                     >
                       {userName}
                     </span>
@@ -134,8 +132,8 @@ export const AssignIncidentModal = ({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [ASSIGN_TO_PLAYER] *
+            <label className="block text-sm terminal-text text-muted mb-2">
+              Assign to player *
             </label>
             <select
               value={selectedValue}
@@ -145,7 +143,7 @@ export const AssignIncidentModal = ({
               className="w-full military-input terminal-text text-sm px-4 py-2"
             >
               <option value="">
-                {participantsLoading ? 'Loading participants...' : 'Select player...'}
+                {participantsLoading ? 'Loading participants…' : 'Select player…'}
               </option>
               {availableParticipants.map((participant) => {
                 const roleDisplay = participant.role
@@ -160,7 +158,7 @@ export const AssignIncidentModal = ({
               })}
             </select>
             {!participantsLoading && availableParticipants.length === 0 && (
-              <p className="text-xs terminal-text text-robotic-yellow/50 mt-2">
+              <p className="text-xs terminal-text text-muted mt-2">
                 {participants.length === 0
                   ? 'No participants available in this session'
                   : 'All available participants have been assigned'}
@@ -169,32 +167,30 @@ export const AssignIncidentModal = ({
           </div>
 
           <div>
-            <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [NOTES] (Optional)
-            </label>
+            <label className="block text-sm terminal-text text-muted mb-2">Notes (optional)</label>
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
               className="w-full military-input terminal-text text-sm px-4 py-2"
-              placeholder="Add assignment notes..."
+              placeholder="Add assignment notes…"
             />
           </div>
 
-          <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">
+          <div className="flex gap-4 pt-4 border-t border-border">
             <button
               type="button"
               onClick={onClose}
-              className="military-button-outline px-6 py-3 flex-1 border border-robotic-gray-200 text-robotic-gray-50"
+              className="military-button-outline px-6 py-3 flex-1 border border-border text-muted"
             >
-              [CANCEL]
+              Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !selectedValue || availableParticipants.length === 0}
               className="military-button px-6 py-3 flex-1 disabled:opacity-50"
             >
-              {loading ? '[ASSIGNING...]' : '[ASSIGN]'}
+              {loading ? 'Assigning…' : 'Assign'}
             </button>
           </div>
         </form>

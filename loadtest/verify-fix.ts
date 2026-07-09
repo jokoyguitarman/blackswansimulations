@@ -14,7 +14,7 @@ import { apiFetch, createSession, pickScenario, teardownSession } from './sessio
  *  3. Notification rows exist in the DB for all participants.
  */
 
-const URL = 'http://localhost:3001';
+const URL = process.env.LOADTEST_URL ?? 'http://localhost:3001';
 const supabaseUrl = process.env.SUPABASE_URL!;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const log = (m: string) => console.log(`[verify] ${m}`);

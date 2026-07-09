@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Page-Post Feed Visibility &amp; Notification Deep-Link Fix</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --panel: #171a23;
+        --panel2: #1f2330;
+        --border: #2b3040;
+        --text: #e6e8ee;
+        --muted: #9aa3b2;
+        --bad: #f0556a;
+        --good: #34c759;
+        --accent: #4c8dff;
+        --fb: #1877f2;
+        --warn: #f7b928;
+        --purple: #b07cff;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.55;
+      }
+      header {
+        padding: 40px 32px 28px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, #141826, #0f1117);
+      }
+      header h1 { margin: 0 0 8px; font-size: 26px; }
+      header p { margin: 0; color: var(--muted); max-width: 820px; }
+      .pill {
+        display: inline-block;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 999px;
+        margin-bottom: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        background: rgba(240,85,106,0.15);
+        color: #ff8b9c;
+        border: 1px solid rgba(240,85,106,0.35);
+      }
+      main { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+      section {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 24px;
+        margin: 24px 0;
+        overflow: hidden;
+      }
+      section h2 { margin: 0 0 4px; font-size: 19px; display: flex; align-items: center; gap: 10px; }
+      .num {
+        width: 26px; height: 26px; border-radius: 50%;
+        background: var(--accent); color: #fff;
+        display: inline-flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 700; flex-shrink: 0;
+      }
+      .sub { color: var(--muted); font-size: 14px; margin: 0 0 18px; }
+      .tag {
+        font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px;
+        text-transform: uppercase; letter-spacing: 0.4px;
+      }
+      .tag.fe { background: rgba(76,141,255,0.15); color: #8fb6ff; }
+      ul, ol { margin: 8px 0; padding-left: 22px; }
+      li { margin: 6px 0; }
+      p { margin: 10px 0; }
+      code {
+        font-family: "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+        background: #0b0d13;
+        border: 1px solid var(--border);
+        border-radius: 5px;
+        padding: 1px 6px;
+        font-size: 12.5px;
+        color: #d6c98a;
+      }
+      pre {
+        background: #0b0d13;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+        overflow-x: auto;
+        font-size: 12.5px;
+        line-height: 1.55;
+        margin: 12px 0;
+      }
+      pre code { background: none; border: none; padding: 0; color: #c9d1e3; }
+      pre.before { border-color: rgba(240,85,106,0.4); }
+      pre.after { border-color: rgba(52,199,89,0.4); }
+      .kw { color: #ff7b9c; }
+      .str { color: #7fd88f; }
+      .com { color: #6b7280; font-style: italic; }
+      .fn { color: #82aaff; }
+      .lit { color: #f7b928; }
+      .hl-del { background: rgba(240,85,106,0.16); display: block; margin: 0 -16px; padding: 0 16px; }
+      .hl-add { background: rgba(52,199,89,0.16); display: block; margin: 0 -16px; padding: 0 16px; }
+      .file { color: var(--accent); font-size: 12px; font-family: "SF Mono", Menlo, monospace; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0; }
+      @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+      .card {
+        border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--panel2);
+      }
+      .card.before { border-color: rgba(240,85,106,0.4); }
+      .card.after { border-color: rgba(52,199,89,0.4); }
+      .card h3 { margin: 0 0 12px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; }
+      .card.before h3 { color: var(--bad); }
+      .card.after h3 { color: var(--good); }
+      .callout {
+        border-left: 3px solid var(--accent);
+        background: rgba(76,141,255,0.08);
+        padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 16px 0; font-size: 13.5px;
+      }
+      .callout.warn { border-color: var(--warn); background: rgba(247,185,40,0.08); }
+      .callout.good { border-color: var(--good); background: rgba(52,199,89,0.08); }
+      .callout.bad { border-color: var(--bad); background: rgba(240,85,106,0.08); }
+      table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; }
+      .yes { color: var(--good); font-weight: 700; }
+      .no { color: var(--bad); font-weight: 700; }
+      .toc { font-size: 13.5px; }
+      .toc a { color: var(--accent); text-decoration: none; }
+      .toc a:hover { text-decoration: underline; }
+      .flow { display: flex; align-items: stretch; gap: 12px; flex-wrap: wrap; margin: 18px 0; }
+      .step { flex: 1; min-width: 150px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+      .step .n { font-size: 11px; color: var(--accent); font-weight: 700; }
+      .step h4 { margin: 6px 0 4px; font-size: 14px; }
+      .step p { margin: 0; font-size: 12.5px; color: var(--muted); }
+      .step.bad { border-color: rgba(240,85,106,0.4); }
+      .step.bad .n { color: var(--bad); }
+      .arrow { align-self: center; color: var(--muted); font-size: 20px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="pill">Bug Fix · Frontend</span>
+      <h1>Page-Post Feed Visibility &amp; Notification Deep-Link Fix</h1>
+      <p>
+        Two players co-controlled one organization page. When a player posted as the page, that
+        post never appeared in their own newsfeed (only on the page profile), and tapping a reply
+        notification did nothing for them — yet it worked perfectly for the other page controller.
+        This explainer walks through why, and the exact code change that fixed it.
+      </p>
+    </header>
+
+    <main>
+      <section>
+        <h2>Contents</h2>
+        <div class="toc">
+          <ol>
+            <li><a href="#symptoms">The symptoms</a></li>
+            <li><a href="#why">Why it happened (root cause)</a></li>
+            <li><a href="#trace">Step-by-step trace</a></li>
+            <li><a href="#code-before">The code, before the change</a></li>
+            <li><a href="#code-after">The code, after the change</a></li>
+            <li><a href="#regression">The regression we deliberately avoided</a></li>
+            <li><a href="#outcome">Outcome &amp; verification</a></li>
+          </ol>
+        </div>
+      </section>
+
+      <!-- 1. SYMPTOMS -->
+      <section id="symptoms">
+        <h2><span class="num">1</span> The symptoms</h2>
+        <p class="sub">Player 1 and Player 2 both control the same org page. Player 1 posts as the page.</p>
+        <table>
+          <tr><th>Behavior</th><th>Player 1 (the author)</th><th>Player 2 (other controller)</th></tr>
+          <tr>
+            <td>Page-post shows in own newsfeed</td>
+            <td class="no">No (even sorted by "most recent")</td>
+            <td class="yes">Yes</td>
+          </tr>
+          <tr>
+            <td>Page-post shows on the org page profile</td>
+            <td class="yes">Yes</td>
+            <td class="yes">Yes</td>
+          </tr>
+          <tr>
+            <td>Clicking a reply notification scrolls to the post &amp; thread</td>
+            <td class="no">No (click appears dead)</td>
+            <td class="yes">Yes</td>
+          </tr>
+        </table>
+      </section>
+
+      <!-- 2. WHY -->
+      <section id="why">
+        <h2><span class="num">2</span> Why it happened (root cause)</h2>
+        <p>
+          The feed listens for new posts over WebSocket and <strong>deliberately skips any post the
+          current user authored</strong>, on the assumption that the user already inserted their own
+          post optimistically the moment they composed it. "Authored by me" was detected purely by
+          <code>user_id === me</code>.
+        </p>
+        <p>The assumption is correct for <strong>personal</strong> posts composed in the feed, but breaks for <strong>page</strong> posts because:</p>
+        <ul>
+          <li>The server always stamps <code>user_id</code> with the human who clicked — even for page posts (where <code>author_type === 'official_account'</code>). So a page post Player 1 makes is "owned" by Player 1.</li>
+          <li>Page posts are composed in a <strong>different component</strong>, <code>OrgPageView.tsx</code>, which has its <em>own</em> separate <code>posts</code> state. So the page-post is optimistically inserted into the page profile list — never into the newsfeed list.</li>
+        </ul>
+        <div class="callout bad">
+          <strong>The gap:</strong> For Player 1, the page-post is (a) never optimistically added to the
+          newsfeed, and (b) skipped by the live WebSocket handler because <code>user_id === me</code>.
+          So it simply never enters the newsfeed's array. Player 2 isn't the author, so the live event
+          is <em>not</em> skipped for him — his feed gets the post normally.
+        </div>
+      </section>
+
+      <!-- 3. TRACE -->
+      <section id="trace">
+        <h2><span class="num">3</span> Step-by-step trace</h2>
+        <h3 style="font-size:14px;color:var(--bad);text-transform:uppercase;letter-spacing:0.5px;">Player 1 (broken before the fix)</h3>
+        <div class="flow">
+          <div class="step bad"><div class="n">1</div><h4>Compose as page</h4><p>Player 1 posts as the org page from OrgPageView.</p></div>
+          <div class="arrow">→</div>
+          <div class="step bad"><div class="n">2</div><h4>Optimistic insert</h4><p>Added to OrgPageView's list only (shows on page profile).</p></div>
+          <div class="arrow">→</div>
+          <div class="step bad"><div class="n">3</div><h4>Live event arrives</h4><p>Newsfeed receives <code>social_post.created</code> but sees <code>user_id === me</code> and skips it.</p></div>
+          <div class="arrow">→</div>
+          <div class="step bad"><div class="n">4</div><h4>Not in feed array</h4><p>Sorting by "recent" can't surface what isn't in the array.</p></div>
+          <div class="arrow">→</div>
+          <div class="step bad"><div class="n">5</div><h4>Notification dead</h4><p>Deep-link looks for <code>fb-post-&lt;id&gt;</code> in the DOM; it doesn't exist, so nothing scrolls.</p></div>
+        </div>
+
+        <h3 style="font-size:14px;color:var(--good);text-transform:uppercase;letter-spacing:0.5px;">Player 2 (always worked)</h3>
+        <div class="flow">
+          <div class="step"><div class="n">1</div><h4>Live event arrives</h4><p>Newsfeed receives the post; <code>user_id</code> is Player 1, not Player 2.</p></div>
+          <div class="arrow">→</div>
+          <div class="step"><div class="n">2</div><h4>Not "own" → inserted</h4><p>The post is added to Player 2's feed array.</p></div>
+          <div class="arrow">→</div>
+          <div class="step"><div class="n">3</div><h4>Rendered with id</h4><p>The post renders with DOM id <code>fb-post-&lt;id&gt;</code>.</p></div>
+          <div class="arrow">→</div>
+          <div class="step"><div class="n">4</div><h4>Notification works</h4><p>Deep-link finds the element and scrolls to the comment thread.</p></div>
+        </div>
+
+        <p>The notification deep-link depends entirely on the post being present in the rendered feed:</p>
+        <pre><code><span class="com">// On notification click — only scrolls if fb-post-&lt;postId&gt; exists in the DOM</span>
+<span class="kw">const</span> targetEl = highlightId
+  ? <span class="fn">document</span>.getElementById(<span class="str">`fb-reply-${highlightId}`</span>)
+  : <span class="fn">document</span>.getElementById(<span class="str">`fb-post-${postId}`</span>);
+<span class="kw">if</span> (targetEl) { targetEl.scrollIntoView({ behavior: <span class="str">'smooth'</span>, block: <span class="str">'center'</span> }); }
+<span class="com">// else: nothing happens — this is what Player 1 hit</span></code></pre>
+      </section>
+
+      <!-- 4. CODE BEFORE -->
+      <section id="code-before">
+        <h2><span class="num">4</span> The code, before the change</h2>
+        <p class="sub">
+          Identical logic lived in both feeds:
+          <span class="file">frontend/src/components/SimDevice/FacebookFeedApp.tsx</span> (Facebook) and
+          <span class="file">frontend/src/components/SimDevice/SocialFeedApp.tsx</span> (X/Twitter).
+        </p>
+        <p>Inside the <code>social_post.created</code> WebSocket handler:</p>
+        <pre class="before"><code><span class="kw">const</span> newPost = evtData.post;
+<span class="kw">if</span> (newPost.platform !== <span class="str">'facebook'</span>) <span class="kw">return</span>;
+
+<span class="com">// "Own" = anything I authored, by user_id alone.</span>
+<span class="kw">const</span> isOwnPost =
+  currentUserIdRef.current &&
+  newPost.user_id === currentUserIdRef.current;
+
+<span class="kw">if</span> (newPost.reply_to_post_id) {
+  <span class="com">// ...add reply to the thread, bump reply_count if !isOwnPost...</span>
+} <span class="kw">else</span> {
+  <span class="hl-del"><span class="kw">if</span> (!isOwnPost) {                          <span class="com">// &lt;-- page posts by me are excluded here</span></span>
+    setPosts((prev) =&gt; {
+      <span class="kw">if</span> (prev.some((p) =&gt; p.id === newPost.id)) <span class="kw">return</span> prev;
+      <span class="kw">return</span> [newPost, ...prev];
+    });
+  }
+}</code></pre>
+        <p>
+          Explanation: when a page post authored by the current user arrived, <code>isOwnPost</code> was
+          <code>true</code>, so the <code>else</code> branch's <code>if (!isOwnPost)</code> was
+          <code>false</code> and the post was never inserted into that user's feed. Because page posts
+          are composed in <code>OrgPageView</code> (separate state), there was also no optimistic insert
+          to fall back on. Net effect: the author's feed never contained their own page post.
+        </p>
+      </section>
+
+      <!-- 5. CODE AFTER -->
+      <section id="code-after">
+        <h2><span class="num">5</span> The code, after the change</h2>
+        <p class="sub">Same edit applied to both feed components.</p>
+        <pre class="after"><code><span class="kw">const</span> isOwnPost =
+  currentUserIdRef.current &&
+  newPost.user_id === currentUserIdRef.current;
+<span class="hl-add"><span class="com">// Posts composed as the org page live in OrgPageView's separate state, so they are</span></span>
+<span class="hl-add"><span class="com">// NOT optimistically inserted into this feed. They must come through the live event</span></span>
+<span class="hl-add"><span class="com">// (dedup by id guards against double inserts if composed from within this feed).</span></span>
+<span class="hl-add"><span class="kw">const</span> isOwnPagePost = isOwnPost &amp;&amp; newPost.author_type === <span class="str">'official_account'</span>;</span>
+
+<span class="kw">if</span> (newPost.reply_to_post_id) {
+  <span class="com">// ...reply branch UNCHANGED — still uses isOwnPost for reply_count dedup...</span>
+} <span class="kw">else</span> {
+  <span class="hl-add"><span class="kw">if</span> (!isOwnPost || isOwnPagePost) {        <span class="com">// &lt;-- page posts by me now flow in</span></span>
+    setPosts((prev) =&gt; {
+      <span class="kw">if</span> (prev.some((p) =&gt; p.id === newPost.id)) <span class="kw">return</span> prev;  <span class="com">// dedup safety</span>
+      <span class="kw">return</span> [newPost, ...prev];
+    });
+  }
+}</code></pre>
+        <p>How the new condition reads, case by case:</p>
+        <table>
+          <tr><th>Post</th><th><code>isOwnPost</code></th><th><code>isOwnPagePost</code></th><th><code>!isOwnPost || isOwnPagePost</code></th><th>Result</th></tr>
+          <tr><td>My personal post</td><td>true</td><td>false</td><td class="no">false</td><td>Skipped (already added optimistically) — unchanged</td></tr>
+          <tr><td><strong>My page post</strong></td><td>true</td><td><strong>true</strong></td><td class="yes">true</td><td><strong>Inserted live (the fix)</strong></td></tr>
+          <tr><td>Someone else's post</td><td>false</td><td>false</td><td class="yes">true</td><td>Inserted — unchanged</td></tr>
+        </table>
+        <div class="callout good">
+          The <code>prev.some((p) =&gt; p.id === newPost.id)</code> guard means that even if a page post is
+          composed from <em>within</em> the feed (where it would also be optimistically inserted), the
+          live event can never create a duplicate.
+        </div>
+      </section>
+
+      <!-- 6. REGRESSION -->
+      <section id="regression">
+        <h2><span class="num">6</span> The regression we deliberately avoided</h2>
+        <p>
+          A simpler "fix" would have been to redefine <code>isOwnPost</code> itself to exclude page
+          posts (<code>... &amp;&amp; author_type !== 'official_account'</code>). That was the first attempt —
+          but it would have broken comment counting.
+        </p>
+        <p>
+          The <strong>reply branch</strong> also uses <code>isOwnPost</code>, to avoid double-incrementing
+          <code>reply_count</code> for a comment you already added optimistically:
+        </p>
+        <pre><code><span class="kw">if</span> (newPost.reply_to_post_id) {
+  setPostReplies(<span class="com">/* dedup by id */</span>);
+  <span class="kw">if</span> (!isOwnPost) {
+    setPosts((prev) =&gt; prev.map((p) =&gt;
+      p.id === pid ? { ...p, reply_count: (p.reply_count || <span class="lit">0</span>) + <span class="lit">1</span> } : p));
+  }
+}</code></pre>
+        <div class="callout warn">
+          If <code>isOwnPost</code> had been made <code>false</code> for page comments, then commenting as
+          the page from inside the feed would increment <code>reply_count</code> <strong>twice</strong> —
+          once optimistically and once from the live event. To prevent that, the reply branch keeps the
+          original <code>isOwnPost</code> semantics; only the <em>top-level insertion</em> gained the
+          <code>isOwnPagePost</code> exception.
+        </div>
+      </section>
+
+      <!-- 7. OUTCOME -->
+      <section id="outcome">
+        <h2><span class="num">7</span> Outcome &amp; verification</h2>
+        <p>Both original symptoms are resolved by this one targeted change:</p>
+        <ul>
+          <li><strong>Newsfeed:</strong> a player's own page post now appears in their feed live, no reload needed.</li>
+          <li><strong>Notifications:</strong> because the post is now rendered (with its <code>fb-post-&lt;id&gt;</code> element), the reply-notification deep-link finds it and scrolls to the comment thread — matching the behavior the co-controller always had.</li>
+          <li><strong>No double counting:</strong> reply counts are unaffected; the dedup guard prevents duplicate inserts.</li>
+        </ul>
+        <div class="grid">
+          <div class="card before">
+            <h3>Files touched</h3>
+            <p style="font-size:13px;margin:0;">
+              <span class="file">frontend/src/components/SimDevice/FacebookFeedApp.tsx</span><br /><br />
+              <span class="file">frontend/src/components/SimDevice/SocialFeedApp.tsx</span>
+            </p>
+          </div>
+          <div class="card after">
+            <h3>Scope</h3>
+            <p style="font-size:13px;margin:0;">
+              Frontend only. No backend, database, or migration changes. Lint clean and
+              <code>tsc --noEmit</code> passes for the frontend project.
+            </p>
+          </div>
+        </div>
+        <div class="callout">
+          <strong>Note:</strong> Even before this change, a full page reload would have shown the post,
+          because the initial feed fetch does not filter out your own posts. The bug was specific to the
+          <em>live in-session</em> state — which is exactly what the WebSocket-handler fix restores.
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

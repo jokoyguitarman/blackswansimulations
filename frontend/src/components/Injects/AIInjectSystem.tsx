@@ -63,22 +63,20 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'critical':
-        return 'bg-robotic-orange/20 text-robotic-orange border-robotic-orange';
+        return 'bg-accent/10 text-accent border-accent';
       case 'high':
-        return 'bg-robotic-yellow/20 text-robotic-yellow border-robotic-yellow';
+        return 'bg-accent/10 text-ink border-border';
       case 'medium':
-        return 'bg-robotic-gray-50 text-robotic-gray-50 border-robotic-gray-50';
+        return 'bg-surface-2 text-muted border-border';
       default:
-        return 'bg-robotic-gray-200 text-robotic-gray-200 border-robotic-gray-200';
+        return 'bg-surface-2 text-muted border-border';
     }
   };
 
   if (!isTrainer) {
     return (
       <div className="military-border p-6">
-        <p className="text-sm terminal-text text-robotic-yellow/50">
-          [ACCESS_DENIED] Only trainers can manage AI injects
-        </p>
+        <p className="text-sm terminal-text text-muted">Only trainers can manage AI injects</p>
       </div>
     );
   }
@@ -87,9 +85,7 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
     return (
       <div className="military-border p-6">
         <div className="text-center">
-          <div className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-            [LOADING_INJECTS]
-          </div>
+          <div className="text-sm terminal-text text-muted animate-pulse">Loading injects…</div>
         </div>
       </div>
     );
@@ -98,12 +94,12 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
   return (
     <div className="space-y-4">
       <div className="military-border p-4 flex justify-between items-center">
-        <h3 className="text-lg terminal-text uppercase">[AI_INJECTS] Event Injector</h3>
+        <h3 className="text-lg terminal-text">AI event injector</h3>
         <button
           onClick={() => setShowCreateModal(true)}
           className="military-button px-4 py-2 text-sm"
         >
-          [CREATE_INJECT]
+          Create inject
         </button>
       </div>
 
@@ -115,12 +111,10 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
                 <div className="flex items-center gap-2 mb-1">
                   <h4 className="text-sm terminal-text font-semibold">{inject.title}</h4>
                   {inject.ai_generated && (
-                    <span className="text-xs terminal-text text-robotic-yellow/50">
-                      [AI_GENERATED]
-                    </span>
+                    <span className="text-xs terminal-text text-muted">AI generated</span>
                   )}
                 </div>
-                <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+                <div className="text-xs terminal-text text-muted mb-2">
                   {inject.content.length > 150 ? (
                     <>
                       <p className={expandedInjects.has(inject.id) ? '' : 'line-clamp-2'}>
@@ -139,34 +133,32 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
                             return next;
                           });
                         }}
-                        className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow mt-1 uppercase"
+                        className="text-xs terminal-text text-muted hover:text-ink mt-1"
                       >
-                        {expandedInjects.has(inject.id) ? '[SHOW LESS]' : '[SHOW MORE]'}
+                        {expandedInjects.has(inject.id) ? 'Show less' : 'Show more'}
                       </button>
                     </>
                   ) : (
                     <p>{inject.content}</p>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-2 text-xs terminal-text text-robotic-yellow/50">
-                  <span>[{inject.type}]</span>
+                <div className="flex flex-wrap gap-2 text-xs terminal-text text-muted">
+                  <span>{inject.type}</span>
                   <span className={`px-2 py-1 border ${getSeverityColor(inject.severity)}`}>
                     {inject.severity.toUpperCase()}
                   </span>
                   {inject.trigger_time_minutes !== null && (
-                    <span>[TRIGGER] {inject.trigger_time_minutes}min</span>
+                    <span>Trigger: {inject.trigger_time_minutes}min</span>
                   )}
-                  {inject.requires_response && <span>[REQUIRES_RESPONSE]</span>}
-                  <span className="px-2 py-0.5 military-border bg-robotic-gray-200">
-                    [
+                  {inject.requires_response && <span>Requires response</span>}
+                  <span className="px-2 py-0.5 military-border bg-surface-2">
                     {inject.inject_scope === 'universal'
-                      ? 'UNIVERSAL'
+                      ? 'Universal'
                       : inject.inject_scope === 'role_specific'
-                        ? 'ROLE-SPECIFIC'
+                        ? 'Role-specific'
                         : inject.inject_scope === 'team_specific'
-                          ? 'TEAM-SPECIFIC'
-                          : 'UNIVERSAL'}
-                    ]
+                          ? 'Team-specific'
+                          : 'Universal'}
                   </span>
                   {inject.inject_scope === 'team_specific' &&
                     inject.target_teams &&
@@ -174,7 +166,7 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
                       <span>Teams: {inject.target_teams.join(', ').toUpperCase()}</span>
                     )}
                   {inject.requires_coordination && (
-                    <span className="text-robotic-orange">[REQUIRES_COORDINATION]</span>
+                    <span className="text-accent">Requires coordination</span>
                   )}
                 </div>
               </div>
@@ -185,16 +177,14 @@ export const AIInjectSystem = ({ sessionId, scenarioId }: AIInjectSystemProps) =
                 }}
                 className="military-button px-4 py-2 text-sm whitespace-nowrap flex-shrink-0"
               >
-                [PUBLISH]
+                Publish
               </button>
             </div>
           </div>
         ))}
         {injects.length === 0 && (
           <div className="military-border p-8 text-center">
-            <p className="text-sm terminal-text text-robotic-yellow/50">
-              [NO_INJECTS] No injects available
-            </p>
+            <p className="text-sm terminal-text text-muted">No injects available</p>
           </div>
         )}
       </div>

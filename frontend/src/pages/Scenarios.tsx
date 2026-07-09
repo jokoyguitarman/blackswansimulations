@@ -72,26 +72,24 @@ export const Scenarios = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center scanline">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg terminal-text mb-2 animate-pulse">[LOADING]</div>
-          <div className="text-xs terminal-text text-robotic-yellow/50">Loading scenarios...</div>
+          <div className="text-lg text-ink mb-2 animate-pulse">Loading</div>
+          <div className="text-xs text-muted">Loading scenarios…</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen scanline">
+    <div className="min-h-screen">
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
         {/* Header */}
-        <div className="military-border p-6 mb-6">
+        <div className="bg-surface border border-border rounded-xl shadow-sm p-6 mb-6">
           <div className="flex justify-between items-center">
             <div>
-              <h1 className="text-2xl terminal-text uppercase tracking-wider mb-2">
-                [SCENARIOS] Scenario Library
-              </h1>
-              <p className="text-xs terminal-text text-robotic-yellow/70">
+              <h1 className="text-2xl font-extrabold text-brand mb-1">Scenario library</h1>
+              <p className="text-sm text-muted">
                 {scenarios.length} scenario{scenarios.length !== 1 ? 's' : ''} available
               </p>
             </div>
@@ -99,9 +97,9 @@ export const Scenarios = () => {
               <div className="flex gap-3">
                 <Link
                   to="/warroom"
-                  className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+                  className="px-5 py-2.5 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
                 >
-                  [WAR_ROOM]
+                  War Room
                 </Link>
               </div>
             )}
@@ -116,80 +114,73 @@ export const Scenarios = () => {
             return (
               <div
                 key={scenario.id}
-                className={`p-6 cursor-pointer transition-all ${
+                className={`bg-surface border border-border border-t-4 rounded-xl shadow-sm p-6 cursor-pointer transition-all hover:shadow-md ${
                   isSocialCrisis
-                    ? 'border border-blue-500/30 bg-gradient-to-br from-blue-950/40 to-purple-950/30 rounded-xl hover:border-blue-400/50'
-                    : 'military-border hover:border-robotic-orange'
+                    ? 'border-t-accent hover:border-accent'
+                    : 'border-t-brand hover:border-brand'
                 }`}
                 onClick={() => handleViewScenario(scenario)}
               >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-2">
-                    {isSocialCrisis && <span className="text-xl">📱</span>}
-                    <h3
-                      className={`text-lg ${isSocialCrisis ? 'text-blue-100 font-semibold' : 'terminal-text uppercase'}`}
-                    >
-                      {scenario.title}
-                    </h3>
-                  </div>
+                {/* Type ribbon + status */}
+                <div className="flex items-center justify-between mb-3">
+                  <span
+                    className={`inline-flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${
+                      isSocialCrisis ? 'bg-accent/10 text-accent' : 'bg-brand/10 text-brand'
+                    }`}
+                  >
+                    <span aria-hidden>{isSocialCrisis ? '📱' : '🗺️'}</span>
+                    {isSocialCrisis ? 'Social media crisis' : 'Field operations'}
+                  </span>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-xs px-2 py-1 ${
-                        isSocialCrisis
-                          ? 'bg-blue-500/20 text-blue-300 rounded'
-                          : scenario.is_active
-                            ? 'bg-robotic-yellow/20 text-robotic-yellow terminal-text'
-                            : 'bg-robotic-gray-200 text-robotic-gray-50 terminal-text'
+                      className={`text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                        scenario.is_active
+                          ? 'bg-success/10 text-success'
+                          : 'bg-surface-2 text-muted'
                       }`}
                     >
-                      {isSocialCrisis ? 'SOCIAL MEDIA' : scenario.is_active ? 'ACTIVE' : 'DRAFT'}
+                      {scenario.is_active ? 'Active' : 'Draft'}
                     </span>
                     {isTrainer && (
                       <button
                         onClick={(e) => handleDeleteScenario(e, scenario)}
                         disabled={deleting === scenario.id}
-                        className="text-xs terminal-text px-2 py-1 border border-red-600/50 text-red-500 hover:bg-red-600/20 hover:text-red-400 transition-all disabled:opacity-40"
+                        className="text-xs font-semibold px-2 py-0.5 rounded-md border border-danger/40 text-danger hover:bg-danger/10 transition-all disabled:opacity-40"
                         title="Delete scenario and all related data"
                       >
-                        {deleting === scenario.id ? '...' : 'DEL'}
+                        {deleting === scenario.id ? '…' : 'Delete'}
                       </button>
                     )}
                   </div>
                 </div>
-                <p
-                  className={`text-sm mb-4 line-clamp-3 ${
-                    isSocialCrisis ? 'text-blue-200/70' : 'terminal-text text-robotic-yellow/70'
-                  }`}
-                >
-                  {scenario.description}
-                </p>
+
+                <h3 className="text-lg font-bold text-ink mb-2">{scenario.title}</h3>
+                <p className="text-sm mb-4 line-clamp-3 text-muted">{scenario.description}</p>
                 <div className="flex flex-wrap gap-2 mb-4">
                   {isSocialCrisis ? (
                     <>
-                      <span className="text-xs px-2 py-0.5 bg-purple-500/20 text-purple-300 rounded">
-                        Crisis Response
+                      <span className="text-xs font-medium px-2 py-0.5 bg-accent/10 text-accent rounded">
+                        Crisis response
                       </span>
-                      <span className="text-xs px-2 py-0.5 bg-gray-500/20 text-gray-300 rounded">
-                        {scenario.duration_minutes}min
+                      <span className="text-xs font-medium px-2 py-0.5 bg-surface-2 text-muted rounded">
+                        {scenario.duration_minutes} min
                       </span>
                     </>
                   ) : (
                     <>
-                      <span className="text-xs terminal-text text-robotic-yellow/50">
-                        [{scenario.category.toUpperCase()}]
+                      <span className="text-xs font-medium px-2 py-0.5 bg-brand/10 text-brand rounded capitalize">
+                        {scenario.category}
                       </span>
-                      <span className="text-xs terminal-text text-robotic-yellow/50">
-                        [{scenario.difficulty.toUpperCase()}]
+                      <span className="text-xs font-medium px-2 py-0.5 bg-surface-2 text-muted rounded capitalize">
+                        {scenario.difficulty}
                       </span>
-                      <span className="text-xs terminal-text text-robotic-yellow/50">
-                        [{scenario.duration_minutes}MIN]
+                      <span className="text-xs font-medium px-2 py-0.5 bg-surface-2 text-muted rounded">
+                        {scenario.duration_minutes} min
                       </span>
                     </>
                   )}
                 </div>
-                <div
-                  className={`text-xs ${isSocialCrisis ? 'text-blue-300/50' : 'terminal-text text-robotic-yellow/50'}`}
-                >
+                <div className="text-xs text-muted">
                   {scenario.objectives.length} objective
                   {scenario.objectives.length !== 1 ? 's' : ''}
                 </div>
@@ -199,14 +190,10 @@ export const Scenarios = () => {
         </div>
 
         {scenarios.length === 0 && (
-          <div className="military-border p-12 text-center">
-            <p className="text-lg terminal-text text-robotic-yellow/50 mb-2">
-              [NO_SCENARIOS] No scenarios available
-            </p>
+          <div className="bg-surface border border-border rounded-xl shadow-sm p-12 text-center">
+            <p className="text-lg text-muted mb-2">No scenarios available</p>
             {isTrainer && (
-              <p className="text-sm terminal-text text-robotic-yellow/30">
-                Create your first scenario to get started
-              </p>
+              <p className="text-sm text-muted">Create your first scenario to get started</p>
             )}
           </div>
         )}
@@ -222,54 +209,53 @@ export const Scenarios = () => {
 
       {/* Participant brief-only modal */}
       {selectedScenario && !isTrainer && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-          <div className="military-border bg-robotic-gray-300 p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-start mb-4">
-              <h2 className="text-xl terminal-text uppercase">{selectedScenario.title}</h2>
+              <h2 className="text-xl font-bold text-brand">{selectedScenario.title}</h2>
               <button
                 onClick={() => setSelectedScenario(null)}
-                className="text-robotic-orange hover:text-robotic-yellow"
+                className="text-muted hover:text-ink text-lg"
+                aria-label="Close"
               >
-                [CLOSE]
+                ✕
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                  [DESCRIPTION]
+                <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                  Description
                 </h3>
-                <p className="text-sm terminal-text">{selectedScenario.description}</p>
+                <p className="text-sm text-ink">{selectedScenario.description}</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                    [CATEGORY]
+                  <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                    Category
                   </h3>
-                  <p className="text-sm terminal-text">{selectedScenario.category}</p>
+                  <p className="text-sm text-ink capitalize">{selectedScenario.category}</p>
                 </div>
                 <div>
-                  <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                    [DIFFICULTY]
+                  <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                    Difficulty
                   </h3>
-                  <p className="text-sm terminal-text">{selectedScenario.difficulty}</p>
+                  <p className="text-sm text-ink capitalize">{selectedScenario.difficulty}</p>
                 </div>
                 <div>
-                  <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                    [DURATION]
+                  <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                    Duration
                   </h3>
-                  <p className="text-sm terminal-text">
-                    {selectedScenario.duration_minutes} minutes
-                  </p>
+                  <p className="text-sm text-ink">{selectedScenario.duration_minutes} minutes</p>
                 </div>
               </div>
               {selectedScenario.objectives.length > 0 && (
                 <div>
-                  <h3 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                    [OBJECTIVES]
+                  <h3 className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                    Objectives
                   </h3>
                   <ul className="list-disc list-inside space-y-1">
                     {selectedScenario.objectives.map((obj, idx) => (
-                      <li key={idx} className="text-sm terminal-text">
+                      <li key={idx} className="text-sm text-ink">
                         {obj}
                       </li>
                     ))}

@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blueprint Review — what it means &amp; what happens next</title>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+    <style>
+      :root {
+        --bg: #0e1116; --panel: #161b22; --panel-2: #1c2230; --border: #2b3340;
+        --text: #e6edf3; --muted: #9aa7b4; --accent: #4ea1ff; --accent-2: #7ee787;
+        --warn: #ffb454; --danger: #ff7b72; --add-border: #2ea043;
+        --code-bg: #0b0f14; --radius: 10px;
+        --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.6; }
+      .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 24px 120px; }
+      header.hero { background: linear-gradient(135deg, #11203a 0%, #161b22 60%); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; margin-bottom: 28px; }
+      header.hero h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: -0.02em; }
+      header.hero p { margin: 0; color: var(--muted); font-size: 16px; max-width: 820px; }
+      .badges { margin-top: 18px; display: flex; gap: 8px; flex-wrap: wrap; }
+      .badge { font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 999px; background: var(--panel-2); border: 1px solid var(--border); color: var(--muted); }
+      .badge.ok { color: var(--accent-2); border-color: var(--add-border); }
+      h2 { margin: 44px 0 12px; font-size: 22px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+      h3 { margin: 26px 0 8px; font-size: 17px; color: #cdd9e5; }
+      h4 { margin: 16px 0 6px; font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+      p, li { color: var(--text); }
+      a { color: var(--accent); text-decoration: none; } a:hover { text-decoration: underline; }
+      code.inline { font-family: var(--mono); font-size: 13px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; color: #d8e0ea; }
+      .panel { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px 20px; margin: 16px 0; }
+      .grid { display: grid; gap: 16px; } .grid.cols-2 { grid-template-columns: 1fr 1fr; }
+      @media (max-width: 760px) { .grid.cols-2 { grid-template-columns: 1fr; } }
+      pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; margin: 8px 0 18px; }
+      pre code { font-family: var(--mono); font-size: 12.5px; line-height: 1.6; color: #d8e0ea; white-space: pre; }
+      .cmt { color: #6e7681; } .str { color: #a5d6ff; } .kw { color: #ff7b72; }
+      table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 14px; }
+      th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+      .callout { border-radius: 8px; padding: 14px 16px; margin: 16px 0; border: 1px solid; }
+      .callout.safety { background: rgba(255,123,114,0.06); border-color: #6b2b27; }
+      .callout.warnb { background: rgba(255,180,84,0.06); border-color: #6b4a1f; }
+      .callout.fallback { background: rgba(126,231,135,0.06); border-color: #1f5c2e; }
+      .callout.note { background: rgba(78,161,255,0.06); border-color: #1f3b5c; }
+      .callout strong { color: var(--text); }
+      .toc { columns: 2; column-gap: 28px; } .toc a { display: block; padding: 3px 0; font-size: 14px; }
+      @media (max-width: 600px) { .toc { columns: 1; } }
+      .mermaid { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin: 16px 0; }
+      .tag { font-family: var(--mono); font-size: 11px; padding: 1px 7px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+      .tag.hostile { color: var(--danger); border-color: #6b2b27; }
+      .tag.amplifier { color: var(--warn); border-color: #6b4a1f; }
+      .tag.authority { color: var(--accent); border-color: #1f3b5c; }
+      .tag.defender { color: var(--accent-2); border-color: var(--add-border); }
+      .tag.wildcard, .tag.insider { color: var(--muted); }
+      .footer { margin-top: 56px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); padding-top: 16px; }
+      ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+      ol.steps > li { position: relative; padding: 8px 0 8px 38px; }
+      ol.steps > li::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 8px; width: 26px; height: 26px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 50%; text-align: center; line-height: 26px; font-size: 12px; font-weight: 700; color: var(--accent); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header class="hero">
+        <h1>Blueprint Review — what it means &amp; what happens next</h1>
+        <p>
+          You're on the <strong>Blueprint Review</strong> step of the Crisis Simulation Wizard. The War Room has already
+          read your uploaded document and turned it into a structured <strong>Scenario Blueprint</strong>. This page is
+          your chance to see exactly what it understood before it builds the scenario. This guide decodes every panel on
+          that screen, then walks through precisely what happens when you press <strong>[NEXT]</strong> — both during
+          generation and later in the live session.
+        </p>
+        <div class="badges">
+          <span class="badge ok">Live example: Interfaith Firestorm</span>
+          <span class="badge">Structure confidence 100%</span>
+          <span class="badge">13 factions · 10 stages</span>
+        </div>
+      </header>
+
+      <div class="panel">
+        <h4 style="margin-top:0">Contents</h4>
+        <nav class="toc">
+          <a href="#where">1. Where you are in the pipeline</a>
+          <a href="#read">2. Reading your results, panel by panel</a>
+          <a href="#vocab">3. Confidence % and alignment, explained</a>
+          <a href="#next">4. What [NEXT] does (generation)</a>
+          <a href="#mapping">5. What each blueprint part becomes</a>
+          <a href="#live">6. What happens in the live session</a>
+          <a href="#gap">7. What to do about the Gap Report</a>
+        </nav>
+      </div>
+
+      <!-- 1 -->
+      <h2 id="where">1. Where you are in the pipeline</h2>
+      <p>This page is the checkpoint between understanding your document and building the game from it. Nothing has been generated yet — you are reviewing the <em>interpretation</em>.</p>
+      <div class="mermaid">
+flowchart LR
+  doc[Your document] --> ext["Extraction (2 LLM passes)"]
+  ext --> bp[(Scenario Blueprint)]
+  bp --> you["YOU ARE HERE: Blueprint Review"]
+  you -->|press NEXT| gen["Generation (NPCs, storyline, convergence, org page)"]
+  gen --> save["Compile + persist scenario (blueprint attached)"]
+  save --> live["Live session: Director + hive use the blueprint"]
+      </div>
+
+      <!-- 2 -->
+      <h2 id="read">2. Reading your results, panel by panel</h2>
+
+      <h3>Framework</h3>
+      <p>Your screen shows: <code class="inline">scenario-overview + staged-timeline + role-based bot instruction sheets + escalation ladder</code>. This is the system's <strong>classification of how your document is organized</strong> (the "schema discovery" pass). It confirms it recognized your doc as a faction/stage/escalation design — which is why it could structure it so completely. If you'd written a different shape (say an inject timeline or a decision tree), this line would say so, and the rest of the extraction would adapt.</p>
+
+      <h3>Structure Confidence — 100%</h3>
+      <p>This is how cleanly your document mapped to a structured blueprint. <strong>100% means it fit the structured shape extremely well</strong> — the generation will be driven by the structured fields, not the "raw-excerpt floor" (the fallback used only when a document is too unstructured to parse). High confidence here is exactly what you want: it means the trainer's design, not a loose paraphrase, is steering the build.</p>
+
+      <h3>Gap Report — please review</h3>
+      <div class="callout warnb">
+        The Gap Report surfaces <strong>inconsistencies or risks the system noticed but did not silently act on</strong>. Your two items:
+      </div>
+      <ol class="steps">
+        <li><strong>Far-Right faction includes a real external link</strong> (<code class="inline">archive.4plebs.org/pol/</code>). The system flags it because that conflicts with safe simulation. <em>What it will do:</em> the link is never fetched and never becomes content — it is dropped by the non-overridable safety layer and kept only as "intent to represent." You don't need to act unless you want to remove it from the source doc.</li>
+        <li><strong>Left-Wing Marxists description is ambiguous</strong> — "sympathetic to minority groups (including extremists)" could read as endorsing extremism. <em>Suggestion:</em> clarify in your doc that they support civil liberties without endorsing extremist actors, so the generated personas land where you intend.</li>
+      </ol>
+      <p>The Gap Report is advisory. You can proceed as-is (the safety layer handles item 1), or tweak the source doc and re-run for item 2.</p>
+
+      <h3>Factions (13)</h3>
+      <p>These are the stakeholder groups the system extracted, each given an <strong>alignment</strong> (its role in the crisis) and an <strong>extraction confidence %</strong>. Note it found <strong>13</strong>, more than the 7 you explicitly numbered — the discovery pass also picked up actor categories your doc mentioned in passing (Political Leaders, Police, Disinformation spreaders, Credible local voices, Victim families). Here is what each alignment does downstream:</p>
+      <table>
+        <thead><tr><th>Faction (from your screen)</th><th>Alignment</th><th>Role at generation &amp; runtime</th></tr></thead>
+        <tbody>
+          <tr><td>Jihadists (90%)</td><td><span class="tag hostile">hostile</span></td><td>Agitator — voiced live by the Scenario Director / hive; drives escalation</td></tr>
+          <tr><td>Far-Right / Great Replacement (80%)</td><td><span class="tag hostile">hostile</span></td><td>Agitator — voiced live; supplies the grievance "wedge" the hive pushes</td></tr>
+          <tr><td>Left-Wing Anti-Institutional Marxists (85%)</td><td><span class="tag amplifier">amplifier</span></td><td>Amplifies/criticizes; can be voiced by the Director to widen splits</td></tr>
+          <tr><td>Non-Violent Islamophobic Residents (90%)</td><td><span class="tag amplifier">amplifier</span></td><td>Amplifies blame; Director-eligible</td></tr>
+          <tr><td>Political Leaders (60%)</td><td><span class="tag amplifier">amplifier</span></td><td>Amplifies/opportunistic; Director-eligible</td></tr>
+          <tr><td>Disinformation spreaders (62%)</td><td><span class="tag amplifier">amplifier</span></td><td>Pushes misinformation beats; Director-eligible</td></tr>
+          <tr><td>Government Agencies &amp; Local Media (80%)</td><td><span class="tag authority">authority</span></td><td>Factual source / official voice; NOT agitator-voiced</td></tr>
+          <tr><td>Police (62%)</td><td><span class="tag authority">authority</span></td><td>Authority actor; NOT agitator-voiced</td></tr>
+          <tr><td>Victim families (62%)</td><td><span class="tag defender">defender</span></td><td>Calls for calm/unity; a de-escalation voice</td></tr>
+          <tr><td>Credible local resident voices (62%)</td><td><span class="tag defender">defender</span></td><td>Bridge-builders / de-escalation voices</td></tr>
+          <tr><td>General Concerned Residents (80%)</td><td><span class="tag wildcard">wildcard</span></td><td>Mixed reactions; can swing either way</td></tr>
+          <tr><td>Left-wing groups (60%)</td><td><span class="tag wildcard">wildcard</span></td><td>Ambiguous stance</td></tr>
+          <tr><td>Non-Violent Conservative Muslims (80%)</td><td><span class="tag insider">insider</span></td><td>Community-protective voice; internal perspective</td></tr>
+        </tbody>
+      </table>
+      <div class="callout note"><strong>Why alignment matters most:</strong> at runtime the live engines only let <em>agitator-aligned</em> factions (hostile / amplifier) speak as antagonists. So your Jihadists, Far-Right, Marxists, Islamophobic residents, Political leaders, and Disinformation spreaders are the ones the Scenario Director will actively voice to escalate — while authorities, defenders, and the community sit in the broader cast.</p></div>
+
+      <h3>Timeline (10)</h3>
+      <p>Breaking News → Rumour Surge → Identity Attribution → Community Backlash → Extremist Exploitation → Government/Police Response → Interfaith Intervention → Media Scrutiny → Public Safety Anxiety → Stabilisation or Escalation. These 10 stages are mapped proportionally across the exercise duration and used to (a) order the generated injects and (b) tell the live Director which stage the session is in, so faction behavior matches the moment.</p>
+
+      <h3>Narrative Mutations (10)</h3>
+      <p>False suspect names, fake private-chat screenshots, rumours of additional attacks, claims of police cover-up, and so on. These become the <strong>misinformation backbone</strong> of the scenario — seeded into the fact sheet as trackable false claims and scheduled as misinformation injects players must detect and counter.</p>
+
+      <h3>Unmapped (11) — kept for context</h3>
+      <p>This is the <strong>never-lose catch-all</strong>. Anything the system couldn't confidently place into a field lands here instead of being discarded — e.g. scenario framing details, extra actor categories, fragmentary lines, and a note that the "Non-Violent Conservative Muslims" AI-behaviour guidance was truncated in that chunk. It's surfaced so you can see what wasn't fully structured; the raw text is still available to generation as context, so these aren't lost — just not first-class fields.</p>
+
+      <!-- 3 -->
+      <h2 id="vocab">3. Confidence % and alignment, explained</h2>
+      <div class="grid cols-2">
+        <div class="panel">
+          <h4 style="margin-top:0">The % next to each faction</h4>
+          <p style="margin:0">Extraction confidence — how sure the model is that it captured that faction accurately from your text. Higher = a cleaner, more explicit description in your doc. Lower (e.g. the 60-62% ones) usually means the faction was mentioned briefly or implied rather than fully specified.</p>
+        </div>
+        <div class="panel">
+          <h4 style="margin-top:0">Alignment (open vocabulary)</h4>
+          <p style="margin:0"><span class="tag hostile">hostile</span> agitator &middot; <span class="tag amplifier">amplifier</span> spreads/intensifies &middot; <span class="tag authority">authority</span> official/factual &middot; <span class="tag defender">defender</span> calms/protects &middot; <span class="tag wildcard">wildcard</span> ambiguous &middot; <span class="tag insider">insider</span> internal voice. These aren't a fixed list — the system can use whatever label fits your document.</p>
+        </div>
+      </div>
+
+      <!-- 4 -->
+      <h2 id="next">4. What [NEXT] does — the generation step</h2>
+      <p>Pressing [NEXT] moves you to <strong>Building</strong>, which runs a chain of generation calls, each receiving the blueprint, then <strong>Compile</strong>, which saves the finished scenario. Here is the exact sequence:</p>
+      <div class="mermaid">
+flowchart TD
+  next["[NEXT] from Blueprint Review"] --> npc["1. NPCs + Fact Sheet + Communities (honors your 13 factions)"]
+  npc --> story["2. Storyline injects (bucketed into your 10 stages)"]
+  story --> conv["3. Convergence: narrative, objectives, dimension labels, gates"]
+  conv --> org["4. Org page identity"]
+  org --> compile["5. Compile + persist (blueprint saved to the scenario)"]
+  compile --> ready["Scenario ready to run"]
+      </div>
+      <ol class="steps">
+        <li><strong>Characters &amp; fact sheet.</strong> Because your factions coverage is high, the generator runs its "honor" path: it creates personas <em>per faction</em>, tagging each with its <code class="inline">faction_id</code> and alignment, distributed across your 13 groups — plus a large background cast so the feed feels real. It also builds the fact sheet (confirmed facts + false claims) and the affected communities.</li>
+        <li><strong>Storyline.</strong> It generates the timed injects (posts, emails, calls) that make up the crisis arc, ordered along your 10-stage timeline and seeded with your narrative mutations as misinformation.</li>
+        <li><strong>Convergence.</strong> It writes the scenario narrative/briefing, measurable objectives, the four scoring-dimension labels tailored to this crisis, and the condition-based "convergence gates" that fire when players do (or don't) act.</li>
+        <li><strong>Org page.</strong> It builds the organization's social identity/history for the simulated platform.</li>
+        <li><strong>Compile &amp; persist.</strong> Everything is assembled and saved as a scenario — and the <strong>blueprint is stored on the scenario itself</strong> so the live engines can read it later.</li>
+      </ol>
+
+      <!-- 5 -->
+      <h2 id="mapping">5. What each blueprint part becomes</h2>
+      <table>
+        <thead><tr><th>Blueprint part (this screen)</th><th>Becomes in the generated scenario</th></tr></thead>
+        <tbody>
+          <tr><td>Factions (13) + alignment</td><td>NPC personas tagged with <code class="inline">faction_id</code>/alignment, distributed across the cast</td></tr>
+          <tr><td>Timeline (10 stages)</td><td>The ordering/pacing of timed injects + the runtime stage clock</td></tr>
+          <tr><td>Narrative mutations (10)</td><td>False claims in the fact sheet + scheduled misinformation injects</td></tr>
+          <tr><td>Objectives / participant decisions</td><td>Measurable exercise objectives + scoring</td></tr>
+          <tr><td>Hostile/amplifier factions</td><td>The agitators the live Director &amp; hive will voice</td></tr>
+          <tr><td>Gap Report + Unmapped</td><td>Kept on the scenario as context; safety items enforced regardless</td></tr>
+        </tbody>
+      </table>
+
+      <!-- 6 -->
+      <h2 id="live">6. What happens in the live session</h2>
+      <p>Once trainees run the scenario, the blueprint keeps working — this is the Phase 5 runtime layer:</p>
+      <ul>
+        <li><strong>Scenario Director.</strong> On a bounded cadence it reads the blueprint + the live situation and makes one of your <em>agitator</em> factions act in-character for the current stage — escalating when things are tense, going quiet when players respond well. For this scenario that means Jihadist, Far-Right, Marxist, Islamophobic-resident, political, and disinformation beats appear over time, paced to the 10-stage arc.</li>
+        <li><strong>Extremist hive.</strong> Adopts your lead hostile faction's narratives as its "wedge," so its divisive posts reflect <em>your</em> document's grievance rather than a generic one.</li>
+        <li><strong>Safety, always.</strong> Every agitator post stays recognizable-but-not-operational: no real orgs/ideologies/slogans, no calls to violence — the 4chan link and literal slogans from your doc never surface as content.</li>
+      </ul>
+      <div class="callout fallback"><strong>Reward loop:</strong> the Director reads the same scoring signals players move. Clear, empathetic, timely official communication raises trust and narrative control, which makes the agitator factions act less — so good crisis-comms by the trainees visibly calms the simulated firestorm.</div>
+
+      <!-- 7 -->
+      <h2 id="gap">7. What to do about the Gap Report before proceeding</h2>
+      <div class="callout safety">
+        You can press [NEXT] now — the scenario will build correctly and the safety layer already neutralizes the 4chan link. The Gap Report is there so you can optionally tighten the source document: (1) remove the external link if you don't want it even as intent, and (2) clarify the Marxist faction's stance so its personas land exactly where you intend. If you change the doc, re-upload and re-run this step to refresh the blueprint.
+      </div>
+
+      <div class="footer">
+        This explains the live behavior of the document-driven blueprint (Phases 0-3) and the runtime Scenario Director (Phase 5), now in production. Mermaid diagrams render with internet on first load.
+      </div>
+    </div>
+    <script>
+      mermaid.initialize({ startOnLoad: true, theme: "dark", securityLevel: "strict" });
+    </script>
+  </body>
+</html>

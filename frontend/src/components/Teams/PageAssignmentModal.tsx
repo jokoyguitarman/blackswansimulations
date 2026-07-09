@@ -119,46 +119,42 @@ export const PageAssignmentModal = ({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-        <div className="military-border bg-robotic-gray-300 p-8">
-          <p className="terminal-text text-robotic-yellow">Loading...</p>
+      <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50">
+        <div className="bg-surface border border-border rounded-2xl shadow-lg p-8">
+          <p className="terminal-text text-ink">Loading…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-6 max-w-3xl w-full max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg p-6 max-w-3xl w-full max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-xl terminal-text uppercase">[PAGE_ASSIGNMENTS]</h2>
+          <h2 className="text-xl terminal-text">Page assignments</h2>
           {saving && (
-            <span className="text-xs terminal-text text-robotic-orange px-2 py-1 border border-robotic-orange/50 rounded">
-              saving...
+            <span className="text-xs terminal-text text-accent px-2 py-1 border border-accent/50 rounded">
+              saving…
             </span>
           )}
         </div>
 
         {pages.length === 0 ? (
-          <p className="terminal-text text-robotic-yellow/60 py-8 text-center">
+          <p className="terminal-text text-muted py-8 text-center">
             No org pages exist for this session yet. Pages are created from the scenario when the
             session begins.
           </p>
         ) : (
           <div className="flex-1 overflow-y-auto min-h-0 space-y-1 pr-1">
-            <div className="grid grid-cols-2 gap-2 items-center sticky top-0 bg-robotic-gray-300 z-10 py-2 border-b border-robotic-yellow/30">
-              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
-                Participant
-              </div>
-              <div className="text-xs terminal-text text-robotic-yellow/60 uppercase">
-                Controls Page
-              </div>
+            <div className="grid grid-cols-2 gap-2 items-center sticky top-0 bg-surface z-10 py-2 border-b border-border">
+              <div className="text-xs terminal-text text-muted uppercase">Participant</div>
+              <div className="text-xs terminal-text text-muted uppercase">Controls Page</div>
             </div>
 
             {participants.map((participant) => (
               <div
                 key={participant.user_id}
-                className="grid grid-cols-2 gap-2 items-center py-2 border-b border-robotic-yellow/10"
+                className="grid grid-cols-2 gap-2 items-center py-2 border-b border-border"
               >
                 <div className="text-sm terminal-text font-medium truncate">
                   {getUserName(participant.user_id)}
@@ -166,7 +162,7 @@ export const PageAssignmentModal = ({
                 <select
                   value={selection[participant.user_id] || ''}
                   onChange={(e) => handleChange(participant.user_id, e.target.value)}
-                  className="bg-robotic-gray-200 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-sm px-2 py-1 rounded"
+                  className="military-input terminal-text text-sm px-2 py-1"
                 >
                   <option value="">None</option>
                   {pages.map((pg) => (
@@ -181,9 +177,9 @@ export const PageAssignmentModal = ({
           </div>
         )}
 
-        <div className="flex gap-4 pt-4 mt-2 border-t border-robotic-yellow/30 flex-shrink-0">
+        <div className="flex gap-4 pt-4 mt-2 border-t border-border flex-shrink-0">
           <button onClick={onClose} disabled={saving} className="military-button px-6 py-3 flex-1">
-            [CLOSE]
+            Close
           </button>
         </div>
       </div>

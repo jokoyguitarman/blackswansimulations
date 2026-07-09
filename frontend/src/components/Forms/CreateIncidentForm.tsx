@@ -51,20 +51,18 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="military-border bg-surface p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-start mb-4">
-          <h2 className="text-xl terminal-text uppercase">[CREATE_INCIDENT]</h2>
-          <button onClick={onClose} className="text-robotic-orange hover:text-robotic-yellow">
-            [CLOSE]
+          <h2 className="text-xl terminal-text">Create incident</h2>
+          <button onClick={onClose} className="text-accent hover:text-ink">
+            Close
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [TITLE] *
-            </label>
+            <label className="block text-sm terminal-text text-muted mb-2">Title *</label>
             <input
               type="text"
               value={formData.title}
@@ -76,9 +74,7 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
           </div>
 
           <div>
-            <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [DESCRIPTION] *
-            </label>
+            <label className="block text-sm terminal-text text-muted mb-2">Description *</label>
             <textarea
               value={formData.description}
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -91,9 +87,7 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [TYPE] *
-              </label>
+              <label className="block text-sm terminal-text text-muted mb-2">Type *</label>
               <input
                 type="text"
                 value={formData.type}
@@ -105,9 +99,7 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
             </div>
 
             <div>
-              <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [SEVERITY] *
-              </label>
+              <label className="block text-sm terminal-text text-muted mb-2">Severity *</label>
               <select
                 value={formData.severity}
                 onChange={(e) =>
@@ -126,9 +118,7 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
 
           <div className="grid grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [LATITUDE]
-              </label>
+              <label className="block text-sm terminal-text text-muted mb-2">Latitude</label>
               <input
                 type="number"
                 step="any"
@@ -140,9 +130,7 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
             </div>
 
             <div>
-              <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [LONGITUDE]
-              </label>
+              <label className="block text-sm terminal-text text-muted mb-2">Longitude</label>
               <input
                 type="number"
                 step="any"
@@ -154,9 +142,7 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
             </div>
 
             <div>
-              <label className="block text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [CASUALTIES]
-              </label>
+              <label className="block text-sm terminal-text text-muted mb-2">Casualties</label>
               <input
                 type="number"
                 min="0"
@@ -168,20 +154,20 @@ export const CreateIncidentForm = ({ sessionId, onClose, onSuccess }: CreateInci
             </div>
           </div>
 
-          <div className="flex gap-4 pt-4 border-t border-robotic-yellow/30">
+          <div className="flex gap-4 pt-4 border-t border-border">
             <button
               type="button"
               onClick={onClose}
-              className="military-button px-6 py-3 flex-1 border-robotic-gray-200 text-robotic-gray-50"
+              className="military-button px-6 py-3 flex-1 border-border text-muted"
             >
-              [CANCEL]
+              Cancel
             </button>
             <button
               type="submit"
               disabled={loading}
               className="military-button px-6 py-3 flex-1 disabled:opacity-50"
             >
-              {loading ? '[CREATING...]' : '[CREATE_INCIDENT]'}
+              {loading ? 'Creating…' : 'Create incident'}
             </button>
           </div>
         </form>

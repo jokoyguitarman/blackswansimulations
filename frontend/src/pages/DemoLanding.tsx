@@ -99,23 +99,21 @@ export function DemoLanding() {
 
   return (
     <div className="min-h-screen scanline flex items-center justify-center p-8">
-      <div className="military-border bg-robotic-gray-300 p-8 max-w-2xl w-full">
+      <div className="military-border bg-surface p-8 max-w-2xl w-full">
         <div className="flex items-center gap-4 mb-8">
           <h1 className="text-2xl terminal-text uppercase tracking-wider">Demo Launcher</h1>
-          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-robotic-red text-white rounded">
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-danger text-white rounded">
             DEMO
           </span>
         </div>
 
         {/* Scenario picker */}
         <div className="mb-6">
-          <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-            Scenario
-          </label>
+          <label className="block text-xs terminal-text text-muted uppercase mb-2">Scenario</label>
           <select
             value={selectedScenario}
             onChange={(e) => setSelectedScenario(e.target.value)}
-            className="w-full px-4 py-3 bg-robotic-gray-400 border border-robotic-yellow/30 text-sm terminal-text text-robotic-yellow focus:border-robotic-yellow outline-none"
+            className="w-full px-4 py-3 bg-bg border border-border text-sm terminal-text text-ink focus:border-accent outline-none"
           >
             {scenarios.map((s) => (
               <option key={s.id} value={s.id}>
@@ -127,7 +125,7 @@ export function DemoLanding() {
 
         {/* View mode */}
         <div className="mb-6">
-          <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
+          <label className="block text-xs terminal-text text-muted uppercase mb-2">
             Viewing Mode
           </label>
           <div className="grid grid-cols-3 gap-2">
@@ -138,16 +136,12 @@ export function DemoLanding() {
                   onClick={() => setViewMode(mode)}
                   className={`p-3 border text-left transition-colors ${
                     viewMode === mode
-                      ? 'border-robotic-yellow bg-robotic-yellow/10'
-                      : 'border-robotic-yellow/20 hover:border-robotic-yellow/40'
+                      ? 'border-accent bg-accent/10'
+                      : 'border-border hover:border-accent'
                   }`}
                 >
-                  <div className="text-sm terminal-text text-robotic-yellow font-bold">
-                    {desc.label}
-                  </div>
-                  <div className="text-[10px] terminal-text text-robotic-yellow/50 mt-1">
-                    {desc.sub}
-                  </div>
+                  <div className="text-sm terminal-text text-ink font-bold">{desc.label}</div>
+                  <div className="text-[10px] terminal-text text-muted mt-1">{desc.sub}</div>
                 </button>
               ),
             )}
@@ -156,7 +150,7 @@ export function DemoLanding() {
 
         {/* AI Difficulty */}
         <div className="mb-6">
-          <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
+          <label className="block text-xs terminal-text text-muted uppercase mb-2">
             AI Skill Level
           </label>
           <div className="grid grid-cols-3 gap-2">
@@ -166,19 +160,19 @@ export function DemoLanding() {
                   level: 'novice' as AIDifficulty,
                   label: 'Novice',
                   sub: 'Makes frequent mistakes. Vague decisions, poor map usage. Great for showcasing AI reviewer.',
-                  color: 'text-green-400',
+                  color: 'text-success',
                 },
                 {
                   level: 'intermediate' as AIDifficulty,
                   label: 'Intermediate',
                   sub: 'Solid but imperfect. Occasional errors. Balanced realism for demos.',
-                  color: 'text-yellow-400',
+                  color: 'text-warning',
                 },
                 {
                   level: 'advanced' as AIDifficulty,
                   label: 'Advanced',
                   sub: 'Expert play. Full intel access, precise map ops, standard-compliant decisions.',
-                  color: 'text-red-400',
+                  color: 'text-danger',
                 },
               ] as const
             ).map(({ level, label, sub, color }) => (
@@ -187,12 +181,12 @@ export function DemoLanding() {
                 onClick={() => setDifficulty(level)}
                 className={`p-3 border text-left transition-colors ${
                   difficulty === level
-                    ? 'border-robotic-yellow bg-robotic-yellow/10'
-                    : 'border-robotic-yellow/20 hover:border-robotic-yellow/40'
+                    ? 'border-accent bg-accent/10'
+                    : 'border-border hover:border-accent'
                 }`}
               >
                 <div className={`text-sm terminal-text font-bold ${color}`}>{label}</div>
-                <div className="text-[10px] terminal-text text-robotic-yellow/50 mt-1">{sub}</div>
+                <div className="text-[10px] terminal-text text-muted mt-1">{sub}</div>
               </button>
             ))}
           </div>
@@ -200,7 +194,7 @@ export function DemoLanding() {
 
         {/* Speed */}
         <div className="mb-8">
-          <label className="block text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
+          <label className="block text-xs terminal-text text-muted uppercase mb-2">
             Speed: {speed}x
           </label>
           <div className="flex items-center gap-3">
@@ -220,8 +214,8 @@ export function DemoLanding() {
                   onClick={() => setSpeed(s)}
                   className={`px-2 py-1 text-xs terminal-text border ${
                     speed === s
-                      ? 'border-robotic-yellow text-robotic-yellow'
-                      : 'border-robotic-yellow/20 text-robotic-yellow/50 hover:text-robotic-yellow/80'
+                      ? 'border-accent text-ink'
+                      : 'border-border text-muted hover:text-ink'
                   }`}
                 >
                   {s}x
@@ -232,7 +226,7 @@ export function DemoLanding() {
         </div>
 
         {error && (
-          <div className="mb-4 p-3 border border-robotic-red bg-robotic-red/10 text-sm terminal-text text-robotic-red">
+          <div className="mb-4 p-3 border border-danger bg-danger/10 text-sm terminal-text text-danger">
             {error}
           </div>
         )}
@@ -240,14 +234,14 @@ export function DemoLanding() {
         <div className="flex items-center justify-between">
           <button
             onClick={() => navigate('/dashboard')}
-            className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10"
+            className="px-4 py-2 text-xs terminal-text uppercase border border-accent text-accent hover:bg-accent/10"
           >
             ← Dashboard
           </button>
           <button
             onClick={handleLaunch}
             disabled={launching || !selectedScenario}
-            className="px-8 py-3 text-sm terminal-text uppercase font-bold bg-robotic-red text-white hover:bg-robotic-red/90 disabled:opacity-50 disabled:cursor-not-allowed tracking-wider"
+            className="px-8 py-3 text-sm terminal-text uppercase font-bold bg-danger text-white hover:bg-danger/90 disabled:opacity-50 disabled:cursor-not-allowed tracking-wider"
           >
             {launching ? 'Launching...' : 'Launch Demo'}
           </button>
