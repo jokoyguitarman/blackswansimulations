@@ -1,5 +1,7 @@
 import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { api } from '../lib/api';
+import { useAuth } from '../contexts/AuthContext';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -137,6 +139,23 @@ export const SocialCrisisWizard = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumedRef = useRef(false);
+
+  // Payment portal: scenario generation requires a scenario credit
+  // (granted when a client pays an invoice). Admins bypass; the server
+  // enforces this regardless - the panel below is UX only.
+  const { user } = useAuth();
+  const isAdminUser = user?.role === 'admin';
+  const [scenarioCredits, setScenarioCredits] = useState<number | null>(null);
+  useEffect(() => {
+    if (isAdminUser) {
+      setScenarioCredits(1);
+      return;
+    }
+    api.billing
+      .getCredits()
+      .then((res) => setScenarioCredits(res.data.scenario))
+      .catch(() => setScenarioCredits(1)); // fail open in UI; server enforces
+  }, [isAdminUser]);
 
   /* Draft persistence */
   const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
@@ -1898,6 +1917,29 @@ export const SocialCrisisWizard = () => {
   );
 
   /* ─── Main return ──────────────────────────────────────────────────── */
+
+  if (scenarioCredits === 0 && !isAdminUser) {
+    return (
+      <div className="min-h-screen scanline flex items-center justify-center p-6">
+        <div className="bg-surface border border-border rounded-xl shadow-sm p-8 text-center max-w-md">
+          <div className="text-3xl mb-3">🔒</div>
+          <h1 className="text-lg font-extrabold text-brand mb-2">
+            Scenario generation requires a paid engagement
+          </h1>
+          <p className="text-sm text-muted mb-6">
+            You have <b>0 scenario credits</b>. Invoice a client from the Clients page — when they
+            pay, the War Room unlocks automatically with 1 scenario credit and 2 session credits.
+          </p>
+          <button
+            onClick={() => navigate('/clients')}
+            className="military-button px-6 py-2.5 text-sm"
+          >
+            Go to Clients &amp; billing
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen scanline p-2 sm:p-6">

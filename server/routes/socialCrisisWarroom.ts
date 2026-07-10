@@ -28,10 +28,39 @@ import { extractBlueprint } from '../services/blueprint/blueprintExtractionServi
 import { emptyBlueprint, coerceBlueprint } from '../services/blueprint/blueprintTypes.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
+import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
+import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
+
+/**
+ * Credit gate for cost-incurring social-crisis Warroom steps: trainer role
+ * required, and non-admins need >= 1 scenario credit to run the AI generator
+ * steps. The credit itself is only consumed at /compile. Only admins bypass.
+ */
+const NO_SCENARIO_CREDITS_BODY = {
+  error: 'No scenario credits. Invoice a client from Clients & billing to unlock the War Room.',
+  code: 'NO_SCENARIO_CREDITS',
+};
+
+const scenarioCreditGate = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const user = req.user!;
+  if (user.role !== 'trainer' && user.role !== 'admin') {
+    res.status(403).json({ error: 'Only trainers can use the War Room' });
+    return;
+  }
+  if (!isAdmin(user) && !(await hasCredit(user.id, 'scenario'))) {
+    res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+    return;
+  }
+  next();
+};
 
 // In-memory job store for async AI generation tasks
 const aiJobs = new Map<
@@ -57,6 +86,7 @@ setInterval(
 router.post(
   '/generate-npcs',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -130,6 +160,7 @@ router.get('/generate-npcs/status/:jobId', requireAuth, async (req: Authenticate
 router.post(
   '/suggest-teams',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -156,6 +187,7 @@ router.post(
 router.post(
   '/generate-storyline',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -217,6 +249,7 @@ router.post(
 router.post(
   '/generate-storylines',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -284,6 +317,7 @@ router.post(
 router.post(
   '/generate-convergence',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -348,6 +382,7 @@ router.post(
 router.post(
   '/research',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -458,6 +493,19 @@ router.post(
       return res.status(403).json({ error: 'Only trainers can compile scenarios' });
     }
 
+    // The compile consumes the scenario credit. Consume up-front (race-safe)
+    // before starting the async job; refund if compilation fails.
+    let creditInvoiceId: string | null = null;
+    let creditLedgerId: string | null = null;
+    if (!isAdmin(user)) {
+      const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+      if (!consume.ok) {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+      }
+      creditInvoiceId = consume.fundingInvoiceId ?? null;
+      creditLedgerId = consume.ledgerId ?? null;
+    }
+
     const jobId = `compile_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
     res.json({ job_id: jobId, status: 'generating' });
@@ -519,6 +567,14 @@ router.post(
         }
 
         const scenarioId = await persistSocialCrisisScenario(payload, user.id);
+
+        // Backfill the scenario id onto the credit spend row for auditing.
+        if (creditLedgerId) {
+          await supabaseAdmin
+            .from('credit_ledger')
+            .update({ scenario_id: scenarioId })
+            .eq('id', creditLedgerId);
+        }
 
         // Pre-generate images in background (doesn't block compile result)
         const personas = body.personas as NPCPersona[];
@@ -587,6 +643,9 @@ router.post(
         logger.info({ jobId, scenarioId }, 'Compile completed');
       } catch (err) {
         logger.error({ err, jobId }, 'Social crisis compile failed');
+        if (creditLedgerId) {
+          await refundCredit(user.id, 'scenario', creditInvoiceId);
+        }
         aiJobs.set(jobId, { status: 'failed', error: 'Compilation failed', startedAt: Date.now() });
       }
     })();
@@ -594,21 +653,26 @@ router.post(
 );
 
 // Keep old endpoints for backward compatibility
-router.post('/suggest-communities', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { crisis_type, context, country, location } = req.body;
-    const result = await generateNPCsAndFactSheet(
-      crisis_type || '',
-      context || '',
-      country || 'Singapore',
-      location || '',
-    );
-    res.json({ data: result.communities });
-  } catch (err) {
-    logger.error({ err }, 'Failed to suggest communities');
-    res.status(500).json({ error: 'Failed' });
-  }
-});
+router.post(
+  '/suggest-communities',
+  requireAuth,
+  scenarioCreditGate,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { crisis_type, context, country, location } = req.body;
+      const result = await generateNPCsAndFactSheet(
+        crisis_type || '',
+        context || '',
+        country || 'Singapore',
+        location || '',
+      );
+      res.json({ data: result.communities });
+    } catch (err) {
+      logger.error({ err }, 'Failed to suggest communities');
+      res.status(500).json({ error: 'Failed' });
+    }
+  },
+);
 
 router.post('/generate-sop', requireAuth, async (_req: AuthenticatedRequest, res) => {
   const sop = buildSOPFromResearch({
@@ -623,42 +687,53 @@ router.post('/generate-sop', requireAuth, async (_req: AuthenticatedRequest, res
   res.json({ data: sop });
 });
 
-router.post('/generate-personas', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { crisis_type, context, country, location } = req.body;
-    const result = await generateNPCsAndFactSheet(
-      crisis_type || '',
-      context || '',
-      country || 'Singapore',
-      location || '',
-    );
-    res.json({ data: result.personas });
-  } catch (err) {
-    logger.error({ err }, 'Failed to generate personas');
-    res.status(500).json({ error: 'Failed' });
-  }
-});
+router.post(
+  '/generate-personas',
+  requireAuth,
+  scenarioCreditGate,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { crisis_type, context, country, location } = req.body;
+      const result = await generateNPCsAndFactSheet(
+        crisis_type || '',
+        context || '',
+        country || 'Singapore',
+        location || '',
+      );
+      res.json({ data: result.personas });
+    } catch (err) {
+      logger.error({ err }, 'Failed to generate personas');
+      res.status(500).json({ error: 'Failed' });
+    }
+  },
+);
 
-router.post('/generate-factsheet', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { crisis_type, context, country, location } = req.body;
-    const result = await generateNPCsAndFactSheet(
-      crisis_type || '',
-      context || '',
-      country || 'Singapore',
-      location || '',
-    );
-    res.json({ data: result.factSheet });
-  } catch (err) {
-    logger.error({ err }, 'Failed to generate factsheet');
-    res.status(500).json({ error: 'Failed' });
-  }
-});
+router.post(
+  '/generate-factsheet',
+  requireAuth,
+  scenarioCreditGate,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { crisis_type, context, country, location } = req.body;
+      const result = await generateNPCsAndFactSheet(
+        crisis_type || '',
+        context || '',
+        country || 'Singapore',
+        location || '',
+      );
+      res.json({ data: result.factSheet });
+    } catch (err) {
+      logger.error({ err }, 'Failed to generate factsheet');
+      res.status(500).json({ error: 'Failed' });
+    }
+  },
+);
 
 // Generate org page identity and branded history
 router.post(
   '/generate-org-page',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -833,6 +908,7 @@ router.post(
 router.post(
   '/extract-blueprint',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({

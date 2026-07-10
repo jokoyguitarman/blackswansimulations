@@ -88,4 +88,65 @@ router.patch(
   },
 );
 
+/**
+ * Self-service trainer signup (payment portal).
+ *
+ * SECURITY: this deliberately relaxes part of migration 189's posture - trainer
+ * accounts are now free to create because every cost-incurring action (Warroom
+ * AI steps, scenario compilation, session creation) is gated on credits, which
+ * only exist after a client pays a real invoice. The endpoint is a strict
+ * one-way door: only 'participant' -> 'trainer', never anything else, and it
+ * can never grant 'admin' (admin remains operator-provisioned only).
+ *
+ * The write uses the service-role client, which the 189 anti-escalation
+ * trigger intentionally trusts (auth.uid() is NULL in that context).
+ */
+router.post('/become-trainer', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+
+    const { data: profile, error: fetchError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id, role')
+      .eq('id', user.id)
+      .single();
+
+    if (fetchError || !profile) {
+      logger.error({ error: fetchError, userId: user.id }, 'Failed to load profile');
+      return res.status(500).json({ error: 'Failed to load profile' });
+    }
+
+    if (profile.role === 'trainer') {
+      return res.json({ data: { role: 'trainer' }, alreadyTrainer: true });
+    }
+    if (profile.role !== 'participant') {
+      return res.status(403).json({
+        error: 'Only participant accounts can be upgraded to trainer',
+      });
+    }
+
+    const { error: updateError } = await supabaseAdmin
+      .from('user_profiles')
+      .update({ role: 'trainer' })
+      .eq('id', user.id)
+      .eq('role', 'participant');
+
+    if (updateError) {
+      logger.error({ error: updateError, userId: user.id }, 'Failed to upgrade to trainer');
+      return res.status(500).json({ error: 'Failed to upgrade account' });
+    }
+
+    // Billing profile row (Stripe Connect onboarding starts as 'none').
+    await supabaseAdmin
+      .from('trainer_billing')
+      .upsert({ trainer_id: user.id, onboarding_status: 'none' }, { onConflict: 'trainer_id' });
+
+    logger.info({ userId: user.id }, 'Account upgraded to trainer (self-service)');
+    res.json({ data: { role: 'trainer' } });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in POST /profile/become-trainer');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export { router as profileRouter };

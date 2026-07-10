@@ -103,9 +103,24 @@ const TEAM_INVENTORY = [
 ];
 
 export const WarRoom = () => {
-  const { isTrainer } = useRoleVisibility();
+  const { isTrainer, role } = useRoleVisibility();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumedRef = useRef(false);
+
+  // Payment portal: scenario generation requires a scenario credit
+  // (granted when a client pays an invoice). Admins bypass. The server
+  // enforces this regardless - the banner is UX only.
+  const [scenarioCredits, setScenarioCredits] = useState<number | null>(null);
+  useEffect(() => {
+    if (role === 'admin') {
+      setScenarioCredits(1);
+      return;
+    }
+    api.billing
+      .getCredits()
+      .then((res) => setScenarioCredits(res.data.scenario))
+      .catch(() => setScenarioCredits(1)); // fail open in UI; server still enforces
+  }, [role]);
 
   // Draft picker
   const [existingDrafts, setExistingDrafts] = useState<
@@ -430,6 +445,29 @@ export const WarRoom = () => {
           <p className="text-sm terminal-text text-muted">
             War Room is available to trainers only.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (scenarioCredits === 0 && role !== 'admin') {
+    return (
+      <div className="min-h-screen scanline flex items-center justify-center p-6">
+        <div className="bg-surface border border-border rounded-xl shadow-sm p-8 text-center max-w-md">
+          <div className="text-3xl mb-3">🔒</div>
+          <h1 className="text-lg font-extrabold text-brand mb-2">
+            Scenario generation requires a paid engagement
+          </h1>
+          <p className="text-sm text-muted mb-6">
+            You have <b>0 scenario credits</b>. Invoice a client from the Clients page — when they
+            pay, the War Room unlocks automatically with 1 scenario credit and 2 session credits.
+          </p>
+          <button
+            onClick={() => navigate('/clients')}
+            className="military-button px-6 py-2.5 text-sm"
+          >
+            Go to Clients &amp; billing
+          </button>
         </div>
       </div>
     );

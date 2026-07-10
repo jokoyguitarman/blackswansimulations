@@ -5,6 +5,8 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { Login } from './pages/Login';
 import { SignUp } from './pages/SignUp';
 import { Dashboard } from './pages/Dashboard';
+import { Clients } from './pages/Clients';
+import { AdminPayouts } from './pages/AdminPayouts';
 import { Scenarios } from './pages/Scenarios';
 import { WarRoom } from './pages/WarRoom';
 import { SocialCrisisWizard } from './pages/SocialCrisisWizard';
@@ -79,6 +81,22 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clients"
+              element={
+                <ProtectedRoute roles={['trainer', 'admin']}>
+                  <Clients />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/payouts"
+              element={
+                <ProtectedRoute roles={['admin']}>
+                  <AdminPayouts />
                 </ProtectedRoute>
               }
             />

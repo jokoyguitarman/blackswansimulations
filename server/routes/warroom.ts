@@ -19,6 +19,24 @@ import {
 } from '../services/warroomService.js';
 import { enrichScene, type SceneEnrichmentResult } from '../services/rtsSceneEnrichmentService.js';
 import { generateStudGrids } from '../services/buildingStudService.js';
+import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
+
+/**
+ * Credit gate for cost-incurring Warroom steps. The wizard's intermediate
+ * steps (research, geocoding, storylines) burn OpenAI spend before any credit
+ * is consumed, so ENTRY requires a positive scenario-credit balance; the
+ * credit itself is only consumed at the final compile/persist step.
+ * Only admins bypass (full unlimited access, never consume credits).
+ */
+const NO_SCENARIO_CREDITS_BODY = {
+  error: 'No scenario credits. Invoice a client from Clients & billing to unlock the War Room.',
+  code: 'NO_SCENARIO_CREDITS',
+};
+
+async function lacksScenarioCredit(user: { id: string; role?: string }): Promise<boolean> {
+  if (isAdmin(user)) return false;
+  return !(await hasCredit(user.id, 'scenario'));
+}
 
 function applyWizardGeocodeOverride(
   geoResult: ParseAndGeocodeResult,
@@ -180,6 +198,9 @@ router.post(
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
       }
+      if (await lacksScenarioCredit(user)) {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+      }
 
       if (!env.openAiApiKey) {
         return res.status(500).json({ error: 'OpenAI API key not configured' });
@@ -251,24 +272,46 @@ router.post(
         'War Room generate requested',
       );
 
-      const { scenarioId } = await generateAndPersistWarroomScenario(
-        {
-          prompt,
-          scenario_type,
-          setting,
-          terrain,
-          location,
-          complexity_tier,
-          duration_minutes,
-          include_adversary_pursuit,
-          inject_profiles,
-          secondary_devices_count,
-          real_bombs_count,
-          teams,
-        },
-        env.openAiApiKey,
-        user.id,
-      );
+      // Consume the scenario credit up-front (race-safe), refund if the
+      // expensive generation fails. Admins bypass.
+      let creditInvoiceId: string | null = null;
+      let creditConsumed = false;
+      if (!isAdmin(user)) {
+        const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+        if (!consume.ok) {
+          return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+        }
+        creditInvoiceId = consume.fundingInvoiceId ?? null;
+        creditConsumed = true;
+      }
+
+      let scenarioId: string;
+      try {
+        const result = await generateAndPersistWarroomScenario(
+          {
+            prompt,
+            scenario_type,
+            setting,
+            terrain,
+            location,
+            complexity_tier,
+            duration_minutes,
+            include_adversary_pursuit,
+            inject_profiles,
+            secondary_devices_count,
+            real_bombs_count,
+            teams,
+          },
+          env.openAiApiKey,
+          user.id,
+        );
+        scenarioId = result.scenarioId;
+      } catch (genErr) {
+        if (creditConsumed) {
+          await refundCredit(user.id, 'scenario', creditInvoiceId);
+        }
+        throw genErr;
+      }
 
       logger.info({ userId: user.id, scenarioId }, 'War Room scenario created');
       res.json({ data: { scenarioId } });
@@ -331,6 +374,18 @@ router.post(
         'War Room generate-stream requested',
       );
 
+      // Consume the scenario credit up-front (race-safe), refund on failure.
+      let creditInvoiceId: string | null = null;
+      let creditConsumed = false;
+      if (!isAdmin(user)) {
+        const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+        if (!consume.ok) {
+          return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+        }
+        creditInvoiceId = consume.fundingInvoiceId ?? null;
+        creditConsumed = true;
+      }
+
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
       res.flushHeaders?.();
@@ -340,25 +395,34 @@ router.post(
         res.flushHeaders?.();
       };
 
-      const { scenarioId } = await generateAndPersistWarroomScenario(
-        {
-          prompt,
-          scenario_type,
-          setting,
-          terrain,
-          location,
-          complexity_tier,
-          duration_minutes,
-          include_adversary_pursuit,
-          inject_profiles,
-          secondary_devices_count,
-          real_bombs_count,
-          teams,
-        },
-        env.openAiApiKey,
-        user.id,
-        onProgress,
-      );
+      let scenarioId: string;
+      try {
+        const result = await generateAndPersistWarroomScenario(
+          {
+            prompt,
+            scenario_type,
+            setting,
+            terrain,
+            location,
+            complexity_tier,
+            duration_minutes,
+            include_adversary_pursuit,
+            inject_profiles,
+            secondary_devices_count,
+            real_bombs_count,
+            teams,
+          },
+          env.openAiApiKey,
+          user.id,
+          onProgress,
+        );
+        scenarioId = result.scenarioId;
+      } catch (genErr) {
+        if (creditConsumed) {
+          await refundCredit(user.id, 'scenario', creditInvoiceId);
+        }
+        throw genErr;
+      }
 
       res.write(JSON.stringify({ type: 'done', data: { scenarioId } }) + '\n');
       logger.info({ userId: user.id, scenarioId }, 'War Room scenario created (stream)');
@@ -442,6 +506,9 @@ router.post(
       const user = req.user!;
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      if (await lacksScenarioCredit(user)) {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
       }
 
       const { input } = req.body as { input: Record<string, unknown> };
@@ -575,6 +642,9 @@ router.post(
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
       }
+      if (await lacksScenarioCredit(user)) {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+      }
       if (!env.openAiApiKey)
         return res.status(500).json({ error: 'OpenAI API key not configured' });
 
@@ -706,6 +776,9 @@ router.post(
       const user = req.user!;
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      if (await lacksScenarioCredit(user)) {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
       }
       if (!env.openAiApiKey)
         return res.status(500).json({ error: 'OpenAI API key not configured' });
@@ -1042,15 +1115,46 @@ router.post(
           {}) as DoctrineResearchResult['teamWorkflows'],
       };
 
-      const { scenarioId } = await stageGenerateAndPersist(
-        geoResult,
-        phase1Preview,
-        userTeams as Parameters<typeof stageGenerateAndPersist>[2],
-        doctrines,
-        input as unknown as Parameters<typeof stageGenerateAndPersist>[4],
-        env.openAiApiKey,
-        user.id,
-      );
+      // The compile is the step that consumes the scenario credit. Consume
+      // up-front (race-safe: two tabs can't double-spend the last credit),
+      // refund automatically if the 2-5 minute compile fails.
+      let creditInvoiceId: string | null = null;
+      let creditLedgerId: string | null = null;
+      if (!isAdmin(user)) {
+        const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+        if (!consume.ok) {
+          return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+        }
+        creditInvoiceId = consume.fundingInvoiceId ?? null;
+        creditLedgerId = consume.ledgerId ?? null;
+      }
+
+      let scenarioId: string;
+      try {
+        const result = await stageGenerateAndPersist(
+          geoResult,
+          phase1Preview,
+          userTeams as Parameters<typeof stageGenerateAndPersist>[2],
+          doctrines,
+          input as unknown as Parameters<typeof stageGenerateAndPersist>[4],
+          env.openAiApiKey,
+          user.id,
+        );
+        scenarioId = result.scenarioId;
+      } catch (genErr) {
+        if (creditLedgerId) {
+          await refundCredit(user.id, 'scenario', creditInvoiceId);
+        }
+        throw genErr;
+      }
+
+      // Backfill the scenario id onto the spend row for exact auditing.
+      if (creditLedgerId) {
+        await supabaseAdmin
+          .from('credit_ledger')
+          .update({ scenario_id: scenarioId })
+          .eq('id', creditLedgerId);
+      }
 
       await supabaseAdmin
         .from('warroom_wizard_drafts')
@@ -1105,6 +1209,9 @@ router.post(
       const user = req.user!;
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      if (await lacksScenarioCredit(user)) {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
       }
       if (!env.openAiApiKey) {
         return res.status(500).json({ error: 'OpenAI API key not configured' });

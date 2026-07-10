@@ -17,6 +17,10 @@ export const SignUp = () => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [agencyName, setAgencyName] = useState('');
+  // 'trainer' = free trainer account (payment portal); 'participant' = invited player.
+  const [accountType, setAccountType] = useState<'trainer' | 'participant'>(
+    inviteToken ? 'participant' : 'trainer',
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -61,9 +65,10 @@ export const SignUp = () => {
     setError(null);
     setLoading(true);
 
-    // SECURITY: do not send a self-selected role. New accounts default to the
-    // least-privileged role server-side; in-session roles come from invitations,
-    // and trainer/admin are provisioned by an operator.
+    // SECURITY: do not send a self-selected role in metadata. New accounts
+    // default to the least-privileged role server-side. Trainer accounts are
+    // upgraded through the explicit become-trainer endpoint below, which only
+    // ever grants 'trainer' (all cost-incurring features are credit-gated).
     const { error } = await signUp(email, password, {
       full_name: fullName,
       agency_name: agencyName,
@@ -72,17 +77,31 @@ export const SignUp = () => {
     if (error) {
       setError(error.message);
       setLoading(false);
-    } else {
-      setSuccess(true);
-      // If they signed up via invitation, redirect to sessions after a delay
-      setTimeout(() => {
-        if (inviteToken) {
-          navigate('/sessions');
-        } else {
-          navigate('/login');
-        }
-      }, 2000);
+      return;
     }
+
+    if (accountType === 'trainer' && !inviteToken) {
+      // If Supabase established a session immediately, upgrade now; otherwise
+      // the Login page finishes the upgrade after first sign-in.
+      localStorage.setItem('bsw_pending_trainer_upgrade', '1');
+      try {
+        const { api } = await import('../lib/api');
+        await api.profile.becomeTrainer();
+        localStorage.removeItem('bsw_pending_trainer_upgrade');
+      } catch {
+        // No session yet (e.g. email confirmation required) - handled at login.
+      }
+    }
+
+    setSuccess(true);
+    // If they signed up via invitation, redirect to sessions after a delay
+    setTimeout(() => {
+      if (inviteToken) {
+        navigate('/sessions');
+      } else {
+        navigate('/login');
+      }
+    }, 2000);
   };
 
   if (success) {
@@ -161,6 +180,57 @@ export const SignUp = () => {
           {error && (
             <div className="border-l-4 border-danger bg-danger/10 p-4 rounded-md">
               <p className="text-sm text-danger">{error}</p>
+            </div>
+          )}
+
+          {/* Account type (hidden for invitation signups, which are players) */}
+          {!inviteToken && (
+            <div>
+              <div className="block text-xs font-semibold text-ink mb-2">I am signing up as</div>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setAccountType('trainer')}
+                  className={`text-left p-3 rounded-lg border-2 transition-all ${
+                    accountType === 'trainer'
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border hover:border-border-strong'
+                  }`}
+                >
+                  <div
+                    className={`text-sm font-bold ${accountType === 'trainer' ? 'text-brand' : 'text-muted'}`}
+                  >
+                    Trainer
+                  </div>
+                  <div className="text-[11px] text-muted mt-0.5">
+                    I run crisis trainings for clients
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAccountType('participant')}
+                  className={`text-left p-3 rounded-lg border-2 transition-all ${
+                    accountType === 'participant'
+                      ? 'border-accent bg-accent/5'
+                      : 'border-border hover:border-border-strong'
+                  }`}
+                >
+                  <div
+                    className={`text-sm font-bold ${accountType === 'participant' ? 'text-brand' : 'text-muted'}`}
+                  >
+                    Participant
+                  </div>
+                  <div className="text-[11px] text-muted mt-0.5">
+                    I was invited to a training session
+                  </div>
+                </button>
+              </div>
+              {accountType === 'trainer' && (
+                <p className="text-[11px] text-muted mt-2">
+                  Free forever to enroll clients. The War Room unlocks when a client pays an
+                  engagement invoice.
+                </p>
+              )}
             </div>
           )}
 

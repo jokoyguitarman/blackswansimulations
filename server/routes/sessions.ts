@@ -21,6 +21,7 @@ import { env } from '../env.js';
 import { insiderRouter } from './insider.js';
 import { performSweep } from '../services/bombSquadSweepService.js';
 import { hospitalRouter } from './hospital.js';
+import { consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
 
 const router = Router();
 
@@ -1151,6 +1152,22 @@ router.post(
         return res.status(404).json({ error: 'Scenario not found' });
       }
 
+      // Credit gate: session creation consumes one session credit and records
+      // which client invoice funded it. Only admins bypass (unlimited access).
+      let fundingInvoiceId: string | null = null;
+      let creditLedgerId: string | null = null;
+      if (!isAdmin(user)) {
+        const consume = await consumeCredit(user.id, 'session', 'session_created');
+        if (!consume.ok) {
+          return res.status(402).json({
+            error: 'No session credits. A session credit is granted when a client pays an invoice.',
+            code: 'NO_SESSION_CREDITS',
+          });
+        }
+        fundingInvoiceId = consume.fundingInvoiceId ?? null;
+        creditLedgerId = consume.ledgerId ?? null;
+      }
+
       // Generate join token and compute expiry
       const joinToken = nanoid(20);
       const joinExpiresAt = scheduled_start_time
@@ -1172,13 +1189,25 @@ router.post(
           join_enabled: true,
           join_expires_at: joinExpiresAt,
           sim_mode: simMode,
+          funding_invoice_id: fundingInvoiceId,
         })
         .select()
         .single();
 
       if (error) {
         logger.error({ error, userId: user.id }, 'Failed to create session');
+        if (creditLedgerId) {
+          await refundCredit(user.id, 'session', fundingInvoiceId);
+        }
         return res.status(500).json({ error: 'Failed to create session' });
+      }
+
+      // Backfill the session id onto the spend row for exact auditing.
+      if (creditLedgerId) {
+        await supabaseAdmin
+          .from('credit_ledger')
+          .update({ session_id: data.id })
+          .eq('id', creditLedgerId);
       }
 
       // Create default channels for the session

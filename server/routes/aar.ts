@@ -28,8 +28,89 @@ import {
 } from '../services/aarIncidentResponseService.js';
 import * as aarExportService from '../services/aarExportService.js';
 import { env } from '../env.js';
+import {
+  createNotification,
+  createNotificationsForUsers,
+} from '../services/notificationService.js';
 
 const router = Router();
+
+/**
+ * Payment portal hook: producing the AAR for a client-funded session marks
+ * the engagement as concluded and flips its payout from awaiting_completion
+ * to pending_release for admin review.
+ *
+ * One-time by construction: the UPDATE is guarded on status =
+ * 'awaiting_completion', so regenerating the AAR (or producing the AAR of the
+ * second session funded by the same invoice) can never re-trigger it.
+ */
+async function triggerPayoutOnAAR(sessionId: string): Promise<void> {
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('id, funding_invoice_id, trainer_id')
+      .eq('id', sessionId)
+      .maybeSingle();
+
+    if (!session?.funding_invoice_id) return;
+
+    const { data: flipped, error } = await supabaseAdmin
+      .from('payouts')
+      .update({
+        status: 'pending_release',
+        session_id: sessionId,
+        aar_generated_at: new Date().toISOString(),
+      })
+      .eq('invoice_id', session.funding_invoice_id)
+      .eq('status', 'awaiting_completion')
+      .select('id, trainer_id, amount_cents, currency')
+      .maybeSingle();
+
+    if (error || !flipped) return; // already flipped, or no payout row
+
+    const amountLabel = ((flipped.amount_cents ?? 0) / 100).toLocaleString('en-SG', {
+      style: 'currency',
+      currency: (flipped.currency ?? 'sgd').toUpperCase(),
+    });
+
+    // Notify the trainer.
+    await createNotification({
+      sessionId,
+      userId: flipped.trainer_id,
+      type: 'system_alert',
+      title: 'Training engagement concluded',
+      message: `AAR produced - your payout of ${amountLabel} is now pending review and is typically released within 2 business days.`,
+      priority: 'high',
+      metadata: { payout_id: flipped.id },
+    });
+
+    // Notify all admins for review.
+    const { data: admins } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('role', 'admin');
+    const adminIds = (admins ?? []).map((a) => a.id as string);
+    if (adminIds.length > 0) {
+      await createNotificationsForUsers(adminIds, {
+        sessionId,
+        type: 'system_alert',
+        title: 'Payout pending release',
+        message: `A trainer payout of ${amountLabel} is awaiting review after AAR production.`,
+        priority: 'high',
+        metadata: { payout_id: flipped.id },
+        actionUrl: '/admin/payouts',
+      });
+    }
+
+    logger.info(
+      { sessionId, payoutId: flipped.id, invoiceId: session.funding_invoice_id },
+      'Payout flipped to pending_release after AAR',
+    );
+  } catch (err) {
+    // Never fail AAR generation because of billing bookkeeping.
+    logger.error({ error: err, sessionId }, 'Failed to trigger payout on AAR');
+  }
+}
 
 // Get AAR report for a session
 router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -281,6 +362,10 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
     if (!aar) {
       return res.status(500).json({ error: 'Failed to create or update AAR report' });
     }
+
+    // Payment portal: concluding the funded engagement queues the trainer's
+    // payout for admin release (no-op when the session isn't client-funded).
+    await triggerPayoutOnAAR(sessionId);
 
     // Store detailed metrics in aar_metrics table
     try {

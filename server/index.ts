@@ -42,6 +42,8 @@ import { socialMessengerRouter } from './routes/socialMessenger.js';
 import { socialGroupsRouter } from './routes/socialGroups.js';
 import { socialEventsRouter } from './routes/socialEvents.js';
 import { socialCrisisWarroomRouter } from './routes/socialCrisisWarroom.js';
+import { billingRouter } from './routes/billing.js';
+import { billingWebhookRouter } from './routes/billingWebhook.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -174,6 +176,10 @@ app.use('/api/join', joinLimiter);
 // Request logging (with sensitive data redaction)
 app.use(pinoHttp({ logger }));
 
+// Stripe webhook MUST receive the raw body for signature verification, so it
+// is mounted BEFORE the global JSON body parser.
+app.use('/api/billing/webhook', express.raw({ type: 'application/json' }), billingWebhookRouter);
+
 // Body parsing with size limits
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -218,6 +224,7 @@ app.use('/api/social/messenger', socialMessengerRouter);
 app.use('/api/social/groups', socialGroupsRouter);
 app.use('/api/social/events', socialEventsRouter);
 app.use('/api/warroom/social-crisis', socialCrisisWarroomRouter);
+app.use('/api/billing', billingRouter);
 
 // 404 handler
 app.use((req, res) => {

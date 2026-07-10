@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { api } from '../lib/api';
 
 export const Login = () => {
   const [email, setEmail] = useState('');
@@ -21,6 +22,19 @@ export const Login = () => {
       setError(error.message);
       setLoading(false);
     } else {
+      // Complete a trainer signup that couldn't be finished at signup time
+      // (e.g. when email confirmation deferred the first session).
+      if (localStorage.getItem('bsw_pending_trainer_upgrade')) {
+        try {
+          await api.profile.becomeTrainer();
+          localStorage.removeItem('bsw_pending_trainer_upgrade');
+          // Full reload so the auth context picks up the new role.
+          window.location.href = '/clients';
+          return;
+        } catch {
+          localStorage.removeItem('bsw_pending_trainer_upgrade');
+        }
+      }
       navigate('/dashboard');
     }
   };

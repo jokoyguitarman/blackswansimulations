@@ -1,0 +1,752 @@
+import { Router, type Response, type NextFunction } from 'express';
+import { z } from 'zod';
+import { requireAuth, requireStaff, type AuthenticatedRequest } from '../middleware/auth.js';
+import { validate } from '../lib/validation.js';
+import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import {
+  BillingDisabledError,
+  createAccountLink,
+  createAndSendInvoice,
+  createConnectAccount,
+  createCustomer,
+  createTransfer,
+  isAccountOnboarded,
+  isBillingEnabled,
+  voidInvoice,
+} from '../services/stripeService.js';
+import { getBalances } from '../services/creditService.js';
+import { createNotification } from '../services/notificationService.js';
+
+const router = Router();
+
+/**
+ * Payment portal routes.
+ *
+ * SECURITY: every endpoint runs behind requireAuth. Trainer endpoints are
+ * additionally staff-gated; org/invoice/payout ownership is verified in code
+ * (service-role client bypasses RLS). Admin money endpoints re-verify
+ * role === 'admin' from the authenticated token on every call.
+ */
+
+const billingGuard = (_req: AuthenticatedRequest, res: Response, next: NextFunction): void => {
+  if (!isBillingEnabled()) {
+    res.status(503).json({ error: 'Billing is not configured on this server' });
+    return;
+  }
+  next();
+};
+
+const handleBillingError = (err: unknown, res: Response, where: string): void => {
+  if (err instanceof BillingDisabledError) {
+    res.status(503).json({ error: 'Billing is not configured on this server' });
+    return;
+  }
+  const error = err as Error;
+  logger.error({ error: error.message, stack: error.stack }, `Error in ${where}`);
+  res.status(500).json({ error: 'Internal server error' });
+};
+
+const requireAdmin = (user: { role?: string }): boolean => user.role === 'admin';
+
+// ---------------------------------------------------------------------------
+// Client organisations
+// ---------------------------------------------------------------------------
+
+router.get('/organisations', requireAuth, requireStaff, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+
+    const { data: orgs, error } = await supabaseAdmin
+      .from('client_organisations')
+      .select(
+        '*, invoices(id, status, amount_cents, currency, hosted_invoice_url, sent_at, paid_at)',
+      )
+      .eq('trainer_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error({ error, userId: user.id }, 'Failed to list organisations');
+      return res.status(500).json({ error: 'Failed to list organisations' });
+    }
+
+    res.json({ data: orgs ?? [] });
+  } catch (err) {
+    handleBillingError(err, res, 'GET /billing/organisations');
+  }
+});
+
+const createOrgSchema = z.object({
+  body: z.object({
+    name: z.string().min(1).max(200),
+    contact_name: z.string().max(200).optional(),
+    contact_email: z.string().email(),
+    notes: z.string().max(2000).optional(),
+  }),
+});
+
+router.post(
+  '/organisations',
+  requireAuth,
+  requireStaff,
+  validate(createOrgSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { name, contact_name, contact_email, notes } = req.body;
+
+      const { data, error } = await supabaseAdmin
+        .from('client_organisations')
+        .insert({
+          trainer_id: user.id,
+          name,
+          contact_name: contact_name ?? null,
+          contact_email,
+          notes: notes ?? null,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, userId: user.id }, 'Failed to create organisation');
+        return res.status(500).json({ error: 'Failed to create organisation' });
+      }
+
+      logger.info({ orgId: data.id, userId: user.id }, 'Client organisation enrolled');
+      res.status(201).json({ data });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/organisations');
+    }
+  },
+);
+
+const updateOrgSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({
+    name: z.string().min(1).max(200).optional(),
+    contact_name: z.string().max(200).optional(),
+    contact_email: z.string().email().optional(),
+    notes: z.string().max(2000).optional(),
+  }),
+});
+
+router.patch(
+  '/organisations/:id',
+  requireAuth,
+  requireStaff,
+  validate(updateOrgSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      const { data: org } = await supabaseAdmin
+        .from('client_organisations')
+        .select('id, trainer_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!org) return res.status(404).json({ error: 'Organisation not found' });
+      if (org.trainer_id !== user.id && !requireAdmin(user)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const updates: Record<string, unknown> = {};
+      for (const key of ['name', 'contact_name', 'contact_email', 'notes'] as const) {
+        if (req.body[key] !== undefined) updates[key] = req.body[key];
+      }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No updatable fields provided' });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('client_organisations')
+        .update(updates)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, orgId: id }, 'Failed to update organisation');
+        return res.status(500).json({ error: 'Failed to update organisation' });
+      }
+
+      res.json({ data });
+    } catch (err) {
+      handleBillingError(err, res, 'PATCH /billing/organisations/:id');
+    }
+  },
+);
+
+router.delete(
+  '/organisations/:id',
+  requireAuth,
+  requireStaff,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      const { data: org } = await supabaseAdmin
+        .from('client_organisations')
+        .select('id, trainer_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!org) return res.status(404).json({ error: 'Organisation not found' });
+      if (org.trainer_id !== user.id && !requireAdmin(user)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Never delete billing history: block once an invoice exists.
+      const { count } = await supabaseAdmin
+        .from('invoices')
+        .select('id', { count: 'exact', head: true })
+        .eq('organisation_id', id);
+
+      if ((count ?? 0) > 0) {
+        return res
+          .status(409)
+          .json({ error: 'This organisation has invoices and cannot be deleted' });
+      }
+
+      const { error } = await supabaseAdmin.from('client_organisations').delete().eq('id', id);
+      if (error) {
+        logger.error({ error, orgId: id }, 'Failed to delete organisation');
+        return res.status(500).json({ error: 'Failed to delete organisation' });
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      handleBillingError(err, res, 'DELETE /billing/organisations/:id');
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Invoices
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/organisations/:id/invoice',
+  requireAuth,
+  requireStaff,
+  billingGuard,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      const { data: org } = await supabaseAdmin
+        .from('client_organisations')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!org) return res.status(404).json({ error: 'Organisation not found' });
+      if (org.trainer_id !== user.id && !requireAdmin(user)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // One outstanding invoice per organisation at a time.
+      const { data: existing } = await supabaseAdmin
+        .from('invoices')
+        .select('id, status')
+        .eq('organisation_id', id)
+        .in('status', ['sent', 'paid'])
+        .order('sent_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing?.status === 'sent') {
+        return res
+          .status(409)
+          .json({ error: 'This organisation already has an outstanding invoice' });
+      }
+      if (existing?.status === 'paid') {
+        return res.status(409).json({
+          error: 'This engagement is already paid. Enroll a new engagement to invoice again.',
+        });
+      }
+
+      // Ensure a Stripe customer exists for the org.
+      let customerId = org.stripe_customer_id as string | null;
+      if (!customerId) {
+        customerId = await createCustomer({
+          id: org.id,
+          name: org.name,
+          contact_name: org.contact_name,
+          contact_email: org.contact_email,
+        });
+        await supabaseAdmin
+          .from('client_organisations')
+          .update({ stripe_customer_id: customerId })
+          .eq('id', org.id);
+      }
+
+      const amountCents = Math.round(env.invoiceAmountSgd * 100);
+      const { stripeInvoiceId, hostedInvoiceUrl } = await createAndSendInvoice({
+        customerId,
+        amountCents,
+        currency: 'sgd',
+        description:
+          'Black Swan crisis simulation training engagement - 1 bespoke scenario, 2 live training sessions, after-action report',
+        organisationId: org.id,
+        trainerId: user.id,
+      });
+
+      const { data: invoice, error } = await supabaseAdmin
+        .from('invoices')
+        .insert({
+          organisation_id: org.id,
+          trainer_id: user.id,
+          stripe_invoice_id: stripeInvoiceId,
+          amount_cents: amountCents,
+          currency: 'sgd',
+          status: 'sent',
+          hosted_invoice_url: hostedInvoiceUrl,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, orgId: org.id }, 'Stripe invoice created but DB insert failed');
+        return res.status(500).json({ error: 'Failed to record invoice' });
+      }
+
+      logger.info(
+        { invoiceId: invoice.id, stripeInvoiceId, orgId: org.id, userId: user.id },
+        'Invoice created and sent',
+      );
+      res.status(201).json({ data: invoice });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/organisations/:id/invoice');
+    }
+  },
+);
+
+router.post(
+  '/invoices/:id/void',
+  requireAuth,
+  requireStaff,
+  billingGuard,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const { id } = req.params;
+
+      const { data: invoice } = await supabaseAdmin
+        .from('invoices')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!invoice) return res.status(404).json({ error: 'Invoice not found' });
+      if (invoice.trainer_id !== user.id && !requireAdmin(user)) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      if (invoice.status !== 'sent') {
+        return res
+          .status(409)
+          .json({ error: `Cannot void an invoice with status '${invoice.status}'` });
+      }
+
+      if (invoice.stripe_invoice_id) {
+        await voidInvoice(invoice.stripe_invoice_id);
+      }
+      await supabaseAdmin.from('invoices').update({ status: 'void' }).eq('id', id);
+
+      logger.info({ invoiceId: id, userId: user.id }, 'Invoice voided');
+      res.json({ success: true });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/invoices/:id/void');
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Credits
+// ---------------------------------------------------------------------------
+
+router.get('/credits', requireAuth, requireStaff, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    const balances = await getBalances(user.id);
+    res.json({ data: balances });
+  } catch (err) {
+    handleBillingError(err, res, 'GET /billing/credits');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Stripe Connect onboarding (trainer payout destination)
+// ---------------------------------------------------------------------------
+
+router.post(
+  '/connect/onboard',
+  requireAuth,
+  requireStaff,
+  billingGuard,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+
+      const { data: billing } = await supabaseAdmin
+        .from('trainer_billing')
+        .select('*')
+        .eq('trainer_id', user.id)
+        .maybeSingle();
+
+      let accountId = billing?.stripe_connect_account_id as string | null | undefined;
+      if (!accountId) {
+        accountId = await createConnectAccount(user.email ?? '', user.id);
+        await supabaseAdmin.from('trainer_billing').upsert(
+          {
+            trainer_id: user.id,
+            stripe_connect_account_id: accountId,
+            onboarding_status: 'pending',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'trainer_id' },
+        );
+      }
+
+      const url = await createAccountLink(
+        accountId,
+        `${env.clientUrl}/clients?connect=refresh`,
+        `${env.clientUrl}/clients?connect=return`,
+      );
+
+      res.json({ data: { url } });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/connect/onboard');
+    }
+  },
+);
+
+router.get('/connect/status', requireAuth, requireStaff, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+
+    const { data: billing } = await supabaseAdmin
+      .from('trainer_billing')
+      .select('*')
+      .eq('trainer_id', user.id)
+      .maybeSingle();
+
+    if (!billing?.stripe_connect_account_id) {
+      return res.json({ data: { status: 'none' } });
+    }
+
+    let status = billing.onboarding_status as string;
+    // Live-check while pending (webhook account.updated also flips this,
+    // but the return-from-Stripe redirect can beat the webhook).
+    if (status === 'pending' && isBillingEnabled()) {
+      try {
+        if (await isAccountOnboarded(billing.stripe_connect_account_id)) {
+          status = 'complete';
+          await supabaseAdmin
+            .from('trainer_billing')
+            .update({ onboarding_status: 'complete', updated_at: new Date().toISOString() })
+            .eq('trainer_id', user.id);
+        }
+      } catch (checkErr) {
+        logger.warn({ error: checkErr, userId: user.id }, 'Connect status live-check failed');
+      }
+    }
+
+    res.json({ data: { status } });
+  } catch (err) {
+    handleBillingError(err, res, 'GET /billing/connect/status');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Payouts - trainer view
+// ---------------------------------------------------------------------------
+
+router.get('/payouts/mine', requireAuth, requireStaff, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+
+    const { data, error } = await supabaseAdmin
+      .from('payouts')
+      .select(
+        '*, invoice:invoices(id, amount_cents, currency, paid_at, organisation:client_organisations(id, name))',
+      )
+      .eq('trainer_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error({ error, userId: user.id }, 'Failed to list trainer payouts');
+      return res.status(500).json({ error: 'Failed to list payouts' });
+    }
+
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    handleBillingError(err, res, 'GET /billing/payouts/mine');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Payouts - admin review & release
+// ---------------------------------------------------------------------------
+
+router.get('/payouts', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (!requireAdmin(user)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+
+    let query = supabaseAdmin
+      .from('payouts')
+      .select(
+        `*,
+         trainer:user_profiles!payouts_trainer_id_fkey(id, full_name, username),
+         invoice:invoices(id, amount_cents, currency, paid_at, organisation:client_organisations(id, name))`,
+      )
+      .order('created_at', { ascending: false });
+
+    if (status) query = query.eq('status', status);
+
+    const { data, error } = await query;
+
+    if (error) {
+      logger.error({ error }, 'Failed to list payouts');
+      return res.status(500).json({ error: 'Failed to list payouts' });
+    }
+
+    // payouts has no FK to trainer_billing (both reference user_profiles),
+    // so enrich the onboarding status manually.
+    const rows = data ?? [];
+    const trainerIds = Array.from(new Set(rows.map((p) => p.trainer_id)));
+    const billingMap = new Map<string, string>();
+    if (trainerIds.length > 0) {
+      const { data: billingRows } = await supabaseAdmin
+        .from('trainer_billing')
+        .select('trainer_id, onboarding_status')
+        .in('trainer_id', trainerIds);
+      for (const b of billingRows ?? []) {
+        billingMap.set(b.trainer_id as string, b.onboarding_status as string);
+      }
+    }
+    // Session context for review: which sessions each invoice funded.
+    const invoiceIds = rows.map((p) => p.invoice_id).filter(Boolean);
+    const sessionsByInvoice = new Map<string, Array<Record<string, unknown>>>();
+    if (invoiceIds.length > 0) {
+      const { data: fundedSessions } = await supabaseAdmin
+        .from('sessions')
+        .select('id, status, start_time, end_time, funding_invoice_id')
+        .in('funding_invoice_id', invoiceIds);
+      for (const s of fundedSessions ?? []) {
+        const key = s.funding_invoice_id as string;
+        if (!sessionsByInvoice.has(key)) sessionsByInvoice.set(key, []);
+        sessionsByInvoice.get(key)!.push(s);
+      }
+    }
+
+    const enriched = rows.map((p) => ({
+      ...p,
+      trainer_onboarding_status: billingMap.get(p.trainer_id) ?? 'none',
+      funded_sessions: sessionsByInvoice.get(p.invoice_id) ?? [],
+    }));
+
+    res.json({ data: enriched });
+  } catch (err) {
+    handleBillingError(err, res, 'GET /billing/payouts');
+  }
+});
+
+router.post(
+  '/payouts/:id/release',
+  requireAuth,
+  billingGuard,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (!requireAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      const { id } = req.params;
+
+      const { data: payout } = await supabaseAdmin
+        .from('payouts')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!payout) return res.status(404).json({ error: 'Payout not found' });
+      if (payout.status !== 'pending_release') {
+        return res
+          .status(409)
+          .json({ error: `Payout is '${payout.status}', only pending_release can be released` });
+      }
+
+      const { data: billing } = await supabaseAdmin
+        .from('trainer_billing')
+        .select('stripe_connect_account_id, onboarding_status')
+        .eq('trainer_id', payout.trainer_id)
+        .maybeSingle();
+
+      if (!billing?.stripe_connect_account_id || billing.onboarding_status !== 'complete') {
+        return res.status(409).json({
+          error: 'Trainer has not completed payout setup (Stripe onboarding incomplete)',
+        });
+      }
+
+      let transferId: string;
+      try {
+        transferId = await createTransfer({
+          accountId: billing.stripe_connect_account_id,
+          amountCents: payout.amount_cents,
+          currency: payout.currency ?? 'sgd',
+          payoutId: payout.id,
+          invoiceId: payout.invoice_id,
+        });
+      } catch (transferErr) {
+        const message = (transferErr as Error).message;
+        logger.error({ error: message, payoutId: id }, 'Stripe transfer failed');
+        await supabaseAdmin
+          .from('payouts')
+          .update({ status: 'failed', hold_reason: `Transfer failed: ${message}` })
+          .eq('id', id);
+        return res.status(502).json({ error: `Stripe transfer failed: ${message}` });
+      }
+
+      const { data: updated, error } = await supabaseAdmin
+        .from('payouts')
+        .update({
+          status: 'released',
+          stripe_transfer_id: transferId,
+          released_at: new Date().toISOString(),
+          released_by: user.id,
+          hold_reason: null,
+        })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error(
+          { error, payoutId: id, transferId },
+          'Transfer succeeded but DB update failed',
+        );
+        return res
+          .status(500)
+          .json({ error: 'Transfer sent but failed to record - contact support' });
+      }
+
+      // Notify the trainer (session-scoped notification when we know the session).
+      if (payout.session_id) {
+        await createNotification({
+          sessionId: payout.session_id,
+          userId: payout.trainer_id,
+          type: 'system_alert',
+          title: 'Payout released',
+          message: `Your payout of ${((payout.amount_cents ?? 0) / 100).toLocaleString('en-SG', { style: 'currency', currency: 'SGD' })} has been released to your bank account.`,
+          priority: 'high',
+        });
+      }
+
+      logger.info({ payoutId: id, transferId, adminId: user.id }, 'Payout released');
+      res.json({ data: updated });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/payouts/:id/release');
+    }
+  },
+);
+
+const holdSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: z.object({ reason: z.string().max(1000).optional() }),
+});
+
+router.post(
+  '/payouts/:id/hold',
+  requireAuth,
+  validate(holdSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (!requireAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      const { id } = req.params;
+      const { reason } = req.body;
+
+      const { data: payout } = await supabaseAdmin
+        .from('payouts')
+        .select('id, status')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (!payout) return res.status(404).json({ error: 'Payout not found' });
+      if (payout.status !== 'pending_release' && payout.status !== 'failed') {
+        return res
+          .status(409)
+          .json({ error: `Cannot hold a payout with status '${payout.status}'` });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('payouts')
+        .update({ status: 'held', hold_reason: reason ?? null })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, payoutId: id }, 'Failed to hold payout');
+        return res.status(500).json({ error: 'Failed to hold payout' });
+      }
+
+      logger.info({ payoutId: id, adminId: user.id, reason }, 'Payout held');
+      res.json({ data });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/payouts/:id/hold');
+    }
+  },
+);
+
+router.post('/payouts/:id/unhold', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (!requireAdmin(user)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+    const { id } = req.params;
+
+    const { data: payout } = await supabaseAdmin
+      .from('payouts')
+      .select('id, status')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (!payout) return res.status(404).json({ error: 'Payout not found' });
+    if (payout.status !== 'held') {
+      return res.status(409).json({ error: `Payout is '${payout.status}', not held` });
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from('payouts')
+      .update({ status: 'pending_release', hold_reason: null })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      logger.error({ error, payoutId: id }, 'Failed to unhold payout');
+      return res.status(500).json({ error: 'Failed to unhold payout' });
+    }
+
+    logger.info({ payoutId: id, adminId: user.id }, 'Payout unheld');
+    res.json({ data });
+  } catch (err) {
+    handleBillingError(err, res, 'POST /billing/payouts/:id/unhold');
+  }
+});
+
+export { router as billingRouter };

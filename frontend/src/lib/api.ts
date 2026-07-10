@@ -74,7 +74,76 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
   return response.json();
 };
 
+// ---------- Payment portal types ----------
+export interface BillingInvoice {
+  id: string;
+  organisation_id: string;
+  trainer_id: string;
+  stripe_invoice_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: 'sent' | 'paid' | 'void';
+  hosted_invoice_url: string | null;
+  sent_at: string;
+  paid_at: string | null;
+}
+
+export interface ClientOrganisation {
+  id: string;
+  trainer_id: string;
+  name: string;
+  contact_name: string | null;
+  contact_email: string;
+  notes: string | null;
+  stripe_customer_id: string | null;
+  created_at: string;
+  invoices?: BillingInvoice[];
+}
+
+export interface BillingPayout {
+  id: string;
+  invoice_id: string;
+  trainer_id: string;
+  session_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: 'awaiting_completion' | 'pending_release' | 'released' | 'held' | 'failed';
+  hold_reason: string | null;
+  stripe_transfer_id: string | null;
+  aar_generated_at: string | null;
+  released_at: string | null;
+  created_at: string;
+  invoice?: {
+    id: string;
+    amount_cents: number;
+    currency: string;
+    paid_at: string | null;
+    organisation?: { id: string; name: string } | null;
+  } | null;
+}
+
+export interface AdminPayout extends BillingPayout {
+  trainer?: { id: string; full_name: string; username: string } | null;
+  trainer_onboarding_status?: 'none' | 'pending' | 'complete';
+  funded_sessions?: Array<{
+    id: string;
+    status: string;
+    start_time: string | null;
+    end_time: string | null;
+  }>;
+}
+
 export const api = {
+  // Profile
+  profile: {
+    becomeTrainer: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { role: string } }>(
+        await fetch(apiUrl('/api/profile/become-trainer'), { method: 'POST', headers }),
+      );
+    },
+  },
+
   // Scenarios
   scenarios: {
     list: async () => {
@@ -1976,6 +2045,144 @@ export const api = {
           method: 'POST',
           headers,
           body: JSON.stringify({ session_id: sessionId }),
+        }),
+      );
+    },
+  },
+
+  // Payment portal (client orgs, invoices, credits, Connect, payouts)
+  billing: {
+    listOrganisations: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: ClientOrganisation[] }>(
+        await fetch(apiUrl('/api/billing/organisations'), { headers }),
+      );
+    },
+
+    createOrganisation: async (body: {
+      name: string;
+      contact_name?: string;
+      contact_email: string;
+      notes?: string;
+    }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: ClientOrganisation }>(
+        await fetch(apiUrl('/api/billing/organisations'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    updateOrganisation: async (
+      orgId: string,
+      body: { name?: string; contact_name?: string; contact_email?: string; notes?: string },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: ClientOrganisation }>(
+        await fetch(apiUrl(`/api/billing/organisations/${orgId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    deleteOrganisation: async (orgId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/billing/organisations/${orgId}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
+
+    generateInvoice: async (orgId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingInvoice }>(
+        await fetch(apiUrl(`/api/billing/organisations/${orgId}/invoice`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    voidInvoice: async (invoiceId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/billing/invoices/${invoiceId}/void`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    getCredits: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { scenario: number; session: number } }>(
+        await fetch(apiUrl('/api/billing/credits'), { headers }),
+      );
+    },
+
+    connectOnboard: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { url: string } }>(
+        await fetch(apiUrl('/api/billing/connect/onboard'), { method: 'POST', headers }),
+      );
+    },
+
+    connectStatus: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { status: 'none' | 'pending' | 'complete' } }>(
+        await fetch(apiUrl('/api/billing/connect/status'), { headers }),
+      );
+    },
+
+    myPayouts: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout[] }>(
+        await fetch(apiUrl('/api/billing/payouts/mine'), { headers }),
+      );
+    },
+
+    // Admin
+    listPayouts: async (status?: string) => {
+      const headers = await getAuthHeaders();
+      const params = status ? `?status=${encodeURIComponent(status)}` : '';
+      return handleResponse<{ data: AdminPayout[] }>(
+        await fetch(apiUrl(`/api/billing/payouts${params}`), { headers }),
+      );
+    },
+
+    releasePayout: async (payoutId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout }>(
+        await fetch(apiUrl(`/api/billing/payouts/${payoutId}/release`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    holdPayout: async (payoutId: string, reason?: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout }>(
+        await fetch(apiUrl(`/api/billing/payouts/${payoutId}/hold`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ reason }),
+        }),
+      );
+    },
+
+    unholdPayout: async (payoutId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout }>(
+        await fetch(apiUrl(`/api/billing/payouts/${payoutId}/unhold`), {
+          method: 'POST',
+          headers,
         }),
       );
     },
