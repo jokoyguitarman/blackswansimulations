@@ -31,6 +31,7 @@ export interface OsmVicinity {
   buildings?: OsmBuilding[];
   route_geometries?: OsmRouteGeometry[];
   building_footprints?: BuildingFootprint[];
+  road_footprints?: RoadFootprint[];
 }
 
 function extractLatLng(element: {
@@ -492,10 +493,26 @@ export interface OsmRouteGeometry {
   distance_from_center_m: number;
 }
 
+function isDrivableRoadType(highwayType: string | undefined): boolean {
+  if (!highwayType) return false;
+  return [
+    'motorway',
+    'trunk',
+    'primary',
+    'secondary',
+    'tertiary',
+    'residential',
+    'unclassified',
+    'service',
+    'living_street',
+  ].includes(highwayType);
+}
+
 export async function fetchRouteGeometries(
   lat: number,
   lng: number,
   radiusMeters: number = 6000,
+  opts?: { maxResults?: number },
 ): Promise<OsmRouteGeometry[]> {
   const radius = Math.min(radiusMeters, 10000);
   const query = `
@@ -516,9 +533,14 @@ out body geom;
 
     const name = tags.name || tags.ref || `${tags.highway} road`;
     const coordinates: [number, number][] = geometry.map((pt) => [pt.lat, pt.lon]);
-    const midIdx = Math.floor(coordinates.length / 2);
-    const midPt = coordinates[midIdx] ?? coordinates[0];
-    const dist = Math.round(haversine(lat, lng, midPt[0], midPt[1]));
+    if (!isDrivableRoadType(tags.highway)) continue;
+
+    const dist = Math.round(
+      coordinates.reduce((best, [coordLat, coordLng]) => {
+        const pointDist = haversine(lat, lng, coordLat, coordLng);
+        return Math.min(best, pointDist);
+      }, Number.POSITIVE_INFINITY),
+    );
 
     results.push({
       name,
@@ -531,12 +553,12 @@ out body geom;
 
   results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
-  const MAX_ROUTES = 200;
+  const maxRoutes = Math.max(1, opts?.maxResults ?? 200);
   logger.info(
-    { total: results.length, returned: Math.min(results.length, MAX_ROUTES), radius },
+    { total: results.length, returned: Math.min(results.length, maxRoutes), radius, maxRoutes },
     'OSM route geometries fetched',
   );
-  return results.slice(0, MAX_ROUTES);
+  return results.slice(0, maxRoutes);
 }
 
 export interface FetchLogEntry {
@@ -890,6 +912,13 @@ export interface BuildingFootprint {
   polygon: [number, number][];
 }
 
+export interface RoadFootprint {
+  name: string | null;
+  road_type: string;
+  polygon: [number, number][];
+  distance_from_center_m: number;
+}
+
 /**
  * Fetch building footprint polygons within a large radius.
  * Unlike fetchVenueBuilding (which returns detailed data for ~5 nearest buildings),
@@ -931,6 +960,51 @@ out body geom;
     return footprints;
   } catch (err) {
     logger.warn({ err, radius }, 'Wide-area building footprint fetch failed');
+    return [];
+  }
+}
+
+/**
+ * Fetch road-surface polygons within a radius.
+ * Uses only area-like OSM geometries so the response stays lightweight and
+ * avoids inventing buffered road widths heuristically.
+ */
+export async function fetchRoadFootprints(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 1000,
+): Promise<RoadFootprint[]> {
+  const radius = Math.min(radiusMeters, 2000);
+  const TIMEOUT_S = 60;
+  const query = `
+[out:json][timeout:${TIMEOUT_S}];
+(
+  way["area:highway"](around:${radius},${lat},${lng});
+  relation["area:highway"](around:${radius},${lat},${lng});
+  way["highway"="pedestrian"]["area"="yes"](around:${radius},${lat},${lng});
+  relation["highway"="pedestrian"]["area"="yes"](around:${radius},${lat},${lng});
+  way["highway"="living_street"]["area"="yes"](around:${radius},${lat},${lng});
+  relation["highway"="living_street"]["area"="yes"](around:${radius},${lat},${lng});
+  way["highway"="service"]["area"="yes"](around:${radius},${lat},${lng});
+  relation["highway"="service"]["area"="yes"](around:${radius},${lat},${lng});
+);
+out body geom;
+`;
+
+  try {
+    const elements = await runRawOverpassQuery(query, TIMEOUT_S * 1000 + 5000);
+    const footprints: RoadFootprint[] = [];
+
+    for (const el of elements) {
+      const parsed = parseOsmRoadFootprintElement(el, lat, lng);
+      if (parsed && isDrivableRoadType(parsed.road_type)) footprints.push(parsed);
+    }
+
+    footprints.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+    logger.info({ total: footprints.length, radius }, 'OSM road footprints fetched');
+    return footprints;
+  } catch (err) {
+    logger.warn({ err, radius }, 'Road footprint fetch failed');
     return [];
   }
 }
@@ -990,6 +1064,52 @@ function parseOsmBuildingElement(
   if (tags.height) building.height_m = parseFloat(tags.height) || undefined;
 
   return building;
+}
+
+function parseOsmRoadFootprintElement(
+  el: Record<string, unknown>,
+  centerLat: number,
+  centerLng: number,
+): RoadFootprint | null {
+  const tags = (el.tags as Record<string, string>) || {};
+  const pos = extractLatLng(el as Parameters<typeof extractLatLng>[0]);
+  if (!pos) return null;
+
+  let polygon: [number, number][] = [];
+  const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
+  if (geometry?.length && geometry.length >= 3) {
+    polygon = geometry.map((pt) => [pt.lat, pt.lon] as [number, number]);
+  } else {
+    const members = (el as Record<string, unknown>).members as
+      Array<{ role?: string; geometry?: Array<{ lat: number; lon: number }> }> | undefined;
+    if (members?.length) {
+      for (const m of members) {
+        if (m.role === 'outer' && m.geometry?.length) {
+          polygon.push(...m.geometry.map((pt) => [pt.lat, pt.lon] as [number, number]));
+        }
+      }
+    }
+  }
+
+  if (polygon.length < 3) return null;
+
+  const first = polygon[0];
+  const last = polygon[polygon.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    polygon = [...polygon, first];
+  }
+
+  if (polygon.length < 4) return null;
+
+  const roadType = tags['area:highway'] || tags.highway;
+  if (!roadType) return null;
+
+  return {
+    name: tags.name || null,
+    road_type: roadType,
+    polygon,
+    distance_from_center_m: Math.round(haversine(centerLat, centerLng, pos.lat, pos.lng)),
+  };
 }
 
 /**

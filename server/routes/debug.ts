@@ -2,8 +2,12 @@ import { Router, json } from 'express';
 import { requireAuth, requireStaff, type AuthenticatedRequest } from '../middleware/auth.js';
 import {
   fetchVenueBuilding,
+  fetchRoadFootprints,
+  fetchRouteGeometries,
   type OsmBuilding,
   type FetchLogEntry,
+  type RoadFootprint,
+  type OsmRouteGeometry,
 } from '../services/osmVicinityService.js';
 import {
   generateStudGrids,
@@ -66,6 +70,9 @@ router.get('/building-studs', requireAuth, async (req, res) => {
     req.query.includeStuds == null
       ? true
       : !['0', 'false', 'no'].includes(String(req.query.includeStuds).toLowerCase());
+  const includeRoads = ['1', 'true', 'yes'].includes(
+    String(req.query.includeRoads ?? '').toLowerCase(),
+  );
 
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
@@ -82,6 +89,8 @@ router.get('/building-studs', requireAuth, async (req, res) => {
 
   const t0 = Date.now();
   let buildings: OsmBuilding[] = [];
+  let roads: RoadFootprint[] = [];
+  let roadPolylines: OsmRouteGeometry[] = [];
   let fetchError: string | null = null;
   let fetchSource: 'overpass' | 'scenario_cache' = 'overpass';
   let fetchLog: FetchLogEntry[] = [];
@@ -137,6 +146,50 @@ router.get('/building-studs', requireAuth, async (req, res) => {
         latencyMs: Date.now() - t0,
         detail: `Top-level Overpass fetch failed: ${msg}`,
       });
+    }
+
+    if (includeRoads) {
+      const roadStart = Date.now();
+      try {
+        roads = await fetchRoadFootprints(lat, lng, radius);
+        fetchLog.push({
+          phase: 'roads',
+          status: roads.length > 0 ? 'ok' : 'empty',
+          latencyMs: Date.now() - roadStart,
+          detail: `Road footprint query returned ${roads.length} polygons`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        fetchLog.push({
+          phase: 'roads',
+          status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
+          latencyMs: Date.now() - roadStart,
+          detail: `Road footprint query failed: ${msg.slice(0, 200)}`,
+        });
+      }
+
+      const roadCenterlineStart = Date.now();
+      try {
+        const roadCenterlineLimit =
+          radius <= 500 ? 600 : radius <= 1000 ? 2000 : Math.min(3000, radius * 2);
+        roadPolylines = await fetchRouteGeometries(lat, lng, radius, {
+          maxResults: roadCenterlineLimit,
+        });
+        fetchLog.push({
+          phase: 'road_centerlines',
+          status: roadPolylines.length > 0 ? 'ok' : 'empty',
+          latencyMs: Date.now() - roadCenterlineStart,
+          detail: `Road centerline query returned ${roadPolylines.length} polylines (limit ${roadCenterlineLimit})`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        fetchLog.push({
+          phase: 'road_centerlines',
+          status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
+          latencyMs: Date.now() - roadCenterlineStart,
+          detail: `Road centerline query failed: ${msg.slice(0, 200)}`,
+        });
+      }
     }
   }
 
@@ -212,6 +265,8 @@ router.get('/building-studs', requireAuth, async (req, res) => {
       gridMs,
       buildingsReturned: buildings.length,
       buildingsWithPolygon: withPolygon.length,
+      roadsReturned: roads.length,
+      roadPolylinesReturned: roadPolylines.length,
       gridsGenerated: grids.filter((g) => g.buildingIndex >= 0).length,
       totalStuds,
       buildingStuds,
@@ -231,6 +286,19 @@ router.get('/building-studs', requireAuth, async (req, res) => {
       levels: b.building_levels ?? null,
       use: b.building_use ?? null,
       polygonPoints: b.footprint_polygon?.length ?? 0,
+    })),
+    roads: roads.map((r) => ({
+      name: r.name,
+      roadType: r.road_type,
+      polygon: r.polygon,
+      polygonPoints: r.polygon.length,
+      distanceFromCenterM: r.distance_from_center_m,
+    })),
+    roadPolylines: roadPolylines.map((r) => ({
+      name: r.name,
+      highwayType: r.highway_type,
+      coordinates: r.coordinates,
+      distanceFromCenterM: r.distance_from_center_m,
     })),
     grids: grids.map((g) => ({
       buildingIndex: g.buildingIndex,
