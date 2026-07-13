@@ -1845,7 +1845,9 @@ export const SocialCrisisWizard = () => {
       {!scenarioId && !compiling && (
         <div className="space-y-6">
           <p className="text-xs terminal-text text-muted mb-4">
-            Review the full scenario summary, then compile to persist.
+            Review everything the War Room produced, then compile to persist. After compiling, you
+            can still edit all of it — injects, NPCs, fact sheet, org pages, charters — from the
+            scenario's detail page.
           </p>
 
           <div className="border border-border rounded p-4 mb-4">
@@ -1917,11 +1919,218 @@ export const SocialCrisisWizard = () => {
               <div className="text-sm terminal-text text-accent font-bold mb-1">
                 {narrative.title}
               </div>
-              <div className="text-[10px] terminal-text text-muted leading-relaxed line-clamp-4">
+              <div className="text-[10px] terminal-text text-muted leading-relaxed whitespace-pre-wrap">
                 {narrative.description}
               </div>
+              {narrative.briefing && (
+                <>
+                  <h4 className="text-[10px] terminal-text text-muted uppercase mt-3 mb-1">
+                    Participant briefing
+                  </h4>
+                  <div className="text-[10px] terminal-text text-muted leading-relaxed whitespace-pre-wrap">
+                    {narrative.briefing}
+                  </div>
+                </>
+              )}
             </div>
           )}
+
+          {/* Full read-through of everything the warroom generated */}
+          {(() => {
+            const reviewInjects = [
+              ...storylineInjects,
+              ...Object.values(teamStorylines).flat(),
+              ...sharedInjects,
+            ];
+            const timedInjects = reviewInjects
+              .filter((inj) => inj.trigger_time_minutes != null)
+              .sort((a, b) => (a.trigger_time_minutes || 0) - (b.trigger_time_minutes || 0));
+            const conditionalInjects = reviewInjects.filter(
+              (inj) => inj.trigger_time_minutes == null,
+            );
+            const detailsCls = 'border border-border rounded mb-3';
+            const summaryCls =
+              'text-xs terminal-text text-ink font-bold uppercase px-4 py-3 cursor-pointer select-none hover:bg-surface-2';
+
+            return (
+              <div>
+                <details className={detailsCls}>
+                  <summary className={summaryCls}>
+                    Inject timeline ({timedInjects.length} timed
+                    {conditionalInjects.length > 0
+                      ? ` + ${conditionalInjects.length} conditional`
+                      : ''}
+                    )
+                  </summary>
+                  <div className="px-4 pb-4 space-y-2 max-h-[420px] overflow-y-auto">
+                    {timedInjects.map((inj, i) => {
+                      const dc = (inj.delivery_config || {}) as Record<string, unknown>;
+                      const app = dc.app ? String(dc.app) : inj.type;
+                      return (
+                        <div key={i} className="border border-border rounded p-2.5">
+                          <div className="flex items-center gap-2 flex-wrap mb-1">
+                            <span className="text-[10px] terminal-text text-accent font-mono">
+                              T+{inj.trigger_time_minutes}m
+                            </span>
+                            <span className="text-[10px] terminal-text px-1.5 py-0.5 bg-surface-2 text-muted rounded">
+                              {app.replace(/_/g, ' ')}
+                            </span>
+                            {!!dc.author_handle && (
+                              <span className="text-[10px] terminal-text text-muted">
+                                {String(dc.author_handle)}
+                              </span>
+                            )}
+                            {inj.severity === 'critical' && (
+                              <span className="text-[10px] terminal-text text-danger">
+                                critical
+                              </span>
+                            )}
+                            {inj.target_teams?.length > 0 && (
+                              <span className="text-[10px] terminal-text text-muted">
+                                → {inj.target_teams.join(', ')}
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] terminal-text text-ink">{inj.title}</div>
+                          <div className="text-[10px] terminal-text text-muted mt-0.5 whitespace-pre-wrap">
+                            {inj.content}
+                          </div>
+                        </div>
+                      );
+                    })}
+                    {conditionalInjects.length > 0 && (
+                      <div className="text-[10px] terminal-text text-muted pt-1">
+                        + {conditionalInjects.length} condition-triggered inject(s) that fire on
+                        participant behaviour rather than the clock.
+                      </div>
+                    )}
+                  </div>
+                </details>
+
+                <details className={detailsCls}>
+                  <summary className={summaryCls}>NPC personas ({personas.length})</summary>
+                  <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {personas.map((npc, i) => (
+                      <div key={i} className="border border-border rounded p-2.5">
+                        <div className="text-[11px] terminal-text text-ink font-bold">
+                          {npc.name} <span className="text-muted font-normal">{npc.handle}</span>
+                        </div>
+                        <div className="text-[10px] terminal-text text-muted mt-1">
+                          {npc.personality}
+                        </div>
+                        {npc.bias && npc.bias !== 'none' && (
+                          <div className="text-[10px] terminal-text text-accent mt-1">
+                            bias: {npc.bias}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+
+                {factSheet && (
+                  <details className={detailsCls}>
+                    <summary className={summaryCls}>
+                      Fact sheet ({factSheet.confirmed_facts.length} facts,{' '}
+                      {factSheet.unconfirmed_claims.length} claims)
+                    </summary>
+                    <div className="px-4 pb-4">
+                      <div className="text-[10px] terminal-text text-success uppercase mb-1">
+                        Confirmed facts
+                      </div>
+                      {factSheet.confirmed_facts.map((f, i) => (
+                        <div key={i} className="text-[10px] terminal-text text-muted mb-1">
+                          + {f}
+                        </div>
+                      ))}
+                      {factSheet.unconfirmed_claims.length > 0 && (
+                        <>
+                          <div className="text-[10px] terminal-text text-danger uppercase mt-3 mb-1">
+                            False / unverified claims
+                          </div>
+                          {factSheet.unconfirmed_claims.map((c, i) => (
+                            <div key={i} className="text-[10px] terminal-text text-muted mb-1.5">
+                              <span className="text-danger">[{c.status}]</span> {c.claim}
+                              <div className="text-muted ml-4">Truth: {c.truth}</div>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {objectives.length > 0 && (
+                  <details className={detailsCls}>
+                    <summary className={summaryCls}>Objectives ({objectives.length})</summary>
+                    <div className="px-4 pb-4 space-y-1.5">
+                      {objectives.map((o, i) => (
+                        <div key={i} className="text-[10px] terminal-text text-muted">
+                          <span className="text-ink font-bold">{o.objective_name}</span>{' '}
+                          <span className="text-accent">({o.weight}%)</span> — {o.description}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {convergenceGates.length > 0 && (
+                  <details className={detailsCls}>
+                    <summary className={summaryCls}>
+                      Convergence gates ({convergenceGates.length})
+                    </summary>
+                    <div className="px-4 pb-4 space-y-2">
+                      {convergenceGates.map((g, i) => (
+                        <div key={i} className="border border-border rounded p-2.5">
+                          <div className="text-[11px] terminal-text text-ink">{g.title}</div>
+                          <div className="text-[10px] terminal-text text-muted mt-0.5">
+                            {g.content}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {orgPage && (
+                  <details className={detailsCls}>
+                    <summary className={summaryCls}>Organisation pages</summary>
+                    <div className="px-4 pb-4 space-y-2">
+                      {(() => {
+                        const orgs = (orgPage.orgs as Array<Record<string, unknown>>) || [
+                          { display_name: orgName || 'Primary org', ...orgPage },
+                        ];
+                        return orgs.map((org, i) => {
+                          const fb = (org.facebook || {}) as Record<string, unknown>;
+                          const x = (org.x_twitter || {}) as Record<string, unknown>;
+                          return (
+                            <div key={i} className="border border-border rounded p-2.5">
+                              <div className="text-[11px] terminal-text text-ink font-bold">
+                                {String(org.display_name || fb.page_name || '')}
+                                {org.role === 'antagonist' && (
+                                  <span className="text-danger font-normal"> · antagonist</span>
+                                )}
+                              </div>
+                              <div className="text-[10px] terminal-text text-muted mt-0.5">
+                                Fakebook: {String(fb.page_name || '—')} (
+                                {String(fb.page_handle || '—')}){' · '}X:{' '}
+                                {String(x.page_name || '—')} ({String(x.page_handle || '—')})
+                              </div>
+                              {!!fb.page_bio && (
+                                <div className="text-[10px] terminal-text text-muted mt-0.5">
+                                  {String(fb.page_bio)}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </details>
+                )}
+              </div>
+            );
+          })()}
 
           <button
             onClick={compileScenario}

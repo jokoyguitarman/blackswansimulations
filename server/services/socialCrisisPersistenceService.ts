@@ -20,8 +20,9 @@ function sanitizeSeverity(severity: string | undefined): string {
  * Validate an inject's team targeting against the scenario's team names.
  * Unknown team references are downgraded to universal (with a warning) so
  * content is never silently undeliverable at runtime.
+ * (Also used by the trainer inject-edit endpoints in routes/scenarios.ts.)
  */
-function sanitizeTeamTargeting(
+export function sanitizeTeamTargeting(
   inj: { inject_scope?: string; target_teams?: string[]; title?: string },
   validTeamNames: Set<string>,
 ): { inject_scope: string; target_teams: string[] } {

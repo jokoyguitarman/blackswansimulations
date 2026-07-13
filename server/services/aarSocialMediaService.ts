@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { logger } from '../lib/logger.js';
 import { computeTeamScores } from './teamScoreService.js';
 
 export interface SocialMediaAARData {
@@ -161,7 +162,7 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
       supabaseAdmin.from('chat_messages').select('id').eq('session_id', sessionId),
       supabaseAdmin
         .from('sessions')
-        .select('current_state, scenario_data')
+        .select('current_state, scenario_id, created_at')
         .eq('id', sessionId)
         .single(),
     ]);
@@ -246,9 +247,27 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
   const session = sessionResult.data as Record<string, unknown> | null;
   const currentState = (session?.current_state || {}) as Record<string, unknown>;
   const socialState = (currentState.social_state || {}) as Record<string, unknown>;
-  const scenarioData = (session?.scenario_data || {}) as Record<string, unknown>;
-  const scenario = (scenarioData.scenario || {}) as Record<string, unknown>;
-  const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
+
+  // Strategic benchmarks come from the LIVE scenario row so trainer edits and
+  // compile output genuinely shape the debrief. (Previously read from
+  // sessions.scenario_data, a column that was never written — benchmarks were
+  // silently empty in every AAR.)
+  let initialState: Record<string, unknown> = {};
+  if (session?.scenario_id) {
+    const { data: scenarioRow, error: scenarioErr } = await supabaseAdmin
+      .from('scenarios')
+      .select('initial_state')
+      .eq('id', session.scenario_id as string)
+      .single();
+    if (scenarioErr) {
+      logger.warn(
+        { error: scenarioErr, sessionId },
+        'AAR: failed to load scenario initial_state; benchmarks section will be empty',
+      );
+    } else {
+      initialState = (scenarioRow?.initial_state || {}) as Record<string, unknown>;
+    }
+  }
 
   let tier1 = 0,
     tier2 = 0,

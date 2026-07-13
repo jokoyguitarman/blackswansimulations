@@ -16,8 +16,48 @@ import {
   snapCoordinate,
 } from '../services/buildingStudService.js';
 import { assertScenarioOwner } from '../lib/access.js';
+import { canEditScenario } from '../services/scenarioEditService.js';
+import { sanitizeTeamTargeting } from '../services/socialCrisisPersistenceService.js';
+import { generatePostImage } from '../services/mediaGenerationService.js';
 
 const router = Router();
+
+/**
+ * Shared guard for scenario content edits: trainer/admin role, ownership,
+ * and the edit lock (session credits + no live session). Returns true when
+ * the request may proceed; otherwise sends the error response and returns false.
+ */
+async function guardScenarioEdit(
+  scenarioId: string,
+  req: AuthenticatedRequest,
+  res: import('express').Response,
+): Promise<boolean> {
+  const user = req.user!;
+  if (user.role !== 'trainer' && user.role !== 'admin') {
+    res.status(403).json({ error: 'Access denied' });
+    return false;
+  }
+  const owner = await assertScenarioOwner(scenarioId, user);
+  if (!owner.ok) {
+    res.status(owner.status).json({ error: owner.error });
+    return false;
+  }
+  const editability = await canEditScenario(scenarioId, user);
+  if (!editability.editable) {
+    res.status(423).json({
+      error:
+        editability.reason === 'live_session'
+          ? 'A session on this scenario is currently live. Editing resumes when it ends.'
+          : 'No session launch credits remaining. Editing is locked until credits are topped up.',
+      code:
+        editability.reason === 'live_session'
+          ? 'EDIT_LOCKED_LIVE_SESSION'
+          : 'EDIT_LOCKED_NO_CREDITS',
+    });
+    return false;
+  }
+  return true;
+}
 
 // Validation schemas
 const createScenarioSchema = z.object({
@@ -566,6 +606,491 @@ router.patch('/:id/pins', requireAuth, async (req: AuthenticatedRequest, res) =>
   }
 });
 
+// ─── Trainer scenario editing (post-compile personalisation) ────────────────
+
+// Report whether the caller may edit this scenario right now (UI lock banner).
+router.get('/:id/editability', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const owner = await assertScenarioOwner(id, user);
+    if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
+
+    const editability = await canEditScenario(id, user);
+    res.json({ data: editability });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/editability');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const injectFieldsSchema = z.object({
+  title: z.string().min(1).max(200).optional(),
+  content: z.string().min(1).optional(),
+  type: z.string().min(1).max(50).optional(),
+  severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
+  trigger_time_minutes: z.number().int().nonnegative().nullable().optional(),
+  trigger_condition: z.string().max(2000).nullable().optional(),
+  inject_scope: z.enum(['universal', 'role_specific', 'team_specific']).optional(),
+  target_teams: z.array(z.string().max(100)).optional(),
+  requires_response: z.boolean().optional(),
+  conditions_to_appear: z.unknown().optional(),
+  conditions_to_cancel: z.unknown().optional(),
+  eligible_after_minutes: z.number().int().nonnegative().nullable().optional(),
+  delivery_config: z.record(z.string(), z.unknown()).nullable().optional(),
+});
+
+const updateInjectSchema = z.object({
+  params: z.object({ id: z.string().uuid(), injectId: z.string().uuid() }),
+  body: injectFieldsSchema,
+});
+
+const createInjectSchema = z.object({
+  params: z.object({ id: z.string().uuid() }),
+  body: injectFieldsSchema.extend({
+    title: z.string().min(1).max(200),
+    content: z.string().min(1),
+    type: z.string().min(1).max(50),
+  }),
+});
+
+/** Load the scenario's team names for inject targeting validation. */
+async function loadTeamNames(scenarioId: string): Promise<Set<string>> {
+  const { data, error } = await supabaseAdmin
+    .from('scenario_teams')
+    .select('team_name')
+    .eq('scenario_id', scenarioId);
+  if (error) throw new Error(`Failed to load scenario teams: ${error.message}`);
+  return new Set((data ?? []).map((t) => t.team_name as string));
+}
+
+// Edit one template inject (session_id IS NULL). Trainer edits are stamped
+// generation_source='trainer' so warroom output and human overrides stay
+// distinguishable.
+router.patch(
+  '/:id/injects/:injectId',
+  requireAuth,
+  validate(updateInjectSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, injectId } = req.params;
+      if (!(await guardScenarioEdit(id, req, res))) return;
+
+      const { data: existing, error: fetchErr } = await supabaseAdmin
+        .from('scenario_injects')
+        .select('id, inject_scope, target_teams, title')
+        .eq('id', injectId)
+        .eq('scenario_id', id)
+        .is('session_id', null)
+        .maybeSingle();
+      if (fetchErr) {
+        logger.error({ error: fetchErr, injectId }, 'Failed to load inject for edit');
+        return res.status(500).json({ error: 'Failed to load inject' });
+      }
+      if (!existing) {
+        return res.status(404).json({ error: 'Inject not found (or not a template inject)' });
+      }
+
+      const updates: Record<string, unknown> = { ...req.body };
+
+      // Validate team targeting against the scenario's real team names so an
+      // edit can never make an inject silently undeliverable.
+      if (updates.inject_scope !== undefined || updates.target_teams !== undefined) {
+        const teamNames = await loadTeamNames(id);
+        const sanitized = sanitizeTeamTargeting(
+          {
+            inject_scope: (updates.inject_scope ?? existing.inject_scope) as string,
+            target_teams: (updates.target_teams ?? existing.target_teams ?? []) as string[],
+            title: existing.title as string,
+          },
+          teamNames,
+        );
+        updates.inject_scope = sanitized.inject_scope;
+        updates.target_teams = sanitized.target_teams;
+      }
+
+      updates.generation_source = 'trainer';
+
+      const { data, error } = await supabaseAdmin
+        .from('scenario_injects')
+        .update(updates)
+        .eq('id', injectId)
+        .eq('scenario_id', id)
+        .is('session_id', null)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, injectId, scenarioId: id }, 'Failed to update inject');
+        return res.status(500).json({ error: `Failed to update inject: ${error.message}` });
+      }
+
+      logger.info({ injectId, scenarioId: id, userId: req.user!.id }, 'Inject edited by trainer');
+      res.json({ data });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in PATCH /scenarios/:id/injects/:injectId');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Add a brand-new trainer-authored template inject.
+router.post(
+  '/:id/injects',
+  requireAuth,
+  validate(createInjectSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id } = req.params;
+      if (!(await guardScenarioEdit(id, req, res))) return;
+
+      const body = req.body;
+      const teamNames = await loadTeamNames(id);
+      const sanitized = sanitizeTeamTargeting(
+        {
+          inject_scope: body.inject_scope,
+          target_teams: body.target_teams,
+          title: body.title,
+        },
+        teamNames,
+      );
+
+      const { data, error } = await supabaseAdmin
+        .from('scenario_injects')
+        .insert({
+          scenario_id: id,
+          session_id: null,
+          title: body.title,
+          content: body.content,
+          type: body.type,
+          severity: body.severity ?? 'medium',
+          trigger_time_minutes: body.trigger_time_minutes ?? null,
+          trigger_condition: body.trigger_condition ?? null,
+          inject_scope: sanitized.inject_scope,
+          target_teams: sanitized.target_teams,
+          requires_response: body.requires_response ?? false,
+          conditions_to_appear: body.conditions_to_appear ?? null,
+          conditions_to_cancel: body.conditions_to_cancel ?? null,
+          eligible_after_minutes: body.eligible_after_minutes ?? null,
+          delivery_config: body.delivery_config ?? null,
+          ai_generated: false,
+          generation_source: 'trainer',
+        })
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, scenarioId: id }, 'Failed to create inject');
+        return res.status(500).json({ error: `Failed to create inject: ${error.message}` });
+      }
+
+      logger.info(
+        { injectId: data.id, scenarioId: id, userId: req.user!.id },
+        'Inject created by trainer',
+      );
+      res.status(201).json({ data });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /scenarios/:id/injects');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Delete a template inject. Already-fired copies in past sessions are
+// unaffected (the scheduler dedups per session via session_events).
+router.delete('/:id/injects/:injectId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id, injectId } = req.params;
+    if (!(await guardScenarioEdit(id, req, res))) return;
+
+    const { data, error } = await supabaseAdmin
+      .from('scenario_injects')
+      .delete()
+      .eq('id', injectId)
+      .eq('scenario_id', id)
+      .is('session_id', null)
+      .select('id');
+
+    if (error) {
+      logger.error({ error, injectId, scenarioId: id }, 'Failed to delete inject');
+      return res.status(500).json({ error: `Failed to delete inject: ${error.message}` });
+    }
+    if (!data || data.length === 0) {
+      return res.status(404).json({ error: 'Inject not found (or not a template inject)' });
+    }
+
+    logger.info({ injectId, scenarioId: id, userId: req.user!.id }, 'Inject deleted by trainer');
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in DELETE /scenarios/:id/injects/:injectId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Regenerate an inject's post image from its CURRENT content + author persona.
+// Fixes the compile-time-image staleness trap: after editing content or author
+// the trainer can rebuild the image so text and picture match again.
+router.post(
+  '/:id/injects/:injectId/regenerate-image',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, injectId } = req.params;
+      if (!(await guardScenarioEdit(id, req, res))) return;
+
+      const [{ data: inject, error: injErr }, { data: scenario, error: scenErr }] =
+        await Promise.all([
+          supabaseAdmin
+            .from('scenario_injects')
+            .select('id, title, content, delivery_config')
+            .eq('id', injectId)
+            .eq('scenario_id', id)
+            .is('session_id', null)
+            .maybeSingle(),
+          supabaseAdmin.from('scenarios').select('initial_state').eq('id', id).maybeSingle(),
+        ]);
+
+      if (injErr || scenErr) {
+        logger.error(
+          { injErr, scenErr, injectId },
+          'Failed to load inject/scenario for image regen',
+        );
+        return res.status(500).json({ error: 'Failed to load inject' });
+      }
+      if (!inject) {
+        return res.status(404).json({ error: 'Inject not found (or not a template inject)' });
+      }
+
+      const dc = ((inject.delivery_config || {}) as Record<string, unknown>) ?? {};
+      const authorHandle = String(dc.author_handle || '');
+      const personas = ((scenario?.initial_state as Record<string, unknown> | null)?.npc_personas ||
+        []) as Array<Record<string, unknown>>;
+      const persona = personas.find((p) => String(p.handle || '') === authorHandle);
+
+      const bias = persona ? String(persona.bias || 'none') : 'none';
+      const style = bias !== 'none' ? 'evidence_photo' : 'news_photo';
+      const personaContext = persona
+        ? `Posted by ${String(persona.name || authorHandle)} (${authorHandle}), ${String(persona.personality || '')}`
+        : undefined;
+
+      const imageUrl = await generatePostImage(
+        `A social media post image matching this post: "${String(inject.content).substring(0, 500)}"`,
+        style,
+        personaContext,
+      );
+
+      if (!imageUrl) {
+        return res
+          .status(502)
+          .json({ error: 'Image generation failed. Check server logs and try again.' });
+      }
+
+      dc.media_urls = [imageUrl];
+      const { data, error } = await supabaseAdmin
+        .from('scenario_injects')
+        .update({ delivery_config: dc, generation_source: 'trainer' })
+        .eq('id', injectId)
+        .eq('scenario_id', id)
+        .is('session_id', null)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, injectId }, 'Failed to save regenerated image');
+        return res.status(500).json({ error: `Failed to save image: ${error.message}` });
+      }
+
+      logger.info({ injectId, scenarioId: id, imageUrl }, 'Inject image regenerated');
+      res.json({ data });
+    } catch (err) {
+      logger.error(
+        { error: err },
+        'Error in POST /scenarios/:id/injects/:injectId/regenerate-image',
+      );
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Edit a team's charter wording / scoring rubric. Team names and
+// expected_actions are immutable (they drive action detection and the
+// compile-derived strategic benchmarks).
+const updateTeamSchema = z.object({
+  params: z.object({ id: z.string().uuid(), teamId: z.string().uuid() }),
+  body: z.object({
+    team_description: z.string().max(2000).optional(),
+    charter: z
+      .object({
+        mission: z.string().max(2000).optional(),
+        responsibilities: z.array(z.string().max(500)).max(10).optional(),
+        out_of_lane: z.array(z.string().max(500)).max(10).optional(),
+      })
+      .optional(),
+    scoring_rubric: z.string().max(4000).optional(),
+  }),
+});
+
+router.patch(
+  '/:id/teams/:teamId',
+  requireAuth,
+  validate(updateTeamSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, teamId } = req.params;
+      if (!(await guardScenarioEdit(id, req, res))) return;
+
+      const { data: existing, error: fetchErr } = await supabaseAdmin
+        .from('scenario_teams')
+        .select('id, charter')
+        .eq('id', teamId)
+        .eq('scenario_id', id)
+        .maybeSingle();
+      if (fetchErr) {
+        logger.error({ error: fetchErr, teamId }, 'Failed to load team for edit');
+        return res.status(500).json({ error: 'Failed to load team' });
+      }
+      if (!existing) {
+        return res.status(404).json({ error: 'Team not found' });
+      }
+
+      const updates: Record<string, unknown> = {};
+      if (req.body.team_description !== undefined)
+        updates.team_description = req.body.team_description;
+      if (req.body.scoring_rubric !== undefined) updates.scoring_rubric = req.body.scoring_rubric;
+      if (req.body.charter !== undefined) {
+        // Merge onto the existing charter so partial edits never drop fields.
+        updates.charter = {
+          ...((existing.charter || {}) as Record<string, unknown>),
+          ...req.body.charter,
+        };
+      }
+
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ error: 'No editable fields provided' });
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from('scenario_teams')
+        .update(updates)
+        .eq('id', teamId)
+        .eq('scenario_id', id)
+        .select()
+        .single();
+
+      if (error) {
+        logger.error({ error, teamId, scenarioId: id }, 'Failed to update team');
+        return res.status(500).json({ error: `Failed to update team: ${error.message}` });
+      }
+
+      logger.info(
+        { teamId, scenarioId: id, userId: req.user!.id },
+        'Team charter edited by trainer',
+      );
+      res.json({ data });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in PATCH /scenarios/:id/teams/:teamId');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Edit one scenario objective row (consumed at session start by objective tracking).
+const updateObjectiveSchema = z.object({
+  params: z.object({ id: z.string().uuid(), objectiveId: z.string().uuid() }),
+  body: z.object({
+    objective_name: z.string().min(1).max(300).optional(),
+    description: z.string().max(3000).optional(),
+    weight: z.number().min(0).max(100).optional(),
+  }),
+});
+
+router.patch(
+  '/:id/objectives/:objectiveId',
+  requireAuth,
+  validate(updateObjectiveSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id, objectiveId } = req.params;
+      if (!(await guardScenarioEdit(id, req, res))) return;
+
+      const { data, error } = await supabaseAdmin
+        .from('scenario_objectives')
+        .update(req.body)
+        .eq('id', objectiveId)
+        .eq('scenario_id', id)
+        .select()
+        .single();
+
+      if (error) {
+        if (error.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Objective not found' });
+        }
+        logger.error({ error, objectiveId, scenarioId: id }, 'Failed to update objective');
+        return res.status(500).json({ error: `Failed to update objective: ${error.message}` });
+      }
+
+      // Keep the scenarios.objectives text list (shown in previews/briefings)
+      // in sync when the name changed.
+      if (req.body.objective_name !== undefined) {
+        const { data: objRows, error: listErr } = await supabaseAdmin
+          .from('scenario_objectives')
+          .select('objective_name')
+          .eq('scenario_id', id)
+          .order('created_at', { ascending: true });
+        if (!listErr && objRows) {
+          const { error: syncErr } = await supabaseAdmin
+            .from('scenarios')
+            .update({ objectives: objRows.map((o) => o.objective_name) })
+            .eq('id', id);
+          if (syncErr) {
+            logger.error({ error: syncErr, scenarioId: id }, 'Failed to sync scenarios.objectives');
+            return res
+              .status(500)
+              .json({ error: `Objective saved but list sync failed: ${syncErr.message}` });
+          }
+        }
+      }
+
+      logger.info(
+        { objectiveId, scenarioId: id, userId: req.user!.id },
+        'Objective edited by trainer',
+      );
+      res.json({ data });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in PATCH /scenarios/:id/objectives/:objectiveId');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Get objectives rows for the editor (id + fields; the scenarios.objectives
+// column only has names).
+router.get('/:id/objectives', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user!;
+    if (user.role !== 'trainer' && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    const { data, error } = await supabaseAdmin
+      .from('scenario_objectives')
+      .select('*')
+      .eq('scenario_id', id)
+      .order('created_at', { ascending: true });
+    if (error) {
+      logger.error({ error, scenarioId: id }, 'Failed to fetch scenario objectives');
+      return res.status(500).json({ error: 'Failed to fetch objectives' });
+    }
+    res.json({ data: data ?? [] });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /scenarios/:id/objectives');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Create scenario (trainers only)
 router.post(
   '/',
@@ -738,6 +1263,39 @@ router.patch(
 
       if (scenario.created_by !== user.id && user.role !== 'admin') {
         return res.status(403).json({ error: 'Access denied' });
+      }
+
+      // Content edits are gated by the edit lock (session credits + no live
+      // session). Non-content operations (is_active toggle, map/geo fields)
+      // stay available while locked.
+      const CONTENT_FIELDS = [
+        'title',
+        'description',
+        'briefing',
+        'objectives',
+        'initial_state',
+        'role_specific_briefs',
+        'insider_knowledge',
+        'duration_minutes',
+        'difficulty',
+      ];
+      const touchesContent = CONTENT_FIELDS.some(
+        (f) => (updates as Record<string, unknown>)[f] !== undefined,
+      );
+      if (touchesContent) {
+        const editability = await canEditScenario(id, user);
+        if (!editability.editable) {
+          return res.status(423).json({
+            error:
+              editability.reason === 'live_session'
+                ? 'A session on this scenario is currently live. Editing resumes when it ends.'
+                : 'No session launch credits remaining. Editing is locked until credits are topped up.',
+            code:
+              editability.reason === 'live_session'
+                ? 'EDIT_LOCKED_LIVE_SESSION'
+                : 'EDIT_LOCKED_NO_CREDITS',
+          });
+        }
       }
 
       const { data, error } = await supabaseAdmin

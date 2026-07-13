@@ -285,8 +285,106 @@ export const api = {
           team_description: string;
           min_participants: number;
           max_participants: number;
+          charter?: {
+            mission?: string;
+            responsibilities?: string[];
+            out_of_lane?: string[];
+          } | null;
+          expected_actions?: Array<Record<string, unknown>> | null;
+          scoring_rubric?: string | null;
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/teams`), { headers }));
+    },
+    /** Whether the caller may edit this scenario right now (edit lock state). */
+    getEditability: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          editable: boolean;
+          reason: 'ok' | 'live_session' | 'no_session_credits';
+          session_credits: number;
+          live_session_id: string | null;
+        };
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/editability`), { headers }));
+    },
+    /** Edit one template inject (trainer personalisation, post-compile). */
+    updateInject: async (id: string, injectId: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects/${injectId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    /** Add a new trainer-authored template inject. */
+    createInject: async (id: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    /** Delete a template inject. */
+    deleteInject: async (id: string, injectId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ ok: boolean }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects/${injectId}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
+    /** Regenerate an inject's post image from its current content + author persona. */
+    regenerateInjectImage: async (id: string, injectId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects/${injectId}/regenerate-image`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+    /** Edit a team's charter wording / scoring rubric. */
+    updateTeam: async (id: string, teamId: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/teams/${teamId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    /** Get scenario objective rows (with ids, for the editor). */
+    getObjectives: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          objective_id: string;
+          objective_name: string;
+          description: string | null;
+          weight: number;
+          success_criteria: Record<string, unknown>;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/objectives`), { headers }));
+    },
+    /** Edit one scenario objective row. */
+    updateObjective: async (id: string, objectiveId: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/objectives/${objectiveId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
     },
     /** Get all map pin locations for a scenario (trainer only). */
     getScenarioLocations: async (id: string) => {
