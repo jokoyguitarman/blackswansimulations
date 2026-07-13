@@ -68,10 +68,12 @@ export const Dashboard = () => {
               <NotificationBell />
               <a
                 href="/account"
-                className="text-right leading-tight hover:opacity-80 transition-opacity"
+                className="text-right leading-tight text-white hover:opacity-80 transition-opacity"
                 title="Account settings"
               >
-                <div className="text-sm font-semibold">{user?.displayName || user?.email}</div>
+                <div className="text-sm font-semibold text-white">
+                  {user?.displayName || user?.email}
+                </div>
                 <div className="text-[11px] text-white/60 capitalize">{user?.role} · settings</div>
               </a>
               <button
