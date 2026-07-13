@@ -197,6 +197,14 @@ export const SocialCrisisWizard = () => {
   const [step3Progress, setStep3Progress] = useState<string[]>([]);
   const [step3Error, setStep3Error] = useState<string | null>(null);
 
+  /* Fixed response teams (Communications, Procurement, Sales, Legal):
+     per-team storylines + crisis-adapted charters generated alongside the
+     universal storyline backbone. */
+  const [teamStorylines, setTeamStorylines] = useState<Record<string, SocialInject[]>>({});
+  const [teamCharters, setTeamCharters] = useState<
+    Array<{ team_name: string; mission: string; responsibilities: string[] }>
+  >([]);
+
   /* Step 4 — Convergence + Shared Chaos */
   const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
   const [convergenceGates, setConvergenceGates] = useState<SocialInject[]>([]);
@@ -278,6 +286,8 @@ export const SocialCrisisWizard = () => {
       fact_sheet: factSheet,
       communities,
       storyline_injects: storylineInjects,
+      team_storylines: teamStorylines,
+      team_charters: teamCharters,
       shared_injects: sharedInjects,
       convergence_gates: convergenceGates,
       narrative,
@@ -299,6 +309,8 @@ export const SocialCrisisWizard = () => {
       factSheet,
       communities,
       storylineInjects,
+      teamStorylines,
+      teamCharters,
       sharedInjects,
       convergenceGates,
       narrative,
@@ -379,6 +391,16 @@ export const SocialCrisisWizard = () => {
         if (input.fact_sheet) setFactSheet(input.fact_sheet as FactSheet);
         if (Array.isArray(input.storyline_injects))
           setStorylineInjects(input.storyline_injects as SocialInject[]);
+        if (input.team_storylines && typeof input.team_storylines === 'object')
+          setTeamStorylines(input.team_storylines as Record<string, SocialInject[]>);
+        if (Array.isArray(input.team_charters))
+          setTeamCharters(
+            input.team_charters as Array<{
+              team_name: string;
+              mission: string;
+              responsibilities: string[];
+            }>,
+          );
         if (Array.isArray(input.shared_injects))
           setSharedInjects(input.shared_injects as SocialInject[]);
         if (Array.isArray(input.convergence_gates))
@@ -647,7 +669,10 @@ export const SocialCrisisWizard = () => {
     async (
       personasArg?: NPCPersona[],
       factSheetArg?: FactSheet | null,
-    ): Promise<SocialInject[] | null> => {
+    ): Promise<{
+      injects: SocialInject[];
+      teamStorylines: Record<string, SocialInject[]>;
+    } | null> => {
       if (!crisisDescription) return null;
       const personasIn = personasArg ?? personas;
       const factSheetIn = factSheetArg ?? factSheet;
@@ -655,7 +680,12 @@ export const SocialCrisisWizard = () => {
       setStep3Error(null);
       setStep3Progress([]);
       setStorylineInjects([]);
-      let result: SocialInject[] | null = null;
+      setTeamStorylines({});
+      setTeamCharters([]);
+      let result: {
+        injects: SocialInject[];
+        teamStorylines: Record<string, SocialInject[]>;
+      } | null = null;
 
       try {
         const headers = await authHeaders();
@@ -692,9 +722,26 @@ export const SocialCrisisWizard = () => {
                 const msg = JSON.parse(line);
                 if (msg.type === 'progress') {
                   setStep3Progress((prev) => [...prev, String(msg.message)]);
+                } else if (msg.type === 'team_complete') {
+                  setStep3Progress((prev) => [
+                    ...prev,
+                    `${String(msg.team)} storyline ready (${Number(msg.inject_count)} injects)`,
+                  ]);
                 } else if (msg.type === 'complete' && msg.injects) {
-                  result = msg.injects as SocialInject[];
-                  setStorylineInjects(result);
+                  const injects = msg.injects as SocialInject[];
+                  const teamMap = (msg.team_storylines || {}) as Record<string, SocialInject[]>;
+                  result = { injects, teamStorylines: teamMap };
+                  setStorylineInjects(injects);
+                  setTeamStorylines(teamMap);
+                  if (Array.isArray(msg.team_charters)) {
+                    setTeamCharters(
+                      msg.team_charters as Array<{
+                        team_name: string;
+                        mission: string;
+                        responsibilities: string[];
+                      }>,
+                    );
+                  }
                 } else if (msg.type === 'error') {
                   setStep3Error(String(msg.message || 'Storyline generation failed'));
                 }
@@ -720,11 +767,13 @@ export const SocialCrisisWizard = () => {
       personasArg?: NPCPersona[],
       factSheetArg?: FactSheet | null,
       storylineArg?: SocialInject[],
+      teamStorylinesArg?: Record<string, SocialInject[]>,
     ): Promise<boolean> => {
       if (!crisisDescription) return false;
       const personasIn = personasArg ?? personas;
       const factSheetIn = factSheetArg ?? factSheet;
       const storylineIn = storylineArg ?? storylineInjects;
+      const teamStorylinesIn = teamStorylinesArg ?? teamStorylines;
       setStep4Loading(true);
       setStep4Error(null);
 
@@ -756,9 +805,14 @@ export const SocialCrisisWizard = () => {
             communities,
             personas: personasIn,
             fact_sheet: factSheetIn,
-            // Feed the storyline so convergence designs shared injects and gates
-            // as organic consequences of the actual storyline beats.
-            team_storylines: storylineIn.length > 0 ? { storyline: storylineIn } : {},
+            // Feed the storylines so convergence designs shared injects and gates
+            // as organic consequences of the actual storyline beats. Per-team
+            // storylines are keyed by their fixed team names; the universal
+            // backbone rides along as "Shared".
+            team_storylines: {
+              ...teamStorylinesIn,
+              ...(storylineIn.length > 0 ? { Shared: storylineIn } : {}),
+            },
             blueprint: blueprint ?? undefined,
           }),
         });
@@ -822,6 +876,7 @@ export const SocialCrisisWizard = () => {
       personas,
       factSheet,
       storylineInjects,
+      teamStorylines,
       blueprint,
     ],
   );
@@ -903,13 +958,18 @@ export const SocialCrisisWizard = () => {
 
     setBuildStage('storyline');
     const story = await generateStoryline(npc.personas, npc.factSheet);
-    if (!story || story.length === 0) {
+    if (!story || story.injects.length === 0) {
       setBuildError('storyline');
       return;
     }
 
     setBuildStage('convergence');
-    const convOk = await generateConvergence(npc.personas, npc.factSheet, story);
+    const convOk = await generateConvergence(
+      npc.personas,
+      npc.factSheet,
+      story.injects,
+      story.teamStorylines,
+    );
     if (!convOk) {
       setBuildError('convergence');
       return;
@@ -946,6 +1006,8 @@ export const SocialCrisisWizard = () => {
           fact_sheet: factSheet,
           communities,
           storyline_injects: storylineInjects,
+          team_storylines: teamStorylines,
+          team_charters: teamCharters.length > 0 ? teamCharters : undefined,
           shared_injects: sharedInjects,
           convergence_gates: convergenceGates,
           dimension_labels: dimensionLabels,
@@ -1022,6 +1084,8 @@ export const SocialCrisisWizard = () => {
     personas,
     factSheet,
     storylineInjects,
+    teamStorylines,
+    teamCharters,
     sharedInjects,
     convergenceGates,
     narrative,
@@ -1072,8 +1136,8 @@ export const SocialCrisisWizard = () => {
   /* ─── Computed stats ────────────────────────────────────────────── */
 
   const totalTeamInjects = useMemo(() => {
-    return storylineInjects.length;
-  }, [storylineInjects]);
+    return Object.values(teamStorylines).reduce((sum, injects) => sum + injects.length, 0);
+  }, [teamStorylines]);
 
   const crisisLabel = useMemo(() => {
     if (!crisisDescription) return 'Not specified';
@@ -1817,6 +1881,35 @@ export const SocialCrisisWizard = () => {
               </div>
             </div>
           </div>
+
+          {teamCharters.length > 0 && (
+            <div className="border border-border rounded p-4 mb-4">
+              <h3 className="text-xs terminal-text text-muted uppercase mb-3">
+                Response teams · built-in
+              </h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {teamCharters.map((team) => (
+                  <div key={team.team_name} className="border border-border rounded p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs terminal-text text-ink font-bold">
+                        {team.team_name}
+                      </span>
+                      <span className="text-[10px] terminal-text text-accent">
+                        {(teamStorylines[team.team_name] || []).length} injects
+                      </span>
+                    </div>
+                    <div className="text-[10px] terminal-text text-muted leading-relaxed line-clamp-2">
+                      {team.mission}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="text-[9px] terminal-text text-muted mt-3">
+                Players are assigned to these teams in the session lobby. Each team has its own
+                storyline pressure, tasks, and scoring rubric.
+              </p>
+            </div>
+          )}
 
           {narrative && (
             <div className="border border-border rounded p-4 mb-4">

@@ -128,6 +128,8 @@ interface LedgerEntry {
     signals?: Record<string, boolean>;
     media_concept_grade?: number;
     media_feedback?: string;
+    role_fit?: number;
+    graded_as_team?: string;
   } | null;
   action_type?: string;
   target_id?: string | null;
@@ -144,6 +146,7 @@ interface LedgerEntry {
 interface LedgerPlayer {
   player_id: string;
   display_name: string;
+  team_name?: string | null;
   entries: LedgerEntry[];
 }
 
@@ -157,6 +160,52 @@ interface PlayerLedger {
     is_positive: boolean;
   }>;
 }
+
+interface TeamTaskStatus {
+  action_id: string;
+  description: string;
+  tier: number;
+  status: 'done' | 'pending' | 'overdue' | 'unstaffed';
+  completed_at: string | null;
+  on_time: boolean | null;
+  timing_benchmark_minutes: number | null;
+}
+
+interface TeamScoreRow {
+  team_name: string;
+  mission: string;
+  member_count: number;
+  members: Array<{
+    user_id: string;
+    display_name: string;
+    graded_items: number;
+    avg_overall: number | null;
+    avg_role_fit: number | null;
+  }>;
+  tasks: TeamTaskStatus[];
+  tasks_done: number;
+  tasks_total: number;
+  content_quality: number | null;
+  task_completion: number | null;
+  role_fit: number | null;
+  composite_score: number | null;
+  most_urgent_overdue: { description: string; minutes_overdue: number } | null;
+}
+
+interface TeamScoreReport {
+  teams: TeamScoreRow[];
+  unassigned: Array<{ user_id: string; display_name: string }>;
+  elapsed_minutes: number | null;
+}
+
+const TEAM_COLOR: Record<string, string> = {
+  Communications: '#3b82f6',
+  Procurement: '#f59e0b',
+  Sales: '#22c55e',
+  Legal: '#a78bfa',
+};
+const teamColor = (name: string | null | undefined): string =>
+  (name && TEAM_COLOR[name]) || '#64748b';
 
 interface FeedPost {
   id: string;
@@ -666,6 +715,8 @@ export default function TrainerSimDashboard() {
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
   const [ledger, setLedger] = useState<PlayerLedger | null>(null);
   const [selectedLedgerPlayer, setSelectedLedgerPlayer] = useState<string | null>(null);
+  const [teamScores, setTeamScores] = useState<TeamScoreReport | null>(null);
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
@@ -818,6 +869,18 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  const loadTeamScores = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/team-scores/session/${sessionId}`), { headers });
+      const json = await res.json();
+      if (json.data) setTeamScores(json.data as TeamScoreReport);
+    } catch {
+      /* retry on next poll */
+    }
+  }, [sessionId]);
+
   const loadAll = useCallback(() => {
     loadSocialState();
     loadPosts();
@@ -827,6 +890,7 @@ export default function TrainerSimDashboard() {
     loadOrchestration();
     loadDisputes();
     loadLedger();
+    loadTeamScores();
   }, [
     loadSocialState,
     loadPosts,
@@ -836,6 +900,7 @@ export default function TrainerSimDashboard() {
     loadOrchestration,
     loadDisputes,
     loadLedger,
+    loadTeamScores,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -871,10 +936,13 @@ export default function TrainerSimDashboard() {
       'social_post.created',
       'social_post.flagged',
       'social_posts.engagement_update',
+      'team_scores.updated',
     ],
     onEvent: (evt) => {
       if (evt.type === 'social_state.updated' && evt.data) {
         setSocialState(evt.data as unknown as SocialState);
+      } else if (evt.type === 'team_scores.updated') {
+        loadTeamScores();
       } else {
         loadPosts();
         loadGradedReplies();
@@ -1716,6 +1784,209 @@ export default function TrainerSimDashboard() {
         </div>
       </div>
 
+      {/* Team Performance (full-width) — fixed response teams */}
+      {teamScores && teamScores.teams.length > 0 && (
+        <div className="px-4 pb-4">
+          <div
+            className="rounded-xl border"
+            style={{ backgroundColor: '#141414', borderColor: '#232323' }}
+          >
+            <div
+              className="flex items-start justify-between gap-3 px-4 py-3 border-b flex-wrap"
+              style={{ borderColor: '#232323' }}
+            >
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: '#fff' }}>
+                  Team Performance
+                </h2>
+                <p className="text-[11px]" style={{ color: '#64748b' }}>
+                  Composite = content quality (50%) + task completion (35%) + role fit (15%).
+                  Unstaffed teams are not scored.
+                </p>
+              </div>
+              {teamScores.unassigned.length > 0 && (
+                <span
+                  className="text-[10px] font-semibold px-2 py-1 rounded"
+                  style={{ backgroundColor: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}
+                  title={teamScores.unassigned.map((u) => u.display_name).join(', ')}
+                >
+                  {teamScores.unassigned.length} player(s) unassigned
+                </span>
+              )}
+            </div>
+
+            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              {teamScores.teams.map((team) => {
+                const color = teamColor(team.team_name);
+                const unstaffed = team.member_count === 0;
+                const expanded = expandedTeam === team.team_name;
+                return (
+                  <div
+                    key={team.team_name}
+                    className="rounded-lg border p-3 flex flex-col"
+                    style={{ backgroundColor: '#0f0f0f', borderColor: '#232323' }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold" style={{ color }}>
+                        {team.team_name.toUpperCase()}
+                      </span>
+                      <span
+                        className="text-lg font-bold"
+                        style={{
+                          color: unstaffed ? '#475569' : gaugeColor(team.composite_score ?? 0),
+                        }}
+                      >
+                        {unstaffed || team.composite_score == null ? '—' : team.composite_score}
+                      </span>
+                    </div>
+
+                    <div
+                      className="h-1.5 rounded-full overflow-hidden mb-2"
+                      style={{ backgroundColor: '#2a2a2a' }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${team.composite_score ?? 0}%`,
+                          backgroundColor: unstaffed ? '#475569' : color,
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      {unstaffed ? (
+                        <Badge text="UNSTAFFED" variant="red" />
+                      ) : (
+                        <>
+                          <Badge
+                            text={`${team.member_count} member${team.member_count !== 1 ? 's' : ''}`}
+                            variant="gray"
+                          />
+                          <Badge
+                            text={`${team.tasks_done}/${team.tasks_total} tasks`}
+                            variant={
+                              team.tasks_done === team.tasks_total
+                                ? 'blue'
+                                : team.tasks.some((t) => t.status === 'overdue')
+                                  ? 'amber'
+                                  : 'gray'
+                            }
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    {!unstaffed && team.most_urgent_overdue && (
+                      <div
+                        className="text-[10px] rounded px-2 py-1 mb-2 font-semibold"
+                        style={{ backgroundColor: 'rgba(239,68,68,0.12)', color: '#ef4444' }}
+                      >
+                        Overdue {team.most_urgent_overdue.minutes_overdue}m:{' '}
+                        {team.most_urgent_overdue.description}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 text-[10px] font-bold mb-2">
+                      {team.content_quality != null && (
+                        <span style={{ color: gradeColor(team.content_quality) }}>
+                          QUALITY {team.content_quality}
+                        </span>
+                      )}
+                      {team.task_completion != null && (
+                        <span style={{ color: gradeColor(team.task_completion) }}>
+                          TASKS {team.task_completion}
+                        </span>
+                      )}
+                      {team.role_fit != null && (
+                        <span style={{ color: gradeColor(team.role_fit) }}>
+                          FIT {team.role_fit}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setExpandedTeam(expanded ? null : team.team_name)}
+                      className="text-[10px] text-left font-semibold mt-auto"
+                      style={{ color: '#64748b' }}
+                    >
+                      {expanded ? '▾ Hide task checklist' : '▸ Task checklist'}
+                    </button>
+
+                    {expanded && (
+                      <div className="mt-2 space-y-1">
+                        {team.tasks.map((task) => {
+                          const statusColor =
+                            task.status === 'done'
+                              ? '#22c55e'
+                              : task.status === 'overdue'
+                                ? '#ef4444'
+                                : task.status === 'unstaffed'
+                                  ? '#475569'
+                                  : '#f59e0b';
+                          const icon =
+                            task.status === 'done' ? '✓' : task.status === 'overdue' ? '!' : '·';
+                          return (
+                            <div key={task.action_id} className="flex items-start gap-1.5">
+                              <span
+                                className="text-[10px] font-bold w-3 flex-shrink-0"
+                                style={{ color: statusColor }}
+                              >
+                                {icon}
+                              </span>
+                              <span
+                                className="text-[10px] leading-snug"
+                                style={{
+                                  color: task.status === 'done' ? '#94a3b8' : '#cbd5e1',
+                                }}
+                              >
+                                {task.description}
+                                {task.status === 'done' && task.on_time === false && (
+                                  <span style={{ color: '#f59e0b' }}> (late)</span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {team.members.length > 0 && (
+                          <div
+                            className="pt-1.5 mt-1.5 border-t"
+                            style={{ borderColor: '#232323' }}
+                          >
+                            {team.members.map((m) => (
+                              <div
+                                key={m.user_id}
+                                className="flex justify-between text-[10px] py-0.5"
+                              >
+                                <span style={{ color: '#cbd5e1' }}>{m.display_name}</span>
+                                <span style={{ color: '#64748b' }}>
+                                  {m.graded_items > 0 && m.avg_overall != null ? (
+                                    <>
+                                      <span style={{ color: gradeColor(m.avg_overall) }}>
+                                        {m.avg_overall}
+                                      </span>
+                                      {m.avg_role_fit != null && (
+                                        <span> · fit {m.avg_role_fit}</span>
+                                      )}
+                                      <span> · {m.graded_items} graded</span>
+                                    </>
+                                  ) : (
+                                    'no graded output'
+                                  )}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Player Judgement Ledger (full-width) */}
       <div className="px-4 pb-6">
         <div
@@ -1735,26 +2006,59 @@ export default function TrainerSimDashboard() {
                 snapshot to each action).
               </p>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {(ledger?.players ?? []).map((pl, idx) => {
-                const active = selectedLedgerPlayer
-                  ? selectedLedgerPlayer === pl.player_id
-                  : idx === 0;
-                return (
-                  <button
-                    key={pl.player_id}
-                    onClick={() => setSelectedLedgerPlayer(pl.player_id)}
-                    className="text-[11px] px-2.5 py-1 rounded-lg font-semibold transition-opacity hover:opacity-90"
-                    style={{
-                      backgroundColor: active ? '#1d4ed8' : '#1a1a1a',
-                      color: active ? '#fff' : '#94a3b8',
-                      border: '1px solid #2a2a2a',
-                    }}
-                  >
-                    {pl.display_name} ({pl.entries.length})
-                  </button>
-                );
-              })}
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {(() => {
+                const players = ledger?.players ?? [];
+                // Group players under their fixed team; unassigned last.
+                const groups = new Map<string, LedgerPlayer[]>();
+                for (const pl of players) {
+                  const key = pl.team_name || 'Unassigned';
+                  const list = groups.get(key) || [];
+                  list.push(pl);
+                  groups.set(key, list);
+                }
+                const orderedKeys = [
+                  ...Object.keys(TEAM_COLOR).filter((t) => groups.has(t)),
+                  ...Array.from(groups.keys()).filter(
+                    (k) => !(k in TEAM_COLOR) && k !== 'Unassigned',
+                  ),
+                  ...(groups.has('Unassigned') ? ['Unassigned'] : []),
+                ];
+                return orderedKeys.map((groupName) => (
+                  <div key={groupName} className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className="text-[9px] font-bold uppercase tracking-wider"
+                      style={{
+                        color: groupName === 'Unassigned' ? '#64748b' : teamColor(groupName),
+                      }}
+                    >
+                      {groupName}
+                    </span>
+                    {(groups.get(groupName) || []).map((pl) => {
+                      const active = selectedLedgerPlayer
+                        ? selectedLedgerPlayer === pl.player_id
+                        : players[0]?.player_id === pl.player_id;
+                      return (
+                        <button
+                          key={pl.player_id}
+                          onClick={() => setSelectedLedgerPlayer(pl.player_id)}
+                          className="text-[11px] px-2.5 py-1 rounded-lg font-semibold transition-opacity hover:opacity-90"
+                          style={{
+                            backgroundColor: active ? '#1d4ed8' : '#1a1a1a',
+                            color: active ? '#fff' : '#94a3b8',
+                            border: `1px solid ${active ? '#1d4ed8' : '#2a2a2a'}`,
+                            borderLeft: `3px solid ${
+                              groupName === 'Unassigned' ? '#2a2a2a' : teamColor(groupName)
+                            }`,
+                          }}
+                        >
+                          {pl.display_name} ({pl.entries.length})
+                        </button>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
 
@@ -1864,6 +2168,18 @@ export default function TrainerSimDashboard() {
                                     CLAR {g.clarity}
                                   </span>
                                 )}
+                                {g.role_fit != null && (
+                                  <span
+                                    style={{ color: gradeColor(g.role_fit) }}
+                                    title={
+                                      g.graded_as_team
+                                        ? `Role fit — graded as ${g.graded_as_team}`
+                                        : 'Role fit'
+                                    }
+                                  >
+                                    FIT {g.role_fit}
+                                  </span>
+                                )}
                                 {g.overall != null && (
                                   <span
                                     className="ml-auto"
@@ -1873,6 +2189,17 @@ export default function TrainerSimDashboard() {
                                   </span>
                                 )}
                               </div>
+                              {g.signals?.within_mandate === false && (
+                                <div
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded inline-block mb-1"
+                                  style={{
+                                    backgroundColor: 'rgba(245,158,11,0.15)',
+                                    color: '#f59e0b',
+                                  }}
+                                >
+                                  OUT OF LANE
+                                </div>
+                              )}
                               {g.feedback && (
                                 <p
                                   className="text-[11px] italic leading-snug"

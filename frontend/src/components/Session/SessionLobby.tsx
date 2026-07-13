@@ -53,6 +53,9 @@ export const SessionLobby = ({
   } | null>(null);
   const [loading, setLoading] = useState(false);
   const [myTeams, setMyTeams] = useState<Array<{ team_name: string; team_role?: string }>>([]);
+  const [allAssignments, setAllAssignments] = useState<
+    Array<{ user_id: string; team_name: string; user?: { full_name?: string } }>
+  >([]);
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
   const [showPageAssignmentModal, setShowPageAssignmentModal] = useState(false);
   const isSocialSim = session.sim_mode === 'social_media';
@@ -180,11 +183,16 @@ export const SessionLobby = ({
     if (!sessionId || !user?.id) return;
     try {
       const result = await api.teams.getSessionTeams(sessionId);
-      const myTeamAssignments = (result.data || []).filter(
-        (assignment: any) => assignment.user_id === user.id,
-      );
+      const assignments = (result.data || []) as Array<{
+        user_id: string;
+        team_name: string;
+        team_role?: string;
+        user?: { full_name?: string };
+      }>;
+      setAllAssignments(assignments);
+      const myTeamAssignments = assignments.filter((assignment) => assignment.user_id === user.id);
       setMyTeams(
-        myTeamAssignments.map((a: any) => ({
+        myTeamAssignments.map((a) => ({
           team_name: a.team_name,
           team_role: a.team_role,
         })),
@@ -218,6 +226,26 @@ export const SessionLobby = ({
     if (!readyStatus?.all_ready) {
       alert('All participants must be ready before starting the session');
       return;
+    }
+
+    // Social crisis sessions score and route content per team — warn (but do
+    // not block) when players would start without a team.
+    if (isSocialSim) {
+      const assignedIds = new Set(allAssignments.map((a) => a.user_id));
+      const unassigned = (session.participants || []).filter(
+        (p) => !assignedIds.has(p.user_id) && p.user_id !== user?.id,
+      );
+      if (unassigned.length > 0) {
+        const names = unassigned
+          .map((p) => p.user?.full_name || 'Unknown')
+          .slice(0, 5)
+          .join(', ');
+        const proceed = window.confirm(
+          `${unassigned.length} player(s) have no team (${names}${unassigned.length > 5 ? ', …' : ''}). ` +
+            'They will miss team-specific content and team scoring. Start anyway?',
+        );
+        if (!proceed) return;
+      }
     }
 
     if (onStartSession) {
@@ -361,11 +389,12 @@ export const SessionLobby = ({
             )}
           </div>
 
-          {myTeams.length > 0 ? (
-            <div className="border-l-4 border-success bg-success/10 rounded-md p-4">
+          {myTeams.length > 0 && (
+            <div className="border-l-4 border-success bg-success/10 rounded-md p-4 mb-3">
               <div className="space-y-2">
                 {myTeams.map((team, idx) => (
                   <div key={idx} className="flex items-center gap-2">
+                    <span className="text-xs text-muted uppercase tracking-wide">Your team:</span>
                     <span className="text-sm font-bold text-ink">{team.team_name}</span>
                     {team.team_role && (
                       <span className="text-xs text-muted">({team.team_role})</span>
@@ -376,6 +405,47 @@ export const SessionLobby = ({
               <p className="text-xs text-muted mt-2">
                 You will receive team-specific information during the session.
               </p>
+            </div>
+          )}
+
+          {allAssignments.length > 0 ? (
+            <div className="bg-surface-2 border border-border rounded-lg p-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {Array.from(
+                  allAssignments.reduce((groups, a) => {
+                    const list = groups.get(a.team_name) || [];
+                    list.push(a);
+                    groups.set(a.team_name, list);
+                    return groups;
+                  }, new Map<string, typeof allAssignments>()),
+                ).map(([teamName, members]) => (
+                  <div key={teamName} className="border border-border rounded-md p-3 bg-surface">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold uppercase tracking-wide text-brand">
+                        {teamName}
+                      </span>
+                      <span className="text-[10px] text-muted">
+                        {members.length} member{members.length !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    <div className="space-y-1">
+                      {members.map((m) => (
+                        <div
+                          key={m.user_id}
+                          className={`text-sm ${
+                            m.user_id === user?.id ? 'font-bold text-ink' : 'text-ink'
+                          }`}
+                        >
+                          {m.user?.full_name || 'Unknown'}
+                          {m.user_id === user?.id && (
+                            <span className="text-xs text-success ml-1">(you)</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="bg-surface-2 border border-border rounded-lg p-4">

@@ -126,6 +126,21 @@ const DEFAULT_RACE_OPTIONS = [
   { value: 'immigrant', label: 'Immigrant community' },
 ];
 
+interface TeamBriefing {
+  team_name: string;
+  mission: string | null;
+  responsibilities: string[];
+  out_of_lane: string[];
+  tasks: string[];
+}
+
+const TEAM_ICON: Record<string, string> = {
+  Communications: '📣',
+  Procurement: '📦',
+  Sales: '🤝',
+  Legal: '⚖️',
+};
+
 export default function HomeScreen() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
@@ -143,6 +158,9 @@ export default function HomeScreen() {
   const [race, setRace] = useState('');
   const [customRace, setCustomRace] = useState('');
   const [scenarioCountry, setScenarioCountry] = useState('');
+
+  const [teamBriefing, setTeamBriefing] = useState<TeamBriefing | null>(null);
+  const [showBriefing, setShowBriefing] = useState(false);
 
   const raceOptions = RACE_BY_COUNTRY[scenarioCountry.toLowerCase()] || DEFAULT_RACE_OPTIONS;
   const effectiveReligion = religion === 'other' ? customReligion.trim() : religion;
@@ -240,6 +258,34 @@ export default function HomeScreen() {
   useEffect(() => {
     checkDemographics();
   }, [checkDemographics]);
+
+  // Load the player's team briefing (fixed teams: Communications, Procurement,
+  // Sales, Legal). Null when unassigned — the widget simply doesn't render.
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/social/my-team/session/${sessionId}`), { headers });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled || !json.data) return;
+        setTeamBriefing(json.data as TeamBriefing);
+        // Auto-open the full briefing the first time this device sees it.
+        const seenKey = `team_briefing_seen_${sessionId}`;
+        if (!localStorage.getItem(seenKey)) {
+          localStorage.setItem(seenKey, '1');
+          setShowBriefing(true);
+        }
+      } catch {
+        /* non-critical */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   async function saveDemographics() {
     if (!sessionId || !ageBracket || !gender || !effectiveRace) return;
@@ -527,6 +573,128 @@ export default function HomeScreen() {
           {dateStr}
         </div>
       </div>
+
+      {/* Team Briefing Widget */}
+      {teamBriefing && (
+        <div className="px-6 pb-4">
+          <button
+            onClick={() => setShowBriefing(true)}
+            className="w-full text-left rounded-2xl px-4 py-3 border-0 outline-none focus:outline-none ios-btn-bounce"
+            style={{
+              background: 'rgba(30, 30, 30, 0.55)',
+              backdropFilter: 'blur(30px)',
+              WebkitBackdropFilter: 'blur(30px)',
+              borderTop: '0.5px solid rgba(255,255,255,0.1)',
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <span className="text-[24px]">{TEAM_ICON[teamBriefing.team_name] || '🎯'}</span>
+              <div className="flex-1 min-w-0">
+                <div
+                  className="text-white text-[13px] font-semibold"
+                  style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+                >
+                  Your team: {teamBriefing.team_name}
+                </div>
+                {teamBriefing.mission && (
+                  <div className="text-[11px] truncate" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                    {teamBriefing.mission}
+                  </div>
+                )}
+              </div>
+              <span className="text-[13px]" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                ›
+              </span>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Team Briefing Modal */}
+      {showBriefing && teamBriefing && (
+        <div
+          className="absolute inset-0 z-[100] flex items-center justify-center"
+          style={{ backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(10px)' }}
+        >
+          <div
+            className="mx-6 rounded-2xl overflow-hidden flex flex-col"
+            style={{ backgroundColor: '#1C1C1E', maxWidth: 340, width: '100%', maxHeight: '80%' }}
+          >
+            <div className="px-5 pt-5 pb-3 text-center">
+              <div className="text-[32px] mb-2">{TEAM_ICON[teamBriefing.team_name] || '🎯'}</div>
+              <h2
+                className="text-white text-[17px] font-semibold mb-1"
+                style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}
+              >
+                {teamBriefing.team_name} Team
+              </h2>
+              {teamBriefing.mission && (
+                <p className="text-[13px]" style={{ color: 'rgba(255,255,255,0.6)' }}>
+                  {teamBriefing.mission}
+                </p>
+              )}
+            </div>
+
+            <div className="px-5 pb-4 space-y-4 overflow-y-auto flex-1">
+              {teamBriefing.responsibilities.length > 0 && (
+                <div>
+                  <div
+                    className="text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    Your responsibilities
+                  </div>
+                  <ul className="space-y-1.5">
+                    {teamBriefing.responsibilities.map((r, i) => (
+                      <li
+                        key={i}
+                        className="text-[13px] leading-snug flex gap-2"
+                        style={{ color: 'rgba(255,255,255,0.85)' }}
+                      >
+                        <span style={{ color: '#0A84FF' }}>•</span>
+                        <span>{r}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {teamBriefing.out_of_lane.length > 0 && (
+                <div>
+                  <div
+                    className="text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    Escalate, don't do
+                  </div>
+                  <ul className="space-y-1.5">
+                    {teamBriefing.out_of_lane.map((o, i) => (
+                      <li
+                        key={i}
+                        className="text-[13px] leading-snug flex gap-2"
+                        style={{ color: 'rgba(255,255,255,0.65)' }}
+                      >
+                        <span style={{ color: '#FF9F0A' }}>→</span>
+                        <span>{o}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 pb-5">
+              <button
+                onClick={() => setShowBriefing(false)}
+                className="w-full py-3 rounded-xl text-[15px] font-semibold text-white border-0"
+                style={{ backgroundColor: '#0A84FF' }}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* App Grid */}
       <div className="flex-1 flex flex-col items-center justify-start px-10 pt-6">

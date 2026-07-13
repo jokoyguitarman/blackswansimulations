@@ -46,9 +46,10 @@ router.get('/session/:id', requireAuth, async (req: AuthenticatedRequest, res) =
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    // Users can see their own assignments, trainers/admins can see all
+    // Trainers/admins see all assignments; participants see the full roster
+    // too (team membership is shared context needed for coordination — the
+    // scoring rubrics stay trainer-only elsewhere). Non-participants get 403.
     if (session.trainer_id !== user.id && user.role !== 'admin') {
-      // Check if user is a participant
       const { data: participant } = await supabaseAdmin
         .from('session_participants')
         .select('*')
@@ -59,45 +60,7 @@ router.get('/session/:id', requireAuth, async (req: AuthenticatedRequest, res) =
       if (!participant) {
         return res.status(403).json({ error: 'Access denied' });
       }
-
-      // Regular users only see their own assignments
-      const { data: assignments, error } = await supabaseAdmin
-        .from('session_teams')
-        .select('*')
-        .eq('session_id', id)
-        .eq('user_id', user.id);
-
-      if (error) {
-        logger.error(
-          { error, sessionId: id, errorCode: error.code, errorMessage: error.message },
-          'Failed to fetch team assignments',
-        );
-        return res.status(500).json({ error: 'Failed to fetch team assignments' });
-      }
-
-      // Fetch user data separately
-      if (assignments && assignments.length > 0) {
-        const userIds = [
-          ...new Set(assignments.map((a: Record<string, unknown>) => a.user_id as string)),
-        ];
-        const { data: users } = await supabaseAdmin
-          .from('user_profiles')
-          .select('id, full_name, role')
-          .in('id', userIds);
-
-        const userMap = new Map(users?.map((u: Record<string, unknown>) => [u.id, u]) || []);
-        const assignmentsWithUsers = assignments.map((a: Record<string, unknown>) => ({
-          ...a,
-          user: userMap.get(a.user_id as string) || null,
-        }));
-
-        return res.json({ data: assignmentsWithUsers });
-      }
-
-      return res.json({ data: assignments || [] });
     }
-
-    // Trainers/admins see all assignments
     const { data: assignments, error } = await supabaseAdmin
       .from('session_teams')
       .select('*')
@@ -165,7 +128,7 @@ router.post(
       // Verify session exists and user is trainer
       const { data: session } = await supabaseAdmin
         .from('sessions')
-        .select('id, trainer_id')
+        .select('id, trainer_id, scenario_id, sim_mode')
         .eq('id', id)
         .single();
 
@@ -189,6 +152,33 @@ router.post(
         return res.status(400).json({ error: 'User is not a participant in this session' });
       }
 
+      // Team names are a closed set: the name must exist among the scenario's
+      // team definitions. Rejecting here keeps unrecognised labels out of
+      // session_teams entirely (scoring/routing key off these names).
+      if (session.scenario_id) {
+        const { data: teamDef } = await supabaseAdmin
+          .from('scenario_teams')
+          .select('team_name')
+          .eq('scenario_id', session.scenario_id)
+          .eq('team_name', team_name)
+          .maybeSingle();
+        if (!teamDef) {
+          return res.status(400).json({ error: 'Unknown team for this scenario' });
+        }
+      }
+
+      // Social crisis sessions enforce one team per player: assignment is a
+      // move, not an addition. Old rows are removed before the upsert so
+      // scoring and routing never see two teams for the same player.
+      if (session.sim_mode === 'social_media') {
+        await supabaseAdmin
+          .from('session_teams')
+          .delete()
+          .eq('session_id', id)
+          .eq('user_id', user_id)
+          .neq('team_name', team_name);
+      }
+
       // Insert or update team assignment
       const { data: assignment, error } = await supabaseAdmin
         .from('session_teams')
@@ -206,6 +196,9 @@ router.post(
         )
         .select()
         .single();
+
+      const { invalidatePlayerTeamCache } = await import('../services/teamCharterService.js');
+      invalidatePlayerTeamCache(id, user_id);
 
       if (error) {
         logger.error(
@@ -266,6 +259,9 @@ router.delete(
         .eq('session_id', id)
         .eq('user_id', user_id)
         .eq('team_name', team_name);
+
+      const { invalidatePlayerTeamCache } = await import('../services/teamCharterService.js');
+      invalidatePlayerTeamCache(id, user_id);
 
       if (error) {
         logger.error(
@@ -329,7 +325,19 @@ router.get('/scenario/:id', requireAuth, async (req: AuthenticatedRequest, res) 
       return res.status(500).json({ error: 'Failed to fetch scenario teams' });
     }
 
-    res.json({ data: teams || [] });
+    // The scoring rubric and expected-action benchmarks are a hidden rubric:
+    // players may see team missions but never how they will be judged.
+    const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
+    const sanitized = isTrainerOrAdmin
+      ? teams || []
+      : (teams || []).map((t) => {
+          const rest = { ...(t as Record<string, unknown>) };
+          delete rest.expected_actions;
+          delete rest.scoring_rubric;
+          return rest;
+        });
+
+    res.json({ data: sanitized });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /teams/scenario/:id');
     res.status(500).json({ error: 'Internal server error' });

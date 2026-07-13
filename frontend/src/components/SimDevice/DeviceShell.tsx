@@ -158,6 +158,7 @@ function DeviceShellInner() {
   const [bannerQueue, setBannerQueue] = useState<NotificationItem[]>([]);
   const [activeBanner, setActiveBanner] = useState<NotificationItem | null>(null);
   const [centerExpanded, setCenterExpanded] = useState(false);
+  const [myTeamName, setMyTeamName] = useState<string | null>(null);
   const processedIdsRef = useRef<Set<string>>(new Set());
   const initialFetchDoneRef = useRef(false);
 
@@ -165,6 +166,29 @@ function DeviceShellInner() {
     const timer = setInterval(() => setTime(new Date()), 30000);
     return () => clearInterval(timer);
   }, []);
+
+  // Player's fixed-team membership — shown as a status-bar badge so the
+  // player never loses their role context while switching apps.
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/social/my-team/session/${sessionId}`), { headers });
+        if (!res.ok) return;
+        const json = await res.json();
+        if (!cancelled && json.data?.team_name) {
+          setMyTeamName(String(json.data.team_name));
+        }
+      } catch {
+        /* non-critical */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   // Fetch existing unread notifications on mount
   useEffect(() => {
@@ -391,7 +415,21 @@ function DeviceShellInner() {
             className="ios-status-bar relative z-50 flex items-center justify-between px-8 text-white"
             style={{ height: 54, paddingTop: 14 }}
           >
-            <span className="text-[15px] font-semibold tracking-tight">{timeStr}</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[15px] font-semibold tracking-tight">{timeStr}</span>
+              {myTeamName && (
+                <span
+                  className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.18)',
+                    color: 'rgba(255,255,255,0.9)',
+                  }}
+                  title={`Your team: ${myTeamName}`}
+                >
+                  {myTeamName}
+                </span>
+              )}
+            </div>
             <div className="flex items-center gap-[5px]">
               <svg width="17" height="12" viewBox="0 0 17 12" fill="white">
                 <rect x="0" y="9" width="3" height="3" rx="0.5" opacity="1" />

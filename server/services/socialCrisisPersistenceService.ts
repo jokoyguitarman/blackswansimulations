@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import type { SocialCrisisPayload } from './socialCrisisGeneratorService.js';
+import type { TeamCharter } from './teamCharterService.js';
 
 const VALID_INJECT_SCOPES = ['universal', 'role_specific', 'team_specific'];
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -15,9 +16,41 @@ function sanitizeSeverity(severity: string | undefined): string {
   return 'medium';
 }
 
+/**
+ * Validate an inject's team targeting against the scenario's team names.
+ * Unknown team references are downgraded to universal (with a warning) so
+ * content is never silently undeliverable at runtime.
+ */
+function sanitizeTeamTargeting(
+  inj: { inject_scope?: string; target_teams?: string[]; title?: string },
+  validTeamNames: Set<string>,
+): { inject_scope: string; target_teams: string[] } {
+  const scope = sanitizeScope(inj.inject_scope);
+  const targets = inj.target_teams || [];
+
+  if (scope !== 'team_specific') return { inject_scope: scope, target_teams: targets };
+
+  const known = targets.filter((t) => validTeamNames.has(t));
+  if (known.length === 0) {
+    logger.warn(
+      { title: inj.title, target_teams: targets },
+      'Inject targets unknown team(s); downgrading to universal',
+    );
+    return { inject_scope: 'universal', target_teams: [] };
+  }
+  if (known.length < targets.length) {
+    logger.warn(
+      { title: inj.title, dropped: targets.filter((t) => !validTeamNames.has(t)) },
+      'Inject referenced unknown team name(s); dropped',
+    );
+  }
+  return { inject_scope: 'team_specific', target_teams: known };
+}
+
 export async function persistSocialCrisisScenario(
   payload: SocialCrisisPayload,
   createdBy: string,
+  teamCharters?: TeamCharter[],
 ): Promise<string> {
   const { scenario, teams, objectives, sop, time_injects, condition_injects, decision_injects } =
     payload;
@@ -46,17 +79,34 @@ export async function persistSocialCrisisScenario(
 
   const scenarioId = scenarioRow.id;
 
+  const validTeamNames = new Set(teams.map((t) => t.team_name));
+
   try {
     if (teams.length > 0) {
+      const charterByName = new Map<string, TeamCharter>(
+        (teamCharters || []).map((c) => [c.team_name, c]),
+      );
       const { error: teamsErr } = await supabaseAdmin.from('scenario_teams').insert(
-        teams.map((t) => ({
-          scenario_id: scenarioId,
-          team_name: t.team_name,
-          team_description: t.team_description,
-          required_roles: [],
-          min_participants: t.min_participants,
-          max_participants: t.max_participants,
-        })),
+        teams.map((t) => {
+          const charter = charterByName.get(t.team_name);
+          return {
+            scenario_id: scenarioId,
+            team_name: t.team_name,
+            team_description: t.team_description,
+            required_roles: [],
+            min_participants: t.min_participants,
+            max_participants: t.max_participants,
+            charter: charter
+              ? {
+                  mission: charter.mission,
+                  responsibilities: charter.responsibilities,
+                  out_of_lane: charter.out_of_lane,
+                }
+              : null,
+            expected_actions: charter ? charter.expected_actions : null,
+            scoring_rubric: charter ? charter.scoring_rubric : null,
+          };
+        }),
       );
       if (teamsErr) throw new Error(`scenario_teams: ${teamsErr.message}`);
     }
@@ -98,8 +148,7 @@ export async function persistSocialCrisisScenario(
         title: inj.title,
         content: inj.content,
         severity: sanitizeSeverity(inj.severity),
-        inject_scope: sanitizeScope(inj.inject_scope),
-        target_teams: inj.target_teams || [],
+        ...sanitizeTeamTargeting(inj, validTeamNames),
         requires_response: inj.requires_response || false,
         delivery_config: inj.delivery_config || null,
         conditions_to_appear: null,
@@ -116,8 +165,7 @@ export async function persistSocialCrisisScenario(
         title: inj.title,
         content: inj.content,
         severity: sanitizeSeverity(inj.severity),
-        inject_scope: sanitizeScope(inj.inject_scope),
-        target_teams: inj.target_teams || [],
+        ...sanitizeTeamTargeting(inj, validTeamNames),
         requires_response: inj.requires_response || false,
         delivery_config: inj.delivery_config || null,
         conditions_to_appear: inj.conditions_to_appear || null,
@@ -135,8 +183,7 @@ export async function persistSocialCrisisScenario(
         title: inj.title,
         content: inj.content,
         severity: sanitizeSeverity(inj.severity),
-        inject_scope: sanitizeScope(inj.inject_scope),
-        target_teams: inj.target_teams || [],
+        ...sanitizeTeamTargeting(inj, validTeamNames),
         requires_response: false,
         delivery_config: inj.delivery_config || null,
         ai_generated: true,

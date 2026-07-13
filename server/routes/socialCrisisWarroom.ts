@@ -15,11 +15,18 @@ import {
   generateOrgPageConfig,
   buildSOPFromResearch,
   assemblePayload,
+  adaptTeamCharters,
   type NPCPersona,
   type FactSheet,
   type TeamDef,
   type SocialInject,
 } from '../services/socialCrisisGeneratorService.js';
+import {
+  TEAM_CATALOG,
+  FIXED_TEAM_NAMES,
+  benchmarksFromCharters,
+  type TeamCharter,
+} from '../services/teamCharterService.js';
 import { RESPONSE_STANDARDS } from '../config/responseStandards.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -221,17 +228,60 @@ router.post(
         orgName: org_name,
       };
 
-      const injects = await generateUnifiedStoryline(
-        crisisContext,
-        personas as NPCPersona[],
-        fact_sheet as FactSheet,
-        (msg: string) => {
-          res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
-        },
-        env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+      // Adapt the four fixed team charters (Communications, Procurement,
+      // Sales, Legal) to this crisis, then generate the universal backbone
+      // and the four team-scoped pressure arcs in parallel.
+      res.write(
+        JSON.stringify({ type: 'progress', message: 'Adapting team charters to the crisis...' }) +
+          '\n',
       );
+      const charters = await adaptTeamCharters(crisis_type, context, country, org_name);
 
-      res.write(JSON.stringify({ type: 'complete', injects }) + '\n');
+      const fixedTeams: TeamDef[] = charters.map((c) => ({
+        team_name: c.team_name,
+        team_description: `${c.mission} Responsibilities: ${c.responsibilities.join('; ')}`,
+        min_participants: c.min_participants,
+        max_participants: c.max_participants,
+      }));
+
+      const teamCrisisContext = { ...crisisContext, location: '' };
+
+      const [injects, teamStorylines] = await Promise.all([
+        generateUnifiedStoryline(
+          crisisContext,
+          personas as NPCPersona[],
+          fact_sheet as FactSheet,
+          (msg: string) => {
+            res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+          },
+          env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+        ),
+        generateAllTeamStorylines(
+          fixedTeams,
+          teamCrisisContext,
+          personas as NPCPersona[],
+          fact_sheet as FactSheet,
+          (teamName: string, injectCount: number) => {
+            res.write(
+              JSON.stringify({ type: 'team_complete', team: teamName, inject_count: injectCount }) +
+                '\n',
+            );
+          },
+        ),
+      ]);
+
+      res.write(
+        JSON.stringify({
+          type: 'complete',
+          injects,
+          team_storylines: teamStorylines,
+          team_charters: charters.map((c) => ({
+            team_name: c.team_name,
+            mission: c.mission,
+            responsibilities: c.responsibilities,
+          })),
+        }) + '\n',
+      );
       res.end();
     } catch (err) {
       logger.error({ err }, 'Failed to generate unified storyline');
@@ -470,6 +520,15 @@ router.post(
         }),
         communities: z.array(z.string()),
         team_storylines: z.record(z.string(), z.unknown()).optional().default({}),
+        team_charters: z
+          .array(
+            z.object({
+              team_name: z.string(),
+              mission: z.string(),
+              responsibilities: z.array(z.string()),
+            }),
+          )
+          .optional(),
         storyline_injects: z.array(z.unknown()).optional(),
         shared_injects: z.array(z.unknown()),
         convergence_gates: z.array(z.unknown()),
@@ -516,6 +575,49 @@ router.post(
       try {
         const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
 
+        // Fixed teams: the four built-in teams are always compiled into social
+        // crisis scenarios. Client-sent team definitions are ignored; only the
+        // adapted mission/responsibilities wording is accepted from the client
+        // (validated against the fixed names). Expected actions, scoring
+        // rubrics, and weights always come from the server-side catalog.
+        const clientCharters = (body.team_charters || []) as Array<{
+          team_name: string;
+          mission: string;
+          responsibilities: string[];
+        }>;
+        let teamCharters: TeamCharter[];
+        const clientCoversAllTeams =
+          clientCharters.length > 0 &&
+          FIXED_TEAM_NAMES.every((name) => clientCharters.some((c) => c.team_name === name));
+        if (clientCoversAllTeams) {
+          teamCharters = FIXED_TEAM_NAMES.map((name) => {
+            const base = TEAM_CATALOG[name];
+            const client = clientCharters.find((c) => c.team_name === name)!;
+            return {
+              ...base,
+              mission: client.mission || base.mission,
+              responsibilities:
+                Array.isArray(client.responsibilities) && client.responsibilities.length > 0
+                  ? client.responsibilities.filter((r) => typeof r === 'string').slice(0, 6)
+                  : base.responsibilities,
+            };
+          });
+        } else {
+          teamCharters = await adaptTeamCharters(
+            body.crisis_type || '',
+            '',
+            body.country || 'Singapore',
+            body.org_name,
+          );
+        }
+
+        const fixedTeams: TeamDef[] = teamCharters.map((c) => ({
+          team_name: c.team_name,
+          team_description: c.mission,
+          min_participants: c.min_participants,
+          max_participants: c.max_participants,
+        }));
+
         let strategyWindows;
         try {
           strategyWindows = await generateStrategyWindows(
@@ -536,7 +638,7 @@ router.post(
 
         const payload = assemblePayload(
           body.narrative,
-          (body.teams || []) as TeamDef[],
+          fixedTeams,
           body.objectives as Array<{
             objective_id: string;
             objective_name: string;
@@ -566,7 +668,12 @@ router.post(
           (payload.scenario.initial_state as Record<string, unknown>).country = body.country;
         }
 
-        const scenarioId = await persistSocialCrisisScenario(payload, user.id);
+        // Charter-derived benchmarks keyed to the four fixed teams (consumed
+        // by team scoring and the AAR doctrine-compliance section).
+        (payload.scenario.initial_state as Record<string, unknown>).strategic_benchmarks =
+          benchmarksFromCharters(teamCharters);
+
+        const scenarioId = await persistSocialCrisisScenario(payload, user.id, teamCharters);
 
         // Backfill the scenario id onto the credit spend row for auditing.
         if (creditLedgerId) {

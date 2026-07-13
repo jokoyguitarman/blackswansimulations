@@ -500,6 +500,8 @@ router.post(
             : undefined;
 
           const { gradePlayerContent } = await import('../services/contentGraderService.js');
+          const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
+          const teamCtx = await getPlayerTeamContext(session_id, user.id);
           const grade = await gradePlayerContent(content, {
             crisis_description: scenario.description || '',
             confirmed_facts: confirmedFacts,
@@ -509,12 +511,24 @@ router.post(
             is_official_page_post: post_as_page || false,
             elapsed_minutes: elapsedMinutes,
             image_prompt: image_prompt || undefined,
+            team_charter: teamCtx?.charter
+              ? {
+                  team_name: teamCtx.team_name,
+                  mission: teamCtx.charter.mission,
+                  scoring_rubric: teamCtx.charter.scoring_rubric,
+                  out_of_lane: teamCtx.charter.out_of_lane,
+                }
+              : undefined,
           });
 
           await supabaseAdmin
             .from('social_posts')
             .update({ sop_compliance_score: grade })
             .eq('id', post.id);
+
+          // Refresh team scores now that a new grade landed (throttled inside).
+          const { snapshotTeamScores } = await import('../services/teamScoreService.js');
+          void snapshotTeamScores(session_id);
 
           if (grade.overall >= 70) {
             const { generateConsequenceInject } =
@@ -1027,6 +1041,7 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
 router.get('/emails/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
 
     const { data, error } = await supabaseAdmin
       .from('sim_emails')
@@ -1035,7 +1050,21 @@ router.get('/emails/session/:sessionId', requireAuth, async (req: AuthenticatedR
       .order('created_at', { ascending: false });
 
     if (error) return res.status(500).json({ error: 'Failed to fetch emails' });
-    res.json({ data });
+
+    // Per-recipient filtering: team-scoped inject emails carry
+    // recipient_user_ids; null means visible to the whole session (legacy).
+    // Players also always see their own outbound emails. Trainers see all.
+    const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
+    const filtered = isTrainerOrAdmin
+      ? data
+      : (data || []).filter((email) => {
+          if (email.sent_by_player_id === user.id) return true;
+          const recipients = email.recipient_user_ids as string[] | null;
+          if (!recipients || recipients.length === 0) return true;
+          return recipients.includes(user.id);
+        });
+
+    res.json({ data: filtered });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /social/emails/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });
@@ -1171,17 +1200,38 @@ router.post(
             ? Math.floor((Date.now() - new Date(sessionData.start_time).getTime()) / 60000)
             : 0;
           const { gradePlayerContent } = await import('../services/contentGraderService.js');
+          const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
+          const teamCtx = await getPlayerTeamContext(session_id, user.id);
+          // Communications emails are held to the official-statement rubric;
+          // other teams' emails (supplier/customer/regulator correspondence)
+          // are graded as professional text against their own charter.
+          const emailFormat =
+            teamCtx?.charter && teamCtx.team_name !== 'Communications'
+              ? 'text'
+              : 'official_statement';
           const grade = await gradePlayerContent(`${subject}\n\n${body_text}`, {
             crisis_description: scenario.description || '',
             confirmed_facts: confirmedFacts,
-            post_format: 'official_statement',
+            post_format: emailFormat,
             elapsed_minutes: elapsedMinutes,
             org_name: (is.org_name as string) || undefined,
+            team_charter: teamCtx?.charter
+              ? {
+                  team_name: teamCtx.team_name,
+                  mission: teamCtx.charter.mission,
+                  scoring_rubric: teamCtx.charter.scoring_rubric,
+                  out_of_lane: teamCtx.charter.out_of_lane,
+                }
+              : undefined,
           });
           await supabaseAdmin
             .from('sim_emails')
             .update({ sop_compliance_score: grade })
             .eq('id', email.id);
+
+          // Refresh team scores now that a new grade landed (throttled inside).
+          const { snapshotTeamScores } = await import('../services/teamScoreService.js');
+          void snapshotTeamScores(session_id);
         } catch (gradeErr) {
           logger.warn({ err: gradeErr, emailId: email.id }, 'Outbound email grading failed');
         }
@@ -1496,6 +1546,71 @@ router.get('/ledger/session/:sessionId', requireAuth, async (req: AuthenticatedR
   }
 });
 
+// ─── Team scores & briefing ──────────────────────────────────────────────────
+
+// Full per-team rollup (composite scores, task checklists, member breakdown).
+// Trainer/admin only — same guard as the ledger.
+router.get(
+  '/team-scores/session/:sessionId',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      const { sessionId } = req.params;
+      const { computeTeamScores } = await import('../services/teamScoreService.js');
+      const report = await computeTeamScores(sessionId);
+      return res.json({ data: report });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /social/team-scores/session/:sessionId');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// The caller's OWN team briefing. Identity comes from the JWT — no user id
+// parameter is accepted, so a player can never read another player's charter.
+// Scoring weights and timing benchmarks are stripped (hidden rubric).
+router.get('/my-team/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    const { sessionId } = req.params;
+
+    const { data: participant } = await supabaseAdmin
+      .from('session_participants')
+      .select('user_id')
+      .eq('session_id', sessionId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (!participant) {
+      return res.status(403).json({ error: 'Not a participant in this session' });
+    }
+
+    const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
+    const teamCtx = await getPlayerTeamContext(sessionId, user.id);
+
+    if (!teamCtx) {
+      return res.json({ data: null });
+    }
+
+    return res.json({
+      data: {
+        team_name: teamCtx.team_name,
+        mission: teamCtx.charter?.mission || null,
+        responsibilities: teamCtx.charter?.responsibilities || [],
+        out_of_lane: teamCtx.charter?.out_of_lane || [],
+        // Task descriptions only — timing benchmarks and weights stay hidden.
+        tasks: (teamCtx.charter?.expected_actions || []).map((a) => a.description),
+      },
+    });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/my-team/session/:sessionId');
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── SOP & Sentiment ─────────────────────────────────────────────────────────
 
 router.get('/sop/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -1595,11 +1710,22 @@ router.post(
         .eq('id', session.scenario_id)
         .single();
 
+      const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
+      const gradeTeamCtx = await getPlayerTeamContext(session_id, user.id);
+
       const grade = await gradePlayerContent(content, {
         crisis_description: scenario?.description || 'Crisis simulation',
         confirmed_facts: [],
         hateful_post_being_addressed: hateful_post_content,
         post_format: req.body.post_format || 'text',
+        team_charter: gradeTeamCtx?.charter
+          ? {
+              team_name: gradeTeamCtx.team_name,
+              mission: gradeTeamCtx.charter.mission,
+              scoring_rubric: gradeTeamCtx.charter.scoring_rubric,
+              out_of_lane: gradeTeamCtx.charter.out_of_lane,
+            }
+          : undefined,
       });
 
       if (post_id) {

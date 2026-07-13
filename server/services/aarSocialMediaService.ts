@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { computeTeamScores } from './teamScoreService.js';
 
 export interface SocialMediaAARData {
   response_timeline: Array<{
@@ -91,6 +92,31 @@ export interface SocialMediaAARData {
     hostile_total_views: number;
     ratio: number;
   };
+  /** Per-team debrief for the fixed response teams. Empty for teamless (legacy) scenarios. */
+  team_performance: Array<{
+    team_name: string;
+    mission: string;
+    member_count: number;
+    composite_score: number | null;
+    content_quality: number | null;
+    task_completion: number | null;
+    role_fit: number | null;
+    tasks_done: number;
+    tasks_total: number;
+    task_outcomes: Array<{
+      description: string;
+      status: string;
+      on_time: boolean | null;
+    }>;
+    members: Array<{
+      display_name: string;
+      graded_items: number;
+      avg_overall: number | null;
+      avg_role_fit: number | null;
+    }>;
+    best_artifact: { content: string; overall: number } | null;
+    worst_artifact: { content: string; overall: number } | null;
+  }>;
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -343,6 +369,65 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
     })
     .reduce((s: number, p: Record<string, unknown>) => s + (Number(p.view_count) || 0), 0);
 
+  // Per-team debrief (fixed teams). Reuses the live team-score rollup; adds
+  // each team's best/worst graded artifact for the trainer's talking points.
+  let teamPerformance: SocialMediaAARData['team_performance'] = [];
+  try {
+    const teamReport = await computeTeamScores(sessionId);
+    teamPerformance = teamReport.teams.map((team) => {
+      const memberIds = new Set(team.members.map((m) => m.user_id));
+
+      let best: { content: string; overall: number } | null = null;
+      let worst: { content: string; overall: number } | null = null;
+      const consider = (author: unknown, content: unknown, score: unknown) => {
+        if (!author || !memberIds.has(String(author))) return;
+        const grade = (score || {}) as Record<string, unknown>;
+        const overall = Number(grade.overall);
+        if (Number.isNaN(overall)) return;
+        const preview = String(content || '').substring(0, 200);
+        if (!best || overall > best.overall) best = { content: preview, overall };
+        if (!worst || overall < worst.overall) worst = { content: preview, overall };
+      };
+      for (const p of posts) {
+        consider(p.posted_by_user_id, p.content, p.sop_compliance_score);
+      }
+      for (const e of emails) {
+        consider(
+          e.sent_by_player_id,
+          `${e.subject || ''}\n${e.body_text || ''}`,
+          e.sop_compliance_score,
+        );
+      }
+
+      return {
+        team_name: team.team_name,
+        mission: team.mission,
+        member_count: team.member_count,
+        composite_score: team.composite_score,
+        content_quality: team.content_quality,
+        task_completion: team.task_completion,
+        role_fit: team.role_fit,
+        tasks_done: team.tasks_done,
+        tasks_total: team.tasks_total,
+        task_outcomes: team.tasks.map((t) => ({
+          description: t.description,
+          status: t.status,
+          on_time: t.on_time,
+        })),
+        members: team.members.map((m) => ({
+          display_name: m.display_name,
+          graded_items: m.graded_items,
+          avg_overall: m.avg_overall,
+          avg_role_fit: m.avg_role_fit,
+        })),
+        best_artifact: best,
+        worst_artifact: worst,
+      };
+    });
+  } catch {
+    /* teamless/legacy scenario or scoring failure — AAR still renders */
+  }
+
   return {
     response_timeline: responseTimeline,
     sop_compliance: {
@@ -416,5 +501,6 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
             ? 999
             : 0,
     },
+    team_performance: teamPerformance,
   };
 }

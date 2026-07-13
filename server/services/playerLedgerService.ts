@@ -41,6 +41,8 @@ export interface LedgerEntry {
 export interface LedgerPlayer {
   player_id: string;
   display_name: string;
+  /** Fixed-team membership (Communications/Procurement/Sales/Legal) or null when unassigned. */
+  team_name: string | null;
   entries: LedgerEntry[];
 }
 
@@ -69,7 +71,7 @@ const SKIP_ACTION_TYPES = new Set([
 ]);
 
 export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger> {
-  const [postsRes, emailsRes, dmsRes, actionsRes, disputesRes, snapsRes, consRes] =
+  const [postsRes, emailsRes, dmsRes, actionsRes, disputesRes, snapsRes, consRes, teamsRes] =
     await Promise.all([
       supabaseAdmin
         .from('social_posts')
@@ -110,6 +112,11 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
         .eq('session_id', sessionId)
         .eq('event_type', 'consequence_inject')
         .order('created_at', { ascending: true }),
+      supabaseAdmin
+        .from('session_teams')
+        .select('user_id, team_name, assigned_at')
+        .eq('session_id', sessionId)
+        .order('assigned_at', { ascending: true }),
     ]);
 
   const posts = postsRes.data || [];
@@ -120,6 +127,13 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   const snaps = snapsRes.data || [];
   const consEvents = consRes.data || [];
 
+  // Player -> team (earliest assignment wins if legacy multi-team rows exist).
+  const teamByPlayer = new Map<string, string>();
+  for (const t of teamsRes.data || []) {
+    const pid = String(t.user_id);
+    if (!teamByPlayer.has(pid)) teamByPlayer.set(pid, String(t.team_name));
+  }
+
   // DM attribution: message id -> player id, via the dm_sent player_action.
   const dmAttribution = new Map<string, string>();
   for (const a of actions) {
@@ -128,7 +142,9 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
     }
   }
 
-  // Collect every player id that authored something, then resolve names.
+  // Collect every player id that authored something (plus team-assigned
+  // players with no activity yet, so the trainer sees the full roster), then
+  // resolve names.
   const playerIds = new Set<string>();
   for (const p of posts) if (p.posted_by_user_id) playerIds.add(String(p.posted_by_user_id));
   for (const e of emails) if (e.sent_by_player_id) playerIds.add(String(e.sent_by_player_id));
@@ -138,6 +154,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
     const pid = dmAttribution.get(String(d.id));
     if (pid) playerIds.add(pid);
   }
+  for (const pid of teamByPlayer.keys()) playerIds.add(pid);
 
   const nameById = new Map<string, string>();
   if (playerIds.size > 0) {
@@ -151,6 +168,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   }
 
   const byPlayer = new Map<string, LedgerEntry[]>();
+  for (const pid of teamByPlayer.keys()) byPlayer.set(pid, []);
   const push = (pid: string, entry: LedgerEntry) => {
     const list = byPlayer.get(pid);
     if (list) list.push(entry);
@@ -231,6 +249,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
     .map(([pid, entries]) => ({
       player_id: pid,
       display_name: nameById.get(pid) || 'Unknown',
+      team_name: teamByPlayer.get(pid) || null,
       entries: entries.sort(
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
       ),

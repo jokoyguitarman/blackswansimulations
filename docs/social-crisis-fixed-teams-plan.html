@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fixed Teams for the Social Media Crisis Module — Design &amp; Security Plan</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --bg2: #0f1620;
+    --panel: #131c28;
+    --panel2: #182030;
+    --line: #233143;
+    --ink: #e8eef6;
+    --muted: #8aa0b8;
+    --dim: #5d7186;
+    --cyan: #2dd4bf;
+    --cyan2: #22d3ee;
+    --amber: #f5b942;
+    --violet: #a78bfa;
+    --pink: #f472b6;
+    --green: #34d399;
+    --red: #f87171;
+    --orange: #fb923c;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "SF Mono", "JetBrains Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+    font-size: 15px;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  a { color: var(--cyan); }
+  h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.01em; line-height: 1.25; }
+  code, .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+  code.inline { background: #1c2736; border: 1px solid #2a3a4f; border-radius: 5px; padding: 1px 6px; font-size: 13px; color: var(--cyan2); white-space: nowrap; }
+  .tag {
+    font-size: 11.5px; padding: 2px 8px; border-radius: 5px;
+    background: #1c2736; color: var(--cyan); border: 1px solid #2a3a4f; white-space: nowrap;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .tag.new { color: var(--green); border-color: rgba(52,211,153,0.4); background: rgba(52,211,153,0.08); }
+  .tag.mod { color: var(--amber); border-color: rgba(245,185,66,0.4); background: rgba(245,185,66,0.08); }
+  .tag.db  { color: var(--violet); border-color: rgba(167,139,250,0.4); background: rgba(167,139,250,0.08); }
+  .tag.sec { color: var(--red); border-color: rgba(248,113,113,0.4); background: rgba(248,113,113,0.08); }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 64px 0; border-top: 1px solid var(--line); position: relative; }
+  .sec-num { font-size: 13px; color: var(--cyan); letter-spacing: 0.25em; text-transform: uppercase; margin-bottom: 10px; font-weight: 700; }
+  .sec-title { font-size: 30px; margin: 0 0 6px; }
+  .sec-sub { color: var(--muted); margin: 0 0 34px; max-width: 820px; }
+
+  header.hero { position: relative; min-height: 78vh; display: flex; align-items: center; overflow: hidden; border: none; }
+  .hero-bg {
+    position: absolute; inset: 0; z-index: 0;
+    background:
+      radial-gradient(1100px 520px at 18% 8%, rgba(45,212,191,0.15), transparent 60%),
+      radial-gradient(900px 520px at 88% 22%, rgba(167,139,250,0.15), transparent 60%),
+      radial-gradient(900px 600px at 60% 100%, rgba(244,114,182,0.09), transparent 60%);
+    animation: drift 18s ease-in-out infinite alternate;
+  }
+  @keyframes drift { from { transform: translate3d(0,0,0) scale(1); } to { transform: translate3d(-20px,18px,0) scale(1.06); } }
+  .grid-lines { position: absolute; inset: 0; z-index: 0; opacity: 0.26;
+    background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 46px 46px; mask-image: radial-gradient(ellipse at 50% 40%, #000 35%, transparent 78%);
+  }
+  .hero-content { position: relative; z-index: 2; }
+  .kicker {
+    display: inline-flex; align-items: center; gap: 9px; font-size: 12.5px; letter-spacing: 0.22em;
+    text-transform: uppercase; color: var(--cyan); border: 1px solid #244; padding: 6px 14px;
+    border-radius: 999px; background: rgba(45,212,191,0.06); margin-bottom: 26px;
+  }
+  .pulse-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); animation: pulse 2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(45,212,191,0.6);} 70% { box-shadow: 0 0 0 12px rgba(45,212,191,0);} 100% { box-shadow: 0 0 0 0 rgba(45,212,191,0);} }
+  .hero h1 { font-size: clamp(32px, 5.4vw, 58px); margin: 0 0 18px; }
+  .hero h1 .grad {
+    background: linear-gradient(100deg, var(--cyan), var(--cyan2) 40%, var(--violet) 80%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p.lead { font-size: 17px; color: var(--muted); max-width: 720px; margin: 0 0 30px; }
+  .hero-stats { display: flex; flex-wrap: wrap; gap: 14px; }
+  .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; min-width: 130px; }
+  .stat b { font-size: 24px; color: var(--ink); display: block; }
+  .stat span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; }
+
+  nav.toc { position: sticky; top: 0; z-index: 50; backdrop-filter: blur(10px); background: rgba(10,14,20,0.85); border-bottom: 1px solid var(--line); }
+  nav.toc .wrap { display: flex; gap: 6px; overflow-x: auto; padding: 10px 24px; scrollbar-width: none; }
+  nav.toc .wrap::-webkit-scrollbar { display: none; }
+  nav.toc a { color: var(--muted); text-decoration: none; font-size: 12.5px; padding: 7px 12px; border-radius: 8px; white-space: nowrap; transition: 0.15s; }
+  nav.toc a:hover, nav.toc a.active { color: var(--ink); background: var(--panel2); }
+
+  .reveal { opacity: 0; transform: translateY(26px); transition: opacity 0.7s ease, transform 0.7s ease; }
+  .reveal.in { opacity: 1; transform: none; }
+  .reveal.d1 { transition-delay: 0.08s; } .reveal.d2 { transition-delay: 0.16s; }
+  .reveal.d3 { transition-delay: 0.24s; } .reveal.d4 { transition-delay: 0.32s; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 20px; }
+  .grid { display: grid; gap: 16px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  @media (max-width: 900px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+  /* Team cards */
+  .team-card { border-radius: 14px; border: 1px solid var(--line); background: var(--panel); overflow: hidden; display: flex; flex-direction: column; }
+  .team-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--line); }
+  .team-head .icon { font-size: 22px; }
+  .team-head h3 { margin: 8px 0 2px; font-size: 18px; }
+  .team-head .mission { font-size: 13px; color: var(--muted); }
+  .team-body { padding: 14px 18px 18px; font-size: 13px; }
+  .team-body h4 { margin: 10px 0 6px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim); }
+  .team-body ul { margin: 0 0 4px; padding-left: 18px; color: var(--muted); }
+  .team-body li { margin-bottom: 4px; }
+  .team-card.comms { border-top: 3px solid var(--cyan); }
+  .team-card.proc  { border-top: 3px solid var(--amber); }
+  .team-card.sales { border-top: 3px solid var(--green); }
+  .team-card.legal { border-top: 3px solid var(--violet); }
+
+  /* Code blocks */
+  pre.code {
+    background: #0c1219; border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px 18px; font-size: 12.5px; line-height: 1.55; overflow-x: auto;
+    color: #c7d5e5; margin: 14px 0;
+  }
+  pre.code .cm { color: var(--dim); }        /* comment */
+  pre.code .kw { color: var(--violet); }     /* keyword */
+  pre.code .st { color: var(--green); }      /* string */
+  pre.code .fn { color: var(--cyan2); }      /* function */
+  pre.code .ty { color: var(--amber); }      /* type */
+  .file-label { display: inline-block; font-size: 11.5px; color: var(--dim); background: #10161f; border: 1px solid var(--line); border-bottom: none; border-radius: 8px 8px 0 0; padding: 4px 12px; margin-bottom: -14px; position: relative; z-index: 1; margin-left: 8px; }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 14px 0; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); text-transform: uppercase; font-size: 11px; letter-spacing: 0.1em; }
+  td { color: var(--muted); }
+  td b, td strong { color: var(--ink); }
+  tr:hover td { background: rgba(45,212,191,0.03); }
+
+  /* Flow diagram */
+  .flow { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+  .flow-row { display: grid; grid-template-columns: 160px 1fr; gap: 16px; align-items: stretch; }
+  .flow-phase { display: flex; align-items: center; justify-content: flex-end; text-align: right; color: var(--dim); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.12em; padding-right: 4px; }
+  .flow-node { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 18px; margin: 6px 0; position: relative; }
+  .flow-node h4 { margin: 0 0 4px; font-size: 14px; }
+  .flow-node p { margin: 0; font-size: 12.5px; color: var(--muted); }
+  .flow-connector { display: grid; grid-template-columns: 160px 1fr; }
+  .flow-connector .arrow { grid-column: 2; padding-left: 40px; color: var(--cyan); opacity: 0.7; font-size: 16px; line-height: 1; padding-top: 2px; padding-bottom: 2px; }
+  @media (max-width: 700px) { .flow-row { grid-template-columns: 1fr; } .flow-phase { justify-content: flex-start; text-align: left; } .flow-connector { grid-template-columns: 1fr; } .flow-connector .arrow { grid-column: 1; } }
+
+  /* UI mockups */
+  .mock { background: #0c1219; border: 1px solid var(--line); border-radius: 14px; padding: 16px; margin: 12px 0; }
+  .mock-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--dim); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .mock-title::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); opacity: 0.7; }
+  .mock-bar { height: 10px; border-radius: 5px; background: #1a2432; margin: 6px 0; }
+  .mock-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 9px; margin: 6px 0; background: var(--panel); font-size: 12.5px; }
+  .pill { font-size: 10.5px; padding: 2px 9px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+  .pill.comms { color: var(--cyan); border-color: rgba(45,212,191,0.5); background: rgba(45,212,191,0.07); }
+  .pill.proc  { color: var(--amber); border-color: rgba(245,185,66,0.5); background: rgba(245,185,66,0.07); }
+  .pill.sales { color: var(--green); border-color: rgba(52,211,153,0.5); background: rgba(52,211,153,0.07); }
+  .pill.legal { color: var(--violet); border-color: rgba(167,139,250,0.5); background: rgba(167,139,250,0.07); }
+  .pill.none  { color: var(--dim); border-color: var(--line); background: transparent; }
+  .pill.ok    { color: var(--green); border-color: rgba(52,211,153,0.5); }
+  .pill.warn  { color: var(--amber); border-color: rgba(245,185,66,0.5); }
+  .pill.bad   { color: var(--red); border-color: rgba(248,113,113,0.5); }
+  .scorebar { flex: 1; height: 8px; border-radius: 4px; background: #1a2432; overflow: hidden; }
+  .scorebar i { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--cyan), var(--cyan2)); }
+  .radio { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--dim); display: inline-block; flex-shrink: 0; }
+  .radio.sel { border-color: var(--cyan); background: radial-gradient(circle at center, var(--cyan) 0 45%, transparent 50%); }
+
+  /* Phone mock */
+  .phone { width: 250px; border: 2px solid #2a3a4f; border-radius: 26px; padding: 14px 12px; background: #0b1017; margin: 0 auto; }
+  .phone .notch { width: 90px; height: 16px; border-radius: 10px; background: #1a2432; margin: 0 auto 12px; }
+  .phone .brief-card { border: 1px solid rgba(45,212,191,0.35); border-radius: 12px; background: rgba(45,212,191,0.05); padding: 12px; font-size: 11.5px; }
+  .phone .brief-card h5 { margin: 0 0 4px; font-size: 12px; color: var(--cyan); }
+  .phone .brief-card ul { margin: 6px 0 0; padding-left: 15px; color: var(--muted); }
+  .phone .apps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .phone .app { aspect-ratio: 1; border-radius: 12px; background: var(--panel2); border: 1px solid var(--line); display: flex; align-items: center; justify-content: center; font-size: 16px; }
+
+  /* Security invariants */
+  .inv { display: flex; gap: 14px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); margin: 10px 0; }
+  .inv .inv-id { flex-shrink: 0; width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 13px; background: rgba(248,113,113,0.08); border: 1px solid rgba(248,113,113,0.35); color: var(--red); }
+  .inv.ok .inv-id { background: rgba(52,211,153,0.08); border-color: rgba(52,211,153,0.35); color: var(--green); }
+  .inv h4 { margin: 0 0 4px; font-size: 14.5px; }
+  .inv p { margin: 0; font-size: 13px; color: var(--muted); }
+
+  .callout { border-left: 3px solid var(--amber); background: rgba(245,185,66,0.06); border-radius: 0 10px 10px 0; padding: 14px 18px; margin: 16px 0; font-size: 13.5px; color: var(--muted); }
+  .callout.red { border-left-color: var(--red); background: rgba(248,113,113,0.06); }
+  .callout.green { border-left-color: var(--green); background: rgba(52,211,153,0.06); }
+  .callout b { color: var(--ink); }
+
+  footer { padding: 44px 0 60px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12.5px; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker"><span class="pulse-dot"></span> Design &amp; Security Plan</div>
+    <h1>Fixed Teams for the <span class="grad">Social Media Crisis</span> Module</h1>
+    <p class="lead">
+      Four built-in teams — Communications, Procurement, Sales, Legal — with hardcoded charters,
+      team-aware AI scoring, a team-grouped trainer dashboard, secure team assignment, and a
+      player-facing briefing. This document maps every module touched, the expected UI experience,
+      how the code works, and the security invariants that keep team assignment from breaking or
+      leaking into other functions.
+    </p>
+    <div class="hero-stats">
+      <div class="stat"><b>4</b><span>Fixed Teams</span></div>
+      <div class="stat"><b>11</b><span>Modules Touched</span></div>
+      <div class="stat"><b>2</b><span>New Services</span></div>
+      <div class="stat"><b>1</b><span>Migration</span></div>
+      <div class="stat"><b>8</b><span>Security Invariants</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#teams">The Four Teams</a>
+    <a href="#modules">Module Map</a>
+    <a href="#flow">Data Flow</a>
+    <a href="#ui">UI Experience</a>
+    <a href="#code">How the Code Works</a>
+    <a href="#security">Security Invariants</a>
+    <a href="#failures">Failure Modes</a>
+    <a href="#compat">Backward Compatibility</a>
+  </div>
+</nav>
+
+<!-- ================= SECTION 1: THE FOUR TEAMS ================= -->
+<section id="teams">
+  <div class="wrap">
+    <div class="sec-num reveal">01 / Teams</div>
+    <h2 class="sec-title reveal">The four built-in teams</h2>
+    <p class="sec-sub reveal">
+      Team names are a <b>closed, hardcoded set</b> defined in one place: <code class="inline">server/services/teamCharterService.ts</code>.
+      Names never change; the AI adapts each team's <em>tasks and storyline</em> to the specific crisis at compile time.
+      Charters are copied into <code class="inline">scenario_teams</code> rows so trainers can tweak wording per scenario
+      without touching code (semi-flexible by design).
+    </p>
+
+    <div class="grid g4">
+      <div class="team-card comms reveal">
+        <div class="team-head">
+          <div class="icon">&#128227;</div>
+          <h3>Communications</h3>
+          <div class="mission">Owns all public-facing communication for the organisation.</div>
+        </div>
+        <div class="team-body">
+          <h4>Expected actions</h4>
+          <ul>
+            <li>Monitor the feed, flag misinformation early</li>
+            <li>Draft &amp; publish the official statement</li>
+            <li>Respond to press inquiries (email)</li>
+            <li>Counter harmful narratives on the feed</li>
+          </ul>
+          <h4>Scored on</h4>
+          <ul>
+            <li>Tone, accuracy, anti-amplification</li>
+            <li>Authority &amp; timeliness of official posts</li>
+          </ul>
+          <h4>Escalates</h4>
+          <ul><li>Legal-risk wording &rarr; Legal review</li></ul>
+        </div>
+      </div>
+
+      <div class="team-card proc reveal d1">
+        <div class="team-head">
+          <div class="icon">&#128230;</div>
+          <h3>Procurement</h3>
+          <div class="mission">Manages suppliers and keeps the supply chain narrative factual.</div>
+        </div>
+        <div class="team-body">
+          <h4>Expected actions</h4>
+          <ul>
+            <li>Respond to supplier emails under pressure</li>
+            <li>Verify supply-chain claims vs. fact sheet</li>
+            <li>Feed verified operational facts to Comms</li>
+            <li>Avoid public posting entirely</li>
+          </ul>
+          <h4>Scored on</h4>
+          <ul>
+            <li>Supplier communication clarity</li>
+            <li>Continuity planning, factual precision</li>
+          </ul>
+          <h4>Escalates</h4>
+          <ul><li>Contract threats &rarr; Legal</li></ul>
+        </div>
+      </div>
+
+      <div class="team-card sales reveal d2">
+        <div class="team-head">
+          <div class="icon">&#129309;</div>
+          <h3>Sales</h3>
+          <div class="mission">Manages customer expectations directly, one conversation at a time.</div>
+        </div>
+        <div class="team-body">
+          <h4>Expected actions</h4>
+          <ul>
+            <li>Reply to customer DMs and comments</li>
+            <li>Set expectations without over-promising</li>
+            <li>Stay consistent with the official line</li>
+            <li>Escalate legal-risk complaints</li>
+          </ul>
+          <h4>Scored on</h4>
+          <ul>
+            <li>Customer empathy, expectation-setting</li>
+            <li>Consistency with Comms messaging</li>
+          </ul>
+          <h4>Escalates</h4>
+          <ul><li>Refund/liability demands &rarr; Legal</li></ul>
+        </div>
+      </div>
+
+      <div class="team-card legal reveal d3">
+        <div class="team-head">
+          <div class="icon">&#9878;&#65039;</div>
+          <h3>Legal</h3>
+          <div class="mission">The organisation's legal counsel: reviews, protects, disputes.</div>
+        </div>
+        <div class="team-body">
+          <h4>Expected actions</h4>
+          <ul>
+            <li>Review drafts before publication</li>
+            <li>Respond to regulator / legal-threat emails</li>
+            <li>File fact-based disputes &amp; takedowns</li>
+            <li>Flag admissions of liability</li>
+          </ul>
+          <h4>Scored on</h4>
+          <ul>
+            <li>Legal accuracy, risk flagging</li>
+            <li>No public commitments made</li>
+          </ul>
+          <h4>Escalates</h4>
+          <ul><li>Approved messaging &rarr; Comms to publish</li></ul>
+        </div>
+      </div>
+    </div>
+
+    <div class="callout green reveal">
+      <b>Why a closed set matters for security:</b> every downstream function — grading, routing, scoring,
+      dashboard grouping — validates team names against this catalog (or the scenario's persisted
+      <code class="inline">scenario_teams</code> rows). An unrecognised team name can never enter the system through
+      the assignment API, and if legacy data contains one, every consumer falls back to safe generic behaviour
+      instead of erroring. See <a href="#security">Security Invariants</a>.
+    </div>
+  </div>
+</section>
+
+<!-- ================= SECTION 2: MODULE MAP ================= -->
+<section id="modules">
+  <div class="wrap">
+    <div class="sec-num reveal">02 / Modules</div>
+    <h2 class="sec-title reveal">Every module touched</h2>
+    <p class="sec-sub reveal">
+      The feature is built as eleven bounded changes. Two services are brand new; everything else extends
+      existing code at well-defined seams. Roughly 70% of the plumbing (team tables, assignment API,
+      inject team-scoping fields, per-artifact AI grading) already exists and is reused, not rebuilt.
+    </p>
+
+    <table class="reveal">
+      <thead>
+        <tr><th>#</th><th>Module</th><th>Status</th><th>What it does</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>1</td>
+          <td><b>teamCharterService.ts</b><br/><code class="inline">server/services/</code></td>
+          <td><span class="tag new">New</span></td>
+          <td>Exports <code class="inline">TEAM_CATALOG</code>: the four team charters (mission, responsibilities,
+              expected actions, scoring rubric, out-of-lane rules) plus validation helpers
+              (<code class="inline">isKnownTeam()</code>, <code class="inline">getCharter()</code>) used everywhere else.</td>
+        </tr>
+        <tr>
+          <td>2</td>
+          <td><b>Migration 194</b><br/><code class="inline">migrations/194_team_charters.sql</code></td>
+          <td><span class="tag db">Schema</span></td>
+          <td>Adds nullable <code class="inline">charter JSONB</code>, <code class="inline">expected_actions JSONB</code>,
+              <code class="inline">scoring_rubric TEXT</code> to <code class="inline">scenario_teams</code>; creates
+              <code class="inline">team_score_snapshots</code>; adds <code class="inline">team_at_action TEXT</code> to
+              <code class="inline">player_actions</code> and team-targeting columns to <code class="inline">sim_emails</code>.</td>
+        </tr>
+        <tr>
+          <td>3</td>
+          <td><b>Compile path</b><br/><code class="inline">socialCrisisWarroom.ts</code> +
+              <code class="inline">socialCrisisPersistenceService.ts</code></td>
+          <td><span class="tag mod">Modified</span></td>
+          <td>The <code class="inline">/compile</code> endpoint injects the four fixed teams server-side
+              (client-sent team lists are ignored for this mode) and persists charters onto
+              <code class="inline">scenario_teams</code> rows. Benchmarks land in
+              <code class="inline">initial_state.strategic_benchmarks</code> keyed to the four names.</td>
+        </tr>
+        <tr>
+          <td>4</td>
+          <td><b>Scenario generation</b><br/><code class="inline">socialCrisisGeneratorService.ts</code> +
+              <code class="inline">SocialCrisisWizard.tsx</code></td>
+          <td><span class="tag mod">Modified</span></td>
+          <td>Replaces the unified (teamless) storyline with per-team storylines for the four fixed teams
+              (reusing dormant <code class="inline">generateAllTeamStorylines</code>). New
+              <code class="inline">adaptTeamCharters</code> step contextualises each charter's tasks to the crisis.
+              Wizard Review step shows a per-team summary.</td>
+        </tr>
+        <tr>
+          <td>5</td>
+          <td><b>Runtime routing</b><br/><code class="inline">socialMedia.ts</code> + inject publishing services</td>
+          <td><span class="tag mod">Modified</span></td>
+          <td>Team-scoped injects resolve <code class="inline">target_teams</code> &rarr; concrete
+              <code class="inline">target_player_ids</code> at publish time (reusing the existing echo-chamber
+              targeting filter). Emails gain per-recipient filtering. Trainers always see everything.</td>
+        </tr>
+        <tr>
+          <td>6</td>
+          <td><b>Team-aware grading</b><br/><code class="inline">contentGraderService.ts</code></td>
+          <td><span class="tag mod">Modified</span></td>
+          <td>Grader receives the author's team charter; prompt gains a team-mandate preamble.
+              <code class="inline">ContentGrade</code> gains <code class="inline">role_fit</code> (0&ndash;100) and a
+              <code class="inline">within_mandate</code> signal. No charter &rarr; grades exactly as today.</td>
+        </tr>
+        <tr>
+          <td>7</td>
+          <td><b>teamScoreService.ts</b><br/><code class="inline">server/services/</code></td>
+          <td><span class="tag new">New</span></td>
+          <td>Pure, recomputable rollup: per team &mdash; task checklist status (done / pending / overdue /
+              unstaffed), average content grades, role-fit, and a composite score
+              (~50% content quality, ~35% task completion, ~15% role fit). Periodic snapshots for trajectories.</td>
+        </tr>
+        <tr>
+          <td>8</td>
+          <td><b>Trainer dashboard</b><br/><code class="inline">TrainerSimDashboard.tsx</code></td>
+          <td><span class="tag mod">Modified</span></td>
+          <td>New full-width Team Performance section (four team cards with live scores and task checklists) and
+              the Player Judgement Ledger regrouped under team headers, with an Unassigned bucket.</td>
+        </tr>
+        <tr>
+          <td>9</td>
+          <td><b>Team assignment</b><br/><code class="inline">routes/teams.ts</code> +
+              <code class="inline">TeamAssignmentModal.tsx</code> + <code class="inline">SessionLobby.tsx</code></td>
+          <td><span class="tag sec">Hardened</span></td>
+          <td>Server-side validation of team names against the scenario's teams (closes an existing free-string gap),
+              single-team-per-player enforcement for social sessions, radio-select UI with headcounts and
+              auto-balance, full roster visible in the lobby, unassigned-player warning at session start.</td>
+        </tr>
+        <tr>
+          <td>10</td>
+          <td><b>Player briefing</b><br/><code class="inline">HomeScreen.tsx</code> +
+              <code class="inline">DeviceShell.tsx</code> + new endpoint</td>
+          <td><span class="tag new">New</span></td>
+          <td><code class="inline">GET /social/my-team/session/:id</code> returns the player's own charter
+              (timings/weights stripped &mdash; the rubric stays hidden). A Briefing card appears on the sim device
+              home screen; the team badge shows in the device status bar.</td>
+        </tr>
+        <tr>
+          <td>11</td>
+          <td><b>AAR</b><br/><code class="inline">aarSocialMediaService.ts</code></td>
+          <td><span class="tag mod">Modified</span></td>
+          <td>New <code class="inline">team_performance</code> block: final composite score per team, task outcomes,
+              best/worst artifact, role-fit summary. Reuses <code class="inline">teamScoreService</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= SECTION 3: DATA FLOW ================= -->
+<section id="flow">
+  <div class="wrap">
+    <div class="sec-num reveal">03 / Flow</div>
+    <h2 class="sec-title reveal">End-to-end data flow</h2>
+    <p class="sec-sub reveal">
+      From authoring to after-action review. The team dimension is injected once at compile, resolved
+      once per assignment, and then flows read-only through routing, grading, and scoring.
+    </p>
+
+    <div class="flow reveal">
+      <div class="flow-row">
+        <div class="flow-phase">Authoring</div>
+        <div>
+          <div class="flow-node">
+            <h4>1 &middot; Wizard build <span class="tag">SocialCrisisWizard.tsx</span></h4>
+            <p>Trainer describes the crisis. Build chain now runs: NPCs &rarr; <b>adaptTeamCharters</b> (contextualise the 4 charters) &rarr; <b>4&times; per-team storylines</b> (injects tagged <code class="inline">team_specific</code> + <code class="inline">target_teams</code>) &rarr; convergence layer (shared chaos, universal) &rarr; org pages.</p>
+          </div>
+        </div>
+      </div>
+      <div class="flow-connector"><div class="arrow">&#8595;</div></div>
+      <div class="flow-row">
+        <div class="flow-phase">Compile</div>
+        <div>
+          <div class="flow-node">
+            <h4>2 &middot; POST /compile <span class="tag">socialCrisisWarroom.ts</span></h4>
+            <p>Server <b>ignores any client-sent team list</b> and builds the four TeamDefs from <code class="inline">TEAM_CATALOG</code>. Persistence writes 4 <code class="inline">scenario_teams</code> rows (with charters), team-tagged <code class="inline">scenario_injects</code>, and benchmarks into <code class="inline">initial_state</code>.</p>
+          </div>
+        </div>
+      </div>
+      <div class="flow-connector"><div class="arrow">&#8595;</div></div>
+      <div class="flow-row">
+        <div class="flow-phase">Lobby</div>
+        <div>
+          <div class="flow-node">
+            <h4>3 &middot; Team assignment <span class="tag">routes/teams.ts</span> <span class="tag sec">validated</span></h4>
+            <p>Trainer assigns each player to exactly one team. Server validates: trainer-only &middot; participant exists &middot; <b>team_name exists in this scenario's <code class="inline">scenario_teams</code></b> &middot; move-semantics (old assignment deleted in the same operation). Start warns if anyone is unassigned or a team is unstaffed.</p>
+          </div>
+        </div>
+      </div>
+      <div class="flow-connector"><div class="arrow">&#8595;</div></div>
+      <div class="flow-row">
+        <div class="flow-phase">Runtime</div>
+        <div>
+          <div class="flow-node">
+            <h4>4 &middot; Content routing <span class="tag">inject publish + read endpoints</span></h4>
+            <p>When a team-scoped inject fires, <code class="inline">target_teams</code> is resolved against <code class="inline">session_teams</code> into <code class="inline">target_player_ids</code> <b>at publish time</b>. Feed/email GET endpoints filter per player; trainer bypass is explicit and role-checked.</p>
+          </div>
+          <div class="flow-node">
+            <h4>5 &middot; Team-aware grading <span class="tag">contentGraderService.ts</span></h4>
+            <p>Every post/email grade call looks up the author's team via <code class="inline">getPlayerTeam()</code>. Found &rarr; charter preamble + <code class="inline">role_fit</code> in the grade. Not found / unknown team &rarr; <b>identical to today's generic grading</b>. The action row stamps <code class="inline">team_at_action</code> so history survives reassignment.</p>
+          </div>
+          <div class="flow-node">
+            <h4>6 &middot; Team scores <span class="tag">teamScoreService.ts</span></h4>
+            <p>Recompute on grade landing + periodic cadence: per-team checklist matching (<code class="inline">detection_action_type</code> &times; member actions &times; timing), grade averages, composite score. Snapshot persisted; <code class="inline">team_scores.updated</code> broadcast (no content payload).</p>
+          </div>
+        </div>
+      </div>
+      <div class="flow-connector"><div class="arrow">&#8595;</div></div>
+      <div class="flow-row">
+        <div class="flow-phase">Trainer</div>
+        <div>
+          <div class="flow-node">
+            <h4>7 &middot; Dashboard + AAR <span class="tag">TrainerSimDashboard.tsx &middot; aarSocialMediaService.ts</span></h4>
+            <p>Team Performance cards + ledger grouped by team (trainer/admin-only endpoints). AAR gains a per-team section with final scores and task outcomes.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SECTION 4: UI EXPERIENCE ================= -->
+<section id="ui">
+  <div class="wrap">
+    <div class="sec-num reveal">04 / UI</div>
+    <h2 class="sec-title reveal">Expected UI experience</h2>
+    <p class="sec-sub reveal">
+      Four surfaces change: the wizard review, the lobby assignment flow, the player device, and the
+      trainer dashboard. Mock layouts below show the target experience.
+    </p>
+
+    <div class="grid g2">
+      <!-- Wizard review -->
+      <div class="reveal">
+        <h3>A &middot; Wizard &mdash; Review &amp; Compile</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          Step 7 gains a per-team summary so the trainer sees what each team will face before compiling.
+          Team names are fixed; the trainer can edit charter <em>wording</em> but cannot rename or remove teams.
+        </p>
+        <div class="mock">
+          <div class="mock-title">Review &amp; Compile &mdash; Team Summary</div>
+          <div class="mock-row"><span class="pill comms">Communications</span> 12 injects &middot; 5 tasks &middot; press + feed pressure</div>
+          <div class="mock-row"><span class="pill proc">Procurement</span> 8 injects &middot; 4 tasks &middot; supplier email storm</div>
+          <div class="mock-row"><span class="pill sales">Sales</span> 9 injects &middot; 4 tasks &middot; customer DM surge</div>
+          <div class="mock-row"><span class="pill legal">Legal</span> 7 injects &middot; 5 tasks &middot; regulator + takedowns</div>
+          <div class="mock-row" style="border-style:dashed;"><span class="pill none">Shared</span> 10 universal injects &middot; convergence gates</div>
+        </div>
+      </div>
+
+      <!-- Lobby assignment -->
+      <div class="reveal d1">
+        <h3>B &middot; Lobby &mdash; Team assignment (trainer)</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          The checkbox grid becomes radio-select (one team per player) for social sessions. Headcounts vs.
+          min/max show live; Auto-balance distributes the unassigned. Everyone in the lobby sees the full
+          roster grouped by team. Start warns on unassigned players or unstaffed teams.
+        </p>
+        <div class="mock">
+          <div class="mock-title">Team Assignments &mdash; 6 participants</div>
+          <div class="mock-row"><b style="width:90px;">Amira K.</b>
+            <span class="radio sel"></span><span class="pill comms">Comms</span>
+            <span class="radio"></span><span class="pill proc">Proc</span>
+            <span class="radio"></span><span class="pill sales">Sales</span>
+            <span class="radio"></span><span class="pill legal">Legal</span>
+          </div>
+          <div class="mock-row"><b style="width:90px;">Daniel T.</b>
+            <span class="radio"></span><span class="pill comms">Comms</span>
+            <span class="radio sel"></span><span class="pill proc">Proc</span>
+            <span class="radio"></span><span class="pill sales">Sales</span>
+            <span class="radio"></span><span class="pill legal">Legal</span>
+          </div>
+          <div class="mock-row"><b style="width:90px;">Mei L.</b>
+            <span class="radio"></span><span class="pill comms">Comms</span>
+            <span class="radio"></span><span class="pill proc">Proc</span>
+            <span class="radio"></span><span class="pill sales">Sales</span>
+            <span class="radio"></span><span class="pill legal">Legal</span>
+            <span class="pill warn">unassigned</span>
+          </div>
+          <div class="mock-row" style="justify-content:space-between;">
+            <span style="font-size:11.5px; color:var(--dim);">Comms 1/2 &middot; Proc 1/2 &middot; Sales 0/2 <span class="pill bad">unstaffed</span> &middot; Legal 0/1</span>
+            <span class="pill ok">Auto-balance</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Player device -->
+      <div class="reveal d2">
+        <h3>C &middot; Player device &mdash; Team briefing</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          On session start, each player sees their briefing card once (dismissible, reopenable from a
+          Briefing app). It shows mission, responsibilities, and escalation paths &mdash; but hides the
+          scoring weights and timing benchmarks, keeping the rubric a challenge. The team badge stays
+          visible in the device status bar.
+        </p>
+        <div class="phone">
+          <div class="notch"></div>
+          <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--dim); padding:0 4px 8px;">
+            <span>09:41</span><span class="pill legal" style="font-size:9px;">LEGAL</span><span>&#9679;&#9679;&#9679;</span>
+          </div>
+          <div class="brief-card">
+            <h5>&#9878;&#65039; Your team: Legal</h5>
+            <div style="color:var(--muted);">You are the organisation's legal counsel.</div>
+            <ul>
+              <li>Review drafts before anything goes public</li>
+              <li>Answer the regulator &mdash; check Mail</li>
+              <li>File disputes on provably false posts</li>
+              <li>Never make public commitments</li>
+            </ul>
+          </div>
+          <div class="apps">
+            <div class="app">&#128038;</div><div class="app">&#128216;</div><div class="app">&#128172;</div><div class="app">&#9993;&#65039;</div>
+            <div class="app">&#128240;</div><div class="app">&#128221;</div><div class="app" style="border-color:rgba(45,212,191,0.5);">&#127919;</div><div class="app"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trainer dashboard -->
+      <div class="reveal d3">
+        <h3>D &middot; Trainer dashboard &mdash; Team performance</h3>
+        <p style="color:var(--muted); font-size:13.5px;">
+          A new full-width section above the ledger: one card per team with live composite score, task
+          checklist, and the most urgent overdue item surfaced as an actionable alert. The Player
+          Judgement Ledger regroups its player selector under team headers (plus an Unassigned bucket);
+          each entry's grade block now includes <code class="inline">role_fit</code>.
+        </p>
+        <div class="mock">
+          <div class="mock-title">Team Performance &mdash; live</div>
+          <div class="mock-row"><span class="pill comms">Communications</span><div class="scorebar"><i style="width:78%"></i></div><b>78</b><span class="pill ok">4/5 tasks</span></div>
+          <div class="mock-row"><span class="pill proc">Procurement</span><div class="scorebar"><i style="width:64%"></i></div><b>64</b><span class="pill warn">2/4 tasks</span></div>
+          <div class="mock-row"><span class="pill sales">Sales</span><div class="scorebar"><i style="width:71%"></i></div><b>71</b><span class="pill ok">3/4 tasks</span></div>
+          <div class="mock-row"><span class="pill legal">Legal</span><div class="scorebar"><i style="width:52%"></i></div><b>52</b><span class="pill bad">Regulator email unanswered 12m</span></div>
+          <div class="mock-row" style="border-style:dashed; flex-wrap:wrap;">
+            <span style="font-size:11px; color:var(--dim); width:100%;">LEDGER &mdash; grouped by team</span>
+            <span class="pill comms">Comms</span><span style="font-size:11.5px;">Amira (14) &middot; Josh (9)</span>
+            <span class="pill legal">Legal</span><span style="font-size:11.5px;">Priya (11)</span>
+            <span class="pill none">Unassigned</span><span style="font-size:11.5px;">Mei (3)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SECTION 5: HOW THE CODE WORKS ================= -->
+<section id="code">
+  <div class="wrap">
+    <div class="sec-num reveal">05 / Code</div>
+    <h2 class="sec-title reveal">How the code works</h2>
+    <p class="sec-sub reveal">
+      Key mechanisms, in execution order. All snippets are illustrative of the planned shape,
+      anchored to real files and existing functions.
+    </p>
+
+    <h3 class="reveal">5.1 &middot; The catalog is the single source of truth</h3>
+    <span class="file-label reveal">server/services/teamCharterService.ts (new)</span>
+    <pre class="code reveal"><span class="kw">export const</span> FIXED_TEAM_NAMES = [<span class="st">'Communications'</span>, <span class="st">'Procurement'</span>, <span class="st">'Sales'</span>, <span class="st">'Legal'</span>] <span class="kw">as const</span>;
+
+<span class="kw">export interface</span> <span class="ty">TeamExpectedAction</span> {
+  action_id: <span class="ty">string</span>;
+  description: <span class="ty">string</span>;
+  detection_action_type: <span class="ty">string</span>;   <span class="cm">// matches existing player_actions.action_type values</span>
+  detection_hints?: <span class="ty">Record</span>&lt;<span class="ty">string</span>, <span class="ty">unknown</span>&gt;; <span class="cm">// e.g. { email_category: 'regulator' }</span>
+  timing_benchmark_minutes: <span class="ty">number</span> | <span class="ty">null</span>;
+  weight: <span class="ty">number</span>;
+  tier: <span class="ty">1</span> | <span class="ty">2</span> | <span class="ty">3</span>;
+}
+
+<span class="kw">export const</span> TEAM_CATALOG: <span class="ty">Record</span>&lt;<span class="ty">FixedTeamName</span>, <span class="ty">TeamCharter</span>&gt; = { <span class="cm">/* four charters */</span> };
+
+<span class="cm">// Validation helpers used by every consumer:</span>
+<span class="kw">export function</span> <span class="fn">isKnownTeam</span>(name: <span class="ty">string</span>): name <span class="kw">is</span> <span class="ty">FixedTeamName</span> { ... }
+<span class="kw">export function</span> <span class="fn">getCharter</span>(name: <span class="ty">string</span>): <span class="ty">TeamCharter</span> | <span class="ty">null</span> { ... } <span class="cm">// null, never throws</span></pre>
+
+    <h3 class="reveal">5.2 &middot; Compile injects the teams server-side</h3>
+    <p class="reveal" style="color:var(--muted); font-size:13.5px;">
+      Today the wizard sends no <code class="inline">teams</code> field and zero <code class="inline">scenario_teams</code>
+      rows get written. After this change the server builds the team list itself &mdash; the client cannot
+      define team names for this mode, which removes a whole class of injection risk at the source.
+    </p>
+    <span class="file-label reveal">server/routes/socialCrisisWarroom.ts &mdash; POST /compile</span>
+    <pre class="code reveal"><span class="cm">// Client-sent body.teams is IGNORED for social crisis compile.</span>
+<span class="kw">const</span> fixedTeams: <span class="ty">TeamDef</span>[] = <span class="fn">buildFixedTeamDefs</span>(adaptedCharters); <span class="cm">// from TEAM_CATALOG</span>
+<span class="kw">const</span> payload = <span class="fn">assemblePayload</span>(body.narrative, fixedTeams, <span class="cm">/* ... */</span>);
+<span class="kw">const</span> scenarioId = <span class="kw">await</span> <span class="fn">persistSocialCrisisScenario</span>(payload, user.id, adaptedCharters);
+<span class="cm">// persistence writes scenario_teams rows WITH charter/expected_actions/scoring_rubric</span></pre>
+
+    <h3 class="reveal">5.3 &middot; Assignment is validated, single-team, move-semantics</h3>
+    <p class="reveal" style="color:var(--muted); font-size:13.5px;">
+      The existing endpoint accepts <em>any non-empty string</em> as a team name
+      (<code class="inline">team_name: z.string().min(1)</code> in <code class="inline">routes/teams.ts</code>) —
+      that free-string gap is closed here. Assignment becomes: authenticate &rarr; authorise &rarr;
+      validate participant &rarr; <b>validate team against the scenario</b> &rarr; atomically replace any
+      previous assignment.
+    </p>
+    <span class="file-label reveal">server/routes/teams.ts &mdash; POST /session/:id/assign (hardened)</span>
+    <pre class="code reveal"><span class="cm">// 1. requireAuth + trainer/admin role check           (existing)</span>
+<span class="cm">// 2. session.trainer_id === user.id || admin           (existing)</span>
+<span class="cm">// 3. user_id is a session participant                  (existing)</span>
+
+<span class="cm">// 4. NEW — team must exist for this session's scenario (closed set):</span>
+<span class="kw">const</span> { data: teamDef } = <span class="kw">await</span> supabaseAdmin
+  .<span class="fn">from</span>(<span class="st">'scenario_teams'</span>)
+  .<span class="fn">select</span>(<span class="st">'team_name'</span>)
+  .<span class="fn">eq</span>(<span class="st">'scenario_id'</span>, session.scenario_id)
+  .<span class="fn">eq</span>(<span class="st">'team_name'</span>, team_name)
+  .<span class="fn">maybeSingle</span>();
+<span class="kw">if</span> (!teamDef) <span class="kw">return</span> res.<span class="fn">status</span>(<span class="ty">400</span>).<span class="fn">json</span>({ error: <span class="st">'Unknown team for this scenario'</span> });
+
+<span class="cm">// 5. NEW — single team per player in social mode (move, not add):</span>
+<span class="kw">if</span> (session.sim_mode === <span class="st">'social_media'</span>) {
+  <span class="kw">await</span> supabaseAdmin.<span class="fn">from</span>(<span class="st">'session_teams'</span>)
+    .<span class="fn">delete</span>()
+    .<span class="fn">eq</span>(<span class="st">'session_id'</span>, id).<span class="fn">eq</span>(<span class="st">'user_id'</span>, user_id)
+    .<span class="fn">neq</span>(<span class="st">'team_name'</span>, team_name);
+}
+<span class="cm">// 6. upsert on (session_id, user_id, team_name)        (existing)</span></pre>
+
+    <h3 class="reveal">5.4 &middot; One resolver, used by everything</h3>
+    <p class="reveal" style="color:var(--muted); font-size:13.5px;">
+      All team lookups at runtime go through one helper so fallback behaviour is defined exactly once.
+      It can return <code class="inline">null</code> for three distinct reasons (no assignment, unknown team
+      name in legacy data, scenario has no teams) — and every caller treats <code class="inline">null</code>
+      as "behave like today".
+    </p>
+    <span class="file-label reveal">server/services/teamCharterService.ts</span>
+    <pre class="code reveal"><span class="kw">export async function</span> <span class="fn">getPlayerTeamContext</span>(sessionId, userId): <span class="ty">Promise</span>&lt;<span class="ty">TeamContext</span> | <span class="ty">null</span>&gt; {
+  <span class="kw">const</span> rows = <span class="kw">await</span> <span class="fn">fetchSessionTeams</span>(sessionId, userId);      <span class="cm">// session_teams</span>
+  <span class="kw">if</span> (rows.length === <span class="ty">0</span>) <span class="kw">return</span> <span class="ty">null</span>;                          <span class="cm">// unassigned — safe fallback</span>
+  <span class="kw">const</span> row = <span class="fn">pickDeterministic</span>(rows);  <span class="cm">// earliest assigned_at if legacy multi-team data exists</span>
+  <span class="kw">const</span> charter = <span class="kw">await</span> <span class="fn">fetchScenarioCharter</span>(sessionId, row.team_name); <span class="cm">// scenario_teams</span>
+  <span class="kw">if</span> (!charter) {
+    logger.<span class="fn">warn</span>({ sessionId, userId, team: row.team_name }, <span class="st">'team has no charter — generic grading'</span>);
+    <span class="kw">return</span> { team_name: row.team_name, charter: <span class="ty">null</span> };       <span class="cm">// name kept for grouping, no rubric</span>
+  }
+  <span class="kw">return</span> { team_name: row.team_name, charter };
+}</pre>
+
+    <h3 class="reveal">5.5 &middot; Grading degrades gracefully</h3>
+    <span class="file-label reveal">server/routes/socialMedia.ts &mdash; post/email grade call sites</span>
+    <pre class="code reveal"><span class="kw">const</span> teamCtx = <span class="kw">await</span> <span class="fn">getPlayerTeamContext</span>(post.session_id, user.id); <span class="cm">// null-safe</span>
+<span class="kw">const</span> grade = <span class="kw">await</span> <span class="fn">gradePlayerContent</span>(content, {
+  <span class="cm">/* ...existing context unchanged... */</span>
+  team_charter: teamCtx?.charter ?? <span class="ty">undefined</span>,   <span class="cm">// undefined ⇒ prompt identical to today</span>
+});
+<span class="cm">// action row stamps the team AT the moment of action (survives reassignment):</span>
+<span class="kw">await</span> <span class="fn">recordPlayerAction</span>(sessionId, user.id, <span class="st">'post_created'</span>, post.id, <span class="ty">null</span>,
+  { post_format }, sopStep, teamCtx?.team_name ?? <span class="ty">null</span>);   <span class="cm">// → player_actions.team_at_action</span></pre>
+    <p class="reveal" style="color:var(--muted); font-size:13.5px;">
+      Inside <code class="inline">contentGraderService.ts</code>, the charter (when present) adds a preamble after the
+      format rubric &mdash; <em>"The author belongs to the {team} team. Their mandate: {mission}. Judge against:
+      {scoring_rubric}. Out of their lane: {out_of_lane}"</em> &mdash; and the required-JSON block gains
+      <code class="inline">role_fit</code> and a <code class="inline">within_mandate</code> signal. Lane breaches are
+      coached, not zeroed: content is still graded on merit, with the breach reflected in
+      <code class="inline">role_fit</code> and <code class="inline">feedback</code>.
+    </p>
+
+    <h3 class="reveal">5.6 &middot; Routing resolves teams at publish time, not read time</h3>
+    <p class="reveal" style="color:var(--muted); font-size:13.5px;">
+      Rather than teaching every GET endpoint about teams, team-scoped injects are resolved into the
+      <b>existing</b> per-player targeting mechanism (<code class="inline">target_player_ids</code>, added in
+      migrations 176/186 for echo-chamber targeting) when the inject fires. The already-tested read-time
+      filter then does the work. Emails get the same treatment via a new nullable
+      <code class="inline">recipient_user_ids</code> column.
+    </p>
+    <span class="file-label reveal">inject publishing (scheduler / ambient content)</span>
+    <pre class="code reveal"><span class="kw">if</span> (inject.inject_scope === <span class="st">'team_specific'</span> &amp;&amp; inject.target_teams?.length) {
+  <span class="kw">const</span> memberIds = <span class="kw">await</span> <span class="fn">resolveTeamMembers</span>(sessionId, inject.target_teams);
+  <span class="kw">if</span> (memberIds.length === <span class="ty">0</span>) {
+    <span class="cm">// Unstaffed team: do NOT broadcast to everyone (would leak Legal-only content).</span>
+    <span class="cm">// Emit a trainer-only alert instead; the trainer can reassign or force-publish.</span>
+    <span class="kw">await</span> <span class="fn">emitTrainerAlert</span>(sessionId, <span class="st">'undeliverable_inject'</span>, inject);
+    <span class="kw">return</span>;
+  }
+  post.target_player_ids = memberIds;      <span class="cm">// existing filter takes over from here</span>
+  post.is_surfaced_to_session = <span class="ty">false</span>;
+}</pre>
+
+    <h3 class="reveal">5.7 &middot; Team scores are a pure recomputable rollup</h3>
+    <span class="file-label reveal">server/services/teamScoreService.ts (new)</span>
+    <pre class="code reveal"><span class="kw">export async function</span> <span class="fn">computeTeamScores</span>(sessionId): <span class="ty">Promise</span>&lt;<span class="ty">TeamScoreReport</span>&gt; {
+  <span class="cm">// inputs (all read-only): scenario_teams (charters), session_teams (membership),</span>
+  <span class="cm">// player_actions (with team_at_action), social_posts/sim_emails (grades)</span>
+  <span class="kw">for</span> (<span class="kw">const</span> team <span class="kw">of</span> scenarioTeams) {
+    <span class="kw">const</span> members = membership.<span class="fn">get</span>(team.team_name) ?? [];
+    <span class="kw">const</span> tasks = <span class="fn">matchExpectedActions</span>(team.expected_actions, actions, members, startTime);
+    <span class="cm">// each task: done | pending | overdue | unstaffed (members.length === 0)</span>
+    <span class="kw">const</span> quality = <span class="fn">avgGrades</span>(artifactsBy(members));   <span class="cm">// incl. role_fit</span>
+    <span class="kw">const</span> composite = <span class="ty">0.5</span>*quality.overall + <span class="ty">0.35</span>*tasks.completionScore + <span class="ty">0.15</span>*quality.role_fit;
+    <span class="cm">// zero members ⇒ composite is null ("unstaffed"), never 0 — avoids fake failing grades</span>
+  }
+  <span class="cm">// players not in any team → report.unassigned (visible to trainer, excluded from team math)</span>
+}</pre>
+    <p class="reveal" style="color:var(--muted); font-size:13.5px;">
+      Nothing mutates on the hot path: the score is derived from immutable event history, so a crash or a
+      double-recompute can never corrupt it. Snapshots go to <code class="inline">team_score_snapshots</code> for
+      trajectory charts. The websocket event <code class="inline">team_scores.updated</code> carries only
+      <em>numbers</em> (never content), so the session-wide broadcast leaks nothing team-scoped.
+    </p>
+
+    <h3 class="reveal">5.8 &middot; New/changed endpoints</h3>
+    <table class="reveal">
+      <thead><tr><th>Endpoint</th><th>Access</th><th>Notes</th></tr></thead>
+      <tbody>
+        <tr><td><code class="inline">POST /teams/session/:id/assign</code></td><td>Trainer/admin (own session)</td><td><b>Hardened:</b> team-name validation vs. scenario, single-team move semantics for social mode.</td></tr>
+        <tr><td><code class="inline">GET /social/team-scores/session/:id</code></td><td>Trainer/admin only</td><td>New. Full per-team rollup incl. per-member breakdown. Same guard pattern as <code class="inline">/social/ledger</code>.</td></tr>
+        <tr><td><code class="inline">GET /social/my-team/session/:id</code></td><td>Any session participant</td><td>New. Returns <b>only the caller's own</b> team + charter, with timing benchmarks and weights stripped server-side. Never accepts a user_id parameter — identity comes from the JWT.</td></tr>
+        <tr><td><code class="inline">GET /social/posts/session/:id</code></td><td>Participants + trainer</td><td>Unchanged signature; team-scoped posts arrive pre-resolved to <code class="inline">target_player_ids</code>, so the existing filter applies.</td></tr>
+        <tr><td><code class="inline">GET /social/emails/session/:id</code></td><td>Participants + trainer</td><td><b>Hardened:</b> gains per-recipient filtering (today it returns every email to everyone). Trainer bypass explicit.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= SECTION 6: SECURITY ================= -->
+<section id="security">
+  <div class="wrap">
+    <div class="sec-num reveal">06 / Security</div>
+    <h2 class="sec-title reveal">Security invariants</h2>
+    <p class="sec-sub reveal">
+      Eight invariants guarantee that team assignment cannot open loopholes in other functions and that
+      an unexpected team value can never crash a code path. Each is enforced server-side; the UI merely
+      reflects them.
+    </p>
+
+    <div class="inv reveal">
+      <div class="inv-id">I1</div>
+      <div>
+        <h4>Team names are a closed set, validated at the door</h4>
+        <p><code class="inline">POST /teams/session/:id/assign</code> rejects any <code class="inline">team_name</code> not present in the
+        session's scenario's <code class="inline">scenario_teams</code> rows (400). <b>This closes an existing gap:</b> today the
+        endpoint accepts any non-empty string, meaning arbitrary team labels can already be written into
+        <code class="inline">session_teams</code>. After this change, an unrecognised team can only exist as legacy data —
+        and I4 covers that.</p>
+      </div>
+    </div>
+
+    <div class="inv ok reveal">
+      <div class="inv-id">I2</div>
+      <div>
+        <h4>Only the session's trainer (or admin) can assign — already enforced, kept</h4>
+        <p>The existing chain stays: <code class="inline">requireAuth</code> &rarr; role must be trainer/admin &rarr;
+        <code class="inline">session.trainer_id === user.id</code> unless admin &rarr; target user must be a
+        <code class="inline">session_participants</code> row. Players cannot self-assign, cannot assign others, and a trainer
+        cannot touch another trainer's session.</p>
+      </div>
+    </div>
+
+    <div class="inv reveal">
+      <div class="inv-id">I3</div>
+      <div>
+        <h4>One team per player, atomically</h4>
+        <p>For social sessions, assignment is a <b>move</b>: any other <code class="inline">session_teams</code> rows for that
+        user are deleted in the same operation as the upsert. There is never a window where scoring or routing
+        sees two teams. If legacy multi-team rows exist, <code class="inline">getPlayerTeamContext</code> picks
+        deterministically (earliest <code class="inline">assigned_at</code>) and logs a warning — never throws, never
+        picks randomly between requests.</p>
+      </div>
+    </div>
+
+    <div class="inv reveal">
+      <div class="inv-id">I4</div>
+      <div>
+        <h4>Every consumer treats team as optional — unknown or missing team can never error</h4>
+        <p>All lookups flow through <code class="inline">getPlayerTeamContext()</code>, which returns
+        <code class="inline">null</code> instead of throwing for: unassigned player, team name with no charter
+        (legacy/unknown), or a teamless scenario. Callers' contract: <b>null means "behave exactly as the system
+        does today"</b> — generic grading, universal content only, "Unassigned" bucket in the dashboard, excluded
+        from team-score math. A player assigned to a team the functions don't recognise gets a normal, fully
+        working session; the only thing they miss is the team-specific layer.</p>
+      </div>
+    </div>
+
+    <div class="inv reveal">
+      <div class="inv-id">I5</div>
+      <div>
+        <h4>No cross-team content leakage — filtering is server-side, resolved at publish time</h4>
+        <p>Team-scoped injects are resolved to concrete <code class="inline">target_player_ids</code> when published, then
+        filtered by the existing, already-exercised read-time visibility check. Clients never receive rows they
+        shouldn't see, so no client-side filtering to bypass. The email list endpoint — which today returns
+        <b>all</b> session emails to every participant — gains the same per-recipient filter. Trainer bypass is an
+        explicit role check, not an absence of filtering. Websocket broadcasts for team scores carry numbers only;
+        team-scoped content notifications go via the existing per-user <code class="inline">emitToUser</code> channel,
+        not session-wide rooms.</p>
+      </div>
+    </div>
+
+    <div class="inv reveal">
+      <div class="inv-id">I6</div>
+      <div>
+        <h4>Team is stamped at write time — reassignment can't corrupt history</h4>
+        <p><code class="inline">player_actions</code> gains <code class="inline">team_at_action</code>, filled when the action is
+        recorded. Scoring attributes each action to the team the player was on <em>when they acted</em>. If the
+        trainer moves a player mid-session, past work stays with the old team and new work counts for the new team —
+        no retroactive score shifts, no double counting, no orphaned actions.</p>
+      </div>
+    </div>
+
+    <div class="inv reveal">
+      <div class="inv-id">I7</div>
+      <div>
+        <h4>Score and ledger endpoints stay trainer/admin-only; players see only their own charter</h4>
+        <p><code class="inline">GET /social/team-scores/...</code> uses the same guard as the existing ledger endpoint
+        (403 for non-trainer/admin). <code class="inline">GET /social/my-team/...</code> derives identity from the JWT —
+        it takes no user_id parameter, so a player cannot request another player's charter, and the response strips
+        timing benchmarks and scoring weights so the hidden rubric stays hidden.</p>
+      </div>
+    </div>
+
+    <div class="inv reveal">
+      <div class="inv-id">I8</div>
+      <div>
+        <h4>The client can never define team structure</h4>
+        <p>At compile, the server ignores any client-sent team list for social crisis mode and builds the four
+        TeamDefs from <code class="inline">TEAM_CATALOG</code> itself. Charter fields written to
+        <code class="inline">scenario_teams</code> come from the server-side catalog (plus the server-run adaptation
+        step). Later trainer edits to charter wording go through validated endpoints that can change
+        <em>descriptions</em> but not <em>team names</em>, <em>detection action types</em>, or <em>weights</em> —
+        the fields other functions key off remain server-controlled.</p>
+      </div>
+    </div>
+
+    <div class="callout red reveal">
+      <b>Pre-existing issues this feature fixes in passing:</b>
+      (1)&nbsp;<code class="inline">team_name</code> free-string acceptance in the assign endpoint (I1);
+      (2)&nbsp;<code class="inline">GET /social/emails/session/:id</code> returning every email to every participant with
+      no per-player filtering (I5). Both are hardened as part of Phase 3/6 work, with the email fix feature-flagged
+      per session mode so field-ops behaviour is untouched.
+    </div>
+  </div>
+</section>
+
+<!-- ================= SECTION 7: FAILURE MODES ================= -->
+<section id="failures">
+  <div class="wrap">
+    <div class="sec-num reveal">07 / Robustness</div>
+    <h2 class="sec-title reveal">Failure-mode matrix</h2>
+    <p class="sec-sub reveal">
+      Every edge case involving team data, what the system does, and which invariant covers it.
+      The design goal: <b>no team-related state can ever produce a 500, a crash, or silent data loss.</b>
+    </p>
+
+    <table class="reveal">
+      <thead><tr><th>Situation</th><th>System behaviour</th><th>Covered by</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>Trainer assigns a team name not in the scenario</b> (typo, crafted request, stale client)</td>
+          <td>400 rejected at the assign endpoint. Nothing written. UI shows the error inline.</td>
+          <td>I1</td>
+        </tr>
+        <tr>
+          <td><b>Legacy <code class="inline">session_teams</code> row with an old AI-generated team name</b> (e.g. "Content Response")</td>
+          <td>Player functions normally. <code class="inline">getPlayerTeamContext</code> finds no charter &rarr; generic grading, universal content, grouped under an "Other teams" header in the dashboard. Warning logged once per session.</td>
+          <td>I4</td>
+        </tr>
+        <tr>
+          <td><b>Player is unassigned when the session starts</b></td>
+          <td>Lobby warns the trainer (non-blocking confirm). Player gets a fully working generic session: graded without team rubric, sees universal content, appears in the "Unassigned" ledger bucket, excluded from team-score denominators.</td>
+          <td>I4</td>
+        </tr>
+        <tr>
+          <td><b>Player somehow has two team rows</b> (legacy data written before single-team enforcement)</td>
+          <td>Deterministic pick (earliest <code class="inline">assigned_at</code>), warning logged. Next assignment through the API collapses them to one via move semantics.</td>
+          <td>I3</td>
+        </tr>
+        <tr>
+          <td><b>Trainer reassigns a player mid-session</b></td>
+          <td>Allowed. Past actions keep <code class="inline">team_at_action</code>; future actions count for the new team. Content already delivered to the player stays visible (resolved player-ids don't retro-change); new team-scoped content follows the new membership.</td>
+          <td>I6</td>
+        </tr>
+        <tr>
+          <td><b>Team-scoped inject fires for an unstaffed team</b></td>
+          <td>Never broadcast session-wide (would leak). Trainer gets an "undeliverable inject" alert and can reassign players or force-publish. Related tasks show "unstaffed", not "overdue".</td>
+          <td>I5</td>
+        </tr>
+        <tr>
+          <td><b>Team has zero members at scoring time</b></td>
+          <td>Composite score is <code class="inline">null</code> ("unstaffed" badge), never 0 — avoids fake failing grades in the dashboard and AAR.</td>
+          <td>&mdash;</td>
+        </tr>
+        <tr>
+          <td><b>Scenario compiled before this feature</b> (no <code class="inline">scenario_teams</code> rows, no charters)</td>
+          <td>The entire team layer is dormant: assignment modal shows no teams for it, grading/routing/scoring behave exactly as today. No migration backfill required.</td>
+          <td>I4, <a href="#compat">&sect;08</a></td>
+        </tr>
+        <tr>
+          <td><b>Inject's <code class="inline">target_teams</code> references a name not in the scenario</b> (generator drift)</td>
+          <td>Caught at compile: persistence validates inject <code class="inline">target_teams</code> against the four fixed names and downgrades unknown references to <code class="inline">universal</code> with a compile warning — content is never silently dropped at runtime.</td>
+          <td>I8</td>
+        </tr>
+        <tr>
+          <td><b>Participant removed from the session</b></td>
+          <td><code class="inline">session_teams</code> rows cascade-delete with the participant's session rows (FK <code class="inline">ON DELETE CASCADE</code> already present). Their historical <code class="inline">player_actions</code> keep <code class="inline">team_at_action</code> for the AAR.</td>
+          <td>Schema</td>
+        </tr>
+        <tr>
+          <td><b>Player crafts a request to read another team's charter or scores</b></td>
+          <td><code class="inline">/my-team</code> ignores any supplied identifiers (JWT identity only); <code class="inline">/team-scores</code> and <code class="inline">/ledger</code> return 403 for non-trainers.</td>
+          <td>I7</td>
+        </tr>
+        <tr>
+          <td><b>Grader AI call fails or times out</b></td>
+          <td>Unchanged from today: the existing <code class="inline">defaultGrade()</code> fallback applies; <code class="inline">role_fit</code> defaults to a neutral 50 like every other dimension. Team score recompute simply reflects whatever grades exist.</td>
+          <td>Existing</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ================= SECTION 8: BACKWARD COMPATIBILITY ================= -->
+<section id="compat">
+  <div class="wrap">
+    <div class="sec-num reveal">08 / Compatibility</div>
+    <h2 class="sec-title reveal">Backward compatibility &amp; rollout</h2>
+    <p class="sec-sub reveal">
+      The feature is additive. Every schema change is nullable; every code path checks for the presence
+      of team data before using it.
+    </p>
+
+    <div class="grid g3">
+      <div class="card reveal">
+        <h4 style="margin-top:0;">Existing scenarios</h4>
+        <p style="font-size:13px; color:var(--muted);">Compiled scenarios have no <code class="inline">scenario_teams</code> rows for social crisis. All new code branches on their presence, so old scenarios run sessions exactly as before — no backfill, no re-compile needed.</p>
+      </div>
+      <div class="card reveal d1">
+        <h4 style="margin-top:0;">Field-ops untouched</h4>
+        <p style="font-size:13px; color:var(--muted);">Single-team enforcement, email filtering, and charter grading are all gated on <code class="inline">sim_mode === 'social_media'</code>. Field-ops teams, the heat meter, and participant roles are not modified.</p>
+      </div>
+      <div class="card reveal d2">
+        <h4 style="margin-top:0;">In-flight sessions</h4>
+        <p style="font-size:13px; color:var(--muted);">Sessions running during deploy keep working: new columns are nullable, <code class="inline">team_at_action</code> is simply null on old rows, and the team dashboard section renders only when the scenario has teams.</p>
+      </div>
+    </div>
+
+    <h3 class="reveal" style="margin-top:36px;">Suggested build order</h3>
+    <table class="reveal">
+      <thead><tr><th>Phase</th><th>Work</th><th>Depends on</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Catalog service + migration 194</td><td>&mdash;</td></tr>
+        <tr><td>2</td><td>Compile path + generation (per-team storylines, charter adaptation)</td><td>1</td></tr>
+        <tr><td>3</td><td>Assignment hardening (validation, single-team, modal UX, lobby roster)</td><td>1</td></tr>
+        <tr><td>4</td><td>Runtime routing (publish-time resolution, email filtering)</td><td>2, 3</td></tr>
+        <tr><td>5</td><td>Team-aware grading + teamScoreService + endpoints</td><td>2, 3</td></tr>
+        <tr><td>6</td><td>Trainer dashboard + player briefing</td><td>5</td></tr>
+        <tr><td>7</td><td>AAR per-team section</td><td>5</td></tr>
+      </tbody>
+    </table>
+
+    <div class="callout reveal">
+      <b>Deliberately deferred</b> (recommended follow-ups): cross-team approval flow (Legal sign-off gate before
+      Comms can post as the official page), per-team group-chat channels, team-lead mechanics via the existing
+      unused <code class="inline">session_teams.team_role</code> column, and team-scoped websocket rooms.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    Black Swan Simulations &mdash; Fixed Teams for the Social Media Crisis Module &middot; Design &amp; Security Plan &middot; July 2026
+  </div>
+</footer>
+
+<script>
+  // Reveal-on-scroll
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); }
+  }, { threshold: 0.08 });
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+  // Active TOC link
+  const sections = [...document.querySelectorAll('section[id]')];
+  const links = [...document.querySelectorAll('nav.toc a')];
+  const spy = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        links.forEach((l) => l.classList.toggle('active', l.getAttribute('href') === '#' + e.target.id));
+      }
+    }
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  sections.forEach((s) => spy.observe(s));
+</script>
+</body>
+</html>

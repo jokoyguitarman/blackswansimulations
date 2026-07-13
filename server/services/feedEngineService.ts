@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
+import { resolveTeamMembers } from './teamCharterService.js';
 
 export interface DeliveryConfig {
   app: 'social_feed' | 'group_chat' | 'email' | 'news' | 'phone_call';
@@ -28,6 +29,96 @@ export interface DeliveryConfig {
   channel_type?: string;
 }
 
+export interface TeamTargeting {
+  /** Resolved member user ids; null means universal delivery. */
+  playerIds: string[] | null;
+  teamNames: string[];
+}
+
+/**
+ * Resolve a team-scoped inject's target_teams into concrete player ids at
+ * publish time so the existing per-player read filters do the rest.
+ *
+ * Returns null for universal delivery. Returns { playerIds: [] } when the
+ * targeted team(s) have no members — callers must NOT fall back to
+ * session-wide delivery (that would leak team-only content); the inject is
+ * reported to the trainer as undeliverable instead.
+ */
+async function resolveInjectTargeting(
+  sessionId: string,
+  injectScope: string | undefined,
+  targetTeams: string[] | undefined,
+): Promise<TeamTargeting | null> {
+  if (injectScope !== 'team_specific' || !targetTeams || targetTeams.length === 0) return null;
+  const playerIds = await resolveTeamMembers(sessionId, targetTeams);
+  return { playerIds, teamNames: targetTeams };
+}
+
+async function reportUndeliverableInject(
+  sessionId: string,
+  injectId: string,
+  injectTitle: string,
+  teamNames: string[],
+): Promise<void> {
+  logger.warn(
+    { sessionId, injectId, teamNames },
+    'Team-scoped inject has no team members; withheld from session (trainer alerted)',
+  );
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('trainer_id')
+      .eq('id', sessionId)
+      .single();
+    await supabaseAdmin.from('session_events').insert({
+      session_id: sessionId,
+      event_type: 'trainer_alert',
+      description: `Undeliverable inject "${injectTitle}": no players assigned to ${teamNames.join(', ')}`,
+      actor_id: session?.trainer_id || null,
+      metadata: { inject_id: injectId, target_teams: teamNames, reason: 'unstaffed_team' },
+    });
+    if (session?.trainer_id) {
+      getWebSocketService().emitToUser(session.trainer_id, {
+        type: 'inject.undeliverable',
+        data: { inject_id: injectId, title: injectTitle, target_teams: teamNames },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  } catch (err) {
+    logger.error({ err, sessionId, injectId }, 'Failed to report undeliverable inject');
+  }
+}
+
+/**
+ * Broadcast a scoped event only to the targeted players plus the trainer,
+ * instead of the whole session room (no cross-team leakage over websockets).
+ */
+async function emitScoped(
+  sessionId: string,
+  playerIds: string[] | null,
+  event: { type: string; data: Record<string, unknown>; timestamp: string },
+): Promise<void> {
+  const ws = getWebSocketService();
+  if (!playerIds) {
+    ws.broadcastToSession(sessionId, event);
+    return;
+  }
+  const recipients = new Set(playerIds);
+  try {
+    const { data: session } = await supabaseAdmin
+      .from('sessions')
+      .select('trainer_id')
+      .eq('id', sessionId)
+      .single();
+    if (session?.trainer_id) recipients.add(session.trainer_id);
+  } catch {
+    /* trainer lookup best-effort */
+  }
+  for (const userId of recipients) {
+    ws.emitToUser(userId, event);
+  }
+}
+
 export async function routeInjectToApp(
   sessionId: string,
   injectId: string,
@@ -39,18 +130,31 @@ export async function routeInjectToApp(
     delivery_config: DeliveryConfig | null;
     requires_response?: boolean;
     trigger_time_minutes?: number | null;
+    inject_scope?: string;
+    target_teams?: string[];
   },
 ): Promise<void> {
   const config = inject.delivery_config;
   if (!config) return;
 
   try {
+    const targeting = await resolveInjectTargeting(
+      sessionId,
+      inject.inject_scope,
+      inject.target_teams,
+    );
+
+    if (targeting && targeting.playerIds && targeting.playerIds.length === 0) {
+      await reportUndeliverableInject(sessionId, injectId, inject.title, targeting.teamNames);
+      return;
+    }
+
     switch (config.app) {
       case 'social_feed':
-        await routeToSocialFeed(sessionId, injectId, inject, config);
+        await routeToSocialFeed(sessionId, injectId, inject, config, targeting);
         break;
       case 'email':
-        await routeToEmail(sessionId, injectId, inject, config);
+        await routeToEmail(sessionId, injectId, inject, config, targeting);
         break;
       case 'news':
         await routeToNews(sessionId, injectId, inject, config);
@@ -59,7 +163,7 @@ export async function routeInjectToApp(
         await routeToGroupChat(sessionId, injectId, inject, config);
         break;
       case 'phone_call':
-        await routeToPhoneCall(sessionId, injectId, inject, config);
+        await routeToPhoneCall(sessionId, injectId, inject, config, targeting);
         break;
       default:
         logger.warn({ app: config.app, injectId }, 'Unknown delivery_config app');
@@ -74,6 +178,7 @@ async function routeToSocialFeed(
   injectId: string,
   inject: { title: string; content: string; severity: string; requires_response?: boolean },
   config: DeliveryConfig,
+  targeting: TeamTargeting | null = null,
 ): Promise<void> {
   const hashtags = inject.content.match(/#\w+/g) || [];
   const seed = config.engagement_seed || {};
@@ -132,6 +237,11 @@ async function routeToSocialFeed(
       virality_score: config.virality_score || 0,
       requires_response: inject.requires_response || false,
       media_urls: (config as unknown as Record<string, unknown>).media_urls || [],
+      // Team-scoped injects deliver only to the resolved team members via the
+      // existing per-player targeting filter.
+      ...(targeting?.playerIds
+        ? { target_player_ids: targeting.playerIds, is_surfaced_to_session: false }
+        : {}),
     })
     .select()
     .single();
@@ -141,7 +251,7 @@ async function routeToSocialFeed(
     return;
   }
 
-  getWebSocketService().broadcastToSession(sessionId, {
+  await emitScoped(sessionId, targeting?.playerIds ?? null, {
     type: 'social_post.created',
     data: { post },
     timestamp: new Date().toISOString(),
@@ -299,6 +409,7 @@ async function routeToEmail(
   injectId: string,
   inject: { title: string; content: string },
   config: DeliveryConfig,
+  targeting: TeamTargeting | null = null,
 ): Promise<void> {
   const lines = inject.content.split('\n');
   const subjectLine = lines.find((l) => l.startsWith('Subject:'));
@@ -322,6 +433,11 @@ async function routeToEmail(
       body_text: bodyText,
       priority: config.priority || 'normal',
       email_category: sanitizeEmailCategory(config.email_category),
+      // Team-scoped emails are addressed to the resolved members only; null
+      // means visible to the whole session (legacy behaviour).
+      ...(targeting?.playerIds
+        ? { recipient_user_ids: targeting.playerIds, target_teams: targeting.teamNames }
+        : {}),
     })
     .select()
     .single();
@@ -331,7 +447,7 @@ async function routeToEmail(
     return;
   }
 
-  getWebSocketService().broadcastToSession(sessionId, {
+  await emitScoped(sessionId, targeting?.playerIds ?? null, {
     type: 'sim_email.received',
     data: { email },
     timestamp: new Date().toISOString(),
@@ -488,8 +604,9 @@ async function routeToPhoneCall(
   injectId: string,
   inject: { title: string; content: string },
   config: DeliveryConfig,
+  targeting: TeamTargeting | null = null,
 ): Promise<void> {
-  getWebSocketService().broadcastToSession(sessionId, {
+  await emitScoped(sessionId, targeting?.playerIds ?? null, {
     type: 'phone_call.incoming',
     data: {
       inject_id: injectId,

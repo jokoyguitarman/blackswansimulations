@@ -2,6 +2,7 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 import { BLUEPRINT_HONOR_THRESHOLD } from './blueprint/blueprintConfig.js';
+import { TEAM_CATALOG, FIXED_TEAM_NAMES, type TeamCharter } from './teamCharterService.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -602,6 +603,66 @@ Return ONLY valid JSON:
       },
     ]
   );
+}
+
+/**
+ * Adapt the fixed team charters (Communications, Procurement, Sales, Legal)
+ * to a specific crisis. Team names, expected action types, scoring rubrics,
+ * and weights stay fixed from the catalog — only the mission wording and
+ * responsibility descriptions are contextualised. Falls back to catalog
+ * defaults per team when the AI is unavailable or returns bad data.
+ */
+export async function adaptTeamCharters(
+  crisisType: string,
+  context: string,
+  country: string,
+  orgName?: string,
+): Promise<TeamCharter[]> {
+  const catalog = FIXED_TEAM_NAMES.map((name) => TEAM_CATALOG[name]);
+
+  const catalogSummary = catalog
+    .map(
+      (c) =>
+        `${c.team_name}: ${c.mission}\nDefault responsibilities:\n${c.responsibilities.map((r) => `- ${r}`).join('\n')}`,
+    )
+    .join('\n\n');
+
+  const result = await callAI(
+    `You are adapting the fixed team charters of a crisis response organisation to a specific crisis scenario. There are exactly FOUR teams and their names are FIXED: Communications, Procurement, Sales, Legal.
+
+For each team, rewrite the mission (1-2 sentences) and the responsibilities (4-6 bullet points) so they reference the specific crisis, organisation, stakeholders, suppliers, customers, and legal risks of THIS scenario. Keep each team's fundamental role unchanged:
+- Communications: public-facing communication (feed + press)
+- Procurement: suppliers and supply chain / operational partners (adapt to vendors/partners if the org has no physical supply chain)
+- Sales: direct customer/client expectation management
+- Legal: legal counsel, review, regulators, disputes
+
+Do NOT rename teams, add teams, or remove teams. Do NOT include scoring criteria or step-by-step instructions — responsibilities describe WHAT the team owns, not how to do it.
+
+Default charters:
+${catalogSummary}
+
+Return ONLY valid JSON:
+{ "teams": [{ "team_name": "Communications|Procurement|Sales|Legal", "mission": "...", "responsibilities": ["..."] }] }`,
+    `Crisis: ${crisisType}${orgNameLine(orgName)}\nCountry: ${country}\nContext: ${context}`,
+    6000,
+  );
+
+  const adapted =
+    (result?.teams as Array<{
+      team_name?: string;
+      mission?: string;
+      responsibilities?: string[];
+    }>) || [];
+
+  return catalog.map((base) => {
+    const match = adapted.find((t) => t.team_name === base.team_name);
+    if (!match || !match.mission || !Array.isArray(match.responsibilities)) return base;
+    return {
+      ...base,
+      mission: match.mission,
+      responsibilities: match.responsibilities.filter((r) => typeof r === 'string').slice(0, 6),
+    };
+  });
 }
 
 // ─── Stage 3: Per-Team Storylines (parallel) ────────────────────────────────
@@ -1533,11 +1594,12 @@ export function assemblePayload(
   orgName?: string,
   blueprint?: ScenarioBlueprint | null,
 ): SocialCrisisPayload {
-  const allStoryInjects: SocialInject[] = storylineInjects || [];
-  if (!storylineInjects) {
-    for (const injects of Object.values(teamStorylines)) {
-      allStoryInjects.push(...injects);
-    }
+  // Merge the universal storyline backbone with any per-team storylines.
+  // (Previously team storylines were ignored whenever storylineInjects was
+  // provided; with fixed teams both layers coexist.)
+  const allStoryInjects: SocialInject[] = [...(storylineInjects || [])];
+  for (const injects of Object.values(teamStorylines)) {
+    allStoryInjects.push(...injects);
   }
 
   const strategyInjects: SocialInject[] = [];

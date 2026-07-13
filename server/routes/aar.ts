@@ -241,7 +241,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
     // Verify session exists and is completed
     const { data: session } = await supabaseAdmin
       .from('sessions')
-      .select('id, status, trainer_id')
+      .select('id, status, trainer_id, sim_mode')
       .eq('id', sessionId)
       .single();
 
@@ -313,6 +313,38 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         by_type: compliance.by_type,
       },
     };
+
+    // Social crisis sessions: final per-team debrief (fixed response teams —
+    // Communications, Procurement, Sales, Legal). Non-fatal if unavailable.
+    if (session.sim_mode === 'social_media') {
+      try {
+        const { computeTeamScores } = await import('../services/teamScoreService.js');
+        const teamReport = await computeTeamScores(sessionId);
+        if (teamReport.teams.length > 0) {
+          keyMetrics.team_performance = {
+            teams: teamReport.teams.map((t) => ({
+              team_name: t.team_name,
+              member_count: t.member_count,
+              composite_score: t.composite_score,
+              content_quality: t.content_quality,
+              task_completion: t.task_completion,
+              role_fit: t.role_fit,
+              tasks_done: t.tasks_done,
+              tasks_total: t.tasks_total,
+              task_outcomes: t.tasks.map((task) => ({
+                description: task.description,
+                status: task.status,
+                on_time: task.on_time,
+              })),
+              members: t.members,
+            })),
+            unassigned: teamReport.unassigned,
+          };
+        }
+      } catch (teamErr) {
+        logger.warn({ teamErr, sessionId }, 'AAR team performance rollup failed (non-critical)');
+      }
+    }
 
     // Generate summary (simplified - AI summary will be added in Phase 5)
     const summary = `Session completed with ${events?.length || 0} events, ${decisions?.length || 0} decisions, and ${participants?.length || 0} participants. Average decision latency: ${decisionLatency.avg_minutes.toFixed(1)} minutes. Coordination score: ${coordination.overall_score}/100.`;
