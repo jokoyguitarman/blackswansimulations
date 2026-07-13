@@ -457,9 +457,9 @@ async function main() {
   check(
     'Team charter PATCH applied (merge preserved responsibilities)',
     charterRes.ok &&
-      (charterData.charter as Record<string, unknown>).mission
-        ?.toString()
-        .startsWith('CHARTER-EDIT-MARKER') &&
+      String((charterData.charter as Record<string, unknown>).mission ?? '').startsWith(
+        'CHARTER-EDIT-MARKER',
+      ) &&
       Array.isArray((charterData.charter as Record<string, unknown>).responsibilities),
     JSON.stringify(charterData.charter).slice(0, 120),
   );
