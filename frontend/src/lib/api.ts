@@ -133,6 +133,26 @@ export interface AdminPayout extends BillingPayout {
   }>;
 }
 
+export interface AdminTrainerSummary {
+  id: string;
+  full_name: string;
+  username: string;
+  agency_name: string | null;
+  created_at: string;
+  onboarding_status: 'none' | 'pending' | 'complete';
+  client_count: number;
+  client_names: string[];
+  invoices: { sent: number; paid: number; void: number; paid_amount_cents: number };
+  credits: { scenario: number; session: number };
+  sessions: { total: number; upcoming: number; active: number; completed: number };
+  payouts: {
+    awaiting_completion_cents: number;
+    pending_release_cents: number;
+    released_cents: number;
+    held_cents: number;
+  };
+}
+
 export const api = {
   // Profile
   profile: {
@@ -2184,6 +2204,13 @@ export const api = {
           method: 'POST',
           headers,
         }),
+      );
+    },
+
+    adminTrainers: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: AdminTrainerSummary[] }>(
+        await fetch(apiUrl('/api/billing/admin/trainers'), { headers }),
       );
     },
   },

@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Payment Portal - Implementation Plan &amp; Explainer</title>
+<style>
+  :root {
+    --bg: #0c0f16; --panel: #151a24; --panel-2: #1c2330; --border: #2a3342;
+    --text: #e6ebf2; --muted: #93a0b4; --green: #34c759; --amber: #ff9f0a;
+    --red: #ff453a; --blue: #4aa8ff; --purple: #bf5af2; --accent: #5e9bff;
+    --gold: #e0c089;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55; font-size: 15px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 24px 120px; }
+  header.hero { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 8px; }
+  .kicker { text-transform: uppercase; letter-spacing: 2px; font-size: 12px; color: var(--accent); font-weight: 700; }
+  h1 { font-size: 30px; margin: 8px 0 6px; letter-spacing: -0.5px; }
+  h2 { font-size: 21px; margin: 44px 0 12px; padding-top: 18px; border-top: 1px solid var(--border); letter-spacing: -0.3px; }
+  h3 { font-size: 16px; margin: 26px 0 8px; color: #fff; }
+  h4 { font-size: 13px; margin: 18px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  p { color: #cdd6e3; }
+  .lead { font-size: 16px; color: var(--muted); }
+  a { color: var(--accent); }
+  code { background: #0a0d13; border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px;
+    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 13px; color: var(--gold); }
+  pre { background: #0a0d13; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto;
+    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 12.5px; color: #c6d2e0; line-height: 1.5; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin: 16px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.6px; }
+  .tag.green { background: rgba(52,199,89,0.16); color: var(--green); }
+  .tag.amber { background: rgba(255,159,10,0.16); color: var(--amber); }
+  .tag.red { background: rgba(255,69,58,0.16); color: var(--red); }
+  .tag.blue { background: rgba(74,168,255,0.16); color: var(--blue); }
+  .tag.purple { background: rgba(191,90,242,0.16); color: var(--purple); }
+  .tag.gray { background: rgba(147,160,180,0.16); color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.7px; }
+  tr:last-child td { border-bottom: none; }
+  .callout { border-radius: 12px; padding: 16px 18px; margin: 16px 0; border: 1px solid; }
+  .callout.warn { background: rgba(255,69,58,0.07); border-color: rgba(255,69,58,0.4); }
+  .callout.info { background: rgba(74,168,255,0.07); border-color: rgba(74,168,255,0.35); }
+  .callout.ok { background: rgba(52,199,89,0.07); border-color: rgba(52,199,89,0.35); }
+  .callout.gold { background: rgba(224,192,137,0.07); border-color: rgba(224,192,137,0.4); }
+  .callout h3 { margin-top: 0; }
+  .toc { font-size: 14px; columns: 2; column-gap: 28px; }
+  .toc a { display: block; padding: 3px 0; text-decoration: none; color: #cdd6e3; }
+  .toc a:hover { color: #fff; }
+  @media (max-width: 760px) { .toc { columns: 1; } }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .file { color: var(--gold); font-family: "SF Mono", ui-monospace, monospace; font-size: 12.5px; }
+  .phase-badge { display:inline-flex; align-items:center; justify-content:center; min-width: 26px; height: 26px;
+    padding: 0 8px; border-radius: 7px; background: var(--accent); color: #04101f; font-weight: 800; font-size: 13px; margin-right: 8px; }
+  .pipe { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0; font-size:12.5px; }
+  .pipe .node { background: var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:8px 11px; }
+  .pipe .node b { display:block; font-size:12px; }
+  .pipe .node .who { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
+  .pipe .arrow { color: var(--muted); font-weight:700; }
+  .pipe .node.money { border-color: rgba(52,199,89,0.5); }
+  .pipe .node.stripe { border-color: rgba(191,90,242,0.5); }
+  .pipe .node.gate { border-color: rgba(255,159,10,0.5); }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+
+  /* Money split bar */
+  .splitbar { display:flex; height: 44px; border-radius: 10px; overflow:hidden; border:1px solid var(--border); margin: 10px 0; font-size: 13px; font-weight: 700; }
+  .splitbar .trainer { flex: 3; background: rgba(52,199,89,0.22); color: var(--green); display:flex; align-items:center; justify-content:center; }
+  .splitbar .house { flex: 7; background: rgba(94,155,255,0.22); color: var(--accent); display:flex; align-items:center; justify-content:center; }
+
+  /* State machine */
+  .states { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin: 12px 0; }
+  .state { border:1px solid var(--border); background: var(--panel-2); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight:600; }
+  .state.start { border-color: rgba(147,160,180,0.6); }
+  .state.mid { border-color: rgba(255,159,10,0.6); color: var(--amber); }
+  .state.good { border-color: rgba(52,199,89,0.6); color: var(--green); }
+  .state.bad { border-color: rgba(255,69,58,0.6); color: var(--red); }
+  .sarrow { color: var(--muted); font-weight: 700; }
+  .slabel { font-size: 11px; color: var(--muted); }
+
+  /* Credit chips */
+  .chip { display:inline-flex; align-items:center; gap:8px; background: var(--panel-2); border:1px solid var(--border);
+    border-radius: 10px; padding: 8px 14px; margin: 4px 6px 4px 0; font-size: 13px; }
+  .chip .dot { width:9px; height:9px; border-radius:50%; }
+  .dot.scenario { background: var(--purple); }
+  .dot.session { background: var(--blue); }
+
+  /* Actor cards */
+  .actor { border-left: 3px solid var(--accent); }
+  .actor h3 { margin-top: 0; }
+
+  /* Schema tables */
+  .schema h3 { font-family: "SF Mono", ui-monospace, monospace; color: var(--gold); font-size: 14px; }
+  .schema td:first-child { font-family: "SF Mono", ui-monospace, monospace; font-size: 12px; color: #c6d2e0; white-space: nowrap; }
+
+  .kbd { background: var(--panel-2); border:1px solid var(--border); border-bottom-width: 2px; border-radius:6px;
+    padding: 1px 7px; font-size: 12px; font-family: "SF Mono", ui-monospace, monospace; }
+  ol.steps li { margin-bottom: 8px; }
+  .num-badge { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%;
+    background: var(--panel-2); border:1px solid var(--border); font-size:11.5px; font-weight:700; margin-right:8px; color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Engineering Plan &middot; Payment Portal &amp; Trainer Payouts</div>
+  <h1>Payment Portal: Every Moving Piece</h1>
+  <p class="lead">Trainers sign up free, enroll client organisations, and invoice them a fixed <b>S$10,000</b> through
+  Stripe. Payment converts into <b>1 scenario credit + 2 session credits</b> (two games per training &mdash; e.g. a
+  pre-test and a post-test on the same scenario). Producing the AAR after the training flips
+  the trainer's <b>30% payout (S$3,000)</b> to "pending release", which an admin approves before Stripe wires the money
+  to the trainer's connected account.</p>
+  <p class="small muted">Companion to the confirmed plan file <span class="file">payment_portal_implementation.plan.md</span>.
+  Every backend hook cites the exact file and line it touches. Business rules confirmed: 30% trainer / 70% Black Swan
+  &middot; 1 scenario + 2 session credits per invoice &middot; admin-released payouts &middot; ADMIN accounts keep full
+  unlimited access exactly as today.</p>
+</header>
+
+<div class="panel">
+  <h4 style="margin-top:0">On this page</h4>
+  <div class="toc">
+    <a href="#glance">1. At a glance: the money loop</a>
+    <a href="#actors">2. The five actors</a>
+    <a href="#journey">3. The full journey, step by step</a>
+    <a href="#stripe">4. The three Stripe products used</a>
+    <a href="#credits">5. The credit economy</a>
+    <a href="#payout">6. Payout lifecycle (state machine)</a>
+    <a href="#db">7. Database: 6 new tables + 1 column</a>
+    <a href="#api">8. New API surface</a>
+    <a href="#webhook">9. The webhook (how money becomes credits)</a>
+    <a href="#gates">10. The gates: exact code hook points</a>
+    <a href="#signup">11. Trainer self-signup (security change)</a>
+    <a href="#frontend">12. Frontend: pages &amp; UI states</a>
+    <a href="#failures">13. Failure paths &amp; edge cases</a>
+    <a href="#env">14. Config, env vars &amp; dependencies</a>
+    <a href="#testing">15. How we test it end-to-end</a>
+    <a href="#later">16. Deliberately out of scope</a>
+    <a href="#security">17. Security audit: role escalation &amp; injection</a>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="glance">1. At a glance: the money loop</h2>
+<p>One paid invoice funds exactly one engagement: one generated scenario, one live session, one payout. The loop closes
+when the AAR is produced.</p>
+
+<div class="pipe">
+  <div class="node"><span class="who">Trainer</span><b>Free signup</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><span class="who">Trainer</span><b>Enroll client org</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node stripe"><span class="who">Stripe Invoicing</span><b>Send S$10,000 invoice</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node money"><span class="who">Client</span><b>Pays hosted invoice</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node stripe"><span class="who">Webhook</span><b>invoice.paid</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><span class="who">Black Swan</span><b>+1 scenario, +2 session credits</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node gate"><span class="who">Trainer</span><b>Warroom compile (−1 scenario)</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node gate"><span class="who">Trainer</span><b>Create session (−1 session)</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><span class="who">Players</span><b>Training runs</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><span class="who">Trainer</span><b>Produce AAR</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><span class="who">Admin</span><b>Release payout</b></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node money"><span class="who">Stripe Connect</span><b>S$3,000 to trainer</b></div>
+</div>
+
+<h4>Where each S$10,000 goes</h4>
+<div class="splitbar">
+  <div class="trainer">S$3,000 &mdash; trainer (30%), after AAR + approval</div>
+  <div class="house">S$7,000 &mdash; Black Swan (70%)</div>
+</div>
+<p class="small muted">The full S$10,000 lands in the Black Swan platform Stripe account first. The trainer's share sits
+in the platform balance until the admin releases it &mdash; there is never a moment where the money is outside our control.</p>
+
+<!-- ============================================================ -->
+<h2 id="actors">2. The five actors</h2>
+<div class="grid2">
+  <div class="panel actor">
+    <h3>Trainer</h3>
+    <p class="small">Signs up free (new: self-serve trainer accounts). Enrolls clients, clicks <b>Generate Invoice</b>,
+    spends credits in the Warroom and on session creation, produces the AAR, receives the S$3,000 payout. Must complete
+    a one-time Stripe Connect onboarding (identity + bank details) before any payout can be released.</p>
+  </div>
+  <div class="panel actor">
+    <h3>Client organisation</h3>
+    <p class="small">The company being trained. <b>Never needs a Black Swan account.</b> Receives an email from Stripe
+    with a hosted invoice page, pays by card or bank transfer. That's their entire interaction with the system.</p>
+  </div>
+  <div class="panel actor">
+    <h3>Black Swan server</h3>
+    <p class="small">Creates Stripe customers/invoices, listens to webhooks, keeps the credit ledger, enforces the gates
+    on Warroom/session/AAR endpoints, and executes the transfer when an admin approves. All billing logic is server-side;
+    the frontend can never mint credits or move money.</p>
+  </div>
+  <div class="panel actor">
+    <h3>Stripe</h3>
+    <p class="small">Three products: <b>Invoicing</b> (client-facing payment), <b>Connect Express</b> (trainer KYC + bank
+    account), <b>Transfers</b> (the payout). Stripe also emails the invoice and hosts the payment page, so we build no
+    payment UI for clients.</p>
+  </div>
+  <div class="panel actor" style="grid-column: 1 / -1;">
+    <h3>Admin (Black Swan staff)</h3>
+    <p class="small">Reviews payouts in a new <span class="file">/admin/payouts</span> page. Sees which trainer, which
+    client, which session, when the AAR was produced. One click to <b>Release</b> (executes the Stripe transfer) or
+    <b>Hold</b> (freezes it with a reason, e.g. suspected abuse or client dispute). This human step is the anti-gaming
+    valve for the AAR trigger.</p>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="journey">3. The full journey, step by step</h2>
+<ol class="steps">
+  <li><span class="num-badge">1</span><b>Trainer signs up free.</b> New "I'm a trainer" option on the signup page. After
+    account creation the app calls <code>POST /api/profile/become-trainer</code>, which upgrades the account from
+    <code>participant</code> to <code>trainer</code> server-side. (See <a href="#signup">section 11</a> for why this is
+    now safe.)</li>
+  <li><span class="num-badge">2</span><b>Trainer enrolls a client organisation</b> on the new <span class="file">/clients</span>
+    page: name, contact person, contact email. Stored in the new <code>client_organisations</code> table. Each org gets a
+    small profile card.</li>
+  <li><span class="num-badge">3</span><b>Trainer clicks GENERATE INVOICE</b> on the org card. The server creates a Stripe
+    Customer for the org (first time only), then a Stripe Invoice for S$10,000 with <code>collection_method: send_invoice</code>
+    and 30 days to pay, finalizes it, and Stripe emails the client a hosted payment page. We store the invoice row with
+    status <span class="tag amber">sent</span> and the hosted URL (trainer can also copy the link and send it themselves).</li>
+  <li><span class="num-badge">4</span><b>Client opens the email, clicks pay.</b> Card or bank transfer, on Stripe's page.
+    Nothing to build on our side.</li>
+  <li><span class="num-badge">5</span><b>Stripe calls our webhook</b> with <code>invoice.paid</code>. The server marks the
+    invoice <span class="tag green">paid</span>, writes <b>+1 scenario credit</b> and <b>+2 session credits</b> into the
+    ledger, and creates a payout row for S$3,000 in state <span class="tag gray">awaiting_completion</span>. The trainer
+    gets an in-app notification: "Client payment received &mdash; credits added."</li>
+  <li><span class="num-badge">6</span><b>Trainer builds the scenario in the Warroom.</b> Entering the wizard requires a
+    scenario balance of at least 1 (this also blocks free accounts from burning our OpenAI spend on the research steps).
+    The credit is only <i>consumed</i> at the final "Compile scenario" click. If compilation fails, the credit is refunded
+    automatically.</li>
+  <li><span class="num-badge">7</span><b>Trainer creates the session</b> as usual (invite players, teams, briefing &mdash;
+    all unchanged). With 2 session credits per invoice the trainer can create <b>two</b> sessions per engagement &mdash;
+    e.g. a pre-training test game and a post-training test game. Each session creation consumes one credit and stamps the session with
+    <code>funding_invoice_id</code> &mdash; the permanent link between this training and the client's payment.</li>
+  <li><span class="num-badge">8</span><b>Training day runs exactly as today.</b> No billing logic touches live gameplay.</li>
+  <li><span class="num-badge">9</span><b>Trainer clicks Produce AAR.</b> After the report generates successfully, the
+    server follows <code>session.funding_invoice_id</code> to the payout row and flips it
+    <span class="tag gray">awaiting_completion</span> &rarr; <span class="tag amber">pending_release</span>. Admins are
+    notified. Regenerating the AAR later does nothing (the flip is one-time by design).</li>
+  <li><span class="num-badge">10</span><b>Admin reviews and releases.</b> On <span class="file">/admin/payouts</span>,
+    one click executes a Stripe Transfer of S$3,000 from the platform balance to the trainer's connected account. Row
+    becomes <span class="tag green">released</span> with the Stripe transfer id stored for the audit trail. Trainer is
+    notified.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="stripe">4. The three Stripe products used</h2>
+<table>
+  <tr><th>Product</th><th>What it does for us</th><th>What we store</th></tr>
+  <tr>
+    <td><b>Stripe Invoicing</b></td>
+    <td>Creates and emails the S$10,000 invoice; hosts the payment page; handles card/bank payment, receipts, reminders.
+        The client never needs an account with us.</td>
+    <td><code>stripe_customer_id</code> on the org, <code>stripe_invoice_id</code> + <code>hosted_invoice_url</code> on the invoice row.</td>
+  </tr>
+  <tr>
+    <td><b>Stripe Connect (Express)</b></td>
+    <td>Turns each trainer into a "connected account". Stripe runs the KYC (identity verification) and collects bank
+        details through its own hosted onboarding flow &mdash; we just generate the onboarding link.</td>
+    <td><code>stripe_connect_account_id</code> + <code>onboarding_status</code> in <code>trainer_billing</code>.</td>
+  </tr>
+  <tr>
+    <td><b>Separate charges &amp; transfers</b></td>
+    <td>The payment lands 100% in our platform account; the S$3,000 payout is a separate <code>Transfer</code> we execute
+        whenever we choose (i.e. on admin release). This is what gives us escrow-like control without Stripe offering
+        literal escrow.</td>
+    <td><code>stripe_transfer_id</code> on the payout row.</td>
+  </tr>
+</table>
+<div class="callout info">
+  <p class="small" style="margin:0"><b>Why not Stripe's automatic split payments (destination charges)?</b> Those push the
+  trainer's share at payment time. Our business rule is the opposite: the trainer earns the payout only after the training
+  concludes (AAR produced) and an admin approves. Separate transfers are the only Stripe pattern that matches.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="credits">5. The credit economy</h2>
+<p>Credits are the bridge between "client paid" and "trainer may use expensive features". They are stored as an
+<b>append-only ledger</b>, never as a mutable counter &mdash; every grant and every spend is a row, the balance is the sum.</p>
+
+<div class="panel">
+  <span class="chip"><span class="dot scenario"></span><b>Scenario credit</b>&nbsp;&mdash; unlocks the Warroom; consumed by the final compile</span>
+  <span class="chip"><span class="dot session"></span><b>Session credit</b>&nbsp;&mdash; consumed when a session is created</span>
+</div>
+
+<table>
+  <tr><th>Event</th><th>Ledger rows written</th><th>Reason code</th></tr>
+  <tr><td>Invoice paid (webhook)</td><td><span class="tag green">+1 scenario</span> <span class="tag green">+2 session</span></td><td><code>invoice_paid</code></td></tr>
+  <tr><td>Warroom compile succeeds</td><td><span class="tag red">−1 scenario</span></td><td><code>scenario_generated</code></td></tr>
+  <tr><td>Compile fails after consuming</td><td><span class="tag green">+1 scenario</span> (automatic refund)</td><td><code>admin_adjustment</code></td></tr>
+  <tr><td>Session created</td><td><span class="tag red">−1 session</span> (records which invoice funded it)</td><td><code>session_created</code></td></tr>
+  <tr><td>Manual correction by admin</td><td>any</td><td><code>admin_adjustment</code></td></tr>
+</table>
+
+<div class="callout gold">
+  <h3>Two subtleties worth knowing</h3>
+  <p class="small"><b>Race safety.</b> Two browser tabs both clicking "Compile" with one credit left must not both succeed.
+  Spending goes through a Postgres function <code>consume_credit()</code> that takes an advisory lock per
+  (trainer, credit type), checks the balance, and inserts the −1 row atomically. One tab wins, the other gets a clean
+  "no credits" error.</p>
+  <p class="small" style="margin-bottom:0"><b>Consume upfront, refund on failure.</b> Scenario compilation takes 2&ndash;5
+  minutes and costs real OpenAI money. We consume the credit <i>before</i> starting (so a failing balance never triggers
+  the expensive work) and write a +1 refund row if the compile throws. The trainer never loses a credit to our error.</p>
+</div>
+
+<h4>Why entry to the Warroom is also gated (not just the compile)</h4>
+<p class="small">The wizard's intermediate steps &mdash; doctrine research, geocoding validation, storyline generation,
+NPC generation &mdash; each call OpenAI <i>before</i> any credit is spent. If only the compile were gated, a free trainer
+account could burn unlimited AI spend without ever paying. So every generator step requires a balance &ge; 1
+(admins bypass). The credit is still only consumed once, at compile.</p>
+
+<!-- ============================================================ -->
+<h2 id="payout">6. Payout lifecycle (state machine)</h2>
+<p>Exactly one payout row per paid invoice (<code>invoice_id</code> is UNIQUE). It moves through these states:</p>
+
+<div class="states">
+  <span class="state start">awaiting_completion</span>
+  <span class="sarrow">&rarr;</span><span class="slabel">first successful AAR on the funded session</span><span class="sarrow">&rarr;</span>
+  <span class="state mid">pending_release</span>
+  <span class="sarrow">&rarr;</span><span class="slabel">admin clicks Release</span><span class="sarrow">&rarr;</span>
+  <span class="state good">released</span>
+</div>
+<div class="states">
+  <span class="state mid">pending_release</span>
+  <span class="sarrow">&harr;</span><span class="slabel">admin Hold / Unhold (with reason)</span><span class="sarrow">&harr;</span>
+  <span class="state bad">held</span>
+</div>
+<div class="states">
+  <span class="state mid">pending_release</span>
+  <span class="sarrow">&rarr;</span><span class="slabel">Stripe transfer error (e.g. onboarding incomplete)</span><span class="sarrow">&rarr;</span>
+  <span class="state bad">failed</span>
+  <span class="sarrow">&rarr;</span><span class="slabel">retry after fixing</span><span class="sarrow">&rarr;</span>
+  <span class="state good">released</span>
+</div>
+
+<table>
+  <tr><th>Property</th><th>Guarantee</th></tr>
+  <tr><td>Created</td><td>At <code>invoice.paid</code> webhook time, amount = 30% of the invoice, state <code>awaiting_completion</code>.</td></tr>
+  <tr><td>AAR flip is one-time</td><td>The update is <code>WHERE status = 'awaiting_completion'</code> &mdash; regenerating the AAR can never re-trigger or double-pay.</td></tr>
+  <tr><td>Two sessions, one payout</td><td>Both funded sessions carry the same <code>funding_invoice_id</code>. The <b>first</b> AAR produced flips the payout to pending release; the second session's AAR is a no-op. The admin review page shows how many of the invoice's session credits were used, so the reviewer can wait for the post-training game before releasing.</td></tr>
+  <tr><td>Release preconditions</td><td>State must be <code>pending_release</code> AND the trainer's Connect onboarding must be <code>complete</code>. Otherwise the admin sees a clear "trainer hasn't finished payout setup" error instead of a failed transfer.</td></tr>
+  <tr><td>Audit trail</td><td>Row stores <code>aar_generated_at</code>, <code>released_at</code>, <code>released_by</code> (admin id), <code>stripe_transfer_id</code>, and hold reasons.</td></tr>
+</table>
+
+<div class="callout warn">
+  <h3>Why the human step exists</h3>
+  <p class="small" style="margin:0">The AAR click is trainer-controlled, so it is gameable in both directions: a trainer
+  could produce an AAR after a 5-minute sham session, or never click and strand the payout. The admin review window
+  catches the first case (session length, participants and AAR content are all visible on the review page); an admin can
+  also manually release for the second. Card payments can additionally be disputed for months &mdash; the Hold state is
+  the lever if a chargeback lands after the AAR.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="db">7. Database: 6 new tables + 1 column</h2>
+<p>All in one new migration, <span class="file">migrations/193_payment_portal.sql</span> (latest existing is 192). RLS
+enabled with no anon policies &mdash; only the server's service-role client touches these tables, matching the pattern
+documented in <span class="file">server/lib/access.ts</span>.</p>
+
+<div class="grid2 schema">
+  <div class="panel">
+    <h3>client_organisations</h3>
+    <table>
+      <tr><td>id</td><td>uuid PK</td></tr>
+      <tr><td>trainer_id</td><td>uuid &rarr; user_profiles, indexed</td></tr>
+      <tr><td>name</td><td>text, required</td></tr>
+      <tr><td>contact_name</td><td>text</td></tr>
+      <tr><td>contact_email</td><td>text, required (invoice goes here)</td></tr>
+      <tr><td>notes</td><td>text</td></tr>
+      <tr><td>stripe_customer_id</td><td>text (set on first invoice)</td></tr>
+      <tr><td>created_at</td><td>timestamptz</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>invoices</h3>
+    <table>
+      <tr><td>id</td><td>uuid PK</td></tr>
+      <tr><td>organisation_id</td><td>uuid &rarr; client_organisations</td></tr>
+      <tr><td>trainer_id</td><td>uuid, indexed</td></tr>
+      <tr><td>stripe_invoice_id</td><td>text UNIQUE (webhook lookup key)</td></tr>
+      <tr><td>amount_cents</td><td>bigint (1,000,000 = S$10,000)</td></tr>
+      <tr><td>currency</td><td>text, default 'sgd'</td></tr>
+      <tr><td>status</td><td>'sent' | 'paid' | 'void'</td></tr>
+      <tr><td>hosted_invoice_url</td><td>text (client payment page)</td></tr>
+      <tr><td>sent_at / paid_at</td><td>timestamptz</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>credit_ledger <span class="tag gray">append-only</span></h3>
+    <table>
+      <tr><td>id</td><td>uuid PK</td></tr>
+      <tr><td>trainer_id</td><td>uuid, indexed with credit_type</td></tr>
+      <tr><td>credit_type</td><td>'scenario' | 'session'</td></tr>
+      <tr><td>delta</td><td>int (+1 grant, −1 spend)</td></tr>
+      <tr><td>reason</td><td>'invoice_paid' | 'scenario_generated' | 'session_created' | 'admin_adjustment'</td></tr>
+      <tr><td>invoice_id</td><td>uuid, nullable (which payment granted/funded)</td></tr>
+      <tr><td>scenario_id / session_id</td><td>uuid, nullable (what it was spent on)</td></tr>
+      <tr><td>created_at</td><td>timestamptz</td></tr>
+    </table>
+    <p class="small muted">Balance = <code>SUM(delta)</code>. Plus function
+    <code>consume_credit(trainer, type, reason, refs)</code>: advisory lock &rarr; balance check &rarr; −1 insert,
+    returning the funding invoice id. NULL result = insufficient credits.</p>
+  </div>
+  <div class="panel">
+    <h3>payouts</h3>
+    <table>
+      <tr><td>id</td><td>uuid PK</td></tr>
+      <tr><td>invoice_id</td><td>uuid UNIQUE &rarr; invoices (one payout per payment)</td></tr>
+      <tr><td>trainer_id</td><td>uuid</td></tr>
+      <tr><td>session_id</td><td>uuid, set when AAR flips the state</td></tr>
+      <tr><td>amount_cents</td><td>bigint (300,000 = S$3,000)</td></tr>
+      <tr><td>status</td><td>'awaiting_completion' | 'pending_release' | 'released' | 'held' | 'failed'</td></tr>
+      <tr><td>hold_reason</td><td>text</td></tr>
+      <tr><td>stripe_transfer_id</td><td>text</td></tr>
+      <tr><td>aar_generated_at / released_at</td><td>timestamptz</td></tr>
+      <tr><td>released_by</td><td>uuid (admin who approved)</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>trainer_billing</h3>
+    <table>
+      <tr><td>trainer_id</td><td>uuid PK &rarr; user_profiles</td></tr>
+      <tr><td>stripe_connect_account_id</td><td>text UNIQUE</td></tr>
+      <tr><td>onboarding_status</td><td>'none' | 'pending' | 'complete'</td></tr>
+      <tr><td>updated_at</td><td>timestamptz</td></tr>
+    </table>
+  </div>
+  <div class="panel">
+    <h3>stripe_webhook_events</h3>
+    <table>
+      <tr><td>event_id</td><td>text PK (Stripe event id)</td></tr>
+      <tr><td>type</td><td>text</td></tr>
+      <tr><td>processed_at</td><td>timestamptz</td></tr>
+    </table>
+    <p class="small muted">Idempotency guard &mdash; Stripe retries webhooks, and a retry must not grant credits twice.
+    Insert with <code>ON CONFLICT DO NOTHING</code>; skip processing if the id already existed.</p>
+  </div>
+</div>
+<div class="panel schema">
+  <h3>sessions <span class="tag blue">altered</span></h3>
+  <table>
+    <tr><td>funding_invoice_id</td><td>uuid, nullable &rarr; invoices. Stamped at session creation when the session credit
+    is consumed. This is the thread the AAR trigger follows to find the payout to flip.</td></tr>
+  </table>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="api">8. New API surface</h2>
+<p>One new router <span class="file">server/routes/billing.ts</span> mounted at <code>/api/billing</code>, plus the
+webhook router and one profile endpoint. All behind <code>requireAuth</code>; zod-validated like existing routes.</p>
+
+<h3>Trainer endpoints</h3>
+<table>
+  <tr><th>Endpoint</th><th>What it does</th></tr>
+  <tr><td><code>GET /api/billing/organisations</code></td><td>The trainer's client orgs, each joined with its latest invoice status.</td></tr>
+  <tr><td><code>POST /api/billing/organisations</code></td><td>Enroll a client: <code>{ name, contact_name?, contact_email, notes? }</code>.</td></tr>
+  <tr><td><code>PATCH / DELETE /api/billing/organisations/:id</code></td><td>Owner-only edits; delete refused once an invoice exists.</td></tr>
+  <tr><td><code>POST /api/billing/organisations/:id/invoice</code></td><td><b>The GENERATE INVOICE button.</b> Ensures Stripe customer, creates + finalizes + sends the S$10,000 invoice, stores the row. Refused if the org already has an outstanding <code>sent</code> invoice.</td></tr>
+  <tr><td><code>POST /api/billing/invoices/:id/void</code></td><td>Cancel an unpaid invoice (voids in Stripe too).</td></tr>
+  <tr><td><code>GET /api/billing/credits</code></td><td><code>{ scenario: n, session: n }</code> balances for banners/gates.</td></tr>
+  <tr><td><code>POST /api/billing/connect/onboard</code></td><td>Creates the Express account if needed, returns a fresh Stripe onboarding link.</td></tr>
+  <tr><td><code>GET /api/billing/connect/status</code></td><td>Onboarding status (live-checked against Stripe while pending).</td></tr>
+  <tr><td><code>GET /api/billing/payouts/mine</code></td><td>The trainer's own earnings: pending / released amounts and dates.</td></tr>
+</table>
+
+<h3>Admin endpoints</h3>
+<table>
+  <tr><th>Endpoint</th><th>What it does</th></tr>
+  <tr><td><code>GET /api/billing/payouts?status=</code></td><td>All payouts joined with trainer profile, client org, session and AAR date.</td></tr>
+  <tr><td><code>POST /api/billing/payouts/:id/release</code></td><td>Precondition checks &rarr; Stripe Transfer of S$3,000 &rarr; mark <code>released</code> &rarr; notify trainer.</td></tr>
+  <tr><td><code>POST /api/billing/payouts/:id/hold</code> / <code>.../unhold</code></td><td>Freeze / unfreeze with a stored reason.</td></tr>
+</table>
+
+<h3>Other</h3>
+<table>
+  <tr><th>Endpoint</th><th>What it does</th></tr>
+  <tr><td><code>POST /api/billing/webhook</code></td><td>Stripe-only entry point (signature-verified, raw body). See section 9.</td></tr>
+  <tr><td><code>POST /api/profile/become-trainer</code></td><td>Upgrades the caller from <code>participant</code> to <code>trainer</code> (never anything else). Creates the <code>trainer_billing</code> row. See section 11.</td></tr>
+</table>
+
+<h3>New server modules</h3>
+<table>
+  <tr><th>File</th><th>Responsibility</th></tr>
+  <tr><td><span class="file">server/services/stripeService.ts</span></td><td>Lazy Stripe client + all Stripe calls: customers, invoices, Connect accounts, account links, transfers, webhook signature verification. Nothing else imports the Stripe SDK directly.</td></tr>
+  <tr><td><span class="file">server/services/creditService.ts</span></td><td><code>getBalances</code>, <code>hasCredit</code>, <code>consumeCredit</code> (RPC to the locking SQL function), <code>grantInvoiceCredits</code>, refund helper. Admin bypass lives here so every gate applies it identically.</td></tr>
+  <tr><td><span class="file">server/routes/billing.ts</span></td><td>All endpoints above.</td></tr>
+  <tr><td><span class="file">server/routes/billingWebhook.ts</span></td><td>Webhook handler only.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="webhook">9. The webhook: how money becomes credits</h2>
+<p>This is the single point where "client paid" enters our system. Three properties matter: <b>verified</b>,
+<b>idempotent</b>, <b>raw-body</b>.</p>
+
+<div class="pipe">
+  <div class="node stripe"><b>Stripe</b><span class="who">invoice.paid event</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><b>Verify signature</b><span class="who">STRIPE_WEBHOOK_SECRET, raw body</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><b>Idempotency insert</b><span class="who">stripe_webhook_events, skip if seen</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><b>Mark invoice paid</b><span class="who">by stripe_invoice_id</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node money"><b>Grant credits</b><span class="who">+1 scenario, +2 session</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><b>Create payout row</b><span class="who">S$3,000 awaiting_completion</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><b>Notify trainer</b><span class="who">in-app notification</span></div>
+</div>
+
+<table>
+  <tr><th>Event handled</th><th>Action</th></tr>
+  <tr><td><code>invoice.paid</code></td><td>The full chain above. No-op if the invoice row is already <code>paid</code>.</td></tr>
+  <tr><td><code>invoice.voided</code> / <code>invoice.marked_uncollectible</code></td><td>Mark our invoice row <code>void</code> so the trainer can re-invoice the org.</td></tr>
+  <tr><td><code>account.updated</code></td><td>When <code>details_submitted &amp;&amp; charges_enabled &amp;&amp; payouts_enabled</code>, flip <code>trainer_billing.onboarding_status</code> to <code>complete</code>.</td></tr>
+  <tr><td>Everything else</td><td>Acknowledged (200) and ignored.</td></tr>
+</table>
+
+<div class="callout warn">
+  <h3>One mounting-order landmine</h3>
+  <p class="small" style="margin:0">Stripe signatures are computed over the <b>raw request bytes</b>. The app applies
+  <code>express.json()</code> globally at <span class="file">server/index.ts:177</span>, which would consume and re-parse
+  the body and break verification. The webhook route must therefore be mounted with <code>express.raw()</code>
+  <b>before</b> that line:</p>
+<pre>app.use('/api/billing/webhook', express.raw({ type: 'application/json' }), billingWebhookRouter);
+// ...then the existing...
+app.use(express.json({ limit: '10mb' }));</pre>
+  <p class="small" style="margin:0">CORS already allows origin-less requests (Stripe sends none), so no CORS change is needed.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="gates">10. The gates: exact code hook points</h2>
+<p>Every enforcement point is server-side; the frontend banners are UX only. <b>Only accounts with
+<code>role === 'admin'</code> bypass the gates</b> &mdash; they keep full unlimited access exactly as today and never
+consume credits. Trainers get no bypass of any kind. Blocked requests return <b>HTTP 402</b> with a machine-readable
+code the UI turns into a friendly prompt.</p>
+
+<h3>Scenario-credit gate <span class="tag purple">warroom</span></h3>
+<table>
+  <tr><th>Hook point</th><th>File : line</th><th>Behavior</th></tr>
+  <tr><td>Wizard draft creation</td><td class="file">server/routes/warroom.ts : 436</td><td>Require balance &ge; 1 (<code>NO_SCENARIO_CREDITS</code>)</td></tr>
+  <tr><td>Geocode validation step</td><td class="file">server/routes/warroom.ts : 569</td><td>Require balance &ge; 1</td></tr>
+  <tr><td>Doctrine research steps</td><td class="file">server/routes/warroom.ts : 701, 1099</td><td>Require balance &ge; 1</td></tr>
+  <tr><td>Team suggestion (AI)</td><td class="file">server/routes/warroom.ts : 171</td><td>Require balance &ge; 1</td></tr>
+  <tr><td>Legacy one-shot generate</td><td class="file">server/routes/warroom.ts : 213, 293</td><td>Consume upfront, refund on failure</td></tr>
+  <tr><td><b>Wizard final compile</b></td><td class="file">server/routes/warroom.ts : 983</td><td><b>Consume upfront, refund on failure</b> (this is the endpoint <span class="file">CompileStep.tsx</span> calls)</td></tr>
+  <tr><td>Social-crisis generator steps</td><td class="file">server/routes/socialCrisisWarroom.ts : 57, 156, 217, 284, 348, 833</td><td>Require balance &ge; 1</td></tr>
+  <tr><td><b>Social-crisis compile</b></td><td class="file">server/routes/socialCrisisWarroom.ts : 409</td><td><b>Consume upfront, refund on failure</b></td></tr>
+</table>
+
+<h3>Session-credit gate <span class="tag blue">sessions</span></h3>
+<table>
+  <tr><th>Hook point</th><th>File : line</th><th>Behavior</th></tr>
+  <tr><td>Session creation</td><td class="file">server/routes/sessions.ts : 1130</td><td>After the existing trainer-role check (line 1139): <code>consumeCredit('session')</code>; 402 <code>NO_SESSION_CREDITS</code> on empty balance; stamp the returned <code>funding_invoice_id</code> into the insert at line 1164; refund if the insert fails.</td></tr>
+</table>
+
+<h3>Payout trigger <span class="tag green">aar</span></h3>
+<table>
+  <tr><th>Hook point</th><th>File : line</th><th>Behavior</th></tr>
+  <tr><td>AAR generation</td><td class="file">server/routes/aar.ts : 151</td><td>After the report saves: follow <code>funding_invoice_id</code> &rarr; <code>UPDATE payouts SET status='pending_release' ... WHERE status='awaiting_completion'</code>. One-time by construction. Notify admins + trainer via <span class="file">server/services/notificationService.ts</span>.</td></tr>
+</table>
+
+<p class="small muted">Existing protections stay untouched: AAR already requires the session to be <code>completed</code>
+and the caller to be the owning trainer or an admin; session creation already requires the trainer role; all Warroom
+routes already require trainer/admin.</p>
+
+<!-- ============================================================ -->
+<h2 id="signup">11. Trainer self-signup (a deliberate security change)</h2>
+<p>Today, migration <span class="file">189_lockdown_user_profile_role.sql</span> makes trainer accounts
+operator-provisioned only &mdash; signups default to <code>participant</code> and a DB trigger blocks self-escalation.
+The new business model needs trainers to sign up free, so we reopen exactly one path:</p>
+<ul>
+  <li><code>POST /api/profile/become-trainer</code> upgrades <code>participant</code> &rarr; <code>trainer</code> using the
+    service-role client (trusted context; the 189 trigger intentionally lets service-role writes through). It can never
+    grant <code>admin</code>, and refuses if the account is anything but a plain participant.</li>
+  <li>The signup page gets an "I'm a trainer setting up trainings" option that calls this after account creation.
+    Invitation-based participant signups are untouched.</li>
+</ul>
+<div class="callout ok">
+  <p class="small" style="margin:0"><b>Why this is safe now:</b> the trainer role used to be the only thing standing
+  between an account and cost-incurring AI endpoints. After this project, every expensive action (Warroom AI steps,
+  scenario compile, session creation) is gated on credits, which only exist after a client actually pays S$10,000.
+  A free trainer account with zero credits can browse its dashboard and enroll clients &mdash; nothing more.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="frontend">12. Frontend: pages &amp; UI states</h2>
+
+<h3>New page: <span class="file">/clients</span> (Clients.tsx) &mdash; the trainer's billing home</h3>
+<ul>
+  <li><b>Credit chips</b> at the top: scenario and session balances, always visible.</li>
+  <li><b>Payout setup banner</b> when Connect onboarding is not complete: "Set up payouts" button opens the Stripe-hosted
+    onboarding; the page handles the <code>?connect=return|refresh</code> redirect states.</li>
+  <li><b>Enroll client form</b>: name, contact person, contact email, notes.</li>
+  <li><b>Client org cards</b> &mdash; the "small profile module" from the product description: org details, invoice status
+    badge (<span class="tag gray">none</span> / <span class="tag amber">sent</span> / <span class="tag green">paid</span> /
+    <span class="tag red">void</span>), and the primary <b>GENERATE INVOICE</b> button. After generating: the hosted
+    invoice link with a copy button and "invoice emailed to {contact}". Button disabled while an invoice is outstanding.</li>
+  <li><b>My earnings</b> section: each payout with its state in plain language ("Awaiting session completion",
+    "Pending release &mdash; under review", "Released on 12 Aug", "On hold").</li>
+</ul>
+
+<h3>New page: <span class="file">/admin/payouts</span> (AdminPayouts.tsx) &mdash; admin only</h3>
+<ul>
+  <li>Status tabs: Pending release / Awaiting completion / Released / Held.</li>
+  <li>Each row: trainer, client org, invoice amount, payout amount, session, AAR date, trainer onboarding status.</li>
+  <li><b>Release</b> (confirm dialog; disabled with an explanation if the trainer's onboarding is incomplete),
+    <b>Hold / Unhold</b> with a reason field.</li>
+</ul>
+
+<h3>Touched existing components</h3>
+<table>
+  <tr><th>File</th><th>Change</th></tr>
+  <tr><td class="file">frontend/src/lib/api.ts</td><td>New <code>billing</code> namespace (12 methods) following the existing fetch/auth-headers pattern.</td></tr>
+  <tr><td class="file">frontend/src/main.tsx</td><td>Register <code>/clients</code> and <code>/admin/payouts</code> routes inside the authed layout.</td></tr>
+  <tr><td class="file">components/dashboards/TrainerDashboard.tsx</td><td>Replace a placeholder tile with a live "Clients &amp; billing" module (balances + link to /clients).</td></tr>
+  <tr><td class="file">pages/WarRoom.tsx</td><td>Zero scenario credits &rarr; blocking notice panel with a link to /clients; also renders the server's 402 nicely.</td></tr>
+  <tr><td class="file">pages/SocialCrisisWizard.tsx</td><td>Same gating UX.</td></tr>
+  <tr><td class="file">components/Forms/CreateSessionModal.tsx</td><td>Shows "Session credits: N"; submit disabled at 0; handles 402.</td></tr>
+  <tr><td class="file">pages/SignUp.tsx</td><td>Account-type choice; trainer path calls <code>become-trainer</code> then routes to /clients.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="failures">13. Failure paths &amp; edge cases</h2>
+<table>
+  <tr><th>Scenario</th><th>What happens</th></tr>
+  <tr><td>Client never pays</td><td>Invoice stays <code>sent</code>; Stripe sends its own reminders; trainer can void and re-issue. No credits ever granted.</td></tr>
+  <tr><td>Webhook delivered twice</td><td><code>stripe_webhook_events</code> primary-key insert dedupes; second delivery is a no-op. Credits can never double-grant.</td></tr>
+  <tr><td>Two tabs compile with 1 credit</td><td>Advisory-locked <code>consume_credit()</code>: one succeeds, one gets a clean 402.</td></tr>
+  <tr><td>Compile crashes mid-way</td><td>Credit already consumed &rarr; automatic +1 refund row. Trainer retries at no cost.</td></tr>
+  <tr><td>Session insert fails after credit consumed</td><td>Same refund mechanism.</td></tr>
+  <tr><td>Trainer regenerates the AAR</td><td>Payout flip is <code>WHERE status='awaiting_completion'</code> &mdash; second run changes nothing.</td></tr>
+  <tr><td>Admin releases before trainer finished Stripe onboarding</td><td>Release endpoint checks onboarding first and returns a clear 409; no dangling Stripe error.</td></tr>
+  <tr><td>Stripe transfer itself fails</td><td>Payout marked <code>failed</code> with the error; admin can retry after the cause is fixed.</td></tr>
+  <tr><td>Sham 5-minute session then AAR</td><td>Payout only reaches <code>pending_release</code>; the admin review page shows session duration/participants and the admin holds it.</td></tr>
+  <tr><td>Chargeback after credits were spent</td><td>Admin puts the payout on <code>held</code>. (Automated dispute webhooks + credit clawback are follow-up scope, section 16.)</td></tr>
+  <tr><td>Stripe keys not configured (dev)</td><td><code>billingEnabled</code> is false; billing endpoints return 503 with a clear message; the rest of the app runs unaffected.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="env">14. Config, env vars &amp; dependencies</h2>
+<table>
+  <tr><th>Item</th><th>Value / purpose</th></tr>
+  <tr><td><code>stripe</code> npm package</td><td>The only new dependency (root package.json).</td></tr>
+  <tr><td><code>STRIPE_SECRET_KEY</code></td><td>Platform account secret key (test key first, live at launch).</td></tr>
+  <tr><td><code>STRIPE_WEBHOOK_SECRET</code></td><td>Signing secret for the webhook endpoint.</td></tr>
+  <tr><td><code>INVOICE_AMOUNT_SGD</code></td><td>Default <b>10000</b>. The fixed fee, changeable without a deploy.</td></tr>
+  <tr><td><code>TRAINER_SHARE_PERCENT</code></td><td>Default <b>30</b>. The trainer's split, changeable without a deploy.</td></tr>
+  <tr><td><code>SCENARIO_CREDITS_PER_INVOICE</code></td><td>Default <b>1</b>.</td></tr>
+  <tr><td><code>SESSION_CREDITS_PER_INVOICE</code></td><td>Default <b>2</b> (pre- and post-training games).</td></tr>
+</table>
+<p class="small muted">All added to <span class="file">server/env.ts</span> as optional values &mdash; the app boots without
+them and simply reports billing as unconfigured.</p>
+
+<!-- ============================================================ -->
+<h2 id="testing">15. How we test it end-to-end (Stripe test mode)</h2>
+<ol class="steps">
+  <li><span class="num-badge">1</span>Run <code>stripe listen --forward-to localhost:3001/api/billing/webhook</code> (Stripe CLI) to pipe test webhooks to the dev server.</li>
+  <li><span class="num-badge">2</span>Sign up as a trainer, enroll an org using your own email as the contact.</li>
+  <li><span class="num-badge">3</span>Generate the invoice, open the hosted page from the email, pay with test card <code>4242 4242 4242 4242</code>.</li>
+  <li><span class="num-badge">4</span>Verify: invoice flips to paid, credit chips show 1 scenario / 2 session, a payout row exists in <code>awaiting_completion</code>.</li>
+  <li><span class="num-badge">5</span>Compile a Warroom scenario &mdash; scenario balance drops to 0; confirm a second compile attempt is blocked with the friendly 402 panel.</li>
+  <li><span class="num-badge">6</span>Create a session &mdash; session balance drops 2 &rarr; 1 and the session row carries <code>funding_invoice_id</code>. Create a second session (balance 1 &rarr; 0); confirm a third is blocked with 402.</li>
+  <li><span class="num-badge">7</span>Run/complete a session, produce the AAR &mdash; payout flips to <code>pending_release</code>, admin notification appears. Regenerate the AAR (and produce the second session's AAR) and confirm the payout state doesn't change again.</li>
+  <li><span class="num-badge">8</span>Complete Connect Express test onboarding as the trainer, then as admin release the payout &mdash; verify the S$3,000 transfer in the Stripe test dashboard and the trainer notification.</li>
+  <li><span class="num-badge">9</span><code>npm run typecheck</code> and lint pass throughout.</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="later">16. Deliberately out of scope (flagged for follow-up)</h2>
+<table>
+  <tr><th>Item</th><th>Why deferred</th></tr>
+  <tr><td>GST on the S$10,000 invoice</td><td>Depends on your GST registration status. Stripe Invoicing supports tax lines; a one-line change once decided.</td></tr>
+  <tr><td>Cross-border payout eligibility</td><td>Stripe transfers require the trainer's Connect account country to be compatible with the platform account region. Confirm where your trainers are based before live launch.</td></tr>
+  <tr><td>Automated refund / chargeback handling</td><td>For now the admin Hold state is the lever; <code>charge.dispute.*</code> webhooks + credit clawback come later.</td></tr>
+  <tr><td>Credit top-ups outside the fixed invoice</td><td>The 1-invoice = 1-engagement model keeps V1 simple; bundles/top-ups are a product decision for later.</td></tr>
+  <tr><td>Automatic payout release after N days</td><td>You chose manual admin review; an auto-release timer can be layered on if review volume grows.</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="security">17. Security audit: can a hacker change someone's access level?</h2>
+<p>Audited July 2026 against the two attack classes you asked about: <b>role/access escalation via API calls</b> and
+<b>SQL injection</b>. Verdict: the existing defenses are layered and solid; the audit found no exploitable path. The
+items to carry forward are hardening rules for the <i>new</i> billing code.</p>
+
+<h3>Role escalation &mdash; four independent layers, all verified in code</h3>
+<table>
+  <tr><th>Layer</th><th>Where</th><th>What it blocks</th></tr>
+  <tr>
+    <td>1. Signup can't pick a role</td>
+    <td><span class="file">migrations/189</span> <code>handle_new_user()</code> + <span class="file">SignUp.tsx</span></td>
+    <td>The signup trigger ignores all client-supplied metadata for roles. Every new account defaults to
+        <code>participant</code>; elevated in-session roles come only from server-created invitation rows, and both the
+        invitation enum (<span class="file">sessions.ts:1463, 1671</span>) and the DB CHECK constraint
+        (<span class="file">migrations/006</span>) exclude <code>trainer</code> and <code>admin</code> &mdash; those can
+        never arrive via an invitation.</td>
+  </tr>
+  <tr>
+    <td>2. API refuses role changes</td>
+    <td><span class="file">server/routes/profile.ts:57</span></td>
+    <td><code>PATCH /api/profile</code> rejects any <code>role</code> or <code>agency_name</code> change unless the
+        caller is already an admin. Checked in code because the server's service-role client bypasses RLS.</td>
+  </tr>
+  <tr>
+    <td>3. Database trigger as backstop</td>
+    <td><span class="file">migrations/189</span> <code>prevent_role_self_escalation()</code></td>
+    <td>Even if someone bypasses our API entirely and talks to Supabase directly with the anon key (the RLS policy does
+        let users update their own profile row), a BEFORE UPDATE trigger raises an exception on any role/agency change
+        by a non-admin. There is also <b>no INSERT policy</b> on <code>user_profiles</code>, so a client cannot insert
+        a fresh row with <code>role='admin'</code>.</td>
+  </tr>
+  <tr>
+    <td>4. Token metadata is trustworthy</td>
+    <td><span class="file">server/middleware/auth.ts:39</span></td>
+    <td>The server reads the role from <code>app_metadata</code>, which only the service-role key / Supabase dashboard
+        can write &mdash; never from <code>user_metadata</code>, which end users can edit themselves. Verified: no code
+        path anywhere reads a role out of <code>user_metadata</code>, and the only <code>updateUserById</code> calls
+        (<span class="file">join.ts:170, 218</span>) write a display name, nothing privileged.</td>
+  </tr>
+</table>
+
+<h3>SQL injection &mdash; no raw SQL surface exists</h3>
+<table>
+  <tr><th>Check</th><th>Finding</th></tr>
+  <tr><td>Raw SQL strings</td><td><span class="tag green">clean</span> The server never concatenates SQL. Every query goes
+      through the supabase-js query builder (<code>.eq()</code>, <code>.select()</code>&hellip;), which parameterizes via
+      PostgREST.</td></tr>
+  <tr><td>Stored procedures</td><td><span class="tag green">clean</span> Only 4 <code>.rpc()</code> calls in the codebase
+      (<span class="file">objectiveTrackingService.ts</span>), all with named parameters &mdash; parameterized, not string-built.</td></tr>
+  <tr><td>Input validation</td><td><span class="tag green">clean</span> Route bodies are zod-validated and <b>replaced</b> by
+      the parsed result (<span class="file">server/lib/validation.ts</span>), so unknown fields are stripped before handlers run.</td></tr>
+  <tr><td>PostgREST filter interpolation</td><td><span class="tag amber">watch</span> Four <code>.or(`...${id}`)</code>
+      template strings exist (<span class="file">npcEmailReplyService.ts:140, 278</span>,
+      <span class="file">injectSchedulerService.ts:548, 783</span>). Today every interpolated value is either a
+      zod-validated UUID (<span class="file">socialMedia.ts:1088</span>) or a DB-sourced id, so none is exploitable &mdash;
+      but the pattern is fragile. House rule going forward: any value that lands inside <code>.or()</code> must be
+      UUID-validated first. The new billing code will not use this pattern at all.</td></tr>
+  <tr><td>Stored HTML</td><td><span class="tag green">clean</span> Player email HTML is stored unescaped
+      (<span class="file">socialMedia.ts:1124</span>) but the frontend renders only <code>body_text</code> through React's
+      auto-escaping (<span class="file">EmailApp.tsx:676</span>) &mdash; no script injection path into a trainer's browser.</td></tr>
+</table>
+
+<h3>Hardening rules baked into the new billing build</h3>
+<ul>
+  <li><b><code>consume_credit()</code> locked to the server:</b> the new SQL function gets
+    <code>REVOKE EXECUTE ... FROM anon, authenticated</code> so nobody can call it through Supabase's public RPC surface
+    and spend (or probe) other people's credits. All new billing tables: RLS enabled, zero anon/authenticated policies
+    &mdash; service-role access only, matching the documented pattern in <span class="file">server/lib/access.ts</span>.</li>
+  <li><b><code>become-trainer</code> is a one-way, one-step door:</b> it upgrades <code>participant</code> &rarr;
+    <code>trainer</code> only, refuses any other starting role, and can never grant <code>admin</code>. Admin remains
+    operator-provisioned only, exactly as today.</li>
+  <li><b>Credit checks are server-side facts, not client claims:</b> balances live in the append-only ledger; the
+    frontend only displays them. A tampered client can render whatever it likes &mdash; the 402 comes from the server.</li>
+  <li><b>Money endpoints double-check roles in code:</b> payout release/hold requires <code>role === 'admin'</code>
+    verified from the authenticated token on every call.</li>
+  <li><b>Webhook can't be spoofed:</b> Stripe signature verification over the raw body plus the
+    <code>stripe_webhook_events</code> idempotency table means forged or replayed "invoice paid" calls grant nothing.</li>
+</ul>
+
+<div class="callout warn">
+  <h3>One operational action item</h3>
+  <p class="small" style="margin:0">Migrations here are applied manually (Supabase SQL editor). An older migration
+  (<span class="file">047</span>) contained a <code>legal_oversight &rarr; admin</code> mapping that
+  <span class="file">189</span> explicitly fixed. <b>Please confirm migration 189 has actually been run on the production
+  database</b> &mdash; if 047 is live without 189, that old privilege bug is still active in prod. Everything in this
+  audit assumes 189 is applied.</p>
+</div>
+
+<footer>
+  Black Swan Simulations &middot; Payment Portal implementation plan &middot; July 2026<br/>
+  Build order: migration + Stripe service &rarr; webhook &rarr; billing routes &amp; credit gates &rarr; AAR trigger &rarr; frontend pages &rarr; end-to-end test.
+</footer>
+
+</div>
+</body>
+</html>

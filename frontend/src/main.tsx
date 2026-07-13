@@ -7,6 +7,7 @@ import { SignUp } from './pages/SignUp';
 import { Dashboard } from './pages/Dashboard';
 import { Clients } from './pages/Clients';
 import { AdminPayouts } from './pages/AdminPayouts';
+import { AdminTrainers } from './pages/AdminTrainers';
 import { Scenarios } from './pages/Scenarios';
 import { WarRoom } from './pages/WarRoom';
 import { SocialCrisisWizard } from './pages/SocialCrisisWizard';
@@ -97,6 +98,14 @@ const App = () => {
               element={
                 <ProtectedRoute roles={['admin']}>
                   <AdminPayouts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/trainers"
+              element={
+                <ProtectedRoute roles={['admin']}>
+                  <AdminTrainers />
                 </ProtectedRoute>
               }
             />

@@ -420,6 +420,15 @@ router.post(
 
       res.json({ data: { url } });
     } catch (err) {
+      // Surface Stripe's own message (e.g. "sign up for Connect") instead of a
+      // bare 500 - this is a platform-configuration problem, not a server bug.
+      const stripeErr = err as { type?: string; message?: string };
+      if (typeof stripeErr.type === 'string' && stripeErr.type.startsWith('Stripe')) {
+        logger.error({ error: stripeErr.message }, 'Stripe Connect onboarding failed');
+        return res.status(502).json({
+          error: `Payout setup unavailable: ${stripeErr.message ?? 'Stripe rejected the request'}. (Is Connect enabled on the platform Stripe account?)`,
+        });
+      }
       handleBillingError(err, res, 'POST /billing/connect/onboard');
     }
   },
@@ -746,6 +755,162 @@ router.post('/payouts/:id/unhold', requireAuth, async (req: AuthenticatedRequest
     res.json({ data });
   } catch (err) {
     handleBillingError(err, res, 'POST /billing/payouts/:id/unhold');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Admin business console: every trainer with clients, engagements, credits,
+// sessions and payout totals in one payload.
+// ---------------------------------------------------------------------------
+
+router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    if (!requireAdmin(user)) {
+      return res.status(403).json({ error: 'Admin access required' });
+    }
+
+    const { data: trainers, error: trainersError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id, full_name, username, agency_name, created_at')
+      .eq('role', 'trainer')
+      .order('created_at', { ascending: false });
+
+    if (trainersError) {
+      logger.error({ error: trainersError }, 'Failed to list trainers');
+      return res.status(500).json({ error: 'Failed to list trainers' });
+    }
+
+    const trainerIds = (trainers ?? []).map((t) => t.id as string);
+    if (trainerIds.length === 0) {
+      return res.json({ data: [] });
+    }
+
+    const [orgsRes, invoicesRes, ledgerRes, payoutsRes, sessionsRes, billingRes] =
+      await Promise.all([
+        supabaseAdmin
+          .from('client_organisations')
+          .select('id, trainer_id, name')
+          .in('trainer_id', trainerIds),
+        supabaseAdmin
+          .from('invoices')
+          .select('trainer_id, status, amount_cents')
+          .in('trainer_id', trainerIds),
+        supabaseAdmin
+          .from('credit_ledger')
+          .select('trainer_id, credit_type, delta')
+          .in('trainer_id', trainerIds),
+        supabaseAdmin
+          .from('payouts')
+          .select('trainer_id, status, amount_cents')
+          .in('trainer_id', trainerIds),
+        supabaseAdmin.from('sessions').select('trainer_id, status').in('trainer_id', trainerIds),
+        supabaseAdmin
+          .from('trainer_billing')
+          .select('trainer_id, onboarding_status')
+          .in('trainer_id', trainerIds),
+      ]);
+
+    interface TrainerSummary {
+      id: string;
+      full_name: string;
+      username: string;
+      agency_name: string | null;
+      created_at: string;
+      onboarding_status: string;
+      client_count: number;
+      client_names: string[];
+      invoices: { sent: number; paid: number; void: number; paid_amount_cents: number };
+      credits: { scenario: number; session: number };
+      sessions: { total: number; upcoming: number; active: number; completed: number };
+      payouts: {
+        awaiting_completion_cents: number;
+        pending_release_cents: number;
+        released_cents: number;
+        held_cents: number;
+      };
+    }
+
+    const byTrainer = new Map<string, TrainerSummary>();
+    for (const t of trainers ?? []) {
+      byTrainer.set(t.id as string, {
+        id: t.id as string,
+        full_name: (t.full_name as string) ?? '',
+        username: (t.username as string) ?? '',
+        agency_name: (t.agency_name as string) ?? null,
+        created_at: t.created_at as string,
+        onboarding_status: 'none',
+        client_count: 0,
+        client_names: [],
+        invoices: { sent: 0, paid: 0, void: 0, paid_amount_cents: 0 },
+        credits: { scenario: 0, session: 0 },
+        sessions: { total: 0, upcoming: 0, active: 0, completed: 0 },
+        payouts: {
+          awaiting_completion_cents: 0,
+          pending_release_cents: 0,
+          released_cents: 0,
+          held_cents: 0,
+        },
+      });
+    }
+
+    for (const b of billingRes.data ?? []) {
+      const t = byTrainer.get(b.trainer_id as string);
+      if (t) t.onboarding_status = b.onboarding_status as string;
+    }
+    for (const o of orgsRes.data ?? []) {
+      const t = byTrainer.get(o.trainer_id as string);
+      if (t) {
+        t.client_count++;
+        t.client_names.push(o.name as string);
+      }
+    }
+    for (const inv of invoicesRes.data ?? []) {
+      const t = byTrainer.get(inv.trainer_id as string);
+      if (!t) continue;
+      const status = inv.status as 'sent' | 'paid' | 'void';
+      if (status in t.invoices) t.invoices[status]++;
+      if (status === 'paid') t.invoices.paid_amount_cents += (inv.amount_cents as number) ?? 0;
+    }
+    for (const row of ledgerRes.data ?? []) {
+      const t = byTrainer.get(row.trainer_id as string);
+      if (!t) continue;
+      const type = row.credit_type as 'scenario' | 'session';
+      if (type === 'scenario' || type === 'session') t.credits[type] += row.delta as number;
+    }
+    for (const p of payoutsRes.data ?? []) {
+      const t = byTrainer.get(p.trainer_id as string);
+      if (!t) continue;
+      const cents = (p.amount_cents as number) ?? 0;
+      switch (p.status as string) {
+        case 'awaiting_completion':
+          t.payouts.awaiting_completion_cents += cents;
+          break;
+        case 'pending_release':
+        case 'failed':
+          t.payouts.pending_release_cents += cents;
+          break;
+        case 'released':
+          t.payouts.released_cents += cents;
+          break;
+        case 'held':
+          t.payouts.held_cents += cents;
+          break;
+      }
+    }
+    for (const s of sessionsRes.data ?? []) {
+      const t = byTrainer.get(s.trainer_id as string);
+      if (!t) continue;
+      t.sessions.total++;
+      const status = s.status as string;
+      if (status === 'scheduled') t.sessions.upcoming++;
+      else if (status === 'in_progress' || status === 'paused') t.sessions.active++;
+      else if (status === 'completed') t.sessions.completed++;
+    }
+
+    res.json({ data: Array.from(byTrainer.values()) });
+  } catch (err) {
+    handleBillingError(err, res, 'GET /billing/admin/trainers');
   }
 });
 
