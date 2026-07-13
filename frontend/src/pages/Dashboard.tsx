@@ -66,10 +66,14 @@ export const Dashboard = () => {
               </div>
               {/* Notification Bell */}
               <NotificationBell />
-              <div className="text-right leading-tight">
+              <a
+                href="/account"
+                className="text-right leading-tight hover:opacity-80 transition-opacity"
+                title="Account settings"
+              >
                 <div className="text-sm font-semibold">{user?.displayName || user?.email}</div>
-                <div className="text-[11px] text-white/60 capitalize">{user?.role}</div>
-              </div>
+                <div className="text-[11px] text-white/60 capitalize">{user?.role} · settings</div>
+              </a>
               <button
                 onClick={handleSignOut}
                 className="px-4 py-2 text-sm font-medium rounded-lg border border-white/30 text-white hover:bg-white/10 transition-all"

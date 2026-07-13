@@ -156,6 +156,30 @@ export interface AdminTrainerSummary {
 export const api = {
   // Profile
   profile: {
+    get: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          id: string;
+          username: string;
+          full_name: string;
+          role: string;
+          agency_name: string;
+        };
+      }>(await fetch(apiUrl('/api/profile'), { headers }));
+    },
+
+    update: async (body: { full_name?: string; agency_name?: string }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl('/api/profile'), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
     becomeTrainer: async () => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: { role: string } }>(
@@ -2157,6 +2181,13 @@ export const api = {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: { status: 'none' | 'pending' | 'complete' } }>(
         await fetch(apiUrl('/api/billing/connect/status'), { headers }),
+      );
+    },
+
+    connectManage: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { url: string } }>(
+        await fetch(apiUrl('/api/billing/connect/manage'), { method: 'POST', headers }),
       );
     },
 

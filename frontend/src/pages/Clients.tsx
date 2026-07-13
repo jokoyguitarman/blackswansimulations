@@ -282,8 +282,23 @@ export const Clients = () => {
           </div>
         )}
         {connectStatus === 'complete' && (
-          <div className="bg-success/10 border border-success/30 rounded-xl px-4 py-2.5 mb-6 text-xs font-semibold text-success">
-            Payout setup complete - your released earnings go straight to your bank account.
+          <div className="bg-success/10 border border-success/30 rounded-xl px-4 py-2.5 mb-6 flex flex-wrap justify-between items-center gap-2">
+            <span className="text-xs font-semibold text-success">
+              Payout setup complete - your released earnings go straight to your bank account.
+            </span>
+            <button
+              onClick={async () => {
+                try {
+                  const res = await api.billing.connectManage();
+                  window.open(res.data.url, '_blank', 'noopener');
+                } catch {
+                  /* surfaced on the Account page instead */
+                }
+              }}
+              className="text-xs font-semibold text-brand underline"
+            >
+              Manage bank details
+            </button>
           </div>
         )}
 

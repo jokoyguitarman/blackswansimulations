@@ -144,6 +144,16 @@ export async function createAccountLink(
   return link.url;
 }
 
+/**
+ * One-time login link to the trainer's Stripe Express dashboard, where they
+ * manage their own bank details and see their payout history.
+ */
+export async function createExpressLoginLink(accountId: string): Promise<string> {
+  const stripe = getStripe();
+  const link = await stripe.accounts.createLoginLink(accountId);
+  return link.url;
+}
+
 /** Whether the connected account has completed onboarding for payouts. */
 export async function isAccountOnboarded(accountId: string): Promise<boolean> {
   const stripe = getStripe();

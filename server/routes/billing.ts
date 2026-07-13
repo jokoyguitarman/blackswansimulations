@@ -11,6 +11,7 @@ import {
   createAndSendInvoice,
   createConnectAccount,
   createCustomer,
+  createExpressLoginLink,
   createTransfer,
   isAccountOnboarded,
   isBillingEnabled,
@@ -432,6 +433,37 @@ router.post(
         });
       }
       handleBillingError(err, res, 'POST /billing/connect/onboard');
+    }
+  },
+);
+
+// One-time link to the trainer's Stripe Express dashboard (bank details,
+// payout history). Only available once onboarding is complete.
+router.post(
+  '/connect/manage',
+  requireAuth,
+  requireStaff,
+  billingGuard,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+
+      const { data: billing } = await supabaseAdmin
+        .from('trainer_billing')
+        .select('stripe_connect_account_id, onboarding_status')
+        .eq('trainer_id', user.id)
+        .maybeSingle();
+
+      if (!billing?.stripe_connect_account_id || billing.onboarding_status !== 'complete') {
+        return res
+          .status(409)
+          .json({ error: 'Complete payout setup first, then you can manage your bank details.' });
+      }
+
+      const url = await createExpressLoginLink(billing.stripe_connect_account_id);
+      res.json({ data: { url } });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/connect/manage');
     }
   },
 );

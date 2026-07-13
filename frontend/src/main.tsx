@@ -8,6 +8,7 @@ import { Dashboard } from './pages/Dashboard';
 import { Clients } from './pages/Clients';
 import { AdminPayouts } from './pages/AdminPayouts';
 import { AdminTrainers } from './pages/AdminTrainers';
+import { AccountSettings } from './pages/AccountSettings';
 import { Scenarios } from './pages/Scenarios';
 import { WarRoom } from './pages/WarRoom';
 import { SocialCrisisWizard } from './pages/SocialCrisisWizard';
@@ -82,6 +83,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/account"
+              element={
+                <ProtectedRoute>
+                  <AccountSettings />
                 </ProtectedRoute>
               }
             />

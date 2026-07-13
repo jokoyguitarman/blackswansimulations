@@ -50,12 +50,16 @@ router.patch(
       const user = req.user!;
       const { role, agency_name, full_name } = req.body;
 
-      // SECURITY: role and agency are NOT self-service. They are privilege/affiliation
-      // fields and must only be changed by an admin (or, for trainer/admin, an operator
-      // directly in the database). This endpoint uses the service-role client, which
-      // bypasses RLS, so the check must be enforced here in code.
-      if ((role !== undefined || agency_name !== undefined) && user.role !== 'admin') {
-        return res.status(403).json({ error: 'Not allowed to change role or agency' });
+      // SECURITY: role is NEVER self-service. Agency is self-service only for
+      // trainers (it is their business identity, e.g. fixing a typo from admin
+      // enrollment) - for domain-role participants it is an exercise-relevant
+      // affiliation and stays admin-only. This endpoint uses the service-role
+      // client, which bypasses RLS, so checks must be enforced here in code.
+      if (role !== undefined && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Not allowed to change role' });
+      }
+      if (agency_name !== undefined && user.role !== 'admin' && user.role !== 'trainer') {
+        return res.status(403).json({ error: 'Not allowed to change agency' });
       }
 
       const updates: Record<string, unknown> = {};
