@@ -42,13 +42,59 @@ export const AdminTrainers = () => {
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
 
-  useEffect(() => {
+  // Enroll-trainer form
+  const [showEnroll, setShowEnroll] = useState(false);
+  const [enrollName, setEnrollName] = useState('');
+  const [enrollEmail, setEnrollEmail] = useState('');
+  const [enrollAgency, setEnrollAgency] = useState('');
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollResult, setEnrollResult] = useState<{
+    email: string;
+    temporary_password: string;
+    email_sent: boolean;
+  } | null>(null);
+  const [copiedPassword, setCopiedPassword] = useState(false);
+
+  const loadTrainers = () =>
     api.billing
       .adminTrainers()
       .then((res) => setTrainers(res.data))
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load trainers'))
-      .finally(() => setLoading(false));
+      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load trainers'));
+
+  useEffect(() => {
+    loadTrainers().finally(() => setLoading(false));
   }, []);
+
+  const handleEnroll = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEnrolling(true);
+    setError(null);
+    setEnrollResult(null);
+    try {
+      const res = await api.billing.enrollTrainer({
+        email: enrollEmail,
+        full_name: enrollName,
+        agency_name: enrollAgency || undefined,
+      });
+      setEnrollResult(res.data);
+      setEnrollName('');
+      setEnrollEmail('');
+      setEnrollAgency('');
+      setShowEnroll(false);
+      await loadTrainers();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to enroll trainer');
+    } finally {
+      setEnrolling(false);
+    }
+  };
+
+  const copyPassword = (password: string) => {
+    navigator.clipboard.writeText(password).then(() => {
+      setCopiedPassword(true);
+      setTimeout(() => setCopiedPassword(false), 2000);
+    });
+  };
 
   const totals = trainers.reduce(
     (acc, t) => {
@@ -85,7 +131,16 @@ export const AdminTrainers = () => {
               </p>
             </div>
             <div className="flex gap-3">
-              <Link to="/admin/payouts" className="military-button px-4 py-2 text-sm">
+              <button
+                onClick={() => setShowEnroll(!showEnroll)}
+                className="military-button px-4 py-2 text-sm"
+              >
+                {showEnroll ? 'Close' : '+ Enroll trainer'}
+              </button>
+              <Link
+                to="/admin/payouts"
+                className="px-4 py-2 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
+              >
                 Payout review
               </Link>
               <Link
@@ -101,6 +156,104 @@ export const AdminTrainers = () => {
         {error && (
           <div className="bg-danger/10 border border-danger/40 rounded-xl p-4 mb-6 text-sm text-danger">
             {error}
+          </div>
+        )}
+
+        {/* Enroll trainer form */}
+        {showEnroll && (
+          <form
+            onSubmit={handleEnroll}
+            className="bg-surface border border-border rounded-xl shadow-sm p-6 mb-6"
+          >
+            <div className="text-sm font-bold text-brand mb-1">Enroll a trainer</div>
+            <p className="text-xs text-muted mb-4">
+              Creates the trainer account directly and emails them their sign-in credentials — no
+              self-signup needed.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-muted mb-1.5">
+                  Full name *
+                </label>
+                <input
+                  required
+                  value={enrollName}
+                  onChange={(e) => setEnrollName(e.target.value)}
+                  maxLength={200}
+                  placeholder="Sarah Lim"
+                  className="w-full px-3 py-2 text-sm bg-surface border border-border-strong rounded-lg text-ink placeholder:text-muted/60 focus:outline-none focus:border-brand"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-muted mb-1.5">
+                  Email *
+                </label>
+                <input
+                  required
+                  type="email"
+                  value={enrollEmail}
+                  onChange={(e) => setEnrollEmail(e.target.value)}
+                  placeholder="sarah@resilienceworks.sg"
+                  className="w-full px-3 py-2 text-sm bg-surface border border-border-strong rounded-lg text-ink placeholder:text-muted/60 focus:outline-none focus:border-brand"
+                />
+              </div>
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-muted mb-1.5">
+                  Agency / company
+                </label>
+                <input
+                  value={enrollAgency}
+                  onChange={(e) => setEnrollAgency(e.target.value)}
+                  maxLength={200}
+                  placeholder="Resilience Works Pte Ltd"
+                  className="w-full px-3 py-2 text-sm bg-surface border border-border-strong rounded-lg text-ink placeholder:text-muted/60 focus:outline-none focus:border-brand"
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={enrolling}
+              className="military-button px-6 py-2 text-sm disabled:opacity-50"
+            >
+              {enrolling ? 'Enrolling…' : 'Create trainer account'}
+            </button>
+          </form>
+        )}
+
+        {/* Enrollment result */}
+        {enrollResult && (
+          <div
+            className={`border rounded-xl p-4 mb-6 ${
+              enrollResult.email_sent
+                ? 'bg-success/10 border-success/40'
+                : 'bg-warning/10 border-warning/40'
+            }`}
+          >
+            <div className="text-sm font-bold text-ink mb-1">
+              Trainer account created for {enrollResult.email}
+            </div>
+            <p className="text-xs text-muted mb-2">
+              {enrollResult.email_sent
+                ? 'Their credentials have been emailed to them. The temporary password is also shown below in case it needs to be shared again.'
+                : 'The credentials email could NOT be sent — share the temporary password with them yourself:'}
+            </p>
+            <div className="flex items-center gap-2">
+              <code className="text-sm font-bold bg-surface border border-border rounded-lg px-3 py-1.5">
+                {enrollResult.temporary_password}
+              </code>
+              <button
+                onClick={() => copyPassword(enrollResult.temporary_password)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
+              >
+                {copiedPassword ? 'Copied!' : 'Copy'}
+              </button>
+              <button
+                onClick={() => setEnrollResult(null)}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg text-muted hover:text-ink transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
           </div>
         )}
 

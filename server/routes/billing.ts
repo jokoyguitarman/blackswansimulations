@@ -18,6 +18,8 @@ import {
 } from '../services/stripeService.js';
 import { getBalances } from '../services/creditService.js';
 import { createNotification } from '../services/notificationService.js';
+import { sendTrainerEnrollmentEmail } from '../services/emailService.js';
+import { nanoid } from 'nanoid';
 
 const router = Router();
 
@@ -913,5 +915,120 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
     handleBillingError(err, res, 'GET /billing/admin/trainers');
   }
 });
+
+// ---------------------------------------------------------------------------
+// Admin: enroll a trainer directly (pre-provisioning for known trainers).
+// Creates the account with the trainer role and emails the credentials; the
+// temporary password is also returned so the admin can hand it over manually
+// if email delivery is unavailable.
+// ---------------------------------------------------------------------------
+
+const enrollTrainerSchema = z.object({
+  body: z.object({
+    email: z.string().email(),
+    full_name: z.string().min(1).max(200),
+    agency_name: z.string().max(200).optional(),
+  }),
+});
+
+router.post(
+  '/admin/trainers',
+  requireAuth,
+  validate(enrollTrainerSchema),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (!requireAdmin(user)) {
+        return res.status(403).json({ error: 'Admin access required' });
+      }
+      const { email, full_name, agency_name } = req.body;
+
+      // Readable one-time password, e.g. "Swan-x4Tz9mQbLw".
+      const temporaryPassword = `Swan-${nanoid(10)}`;
+
+      const { data: created, error: createError } = await supabaseAdmin.auth.admin.createUser({
+        email,
+        password: temporaryPassword,
+        email_confirm: true,
+        user_metadata: {
+          full_name,
+          agency_name: agency_name ?? 'Independent Trainer',
+        },
+      });
+
+      if (createError || !created?.user) {
+        if (/already/i.test(createError?.message ?? '')) {
+          return res.status(409).json({
+            error: 'A user with this email already exists. They can sign in and use their account.',
+          });
+        }
+        logger.error({ error: createError, email }, 'Failed to create trainer account');
+        return res.status(500).json({ error: 'Failed to create trainer account' });
+      }
+
+      const newUserId = created.user.id;
+
+      // handle_new_user created the profile as 'participant'; upgrade to
+      // trainer (service-role write, trusted by the anti-escalation trigger).
+      // The profile row is created by a trigger, so tolerate a brief delay.
+      let upgraded = false;
+      for (let attempt = 0; attempt < 5 && !upgraded; attempt++) {
+        const { data: updatedRows } = await supabaseAdmin
+          .from('user_profiles')
+          .update({ role: 'trainer', full_name, agency_name: agency_name ?? 'Independent Trainer' })
+          .eq('id', newUserId)
+          .select('id');
+        if (updatedRows && updatedRows.length > 0) {
+          upgraded = true;
+        } else {
+          await new Promise((r) => setTimeout(r, 400));
+        }
+      }
+      if (!upgraded) {
+        // Profile trigger never materialized the row; create it directly.
+        const { error: insertError } = await supabaseAdmin.from('user_profiles').insert({
+          id: newUserId,
+          username: email,
+          full_name,
+          role: 'trainer',
+          agency_name: agency_name ?? 'Independent Trainer',
+        });
+        if (insertError) {
+          logger.error({ error: insertError, email }, 'Failed to provision trainer profile');
+          return res.status(500).json({ error: 'Account created but profile setup failed' });
+        }
+      }
+
+      await supabaseAdmin
+        .from('trainer_billing')
+        .upsert({ trainer_id: newUserId, onboarding_status: 'none' }, { onConflict: 'trainer_id' });
+
+      const enrolledByName =
+        (user.metadata?.full_name as string | undefined) || user.email || 'the Black Swan team';
+      const emailSent = await sendTrainerEnrollmentEmail({
+        to: email,
+        toName: full_name,
+        temporaryPassword,
+        enrolledByName,
+      });
+
+      logger.info(
+        { adminId: user.id, trainerId: newUserId, email, emailSent },
+        'Trainer enrolled by admin',
+      );
+      res.status(201).json({
+        data: {
+          id: newUserId,
+          email,
+          full_name,
+          temporary_password: temporaryPassword,
+          email_sent: emailSent,
+        },
+      });
+    } catch (err) {
+      handleBillingError(err, res, 'POST /billing/admin/trainers');
+    }
+  },
+);
 
 export { router as billingRouter };

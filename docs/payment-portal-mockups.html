@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Payment Portal - Screen Mockups</title>
+<style>
+  /* ── Page chrome (dark, like the plan docs) ─────────────────── */
+  :root {
+    --pg-bg: #0c0f16; --pg-panel: #151a24; --pg-border: #2a3342;
+    --pg-text: #e6ebf2; --pg-muted: #93a0b4; --pg-accent: #5e9bff;
+    /* ── App design tokens (copied from frontend/src/style.css) ── */
+    --bg: #FAF8F4; --surface: #FFFFFF; --surface-2: #F4F1EA;
+    --ink: #172033; --muted: #6B7280;
+    --brand: #1E3A5F; --brand-strong: #18304E;
+    --accent: #D97706; --accent-strong: #B45309;
+    --border: #E4DFD4; --border-strong: #D6CFC0;
+    --success: #15803D; --warning: #D97706; --danger: #B91C1C;
+    --shadow-sm: 0 1px 2px rgba(23,32,51,0.06), 0 1px 3px rgba(23,32,51,0.04);
+    --shadow-md: 0 4px 12px rgba(23,32,51,0.08), 0 2px 4px rgba(23,32,51,0.04);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--pg-bg); color: var(--pg-text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55; font-size: 15px; }
+  .wrap { max-width: 1160px; margin: 0 auto; padding: 32px 24px 120px; }
+  .kicker { text-transform: uppercase; letter-spacing: 2px; font-size: 12px; color: var(--pg-accent); font-weight: 700; }
+  h1 { font-size: 30px; margin: 8px 0 6px; letter-spacing: -0.5px; }
+  .lead { font-size: 16px; color: var(--pg-muted); max-width: 860px; }
+  h2.step-title { font-size: 20px; margin: 60px 0 4px; letter-spacing: -0.3px; }
+  .step-sub { color: var(--pg-muted); font-size: 14px; margin: 0 0 18px; max-width: 860px; }
+  .stepnum { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; border-radius:8px;
+    background: var(--pg-accent); color:#04101f; font-weight:800; font-size:15px; margin-right:10px; vertical-align:-6px; }
+  .note { background: var(--pg-panel); border: 1px solid var(--pg-border); border-left: 3px solid var(--pg-accent);
+    border-radius: 10px; padding: 12px 16px; margin: 14px 0 0; font-size: 13px; color: #cdd6e3; max-width: 860px; }
+  .note b { color: #fff; }
+  .flowmap { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 22px 0 10px; font-size:12.5px; }
+  .flowmap .fnode { background: var(--pg-panel); border:1px solid var(--pg-border); border-radius:8px; padding:7px 11px; color:#cdd6e3; }
+  .flowmap .farr { color: var(--pg-muted); font-weight:700; }
+  footer { margin-top: 70px; padding-top: 20px; border-top: 1px solid var(--pg-border); color: var(--pg-muted); font-size: 12.5px; }
+
+  /* ── Browser frame ──────────────────────────────────────────── */
+  .browser { border: 1px solid var(--pg-border); border-radius: 14px; overflow: hidden; box-shadow: 0 16px 48px rgba(0,0,0,0.45); margin-top: 6px; }
+  .browser .bar { display:flex; align-items:center; gap:10px; background:#1c2330; padding: 9px 14px; border-bottom:1px solid var(--pg-border); }
+  .browser .dots { display:flex; gap:6px; }
+  .browser .dots span { width:11px; height:11px; border-radius:50%; }
+  .dots span:nth-child(1){ background:#ff5f57; } .dots span:nth-child(2){ background:#febc2e; } .dots span:nth-child(3){ background:#28c840; }
+  .browser .url { flex:1; background:#0c0f16; border:1px solid var(--pg-border); border-radius:7px; padding: 4px 12px;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; color: var(--pg-muted); }
+  .browser .url b { color:#c6d2e0; font-weight:600; }
+
+  /* ── App canvas (light skin) ────────────────────────────────── */
+  .app { background: var(--bg); color: var(--ink); padding: 28px; min-height: 300px; }
+  .app.center { display:flex; align-items:center; justify-content:center; padding: 44px 28px; }
+  .app h1, .app h2, .app h3, .app p { margin: 0; }
+
+  /* App primitives mirroring the real component classes */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-sm); }
+  .card2 { background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; }
+  .btn { display:inline-block; background: var(--accent); border: 1px solid var(--accent); color: #fff; font-weight: 600;
+    border-radius: 8px; padding: 9px 18px; font-size: 13.5px; box-shadow: var(--shadow-sm); cursor: default; }
+  .btn.big { padding: 12px 26px; font-size: 14.5px; }
+  .btn.disabled { background: var(--surface-2); border-color: var(--border); color: var(--muted); box-shadow:none; }
+  .btn-outline { display:inline-block; background: var(--surface); color: var(--brand); border: 1px solid var(--border-strong);
+    font-weight: 600; border-radius: 8px; padding: 9px 18px; font-size: 13.5px; cursor: default; }
+  .btn-danger-outline { display:inline-block; background: var(--surface); color: var(--danger); border: 1px solid #E5C4C4;
+    font-weight: 600; border-radius: 8px; padding: 9px 18px; font-size: 13.5px; }
+  .applabel { font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .input { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 8px; padding: 9px 12px;
+    font-size: 13.5px; color: var(--ink); width: 100%; }
+  .input .ph { color: #9AA1AC; }
+  .badge { display:inline-block; font-size: 10.5px; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.6px; }
+  .badge.gray { background: #EEEBE3; color: var(--muted); }
+  .badge.amber { background: #FBEAD1; color: #92400E; }
+  .badge.green { background: #DCF2E3; color: var(--success); }
+  .badge.red { background: #F8DEDE; color: var(--danger); }
+  .badge.navy { background: #E2E9F2; color: var(--brand); }
+  .chiprow { display:flex; gap:12px; flex-wrap:wrap; }
+  .credchip { display:flex; align-items:center; gap:10px; background: var(--surface); border:1px solid var(--border);
+    border-radius: 10px; padding: 10px 16px; box-shadow: var(--shadow-sm); }
+  .credchip .cnum { font-size: 22px; font-weight: 800; color: var(--brand); }
+  .credchip .clab { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px; line-height: 1.3; }
+  .appnav { display:flex; align-items:center; justify-content:space-between; margin-bottom: 22px; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
+  .appnav .logo { font-weight: 800; font-size: 15px; color: var(--brand); letter-spacing: 0.3px; }
+  .appnav .logo span { color: var(--accent); }
+  .appnav .links { display:flex; gap:18px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+  .appnav .links .on { color: var(--brand); border-bottom: 2px solid var(--accent); padding-bottom: 3px; }
+  .modal-scrim { background: rgba(23,32,51,0.45); padding: 34px; display:flex; align-items:center; justify-content:center; }
+  .toast { display:flex; gap:12px; align-items:flex-start; background: var(--surface); border:1px solid var(--border);
+    border-left: 4px solid var(--success); border-radius: 10px; padding: 13px 16px; box-shadow: var(--shadow-md); max-width: 420px; }
+  .toast .tico { width: 30px; height: 30px; border-radius: 50%; background: #DCF2E3; color: var(--success);
+    display:flex; align-items:center; justify-content:center; font-weight:800; font-size: 15px; flex: none; }
+  .mini-table { width:100%; border-collapse: collapse; font-size: 12.5px; }
+  .mini-table th { text-align:left; color: var(--muted); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.6px;
+    padding: 8px 10px; border-bottom: 1px solid var(--border); }
+  .mini-table td { padding: 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .mini-table tr:last-child td { border-bottom: none; }
+  .two-col { display:grid; grid-template-columns: 1fr 1fr; gap: 22px; align-items: start; }
+  @media (max-width: 900px){ .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="kicker">Payment Portal &middot; UI Mockups</div>
+<h1>The Trainer's Journey, Screen by Screen</h1>
+<p class="lead">Every screen a trainer (and their client, and our admin) sees from free signup to the S$3,000 payout.
+Rendered in the app's real skin. Business rules: fixed S$10,000 invoice &middot; 1 scenario + 2 session credits per
+payment &middot; 30% trainer share released by an admin after the AAR.</p>
+
+<div class="flowmap">
+  <span class="fnode">1 Sign up</span><span class="farr">&rarr;</span>
+  <span class="fnode">2 Dashboard (locked)</span><span class="farr">&rarr;</span>
+  <span class="fnode">3 Enroll client</span><span class="farr">&rarr;</span>
+  <span class="fnode">4 Invoice builder</span><span class="farr">&rarr;</span>
+  <span class="fnode">5 Client pays</span><span class="farr">&rarr;</span>
+  <span class="fnode">6 Payment notice</span><span class="farr">&rarr;</span>
+  <span class="fnode">7 Warroom unlocked</span><span class="farr">&rarr;</span>
+  <span class="fnode">8 Create sessions</span><span class="farr">&rarr;</span>
+  <span class="fnode">9 Produce AAR</span><span class="farr">&rarr;</span>
+  <span class="fnode">10 Earnings</span><span class="farr">&rarr;</span>
+  <span class="fnode">11 Admin release</span>
+</div>
+
+<!-- ════════════════════ SCREEN 1 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">1</span>Sign up — free trainer account</h2>
+<p class="step-sub">The signup page gains an account-type choice. Picking "Trainer" creates the account, then upgrades it
+server-side. No credit card required at this point.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>signup</b></div></div>
+  <div class="app center">
+    <div class="card" style="width: 430px; padding: 30px;">
+      <div style="font-weight:800; font-size:18px; color:var(--brand); margin-bottom:2px;">Create your account</div>
+      <div style="font-size:12.5px; color:var(--muted); margin-bottom:20px;">Black Swan Simulations</div>
+
+      <div class="applabel" style="margin-bottom:8px;">I am signing up as</div>
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px;">
+        <div style="border:2px solid var(--accent); background:#FDF6EC; border-radius:10px; padding:12px;">
+          <div style="font-weight:700; font-size:13px; color:var(--brand);">&#9679; Trainer</div>
+          <div style="font-size:11px; color:var(--muted); margin-top:3px;">I run crisis training for clients</div>
+        </div>
+        <div style="border:1px solid var(--border); border-radius:10px; padding:12px;">
+          <div style="font-weight:700; font-size:13px; color:var(--muted);">&#9675; Participant</div>
+          <div style="font-size:11px; color:var(--muted); margin-top:3px;">I was invited to a session</div>
+        </div>
+      </div>
+
+      <div class="applabel">Full name</div>
+      <div class="input" style="margin:5px 0 13px;">Sarah Lim</div>
+      <div class="applabel">Email</div>
+      <div class="input" style="margin:5px 0 13px;">sarah@resilienceworks.sg</div>
+      <div class="applabel">Password</div>
+      <div class="input" style="margin:5px 0 20px;">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</div>
+      <div class="btn big" style="width:100%; text-align:center;">Create free trainer account</div>
+      <div style="font-size:11.5px; color:var(--muted); text-align:center; margin-top:12px;">
+        Free forever to enroll clients. You only unlock the War Room when a client pays.</div>
+    </div>
+  </div>
+</div>
+<div class="note"><b>Behind this screen:</b> account is created as <code>participant</code>, then
+<code>POST /api/profile/become-trainer</code> upgrades it to <code>trainer</code> (one-way, can never grant admin).
+The trainer is routed straight to the Clients page.</div>
+
+<!-- ════════════════════ SCREEN 2 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">2</span>Trainer dashboard — before any client pays</h2>
+<p class="step-sub">The command center shows the new "Clients &amp; billing" module. Credits are zero, the War Room tile is
+locked, and a banner nudges the trainer to complete their one-time payout setup (Stripe onboarding).</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>dashboard</b></div></div>
+  <div class="app">
+    <div class="appnav">
+      <div class="logo">BLACK<span>SWAN</span></div>
+      <div class="links"><span class="on">Dashboard</span><span>Clients</span><span>Scenarios</span><span>Sessions</span><span>War Room</span></div>
+    </div>
+    <div style="font-weight:800; font-size:20px; color:var(--brand);">Trainer command center</div>
+    <div style="font-size:13px; color:var(--muted); margin-bottom:18px;">Full system visibility &middot; exercise oversight mode</div>
+
+    <div class="card2" style="border-left:4px solid var(--warning); padding:13px 16px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; gap:14px;">
+      <div>
+        <div style="font-weight:700; font-size:13px; color:#92400E;">Set up payouts to get paid for your trainings</div>
+        <div style="font-size:12px; color:var(--muted);">One-time identity &amp; bank verification via Stripe. Takes about 5 minutes.</div>
+      </div>
+      <span class="btn">Set up payouts</span>
+    </div>
+
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+      <div class="card" style="padding:16px;">
+        <div class="applabel" style="margin-bottom:10px;">Clients &amp; billing</div>
+        <div class="chiprow" style="margin-bottom:12px;">
+          <div class="credchip"><span class="cnum">0</span><span class="clab">Scenario<br/>credits</span></div>
+          <div class="credchip"><span class="cnum">0</span><span class="clab">Session<br/>credits</span></div>
+        </div>
+        <div style="font-size:12.5px; color:var(--muted); margin-bottom:12px;">No enrolled clients yet. Enroll a client and send your first invoice to unlock scenario generation.</div>
+        <span class="btn-outline">Manage clients &rarr;</span>
+      </div>
+      <div class="card" style="padding:16px; opacity:0.75;">
+        <div class="applabel" style="margin-bottom:10px;">Scenario management</div>
+        <div class="card2" style="padding:12px; text-align:center;">
+          <div style="font-size:22px; margin-bottom:4px;">&#128274;</div>
+          <div style="font-weight:700; font-size:13px; color:var(--brand);">War Room locked</div>
+          <div style="font-size:11.5px; color:var(--muted);">Requires 1 scenario credit &mdash; granted when a client pays an invoice</div>
+        </div>
+      </div>
+      <div class="card" style="padding:16px;">
+        <div class="applabel" style="margin-bottom:10px;">Exercise monitoring</div>
+        <div style="font-size:12.5px; color:var(--muted);">No active sessions.</div>
+      </div>
+      <div class="card" style="padding:16px;">
+        <div class="applabel" style="margin-bottom:10px;">Analytics &amp; AAR</div>
+        <div style="font-size:12.5px; color:var(--muted);">Reports appear here after your first session.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ SCREEN 3 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">3</span>Clients page — enrolling a client organisation</h2>
+<p class="step-sub">The trainer enrolls the organisation they'll be training. Each enrolled client gets a small profile
+card. This is where the GENERATE INVOICE button lives.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>clients</b></div></div>
+  <div class="app">
+    <div class="appnav">
+      <div class="logo">BLACK<span>SWAN</span></div>
+      <div class="links"><span>Dashboard</span><span class="on">Clients</span><span>Scenarios</span><span>Sessions</span><span>War Room</span></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:18px;">
+      <div>
+        <div style="font-weight:800; font-size:20px; color:var(--brand);">Clients &amp; billing</div>
+        <div style="font-size:13px; color:var(--muted);">Enroll the organisations you train, invoice them, track your credits and earnings.</div>
+      </div>
+      <div class="chiprow">
+        <div class="credchip"><span class="cnum">0</span><span class="clab">Scenario<br/>credits</span></div>
+        <div class="credchip"><span class="cnum">0</span><span class="clab">Session<br/>credits</span></div>
+      </div>
+    </div>
+
+    <div class="two-col">
+      <div class="card" style="padding:18px;">
+        <div style="font-weight:700; font-size:14px; color:var(--brand); margin-bottom:12px;">Enroll a client organisation</div>
+        <div class="applabel">Organisation name</div>
+        <div class="input" style="margin:5px 0 12px;">Meridian Foods Pte Ltd</div>
+        <div class="applabel">Contact person</div>
+        <div class="input" style="margin:5px 0 12px;">Daniel Tan, Head of Corporate Affairs</div>
+        <div class="applabel">Contact email &nbsp;<span style="text-transform:none; font-weight:500;">(the invoice is sent here)</span></div>
+        <div class="input" style="margin:5px 0 12px;">daniel.tan@meridianfoods.com</div>
+        <div class="applabel">Notes (optional)</div>
+        <div class="input" style="margin:5px 0 16px;"><span class="ph">Product-recall crisis training, Q3 engagement&hellip;</span></div>
+        <span class="btn">Enroll client</span>
+      </div>
+      <div class="card2" style="padding:18px; border-style:dashed; text-align:center; display:flex; flex-direction:column; justify-content:center; min-height:220px;">
+        <div style="font-size:26px; margin-bottom:8px;">&#127970;</div>
+        <div style="font-weight:700; font-size:13.5px; color:var(--brand);">No clients enrolled yet</div>
+        <div style="font-size:12px; color:var(--muted); max-width:280px; margin:6px auto 0;">Enrolled organisations appear here as profile cards with invoicing and engagement status.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ SCREEN 4 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">4</span>The invoice builder</h2>
+<p class="step-sub">Clicking <b>GENERATE INVOICE</b> on the client card opens the builder. The fee is fixed at S$10,000
+&mdash; the trainer confirms the details, sees exactly what it unlocks and what they'll earn, and sends. Stripe emails the
+client a hosted payment page.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>clients</b></div></div>
+  <div class="app modal-scrim">
+    <div class="card" style="width: 560px; padding: 24px; box-shadow: 0 20px 60px rgba(23,32,51,0.3);">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+        <div style="font-weight:800; font-size:17px; color:var(--brand);">Generate invoice</div>
+        <div style="color:var(--muted); font-weight:700;">&times;</div>
+      </div>
+      <div style="font-size:12.5px; color:var(--muted); margin-bottom:18px;">Meridian Foods Pte Ltd &middot; daniel.tan@meridianfoods.com</div>
+
+      <div class="card2" style="padding:14px 16px; margin-bottom:14px;">
+        <table class="mini-table">
+          <tr><th>Line item</th><th style="text-align:right;">Amount</th></tr>
+          <tr>
+            <td><b>Black Swan crisis simulation training engagement</b><br/>
+              <span style="color:var(--muted); font-size:11.5px;">1 bespoke AI-generated scenario &middot; 2 live training sessions (pre- &amp; post-training) &middot; after-action report</span></td>
+            <td style="text-align:right; font-weight:800; font-size:15px; color:var(--brand); white-space:nowrap;">S$10,000.00</td>
+          </tr>
+          <tr>
+            <td style="color:var(--muted);">Payment terms</td>
+            <td style="text-align:right; color:var(--muted);">Due in 30 days &middot; card or bank transfer</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:16px;">
+        <div class="card2" style="padding:11px 14px;">
+          <div class="applabel">When paid, you receive</div>
+          <div style="font-size:13px; font-weight:700; color:var(--brand); margin-top:3px;">1 scenario credit + 2 session credits</div>
+        </div>
+        <div class="card2" style="padding:11px 14px;">
+          <div class="applabel">Your earnings (30%)</div>
+          <div style="font-size:13px; font-weight:700; color:var(--success); margin-top:3px;">S$3,000 after training concludes</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <span class="btn-outline">Cancel</span>
+        <span class="btn big">Send invoice to client</span>
+      </div>
+      <div style="font-size:11px; color:var(--muted); text-align:right; margin-top:10px;">
+        Sent via Stripe &mdash; your client pays on a secure hosted page, no account needed.</div>
+    </div>
+  </div>
+</div>
+<div class="note"><b>Behind this screen:</b> <code>POST /api/billing/organisations/:id/invoice</code> creates the Stripe
+customer + invoice (<code>collection_method: send_invoice</code>, 30-day terms), finalizes and emails it, and stores the
+row with status <b>SENT</b> plus the hosted link so the trainer can also copy-paste it.</div>
+
+<!-- ════════════════════ SCREEN 5 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">5</span>What the client sees — Stripe's hosted invoice</h2>
+<p class="step-sub">The client receives an email from Stripe and pays on Stripe's page. We build none of this &mdash; it's
+shown here so you know the client's experience end to end.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">invoice.stripe.com/<b>i/acct_blackswan/inv_meridian_0001</b></div></div>
+  <div class="app center" style="background:#F6F8FA;">
+    <div style="width: 420px;">
+      <div class="card" style="padding:26px; border-radius:14px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+          <div style="font-weight:800; font-size:14px; color:#111;">Black Swan Simulations</div>
+          <span class="badge navy">Invoice</span>
+        </div>
+        <div style="font-size:12px; color:#6B7280;">Invoice to</div>
+        <div style="font-weight:700; font-size:13.5px; color:#111; margin-bottom:14px;">Meridian Foods Pte Ltd</div>
+        <div style="font-size:12px; color:#6B7280;">Amount due</div>
+        <div style="font-weight:800; font-size:30px; color:#111; letter-spacing:-0.5px; margin-bottom:4px;">S$10,000.00</div>
+        <div style="font-size:12px; color:#6B7280; margin-bottom:18px;">Due August 8, 2026 &middot; Invoice #BSW-0001</div>
+        <div style="border-top:1px solid #E5E7EB; padding:12px 0; display:flex; justify-content:space-between; font-size:12.5px;">
+          <span style="color:#374151;">Crisis simulation training engagement</span>
+          <span style="font-weight:700; color:#111;">S$10,000.00</span>
+        </div>
+        <div style="background:#635BFF; color:#fff; text-align:center; font-weight:700; font-size:14px; border-radius:8px; padding:12px; margin-top:14px;">Pay S$10,000.00</div>
+        <div style="text-align:center; font-size:11px; color:#9CA3AF; margin-top:12px;">Card &middot; Bank transfer &middot; Powered by <b>Stripe</b></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ SCREEN 6 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">6</span>The moment the client pays — trainer's notice</h2>
+<p class="step-sub">Stripe's webhook fires, credits are granted instantly, and the trainer sees it everywhere: a
+notification, the updated client card, and live credit chips.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>clients</b></div></div>
+  <div class="app">
+    <div class="appnav">
+      <div class="logo">BLACK<span>SWAN</span></div>
+      <div class="links"><span>Dashboard</span><span class="on">Clients</span><span>Scenarios</span><span>Sessions</span><span>War Room</span></div>
+    </div>
+
+    <div style="display:flex; justify-content:flex-end; margin-bottom:16px;">
+      <div class="toast">
+        <div class="tico">&#10003;</div>
+        <div>
+          <div style="font-weight:700; font-size:13px; color:var(--brand);">Payment received &mdash; S$10,000 from Meridian Foods</div>
+          <div style="font-size:12px; color:var(--muted);">1 scenario credit + 2 session credits added. The War Room is now unlocked.</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:16px;">
+      <div style="font-weight:800; font-size:20px; color:var(--brand);">Clients &amp; billing</div>
+      <div class="chiprow">
+        <div class="credchip"><span class="cnum" style="color:var(--success);">1</span><span class="clab">Scenario<br/>credits</span></div>
+        <div class="credchip"><span class="cnum" style="color:var(--success);">2</span><span class="clab">Session<br/>credits</span></div>
+      </div>
+    </div>
+
+    <div class="card" style="padding:18px; max-width:640px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <div>
+          <div style="font-weight:800; font-size:15px; color:var(--brand);">Meridian Foods Pte Ltd</div>
+          <div style="font-size:12px; color:var(--muted);">Daniel Tan &middot; daniel.tan@meridianfoods.com</div>
+          <div style="font-size:12px; color:var(--muted);">Product-recall crisis training, Q3 engagement</div>
+        </div>
+        <span class="badge green">Invoice paid &middot; Jul 9</span>
+      </div>
+      <div style="border-top:1px solid var(--border); margin-top:14px; padding-top:14px; display:flex; gap:10px; align-items:center;">
+        <span class="btn disabled">Generate invoice</span>
+        <span style="font-size:11.5px; color:var(--muted);">This engagement is paid. Enroll a new engagement to invoice again.</span>
+      </div>
+      <div class="card2" style="margin-top:12px; padding:10px 14px; display:flex; justify-content:space-between; font-size:12px;">
+        <span style="color:var(--muted);">Engagement funds</span>
+        <span><b style="color:var(--brand);">1</b> scenario &middot; <b style="color:var(--brand);">2</b> sessions &middot; payout <b style="color:var(--success);">S$3,000</b> after AAR</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ SCREEN 7 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">7</span>War Room — locked vs. unlocked</h2>
+<p class="step-sub">Before payment the War Room shows a paywall notice (the server enforces it with a 402 either way).
+After payment the full wizard is available, and the credit is only consumed at the final "Compile scenario" step &mdash;
+with an automatic refund if compilation fails.</p>
+
+<div class="two-col">
+  <div>
+    <div class="browser">
+      <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>warroom</b> &middot; before payment</div></div>
+      <div class="app center" style="min-height:280px;">
+        <div class="card" style="padding:26px; text-align:center; max-width:380px;">
+          <div style="font-size:26px; margin-bottom:8px;">&#128274;</div>
+          <div style="font-weight:800; font-size:15px; color:var(--brand); margin-bottom:6px;">Scenario generation requires a paid engagement</div>
+          <div style="font-size:12.5px; color:var(--muted); margin-bottom:16px;">You have <b>0 scenario credits</b>. Invoice a client from the Clients page &mdash; when they pay, this unlocks automatically.</div>
+          <span class="btn">Go to Clients &amp; billing</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="browser">
+      <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>warroom</b> &middot; after payment</div></div>
+      <div class="app" style="min-height:280px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+          <div style="font-weight:800; font-size:17px; color:var(--brand);">War Room &mdash; scenario wizard</div>
+          <span class="badge green">1 scenario credit</span>
+        </div>
+        <div style="display:flex; gap:6px; margin-bottom:16px; font-size:11px; font-weight:700; color:var(--muted);">
+          <span style="color:var(--success);">&#10003; Brief</span><span>&rsaquo;</span>
+          <span style="color:var(--success);">&#10003; Location</span><span>&rsaquo;</span>
+          <span style="color:var(--success);">&#10003; Research</span><span>&rsaquo;</span>
+          <span style="color:var(--accent);">&#9679; Compile</span>
+        </div>
+        <div class="card" style="padding:20px; text-align:center;">
+          <div style="font-size:12.5px; color:var(--muted); max-width:340px; margin:0 auto 14px;">All research complete. Compiling generates the full scenario &mdash; pins, casualties, injects, crowd dynamics. Takes 2&ndash;5 minutes.</div>
+          <span class="btn big">Compile scenario &nbsp;&middot;&nbsp; uses 1 credit</span>
+          <div style="font-size:11px; color:var(--muted); margin-top:10px;">Credit is refunded automatically if compilation fails.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ SCREEN 8 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">8</span>Creating the training sessions — 2 credits, 2 games</h2>
+<p class="step-sub">The engagement includes two session credits so the trainer can run a pre-training test game and a
+post-training test game on the same scenario. The modal shows the balance; the server consumes a credit and ties each
+session to the client's payment.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>sessions</b></div></div>
+  <div class="app modal-scrim">
+    <div class="card" style="width: 520px; padding: 24px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+        <div style="font-weight:800; font-size:17px; color:var(--brand);">Create session</div>
+        <span class="badge green">Session credits: 2</span>
+      </div>
+      <div class="applabel">Scenario</div>
+      <div class="input" style="margin:5px 0 13px;">Meridian Foods &mdash; Product Recall Firestorm &nbsp;<span style="color:var(--muted); font-size:11px;">(compiled Jul 9)</span></div>
+      <div class="applabel">Session name</div>
+      <div class="input" style="margin:5px 0 13px;">Pre-training baseline game</div>
+      <div class="applabel">Scheduled start</div>
+      <div class="input" style="margin:5px 0 16px;">Jul 21, 2026 &middot; 09:00 SGT</div>
+      <div class="card2" style="padding:10px 14px; font-size:12px; color:var(--muted); margin-bottom:16px;">
+        Creating this session uses <b style="color:var(--brand);">1 of 2</b> session credits from the Meridian Foods engagement.
+        You'll have 1 left for the post-training game.
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end;">
+        <span class="btn-outline">Cancel</span>
+        <span class="btn">Create session &middot; invite players next</span>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note"><b>Behind this screen:</b> <code>POST /api/sessions</code> consumes one session credit and stamps the
+session with <code>funding_invoice_id</code> &mdash; the permanent link between this game and the client's S$10,000
+payment. Player invitations, teams, and the live game itself are completely unchanged.</div>
+
+<!-- ════════════════════ SCREEN 9 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">9</span>After the training — Produce AAR triggers the payout</h2>
+<p class="step-sub">The trainer concludes the session and produces the after-action report exactly as today. The new part:
+Black Swan recognises the funded engagement is complete and queues the trainer's S$3,000 for admin release.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>sessions/8f21&hellip;/aar</b></div></div>
+  <div class="app">
+    <div class="appnav">
+      <div class="logo">BLACK<span>SWAN</span></div>
+      <div class="links"><span>Dashboard</span><span>Clients</span><span>Scenarios</span><span class="on">Sessions</span><span>War Room</span></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <div>
+        <div style="font-weight:800; font-size:18px; color:var(--brand);">After-Action Review &mdash; Post-training game</div>
+        <div style="font-size:12.5px; color:var(--muted);">Meridian Foods engagement &middot; session completed Jul 22, 16:40 &middot; 14 participants</div>
+      </div>
+      <span class="btn big">Produce AAR</span>
+    </div>
+
+    <div class="toast" style="border-left-color: var(--accent); max-width: 640px; margin-bottom:16px;">
+      <div class="tico" style="background:#FBEAD1; color:#92400E;">S$</div>
+      <div>
+        <div style="font-weight:700; font-size:13px; color:var(--brand);">AAR produced &mdash; training engagement concluded</div>
+        <div style="font-size:12px; color:var(--muted);">Your payout of <b style="color:var(--brand);">S$3,000</b> (30% of the Meridian Foods invoice) is now
+        <b>pending review</b>. Payouts are typically released within 2 business days.</div>
+      </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; max-width:760px;">
+      <div class="card" style="padding:14px;"><div class="applabel">Decisions</div><div style="font-weight:800; font-size:20px; color:var(--brand);">47</div></div>
+      <div class="card" style="padding:14px;"><div class="applabel">Avg latency</div><div style="font-weight:800; font-size:20px; color:var(--brand);">6.2m</div></div>
+      <div class="card" style="padding:14px;"><div class="applabel">Coordination</div><div style="font-weight:800; font-size:20px; color:var(--success);">81/100</div></div>
+      <div class="card" style="padding:14px;"><div class="applabel">vs. pre-training</div><div style="font-weight:800; font-size:20px; color:var(--success);">+24</div></div>
+    </div>
+  </div>
+</div>
+<div class="note"><b>Behind this screen:</b> after the AAR saves, the payout flips
+<code>awaiting_completion &rarr; pending_release</code> (first AAR only &mdash; regenerating, or the other game's AAR,
+can never double-trigger). Admins are notified for review.</div>
+
+<!-- ════════════════════ SCREEN 10 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">10</span>Trainer's earnings view</h2>
+<p class="step-sub">On the Clients page, the trainer tracks every payout across engagements and its plain-language status.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>clients</b> &middot; My earnings</div></div>
+  <div class="app">
+    <div style="font-weight:800; font-size:16px; color:var(--brand); margin-bottom:12px;">My earnings</div>
+    <div class="card" style="max-width:780px;">
+      <table class="mini-table">
+        <tr><th>Engagement</th><th>Invoice</th><th>Your share</th><th>Status</th></tr>
+        <tr>
+          <td><b>Meridian Foods Pte Ltd</b><br/><span style="color:var(--muted); font-size:11px;">Product Recall Firestorm &middot; 2 sessions run</span></td>
+          <td>S$10,000 &middot; paid Jul 9</td>
+          <td style="font-weight:800; color:var(--brand);">S$3,000</td>
+          <td><span class="badge amber">Pending release</span></td>
+        </tr>
+        <tr>
+          <td><b>Harbourline Transit</b><br/><span style="color:var(--muted); font-size:11px;">Station Incident Response &middot; concluded Jun 12</span></td>
+          <td>S$10,000 &middot; paid May 30</td>
+          <td style="font-weight:800; color:var(--brand);">S$3,000</td>
+          <td><span class="badge green">Released Jun 13</span></td>
+        </tr>
+        <tr>
+          <td><b>Northgate Utilities</b><br/><span style="color:var(--muted); font-size:11px;">Grid Failure Exercise &middot; sessions not yet run</span></td>
+          <td>S$10,000 &middot; paid Jul 2</td>
+          <td style="font-weight:800; color:var(--brand);">S$3,000</td>
+          <td><span class="badge gray">Awaiting training</span></td>
+        </tr>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════ SCREEN 11 ════════════════════ -->
+<h2 class="step-title"><span class="stepnum">11</span>Admin payout review — the release valve</h2>
+<p class="step-sub">Black Swan admins see every payout with the context needed to judge it: real session activity, both
+games' status, and the trainer's onboarding state. One click wires the transfer; Hold freezes it with a reason.</p>
+
+<div class="browser">
+  <div class="bar"><div class="dots"><span></span><span></span><span></span></div><div class="url">blackswansimulations.com/<b>admin/payouts</b></div></div>
+  <div class="app">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+      <div style="font-weight:800; font-size:18px; color:var(--brand);">Payout review</div>
+      <div style="display:flex; gap:8px; font-size:11.5px; font-weight:700;">
+        <span class="badge amber">Pending release &middot; 2</span>
+        <span class="badge gray">Awaiting completion &middot; 4</span>
+        <span class="badge green">Released &middot; 11</span>
+        <span class="badge red">Held &middot; 1</span>
+      </div>
+    </div>
+    <div class="card">
+      <table class="mini-table">
+        <tr><th>Trainer</th><th>Client / engagement</th><th>Sessions run</th><th>AAR</th><th>Payout</th><th></th></tr>
+        <tr>
+          <td><b>Sarah Lim</b><br/><span style="color:var(--muted); font-size:11px;">Payouts: verified &#10003;</span></td>
+          <td>Meridian Foods &middot; S$10,000 paid Jul 9</td>
+          <td>2 of 2 &middot; 14 &amp; 16 players<br/><span style="color:var(--muted); font-size:11px;">3h 40m &middot; 3h 55m</span></td>
+          <td>Jul 22</td>
+          <td style="font-weight:800; color:var(--brand);">S$3,000</td>
+          <td style="white-space:nowrap;"><span class="btn" style="padding:7px 14px;">Release</span> <span class="btn-danger-outline" style="padding:7px 14px;">Hold</span></td>
+        </tr>
+        <tr>
+          <td><b>Marcus Chen</b><br/><span style="color:var(--danger); font-size:11px;">Payouts: setup incomplete</span></td>
+          <td>Apex Logistics &middot; S$10,000 paid Jul 1</td>
+          <td>1 of 2 &middot; 5 players<br/><span style="color:var(--danger); font-size:11px;">22 minutes &#9888;</span></td>
+          <td>Jul 8</td>
+          <td style="font-weight:800; color:var(--brand);">S$3,000</td>
+          <td style="white-space:nowrap;"><span class="btn disabled" style="padding:7px 14px;">Release</span> <span class="btn-danger-outline" style="padding:7px 14px;">Hold</span></td>
+        </tr>
+      </table>
+    </div>
+    <div style="font-size:11.5px; color:var(--muted); margin-top:10px; max-width:760px;">
+      Release executes a Stripe transfer of the trainer's share to their verified account. The second row shows the
+      safeguards working: a suspiciously short session and incomplete payout setup both surface before any money moves.
+    </div>
+  </div>
+</div>
+
+<footer>
+  Black Swan Simulations &middot; Payment portal screen mockups &middot; July 2026<br/>
+  Companion docs: <b>payment-portal-plan.html</b> (full technical plan, security audit) &middot; rendered in the app's live design tokens.
+</footer>
+
+</div>
+</body>
+</html>

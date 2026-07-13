@@ -2213,6 +2213,25 @@ export const api = {
         await fetch(apiUrl('/api/billing/admin/trainers'), { headers }),
       );
     },
+
+    enrollTrainer: async (body: { email: string; full_name: string; agency_name?: string }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          id: string;
+          email: string;
+          full_name: string;
+          temporary_password: string;
+          email_sent: boolean;
+        };
+      }>(
+        await fetch(apiUrl('/api/billing/admin/trainers'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
   },
 
   bombSquad: {
