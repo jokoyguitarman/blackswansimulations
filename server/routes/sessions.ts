@@ -87,8 +87,12 @@ router.get(
         )
         .order('created_at', { ascending: false });
 
-      // Non-trainers only see sessions they're part of
-      if (user.role !== 'trainer' && user.role !== 'admin') {
+      // Visibility: admins see every session; trainers see only their own
+      // (marketplace model - independent trainers must not see each other's
+      // client sessions); everyone else sees sessions they participate in.
+      if (user.role === 'trainer') {
+        query = query.eq('trainer_id', user.id);
+      } else if (user.role !== 'admin') {
         logger.info(
           { userId: user.id },
           'Non-trainer: fetching sessions from session_participants',

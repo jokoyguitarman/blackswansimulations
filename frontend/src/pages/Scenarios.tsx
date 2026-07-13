@@ -93,16 +93,33 @@ export const Scenarios = () => {
                 {scenarios.length} scenario{scenarios.length !== 1 ? 's' : ''} available
               </p>
             </div>
-            {isTrainer && (
-              <div className="flex gap-3">
-                <Link
-                  to="/warroom"
-                  className="px-5 py-2.5 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
-                >
-                  War Room
-                </Link>
-              </div>
-            )}
+            <div className="flex flex-wrap gap-3">
+              <Link
+                to="/dashboard"
+                className="px-5 py-2.5 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
+              >
+                Dashboard
+              </Link>
+              <Link
+                to="/sessions"
+                className="px-5 py-2.5 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
+              >
+                Sessions
+              </Link>
+              {isTrainer && (
+                <>
+                  <Link
+                    to="/clients"
+                    className="px-5 py-2.5 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
+                  >
+                    Clients &amp; billing
+                  </Link>
+                  <Link to="/warroom" className="military-button px-5 py-2.5 text-sm">
+                    War Room
+                  </Link>
+                </>
+              )}
+            </div>
           </div>
         </div>
 

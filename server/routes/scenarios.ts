@@ -120,8 +120,12 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       .select('*')
       .order('created_at', { ascending: false });
 
-    // Non-trainers only see active scenarios
-    if (!isTrainer) {
+    // Visibility: admins see every scenario; trainers see only their own
+    // (marketplace model - trainers are independent customers and must not
+    // browse each other's work); non-trainers only see active scenarios.
+    if (user.role === 'trainer') {
+      query = query.eq('created_by', user.id);
+    } else if (!isTrainer) {
       query = query.eq('is_active', true);
     }
 
