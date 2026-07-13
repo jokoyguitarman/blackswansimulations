@@ -114,9 +114,11 @@ export const Dashboard = () => {
             </div>
             <div className="bg-surface-2 border border-border rounded-lg p-4">
               <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
-                Agency
+                {user?.role === 'admin' ? 'Organisation' : 'Agency'}
               </div>
-              <div className="text-lg font-bold text-ink">{user?.agency || 'Not assigned'}</div>
+              <div className="text-lg font-bold text-ink">
+                {user?.role === 'admin' ? 'Advanced AI Solutions' : user?.agency || 'Not assigned'}
+              </div>
             </div>
           </div>
 
