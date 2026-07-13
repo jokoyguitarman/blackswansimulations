@@ -33,6 +33,25 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to fetch profile' });
     }
 
+    // Opportunistic sync after a confirmed email change: usernames default to
+    // the signup email, so when the auth email has moved on, follow it (only
+    // when the stored username is itself an email, i.e. was never customized).
+    if (
+      user.email &&
+      typeof data.username === 'string' &&
+      data.username.includes('@') &&
+      data.username !== user.email
+    ) {
+      const { error: syncError } = await supabaseAdmin
+        .from('user_profiles')
+        .update({ username: user.email })
+        .eq('id', user.id);
+      if (!syncError) {
+        data.username = user.email;
+        logger.info({ userId: user.id }, 'Profile username synced to new auth email');
+      }
+    }
+
     res.json({ data });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /profile');

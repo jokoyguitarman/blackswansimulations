@@ -31,6 +31,11 @@ export const AccountSettings = () => {
   const [savingPassword, setSavingPassword] = useState(false);
   const [passwordMsg, setPasswordMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
+  // Email
+  const [newEmail, setNewEmail] = useState('');
+  const [savingEmail, setSavingEmail] = useState(false);
+  const [emailMsg, setEmailMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
   // Payout account
   const [connectStatus, setConnectStatus] = useState<'none' | 'pending' | 'complete' | null>(null);
   const [openingStripe, setOpeningStripe] = useState(false);
@@ -102,6 +107,38 @@ export const AccountSettings = () => {
       });
     } finally {
       setSavingPassword(false);
+    }
+  };
+
+  const handleChangeEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setEmailMsg(null);
+    if (!newEmail || newEmail.toLowerCase() === email.toLowerCase()) {
+      setEmailMsg({ ok: false, text: 'Enter a different email address.' });
+      return;
+    }
+    setSavingEmail(true);
+    try {
+      // Supabase's secure email change: confirmation links are sent to BOTH
+      // the current and the new address; the change only applies after both
+      // are confirmed. Nothing changes until then.
+      const { error } = await supabase.auth.updateUser(
+        { email: newEmail },
+        { emailRedirectTo: `${window.location.origin}/account` },
+      );
+      if (error) throw error;
+      setEmailMsg({
+        ok: true,
+        text: `Confirmation links sent to ${email} and ${newEmail}. Open BOTH emails and click the links to complete the change - until then you keep signing in with your current email.`,
+      });
+      setNewEmail('');
+    } catch (err) {
+      setEmailMsg({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Failed to start email change',
+      });
+    } finally {
+      setSavingEmail(false);
     }
   };
 
@@ -192,6 +229,55 @@ export const AccountSettings = () => {
             className="military-button px-6 py-2 text-sm disabled:opacity-50"
           >
             {savingProfile ? 'Saving…' : 'Save profile'}
+          </button>
+        </form>
+
+        {/* Email */}
+        <form
+          onSubmit={handleChangeEmail}
+          className="bg-surface border border-border rounded-xl shadow-sm p-6 mb-6"
+        >
+          <div className="text-sm font-bold text-brand mb-1">Change sign-in email</div>
+          <p className="text-xs text-muted mb-4">
+            For security, confirmation links are sent to <b>both</b> your current and your new
+            address - the change only takes effect after both are confirmed.
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-muted mb-1.5">
+                Current email
+              </label>
+              <input
+                value={email}
+                disabled
+                className="w-full px-3 py-2 text-sm bg-surface-2 border border-border-strong rounded-lg text-muted"
+              />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wide text-muted mb-1.5">
+                New email
+              </label>
+              <input
+                required
+                type="email"
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="w-full px-3 py-2 text-sm bg-surface border border-border-strong rounded-lg text-ink placeholder:text-muted/60 focus:outline-none focus:border-brand"
+              />
+            </div>
+          </div>
+          {emailMsg && (
+            <div className={`text-xs mb-3 ${emailMsg.ok ? 'text-success' : 'text-danger'}`}>
+              {emailMsg.text}
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={savingEmail}
+            className="military-button px-6 py-2 text-sm disabled:opacity-50"
+          >
+            {savingEmail ? 'Sending confirmations…' : 'Change email'}
           </button>
         </form>
 
