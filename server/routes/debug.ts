@@ -6,6 +6,7 @@ import {
   fetchRouteGeometries,
   type OsmBuilding,
   type FetchLogEntry,
+  type OsmSourcePreference,
   type RoadFootprint,
   type OsmRouteGeometry,
 } from '../services/osmVicinityService.js';
@@ -73,6 +74,9 @@ router.get('/building-studs', requireAuth, async (req, res) => {
   const includeRoads = ['1', 'true', 'yes'].includes(
     String(req.query.includeRoads ?? '').toLowerCase(),
   );
+  const requestedSource = String(req.query.osmSource ?? 'auto').toLowerCase();
+  const osmSourcePreference: OsmSourcePreference =
+    requestedSource === 'local_cache' || requestedSource === 'live_osm' ? requestedSource : 'auto';
 
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
@@ -132,7 +136,10 @@ router.get('/building-studs', requireAuth, async (req, res) => {
     }
   } else {
     try {
-      const result = await fetchVenueBuilding(lat, lng, radius, { withLog: true });
+      const result = await fetchVenueBuilding(lat, lng, radius, {
+        withLog: true,
+        sourcePreference: osmSourcePreference,
+      });
       buildings = result.buildings;
       fetchLog = result.fetchLog;
     } catch (err) {
@@ -151,13 +158,22 @@ router.get('/building-studs', requireAuth, async (req, res) => {
     if (includeRoads) {
       const roadStart = Date.now();
       try {
-        roads = await fetchRoadFootprints(lat, lng, radius);
-        fetchLog.push({
-          phase: 'roads',
-          status: roads.length > 0 ? 'ok' : 'empty',
-          latencyMs: Date.now() - roadStart,
-          detail: `Road footprint query returned ${roads.length} polygons`,
-        });
+        if (osmSourcePreference === 'local_cache') {
+          fetchLog.push({
+            phase: 'roads',
+            status: 'skipped',
+            latencyMs: Date.now() - roadStart,
+            detail: 'Road footprint polygons skipped because local cache mode is selected',
+          });
+        } else {
+          roads = await fetchRoadFootprints(lat, lng, radius);
+          fetchLog.push({
+            phase: 'roads',
+            status: roads.length > 0 ? 'ok' : 'empty',
+            latencyMs: Date.now() - roadStart,
+            detail: `Road footprint query returned ${roads.length} polygons`,
+          });
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         fetchLog.push({
@@ -171,15 +187,24 @@ router.get('/building-studs', requireAuth, async (req, res) => {
       const roadCenterlineStart = Date.now();
       try {
         const roadCenterlineLimit =
-          radius <= 500 ? 600 : radius <= 1000 ? 2000 : Math.min(3000, radius * 2);
-        roadPolylines = await fetchRouteGeometries(lat, lng, radius, {
+          osmSourcePreference === 'local_cache'
+            ? undefined
+            : radius <= 500
+              ? 600
+              : radius <= 1000
+                ? 2000
+                : Math.min(3000, radius * 2);
+        const roadCenterlineResult = await fetchRouteGeometries(lat, lng, radius, {
           maxResults: roadCenterlineLimit,
+          sourcePreference: osmSourcePreference,
+          withMeta: true,
         });
+        roadPolylines = roadCenterlineResult.roads;
         fetchLog.push({
           phase: 'road_centerlines',
           status: roadPolylines.length > 0 ? 'ok' : 'empty',
           latencyMs: Date.now() - roadCenterlineStart,
-          detail: `Road centerline query returned ${roadPolylines.length} polylines (limit ${roadCenterlineLimit})`,
+          detail: `Road centerline query returned ${roadPolylines.length} polylines from ${roadCenterlineResult.source} (${roadCenterlineLimit == null ? 'uncapped local-cache mode' : `limit ${roadCenterlineLimit}`})`,
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -262,6 +287,7 @@ router.get('/building-studs', requireAuth, async (req, res) => {
     stats: {
       fetchMs,
       fetchSource,
+      osmSourcePreference,
       gridMs,
       buildingsReturned: buildings.length,
       buildingsWithPolygon: withPolygon.length,

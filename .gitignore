@@ -39,3 +39,7 @@ docs/Sample of Radical Messages*.zip
 # Load test output
 loadtest-report*.json
 loadtest/.token-cache.json
+
+# Local OSM source and generated cache artifacts
+server/data/*.osm.pbf
+server/data/generated/
