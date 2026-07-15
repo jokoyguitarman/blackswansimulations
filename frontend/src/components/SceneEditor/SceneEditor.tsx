@@ -124,6 +124,8 @@ interface RoadPolylineItem {
   distanceFromCenterM: number;
 }
 
+type OsmSourceMode = 'local_cache' | 'live_osm';
+
 const STUD_SPACING_M = 3;
 const EXTERIOR_PADDING_M = 150;
 
@@ -186,31 +188,33 @@ function clipRoadPolylineToRadius(
 
   const isInside = (pt: { x: number; y: number }) => Math.hypot(pt.x, pt.y) <= radiusMeters;
 
-  const intersectionWithCircle = (
+  const intersectionsWithCircle = (
     p1: { x: number; y: number },
     p2: { x: number; y: number },
-  ): { x: number; y: number } | null => {
+  ): Array<{ x: number; y: number; t: number }> => {
     const dx = p2.x - p1.x;
     const dy = p2.y - p1.y;
     const a = dx * dx + dy * dy;
-    if (a < 0.001) return null;
+    if (a < 0.001) return [];
 
     const b = 2 * (p1.x * dx + p1.y * dy);
     const c = p1.x * p1.x + p1.y * p1.y - radiusMeters * radiusMeters;
     const discriminant = b * b - 4 * a * c;
-    if (discriminant < 0) return null;
+    if (discriminant < 0) return [];
 
     const sqrtDisc = Math.sqrt(discriminant);
     const t1 = (-b - sqrtDisc) / (2 * a);
     const t2 = (-b + sqrtDisc) / (2 * a);
-    const validTs = [t1, t2].filter((t) => t >= 0 && t <= 1);
-    if (validTs.length === 0) return null;
+    const validTs = [t1, t2]
+      .filter((t) => t >= 0 && t <= 1)
+      .sort((left, right) => left - right)
+      .filter((t, index, arr) => index === 0 || Math.abs(t - arr[index - 1]) > 0.0001);
 
-    const t = validTs[0];
-    return {
+    return validTs.map((t) => ({
       x: p1.x + dx * t,
       y: p1.y + dy * t,
-    };
+      t,
+    }));
   };
 
   for (let i = 0; i < points.length; i++) {
@@ -230,16 +234,24 @@ function clipRoadPolylineToRadius(
       continue;
     }
 
-    const intersection = intersectionWithCircle(prev, curr);
-    if (!intersection) continue;
-
     if (prevInside && !currInside) {
-      clipped.push(intersection);
+      const [intersection] = intersectionsWithCircle(prev, curr);
+      if (intersection) clipped.push(intersection);
       continue;
     }
 
     if (!prevInside && currInside) {
-      clipped.push(intersection, curr);
+      const intersections = intersectionsWithCircle(prev, curr);
+      const intersection = intersections[0];
+      if (intersection) clipped.push(intersection, curr);
+      continue;
+    }
+
+    if (!prevInside && !currInside) {
+      const intersections = intersectionsWithCircle(prev, curr);
+      if (intersections.length === 2) {
+        clipped.push(intersections[0], intersections[1]);
+      }
     }
   }
 
@@ -406,6 +418,7 @@ export function SceneEditor({
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [radius, setRadius] = useState('500');
+  const [osmSourceMode, setOsmSourceMode] = useState<OsmSourceMode>('local_cache');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<
     Array<{ lat: string; lon: string; display_name: string }>
@@ -754,6 +767,7 @@ export function SceneEditor({
       if (radius) params.set('radius', radius);
       params.set('includeStuds', '0');
       params.set('includeRoads', '1');
+      params.set('osmSource', osmSourceMode);
       const res = await fetch(apiUrl(`/api/debug/building-studs?${params}`), { headers });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
@@ -767,7 +781,7 @@ export function SceneEditor({
     } finally {
       setFetchLoading(false);
     }
-  }, [lat, lng, radius]);
+  }, [lat, lng, radius, osmSourceMode]);
 
   useEffect(() => {
     const radiusChanged = prevRadiusRef.current !== radius;
@@ -792,6 +806,26 @@ export function SceneEditor({
       }
     };
   }, [radius, phase, isDrawing, lat, lng, handleFetch]);
+
+  useEffect(() => {
+    if (phase !== 'map' || isDrawing) return;
+    if (!hasFetchedMapResultsRef.current) return;
+    if (!lat || !lng) return;
+
+    if (radiusRefetchTimerRef.current) {
+      clearTimeout(radiusRefetchTimerRef.current);
+    }
+
+    radiusRefetchTimerRef.current = setTimeout(() => {
+      void handleFetch();
+    }, 200);
+
+    return () => {
+      if (radiusRefetchTimerRef.current) {
+        clearTimeout(radiusRefetchTimerRef.current);
+      }
+    };
+  }, [osmSourceMode, phase, isDrawing, lat, lng, handleFetch]);
 
   // ── Select building → enter edit mode ─────────────────────────────────
 
@@ -1651,6 +1685,20 @@ export function SceneEditor({
             </div>
           </div>
 
+          <div>
+            <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+              OSM Source
+            </label>
+            <select
+              value={osmSourceMode}
+              onChange={(e) => setOsmSourceMode(e.target.value as OsmSourceMode)}
+              className="w-full mt-0.5 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+            >
+              <option value="local_cache">Local Cache (Supabase)</option>
+              <option value="live_osm">Live OSM Endpoint</option>
+            </select>
+          </div>
+
           {/* Drawing mode status */}
           {isDrawing ? (
             <div className="space-y-3">
@@ -1805,7 +1853,8 @@ export function SceneEditor({
             <div className="space-y-2">
               <p className="text-xs terminal-text text-robotic-yellow/50">
                 {fetchResult.grids.length} buildings found. {displayRoadPolylines.length} drivable
-                roads shown in blue with estimated width. Select one:
+                roads shown in blue with estimated width. Source mode:{' '}
+                {osmSourceMode === 'local_cache' ? 'local cache' : 'live OSM'}. Select one:
               </p>
               <div className="space-y-1 max-h-60 overflow-y-auto">
                 {fetchResult.grids.map((g, i) => (

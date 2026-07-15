@@ -18,6 +18,8 @@
     "lint": "eslint \"{src,server,shared}/**/*.{ts,tsx}\"",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
+    "generate:sg-osm": "node scripts/generate_singapore_local_osm.mjs",
+    "import:sg-osm": "node scripts/import_singapore_local_osm.mjs",
     "prepare": "husky install",
     "test": "node --import tsx --test server/services/blueprint/blueprintMerge.test.ts server/services/blueprint/blueprintTypes.test.ts server/services/blueprint/directorLogic.test.ts server/services/extremistDoctrine.test.ts",
     "loadtest": "tsx loadtest/run.ts"
@@ -57,6 +59,7 @@
     "nodemon": "^3.1.10",
     "prettier": "^3.6.2",
     "socket.io-client": "^4.8.3",
+    "supabase": "^2.109.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3",
@@ -85,7 +88,6 @@
     "pino-pretty": "^13.1.2",
     "sharp": "^0.33.5",
     "socket.io": "^4.8.1",
-    "supabase": "^2.54.11",
     "zod": "^4.1.12"
   }
 }

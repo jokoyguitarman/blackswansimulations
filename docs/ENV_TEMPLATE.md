@@ -36,6 +36,10 @@ ENABLE_AUTO_INJECTS=true
 # Interval in milliseconds for checking if injects should be published (default: 30000 = 30 seconds)
 INJECT_SCHEDULER_INTERVAL_MS=30000
 
+# Prefer Singapore OSM roads/buildings already cached in Supabase over live Overpass calls.
+# Falls back to live OSM automatically if disabled or cache tables are empty.
+ENABLE_LOCAL_OSM_SINGAPORE=false
+
 # Security (Generate secure random strings for production)
 # Run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 SESSION_SECRET=change-this-to-a-secure-random-string
