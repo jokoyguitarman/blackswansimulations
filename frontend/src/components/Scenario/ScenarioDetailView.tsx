@@ -215,14 +215,42 @@ function itemLabel(item: unknown): string {
   return parts.join(' ');
 }
 
-const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
-  <div className="mb-6">
-    <h3 className="text-xs terminal-text text-muted uppercase tracking-widest mb-3 border-b border-border pb-1">
-      {title}
-    </h3>
-    {children}
-  </div>
-);
+/** Per-topic hue + icon so each section is visually identifiable at a glance. */
+const sectionStyle = (
+  title: string,
+): { icon: string; tile: string; text: string; rule: string } => {
+  if (/escalation|risk|hazard|threat/i.test(title))
+    return { icon: '⚠️', tile: 'bg-danger', text: 'text-danger', rule: 'border-danger/25' };
+  if (/objective/i.test(title))
+    return { icon: '🎯', tile: 'bg-accent', text: 'text-accent', rule: 'border-accent/30' };
+  if (/intelligence|fact/i.test(title))
+    return { icon: '🔍', tile: 'bg-accent', text: 'text-accent', rule: 'border-accent/30' };
+  if (/briefing/i.test(title))
+    return { icon: '🎙️', tile: 'bg-brand', text: 'text-brand', rule: 'border-brand/25' };
+  if (/role|team/i.test(title))
+    return { icon: '👥', tile: 'bg-brand', text: 'text-brand', rule: 'border-brand/25' };
+  if (/description/i.test(title))
+    return { icon: '📋', tile: 'bg-brand', text: 'text-brand', rule: 'border-brand/25' };
+  return { icon: '▦', tile: 'bg-brand', text: 'text-brand', rule: 'border-brand/25' };
+};
+
+const Section = ({ title, children }: { title: string; children: React.ReactNode }) => {
+  const s = sectionStyle(title);
+  return (
+    <div className="mb-7">
+      <div className={`flex items-center gap-2.5 mb-3 pb-2 border-b-2 ${s.rule}`}>
+        <span
+          className={`w-7 h-7 rounded-lg grid place-items-center text-sm text-white flex-shrink-0 ${s.tile}`}
+          aria-hidden
+        >
+          {s.icon}
+        </span>
+        <h3 className={`text-sm font-extrabold uppercase tracking-wide ${s.text}`}>{title}</h3>
+      </div>
+      {children}
+    </div>
+  );
+};
 
 const tabs = [
   'Overview',
@@ -361,7 +389,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
+      <div className="fixed inset-0 bg-ink/40 backdrop-blur-md flex items-center justify-center z-50 p-4">
         <div className="bg-surface border border-border rounded-2xl shadow-lg px-8 py-6">
           <div className="text-lg text-ink animate-pulse">Loading scenario data…</div>
         </div>
@@ -371,7 +399,7 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
   if (!scenario) {
     return (
-      <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50">
+      <div className="fixed inset-0 bg-ink/40 backdrop-blur-md flex items-center justify-center z-50">
         <div className="military-border p-8 text-center">
           <p className="terminal-text text-danger">Failed to load scenario</p>
           <button onClick={onClose} className="mt-4 military-button px-4 py-2 text-sm">
@@ -401,44 +429,66 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
   const flatStandards = typeof ik?.sector_standards === 'string' ? ik.sector_standards : null;
 
   return (
-    <div className="fixed inset-0 bg-ink/40 flex items-start justify-center z-50 p-4 overflow-y-auto">
-      <div className="military-border bg-surface w-full max-w-5xl my-4">
-        {/* Header */}
-        <div className="border-b border-border p-6 flex justify-between items-start">
-          <div className="flex-1 pr-4">
-            <div className="flex items-center gap-3 mb-1">
-              <h1 className="text-xl terminal-text">{scenario.title}</h1>
-              <span
-                className={`text-xs terminal-text px-2 py-0.5 border ${
-                  scenario.is_active ? 'border-accent text-ink' : 'border-border text-muted'
-                }`}
-              >
-                {scenario.is_active ? 'Active' : 'Draft'}
-              </span>
-            </div>
-            <div className="flex gap-4 text-xs terminal-text text-muted">
-              <span>{scenario.category.replace(/_/g, ' ')}</span>
-              <span>{scenario.difficulty}</span>
-              <span>{scenario.duration_minutes} min</span>
-              <span>{teams.length} teams</span>
-              <span>{injects.length} injects</span>
+    <div className="fixed inset-0 bg-ink/40 backdrop-blur-md flex items-start justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg w-full max-w-5xl my-2 flex flex-col max-h-[94vh] overflow-hidden">
+        {/* Sticky header */}
+        <div className="flex-shrink-0 border-b border-border px-6 pt-5 pb-4 flex justify-between items-start bg-gradient-to-b from-white to-[#FDFBF7]">
+          <div className="flex-1 pr-4 flex items-start gap-3">
+            <span
+              className="w-11 h-11 rounded-xl bg-brand text-white grid place-items-center text-xl flex-shrink-0"
+              aria-hidden
+            >
+              🗺️
+            </span>
+            <div>
+              <h1 className="text-lg font-extrabold text-brand leading-snug">{scenario.title}</h1>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                <span
+                  className={`text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full ${
+                    scenario.is_active
+                      ? 'bg-success/10 text-success'
+                      : 'bg-surface-2 text-muted border border-border'
+                  }`}
+                >
+                  {scenario.is_active ? 'Active' : 'Draft'}
+                </span>
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-brand/10 text-brand capitalize">
+                  {scenario.category.replace(/_/g, ' ')}
+                </span>
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-accent/10 text-accent capitalize">
+                  {scenario.difficulty}
+                </span>
+                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
+                  {scenario.duration_minutes} min
+                </span>
+                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
+                  {teams.length} teams
+                </span>
+                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
+                  {injects.length} injects
+                </span>
+              </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-accent hover:text-ink terminal-text text-lg">
-            ×
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="w-9 h-9 rounded-lg border border-border bg-surface text-muted hover:text-ink hover:border-border-strong text-base flex-shrink-0"
+          >
+            ✕
           </button>
         </div>
 
-        {/* Tabs */}
-        <div className="border-b border-border flex overflow-x-auto">
+        {/* Sticky tabs */}
+        <div className="flex-shrink-0 border-b border-border flex overflow-x-auto bg-surface shadow-[0_3px_8px_rgba(23,32,51,0.04)]">
           {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-xs terminal-text whitespace-nowrap transition-all ${
+              className={`px-5 py-3 text-xs font-semibold whitespace-nowrap transition-all border-b-2 ${
                 activeTab === tab
-                  ? 'border-b-2 border-accent text-ink'
-                  : 'text-muted hover:text-ink'
+                  ? 'border-accent text-brand'
+                  : 'border-transparent text-muted hover:text-brand'
               }`}
             >
               {tab}
@@ -446,8 +496,8 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
           ))}
         </div>
 
-        {/* Tab content */}
-        <div className="p-6">
+        {/* Scrollable tab content */}
+        <div className="p-6 flex-1 overflow-y-auto">
           {/* ─── OVERVIEW ─── */}
           {activeTab === 'Overview' && (
             <div>
@@ -457,18 +507,25 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
 
               {scenario.briefing && (
                 <Section title="Operational Briefing">
-                  <p className="text-sm terminal-text leading-relaxed whitespace-pre-wrap">
-                    {scenario.briefing}
-                  </p>
+                  <div className="bg-gradient-to-br from-brand/5 to-brand/10 border border-brand/20 border-l-4 border-l-brand rounded-lg px-4 py-3.5">
+                    <p className="text-sm terminal-text leading-relaxed whitespace-pre-wrap">
+                      {scenario.briefing}
+                    </p>
+                  </div>
                 </Section>
               )}
 
               <Section title="Objectives">
-                <ul className="space-y-1">
+                <ul className="space-y-2">
                   {scenario.objectives.map((obj, i) => (
-                    <li key={i} className="text-sm terminal-text flex gap-2">
-                      <span className="text-muted">{i + 1}.</span>
-                      {obj}
+                    <li
+                      key={i}
+                      className="text-sm terminal-text flex items-start gap-3 bg-surface-2 border border-border rounded-lg px-3.5 py-2.5"
+                    >
+                      <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-extrabold grid place-items-center flex-shrink-0">
+                        {i + 1}
+                      </span>
+                      <span className="pt-0.5">{obj}</span>
                     </li>
                   ))}
                 </ul>
@@ -570,8 +627,11 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                       </button>
                     </div>
                     {ik.custom_facts.map((fact, i) => (
-                      <div key={i} className="military-border p-3">
-                        <div className="text-xs terminal-text text-muted uppercase mb-1">
+                      <div
+                        key={i}
+                        className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3"
+                      >
+                        <div className="text-[11px] font-extrabold text-accent uppercase tracking-wide mb-1">
                           {fact.topic}
                         </div>
                         <p className="text-sm terminal-text">{fact.summary}</p>
@@ -590,14 +650,19 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
                 <Section title="Baseline Escalation Factors">
                   <div className="space-y-2">
                     {ik.baseline_escalation_factors.map((f, i) => (
-                      <div key={i} className="flex gap-3 items-start">
+                      <div
+                        key={i}
+                        className="flex gap-3 items-start bg-surface border border-border rounded-lg px-3.5 py-2.5"
+                      >
                         <span
-                          className={`text-xs terminal-text px-1.5 py-0.5 border shrink-0 ${SEVERITY_COLORS[f.severity] ?? 'text-warning border-warning'}`}
+                          className={`text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-md border shrink-0 mt-0.5 ${SEVERITY_COLORS[f.severity] ?? 'text-warning border-warning'}`}
                         >
                           {f.severity.toUpperCase()}
                         </span>
                         <div>
-                          <div className="text-xs terminal-text text-ink font-medium">{f.name}</div>
+                          <div className="text-sm terminal-text text-ink font-semibold">
+                            {f.name}
+                          </div>
                           <p className="text-xs terminal-text text-muted">{f.description}</p>
                         </div>
                       </div>

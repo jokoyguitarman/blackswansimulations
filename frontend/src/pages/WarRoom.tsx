@@ -522,7 +522,7 @@ export const WarRoom = () => {
         </div>
 
         {/* Step progress bar */}
-        <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0">
+        <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0 sticky top-0 z-30 shadow-md">
           <div className="flex items-center gap-1 overflow-x-auto">
             {VISIBLE_STEPS.map((s, i) => {
               const isCurrent = s === step;
@@ -638,7 +638,9 @@ export const WarRoom = () => {
         )}
 
         {/* Step content */}
-        <div className={`military-border mb-4 sm:mb-6 ${step === 3 ? 'p-0' : 'p-4 sm:p-6'}`}>
+        <div
+          className={`military-border mb-4 sm:mb-6 ${step === 3 ? 'p-0' : 'p-4 sm:p-6 pb-8 sm:pb-10'}`}
+        >
           {step === 0 && (
             <div className="space-y-6">
               <h2 className="text-xl terminal-text font-bold">Select Simulation Mode</h2>
@@ -884,7 +886,7 @@ export const WarRoom = () => {
           )}
 
           {step === 3 && (
-            <div className="w-full" style={{ height: 'calc(100vh - 200px)', minHeight: 350 }}>
+            <div className="w-full" style={{ height: 'calc(100vh - 240px)', minHeight: 350 }}>
               <SceneEditor
                 incidentType={incidentType || 'bombing'}
                 initialSceneId={rtsSceneId}
@@ -942,7 +944,7 @@ export const WarRoom = () => {
         </div>
 
         {/* Navigation buttons */}
-        <div className="flex justify-between items-center flex-shrink-0 pt-2">
+        <div className="flex justify-between items-center flex-shrink-0 sticky bottom-0 z-30 bg-surface border-t border-border px-4 py-3 shadow-[0_-3px_8px_rgba(23,32,51,0.04)]">
           <button
             onClick={goBack}
             disabled={!canGoBack}

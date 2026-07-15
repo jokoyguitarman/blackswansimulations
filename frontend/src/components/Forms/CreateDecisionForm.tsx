@@ -140,130 +140,136 @@ export const CreateDecisionForm = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-surface p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-xl terminal-text mb-6">
-          {showScriptEditor
-            ? 'Draft public statement'
-            : isPreemptive
-              ? 'Pre-emptive decision'
-              : 'Respond to incident'}
-        </h2>
+    <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="flex-shrink-0 px-6 py-4 border-b border-border flex items-center justify-between">
+          <h2 className="text-lg font-bold text-brand">
+            {showScriptEditor
+              ? 'Draft public statement'
+              : isPreemptive
+                ? 'Pre-emptive decision'
+                : 'Respond to incident'}
+          </h2>
+        </div>
 
-        {editorialFeedback && (
-          <div className="mb-6 p-4 border border-accent/60 bg-accent/10">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-accent text-xs terminal-text font-bold">
-                Editorial Review — {editorialFeedback.verdict.replace('_', ' ')}
-              </span>
-              <span className="text-accent text-xs terminal-text">
-                Score: {editorialFeedback.score}/10
-              </span>
-            </div>
-            <p className="text-xs terminal-text text-muted italic">
-              {editorialFeedback.editor_name}:
-            </p>
-            <p className="text-xs terminal-text text-ink mt-1 whitespace-pre-wrap">
-              {editorialFeedback.feedback}
-            </p>
-          </div>
-        )}
-
-        {isPreemptive && !showScriptEditor && (
-          <p className="text-xs terminal-text text-muted mb-4">
-            This decision is not in response to a specific incident. Use this to establish
-            pre-emptive measures, protocols, or resource allocations proactively.
-          </p>
-        )}
-
-        {showCoordinationHint && (
-          <div className="mb-4 p-3 border border-brand/40 bg-brand/10">
-            <p className="text-xs terminal-text text-brand">
-              This inject requires a public statement. Your team should coordinate with the Media
-              team — provide them with verified facts from your operational domain.
-            </p>
-          </div>
-        )}
-
-        {showScriptEditor && (
-          <div className="flex items-center gap-3 mb-4">
-            <button
-              type="button"
-              onClick={() => setUseStructuredMode(true)}
-              className={`text-xs terminal-text px-3 py-1 border ${useStructuredMode ? 'border-success text-success bg-success/10' : 'border-border text-muted'}`}
-            >
-              Structured script
-            </button>
-            <button
-              type="button"
-              onClick={() => setUseStructuredMode(false)}
-              className={`text-xs terminal-text px-3 py-1 border ${!useStructuredMode ? 'border-success text-success bg-success/10' : 'border-border text-muted'}`}
-            >
-              Free text
-            </button>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {useStructuredMode && showScriptEditor ? (
-            SCRIPT_SECTIONS.map((section) => (
-              <div key={section.key}>
-                <label className="block text-xs terminal-text text-ink mb-1">{section.label}</label>
-                <textarea
-                  value={scriptSections[section.key]}
-                  onChange={(e) =>
-                    setScriptSections((prev) => ({ ...prev, [section.key]: e.target.value }))
-                  }
-                  className="w-full px-4 py-2 military-input terminal-text text-sm"
-                  rows={section.rows}
-                  placeholder={section.placeholder}
-                />
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            {editorialFeedback && (
+              <div className="p-4 border border-accent/60 bg-accent/10">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="text-accent text-xs terminal-text font-bold">
+                    Editorial Review — {editorialFeedback.verdict.replace('_', ' ')}
+                  </span>
+                  <span className="text-accent text-xs terminal-text">
+                    Score: {editorialFeedback.score}/10
+                  </span>
+                </div>
+                <p className="text-xs terminal-text text-muted italic">
+                  {editorialFeedback.editor_name}:
+                </p>
+                <p className="text-xs terminal-text text-ink mt-1 whitespace-pre-wrap">
+                  {editorialFeedback.feedback}
+                </p>
               </div>
-            ))
-          ) : (
-            <div>
-              <label className="block text-xs terminal-text text-ink mb-2">Description</label>
-              <div className="relative">
-                <textarea
-                  required
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-3 pr-12 military-input terminal-text"
-                  rows={showScriptEditor ? 8 : 4}
-                  placeholder={
-                    showCoordinationHint
-                      ? 'Coordinate with the Media team. Example: "Communicate to media team: We have 23 patients in treatment, 4 critical. All hazards contained."'
-                      : isPreemptive
-                        ? 'Describe your pre-emptive decision, protocol, or resource allocation...'
-                        : 'Type or speak your decision...'
-                  }
-                />
-                <VoiceMicButton
-                  onTranscript={(text) =>
-                    setDescription((prev) => (prev ? `${prev} ${text}` : text))
-                  }
-                  disabled={loading}
-                  className="absolute bottom-2 right-2"
-                />
-              </div>
-            </div>
-          )}
+            )}
 
-          <div className="flex gap-4 pt-4 border-t border-border">
-            <button
-              type="submit"
-              disabled={loading}
-              className="military-button px-6 py-3 flex-1 border-success text-success hover:bg-success/10 disabled:opacity-50"
-            >
-              {loading ? 'Executing…' : showScriptEditor ? 'Submit for review' : 'Execute decision'}
-            </button>
+            {isPreemptive && !showScriptEditor && (
+              <p className="text-xs terminal-text text-muted">
+                This decision is not in response to a specific incident. Use this to establish
+                pre-emptive measures, protocols, or resource allocations proactively.
+              </p>
+            )}
+
+            {showCoordinationHint && (
+              <div className="p-3 border border-brand/40 bg-brand/10">
+                <p className="text-xs terminal-text text-brand">
+                  This inject requires a public statement. Your team should coordinate with the
+                  Media team — provide them with verified facts from your operational domain.
+                </p>
+              </div>
+            )}
+
+            {showScriptEditor && (
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setUseStructuredMode(true)}
+                  className={`text-xs terminal-text px-3 py-1 border ${useStructuredMode ? 'border-success text-success bg-success/10' : 'border-border text-muted'}`}
+                >
+                  Structured script
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUseStructuredMode(false)}
+                  className={`text-xs terminal-text px-3 py-1 border ${!useStructuredMode ? 'border-success text-success bg-success/10' : 'border-border text-muted'}`}
+                >
+                  Free text
+                </button>
+              </div>
+            )}
+
+            {useStructuredMode && showScriptEditor ? (
+              SCRIPT_SECTIONS.map((section) => (
+                <div key={section.key}>
+                  <label className="block text-xs terminal-text text-ink mb-1">
+                    {section.label}
+                  </label>
+                  <textarea
+                    value={scriptSections[section.key]}
+                    onChange={(e) =>
+                      setScriptSections((prev) => ({ ...prev, [section.key]: e.target.value }))
+                    }
+                    className="w-full px-4 py-2 military-input terminal-text text-sm"
+                    rows={section.rows}
+                    placeholder={section.placeholder}
+                  />
+                </div>
+              ))
+            ) : (
+              <div>
+                <label className="block text-xs terminal-text text-ink mb-2">Description</label>
+                <div className="relative">
+                  <textarea
+                    required
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="w-full px-4 py-3 pr-12 military-input terminal-text"
+                    rows={showScriptEditor ? 8 : 4}
+                    placeholder={
+                      showCoordinationHint
+                        ? 'Coordinate with the Media team. Example: "Communicate to media team: We have 23 patients in treatment, 4 critical. All hazards contained."'
+                        : isPreemptive
+                          ? 'Describe your pre-emptive decision, protocol, or resource allocation...'
+                          : 'Type or speak your decision...'
+                    }
+                  />
+                  <VoiceMicButton
+                    onTranscript={(text) =>
+                      setDescription((prev) => (prev ? `${prev} ${text}` : text))
+                    }
+                    disabled={loading}
+                    className="absolute bottom-2 right-2"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex-shrink-0 flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-2">
             <button
               type="button"
               onClick={onClose}
               disabled={loading}
-              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent disabled:opacity-50"
+              className="military-button-outline px-6 py-3 border border-accent text-accent disabled:opacity-50"
             >
               Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="military-button px-6 py-3 border-success text-success hover:bg-success/10 disabled:opacity-50"
+            >
+              {loading ? 'Executing…' : showScriptEditor ? 'Submit for review' : 'Execute decision'}
             </button>
           </div>
         </form>

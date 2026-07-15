@@ -37,6 +37,103 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   recommendations: 'Key takeaways and recommendations',
 };
 
+/** Slugify a section heading into a DOM id for the sticky jump-nav. */
+function slugifyHeading(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-+|-+$)/g, '');
+}
+
+/** Keyword-based mapping of heading text → icon tile + hue classes (presentational only). */
+const SECTION_HEADING_STYLES: Array<{
+  pattern: RegExp;
+  icon: string;
+  tile: string;
+  title: string;
+  border: string;
+}> = [
+  {
+    pattern: /executive|summary|overview/i,
+    icon: '📋',
+    tile: 'bg-brand',
+    title: 'text-brand',
+    border: 'border-brand/25',
+  },
+  {
+    pattern: /metric|score|matri|statistic/i,
+    icon: '📊',
+    tile: 'bg-accent',
+    title: 'text-accent',
+    border: 'border-accent/25',
+  },
+  {
+    pattern: /strength|positive|recommendation|takeaway/i,
+    icon: '✅',
+    tile: 'bg-success',
+    title: 'text-success',
+    border: 'border-success/25',
+  },
+  {
+    pattern: /weakness|escalation|failure|cancel/i,
+    icon: '⚠️',
+    tile: 'bg-danger',
+    title: 'text-danger',
+    border: 'border-danger/25',
+  },
+];
+
+const DEFAULT_HEADING_STYLE = {
+  icon: '📄',
+  tile: 'bg-brand',
+  title: 'text-brand',
+  border: 'border-brand/25',
+};
+
+function SectionHeading({ title }: { title: string }) {
+  const style = SECTION_HEADING_STYLES.find((s) => s.pattern.test(title)) ?? DEFAULT_HEADING_STYLE;
+  return (
+    <div className={`flex items-center gap-2.5 mb-3 pb-2 border-b-2 ${style.border}`}>
+      <span
+        aria-hidden="true"
+        className={`w-7 h-7 rounded-lg grid place-items-center text-sm text-white ${style.tile}`}
+      >
+        {style.icon}
+      </span>
+      <h4 className={`text-sm font-extrabold uppercase tracking-wide ${style.title}`}>{title}</h4>
+    </div>
+  );
+}
+
+const VERDICT_PILL_BASE = 'text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full';
+
+/** Map a quality/verdict string to pill classes; null if it doesn't look like a verdict. */
+function verdictPillClasses(verdict: string): string | null {
+  if (/\b(good|strong|robust|high)\b/i.test(verdict)) return 'bg-success/10 text-success';
+  if (/\b(poor|costly|weak|low|fragile)\b/i.test(verdict)) return 'bg-danger/10 text-danger';
+  if (/\b(mixed|neutral|moderate|medium|adequate)\b/i.test(verdict))
+    return 'bg-accent/10 text-accent';
+  return null;
+}
+
+/** Render a verdict string as a pill badge when recognized, otherwise as plain text. */
+function VerdictBadge({ verdict }: { verdict: string }) {
+  const classes = verdictPillClasses(verdict);
+  if (!classes) return <>{verdict}</>;
+  return <span className={`${VERDICT_PILL_BASE} ${classes}`}>{verdict}</span>;
+}
+
+/** Stat card for a simple label → value pair (key-metrics style sections). */
+function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
+      <div className="text-[10px] font-bold text-muted uppercase tracking-wide">{label}</div>
+      <div className="text-2xl font-extrabold text-brand break-words">{value}</div>
+      <div className="h-[3px] w-8 bg-accent rounded mt-2" />
+    </div>
+  );
+}
+
 interface AARData {
   aar: {
     id: string;
@@ -92,9 +189,31 @@ function AARSectionView({
   };
 }) {
   const sections = aar.sections ?? {};
+  const presentKeys = AAR_SECTION_KEYS.filter((key) => sections[key] != null);
   return (
-    <div className="military-border p-6 space-y-8">
-      <div className="text-xs terminal-text text-muted mb-4">
+    <div className="military-border space-y-8 pb-6">
+      {presentKeys.length > 0 && (
+        <nav
+          aria-label="AAR sections"
+          className="sticky top-0 z-20 bg-surface border-b border-border shadow-sm flex gap-1 overflow-x-auto px-2 rounded-t-xl"
+        >
+          {presentKeys.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className="text-xs font-semibold text-muted px-3 py-2.5 border-b-2 border-transparent hover:text-brand whitespace-nowrap"
+              onClick={() =>
+                document
+                  .getElementById(`aar-section-${slugifyHeading(AAR_SECTION_LABELS[key])}`)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              {AAR_SECTION_LABELS[key]}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="text-xs terminal-text text-muted mb-4 px-6">
         Generated: {new Date(aar.generated_at).toLocaleString()} (section-based report)
       </div>
       {AAR_SECTION_KEYS.map((key) => {
@@ -104,10 +223,13 @@ function AARSectionView({
         const analysis = entry.analysis;
         const label = AAR_SECTION_LABELS[key];
         return (
-          <div key={key} className="space-y-2">
-            <h4 className="text-sm terminal-text text-muted border-b border-border pb-1">
-              {label}
-            </h4>
+          <div
+            key={key}
+            id={`aar-section-${slugifyHeading(label)}`}
+            style={{ scrollMarginTop: 56 }}
+            className="space-y-2 px-6"
+          >
+            <SectionHeading title={label} />
             {data != null && (
               <div className="military-border p-4 bg-surface-2">
                 <div className="text-xs terminal-text text-muted mb-2">Data</div>
@@ -159,10 +281,20 @@ function formatCellValue(value: unknown): React.ReactNode {
   );
 }
 
-/** Key-value table for a plain object. */
+/** Key-value table for a plain object. Flat all-numeric objects render as stat cards. */
 function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data);
   if (entries.length === 0) return null;
+  const allNumeric = entries.every(([, v]) => typeof v === 'number' && Number.isFinite(v));
+  if (allNumeric) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        {entries.map(([k, v]) => (
+          <StatCard key={k} label={k.replace(/_/g, ' ')} value={String(v)} />
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs terminal-text">
@@ -312,7 +444,11 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
               </div>
             </div>
             <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border text-muted">
-              {p.robustness != null && <span>Robustness: {String(p.robustness)}</span>}
+              {p.robustness != null && (
+                <span className="inline-flex items-center gap-1">
+                  Robustness: <VerdictBadge verdict={String(p.robustness)} />
+                </span>
+              )}
               {p.latencyMinutes != null && <span>Latency: {String(p.latencyMinutes)} min</span>}
               {p.insiderConsulted != null && (
                 <span>Insider consulted: {p.insiderConsulted ? 'Yes' : 'No'}</span>
@@ -760,45 +896,36 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
         ) : (
           <div className="military-border p-6 space-y-6">
             <div>
-              <h4 className="text-sm terminal-text text-muted mb-2">Summary</h4>
+              <SectionHeading title="Summary" />
               <p className="text-sm terminal-text whitespace-pre-wrap">{aarData.aar.summary}</p>
             </div>
 
             {/* Key Metrics */}
             {metrics && (
               <div>
-                <h4 className="text-sm terminal-text text-muted mb-4">Key metrics</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <SectionHeading title="Key metrics" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {metrics.decision_latency ? (
-                    <div className="military-border p-4">
-                      <div className="text-xs terminal-text text-muted mb-2">Decision latency</div>
-                      <div className="text-sm terminal-text">
-                        Avg:{' '}
-                        {(
-                          (metrics.decision_latency as { avg_minutes?: number }).avg_minutes || 0
-                        ).toFixed(1)}{' '}
-                        min
-                      </div>
-                    </div>
+                    <StatCard
+                      label="Decision latency (avg)"
+                      value={`${(
+                        (metrics.decision_latency as { avg_minutes?: number }).avg_minutes || 0
+                      ).toFixed(1)} min`}
+                    />
                   ) : null}
                   {metrics.coordination ? (
-                    <div className="military-border p-4">
-                      <div className="text-xs terminal-text text-muted mb-2">
-                        Coordination score
-                      </div>
-                      <div className="text-sm terminal-text">
-                        {(metrics.coordination as { overall_score?: number }).overall_score || 0}
-                        /100
-                      </div>
-                    </div>
+                    <StatCard
+                      label="Coordination score"
+                      value={`${
+                        (metrics.coordination as { overall_score?: number }).overall_score || 0
+                      }/100`}
+                    />
                   ) : null}
                   {metrics.compliance ? (
-                    <div className="military-border p-4">
-                      <div className="text-xs terminal-text text-muted mb-2">Compliance rate</div>
-                      <div className="text-sm terminal-text">
-                        {((metrics.compliance as { rate?: number }).rate || 0).toFixed(1)}%
-                      </div>
-                    </div>
+                    <StatCard
+                      label="Compliance rate"
+                      value={`${((metrics.compliance as { rate?: number }).rate || 0).toFixed(1)}%`}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -807,7 +934,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
             {/* AI Insights */}
             {aarData.aar.ai_insights && aarData.aar.ai_insights.length > 0 && (
               <div>
-                <h4 className="text-sm terminal-text text-muted mb-2">AI insights</h4>
+                <SectionHeading title="AI insights" />
                 <div className="space-y-2">
                   {aarData.aar.ai_insights.map(
                     (insight: { type?: string; content?: string }, idx) => (
@@ -825,7 +952,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
 
             {aarData.aar.key_decisions.length > 0 && (
               <div>
-                <h4 className="text-sm terminal-text text-muted mb-2">Key decisions</h4>
+                <SectionHeading title="Key decisions" />
                 <div className="space-y-2">
                   {aarData.aar.key_decisions.slice(0, 10).map((decision: unknown, idx: number) => {
                     const d = decision as { title?: string; type?: string; status?: string };
@@ -846,7 +973,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
 
             {aarData.aar.recommendations.length > 0 && (
               <div>
-                <h4 className="text-sm terminal-text text-muted mb-2">Recommendations</h4>
+                <SectionHeading title="Recommendations" />
                 <ul className="list-disc list-inside space-y-1">
                   {aarData.aar.recommendations.map((rec, idx) => (
                     <li key={idx} className="text-sm terminal-text">
@@ -876,7 +1003,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
       {/* Decision Quality Heat Meter */}
       {heatMeter && Object.keys(heatMeter).length > 0 && (
         <div className="military-border p-6">
-          <h4 className="text-sm terminal-text text-muted mb-4">Decision quality</h4>
+          <SectionHeading title="Decision quality" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {Object.entries(heatMeter).map(([team, data]) => {
               const pct = data.heat_percentage ?? 0;
@@ -944,7 +1071,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
       {/* Participant Scores */}
       {aarData.scores.length > 0 && (
         <div className="military-border p-6">
-          <h4 className="text-sm terminal-text text-muted mb-4">Participant scores</h4>
+          <SectionHeading title="Participant scores" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {aarData.scores.map((score) => (
               <div key={score.user_id} className="military-border p-4">
@@ -983,26 +1110,20 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
 
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="military-border p-4">
-          <div className="text-xs terminal-text text-muted mb-1">Events</div>
-          <div className="text-2xl terminal-text text-ink">{aarData.events.length}</div>
-        </div>
-        <div className="military-border p-4">
-          <div className="text-xs terminal-text text-muted mb-1">Decisions</div>
-          <div className="text-2xl terminal-text text-ink">{aarData.decisions.length}</div>
-        </div>
-        <div className="military-border p-4">
-          <div className="text-xs terminal-text text-muted mb-1">Duration</div>
-          <div className="text-sm terminal-text text-ink">
-            {aarData.session.start_time && aarData.session.end_time
+        <StatCard label="Events" value={aarData.events.length} />
+        <StatCard label="Decisions" value={aarData.decisions.length} />
+        <StatCard
+          label="Duration"
+          value={
+            aarData.session.start_time && aarData.session.end_time
               ? `${Math.round(
                   (new Date(aarData.session.end_time).getTime() -
                     new Date(aarData.session.start_time).getTime()) /
                     60000,
-                )} minutes`
-              : 'N/A'}
-          </div>
-        </div>
+                )} min`
+              : 'N/A'
+          }
+        />
       </div>
     </div>
   );

@@ -3,6 +3,19 @@ import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { useAuth } from '../../contexts/AuthContext';
 
+// Mirrors the session shape used in pages/Sessions.tsx (participants included by the API).
+interface SessionRow {
+  status?: string;
+  participants?: Array<{ user_id: string }>;
+}
+
+interface DashboardStats {
+  scenarios: number | null;
+  activeSessions: number | null;
+  totalSessions: number | null;
+  participants: number | null;
+}
+
 export function TrainerDashboard() {
   const { user } = useAuth();
   const isAdminUser = user?.role === 'admin';
@@ -10,6 +23,40 @@ export function TrainerDashboard() {
   const [credits, setCredits] = useState<{ scenario: number; session: number } | null>(null);
   const [clientCount, setClientCount] = useState<number | null>(null);
   const [pendingPayouts, setPendingPayouts] = useState<number | null>(null);
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.allSettled([api.scenarios.list(), api.sessions.list(1, 50)]).then(
+      ([scenariosResult, sessionsResult]) => {
+        if (cancelled) return;
+        const next: DashboardStats = {
+          scenarios: null,
+          activeSessions: null,
+          totalSessions: null,
+          participants: null,
+        };
+        if (scenariosResult.status === 'fulfilled') {
+          next.scenarios = (scenariosResult.value.data || []).length;
+        }
+        if (sessionsResult.status === 'fulfilled') {
+          const rows = (sessionsResult.value.data || []) as SessionRow[];
+          next.totalSessions = sessionsResult.value.count ?? rows.length;
+          next.activeSessions = rows.filter((s) => s.status === 'in_progress').length;
+          const hasParticipants = rows.some((s) => Array.isArray(s.participants));
+          if (hasParticipants) {
+            const uniqueIds = new Set<string>();
+            rows.forEach((s) => s.participants?.forEach((p) => uniqueIds.add(p.user_id)));
+            next.participants = uniqueIds.size;
+          }
+        }
+        setStats(next);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (isAdminUser) {
@@ -59,6 +106,32 @@ export function TrainerDashboard() {
             ? 'As admin, you have unlimited access to all features - no credits or usage limits apply to your account.'
             : 'As trainer, you have complete visibility into all agency activities, decisions, and blind spots. Use this to monitor exercise progress and provide guidance.'}
         </p>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        {[
+          { label: 'Scenarios', value: stats?.scenarios, icon: '🗺️' },
+          { label: 'Active sessions', value: stats?.activeSessions, icon: '📡' },
+          { label: 'Total sessions', value: stats?.totalSessions, icon: '🗂️' },
+          { label: 'Participants', value: stats?.participants, icon: '👥' },
+        ].map(({ label, value, icon }) => (
+          <div
+            key={label}
+            className="bg-surface border border-border rounded-xl p-4 shadow-sm relative"
+          >
+            <div className="absolute top-3 right-3 w-8 h-8 rounded-lg bg-brand/5 grid place-items-center text-sm">
+              {icon}
+            </div>
+            <div className="text-[11px] font-bold text-muted uppercase tracking-wide">{label}</div>
+            {stats === null ? (
+              <div className="skeleton w-12 h-8 mt-1" />
+            ) : (
+              <div className="text-3xl font-extrabold text-brand mt-1">{value ?? '—'}</div>
+            )}
+            <div className="h-[3px] w-8 bg-accent rounded mt-3" />
+          </div>
+        ))}
       </div>
 
       {/* Modules */}

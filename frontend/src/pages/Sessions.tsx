@@ -108,10 +108,21 @@ export const Sessions = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-lg text-ink mb-2 animate-pulse">Loading</div>
-          <div className="text-xs text-muted">Loading sessions…</div>
+      <div className="min-h-screen">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="bg-surface border border-border rounded-xl shadow-sm p-6 mb-6">
+            <div className="skeleton w-48 h-6 mb-2" />
+            <div className="skeleton w-32 h-4" />
+          </div>
+          <div className="space-y-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="bg-surface border border-border rounded-xl p-6">
+                <div className="skeleton w-2/3 h-5 mb-3" />
+                <div className="skeleton w-full h-3 mb-2" />
+                <div className="skeleton w-4/5 h-3" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -241,10 +252,23 @@ export const Sessions = () => {
         </div>
 
         {sessions.length === 0 && (
-          <div className="bg-surface border border-border rounded-xl shadow-sm p-12 text-center">
-            <p className="text-lg text-muted mb-2">No sessions available</p>
+          <div className="border border-dashed border-border-strong rounded-xl bg-surface p-10 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-brand/5 grid place-items-center text-2xl mx-auto mb-3">
+              🗂️
+            </div>
+            <p className="text-lg font-bold text-ink mb-1">No sessions yet</p>
+            <p className="text-sm text-muted mb-4">
+              {isTrainer
+                ? 'Create a session from a scenario to get started.'
+                : 'You have not been invited to any sessions yet.'}
+            </p>
             {isTrainer && (
-              <p className="text-sm text-muted">Create a session from a scenario to get started</p>
+              <button
+                onClick={() => navigate('/scenarios')}
+                className="military-button px-5 py-2.5"
+              >
+                Browse scenarios
+              </button>
             )}
           </div>
         )}

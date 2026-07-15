@@ -460,10 +460,12 @@ export const DecisionWorkflow = ({
 
       {/* Decision Detail Modal */}
       {selectedDecision && (
-        <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
-          <div className="military-border bg-surface p-8 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-start mb-4">
-              <h2 className="text-xl terminal-text">{selectedDecision.title}</h2>
+        <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-surface border border-border rounded-2xl shadow-lg max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="flex-shrink-0 px-6 py-4 border-b border-border flex items-center justify-between">
+              <h2 className="text-lg font-bold text-brand terminal-text">
+                {selectedDecision.title}
+              </h2>
               <button
                 onClick={() => setSelectedDecision(null)}
                 className="text-accent hover:text-ink"
@@ -471,7 +473,7 @@ export const DecisionWorkflow = ({
                 Close
               </button>
             </div>
-            <div className="space-y-4">
+            <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
               <div>
                 <h3 className="text-sm terminal-text text-muted mb-2">Description</h3>
                 <p className="text-sm terminal-text">{selectedDecision.description}</p>
@@ -624,37 +626,42 @@ export const DecisionWorkflow = ({
                     </p>
                   </div>
                 )}
-
-              {canApprove(selectedDecision) && (
-                <div className="flex flex-col sm:flex-row gap-2 sm:gap-4 pt-4 border-t border-border">
-                  <button
-                    onClick={() => handleApprove(selectedDecision.id, true)}
-                    className="military-button px-6 py-3 flex-1 whitespace-nowrap"
-                  >
-                    Approve
-                  </button>
-                  <button
-                    onClick={() => handleApprove(selectedDecision.id, false)}
-                    className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent whitespace-nowrap"
-                  >
-                    Reject
-                  </button>
-                </div>
-              )}
-              {(selectedDecision.status === 'approved' ||
-                (selectedDecision.status === 'proposed' &&
-                  (selectedDecision.creator?.id === user?.id ||
-                    selectedDecision.proposed_by === user?.id))) && (
-                <div className="pt-4 border-t border-border">
+            </div>
+            {(canApprove(selectedDecision) ||
+              selectedDecision.status === 'approved' ||
+              (selectedDecision.status === 'proposed' &&
+                (selectedDecision.creator?.id === user?.id ||
+                  selectedDecision.proposed_by === user?.id))) && (
+              <div className="flex-shrink-0 flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-2">
+                {canApprove(selectedDecision) && (
+                  <>
+                    <button
+                      onClick={() => handleApprove(selectedDecision.id, false)}
+                      className="military-button-outline px-6 py-3 border border-accent text-accent whitespace-nowrap"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      onClick={() => handleApprove(selectedDecision.id, true)}
+                      className="military-button px-6 py-3 whitespace-nowrap"
+                    >
+                      Approve
+                    </button>
+                  </>
+                )}
+                {(selectedDecision.status === 'approved' ||
+                  (selectedDecision.status === 'proposed' &&
+                    (selectedDecision.creator?.id === user?.id ||
+                      selectedDecision.proposed_by === user?.id))) && (
                   <button
                     onClick={() => handleExecute(selectedDecision.id)}
-                    className="military-button px-6 py-3 w-full border-success text-success hover:bg-success/10"
+                    className="military-button px-6 py-3 border-success text-success hover:bg-success/10 whitespace-nowrap"
                   >
                     Execute decision
                   </button>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

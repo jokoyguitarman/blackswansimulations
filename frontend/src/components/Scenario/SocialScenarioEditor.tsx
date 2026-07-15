@@ -212,106 +212,123 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
   );
 
   return (
-    <div className="fixed inset-0 bg-ink/50 z-50 overflow-y-auto p-4 sm:p-6">
-      <div className="max-w-4xl mx-auto my-2 bg-surface border border-border rounded-2xl shadow-lg p-6 sm:p-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-4">
+    <div className="fixed inset-0 bg-ink/40 backdrop-blur-md z-50 flex items-start justify-center p-4 sm:p-6">
+      <div className="max-w-4xl w-full my-2 bg-surface border border-border rounded-2xl shadow-lg flex flex-col max-h-[94vh] overflow-hidden">
+        {/* Sticky header */}
+        <div className="flex-shrink-0 flex items-center justify-between px-6 sm:px-8 pt-5 pb-4 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7]">
           <div className="flex items-center gap-3">
-            <span className="text-2xl">📱</span>
+            <span
+              className="w-11 h-11 rounded-xl bg-accent text-white grid place-items-center text-xl flex-shrink-0"
+              aria-hidden
+            >
+              📱
+            </span>
             <div>
-              <h1 className="text-xl text-ink font-bold">{scen.title}</h1>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs px-2 py-0.5 bg-brand/10 text-brand rounded">
+              <h1 className="text-lg font-extrabold text-brand leading-snug">{scen.title}</h1>
+              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-accent/10 text-accent">
                   Social Media Crisis
                 </span>
-                <span className="text-xs text-muted">{scen.duration_minutes}min</span>
-                <span className="text-xs text-muted">{teamList.length} teams</span>
-                <span className="text-xs text-muted">{injectList.length} injects</span>
+                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
+                  {scen.duration_minutes} min
+                </span>
+                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
+                  {teamList.length} teams
+                </span>
+                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
+                  {injectList.length} injects
+                </span>
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-muted hover:text-ink text-2xl px-2">
-            ×
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="w-9 h-9 rounded-lg border border-border bg-surface text-muted hover:text-ink hover:border-border-strong text-base flex-shrink-0"
+          >
+            ✕
           </button>
         </div>
 
-        {/* Edit lock banner */}
-        {editability === null ? (
-          <div className="text-xs text-muted mb-4 animate-pulse">Checking edit permissions…</div>
-        ) : locked ? (
-          <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 mb-5 flex items-start gap-2">
-            <span className="text-warning text-base">🔒</span>
-            <div>
-              <div className="text-xs font-bold text-ink">Editing locked</div>
-              <div className="text-xs text-muted mt-0.5">
-                {editabilityError
-                  ? `Could not verify edit permissions: ${editabilityError}`
-                  : editability.reason === 'live_session'
-                    ? 'A session on this scenario is currently live. Editing resumes when it ends.'
-                    : 'No session launch credits remaining. Editing reopens when credits are topped up.'}
+        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-5">
+          {/* Edit lock banner */}
+          {editability === null ? (
+            <div className="text-xs text-muted mb-4 animate-pulse">Checking edit permissions…</div>
+          ) : locked ? (
+            <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 mb-5 flex items-start gap-2">
+              <span className="text-warning text-base">🔒</span>
+              <div>
+                <div className="text-xs font-bold text-ink">Editing locked</div>
+                <div className="text-xs text-muted mt-0.5">
+                  {editabilityError
+                    ? `Could not verify edit permissions: ${editabilityError}`
+                    : editability.reason === 'live_session'
+                      ? 'A session on this scenario is currently live. Editing resumes when it ends.'
+                      : 'No session launch credits remaining. Editing reopens when credits are topped up.'}
+                </div>
               </div>
             </div>
-          </div>
-        ) : (
-          <div className="bg-brand/5 border border-brand/20 rounded-lg p-3 mb-5">
-            <div className="text-xs text-muted">
-              Everything below is editable — changes apply to all sessions launched after saving.
-              <span className="text-muted">
-                {' '}
-                Session credits remaining: {editability.session_credits}
-              </span>
+          ) : (
+            <div className="bg-brand/5 border border-brand/20 rounded-lg p-3 mb-5">
+              <div className="text-xs text-muted">
+                Everything below is editable — changes apply to all sessions launched after saving.
+                <span className="text-muted">
+                  {' '}
+                  Session credits remaining: {editability.session_credits}
+                </span>
+              </div>
             </div>
+          )}
+
+          <OverviewSection scen={scen} setScen={setScen} scenarioId={scenarioId} locked={locked} />
+          <PersonasSection
+            scenarioId={scenarioId}
+            initialState={initialState}
+            saveInitialState={saveInitialState}
+            injectList={injectList}
+            setInjectList={setInjectList}
+            locked={locked}
+          />
+          <FactSheetSection
+            initialState={initialState}
+            saveInitialState={saveInitialState}
+            locked={locked}
+          />
+          <OrgPagesSection
+            initialState={initialState}
+            saveInitialState={saveInitialState}
+            locked={locked}
+          />
+          <InjectsSection
+            scenarioId={scenarioId}
+            injectList={injectList}
+            setInjectList={setInjectList}
+            teamList={teamList}
+            initialState={initialState}
+            locked={locked}
+          />
+          <TeamsSection
+            scenarioId={scenarioId}
+            teamList={teamList}
+            setTeamList={setTeamList}
+            locked={locked}
+          />
+          <ObjectivesSection
+            scenarioId={scenarioId}
+            objectiveList={objectiveList}
+            setObjectiveList={setObjectiveList}
+            locked={locked}
+          />
+          <ResearchGuidelinesSection
+            initialState={initialState}
+            saveInitialState={saveInitialState}
+            locked={locked}
+          />
+
+          <div className="text-xs text-muted mt-6">
+            Created {new Date(scen.created_at).toLocaleDateString()} | {objectiveList.length}{' '}
+            objectives | {injectList.length} injects
           </div>
-        )}
-
-        <OverviewSection scen={scen} setScen={setScen} scenarioId={scenarioId} locked={locked} />
-        <PersonasSection
-          scenarioId={scenarioId}
-          initialState={initialState}
-          saveInitialState={saveInitialState}
-          injectList={injectList}
-          setInjectList={setInjectList}
-          locked={locked}
-        />
-        <FactSheetSection
-          initialState={initialState}
-          saveInitialState={saveInitialState}
-          locked={locked}
-        />
-        <OrgPagesSection
-          initialState={initialState}
-          saveInitialState={saveInitialState}
-          locked={locked}
-        />
-        <InjectsSection
-          scenarioId={scenarioId}
-          injectList={injectList}
-          setInjectList={setInjectList}
-          teamList={teamList}
-          initialState={initialState}
-          locked={locked}
-        />
-        <TeamsSection
-          scenarioId={scenarioId}
-          teamList={teamList}
-          setTeamList={setTeamList}
-          locked={locked}
-        />
-        <ObjectivesSection
-          scenarioId={scenarioId}
-          objectiveList={objectiveList}
-          setObjectiveList={setObjectiveList}
-          locked={locked}
-        />
-        <ResearchGuidelinesSection
-          initialState={initialState}
-          saveInitialState={saveInitialState}
-          locked={locked}
-        />
-
-        <div className="text-xs text-muted mt-6">
-          Created {new Date(scen.created_at).toLocaleDateString()} | {objectiveList.length}{' '}
-          objectives | {injectList.length} injects
         </div>
       </div>
     </div>

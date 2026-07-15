@@ -80,6 +80,19 @@ body {
     position: relative;
   }
 
+  /* Loading skeleton shimmer */
+  @keyframes skeleton-shimmer {
+    0% { background-position: -400px 0; }
+    100% { background-position: 400px 0; }
+  }
+
+  .skeleton {
+    border-radius: 8px;
+    background: linear-gradient(90deg, var(--surface-2) 25%, #ece7db 37%, var(--surface-2) 63%);
+    background-size: 800px 100%;
+    animation: skeleton-shimmer 1.4s infinite linear;
+  }
+
   @keyframes incident-pulse {
     0% { opacity: 0.6; transform: scale(0.8); }
     70% { opacity: 0; transform: scale(1.6); }

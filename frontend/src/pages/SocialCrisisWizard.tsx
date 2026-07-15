@@ -1149,7 +1149,7 @@ export const SocialCrisisWizard = () => {
   /* ─── Render ─────────────────────────────────────────────────────── */
 
   const progressBar = (
-    <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0">
+    <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0 sticky top-0 z-30 shadow-md">
       <div className="flex items-center gap-1 overflow-x-auto">
         {VISIBLE_STEPS.map((s, i) => {
           const isCurrent = s === step;
@@ -2261,14 +2261,14 @@ export const SocialCrisisWizard = () => {
 
         {progressBar}
 
-        <div className="military-border p-4 sm:p-6 mb-4 sm:mb-6">
+        <div className="military-border p-4 sm:p-6 pb-8 sm:pb-10 mb-4 sm:mb-6">
           {step === 1 && renderStep1()}
           {step === 3 && renderBlueprintReview()}
           {step === 2 && renderBuilding()}
           {step === 7 && renderStep7()}
         </div>
 
-        <div className="flex justify-between items-center flex-shrink-0 pt-2">
+        <div className="flex justify-between items-center flex-shrink-0 sticky bottom-0 z-30 bg-surface border-t border-border px-4 py-3 shadow-[0_-3px_8px_rgba(23,32,51,0.04)]">
           <button
             onClick={goBack}
             className="px-6 py-3 text-xs terminal-text border border-border text-muted hover:border-accent"

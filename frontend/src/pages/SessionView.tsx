@@ -1383,7 +1383,7 @@ export const SessionView = () => {
     return (
       <div className="min-h-screen scanline">
         {/* Header */}
-        <div className="military-border border-b-2 border-border bg-surface">
+        <div className="sticky top-0 z-40 military-border border-b-2 border-border bg-surface shadow-md">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div>
@@ -1594,7 +1594,7 @@ export const SessionView = () => {
   return (
     <div className="min-h-screen scanline">
       {/* Header */}
-      <div className="military-border border-b-2 border-border bg-surface">
+      <div className="sticky top-0 z-40 military-border border-b-2 border-border bg-surface shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-6 flex-1">
@@ -2146,9 +2146,15 @@ export const SessionView = () => {
           aria-hidden={!showMapModule}
         >
           <div className="military-border p-6 bg-surface flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
-            <div className="flex justify-between items-center mb-3 flex-shrink-0">
-              <h3 className="text-lg terminal-text">Map</h3>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-3 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+              <span
+                className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                aria-hidden="true"
+              >
+                🗺️
+              </span>
+              <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">Map</h3>
+              <div className="ml-auto flex items-center gap-2">
                 <button
                   onClick={() => setShowMapDecisionForm(true)}
                   className="military-button px-4 py-2 text-xs terminal-text whitespace-nowrap border-success text-success hover:bg-success/10"
@@ -2254,13 +2260,21 @@ export const SessionView = () => {
               className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('incidents')}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text">Incidents</h3>
+              <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                <span
+                  className="w-6 h-6 rounded-md grid place-items-center text-xs bg-danger text-white"
+                  aria-hidden="true"
+                >
+                  🚨
+                </span>
+                <h3 className="text-xs font-extrabold uppercase tracking-wide text-danger">
+                  Incidents
+                </h3>
                 {cardNotifications['incidents'] === 'new' && (
-                  <div className="w-3 h-3 bg-success rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['incidents'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-accent rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2283,13 +2297,21 @@ export const SessionView = () => {
               className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('media')}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text">Media</h3>
+              <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                <span
+                  className="w-6 h-6 rounded-md grid place-items-center text-xs bg-accent text-white"
+                  aria-hidden="true"
+                >
+                  📰
+                </span>
+                <h3 className="text-xs font-extrabold uppercase tracking-wide text-accent">
+                  Media
+                </h3>
                 {cardNotifications['media'] === 'new' && (
-                  <div className="w-3 h-3 bg-success rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['media'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-accent rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2304,13 +2326,21 @@ export const SessionView = () => {
               className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('decisions')}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text">Decisions</h3>
+              <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                <span
+                  className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                  aria-hidden="true"
+                >
+                  ⚖️
+                </span>
+                <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
+                  Decisions
+                </h3>
                 {cardNotifications['decisions'] === 'new' && (
-                  <div className="w-3 h-3 bg-success rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['decisions'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-accent rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2330,13 +2360,21 @@ export const SessionView = () => {
               className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('chat')}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text">Chat</h3>
+              <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                <span
+                  className="w-6 h-6 rounded-md grid place-items-center text-xs bg-success text-white"
+                  aria-hidden="true"
+                >
+                  💬
+                </span>
+                <h3 className="text-xs font-extrabold uppercase tracking-wide text-success">
+                  Chat
+                </h3>
                 {cardNotifications['chat'] === 'new' && (
-                  <div className="w-3 h-3 bg-success rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['chat'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-accent rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2354,13 +2392,21 @@ export const SessionView = () => {
               className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('injects')}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text">Injects</h3>
+              <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                <span
+                  className="w-6 h-6 rounded-md grid place-items-center text-xs bg-accent text-white"
+                  aria-hidden="true"
+                >
+                  ⚡
+                </span>
+                <h3 className="text-xs font-extrabold uppercase tracking-wide text-accent">
+                  Injects
+                </h3>
                 {cardNotifications['injects'] === 'new' && (
-                  <div className="w-3 h-3 bg-success rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['injects'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-accent rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2375,13 +2421,21 @@ export const SessionView = () => {
               className="military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
               onClick={() => markCardViewed('participants')}
             >
-              <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                <h3 className="text-lg terminal-text">Participants</h3>
+              <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                <span
+                  className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                  aria-hidden="true"
+                >
+                  👥
+                </span>
+                <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
+                  Participants
+                </h3>
                 {cardNotifications['participants'] === 'new' && (
-                  <div className="w-3 h-3 bg-success rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                 )}
                 {cardNotifications['participants'] === 'viewed' && (
-                  <div className="w-3 h-3 bg-accent rounded-full"></div>
+                  <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                 )}
               </div>
               <div className="flex-1 overflow-y-auto min-h-0" onClick={(e) => e.stopPropagation()}>
@@ -2438,8 +2492,14 @@ export const SessionView = () => {
                 className="md:col-span-2 military-border p-6 bg-surface relative flex flex-col h-[750px]"
                 onClick={() => markCardViewed('env_truths')}
               >
-                <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                  <h3 className="text-lg terminal-text">
+                <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                  <span
+                    className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                    aria-hidden="true"
+                  >
+                    ▦
+                  </span>
+                  <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
                     Environmental Truths — conditions players are evaluated against
                   </h3>
                 </div>
@@ -2453,9 +2513,17 @@ export const SessionView = () => {
 
               {/* Trainer map - 2 columns, always visible, all pins */}
               <div className="md:col-span-2 military-border p-6 bg-surface flex flex-col h-[calc(100vh-120px)] min-h-[700px]">
-                <div className="flex justify-between items-center mb-3 flex-shrink-0">
-                  <h3 className="text-lg terminal-text">Trainer Map — all markings and pins</h3>
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-3 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                  <span
+                    className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                    aria-hidden="true"
+                  >
+                    🗺️
+                  </span>
+                  <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
+                    Trainer Map — all markings and pins
+                  </h3>
+                  <div className="ml-auto flex items-center gap-2">
                     <button
                       onClick={async () => {
                         const scId = session?.scenarios?.id ?? session?.scenario_id;
@@ -2567,13 +2635,21 @@ export const SessionView = () => {
                   className="md:col-span-2 military-border p-6 bg-surface relative cursor-pointer overflow-visible flex flex-col h-[750px]"
                   onClick={() => markCardViewed('decisions_ai')}
                 >
-                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                    <h3 className="text-lg terminal-text">Decisions & AI Ratings</h3>
+                  <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                    <span
+                      className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                      aria-hidden="true"
+                    >
+                      ⚖️
+                    </span>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
+                      Decisions & AI Ratings
+                    </h3>
                     {cardNotifications['decisions_ai'] === 'new' && (
-                      <div className="w-3 h-3 bg-success rounded-full"></div>
+                      <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                     )}
                     {cardNotifications['decisions_ai'] === 'viewed' && (
-                      <div className="w-3 h-3 bg-accent rounded-full"></div>
+                      <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                     )}
                   </div>
                   <div
@@ -2590,13 +2666,21 @@ export const SessionView = () => {
                 className="md:col-span-2 military-border p-6 bg-surface relative cursor-pointer flex flex-col h-[750px]"
                 onClick={() => markCardViewed('timeline')}
               >
-                <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                  <h3 className="text-lg terminal-text">Timeline — Session activity</h3>
+                <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                  <span
+                    className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                    aria-hidden="true"
+                  >
+                    ▦
+                  </span>
+                  <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
+                    Timeline — Session activity
+                  </h3>
                   {cardNotifications['timeline'] === 'new' && (
-                    <div className="w-3 h-3 bg-success rounded-full"></div>
+                    <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                   )}
                   {cardNotifications['timeline'] === 'viewed' && (
-                    <div className="w-3 h-3 bg-accent rounded-full"></div>
+                    <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                   )}
                 </div>
                 <div
@@ -2922,13 +3006,21 @@ export const SessionView = () => {
                   className="md:col-span-2 military-border p-6 bg-surface relative cursor-pointer flex flex-col h-[700px]"
                   onClick={() => markCardViewed('aar')}
                 >
-                  <div className="flex items-center justify-between mb-4 flex-shrink-0">
-                    <h3 className="text-lg terminal-text">AAR — After Action Review</h3>
+                  <div className="flex items-center gap-2.5 -mx-6 -mt-6 mb-4 px-4 py-2.5 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7] flex-shrink-0">
+                    <span
+                      className="w-6 h-6 rounded-md grid place-items-center text-xs bg-brand text-white"
+                      aria-hidden="true"
+                    >
+                      ▦
+                    </span>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
+                      AAR — After Action Review
+                    </h3>
                     {cardNotifications['aar'] === 'new' && (
-                      <div className="w-3 h-3 bg-success rounded-full"></div>
+                      <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
                     )}
                     {cardNotifications['aar'] === 'viewed' && (
-                      <div className="w-3 h-3 bg-accent rounded-full"></div>
+                      <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
                     )}
                   </div>
                   <div

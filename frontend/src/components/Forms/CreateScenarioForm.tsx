@@ -137,10 +137,10 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
   };
 
   return (
-    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl terminal-text">Create scenario</h2>
+    <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg max-w-3xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="flex-shrink-0 px-6 py-4 border-b border-border flex items-center justify-between">
+          <h2 className="text-lg font-bold text-brand">Create scenario</h2>
           {isTrainer && (
             <button
               type="button"
@@ -154,7 +154,7 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
 
         {/* AI Generator Panel */}
         {showAIGenerator && isTrainer && (
-          <div className="military-border p-6 mb-6 bg-accent/10 border-accent">
+          <div className="flex-shrink-0 military-border p-6 mx-6 mt-5 bg-accent/10 border-accent">
             <h3 className="text-sm terminal-text mb-4 text-ink">AI scenario generator</h3>
             <div className="space-y-4">
               <div>
@@ -211,218 +211,222 @@ export const CreateScenarioForm = ({ onClose, onSuccess }: CreateScenarioFormPro
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* Basic scenario fields - will be auto-filled by AI if used */}
-          <div>
-            <label className="block text-xs terminal-text text-ink mb-2">Title</label>
-            <input
-              type="text"
-              required
-              value={formData.title}
-              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-              className="w-full px-4 py-3 military-input terminal-text"
-              placeholder="Scenario Title"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs terminal-text text-ink mb-2">Description</label>
-            <textarea
-              required
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              className="w-full px-4 py-3 military-input terminal-text"
-              rows={4}
-              placeholder="Detailed scenario description..."
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            {/* Basic scenario fields - will be auto-filled by AI if used */}
             <div>
-              <label className="block text-xs terminal-text text-ink mb-2">Category</label>
-              <select
-                value={formData.category}
-                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              <label className="block text-xs terminal-text text-ink mb-2">Title</label>
+              <input
+                type="text"
+                required
+                value={formData.title}
+                onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                 className="w-full px-4 py-3 military-input terminal-text"
-              >
-                <option value="cyber">Cyber</option>
-                <option value="infrastructure">Infrastructure</option>
-                <option value="civil_unrest">Civil Unrest</option>
-                <option value="natural_disaster">Natural Disaster</option>
-                <option value="health_emergency">Health Emergency</option>
-                <option value="terrorism">Terrorism</option>
-                <option value="custom">Custom</option>
-              </select>
+                placeholder="Scenario Title"
+              />
             </div>
 
             <div>
-              <label className="block text-xs terminal-text text-ink mb-2">Difficulty</label>
-              <select
-                value={formData.difficulty}
-                onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+              <label className="block text-xs terminal-text text-ink mb-2">Description</label>
+              <textarea
+                required
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                 className="w-full px-4 py-3 military-input terminal-text"
-              >
-                <option value="beginner">Beginner</option>
-                <option value="intermediate">Intermediate</option>
-                <option value="advanced">Advanced</option>
-                <option value="expert">Expert</option>
-              </select>
+                rows={4}
+                placeholder="Detailed scenario description..."
+              />
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs terminal-text text-ink mb-2">Duration (minutes)</label>
-            <input
-              type="number"
-              required
-              min={15}
-              max={480}
-              value={formData.duration_minutes}
-              onChange={(e) =>
-                setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })
-              }
-              className="w-full px-4 py-3 military-input terminal-text"
-            />
-          </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs terminal-text text-ink mb-2">Category</label>
+                <select
+                  value={formData.category}
+                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                  className="w-full px-4 py-3 military-input terminal-text"
+                >
+                  <option value="cyber">Cyber</option>
+                  <option value="infrastructure">Infrastructure</option>
+                  <option value="civil_unrest">Civil Unrest</option>
+                  <option value="natural_disaster">Natural Disaster</option>
+                  <option value="health_emergency">Health Emergency</option>
+                  <option value="terrorism">Terrorism</option>
+                  <option value="custom">Custom</option>
+                </select>
+              </div>
 
-          <div>
-            <label className="block text-xs terminal-text text-ink mb-2">Objectives</label>
-            <div className="space-y-2">
-              {formData.objectives.map((obj, index) => (
-                <div key={index} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={obj}
-                    onChange={(e) => updateObjective(index, e.target.value)}
-                    className="flex-1 px-4 py-2 military-input terminal-text"
-                    placeholder={`Objective ${index + 1}`}
-                  />
-                  {formData.objectives.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeObjective(index)}
-                      className="px-3 py-2 text-accent border border-accent hover:bg-accent/10"
-                    >
-                      ×
-                    </button>
-                  )}
-                </div>
-              ))}
-              <button
-                type="button"
-                onClick={addObjective}
-                className="text-xs terminal-text text-ink hover:text-accent"
-              >
-                + Add objective
-              </button>
+              <div>
+                <label className="block text-xs terminal-text text-ink mb-2">Difficulty</label>
+                <select
+                  value={formData.difficulty}
+                  onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+                  className="w-full px-4 py-3 military-input terminal-text"
+                >
+                  <option value="beginner">Beginner</option>
+                  <option value="intermediate">Intermediate</option>
+                  <option value="advanced">Advanced</option>
+                  <option value="expert">Expert</option>
+                </select>
+              </div>
             </div>
-          </div>
 
-          {/* Briefing Section */}
-          <div>
-            <div className="flex justify-between items-center mb-2">
+            <div>
               <label className="block text-xs terminal-text text-ink mb-2">
-                Briefing materials
+                Duration (minutes)
               </label>
-              <button
-                type="button"
-                onClick={() => setShowRoleBriefs(!showRoleBriefs)}
-                className="text-xs terminal-text text-ink hover:text-accent"
-              >
-                {showRoleBriefs ? 'Hide role briefs' : 'Add role briefs'}
-              </button>
+              <input
+                type="number"
+                required
+                min={15}
+                max={480}
+                value={formData.duration_minutes}
+                onChange={(e) =>
+                  setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })
+                }
+                className="w-full px-4 py-3 military-input terminal-text"
+              />
             </div>
-            <textarea
-              value={formData.briefing}
-              onChange={(e) => setFormData({ ...formData, briefing: e.target.value })}
-              className="w-full px-4 py-3 military-input terminal-text"
-              rows={6}
-              placeholder="General briefing material visible to all participants..."
-            />
-            <p className="text-xs terminal-text text-muted mt-1">
-              This briefing will be visible to all participants before the session starts.
-            </p>
 
-            {/* Role-Specific Briefs */}
-            {showRoleBriefs && (
-              <div className="mt-4 space-y-3">
-                <p className="text-xs terminal-text text-muted mb-2">Role-specific briefings</p>
-                {[
-                  'defence',
-                  'health',
-                  'civil',
-                  'utilities',
-                  'intelligence',
-                  'ngo',
-                  'public_information_officer',
-                  'police_commander',
-                  'legal_oversight',
-                ].map((role) => (
-                  <div key={role}>
-                    <label className="block text-xs terminal-text text-muted mb-1">
-                      {role.toUpperCase().replace('_', ' ')}
-                    </label>
-                    <textarea
-                      value={formData.roleSpecificBriefs[role] || ''}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          roleSpecificBriefs: {
-                            ...formData.roleSpecificBriefs,
-                            [role]: e.target.value,
-                          },
-                        })
-                      }
-                      className="w-full px-4 py-2 military-input terminal-text text-sm"
-                      rows={3}
-                      placeholder={`Briefing specific to ${role.replace('_', ' ')} role...`}
+            <div>
+              <label className="block text-xs terminal-text text-ink mb-2">Objectives</label>
+              <div className="space-y-2">
+                {formData.objectives.map((obj, index) => (
+                  <div key={index} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={obj}
+                      onChange={(e) => updateObjective(index, e.target.value)}
+                      className="flex-1 px-4 py-2 military-input terminal-text"
+                      placeholder={`Objective ${index + 1}`}
                     />
+                    {formData.objectives.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => removeObjective(index)}
+                        className="px-3 py-2 text-accent border border-accent hover:bg-accent/10"
+                      >
+                        ×
+                      </button>
+                    )}
                   </div>
                 ))}
+                <button
+                  type="button"
+                  onClick={addObjective}
+                  className="text-xs terminal-text text-ink hover:text-accent"
+                >
+                  + Add objective
+                </button>
+              </div>
+            </div>
+
+            {/* Briefing Section */}
+            <div>
+              <div className="flex justify-between items-center mb-2">
+                <label className="block text-xs terminal-text text-ink mb-2">
+                  Briefing materials
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowRoleBriefs(!showRoleBriefs)}
+                  className="text-xs terminal-text text-ink hover:text-accent"
+                >
+                  {showRoleBriefs ? 'Hide role briefs' : 'Add role briefs'}
+                </button>
+              </div>
+              <textarea
+                value={formData.briefing}
+                onChange={(e) => setFormData({ ...formData, briefing: e.target.value })}
+                className="w-full px-4 py-3 military-input terminal-text"
+                rows={6}
+                placeholder="General briefing material visible to all participants..."
+              />
+              <p className="text-xs terminal-text text-muted mt-1">
+                This briefing will be visible to all participants before the session starts.
+              </p>
+
+              {/* Role-Specific Briefs */}
+              {showRoleBriefs && (
+                <div className="mt-4 space-y-3">
+                  <p className="text-xs terminal-text text-muted mb-2">Role-specific briefings</p>
+                  {[
+                    'defence',
+                    'health',
+                    'civil',
+                    'utilities',
+                    'intelligence',
+                    'ngo',
+                    'public_information_officer',
+                    'police_commander',
+                    'legal_oversight',
+                  ].map((role) => (
+                    <div key={role}>
+                      <label className="block text-xs terminal-text text-muted mb-1">
+                        {role.toUpperCase().replace('_', ' ')}
+                      </label>
+                      <textarea
+                        value={formData.roleSpecificBriefs[role] || ''}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            roleSpecificBriefs: {
+                              ...formData.roleSpecificBriefs,
+                              [role]: e.target.value,
+                            },
+                          })
+                        }
+                        className="w-full px-4 py-2 military-input terminal-text text-sm"
+                        rows={3}
+                        placeholder={`Briefing specific to ${role.replace('_', ' ')} role...`}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Show suggested injects if available */}
+            {suggestedInjects.length > 0 && (
+              <div className="military-border p-4 bg-accent/10 border-accent">
+                <h3 className="text-sm terminal-text mb-3 text-ink">
+                  AI suggested injects — {suggestedInjects.length} suggested event injections
+                </h3>
+                <p className="text-xs terminal-text text-muted mb-3">
+                  These injects will be created automatically when you save this scenario.
+                </p>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {suggestedInjects.map((inject, idx) => (
+                    <div key={idx} className="military-border p-2 bg-surface">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="text-xs terminal-text font-semibold">{inject.title}</div>
+                          <div className="text-xs terminal-text text-muted">
+                            {inject.type} • {inject.trigger_time_minutes}min • {inject.severity}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Show suggested injects if available */}
-          {suggestedInjects.length > 0 && (
-            <div className="military-border p-4 bg-accent/10 border-accent">
-              <h3 className="text-sm terminal-text mb-3 text-ink">
-                AI suggested injects — {suggestedInjects.length} suggested event injections
-              </h3>
-              <p className="text-xs terminal-text text-muted mb-3">
-                These injects will be created automatically when you save this scenario.
-              </p>
-              <div className="space-y-2 max-h-40 overflow-y-auto">
-                {suggestedInjects.map((inject, idx) => (
-                  <div key={idx} className="military-border p-2 bg-surface">
-                    <div className="flex justify-between items-start">
-                      <div className="flex-1">
-                        <div className="text-xs terminal-text font-semibold">{inject.title}</div>
-                        <div className="text-xs terminal-text text-muted">
-                          {inject.type} • {inject.trigger_time_minutes}min • {inject.severity}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-4 pt-4 border-t border-border">
-            <button
-              type="submit"
-              disabled={loading}
-              className="military-button px-6 py-3 flex-1 disabled:opacity-50"
-            >
-              {loading ? 'Creating…' : 'Create scenario'}
-            </button>
+          <div className="flex-shrink-0 flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-2">
             <button
               type="button"
               onClick={onClose}
-              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent"
+              className="military-button-outline px-6 py-3 border border-accent text-accent"
             >
               Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="military-button px-6 py-3 disabled:opacity-50"
+            >
+              {loading ? 'Creating…' : 'Create scenario'}
             </button>
           </div>
         </form>

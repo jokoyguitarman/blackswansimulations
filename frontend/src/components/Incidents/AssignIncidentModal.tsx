@@ -92,103 +92,107 @@ export const AssignIncidentModal = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-ink/40 flex items-center justify-center z-50 p-4">
-      <div className="military-border bg-surface p-8 max-w-lg w-full">
-        <div className="flex justify-between items-start mb-4">
-          <h2 className="text-xl terminal-text">Assign incident</h2>
+    <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-surface border border-border rounded-2xl shadow-lg max-w-lg w-full flex flex-col max-h-[90vh] overflow-hidden">
+        <div className="flex-shrink-0 px-6 py-4 border-b border-border flex items-center justify-between">
+          <h2 className="text-lg font-bold text-brand terminal-text">Assign incident</h2>
           <button onClick={onClose} className="text-accent hover:text-ink">
             Close
           </button>
         </div>
 
-        <div className="mb-4">
-          <p className="text-sm terminal-text text-muted mb-2">
-            Incident: <span className="font-semibold">{incident.title}</span>
-          </p>
-        </div>
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0">
+          <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+            <div>
+              <p className="text-sm terminal-text text-muted">
+                Incident: <span className="font-semibold">{incident.title}</span>
+              </p>
+            </div>
 
-        {existingUserIds.length > 0 && (
-          <div className="mb-4 p-3 bg-surface-2 border border-border">
-            <p className="text-xs terminal-text text-muted mb-2">Current assignments</p>
-            <div className="flex flex-wrap gap-2">
-              {incident.assignments
-                ?.filter((a) => !a.assignment_type || (a as any).user_id) // Filter for user assignments
-                .map((a, idx) => {
-                  const assignment = a as any;
-                  const userName =
-                    assignment.assigned_user?.full_name || assignment.user_id || 'Unknown';
+            {existingUserIds.length > 0 && (
+              <div className="p-3 bg-surface-2 border border-border">
+                <p className="text-xs terminal-text text-muted mb-2">Current assignments</p>
+                <div className="flex flex-wrap gap-2">
+                  {incident.assignments
+                    ?.filter((a) => !a.assignment_type || (a as any).user_id) // Filter for user assignments
+                    .map((a, idx) => {
+                      const assignment = a as any;
+                      const userName =
+                        assignment.assigned_user?.full_name || assignment.user_id || 'Unknown';
+                      return (
+                        <span
+                          key={`user-${idx}`}
+                          className="text-xs terminal-text px-2 py-1 bg-surface border border-border"
+                        >
+                          {userName}
+                        </span>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm terminal-text text-muted mb-2">
+                Assign to player *
+              </label>
+              <select
+                value={selectedValue}
+                onChange={(e) => setSelectedValue(e.target.value)}
+                required
+                disabled={participantsLoading}
+                className="w-full military-input terminal-text text-sm px-4 py-2"
+              >
+                <option value="">
+                  {participantsLoading ? 'Loading participants…' : 'Select player…'}
+                </option>
+                {availableParticipants.map((participant) => {
+                  const roleDisplay = participant.role
+                    .replace(/_/g, ' ')
+                    .replace(/\b\w/g, (l) => l.toUpperCase());
+                  const displayText = `${participant.name} (${roleDisplay})`;
                   return (
-                    <span
-                      key={`user-${idx}`}
-                      className="text-xs terminal-text px-2 py-1 bg-surface border border-border"
-                    >
-                      {userName}
-                    </span>
+                    <option key={participant.id} value={participant.id}>
+                      {displayText}
+                    </option>
                   );
                 })}
+              </select>
+              {!participantsLoading && availableParticipants.length === 0 && (
+                <p className="text-xs terminal-text text-muted mt-2">
+                  {participants.length === 0
+                    ? 'No participants available in this session'
+                    : 'All available participants have been assigned'}
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm terminal-text text-muted mb-2">
+                Notes (optional)
+              </label>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={3}
+                className="w-full military-input terminal-text text-sm px-4 py-2"
+                placeholder="Add assignment notes…"
+              />
             </div>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm terminal-text text-muted mb-2">
-              Assign to player *
-            </label>
-            <select
-              value={selectedValue}
-              onChange={(e) => setSelectedValue(e.target.value)}
-              required
-              disabled={participantsLoading}
-              className="w-full military-input terminal-text text-sm px-4 py-2"
-            >
-              <option value="">
-                {participantsLoading ? 'Loading participants…' : 'Select player…'}
-              </option>
-              {availableParticipants.map((participant) => {
-                const roleDisplay = participant.role
-                  .replace(/_/g, ' ')
-                  .replace(/\b\w/g, (l) => l.toUpperCase());
-                const displayText = `${participant.name} (${roleDisplay})`;
-                return (
-                  <option key={participant.id} value={participant.id}>
-                    {displayText}
-                  </option>
-                );
-              })}
-            </select>
-            {!participantsLoading && availableParticipants.length === 0 && (
-              <p className="text-xs terminal-text text-muted mt-2">
-                {participants.length === 0
-                  ? 'No participants available in this session'
-                  : 'All available participants have been assigned'}
-              </p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm terminal-text text-muted mb-2">Notes (optional)</label>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={3}
-              className="w-full military-input terminal-text text-sm px-4 py-2"
-              placeholder="Add assignment notes…"
-            />
-          </div>
-
-          <div className="flex gap-4 pt-4 border-t border-border">
+          <div className="flex-shrink-0 flex justify-end gap-3 px-6 py-4 border-t border-border bg-surface-2">
             <button
               type="button"
               onClick={onClose}
-              className="military-button-outline px-6 py-3 flex-1 border border-border text-muted"
+              className="military-button-outline px-6 py-3 border border-border text-muted"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || !selectedValue || availableParticipants.length === 0}
-              className="military-button px-6 py-3 flex-1 disabled:opacity-50"
+              className="military-button px-6 py-3 disabled:opacity-50"
             >
               {loading ? 'Assigning…' : 'Assign'}
             </button>

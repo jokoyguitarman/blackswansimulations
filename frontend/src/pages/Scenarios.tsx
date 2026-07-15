@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
@@ -24,6 +24,25 @@ export const Scenarios = () => {
 
   const [selectedScenario, setSelectedScenario] = useState<Scenario | null>(null);
   const [detailScenarioId, setDetailScenarioId] = useState<string | null>(null);
+
+  // Search + type filter (sticky bar)
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState<'all' | 'field' | 'social'>('all');
+
+  const filteredScenarios = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return scenarios.filter((s) => {
+      const isSocial = s.category === 'social_media_crisis';
+      if (typeFilter === 'field' && isSocial) return false;
+      if (typeFilter === 'social' && !isSocial) return false;
+      if (!q) return true;
+      return (
+        s.title.toLowerCase().includes(q) ||
+        s.description.toLowerCase().includes(q) ||
+        s.category.toLowerCase().includes(q)
+      );
+    });
+  }, [scenarios, search, typeFilter]);
 
   useEffect(() => {
     loadScenarios();
@@ -72,10 +91,23 @@ export const Scenarios = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="text-lg text-ink mb-2 animate-pulse">Loading</div>
-          <div className="text-xs text-muted">Loading scenarios…</div>
+      <div className="min-h-screen">
+        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+          <div className="bg-surface border border-border rounded-xl shadow-sm p-6 mb-6">
+            <div className="skeleton h-6 w-52 mb-3" />
+            <div className="skeleton h-4 w-36" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[0, 1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="bg-surface border border-border rounded-xl shadow-sm p-6">
+                <div className="skeleton h-4 w-32 mb-4" />
+                <div className="skeleton h-5 w-3/4 mb-3" />
+                <div className="skeleton h-3 w-full mb-2" />
+                <div className="skeleton h-3 w-5/6 mb-4" />
+                <div className="skeleton h-4 w-40" />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -123,15 +155,71 @@ export const Scenarios = () => {
           </div>
         </div>
 
+        {/* Sticky search + type filters */}
+        <div className="sticky top-0 z-20 -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-3 mb-4 bg-bg/85 backdrop-blur border-b border-border shadow-[0_3px_10px_rgba(23,32,51,0.05)]">
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="relative flex-1 min-w-[220px] max-w-sm">
+              <span
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-muted text-sm"
+                aria-hidden
+              >
+                🔍
+              </span>
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={`Search ${scenarios.length} scenarios…`}
+                className="w-full military-input pl-9 pr-3 py-2 text-sm"
+              />
+            </div>
+            <button
+              onClick={() => setTypeFilter('all')}
+              className={`text-xs font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                typeFilter === 'all'
+                  ? 'bg-brand border-brand text-white'
+                  : 'bg-surface border-border-strong text-muted hover:border-brand'
+              }`}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setTypeFilter('field')}
+              className={`text-xs font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                typeFilter === 'field'
+                  ? 'bg-brand border-brand text-white'
+                  : 'bg-surface border-border-strong text-muted hover:border-brand'
+              }`}
+            >
+              🗺️ Field ops
+            </button>
+            <button
+              onClick={() => setTypeFilter('social')}
+              className={`text-xs font-semibold px-3.5 py-2 rounded-full border transition-all ${
+                typeFilter === 'social'
+                  ? 'bg-accent border-accent text-white'
+                  : 'bg-surface border-border-strong text-muted hover:border-accent'
+              }`}
+            >
+              📱 Social crisis
+            </button>
+            {(search || typeFilter !== 'all') && (
+              <span className="text-xs text-muted ml-auto">
+                {filteredScenarios.length} of {scenarios.length} shown
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Scenarios Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {scenarios.map((scenario) => {
+          {filteredScenarios.map((scenario) => {
             const isSocialCrisis = scenario.category === 'social_media_crisis';
 
             return (
               <div
                 key={scenario.id}
-                className={`bg-surface border border-border border-t-4 rounded-xl shadow-sm p-6 cursor-pointer transition-all hover:shadow-md ${
+                className={`bg-surface border border-border border-t-4 rounded-xl shadow-sm p-6 cursor-pointer transition-all hover:shadow-md hover:-translate-y-0.5 ${
                   isSocialCrisis
                     ? 'border-t-accent hover:border-accent'
                     : 'border-t-brand hover:border-brand'
@@ -207,11 +295,48 @@ export const Scenarios = () => {
         </div>
 
         {scenarios.length === 0 && (
-          <div className="bg-surface border border-border rounded-xl shadow-sm p-12 text-center">
-            <p className="text-lg text-muted mb-2">No scenarios available</p>
+          <div className="bg-surface border border-dashed border-border-strong rounded-xl p-10 text-center">
+            <div
+              className="w-14 h-14 rounded-2xl bg-brand/5 grid place-items-center text-2xl mx-auto mb-3"
+              aria-hidden
+            >
+              📚
+            </div>
+            <p className="text-base font-bold text-ink mb-1">No scenarios yet</p>
+            <p className="text-sm text-muted mb-4">
+              {isTrainer
+                ? 'Build your first scenario in the War Room to get started.'
+                : 'Scenarios will appear here once your trainer publishes them.'}
+            </p>
             {isTrainer && (
-              <p className="text-sm text-muted">Create your first scenario to get started</p>
+              <Link to="/warroom" className="military-button inline-block px-5 py-2.5 text-sm">
+                Open War Room
+              </Link>
             )}
+          </div>
+        )}
+
+        {scenarios.length > 0 && filteredScenarios.length === 0 && (
+          <div className="bg-surface border border-dashed border-border-strong rounded-xl p-10 text-center">
+            <div
+              className="w-14 h-14 rounded-2xl bg-brand/5 grid place-items-center text-2xl mx-auto mb-3"
+              aria-hidden
+            >
+              🔍
+            </div>
+            <p className="text-base font-bold text-ink mb-1">No matches</p>
+            <p className="text-sm text-muted mb-4">
+              Nothing matches your search or filters. Try different terms.
+            </p>
+            <button
+              onClick={() => {
+                setSearch('');
+                setTypeFilter('all');
+              }}
+              className="military-button-outline px-5 py-2.5 text-sm rounded-lg"
+            >
+              Clear filters
+            </button>
           </div>
         )}
       </div>
