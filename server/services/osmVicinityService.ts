@@ -860,7 +860,7 @@ export async function fetchVenueBuilding(
   radiusMeters?: number,
   opts?: { withLog?: boolean; sourcePreference?: OsmSourcePreference },
 ): Promise<OsmBuilding[] | FetchVenueBuildingResult> {
-  const radius = Math.min(radiusMeters ?? 500, 1000);
+  const radius = Math.min(radiusMeters ?? 500, 2000);
   const fetchLog: FetchLogEntry[] = [];
   const wantLog = opts?.withLog === true;
 
