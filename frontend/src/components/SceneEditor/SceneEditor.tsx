@@ -17,6 +17,7 @@ import {
   MapContainer,
   TileLayer,
   Polygon,
+  Polyline,
   CircleMarker,
   Circle,
   useMap,
@@ -108,8 +109,160 @@ interface StudPoint {
   spatialContext: string | null;
 }
 
+interface RoadFootprintItem {
+  name: string | null;
+  roadType: string;
+  polygon: [number, number][];
+  polygonPoints: number;
+  distanceFromCenterM: number;
+}
+
+interface RoadPolylineItem {
+  name: string;
+  highwayType: string;
+  coordinates: [number, number][];
+  distanceFromCenterM: number;
+}
+
+type OsmSourceMode = 'local_cache' | 'live_osm';
+
 const STUD_SPACING_M = 3;
 const EXTERIOR_PADDING_M = 150;
+
+function getEstimatedRoadWidthM(highwayType: string): number {
+  switch (highwayType) {
+    case 'motorway':
+      return 16;
+    case 'trunk':
+      return 14;
+    case 'primary':
+      return 12;
+    case 'secondary':
+      return 10;
+    case 'tertiary':
+      return 9;
+    case 'residential':
+    case 'unclassified':
+      return 7;
+    case 'service':
+    case 'living_street':
+      return 5;
+    default:
+      return 7;
+  }
+}
+
+function getRoadStrokeWeight(highwayType: string): number {
+  const widthM = getEstimatedRoadWidthM(highwayType);
+  if (widthM >= 15) return 10;
+  if (widthM >= 12) return 8;
+  if (widthM >= 9) return 6;
+  if (widthM >= 7) return 5;
+  return 4;
+}
+
+function clipRoadPolylineToRadius(
+  coordinates: [number, number][],
+  centerLat: number,
+  centerLng: number,
+  radiusMeters: number,
+): [number, number][] {
+  if (coordinates.length < 2 || !Number.isFinite(centerLat) || !Number.isFinite(centerLng)) {
+    return coordinates;
+  }
+
+  const refLat = centerLat;
+  const refLng = centerLng;
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos((refLat * Math.PI) / 180);
+
+  const toXY = ([lat, lng]: [number, number]) => ({
+    x: (lng - refLng) * mPerDegLng,
+    y: (refLat - lat) * mPerDegLat,
+  });
+  const toLatLng = ({ x, y }: { x: number; y: number }) =>
+    [refLat - y / mPerDegLat, refLng + x / mPerDegLng] as [number, number];
+
+  const points = coordinates.map(toXY);
+  const clipped: Array<{ x: number; y: number }> = [];
+
+  const isInside = (pt: { x: number; y: number }) => Math.hypot(pt.x, pt.y) <= radiusMeters;
+
+  const intersectionsWithCircle = (
+    p1: { x: number; y: number },
+    p2: { x: number; y: number },
+  ): Array<{ x: number; y: number; t: number }> => {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const a = dx * dx + dy * dy;
+    if (a < 0.001) return [];
+
+    const b = 2 * (p1.x * dx + p1.y * dy);
+    const c = p1.x * p1.x + p1.y * p1.y - radiusMeters * radiusMeters;
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant < 0) return [];
+
+    const sqrtDisc = Math.sqrt(discriminant);
+    const t1 = (-b - sqrtDisc) / (2 * a);
+    const t2 = (-b + sqrtDisc) / (2 * a);
+    const validTs = [t1, t2]
+      .filter((t) => t >= 0 && t <= 1)
+      .sort((left, right) => left - right)
+      .filter((t, index, arr) => index === 0 || Math.abs(t - arr[index - 1]) > 0.0001);
+
+    return validTs.map((t) => ({
+      x: p1.x + dx * t,
+      y: p1.y + dy * t,
+      t,
+    }));
+  };
+
+  for (let i = 0; i < points.length; i++) {
+    const curr = points[i];
+    const currInside = isInside(curr);
+
+    if (i === 0) {
+      if (currInside) clipped.push(curr);
+      continue;
+    }
+
+    const prev = points[i - 1];
+    const prevInside = isInside(prev);
+
+    if (prevInside && currInside) {
+      clipped.push(curr);
+      continue;
+    }
+
+    if (prevInside && !currInside) {
+      const [intersection] = intersectionsWithCircle(prev, curr);
+      if (intersection) clipped.push(intersection);
+      continue;
+    }
+
+    if (!prevInside && currInside) {
+      const intersections = intersectionsWithCircle(prev, curr);
+      const intersection = intersections[0];
+      if (intersection) clipped.push(intersection, curr);
+      continue;
+    }
+
+    if (!prevInside && !currInside) {
+      const intersections = intersectionsWithCircle(prev, curr);
+      if (intersections.length === 2) {
+        clipped.push(intersections[0], intersections[1]);
+      }
+    }
+  }
+
+  const deduped = clipped.filter((pt, index, arr) => {
+    if (index === 0) return true;
+    const prev = arr[index - 1];
+    return Math.hypot(pt.x - prev.x, pt.y - prev.y) > 0.5;
+  });
+
+  return deduped.length >= 2 ? deduped.map(toLatLng) : coordinates;
+}
 
 function generateStudsForPolygon(polygon: [number, number][], _verts: Vec2[]): StudPoint[] {
   if (polygon.length < 3) return [];
@@ -265,6 +418,7 @@ export function SceneEditor({
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [radius, setRadius] = useState('500');
+  const [osmSourceMode, setOsmSourceMode] = useState<OsmSourceMode>('local_cache');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<
     Array<{ lat: string; lon: string; display_name: string }>
@@ -273,6 +427,9 @@ export function SceneEditor({
   const [searchCountry, setSearchCountry] = useState('');
   const [userGeoPos, setUserGeoPos] = useState<{ lat: number; lng: number } | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const radiusRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasFetchedMapResultsRef = useRef(false);
+  const prevRadiusRef = useRef('500');
   const mapPhaseMapRef = useRef<L.Map | null>(null);
   const [fetchResult, setFetchResult] = useState<{
     grids: Array<{
@@ -281,6 +438,8 @@ export function SceneEditor({
       polygon: [number, number][];
       studs: StudPoint[];
     }>;
+    roads: RoadFootprintItem[];
+    roadPolylines: RoadPolylineItem[];
   } | null>(null);
   const [selectedGridIdx, setSelectedGridIdx] = useState<number | null>(null);
   const [fetchLoading, setFetchLoading] = useState(false);
@@ -390,6 +549,21 @@ export function SceneEditor({
     () => (selectedGridIdx != null && fetchResult ? fetchResult.grids[selectedGridIdx] : null),
     [selectedGridIdx, fetchResult],
   );
+  const displayRoadPolylines = useMemo(() => {
+    const centerLatForRoads = parseFloat(lat);
+    const centerLngForRoads = parseFloat(lng);
+    const radiusForRoads = parseFloat(radius) || 500;
+
+    return (fetchResult?.roadPolylines ?? []).map((road) => ({
+      ...road,
+      coordinates: clipRoadPolylineToRadius(
+        road.coordinates,
+        centerLatForRoads,
+        centerLngForRoads,
+        radiusForRoads,
+      ),
+    }));
+  }, [fetchResult, lat, lng, radius]);
   const projectedVerts = useMemo(
     () => (selectedGrid ? projectPolygon(selectedGrid.polygon) : []),
     [selectedGrid],
@@ -445,7 +619,7 @@ export function SceneEditor({
           polygon,
           studs: [] as StudPoint[],
         };
-        setFetchResult({ grids: [entry] });
+        setFetchResult({ grids: [entry], roads: [], roadPolylines: [] });
         setSelectedGridIdx(0);
 
         // Restore scene elements
@@ -580,6 +754,7 @@ export function SceneEditor({
   // ── Fetch buildings ───────────────────────────────────────────────────
 
   const handleFetch = useCallback(async () => {
+    hasFetchedMapResultsRef.current = true;
     setFetchLoading(true);
     setError(null);
     setFetchResult(null);
@@ -591,16 +766,66 @@ export function SceneEditor({
       if (lng) params.set('lng', lng);
       if (radius) params.set('radius', radius);
       params.set('includeStuds', '0');
+      params.set('includeRoads', '1');
+      params.set('osmSource', osmSourceMode);
       const res = await fetch(apiUrl(`/api/debug/building-studs?${params}`), { headers });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
-      setFetchResult({ grids: data.grids ?? [] });
+      setFetchResult({
+        grids: data.grids ?? [],
+        roads: data.roads ?? [],
+        roadPolylines: data.roadPolylines ?? [],
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setFetchLoading(false);
     }
-  }, [lat, lng, radius]);
+  }, [lat, lng, radius, osmSourceMode]);
+
+  useEffect(() => {
+    const radiusChanged = prevRadiusRef.current !== radius;
+    prevRadiusRef.current = radius;
+
+    if (!radiusChanged) return;
+    if (phase !== 'map' || isDrawing) return;
+    if (!hasFetchedMapResultsRef.current) return;
+    if (!lat || !lng) return;
+
+    if (radiusRefetchTimerRef.current) {
+      clearTimeout(radiusRefetchTimerRef.current);
+    }
+
+    radiusRefetchTimerRef.current = setTimeout(() => {
+      void handleFetch();
+    }, 350);
+
+    return () => {
+      if (radiusRefetchTimerRef.current) {
+        clearTimeout(radiusRefetchTimerRef.current);
+      }
+    };
+  }, [radius, phase, isDrawing, lat, lng, handleFetch]);
+
+  useEffect(() => {
+    if (phase !== 'map' || isDrawing) return;
+    if (!hasFetchedMapResultsRef.current) return;
+    if (!lat || !lng) return;
+
+    if (radiusRefetchTimerRef.current) {
+      clearTimeout(radiusRefetchTimerRef.current);
+    }
+
+    radiusRefetchTimerRef.current = setTimeout(() => {
+      void handleFetch();
+    }, 200);
+
+    return () => {
+      if (radiusRefetchTimerRef.current) {
+        clearTimeout(radiusRefetchTimerRef.current);
+      }
+    };
+  }, [osmSourceMode, phase, isDrawing, lat, lng, handleFetch]);
 
   // ── Select building → enter edit mode ─────────────────────────────────
 
@@ -638,7 +863,11 @@ export function SceneEditor({
         polygon,
         studs: [] as StudPoint[],
       };
-      const newResult = { grids: [...(fetchResult?.grids ?? []), entry] };
+      const newResult = {
+        grids: [...(fetchResult?.grids ?? []), entry],
+        roads: fetchResult?.roads ?? [],
+        roadPolylines: fetchResult?.roadPolylines ?? [],
+      };
       setFetchResult(newResult);
       const idx = newResult.grids.length - 1;
       setSelectedGridIdx(idx);
@@ -797,10 +1026,7 @@ export function SceneEditor({
       const snapped = snapToStud(sim);
       const sp = snapped.pos;
       const ctx = (snapped.stud?.spatialContext ?? undefined) as
-        | 'inside_building'
-        | 'road'
-        | 'open_air'
-        | undefined;
+        'inside_building' | 'road' | 'open_air' | undefined;
       if (drag.type === 'blastSite') {
         setBlastSite(sp);
         // Move zones that haven't been individually repositioned
@@ -1455,6 +1681,20 @@ export function SceneEditor({
             </div>
           </div>
 
+          <div>
+            <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+              OSM Source
+            </label>
+            <select
+              value={osmSourceMode}
+              onChange={(e) => setOsmSourceMode(e.target.value as OsmSourceMode)}
+              className="w-full mt-0.5 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+            >
+              <option value="local_cache">Local Cache (Supabase)</option>
+              <option value="live_osm">Live OSM Endpoint</option>
+            </select>
+          </div>
+
           {/* Drawing mode status */}
           {isDrawing ? (
             <div className="space-y-3">
@@ -1606,7 +1846,9 @@ export function SceneEditor({
           {!isDrawing && fetchResult && (
             <div className="space-y-2">
               <p className="text-xs terminal-text text-muted">
-                {fetchResult.grids.length} buildings found. Select one:
+                {fetchResult.grids.length} buildings found. {displayRoadPolylines.length} drivable
+                roads shown in blue with estimated width. Source mode:{' '}
+                {osmSourceMode === 'local_cache' ? 'local cache' : 'live OSM'}. Select one:
               </p>
               <div className="space-y-1 max-h-60 overflow-y-auto">
                 {fetchResult.grids.map((g, i) => (
@@ -1669,7 +1911,20 @@ export function SceneEditor({
               </>
             )}
 
-            {/* Render building polygons when fetched */}
+            {/* Render drivable road centerlines with stroke weight based on estimated road width */}
+            {displayRoadPolylines.map((road, i) => (
+              <Polyline
+                key={`road-line-${i}`}
+                positions={road.coordinates.map(([la, ln]) => [la, ln] as [number, number])}
+                pathOptions={{
+                  color: '#1d4ed8',
+                  weight: getRoadStrokeWeight(road.highwayType),
+                  opacity: 0.95,
+                }}
+              />
+            ))}
+
+            {/* Render building polygons on top */}
             {fetchResult?.grids.map((g, i) => (
               <Polygon
                 key={i}
@@ -2015,11 +2270,27 @@ export function SceneEditor({
             maxZoom={22}
           />
           <MapRefSync onMap={setLeafletMap} />
+          {displayRoadPolylines.map((road, i) => (
+            <Polyline
+              key={`edit-road-line-${i}`}
+              positions={road.coordinates.map(([la, ln]) => [la, ln] as [number, number])}
+              pathOptions={{
+                color: '#1d4ed8',
+                weight: getRoadStrokeWeight(road.highwayType),
+                opacity: 0.95,
+              }}
+            />
+          ))}
           {selectedGrid && <FitBounds polygon={selectedGrid.polygon} />}
           {selectedGrid && (
             <Polygon
               positions={selectedGrid.polygon.map(([la, ln]) => [la, ln] as [number, number])}
-              pathOptions={{ color: '#22d3ee', weight: 2, fillOpacity: 0 }}
+              pathOptions={{
+                color: '#22d3ee',
+                weight: 2,
+                fillColor: '#0f172a',
+                fillOpacity: 0.2,
+              }}
             />
           )}
         </MapContainer>
