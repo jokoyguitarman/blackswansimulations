@@ -69,6 +69,9 @@ export const env = {
   // Document-driven scenario blueprint feature. Default OFF: when disabled the
   // social-crisis War Room behaves exactly as before (raw document text only).
   enableDocumentBlueprint: process.env.ENABLE_DOCUMENT_BLUEPRINT === 'true',
+  // Prefer Singapore-scoped OSM data stored in Supabase over live Overpass calls.
+  // Falls back to Overpass automatically when cache tables are empty or disabled.
+  enableLocalOsmSingapore: process.env.ENABLE_LOCAL_OSM_SINGAPORE === 'true',
   // Runtime Scenario Director (Phase 5). Same semantics as enableAutoInjects:
   // ON in production unless explicitly disabled, OFF in dev unless turned on.
   // It is further guarded at runtime (needs a usable blueprint + social_media

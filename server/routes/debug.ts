@@ -2,8 +2,13 @@ import { Router, json } from 'express';
 import { requireAuth, requireStaff, type AuthenticatedRequest } from '../middleware/auth.js';
 import {
   fetchVenueBuilding,
+  fetchRoadFootprints,
+  fetchRouteGeometries,
   type OsmBuilding,
   type FetchLogEntry,
+  type OsmSourcePreference,
+  type RoadFootprint,
+  type OsmRouteGeometry,
 } from '../services/osmVicinityService.js';
 import {
   generateStudGrids,
@@ -66,6 +71,12 @@ router.get('/building-studs', requireAuth, async (req, res) => {
     req.query.includeStuds == null
       ? true
       : !['0', 'false', 'no'].includes(String(req.query.includeStuds).toLowerCase());
+  const includeRoads = ['1', 'true', 'yes'].includes(
+    String(req.query.includeRoads ?? '').toLowerCase(),
+  );
+  const requestedSource = String(req.query.osmSource ?? 'auto').toLowerCase();
+  const osmSourcePreference: OsmSourcePreference =
+    requestedSource === 'local_cache' || requestedSource === 'live_osm' ? requestedSource : 'auto';
 
   const lat = parseFloat(req.query.lat as string);
   const lng = parseFloat(req.query.lng as string);
@@ -82,6 +93,8 @@ router.get('/building-studs', requireAuth, async (req, res) => {
 
   const t0 = Date.now();
   let buildings: OsmBuilding[] = [];
+  let roads: RoadFootprint[] = [];
+  let roadPolylines: OsmRouteGeometry[] = [];
   let fetchError: string | null = null;
   let fetchSource: 'overpass' | 'scenario_cache' = 'overpass';
   let fetchLog: FetchLogEntry[] = [];
@@ -123,7 +136,10 @@ router.get('/building-studs', requireAuth, async (req, res) => {
     }
   } else {
     try {
-      const result = await fetchVenueBuilding(lat, lng, radius, { withLog: true });
+      const result = await fetchVenueBuilding(lat, lng, radius, {
+        withLog: true,
+        sourcePreference: osmSourcePreference,
+      });
       buildings = result.buildings;
       fetchLog = result.fetchLog;
     } catch (err) {
@@ -137,6 +153,68 @@ router.get('/building-studs', requireAuth, async (req, res) => {
         latencyMs: Date.now() - t0,
         detail: `Top-level Overpass fetch failed: ${msg}`,
       });
+    }
+
+    if (includeRoads) {
+      const roadStart = Date.now();
+      try {
+        if (osmSourcePreference === 'local_cache') {
+          fetchLog.push({
+            phase: 'roads',
+            status: 'skipped',
+            latencyMs: Date.now() - roadStart,
+            detail: 'Road footprint polygons skipped because local cache mode is selected',
+          });
+        } else {
+          roads = await fetchRoadFootprints(lat, lng, radius);
+          fetchLog.push({
+            phase: 'roads',
+            status: roads.length > 0 ? 'ok' : 'empty',
+            latencyMs: Date.now() - roadStart,
+            detail: `Road footprint query returned ${roads.length} polygons`,
+          });
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        fetchLog.push({
+          phase: 'roads',
+          status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
+          latencyMs: Date.now() - roadStart,
+          detail: `Road footprint query failed: ${msg.slice(0, 200)}`,
+        });
+      }
+
+      const roadCenterlineStart = Date.now();
+      try {
+        const roadCenterlineLimit =
+          osmSourcePreference === 'local_cache'
+            ? undefined
+            : radius <= 500
+              ? 600
+              : radius <= 1000
+                ? 2000
+                : Math.min(3000, radius * 2);
+        const roadCenterlineResult = await fetchRouteGeometries(lat, lng, radius, {
+          maxResults: roadCenterlineLimit,
+          sourcePreference: osmSourcePreference,
+          withMeta: true,
+        });
+        roadPolylines = roadCenterlineResult.roads;
+        fetchLog.push({
+          phase: 'road_centerlines',
+          status: roadPolylines.length > 0 ? 'ok' : 'empty',
+          latencyMs: Date.now() - roadCenterlineStart,
+          detail: `Road centerline query returned ${roadPolylines.length} polylines from ${roadCenterlineResult.source} (${roadCenterlineLimit == null ? 'uncapped local-cache mode' : `limit ${roadCenterlineLimit}`})`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        fetchLog.push({
+          phase: 'road_centerlines',
+          status: /timeout|abort|timed/i.test(msg) ? 'timeout' : 'error',
+          latencyMs: Date.now() - roadCenterlineStart,
+          detail: `Road centerline query failed: ${msg.slice(0, 200)}`,
+        });
+      }
     }
   }
 
@@ -209,9 +287,12 @@ router.get('/building-studs', requireAuth, async (req, res) => {
     stats: {
       fetchMs,
       fetchSource,
+      osmSourcePreference,
       gridMs,
       buildingsReturned: buildings.length,
       buildingsWithPolygon: withPolygon.length,
+      roadsReturned: roads.length,
+      roadPolylinesReturned: roadPolylines.length,
       gridsGenerated: grids.filter((g) => g.buildingIndex >= 0).length,
       totalStuds,
       buildingStuds,
@@ -231,6 +312,19 @@ router.get('/building-studs', requireAuth, async (req, res) => {
       levels: b.building_levels ?? null,
       use: b.building_use ?? null,
       polygonPoints: b.footprint_polygon?.length ?? 0,
+    })),
+    roads: roads.map((r) => ({
+      name: r.name,
+      roadType: r.road_type,
+      polygon: r.polygon,
+      polygonPoints: r.polygon.length,
+      distanceFromCenterM: r.distance_from_center_m,
+    })),
+    roadPolylines: roadPolylines.map((r) => ({
+      name: r.name,
+      highwayType: r.highway_type,
+      coordinates: r.coordinates,
+      distanceFromCenterM: r.distance_from_center_m,
     })),
     grids: grids.map((g) => ({
       buildingIndex: g.buildingIndex,

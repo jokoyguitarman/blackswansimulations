@@ -6,6 +6,7 @@
 
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { env } from '../env.js';
 import { resolveScenarioCenter } from './scenarioCenterService.js';
 
 const OVERPASS_ENDPOINTS = [
@@ -31,6 +32,7 @@ export interface OsmVicinity {
   buildings?: OsmBuilding[];
   route_geometries?: OsmRouteGeometry[];
   building_footprints?: BuildingFootprint[];
+  road_footprints?: RoadFootprint[];
 }
 
 function extractLatLng(element: {
@@ -329,6 +331,64 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function getMetersPerDegreeLng(lat: number): number {
+  return 111_320 * Math.cos((lat * Math.PI) / 180);
+}
+
+function projectLatLngToLocalMeters(
+  lat: number,
+  lng: number,
+  refLat: number,
+  refLng: number,
+): { x: number; y: number } {
+  return {
+    x: (lng - refLng) * getMetersPerDegreeLng(refLat),
+    y: (refLat - lat) * 111_320,
+  };
+}
+
+function distanceFromOriginToSegmentMeters(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const segLenSq = dx * dx + dy * dy;
+
+  if (segLenSq < 0.001) return Math.hypot(start.x, start.y);
+
+  const t = Math.max(0, Math.min(1, -((start.x * dx + start.y * dy) / segLenSq)));
+  const closestX = start.x + dx * t;
+  const closestY = start.y + dy * t;
+  return Math.hypot(closestX, closestY);
+}
+
+function getMinDistanceToPolylineMeters(
+  coordinates: [number, number][],
+  centerLat: number,
+  centerLng: number,
+): number {
+  if (coordinates.length === 0) return Number.POSITIVE_INFINITY;
+  if (coordinates.length === 1) {
+    return haversine(centerLat, centerLng, coordinates[0][0], coordinates[0][1]);
+  }
+
+  const projected = coordinates.map(([lat, lng]) =>
+    projectLatLngToLocalMeters(lat, lng, centerLat, centerLng),
+  );
+
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < projected.length; i += 1) {
+    minDistance = Math.min(
+      minDistance,
+      distanceFromOriginToSegmentMeters(projected[i - 1], projected[i]),
+    );
+    if (minDistance <= 0.5) return 0;
+  }
+
+  return minDistance;
+}
+
 // ---------------------------------------------------------------------------
 // Generic Overpass runner (accepts arbitrary query text)
 // ---------------------------------------------------------------------------
@@ -492,16 +552,327 @@ export interface OsmRouteGeometry {
   distance_from_center_m: number;
 }
 
+interface LocalSingaporeRoadRow {
+  osm_id: string;
+  name: string | null;
+  highway_type: string;
+  oneway: boolean | null;
+  center_lat: number | null;
+  center_lng: number | null;
+  min_lat: number | null;
+  max_lat: number | null;
+  min_lng: number | null;
+  max_lng: number | null;
+  coordinates_json: unknown;
+}
+
+interface LocalSingaporeBuildingRow {
+  osm_id: string;
+  name: string | null;
+  building_type: string | null;
+  building_levels: number | null;
+  building_levels_underground: number | null;
+  height_m: number | null;
+  center_lat: number | null;
+  center_lng: number | null;
+  min_lat: number | null;
+  max_lat: number | null;
+  min_lng: number | null;
+  max_lng: number | null;
+  footprint_polygon_json: unknown;
+}
+
+export type OsmSourcePreference = 'auto' | 'local_cache' | 'live_osm';
+
+export interface RouteGeometryFetchResult {
+  roads: OsmRouteGeometry[];
+  source: 'local_supabase' | 'overpass';
+}
+
+const SINGAPORE_BOUNDS = {
+  minLat: 1.13,
+  maxLat: 1.5,
+  minLng: 103.58,
+  maxLng: 104.1,
+};
+
+function isWithinSingaporeBounds(lat: number, lng: number): boolean {
+  return (
+    lat >= SINGAPORE_BOUNDS.minLat &&
+    lat <= SINGAPORE_BOUNDS.maxLat &&
+    lng >= SINGAPORE_BOUNDS.minLng &&
+    lng <= SINGAPORE_BOUNDS.maxLng
+  );
+}
+
+function shouldUseLocalSingaporeCache(
+  preference: OsmSourcePreference | undefined,
+  lat: number,
+  lng: number,
+): boolean {
+  if (!isWithinSingaporeBounds(lat, lng)) return false;
+  if (preference === 'local_cache') return true;
+  if (preference === 'live_osm') return false;
+  return env.enableLocalOsmSingapore;
+}
+
+function getBoundingBoxForRadius(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+} {
+  const latDelta = radiusMeters / 111_320;
+  const lngDelta = radiusMeters / (111_320 * Math.cos((lat * Math.PI) / 180));
+  return {
+    minLat: lat - latDelta,
+    maxLat: lat + latDelta,
+    minLng: lng - lngDelta,
+    maxLng: lng + lngDelta,
+  };
+}
+
+function parseLatLngPairs(value: unknown): [number, number][] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      if (!Array.isArray(entry) || entry.length < 2) return null;
+      const lat = Number(entry[0]);
+      const lng = Number(entry[1]);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      return [lat, lng] as [number, number];
+    })
+    .filter((entry): entry is [number, number] => entry !== null);
+}
+
+async function fetchLocalSingaporeRouteGeometries(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  maxResults?: number,
+): Promise<OsmRouteGeometry[]> {
+  const bbox = getBoundingBoxForRadius(lat, lng, radiusMeters);
+  const maxFetchedRows =
+    maxResults == null
+      ? Math.min(Math.max(Math.ceil(radiusMeters * 18), 20_000), 100_000)
+      : Math.min(Math.max(maxResults * 12, 5_000), 100_000);
+  const pageSize = 1000;
+  const rows: LocalSingaporeRoadRow[] = [];
+  let hitFetchCap = false;
+
+  for (let offset = 0; offset < maxFetchedRows; offset += pageSize) {
+    const rangeEnd = Math.min(offset + pageSize - 1, maxFetchedRows - 1);
+    const { data, error } = await supabaseAdmin
+      .from('osm_sg_roads')
+      .select(
+        'osm_id,name,highway_type,oneway,center_lat,center_lng,min_lat,max_lat,min_lng,max_lng,coordinates_json',
+      )
+      .lte('min_lat', bbox.maxLat)
+      .gte('max_lat', bbox.minLat)
+      .lte('min_lng', bbox.maxLng)
+      .gte('max_lng', bbox.minLng)
+      .order('osm_id', { ascending: true })
+      .range(offset, rangeEnd);
+
+    if (error) throw error;
+
+    const pageRows = (data ?? []) as LocalSingaporeRoadRow[];
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+    if (rangeEnd >= maxFetchedRows - 1) hitFetchCap = true;
+  }
+
+  const results = rows
+    .map((row) => {
+      const coordinates = parseLatLngPairs(row.coordinates_json);
+      if (coordinates.length < 2 || !isDrivableRoadType(row.highway_type)) return null;
+
+      const dist = Math.round(getMinDistanceToPolylineMeters(coordinates, lat, lng));
+      if (dist > radiusMeters) return null;
+
+      return {
+        name: row.name || `${row.highway_type} road`,
+        highway_type: row.highway_type,
+        one_way: row.oneway === true,
+        coordinates,
+        distance_from_center_m: dist,
+      } satisfies OsmRouteGeometry;
+    })
+    .filter((row): row is OsmRouteGeometry => row !== null)
+    .sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+
+  if (hitFetchCap) {
+    logger.warn(
+      {
+        radiusMeters,
+        maxResults,
+        fetchedRows: rows.length,
+        maxFetchedRows,
+        returnedRows: results.length,
+      },
+      'Singapore local OSM route query hit row prefetch cap; some road fragments may be omitted',
+    );
+  }
+
+  return maxResults == null ? results : results.slice(0, maxResults);
+}
+
+async function fetchLocalSingaporeBuildings(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+): Promise<OsmBuilding[]> {
+  const bbox = getBoundingBoxForRadius(lat, lng, radiusMeters);
+  const maxFetchedRows = Math.min(Math.max(Math.ceil(radiusMeters * 20), 8_000), 120_000);
+  const pageSize = 1000;
+  const rows: LocalSingaporeBuildingRow[] = [];
+  let hitFetchCap = false;
+
+  for (let offset = 0; offset < maxFetchedRows; offset += pageSize) {
+    const rangeEnd = Math.min(offset + pageSize - 1, maxFetchedRows - 1);
+    const { data, error } = await supabaseAdmin
+      .from('osm_sg_buildings')
+      .select(
+        'osm_id,name,building_type,building_levels,building_levels_underground,height_m,center_lat,center_lng,min_lat,max_lat,min_lng,max_lng,footprint_polygon_json',
+      )
+      .lte('min_lat', bbox.maxLat)
+      .gte('max_lat', bbox.minLat)
+      .lte('min_lng', bbox.maxLng)
+      .gte('max_lng', bbox.minLng)
+      .order('osm_id', { ascending: true })
+      .range(offset, rangeEnd);
+
+    if (error) throw error;
+
+    const pageRows = (data ?? []) as LocalSingaporeBuildingRow[];
+    rows.push(...pageRows);
+    if (pageRows.length < pageSize) break;
+    if (rangeEnd >= maxFetchedRows - 1) hitFetchCap = true;
+  }
+
+  const mappedResults: Array<OsmBuilding | null> = rows.map((row) => {
+    const polygon = parseLatLngPairs(row.footprint_polygon_json);
+    if (polygon.length < 3) return null;
+
+    const dist = Math.round(
+      polygon.reduce((best, [coordLat, coordLng]) => {
+        const pointDist = haversine(lat, lng, coordLat, coordLng);
+        return Math.min(best, pointDist);
+      }, Number.POSITIVE_INFINITY),
+    );
+    if (dist > radiusMeters) return null;
+
+    const minlat = row.min_lat ?? Math.min(...polygon.map(([polyLat]) => polyLat));
+    const maxlat = row.max_lat ?? Math.max(...polygon.map(([polyLat]) => polyLat));
+    const minlon = row.min_lng ?? Math.min(...polygon.map(([, polyLng]) => polyLng));
+    const maxlon = row.max_lng ?? Math.max(...polygon.map(([, polyLng]) => polyLng));
+    const centerLat =
+      row.center_lat ?? polygon.reduce((sum, [polyLat]) => sum + polyLat, 0) / polygon.length;
+    const centerLng =
+      row.center_lng ?? polygon.reduce((sum, [, polyLng]) => sum + polyLng, 0) / polygon.length;
+
+    return {
+      name: row.name,
+      lat: centerLat,
+      lng: centerLng,
+      bounds: { minlat, minlon, maxlat, maxlon },
+      footprint_polygon: polygon,
+      distance_from_center_m: dist,
+      building_levels: row.building_levels ?? undefined,
+      building_levels_underground: row.building_levels_underground ?? undefined,
+      building_use: row.building_type ?? undefined,
+      height_m: row.height_m ?? undefined,
+    };
+  });
+
+  const results = mappedResults
+    .filter((row): row is OsmBuilding => row !== null)
+    .sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+
+  if (hitFetchCap) {
+    logger.warn(
+      {
+        radiusMeters,
+        fetchedRows: rows.length,
+        maxFetchedRows,
+        returnedRows: results.length,
+      },
+      'Singapore local OSM building query hit row prefetch cap; some buildings may be omitted',
+    );
+  }
+
+  return results;
+}
+
+function isDrivableRoadType(highwayType: string | undefined): boolean {
+  if (!highwayType) return false;
+  return [
+    'motorway',
+    'motorway_link',
+    'trunk',
+    'trunk_link',
+    'primary',
+    'primary_link',
+    'secondary',
+    'secondary_link',
+    'tertiary',
+    'tertiary_link',
+    'residential',
+    'unclassified',
+    'service',
+    'living_street',
+  ].includes(highwayType);
+}
+
+export async function fetchRouteGeometries(
+  lat: number,
+  lng: number,
+  radiusMeters?: number,
+  opts?: { maxResults?: number; sourcePreference?: OsmSourcePreference },
+): Promise<OsmRouteGeometry[]>;
+export async function fetchRouteGeometries(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  opts: { maxResults?: number; sourcePreference?: OsmSourcePreference; withMeta: true },
+): Promise<RouteGeometryFetchResult>;
 export async function fetchRouteGeometries(
   lat: number,
   lng: number,
   radiusMeters: number = 6000,
-): Promise<OsmRouteGeometry[]> {
+  opts?: { maxResults?: number; sourcePreference?: OsmSourcePreference; withMeta?: boolean },
+): Promise<OsmRouteGeometry[] | RouteGeometryFetchResult> {
   const radius = Math.min(radiusMeters, 10000);
+  const maxRoutes = opts?.maxResults == null ? undefined : Math.max(1, opts.maxResults);
+  const wantMeta = opts?.withMeta === true;
+
+  if (shouldUseLocalSingaporeCache(opts?.sourcePreference, lat, lng)) {
+    try {
+      const localResults = await fetchLocalSingaporeRouteGeometries(lat, lng, radius, maxRoutes);
+      if (localResults.length > 0) {
+        logger.info(
+          { total: localResults.length, returned: localResults.length, radius, maxRoutes },
+          'Singapore local OSM route geometries fetched from Supabase',
+        );
+        return wantMeta ? { roads: localResults, source: 'local_supabase' } : localResults;
+      }
+      logger.info({ radius }, 'Singapore local OSM route cache empty; falling back to Overpass');
+    } catch (err) {
+      logger.warn(
+        { err, radius },
+        'Singapore local OSM route query failed; falling back to Overpass',
+      );
+    }
+  }
+
   const query = `
 [out:json][timeout:90];
 (
-  way["highway"~"^(primary|secondary|tertiary|trunk|motorway|residential|unclassified|service|footway|pedestrian|path|cycleway|living_street|steps|track)"](around:${radius},${lat},${lng});
+  way["highway"~"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|trunk|trunk_link|motorway|motorway_link|residential|unclassified|service|footway|pedestrian|path|cycleway|living_street|steps|track)"](around:${radius},${lat},${lng});
 );
 out body geom;
 `;
@@ -516,9 +887,14 @@ out body geom;
 
     const name = tags.name || tags.ref || `${tags.highway} road`;
     const coordinates: [number, number][] = geometry.map((pt) => [pt.lat, pt.lon]);
-    const midIdx = Math.floor(coordinates.length / 2);
-    const midPt = coordinates[midIdx] ?? coordinates[0];
-    const dist = Math.round(haversine(lat, lng, midPt[0], midPt[1]));
+    if (!isDrivableRoadType(tags.highway)) continue;
+
+    const dist = Math.round(
+      coordinates.reduce((best, [coordLat, coordLng]) => {
+        const pointDist = haversine(lat, lng, coordLat, coordLng);
+        return Math.min(best, pointDist);
+      }, Number.POSITIVE_INFINITY),
+    );
 
     results.push({
       name,
@@ -531,12 +907,17 @@ out body geom;
 
   results.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
-  const MAX_ROUTES = 200;
   logger.info(
-    { total: results.length, returned: Math.min(results.length, MAX_ROUTES), radius },
+    {
+      total: results.length,
+      returned: Math.min(results.length, maxRoutes ?? results.length),
+      radius,
+      maxRoutes,
+    },
     'OSM route geometries fetched',
   );
-  return results.slice(0, MAX_ROUTES);
+  const slicedResults = maxRoutes == null ? results : results.slice(0, maxRoutes);
+  return wantMeta ? { roads: slicedResults, source: 'overpass' } : slicedResults;
 }
 
 export interface FetchLogEntry {
@@ -560,17 +941,49 @@ export async function fetchVenueBuilding(
   lat: number,
   lng: number,
   radiusMeters: number,
-  opts: { withLog: true },
+  opts: { withLog: true; sourcePreference?: OsmSourcePreference },
 ): Promise<FetchVenueBuildingResult>;
 export async function fetchVenueBuilding(
   lat: number,
   lng: number,
   radiusMeters?: number,
-  opts?: { withLog?: boolean },
+  opts?: { withLog?: boolean; sourcePreference?: OsmSourcePreference },
 ): Promise<OsmBuilding[] | FetchVenueBuildingResult> {
-  const radius = Math.min(radiusMeters ?? 500, 1000);
+  const radius = Math.min(radiusMeters ?? 500, 10000);
   const fetchLog: FetchLogEntry[] = [];
   const wantLog = opts?.withLog === true;
+
+  if (shouldUseLocalSingaporeCache(opts?.sourcePreference, lat, lng)) {
+    const localStart = Date.now();
+    try {
+      const localBuildings = await fetchLocalSingaporeBuildings(lat, lng, radius);
+      fetchLog.push({
+        phase: 'local_supabase',
+        status: localBuildings.length > 0 ? 'ok' : 'empty',
+        latencyMs: Date.now() - localStart,
+        detail: `Supabase Singapore building cache returned ${localBuildings.length} buildings`,
+      });
+      if (localBuildings.length > 0) {
+        logger.info(
+          { total: localBuildings.length, returned: localBuildings.length, radius },
+          'Singapore local OSM buildings fetched from Supabase',
+        );
+        return wantLog ? { buildings: localBuildings, fetchLog } : localBuildings;
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      fetchLog.push({
+        phase: 'local_supabase',
+        status: 'error',
+        latencyMs: Date.now() - localStart,
+        detail: `Supabase Singapore building cache failed: ${msg.slice(0, 200)}`,
+      });
+      logger.warn(
+        { err, radius },
+        'Singapore local OSM building query failed; falling back to Overpass',
+      );
+    }
+  }
 
   // Phase 1: try full geometry for ways AND relations (best quality)
   const p1Start = Date.now();
@@ -890,6 +1303,13 @@ export interface BuildingFootprint {
   polygon: [number, number][];
 }
 
+export interface RoadFootprint {
+  name: string | null;
+  road_type: string;
+  polygon: [number, number][];
+  distance_from_center_m: number;
+}
+
 /**
  * Fetch building footprint polygons within a large radius.
  * Unlike fetchVenueBuilding (which returns detailed data for ~5 nearest buildings),
@@ -931,6 +1351,51 @@ out body geom;
     return footprints;
   } catch (err) {
     logger.warn({ err, radius }, 'Wide-area building footprint fetch failed');
+    return [];
+  }
+}
+
+/**
+ * Fetch road-surface polygons within a radius.
+ * Uses only area-like OSM geometries so the response stays lightweight and
+ * avoids inventing buffered road widths heuristically.
+ */
+export async function fetchRoadFootprints(
+  lat: number,
+  lng: number,
+  radiusMeters: number = 1000,
+): Promise<RoadFootprint[]> {
+  const radius = Math.min(radiusMeters, 2000);
+  const TIMEOUT_S = 60;
+  const query = `
+[out:json][timeout:${TIMEOUT_S}];
+(
+  way["area:highway"](around:${radius},${lat},${lng});
+  relation["area:highway"](around:${radius},${lat},${lng});
+  way["highway"="pedestrian"]["area"="yes"](around:${radius},${lat},${lng});
+  relation["highway"="pedestrian"]["area"="yes"](around:${radius},${lat},${lng});
+  way["highway"="living_street"]["area"="yes"](around:${radius},${lat},${lng});
+  relation["highway"="living_street"]["area"="yes"](around:${radius},${lat},${lng});
+  way["highway"="service"]["area"="yes"](around:${radius},${lat},${lng});
+  relation["highway"="service"]["area"="yes"](around:${radius},${lat},${lng});
+);
+out body geom;
+`;
+
+  try {
+    const elements = await runRawOverpassQuery(query, TIMEOUT_S * 1000 + 5000);
+    const footprints: RoadFootprint[] = [];
+
+    for (const el of elements) {
+      const parsed = parseOsmRoadFootprintElement(el, lat, lng);
+      if (parsed && isDrivableRoadType(parsed.road_type)) footprints.push(parsed);
+    }
+
+    footprints.sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
+    logger.info({ total: footprints.length, radius }, 'OSM road footprints fetched');
+    return footprints;
+  } catch (err) {
+    logger.warn({ err, radius }, 'Road footprint fetch failed');
     return [];
   }
 }
@@ -990,6 +1455,52 @@ function parseOsmBuildingElement(
   if (tags.height) building.height_m = parseFloat(tags.height) || undefined;
 
   return building;
+}
+
+function parseOsmRoadFootprintElement(
+  el: Record<string, unknown>,
+  centerLat: number,
+  centerLng: number,
+): RoadFootprint | null {
+  const tags = (el.tags as Record<string, string>) || {};
+  const pos = extractLatLng(el as Parameters<typeof extractLatLng>[0]);
+  if (!pos) return null;
+
+  let polygon: [number, number][] = [];
+  const geometry = el.geometry as Array<{ lat: number; lon: number }> | undefined;
+  if (geometry?.length && geometry.length >= 3) {
+    polygon = geometry.map((pt) => [pt.lat, pt.lon] as [number, number]);
+  } else {
+    const members = (el as Record<string, unknown>).members as
+      Array<{ role?: string; geometry?: Array<{ lat: number; lon: number }> }> | undefined;
+    if (members?.length) {
+      for (const m of members) {
+        if (m.role === 'outer' && m.geometry?.length) {
+          polygon.push(...m.geometry.map((pt) => [pt.lat, pt.lon] as [number, number]));
+        }
+      }
+    }
+  }
+
+  if (polygon.length < 3) return null;
+
+  const first = polygon[0];
+  const last = polygon[polygon.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) {
+    polygon = [...polygon, first];
+  }
+
+  if (polygon.length < 4) return null;
+
+  const roadType = tags['area:highway'] || tags.highway;
+  if (!roadType) return null;
+
+  return {
+    name: tags.name || null,
+    road_type: roadType,
+    polygon,
+    distance_from_center_m: Math.round(haversine(centerLat, centerLng, pos.lat, pos.lng)),
+  };
 }
 
 /**
