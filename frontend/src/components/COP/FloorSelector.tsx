@@ -59,8 +59,8 @@ export const FloorSelector = ({
               transition-all duration-150
               ${
                 isActive
-                  ? 'bg-robotic-yellow text-black border-robotic-yellow'
-                  : 'bg-black/85 text-robotic-yellow border-robotic-yellow/40 hover:border-robotic-yellow/70 hover:bg-black/95'
+                  ? 'bg-accent text-black border-accent'
+                  : 'bg-surface text-ink border-border hover:border-border-strong hover:bg-surface-2'
               }
             `}
             title={floor.floor_label}

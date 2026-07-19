@@ -21,6 +21,7 @@ import { env } from '../env.js';
 import { insiderRouter } from './insider.js';
 import { performSweep } from '../services/bombSquadSweepService.js';
 import { hospitalRouter } from './hospital.js';
+import { consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
 
 const router = Router();
 
@@ -86,8 +87,12 @@ router.get(
         )
         .order('created_at', { ascending: false });
 
-      // Non-trainers only see sessions they're part of
-      if (user.role !== 'trainer' && user.role !== 'admin') {
+      // Visibility: admins see every session; trainers see only their own
+      // (marketplace model - independent trainers must not see each other's
+      // client sessions); everyone else sees sessions they participate in.
+      if (user.role === 'trainer') {
+        query = query.eq('trainer_id', user.id);
+      } else if (user.role !== 'admin') {
         logger.info(
           { userId: user.id },
           'Non-trainer: fetching sessions from session_participants',
@@ -1151,6 +1156,22 @@ router.post(
         return res.status(404).json({ error: 'Scenario not found' });
       }
 
+      // Credit gate: session creation consumes one session credit and records
+      // which client invoice funded it. Only admins bypass (unlimited access).
+      let fundingInvoiceId: string | null = null;
+      let creditLedgerId: string | null = null;
+      if (!isAdmin(user)) {
+        const consume = await consumeCredit(user.id, 'session', 'session_created');
+        if (!consume.ok) {
+          return res.status(402).json({
+            error: 'No session credits. A session credit is granted when a client pays an invoice.',
+            code: 'NO_SESSION_CREDITS',
+          });
+        }
+        fundingInvoiceId = consume.fundingInvoiceId ?? null;
+        creditLedgerId = consume.ledgerId ?? null;
+      }
+
       // Generate join token and compute expiry
       const joinToken = nanoid(20);
       const joinExpiresAt = scheduled_start_time
@@ -1172,13 +1193,25 @@ router.post(
           join_enabled: true,
           join_expires_at: joinExpiresAt,
           sim_mode: simMode,
+          funding_invoice_id: fundingInvoiceId,
         })
         .select()
         .single();
 
       if (error) {
         logger.error({ error, userId: user.id }, 'Failed to create session');
+        if (creditLedgerId) {
+          await refundCredit(user.id, 'session', fundingInvoiceId);
+        }
         return res.status(500).json({ error: 'Failed to create session' });
+      }
+
+      // Backfill the session id onto the spend row for exact auditing.
+      if (creditLedgerId) {
+        await supabaseAdmin
+          .from('credit_ledger')
+          .update({ session_id: data.id })
+          .eq('id', creditLedgerId);
       }
 
       // Create default channels for the session
@@ -1289,8 +1322,52 @@ router.patch(
       if (status === 'in_progress' && !session.start_time) {
         updates.start_time = new Date().toISOString();
 
-        // Clone scenario-level pins so each session has independent state
         const scenarioId = (session as { scenario_id?: string }).scenario_id;
+
+        // Re-sync scenario content into the session at START (not create).
+        // current_state was snapshotted from scenario.initial_state when the
+        // session was created; the trainer may have edited the scenario since.
+        // Merge the live initial_state back in (scenario-derived keys only —
+        // runtime keys the sim has already written, e.g. social_state, win)
+        // and re-seed org pages so participant-facing pages reflect edits.
+        if (scenarioId) {
+          try {
+            const [{ data: liveScenario, error: liveScenarioErr }, { data: sessionRow }] =
+              await Promise.all([
+                supabaseAdmin
+                  .from('scenarios')
+                  .select('initial_state, category')
+                  .eq('id', scenarioId)
+                  .single(),
+                supabaseAdmin.from('sessions').select('current_state').eq('id', id).single(),
+              ]);
+            if (liveScenarioErr) throw liveScenarioErr;
+            if (liveScenario?.initial_state) {
+              const liveInitial = liveScenario.initial_state as Record<string, unknown>;
+              const currentState =
+                ((sessionRow?.current_state ?? {}) as Record<string, unknown>) || {};
+              // Scenario keys overwrite their stale snapshots; runtime-only
+              // keys (absent from initial_state) are preserved as-is.
+              updates.current_state = { ...currentState, ...liveInitial };
+
+              if (liveScenario.category === 'social_media_crisis') {
+                const { seedOrgPages } = await import('../services/ambientContentService.js');
+                await seedOrgPages(id, liveInitial);
+              }
+              logger.info(
+                { sessionId: id, scenarioId },
+                'Session start: current_state re-synced from live scenario',
+              );
+            }
+          } catch (syncError) {
+            logger.error(
+              { error: syncError, sessionId: id },
+              'Failed to re-sync scenario state at session start, continuing with stale snapshot',
+            );
+          }
+        }
+
+        // Clone scenario-level pins so each session has independent state
         if (scenarioId) {
           try {
             await cloneScenarioPinsForSession(id, scenarioId);

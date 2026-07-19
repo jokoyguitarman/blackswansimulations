@@ -138,18 +138,10 @@ export const JoinSessionPage = () => {
   // Loading state
   if (loadingInfo || authLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center scanline relative">
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255, 184, 0, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 107, 53, 0.1) 1px, transparent 1px)',
-            backgroundSize: '50px 50px',
-          }}
-        />
+      <div className="min-h-screen flex items-center justify-center relative">
         <div className="text-center">
-          <div className="text-lg terminal-text mb-2 animate-pulse">[LOADING]</div>
-          <div className="text-xs terminal-text text-robotic-yellow/50">Verifying join link...</div>
+          <div className="text-lg text-ink mb-2 animate-pulse">Loading</div>
+          <div className="text-xs text-muted">Verifying join link…</div>
         </div>
       </div>
     );
@@ -158,29 +150,19 @@ export const JoinSessionPage = () => {
   // Invalid link
   if (invalidLink) {
     return (
-      <div className="min-h-screen flex items-center justify-center scanline relative">
-        <div
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage:
-              'linear-gradient(rgba(255, 184, 0, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 107, 53, 0.1) 1px, transparent 1px)',
-            backgroundSize: '50px 50px',
-          }}
-        />
-        <div className="max-w-md w-full mx-4 relative z-10">
-          <div className="military-border p-8 space-y-6">
-            <div className="text-center border-b-2 border-red-500 pb-4 mb-6">
-              <div className="text-2xl terminal-text text-red-400 mb-2">[LINK_NOT_VALID]</div>
+      <div className="min-h-screen flex items-center justify-center relative px-4">
+        <div className="max-w-md w-full relative z-10">
+          <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 space-y-6">
+            <div className="text-center border-b border-border pb-4 mb-2">
+              <div className="text-xl font-extrabold text-danger mb-2">Link not valid</div>
             </div>
             <div className="text-center space-y-4">
-              <p className="text-sm terminal-text text-robotic-yellow/80">
+              <p className="text-sm text-ink">
                 This join link is invalid, has expired, or has been disabled by the trainer.
               </p>
-              <p className="text-xs terminal-text text-robotic-yellow/50">
-                Please contact your trainer for a new link.
-              </p>
+              <p className="text-xs text-muted">Please contact your trainer for a new link.</p>
               <Link to="/login" className="military-button inline-block px-6 py-2 text-sm mt-4">
-                [GO_TO_LOGIN]
+                Go to sign in
               </Link>
             </div>
           </div>
@@ -191,36 +173,26 @@ export const JoinSessionPage = () => {
 
   // Join form
   return (
-    <div className="min-h-screen flex items-center justify-center scanline relative">
-      {/* Background grid */}
-      <div
-        className="absolute inset-0 opacity-10"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(255, 184, 0, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 107, 53, 0.1) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-        }}
-      />
-
-      <div className="max-w-md w-full mx-4 relative z-10">
-        <div className="military-border p-8 space-y-6">
+    <div className="min-h-screen flex items-center justify-center relative px-4">
+      <div className="max-w-md w-full relative z-10">
+        <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 space-y-6">
           {/* Header */}
-          <div className="text-center border-b-2 border-robotic-yellow pb-4 mb-6">
-            <div className="classified-stamp text-xl mb-2 inline-block">SIMULATION EXERCISE</div>
-            <div className="terminal-text text-xs tracking-widest mt-2">
-              CLASSIFIED // AUTHORIZED PERSONNEL
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand text-white font-extrabold text-lg mb-3">
+              BS
+            </div>
+            <div className="text-xs font-bold text-accent uppercase tracking-wide">
+              Simulation exercise
             </div>
           </div>
 
           {/* Session Title */}
           <div className="text-center">
-            <div className="text-sm terminal-text text-robotic-yellow/50 uppercase mb-1">
-              Session
-            </div>
-            <div className="text-lg terminal-text font-semibold">{joinInfo?.sessionTitle}</div>
+            <div className="text-xs text-muted uppercase tracking-wide mb-1">Session</div>
+            <div className="text-lg text-ink font-bold">{joinInfo?.sessionTitle}</div>
           </div>
 
-          <p className="text-sm terminal-text text-robotic-yellow/70 text-center">
+          <p className="text-sm text-muted text-center">
             Enter your details below to join this simulation.
           </p>
 
@@ -228,11 +200,8 @@ export const JoinSessionPage = () => {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Display Name */}
             <div>
-              <label
-                htmlFor="displayName"
-                className="block text-xs terminal-text uppercase mb-2 text-robotic-yellow/70"
-              >
-                Display Name *
+              <label htmlFor="displayName" className="block text-xs font-semibold text-ink mb-2">
+                Display name *
               </label>
               <input
                 id="displayName"
@@ -242,20 +211,17 @@ export const JoinSessionPage = () => {
                 placeholder="e.g. CPT James Lee"
                 required
                 maxLength={50}
-                className="w-full bg-robotic-gray-300 border-2 border-robotic-yellow/30 text-robotic-yellow px-4 py-3 terminal-text focus:border-robotic-yellow focus:outline-none placeholder-robotic-yellow/30"
+                className="w-full military-input px-4 py-3 text-sm"
               />
-              {nameError && <p className="text-xs terminal-text text-red-400 mt-1">{nameError}</p>}
-              <p className="text-xs terminal-text text-robotic-yellow/40 mt-1">
+              {nameError && <p className="text-xs text-danger mt-1">{nameError}</p>}
+              <p className="text-xs text-muted mt-1">
                 2-50 characters. Letters, numbers, spaces, periods, hyphens, and apostrophes.
               </p>
             </div>
 
             {/* Team Selection */}
             <div>
-              <label
-                htmlFor="teamName"
-                className="block text-xs terminal-text uppercase mb-2 text-robotic-yellow/70"
-              >
+              <label htmlFor="teamName" className="block text-xs font-semibold text-ink mb-2">
                 Team *
               </label>
               {joinInfo && joinInfo.teams.length > 0 ? (
@@ -264,9 +230,9 @@ export const JoinSessionPage = () => {
                   value={teamName}
                   onChange={(e) => setTeamName(e.target.value)}
                   required
-                  className="w-full bg-robotic-gray-300 border-2 border-robotic-yellow/30 text-robotic-yellow px-4 py-3 terminal-text focus:border-robotic-yellow focus:outline-none appearance-none"
+                  className="w-full military-input px-4 py-3 text-sm appearance-none"
                 >
-                  <option value="">Select your team...</option>
+                  <option value="">Select your team…</option>
                   {joinInfo.teams.map((team) => (
                     <option key={team.id} value={team.team_name}>
                       {team.team_name}
@@ -282,15 +248,15 @@ export const JoinSessionPage = () => {
                   onChange={(e) => setTeamName(e.target.value)}
                   placeholder="Enter team name"
                   required
-                  className="w-full bg-robotic-gray-300 border-2 border-robotic-yellow/30 text-robotic-yellow px-4 py-3 terminal-text focus:border-robotic-yellow focus:outline-none placeholder-robotic-yellow/30"
+                  className="w-full military-input px-4 py-3 text-sm"
                 />
               )}
             </div>
 
             {/* Error Display */}
             {error && (
-              <div className="military-border p-3 border-red-500 bg-red-500/10">
-                <p className="text-xs terminal-text text-red-400">{error}</p>
+              <div className="border-l-4 border-danger bg-danger/10 p-3 rounded-md">
+                <p className="text-xs text-danger">{error}</p>
               </div>
             )}
 
@@ -300,17 +266,14 @@ export const JoinSessionPage = () => {
               disabled={submitting || !!nameError}
               className="military-button w-full py-3 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {submitting ? '[JOINING...]' : '[JOIN_SESSION]'}
+              {submitting ? 'Joining…' : 'Join session'}
             </button>
 
             {/* Optional Email Linking (only for non-authenticated users) */}
             {!user && (
-              <div className="border-t border-robotic-yellow/20 pt-4 mt-4">
-                <label
-                  htmlFor="email"
-                  className="block text-xs terminal-text uppercase mb-2 text-robotic-yellow/50"
-                >
-                  Optional: Link your email for account recovery
+              <div className="border-t border-border pt-4 mt-4">
+                <label htmlFor="email" className="block text-xs font-semibold text-muted mb-2">
+                  Optional: link your email for account recovery
                 </label>
                 <input
                   id="email"
@@ -318,9 +281,9 @@ export const JoinSessionPage = () => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="your.email@example.com"
-                  className="w-full bg-robotic-gray-300 border-2 border-robotic-yellow/20 text-robotic-yellow px-4 py-2 terminal-text text-sm focus:border-robotic-yellow focus:outline-none placeholder-robotic-yellow/20"
+                  className="w-full military-input px-4 py-2 text-sm"
                 />
-                <p className="text-xs terminal-text text-robotic-yellow/30 mt-1">
+                <p className="text-xs text-muted mt-1">
                   If you don't link an email, clearing your browser data will lose your account.
                 </p>
               </div>
@@ -329,11 +292,9 @@ export const JoinSessionPage = () => {
 
           {/* Login Link */}
           <div className="text-center pt-2">
-            <span className="text-xs terminal-text text-robotic-yellow/50">
-              Already have an account?{' '}
-            </span>
-            <Link to="/login" className="text-xs terminal-text text-robotic-yellow hover:underline">
-              Log in instead
+            <span className="text-xs text-muted">Already have an account? </span>
+            <Link to="/login" className="text-xs text-brand font-semibold hover:underline">
+              Sign in instead
             </Link>
           </div>
         </div>

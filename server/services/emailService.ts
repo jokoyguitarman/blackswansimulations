@@ -197,6 +197,80 @@ This is an automated message from the Simulation Environment.
   }
 };
 
+interface TrainerEnrollmentEmailData {
+  to: string;
+  toName: string;
+  temporaryPassword: string;
+  enrolledByName: string;
+}
+
+/**
+ * Send credentials to a trainer enrolled by an admin (payment portal).
+ */
+export const sendTrainerEnrollmentEmail = async (
+  data: TrainerEnrollmentEmailData,
+): Promise<boolean> => {
+  try {
+    const loginUrl = `${env.clientUrl}/login`;
+
+    const emailContent = `
+You have been enrolled as a trainer on Black Swan Simulations by ${data.enrolledByName}.
+
+Your trainer account is ready:
+
+Email: ${data.to}
+Temporary password: ${data.temporaryPassword}
+
+Sign in here: ${loginUrl}
+
+As a trainer you can enroll your client organisations, invoice them for
+training engagements, build scenarios in the War Room, and run live training
+sessions. Please change your password after your first sign-in.
+
+---
+This is an automated message from Black Swan Simulations.
+`;
+
+    if (!transporter) {
+      logger.info(
+        { to: data.to, subject: 'Your Black Swan Simulations trainer account' },
+        'Email would be sent (email disabled)',
+      );
+      return false; // credentials NOT delivered - caller must surface them to the admin
+    }
+
+    const info = await transporter.sendMail({
+      from: `"${env.emailFromName}" <${env.emailFrom}>`,
+      to: data.to,
+      subject: 'Your Black Swan Simulations trainer account',
+      text: emailContent,
+      html: `
+        <div style="font-family: -apple-system, 'Segoe UI', sans-serif; color: #172033; padding: 24px; border: 1px solid #E4DFD4; border-radius: 12px; max-width: 520px;">
+          <h2 style="color: #1E3A5F; margin-top: 0;">Welcome to Black Swan Simulations</h2>
+          <p>You have been enrolled as a <strong>trainer</strong> by ${data.enrolledByName}.</p>
+          <div style="margin: 20px 0; padding: 14px 16px; background-color: #F4F1EA; border-left: 3px solid #D97706; border-radius: 6px;">
+            <p style="margin: 4px 0;"><strong>Email:</strong> ${data.to}</p>
+            <p style="margin: 4px 0;"><strong>Temporary password:</strong> <code>${data.temporaryPassword}</code></p>
+          </div>
+          <p style="margin: 20px 0;">
+            <a href="${loginUrl}" style="display: inline-block; padding: 11px 22px; background-color: #D97706; color: #fff; text-decoration: none; font-weight: 600; border-radius: 8px;">
+              Sign in
+            </a>
+          </p>
+          <p style="font-size: 13px; color: #6B7280;">As a trainer you can enroll your client organisations, invoice them for training engagements, build scenarios in the War Room, and run live training sessions.</p>
+          <p style="font-size: 13px; color: #6B7280;">Please change your password after your first sign-in.</p>
+        </div>
+      `,
+    });
+
+    logger.info({ messageId: info.messageId, to: data.to }, 'Trainer enrollment email sent');
+    return true;
+  } catch (error) {
+    logger.error({ error, to: data.to }, 'Failed to send trainer enrollment email');
+    return false;
+  }
+};
+
 /**
  * Test email configuration
  */

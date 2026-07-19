@@ -2,9 +2,24 @@ import fs from 'node:fs';
 
 /** Aggregation and reporting for load-test results. */
 
+export interface SessionStageStat {
+  sessionId: string;
+  sessionIndex: number;
+  players: number;
+  probesSent: number;
+  expectedDeliveries: number;
+  receivedDeliveries: number;
+  deliveryRate: number;
+  latP50Ms: number | null;
+  latP95Ms: number | null;
+  latP99Ms: number | null;
+  disconnects: number;
+}
+
 export interface StageResult {
   gametype: string;
-  players: number;
+  players: number; // total connected spectators in this stage (all sessions)
+  sessionCount?: number; // multi-session runs only
   durationSec: number;
   probesSent: number;
   httpErrors: number;
@@ -19,12 +34,14 @@ export interface StageResult {
   connectFailures: number;
   disconnects: number;
   passiveEvents: number;
+  sessions?: SessionStageStat[]; // per-session breakdown (multi-session runs)
 }
 
 export interface GametypeRun {
   gametype: string;
   scenarioTitle: string;
-  sessionId: string;
+  sessionId: string; // first session (kept for single-session compatibility)
+  sessionIds?: string[]; // all sessions (multi-session runs)
   stages: StageResult[];
   kneeStage: number | null; // players count of first degraded stage, or null
 }
@@ -39,12 +56,16 @@ export function percentile(sorted: number[], p: number): number | null {
 }
 
 export function detectKnee(stages: StageResult[]): number | null {
-  for (const s of stages) {
-    if ((s.latP95Ms !== null && s.latP95Ms > KNEE_P95_MS) || s.deliveryRate < KNEE_DELIVERY) {
-      return s.players;
-    }
-  }
-  return null;
+  // A capacity knee is a degradation that persists as load grows: find the
+  // trailing run of consecutive breaching stages ending at the highest stage.
+  // An isolated breach in an early stage (warm-up, cold caches) is not a knee.
+  const breaches = stages.map(
+    (s) => (s.latP95Ms !== null && s.latP95Ms > KNEE_P95_MS) || s.deliveryRate < KNEE_DELIVERY,
+  );
+  if (stages.length === 0 || !breaches[breaches.length - 1]) return null;
+  let i = stages.length - 1;
+  while (i > 0 && breaches[i - 1]) i--;
+  return stages[i].players;
 }
 
 const fmtMs = (v: number | null): string => (v === null ? '-' : `${Math.round(v)} ms`);
@@ -55,7 +76,9 @@ function pad(s: string, w: number): string {
 }
 
 export function printStageTable(run: GametypeRun): void {
+  const multi = run.stages.some((s) => (s.sessions?.length ?? 0) > 0);
   const cols = [
+    ...(multi ? ([['Sess', 5]] as const) : []),
     ['Players', 8],
     ['p50', 10],
     ['p95', 10],
@@ -69,14 +92,19 @@ export function printStageTable(run: GametypeRun): void {
   ] as const;
 
   console.log('');
-  console.log(
-    `=== ${run.gametype.toUpperCase()} — "${run.scenarioTitle}" (session ${run.sessionId}) ===`,
-  );
+  const sessionLabel = run.sessionIds
+    ? `${run.sessionIds.length} sessions`
+    : `session ${run.sessionId}`;
+  console.log(`=== ${run.gametype.toUpperCase()} — "${run.scenarioTitle}" (${sessionLabel}) ===`);
   console.log(cols.map(([name, w]) => pad(name, w)).join(' '));
   console.log(cols.map(([, w]) => '-'.repeat(w)).join(' '));
   for (const s of run.stages) {
-    const isKnee = run.kneeStage !== null && s.players >= run.kneeStage;
+    // Flag only stages that themselves breach a threshold; an isolated breach
+    // in an early stage (e.g. instance warm-up) shouldn't taint later stages.
+    const isKnee =
+      (s.latP95Ms !== null && s.latP95Ms > KNEE_P95_MS) || s.deliveryRate < KNEE_DELIVERY;
     const row = [
+      ...(multi ? [pad(String(s.sessionCount ?? 1), 5)] : []),
       pad(String(s.players), 8),
       pad(fmtMs(s.latP50Ms), 10),
       pad(fmtMs(s.latP95Ms), 10),
@@ -89,19 +117,38 @@ export function printStageTable(run: GametypeRun): void {
       pad(String(s.passiveEvents), 8),
     ].join(' ');
     console.log(isKnee ? `${row}  << DEGRADED` : row);
+
+    // Per-session spread: expose the sickest and healthiest session so a
+    // single degraded session isn't averaged away.
+    if (s.sessions && s.sessions.length > 1) {
+      const byP95 = [...s.sessions].sort((a, b) => (a.latP95Ms ?? 0) - (b.latP95Ms ?? 0));
+      const best = byP95[0];
+      const worst = byP95[byP95.length - 1];
+      const worstDelivery = [...s.sessions].sort((a, b) => a.deliveryRate - b.deliveryRate)[0];
+      console.log(
+        `${' '.repeat(6)}session spread: best p95 ${fmtMs(best.latP95Ms)} (#${best.sessionIndex + 1}), ` +
+          `worst p95 ${fmtMs(worst.latP95Ms)} (#${worst.sessionIndex + 1}), ` +
+          `lowest delivery ${fmtPct(worstDelivery.deliveryRate)} (#${worstDelivery.sessionIndex + 1})`,
+      );
+    }
   }
 
+  const unit = multi ? 'players total' : 'players';
   if (run.kneeStage !== null) {
     const lastHealthy = run.stages.filter((s) => s.players < run.kneeStage!).at(-1);
     console.log(
-      `Verdict: degradation first observed at ${run.kneeStage} players` +
-        (lastHealthy ? `; last healthy stage: ${lastHealthy.players} players.` : '.'),
+      `Verdict: degradation first observed at ${run.kneeStage} ${unit}` +
+        (lastHealthy
+          ? `; last healthy stage: ${lastHealthy.players} ${unit}` +
+            (multi ? ` (${lastHealthy.sessionCount} sessions).` : '.')
+          : '.'),
     );
   } else {
     const top = run.stages.at(-1);
     console.log(
-      `Verdict: no degradation observed up to ${top?.players ?? 0} players ` +
-        `(p95 threshold ${KNEE_P95_MS} ms, delivery threshold ${KNEE_DELIVERY * 100}%).`,
+      `Verdict: no degradation observed up to ${top?.players ?? 0} ${unit}` +
+        (multi && top ? ` across ${top.sessionCount} sessions` : '') +
+        ` (p95 threshold ${KNEE_P95_MS} ms, delivery threshold ${KNEE_DELIVERY * 100}%).`,
     );
   }
 }

@@ -86,9 +86,9 @@ export function BackgroundMusic({ src }: BackgroundMusicProps) {
     return (
       <button
         onClick={handleEnableMusic}
-        className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 animate-pulse"
+        className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 animate-pulse"
       >
-        [ENABLE_MUSIC]
+        Enable music
       </button>
     );
   }
@@ -97,7 +97,7 @@ export function BackgroundMusic({ src }: BackgroundMusicProps) {
     <div className="flex items-center gap-2">
       <button
         onClick={toggleMute}
-        className="p-1 text-robotic-yellow hover:text-robotic-yellow/80 transition-colors"
+        className="p-1 text-ink hover:text-brand transition-colors"
         title={isMuted ? 'Unmute' : 'Mute'}
       >
         {isMuted || volume === 0 ? (
@@ -139,7 +139,7 @@ export function BackgroundMusic({ src }: BackgroundMusicProps) {
         step="0.01"
         value={isMuted ? 0 : volume}
         onChange={handleVolumeChange}
-        className="w-20 h-1 appearance-none bg-robotic-gray-200 rounded cursor-pointer accent-robotic-yellow [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-robotic-yellow [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-robotic-yellow [&::-moz-range-thumb]:border-0"
+        className="w-20 h-1 appearance-none bg-surface-2 rounded cursor-pointer accent-accent [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-accent [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-accent [&::-moz-range-thumb]:border-0"
         title={`Volume: ${Math.round((isMuted ? 0 : volume) * 100)}%`}
       />
     </div>

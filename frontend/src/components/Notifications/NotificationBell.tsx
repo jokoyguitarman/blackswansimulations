@@ -120,15 +120,15 @@ export const NotificationBell = () => {
   const getPriorityStyles = (priority: string) => {
     switch (priority) {
       case 'critical':
-        return 'border-l-4 border-red-500 bg-red-900/20';
+        return 'border-l-4 border-danger bg-danger/10';
       case 'high':
-        return 'border-l-4 border-robotic-orange bg-robotic-orange/10';
+        return 'border-l-4 border-accent bg-accent/10';
       case 'medium':
-        return 'border-l-4 border-robotic-yellow bg-robotic-yellow/10';
+        return 'border-l-4 border-warning bg-warning/10';
       case 'low':
-        return 'border-l-4 border-green-500 bg-green-900/20';
+        return 'border-l-4 border-success bg-success/10';
       default:
-        return 'border-l-4 border-robotic-gray-50 bg-robotic-gray-200/20';
+        return 'border-l-4 border-border bg-surface-2';
     }
   };
 
@@ -169,21 +169,21 @@ export const NotificationBell = () => {
   const dropdownContent = isOpen ? (
     <div
       ref={dropdownRef}
-      className="fixed w-96 max-h-[600px] overflow-y-auto military-border bg-robotic-gray-300 border-robotic-yellow shadow-lg z-[9999]"
+      className="fixed w-96 max-h-[600px] overflow-y-auto bg-surface border border-border rounded-xl shadow-lg z-[9999]"
       style={{
         top: `${dropdownPosition.top}px`,
         right: `${dropdownPosition.right}px`,
       }}
     >
       {/* Header */}
-      <div className="p-4 border-b border-robotic-yellow/30 flex items-center justify-between">
-        <h3 className="text-sm terminal-text uppercase text-robotic-yellow">[NOTIFICATIONS]</h3>
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        <h3 className="text-sm font-bold uppercase tracking-wide text-brand">Notifications</h3>
         {unreadCount > 0 && (
           <button
             onClick={handleMarkAllRead}
-            className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow uppercase"
+            className="text-xs font-semibold text-brand hover:text-accent"
           >
-            [MARK ALL READ]
+            Mark all read
           </button>
         )}
       </div>
@@ -192,14 +192,14 @@ export const NotificationBell = () => {
       <div className="max-h-[500px] overflow-y-auto">
         {sortedNotifications.length === 0 ? (
           <div className="p-6 text-center">
-            <p className="text-sm terminal-text text-robotic-yellow/50">[NO NOTIFICATIONS]</p>
+            <p className="text-sm text-muted">No notifications</p>
           </div>
         ) : (
-          <div className="divide-y divide-robotic-yellow/20">
+          <div className="divide-y divide-border">
             {sortedNotifications.map((notification) => (
               <div
                 key={notification.id}
-                className={`p-4 hover:bg-robotic-yellow/5 cursor-pointer transition-colors ${
+                className={`p-4 hover:bg-surface-2 cursor-pointer transition-colors ${
                   !notification.read ? getPriorityStyles(notification.priority) : ''
                 } ${notification.read ? 'opacity-70' : ''}`}
                 onClick={() => handleNotificationClick(notification)}
@@ -208,24 +208,16 @@ export const NotificationBell = () => {
                   <span className="text-xl flex-shrink-0">{getIcon(notification.priority)}</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="text-sm terminal-text font-semibold uppercase text-robotic-yellow">
-                        {notification.title}
-                      </h4>
+                      <h4 className="text-sm font-bold text-ink">{notification.title}</h4>
                       {!notification.read && (
-                        <span className="w-2 h-2 bg-robotic-orange rounded-full flex-shrink-0"></span>
+                        <span className="w-2 h-2 bg-accent rounded-full flex-shrink-0"></span>
                       )}
                     </div>
-                    <p className="text-xs terminal-text text-robotic-yellow/80 mb-2">
-                      {notification.message}
-                    </p>
+                    <p className="text-xs text-muted mb-2">{notification.message}</p>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                        {notification.priority}
-                      </span>
+                      <span className="text-xs text-muted uppercase">{notification.priority}</span>
                       {notification.action_url && (
-                        <span className="text-xs terminal-text text-robotic-yellow/70">
-                          [CLICK TO VIEW]
-                        </span>
+                        <span className="text-xs text-brand font-medium">Click to view</span>
                       )}
                     </div>
                   </div>
@@ -244,12 +236,26 @@ export const NotificationBell = () => {
       <button
         ref={buttonRef}
         onClick={toggleDropdown}
-        className="relative px-3 py-2 text-robotic-yellow hover:bg-robotic-yellow/10 transition-all border border-robotic-yellow/50 hover:border-robotic-yellow"
+        className="relative w-9 h-9 rounded-lg flex items-center justify-center text-white bg-white/10 hover:bg-white/20 transition-all flex-none"
         aria-label="Notifications"
       >
-        <span className="text-xl">🔔</span>
+        {/* Inline SVG instead of the bell emoji: emoji fonts (especially on
+            Windows) have unpredictable metrics and overflow the 36px box. */}
+        <svg
+          className="w-5 h-5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={2}
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M14.857 17.082a23.848 23.848 0 005.454-1.31A8.967 8.967 0 0118 9.75v-.7V9A6 6 0 006 9v.75a8.967 8.967 0 01-2.312 6.022c1.733.64 3.56 1.085 5.455 1.31m5.714 0a24.255 24.255 0 01-5.714 0m5.714 0a3 3 0 11-5.714 0"
+          />
+        </svg>
         {unreadCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-robotic-orange text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center border border-robotic-yellow">
+          <span className="absolute -top-1 -right-1 bg-accent text-white text-[10px] font-bold rounded-full px-1.5 min-w-[18px] h-[18px] flex items-center justify-center">
             {unreadCount > 9 ? '9+' : unreadCount}
           </span>
         )}

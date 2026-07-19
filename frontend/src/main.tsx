@@ -5,6 +5,10 @@ import { NotificationProvider } from './contexts/NotificationContext';
 import { Login } from './pages/Login';
 import { SignUp } from './pages/SignUp';
 import { Dashboard } from './pages/Dashboard';
+import { Clients } from './pages/Clients';
+import { AdminPayouts } from './pages/AdminPayouts';
+import { AdminTrainers } from './pages/AdminTrainers';
+import { AccountSettings } from './pages/AccountSettings';
 import { Scenarios } from './pages/Scenarios';
 import { WarRoom } from './pages/WarRoom';
 import { SocialCrisisWizard } from './pages/SocialCrisisWizard';
@@ -42,12 +46,10 @@ const ProtectedRoute = ({
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center  scanline">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="text-lg terminal-text mb-2 animate-pulse">[AUTHENTICATING]</div>
-          <div className="text-xs terminal-text text-robotic-yellow/50">
-            Verifying credentials...
-          </div>
+          <div className="text-lg text-ink mb-2 animate-pulse">Authenticating</div>
+          <div className="text-xs text-muted">Verifying credentials…</div>
         </div>
       </div>
     );
@@ -81,6 +83,38 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/account"
+              element={
+                <ProtectedRoute>
+                  <AccountSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clients"
+              element={
+                <ProtectedRoute roles={['trainer', 'admin']}>
+                  <Clients />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/payouts"
+              element={
+                <ProtectedRoute roles={['admin']}>
+                  <AdminPayouts />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/admin/trainers"
+              element={
+                <ProtectedRoute roles={['admin']}>
+                  <AdminTrainers />
                 </ProtectedRoute>
               }
             />

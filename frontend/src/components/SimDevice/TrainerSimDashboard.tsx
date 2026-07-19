@@ -128,6 +128,8 @@ interface LedgerEntry {
     signals?: Record<string, boolean>;
     media_concept_grade?: number;
     media_feedback?: string;
+    role_fit?: number;
+    graded_as_team?: string;
   } | null;
   action_type?: string;
   target_id?: string | null;
@@ -144,6 +146,7 @@ interface LedgerEntry {
 interface LedgerPlayer {
   player_id: string;
   display_name: string;
+  team_name?: string | null;
   entries: LedgerEntry[];
 }
 
@@ -157,6 +160,52 @@ interface PlayerLedger {
     is_positive: boolean;
   }>;
 }
+
+interface TeamTaskStatus {
+  action_id: string;
+  description: string;
+  tier: number;
+  status: 'done' | 'pending' | 'overdue' | 'unstaffed';
+  completed_at: string | null;
+  on_time: boolean | null;
+  timing_benchmark_minutes: number | null;
+}
+
+interface TeamScoreRow {
+  team_name: string;
+  mission: string;
+  member_count: number;
+  members: Array<{
+    user_id: string;
+    display_name: string;
+    graded_items: number;
+    avg_overall: number | null;
+    avg_role_fit: number | null;
+  }>;
+  tasks: TeamTaskStatus[];
+  tasks_done: number;
+  tasks_total: number;
+  content_quality: number | null;
+  task_completion: number | null;
+  role_fit: number | null;
+  composite_score: number | null;
+  most_urgent_overdue: { description: string; minutes_overdue: number } | null;
+}
+
+interface TeamScoreReport {
+  teams: TeamScoreRow[];
+  unassigned: Array<{ user_id: string; display_name: string }>;
+  elapsed_minutes: number | null;
+}
+
+const TEAM_COLOR: Record<string, string> = {
+  Communications: '#3b82f6',
+  Procurement: '#D97706',
+  Sales: '#15803D',
+  Legal: '#1E3A5F',
+};
+const teamColor = (name: string | null | undefined): string =>
+  (name && TEAM_COLOR[name]) || '#64748b';
 
 interface FeedPost {
   id: string;
@@ -255,27 +304,27 @@ function conditionLabel(key: string): string {
 // ---------------------------------------------------------------------------
 
 function gaugeColor(value: number): string {
-  if (value > 60) return '#22c55e';
-  if (value >= 30) return '#f59e0b';
-  return '#ef4444';
+  if (value > 60) return '#15803D';
+  if (value >= 30) return '#D97706';
+  return '#B91C1C';
 }
 
 function riskColor(value: number): string {
-  if (value < 30) return '#22c55e';
-  if (value <= 60) return '#f59e0b';
-  return '#ef4444';
+  if (value < 30) return '#15803D';
+  if (value <= 60) return '#D97706';
+  return '#B91C1C';
 }
 
 function ageColor(minutes: number): string {
-  if (minutes < 3) return '#22c55e';
-  if (minutes <= 8) return '#f59e0b';
-  return '#ef4444';
+  if (minutes < 3) return '#15803D';
+  if (minutes <= 8) return '#D97706';
+  return '#B91C1C';
 }
 
 function gradeColor(score: number): string {
-  if (score >= 80) return '#22c55e';
-  if (score >= 50) return '#f59e0b';
-  return '#ef4444';
+  if (score >= 80) return '#15803D';
+  if (score >= 50) return '#D97706';
+  return '#B91C1C';
 }
 
 function minutesAgo(iso: string): number {
@@ -325,10 +374,10 @@ const LEDGER_KIND_LABEL: Record<string, string> = {
 
 const LEDGER_KIND_COLOR: Record<string, string> = {
   post: '#3b82f6',
-  reply: '#22c55e',
-  email: '#a855f7',
+  reply: '#15803D',
+  email: '#1E3A5F',
   dm: '#64748b',
-  action: '#f59e0b',
+  action: '#D97706',
 };
 
 function truncate(text: string, max: number): string {
@@ -356,11 +405,11 @@ function Card({
   return (
     <div
       className={`rounded-xl border overflow-hidden flex flex-col ${className || ''}`}
-      style={{ backgroundColor: '#1a1a1a', borderColor: '#2a2a2a' }}
+      style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
     >
       <div
         className="px-4 py-2.5 border-b text-xs font-semibold tracking-wider uppercase"
-        style={{ borderColor: '#2a2a2a', color: '#94a3b8' }}
+        style={{ borderColor: '#E4DFD4', color: '#6B7280' }}
       >
         {title}
       </div>
@@ -374,14 +423,14 @@ function Gauge({ label, value, invert }: { label: string; value: number; invert?
   return (
     <div className="mb-3 last:mb-0">
       <div className="flex justify-between items-center mb-1">
-        <span className="text-xs" style={{ color: '#94a3b8' }}>
+        <span className="text-xs" style={{ color: '#6B7280' }}>
           {label}
         </span>
         <span className="text-xs font-bold" style={{ color }}>
           {Math.round(value)}
         </span>
       </div>
-      <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#2a2a2a' }}>
+      <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#E4DFD4' }}>
         <div
           className="h-full rounded-full transition-all duration-500"
           style={{ width: `${Math.min(100, Math.max(0, value))}%`, backgroundColor: color }}
@@ -393,10 +442,10 @@ function Gauge({ label, value, invert }: { label: string; value: number; invert?
 
 function Badge({ text, variant }: { text: string; variant: 'red' | 'amber' | 'blue' | 'gray' }) {
   const colors: Record<string, { bg: string; fg: string }> = {
-    red: { bg: 'rgba(239,68,68,0.15)', fg: '#ef4444' },
-    amber: { bg: 'rgba(245,158,11,0.15)', fg: '#f59e0b' },
-    blue: { bg: 'rgba(59,130,246,0.15)', fg: '#3b82f6' },
-    gray: { bg: 'rgba(148,163,184,0.15)', fg: '#94a3b8' },
+    red: { bg: 'rgba(185,28,28,0.12)', fg: '#B91C1C' },
+    amber: { bg: 'rgba(217,119,6,0.12)', fg: '#D97706' },
+    blue: { bg: 'rgba(30,58,95,0.1)', fg: '#3b82f6' },
+    gray: { bg: 'rgba(107,114,128,0.14)', fg: '#6B7280' },
   };
   const c = colors[variant] || colors.gray;
   return (
@@ -427,8 +476,8 @@ function CheckItem({
         className="flex items-center gap-2 py-1 w-full text-left"
         style={{ cursor: hasDetails ? 'pointer' : 'default' }}
       >
-        <span style={{ color: done ? '#22c55e' : '#ef4444' }}>{done ? '✓' : '✗'}</span>
-        <span className="text-xs flex-1" style={{ color: done ? '#e5e5e5' : '#64748b' }}>
+        <span style={{ color: done ? '#15803D' : '#B91C1C' }}>{done ? '✓' : '✗'}</span>
+        <span className="text-xs flex-1" style={{ color: done ? '#172033' : '#64748b' }}>
           {label}
         </span>
         {hasDetails && (
@@ -443,7 +492,7 @@ function CheckItem({
             <div
               key={i}
               className="text-[10px] rounded px-2 py-1"
-              style={{ backgroundColor: '#141414', color: '#94a3b8' }}
+              style={{ backgroundColor: '#FFFFFF', color: '#6B7280' }}
             >
               {d.time && (
                 <span className="mr-2" style={{ color: '#475569' }}>
@@ -478,8 +527,8 @@ function SopTimeline({ steps }: { steps: SopDot[] }) {
   }
 
   const dotColor = (s: SopDot['status']) => {
-    if (s === 'completed') return '#22c55e';
-    if (s === 'overdue') return '#ef4444';
+    if (s === 'completed') return '#15803D';
+    if (s === 'overdue') return '#B91C1C';
     return '#475569';
   };
 
@@ -488,13 +537,13 @@ function SopTimeline({ steps }: { steps: SopDot[] }) {
       {steps.map((step, i) => (
         <div key={step.label} className="flex flex-col items-center" style={{ minWidth: 80 }}>
           <div className="flex items-center w-full">
-            {i > 0 && <div className="flex-1 h-px" style={{ backgroundColor: '#2a2a2a' }} />}
+            {i > 0 && <div className="flex-1 h-px" style={{ backgroundColor: '#E4DFD4' }} />}
             <div
               className={`w-4 h-4 rounded-full flex-shrink-0 ${step.status === 'overdue' ? 'animate-pulse' : ''}`}
               style={{ backgroundColor: dotColor(step.status) }}
             />
             {i < steps.length - 1 && (
-              <div className="flex-1 h-px" style={{ backgroundColor: '#2a2a2a' }} />
+              <div className="flex-1 h-px" style={{ backgroundColor: '#E4DFD4' }} />
             )}
             {i === 0 && <div className="flex-1" />}
             {i === steps.length - 1 && <div className="flex-1" />}
@@ -516,11 +565,11 @@ function SopTimeline({ steps }: { steps: SopDot[] }) {
 // ---------------------------------------------------------------------------
 
 function orchStatusDot(inj: OrchestrationInject): { color: string; pulse: boolean } {
-  if (inj.status === 'published') return { color: '#22c55e', pulse: false };
+  if (inj.status === 'published') return { color: '#15803D', pulse: false };
   if (inj.status === 'cancelled') return { color: '#475569', pulse: false };
-  if (inj.status === 'eligible') return { color: '#22c55e', pulse: true };
-  if (inj.met_count > 0) return { color: '#f59e0b', pulse: false };
-  return { color: '#ef4444', pulse: false };
+  if (inj.status === 'eligible') return { color: '#15803D', pulse: true };
+  if (inj.met_count > 0) return { color: '#D97706', pulse: false };
+  return { color: '#B91C1C', pulse: false };
 }
 
 function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
@@ -545,21 +594,21 @@ function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
           <span className="flex items-center gap-1">
             <span
               className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: '#22c55e' }}
+              style={{ backgroundColor: '#15803D' }}
             />
             Published
           </span>
           <span className="flex items-center gap-1">
             <span
               className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: '#f59e0b' }}
+              style={{ backgroundColor: '#D97706' }}
             />
             Partial
           </span>
           <span className="flex items-center gap-1">
             <span
               className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: '#ef4444' }}
+              style={{ backgroundColor: '#B91C1C' }}
             />
             Waiting
           </span>
@@ -575,7 +624,7 @@ function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
             <button
               onClick={() => setExpandedId(isExpanded ? null : inj.id)}
               className="flex items-center gap-2.5 w-full text-left rounded-lg px-3 py-2 hover:opacity-90 transition-opacity"
-              style={{ backgroundColor: '#141414' }}
+              style={{ backgroundColor: '#FFFFFF' }}
             >
               <span
                 className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${dot.pulse ? 'animate-pulse' : ''}`}
@@ -588,8 +637,8 @@ function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
                     inj.status === 'cancelled'
                       ? '#475569'
                       : inj.status === 'published'
-                        ? '#e5e5e5'
-                        : '#94a3b8',
+                        ? '#172033'
+                        : '#6B7280',
                 }}
               >
                 {inj.title}
@@ -599,16 +648,16 @@ function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
                 style={{
                   color:
                     inj.met_count === inj.total_count
-                      ? '#22c55e'
+                      ? '#15803D'
                       : inj.met_count > 0
-                        ? '#f59e0b'
-                        : '#ef4444',
+                        ? '#D97706'
+                        : '#B91C1C',
                 }}
               >
                 {inj.met_count}/{inj.total_count}
               </span>
               {inj.status === 'published' && inj.published_at && (
-                <span className="text-[10px] flex-shrink-0" style={{ color: '#22c55e' }}>
+                <span className="text-[10px] flex-shrink-0" style={{ color: '#15803D' }}>
                   {new Date(inj.published_at).toLocaleTimeString([], {
                     hour: '2-digit',
                     minute: '2-digit',
@@ -628,14 +677,14 @@ function OrchestrationTicker({ injects }: { injects: OrchestrationInject[] }) {
             {isExpanded && (
               <div
                 className="ml-5 mt-1 mb-2 rounded-lg px-3 py-2 space-y-1"
-                style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a' }}
+                style={{ backgroundColor: '#FAF8F4', border: '1px solid #E4DFD4' }}
               >
                 {inj.conditions.map((c) => (
                   <div key={c.key} className="flex items-center gap-2">
-                    <span style={{ color: c.met ? '#22c55e' : '#ef4444', fontSize: 11 }}>
+                    <span style={{ color: c.met ? '#15803D' : '#B91C1C', fontSize: 11 }}>
                       {c.met ? '✓' : '✗'}
                     </span>
-                    <span className="text-[11px]" style={{ color: c.met ? '#e5e5e5' : '#64748b' }}>
+                    <span className="text-[11px]" style={{ color: c.met ? '#172033' : '#64748b' }}>
                       {conditionLabel(c.key)}
                     </span>
                   </div>
@@ -666,6 +715,8 @@ export default function TrainerSimDashboard() {
   const [disputes, setDisputes] = useState<DisputeRow[]>([]);
   const [ledger, setLedger] = useState<PlayerLedger | null>(null);
   const [selectedLedgerPlayer, setSelectedLedgerPlayer] = useState<string | null>(null);
+  const [teamScores, setTeamScores] = useState<TeamScoreReport | null>(null);
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
   const feedEndRef = useRef<HTMLDivElement>(null);
@@ -818,6 +869,18 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  const loadTeamScores = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/team-scores/session/${sessionId}`), { headers });
+      const json = await res.json();
+      if (json.data) setTeamScores(json.data as TeamScoreReport);
+    } catch {
+      /* retry on next poll */
+    }
+  }, [sessionId]);
+
   const loadAll = useCallback(() => {
     loadSocialState();
     loadPosts();
@@ -827,6 +890,7 @@ export default function TrainerSimDashboard() {
     loadOrchestration();
     loadDisputes();
     loadLedger();
+    loadTeamScores();
   }, [
     loadSocialState,
     loadPosts,
@@ -836,6 +900,7 @@ export default function TrainerSimDashboard() {
     loadOrchestration,
     loadDisputes,
     loadLedger,
+    loadTeamScores,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -871,10 +936,13 @@ export default function TrainerSimDashboard() {
       'social_post.created',
       'social_post.flagged',
       'social_posts.engagement_update',
+      'team_scores.updated',
     ],
     onEvent: (evt) => {
       if (evt.type === 'social_state.updated' && evt.data) {
         setSocialState(evt.data as unknown as SocialState);
+      } else if (evt.type === 'team_scores.updated') {
+        loadTeamScores();
       } else {
         loadPosts();
         loadGradedReplies();
@@ -1005,11 +1073,11 @@ export default function TrainerSimDashboard() {
   // ---- Render -------------------------------------------------------------
 
   return (
-    <div className="min-h-screen w-full" style={{ backgroundColor: '#0f0f0f', color: '#e5e5e5' }}>
+    <div className="min-h-screen w-full" style={{ backgroundColor: '#FAF8F4', color: '#172033' }}>
       {/* Header */}
       <header
         className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 border-b"
-        style={{ backgroundColor: '#0f0f0f', borderColor: '#2a2a2a' }}
+        style={{ backgroundColor: '#FAF8F4', borderColor: '#E4DFD4' }}
       >
         <div className="flex items-center gap-4">
           <button
@@ -1022,19 +1090,19 @@ export default function TrainerSimDashboard() {
           <button
             onClick={() => navigate(`/sim/${sessionId}/desktop`)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: '#2a2a2a', color: '#94a3b8' }}
+            style={{ backgroundColor: '#E4DFD4', color: '#6B7280' }}
           >
             Desktop View
           </button>
           <button
             onClick={() => navigate(`/sessions/${sessionId || ''}`)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: '#1a1a1a', color: '#3b82f6', border: '1px solid #2a2a2a' }}
+            style={{ backgroundColor: '#FFFFFF', color: '#1E3A5F', border: '1px solid #E4DFD4' }}
           >
             ← Back
           </button>
           <div>
-            <h1 className="text-base font-bold" style={{ color: '#ffffff' }}>
+            <h1 className="text-base font-bold" style={{ color: '#1E3A5F' }}>
               {isReview ? 'Crisis Session Review' : 'Crisis Trainer Dashboard'}
             </h1>
             <p className="text-[11px]" style={{ color: '#64748b' }}>
@@ -1047,14 +1115,14 @@ export default function TrainerSimDashboard() {
           <button
             onClick={() => setShowExplainer(true)}
             className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-            style={{ backgroundColor: '#1e293b', color: '#94a3b8', border: '1px solid #334155' }}
+            style={{ backgroundColor: '#F4F1EA', color: '#6B7280', border: '1px solid #E4DFD4' }}
           >
             How It Works
           </button>
           {isReview ? (
             <span
               className="text-[11px] px-2 py-1 rounded font-semibold"
-              style={{ backgroundColor: 'rgba(34,197,94,0.15)', color: '#22c55e' }}
+              style={{ backgroundColor: 'rgba(21,128,61,0.12)', color: '#15803D' }}
             >
               COMPLETED · REVIEW
             </span>
@@ -1062,8 +1130,8 @@ export default function TrainerSimDashboard() {
             <span
               className="text-[11px] px-2 py-1 rounded font-semibold"
               style={{
-                backgroundColor: socialState ? 'rgba(34,197,94,0.15)' : 'rgba(100,116,139,0.15)',
-                color: socialState ? '#22c55e' : '#64748b',
+                backgroundColor: socialState ? 'rgba(21,128,61,0.12)' : 'rgba(107,114,128,0.14)',
+                color: socialState ? '#15803D' : '#64748b',
               }}
             >
               {socialState ? 'LIVE' : 'CONNECTING…'}
@@ -1099,7 +1167,7 @@ export default function TrainerSimDashboard() {
                 }
               }}
               className="text-[11px] font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-              style={{ backgroundColor: '#ef4444', color: '#fff' }}
+              style={{ backgroundColor: '#B91C1C', color: '#fff' }}
             >
               Conclude Session
             </button>
@@ -1153,7 +1221,7 @@ export default function TrainerSimDashboard() {
                   socialState.consistency_score != null ||
                   socialState.rdap_score != null ||
                   socialState.victim_centring_score != null) && (
-                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #1e293b' }}>
+                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F4F1EA' }}>
                     <div
                       className="text-[10px] font-semibold mb-2"
                       style={{ color: '#64748b', letterSpacing: '0.5px' }}
@@ -1181,9 +1249,9 @@ export default function TrainerSimDashboard() {
                   </div>
                 )}
 
-                <div className="mt-3 pt-3" style={{ borderTop: '1px solid #1e293b' }}>
+                <div className="mt-3 pt-3" style={{ borderTop: '1px solid #F4F1EA' }}>
                   <div className="flex justify-between text-[11px] mb-1.5">
-                    <span style={{ color: '#94a3b8' }}>Report precision</span>
+                    <span style={{ color: '#6B7280' }}>Report precision</span>
                     <span
                       style={{
                         color:
@@ -1199,16 +1267,16 @@ export default function TrainerSimDashboard() {
                     </span>
                   </div>
                   <div className="flex justify-between text-[11px] mb-1.5">
-                    <span style={{ color: '#94a3b8' }}>Time to first response</span>
-                    <span style={{ color: '#e2e8f0', fontWeight: 700 }}>
+                    <span style={{ color: '#6B7280' }}>Time to first response</span>
+                    <span style={{ color: '#374151', fontWeight: 700 }}>
                       {socialState.time_to_first_response_minutes == null
                         ? '--'
                         : `${socialState.time_to_first_response_minutes}m`}
                     </span>
                   </div>
                   <div className="flex justify-between text-[11px]">
-                    <span style={{ color: '#94a3b8' }}>Time to official statement</span>
-                    <span style={{ color: '#e2e8f0', fontWeight: 700 }}>
+                    <span style={{ color: '#6B7280' }}>Time to official statement</span>
+                    <span style={{ color: '#374151', fontWeight: 700 }}>
                       {socialState.time_to_first_statement_minutes == null
                         ? '--'
                         : `${socialState.time_to_first_statement_minutes}m`}
@@ -1242,10 +1310,10 @@ export default function TrainerSimDashboard() {
                     <div
                       key={p.id}
                       className="rounded-lg p-2.5 border"
-                      style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] font-semibold" style={{ color: '#94a3b8' }}>
+                        <span className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>
                           @{p.author_handle}
                           {p.posted_by_display_name && (
                             <span
@@ -1263,7 +1331,7 @@ export default function TrainerSimDashboard() {
                           {isReview ? 'no response' : `${age}m ago`}
                         </span>
                       </div>
-                      <p className="text-xs leading-relaxed mb-1.5" style={{ color: '#cbd5e1' }}>
+                      <p className="text-xs leading-relaxed mb-1.5" style={{ color: '#4B5563' }}>
                         {truncate(p.content, 120)}
                       </p>
                       <div className="flex flex-wrap gap-1">
@@ -1273,7 +1341,7 @@ export default function TrainerSimDashboard() {
                         {p.target_player_ids && p.target_player_ids.length > 0 && (
                           <span
                             className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
-                            style={{ backgroundColor: 'rgba(99,102,241,0.15)', color: '#818cf8' }}
+                            style={{ backgroundColor: 'rgba(30,58,95,0.1)', color: '#1E3A5F' }}
                           >
                             Bubble
                           </span>
@@ -1297,7 +1365,7 @@ export default function TrainerSimDashboard() {
                   </div>
                   <div
                     className="flex h-4 rounded overflow-hidden"
-                    style={{ backgroundColor: '#2a2a2a' }}
+                    style={{ backgroundColor: '#E4DFD4' }}
                   >
                     {tierPcts.t1 > 0 && (
                       <div
@@ -1313,7 +1381,7 @@ export default function TrainerSimDashboard() {
                     )}
                     {tierPcts.t3 > 0 && (
                       <div
-                        style={{ width: `${tierPcts.t3}%`, backgroundColor: '#8b5cf6' }}
+                        style={{ width: `${tierPcts.t3}%`, backgroundColor: '#1E3A5F' }}
                         title={`Tier 3 Advanced: ${socialState.tier3_advanced_actions}`}
                       />
                     )}
@@ -1331,15 +1399,15 @@ export default function TrainerSimDashboard() {
                 {/* Strategic ratio */}
                 <div
                   className="rounded-lg px-3 py-2 mb-3 flex items-center justify-between"
-                  style={{ backgroundColor: '#141414' }}
+                  style={{ backgroundColor: '#FFFFFF' }}
                 >
-                  <span className="text-xs" style={{ color: '#94a3b8' }}>
+                  <span className="text-xs" style={{ color: '#6B7280' }}>
                     Strategic Ratio
                   </span>
                   <span
                     className="text-sm font-bold"
                     style={{
-                      color: socialState.strategic_ratio >= 0.5 ? '#22c55e' : '#f59e0b',
+                      color: socialState.strategic_ratio >= 0.5 ? '#15803D' : '#D97706',
                     }}
                   >
                     {Math.round(socialState.strategic_ratio * 100)}%
@@ -1413,10 +1481,10 @@ export default function TrainerSimDashboard() {
                     <div
                       key={r.id}
                       className="rounded-lg p-2.5 border"
-                      style={{ backgroundColor: '#141414', borderColor: '#2a2a2a' }}
+                      style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
                     >
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-[11px] font-semibold" style={{ color: '#94a3b8' }}>
+                        <span className="text-[11px] font-semibold" style={{ color: '#6B7280' }}>
                           {r.author_display_name}
                         </span>
                         <span className="text-[10px]" style={{ color: '#64748b' }}>
@@ -1426,12 +1494,12 @@ export default function TrainerSimDashboard() {
                       {r.parent_content && (
                         <div
                           className="text-[10px] rounded px-2 py-1 mb-1.5 italic"
-                          style={{ backgroundColor: '#1a1a1a', color: '#64748b' }}
+                          style={{ backgroundColor: '#FFFFFF', color: '#64748b' }}
                         >
                           Replying to: {truncate(r.parent_content, 80)}
                         </div>
                       )}
-                      <p className="text-xs mb-2 leading-relaxed" style={{ color: '#cbd5e1' }}>
+                      <p className="text-xs mb-2 leading-relaxed" style={{ color: '#4B5563' }}>
                         {truncate(r.content, 160)}
                       </p>
                       <div className="flex flex-wrap gap-2 text-[10px] font-bold">
@@ -1479,8 +1547,8 @@ export default function TrainerSimDashboard() {
                       key={c.id}
                       className="rounded-lg p-2.5 border-l-2"
                       style={{
-                        backgroundColor: '#141414',
-                        borderColor: positive ? '#22c55e' : '#ef4444',
+                        backgroundColor: '#FFFFFF',
+                        borderColor: positive ? '#15803D' : '#B91C1C',
                       }}
                     >
                       <div className="flex items-center justify-between mb-1">
@@ -1492,7 +1560,7 @@ export default function TrainerSimDashboard() {
                           {timeLabel(c.created_at)}
                         </span>
                       </div>
-                      <p className="text-xs leading-relaxed mb-1" style={{ color: '#cbd5e1' }}>
+                      <p className="text-xs leading-relaxed mb-1" style={{ color: '#4B5563' }}>
                         {c.description}
                       </p>
                       {c.metadata?.post_content && (
@@ -1534,17 +1602,17 @@ export default function TrainerSimDashboard() {
                         : 'gray';
                 const borderColor =
                   d.status === 'upheld'
-                    ? '#22c55e'
+                    ? '#15803D'
                     : d.status === 'corrected'
-                      ? '#f59e0b'
+                      ? '#D97706'
                       : d.status === 'rejected'
-                        ? '#ef4444'
+                        ? '#B91C1C'
                         : '#3b82f6';
                 return (
                   <div
                     key={d.id}
                     className="rounded-lg p-2.5 border-l-2"
-                    style={{ backgroundColor: '#141414', borderColor }}
+                    style={{ backgroundColor: '#FFFFFF', borderColor }}
                   >
                     <div className="flex items-center justify-between mb-1">
                       <div className="flex items-center gap-2">
@@ -1560,12 +1628,12 @@ export default function TrainerSimDashboard() {
                         {timeLabel(d.created_at)}
                       </span>
                     </div>
-                    <p className="text-xs leading-relaxed mb-1" style={{ color: '#cbd5e1' }}>
-                      <strong style={{ color: '#e5e5e5' }}>Claim:</strong>{' '}
+                    <p className="text-xs leading-relaxed mb-1" style={{ color: '#4B5563' }}>
+                      <strong style={{ color: '#172033' }}>Claim:</strong>{' '}
                       {truncate(d.claimed_falsehood, 120)}
                     </p>
-                    <p className="text-[11px] leading-snug mb-1" style={{ color: '#94a3b8' }}>
-                      <strong style={{ color: '#cbd5e1' }}>Evidence:</strong>{' '}
+                    <p className="text-[11px] leading-snug mb-1" style={{ color: '#6B7280' }}>
+                      <strong style={{ color: '#4B5563' }}>Evidence:</strong>{' '}
                       {truncate(d.submitted_facts, 120)}
                     </p>
                     {d.verdict_reason && (
@@ -1599,7 +1667,7 @@ export default function TrainerSimDashboard() {
                     <div
                       key={p.id}
                       className={`rounded px-2.5 py-2 ${postBorderStyle(p)}`}
-                      style={{ backgroundColor: '#141414' }}
+                      style={{ backgroundColor: '#FFFFFF' }}
                     >
                       <div className="flex items-center gap-2 mb-0.5">
                         <span
@@ -1609,8 +1677,8 @@ export default function TrainerSimDashboard() {
                               p.author_type === 'player'
                                 ? '#3b82f6'
                                 : p.author_type === 'npc' || p.author_type === 'designed_npc'
-                                  ? '#f59e0b'
-                                  : '#94a3b8',
+                                  ? '#D97706'
+                                  : '#6B7280',
                           }}
                         >
                           @{p.author_handle}
@@ -1628,8 +1696,8 @@ export default function TrainerSimDashboard() {
                               <span
                                 className="text-[9px] px-1.5 py-0.5 rounded font-semibold"
                                 style={{
-                                  backgroundColor: 'rgba(99,102,241,0.15)',
-                                  color: '#818cf8',
+                                  backgroundColor: 'rgba(30,58,95,0.1)',
+                                  color: '#1E3A5F',
                                 }}
                               >
                                 Bubble
@@ -1638,7 +1706,7 @@ export default function TrainerSimDashboard() {
                           </div>
                         )}
                       </div>
-                      <p className="text-xs leading-relaxed" style={{ color: '#cbd5e1' }}>
+                      <p className="text-xs leading-relaxed" style={{ color: '#4B5563' }}>
                         {truncate(p.content, 200)}
                       </p>
                     </div>
@@ -1656,7 +1724,7 @@ export default function TrainerSimDashboard() {
               <div className="mt-4 space-y-1">
                 <div className="flex justify-between text-xs">
                   <span style={{ color: '#64748b' }}>Completed</span>
-                  <span style={{ color: '#22c55e' }}>
+                  <span style={{ color: '#15803D' }}>
                     {sopSteps.filter((s) => s.status === 'completed').length}/{sopSteps.length}
                   </span>
                 </div>
@@ -1664,7 +1732,7 @@ export default function TrainerSimDashboard() {
                   <span style={{ color: '#64748b' }}>Overdue</span>
                   <span
                     style={{
-                      color: sopSteps.some((s) => s.status === 'overdue') ? '#ef4444' : '#64748b',
+                      color: sopSteps.some((s) => s.status === 'overdue') ? '#B91C1C' : '#64748b',
                     }}
                   >
                     {sopSteps.filter((s) => s.status === 'overdue').length}
@@ -1672,7 +1740,7 @@ export default function TrainerSimDashboard() {
                 </div>
                 <div className="flex justify-between text-xs">
                   <span style={{ color: '#64748b' }}>Total Posts</span>
-                  <span style={{ color: '#e5e5e5' }}>{socialState.total_posts}</span>
+                  <span style={{ color: '#172033' }}>{socialState.total_posts}</span>
                 </div>
                 <div className="flex justify-between text-xs">
                   <span style={{ color: '#64748b' }}>Player Posts</span>
@@ -1682,7 +1750,7 @@ export default function TrainerSimDashboard() {
                   <span style={{ color: '#64748b' }}>Unaddressed Harmful</span>
                   <span
                     style={{
-                      color: socialState.unaddressed_hate_count > 0 ? '#ef4444' : '#22c55e',
+                      color: socialState.unaddressed_hate_count > 0 ? '#B91C1C' : '#15803D',
                     }}
                   >
                     {socialState.unaddressed_hate_count}
@@ -1692,7 +1760,7 @@ export default function TrainerSimDashboard() {
                   <span style={{ color: '#64748b' }}>Unaddressed Misinfo</span>
                   <span
                     style={{
-                      color: socialState.unaddressed_misinfo_count > 0 ? '#f59e0b' : '#22c55e',
+                      color: socialState.unaddressed_misinfo_count > 0 ? '#D97706' : '#15803D',
                     }}
                   >
                     {socialState.unaddressed_misinfo_count}
@@ -1716,18 +1784,221 @@ export default function TrainerSimDashboard() {
         </div>
       </div>
 
+      {/* Team Performance (full-width) — fixed response teams */}
+      {teamScores && teamScores.teams.length > 0 && (
+        <div className="px-4 pb-4">
+          <div
+            className="rounded-xl border"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
+          >
+            <div
+              className="flex items-start justify-between gap-3 px-4 py-3 border-b flex-wrap"
+              style={{ borderColor: '#E4DFD4' }}
+            >
+              <div>
+                <h2 className="text-sm font-bold" style={{ color: '#1E3A5F' }}>
+                  Team Performance
+                </h2>
+                <p className="text-[11px]" style={{ color: '#64748b' }}>
+                  Composite = content quality (50%) + task completion (35%) + role fit (15%).
+                  Unstaffed teams are not scored.
+                </p>
+              </div>
+              {teamScores.unassigned.length > 0 && (
+                <span
+                  className="text-[10px] font-semibold px-2 py-1 rounded"
+                  style={{ backgroundColor: 'rgba(217,119,6,0.12)', color: '#D97706' }}
+                  title={teamScores.unassigned.map((u) => u.display_name).join(', ')}
+                >
+                  {teamScores.unassigned.length} player(s) unassigned
+                </span>
+              )}
+            </div>
+
+            <div className="p-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              {teamScores.teams.map((team) => {
+                const color = teamColor(team.team_name);
+                const unstaffed = team.member_count === 0;
+                const expanded = expandedTeam === team.team_name;
+                return (
+                  <div
+                    key={team.team_name}
+                    className="rounded-lg border p-3 flex flex-col"
+                    style={{ backgroundColor: '#FAF8F4', borderColor: '#E4DFD4' }}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-bold" style={{ color }}>
+                        {team.team_name.toUpperCase()}
+                      </span>
+                      <span
+                        className="text-lg font-bold"
+                        style={{
+                          color: unstaffed ? '#475569' : gaugeColor(team.composite_score ?? 0),
+                        }}
+                      >
+                        {unstaffed || team.composite_score == null ? '—' : team.composite_score}
+                      </span>
+                    </div>
+
+                    <div
+                      className="h-1.5 rounded-full overflow-hidden mb-2"
+                      style={{ backgroundColor: '#E4DFD4' }}
+                    >
+                      <div
+                        className="h-full rounded-full transition-all duration-500"
+                        style={{
+                          width: `${team.composite_score ?? 0}%`,
+                          backgroundColor: unstaffed ? '#475569' : color,
+                        }}
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap mb-2">
+                      {unstaffed ? (
+                        <Badge text="UNSTAFFED" variant="red" />
+                      ) : (
+                        <>
+                          <Badge
+                            text={`${team.member_count} member${team.member_count !== 1 ? 's' : ''}`}
+                            variant="gray"
+                          />
+                          <Badge
+                            text={`${team.tasks_done}/${team.tasks_total} tasks`}
+                            variant={
+                              team.tasks_done === team.tasks_total
+                                ? 'blue'
+                                : team.tasks.some((t) => t.status === 'overdue')
+                                  ? 'amber'
+                                  : 'gray'
+                            }
+                          />
+                        </>
+                      )}
+                    </div>
+
+                    {!unstaffed && team.most_urgent_overdue && (
+                      <div
+                        className="text-[10px] rounded px-2 py-1 mb-2 font-semibold"
+                        style={{ backgroundColor: 'rgba(185,28,28,0.1)', color: '#B91C1C' }}
+                      >
+                        Overdue {team.most_urgent_overdue.minutes_overdue}m:{' '}
+                        {team.most_urgent_overdue.description}
+                      </div>
+                    )}
+
+                    <div className="flex gap-3 text-[10px] font-bold mb-2">
+                      {team.content_quality != null && (
+                        <span style={{ color: gradeColor(team.content_quality) }}>
+                          QUALITY {team.content_quality}
+                        </span>
+                      )}
+                      {team.task_completion != null && (
+                        <span style={{ color: gradeColor(team.task_completion) }}>
+                          TASKS {team.task_completion}
+                        </span>
+                      )}
+                      {team.role_fit != null && (
+                        <span style={{ color: gradeColor(team.role_fit) }}>
+                          FIT {team.role_fit}
+                        </span>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={() => setExpandedTeam(expanded ? null : team.team_name)}
+                      className="text-[10px] text-left font-semibold mt-auto"
+                      style={{ color: '#64748b' }}
+                    >
+                      {expanded ? '▾ Hide task checklist' : '▸ Task checklist'}
+                    </button>
+
+                    {expanded && (
+                      <div className="mt-2 space-y-1">
+                        {team.tasks.map((task) => {
+                          const statusColor =
+                            task.status === 'done'
+                              ? '#15803D'
+                              : task.status === 'overdue'
+                                ? '#B91C1C'
+                                : task.status === 'unstaffed'
+                                  ? '#475569'
+                                  : '#D97706';
+                          const icon =
+                            task.status === 'done' ? '✓' : task.status === 'overdue' ? '!' : '·';
+                          return (
+                            <div key={task.action_id} className="flex items-start gap-1.5">
+                              <span
+                                className="text-[10px] font-bold w-3 flex-shrink-0"
+                                style={{ color: statusColor }}
+                              >
+                                {icon}
+                              </span>
+                              <span
+                                className="text-[10px] leading-snug"
+                                style={{
+                                  color: task.status === 'done' ? '#6B7280' : '#4B5563',
+                                }}
+                              >
+                                {task.description}
+                                {task.status === 'done' && task.on_time === false && (
+                                  <span style={{ color: '#D97706' }}> (late)</span>
+                                )}
+                              </span>
+                            </div>
+                          );
+                        })}
+                        {team.members.length > 0 && (
+                          <div
+                            className="pt-1.5 mt-1.5 border-t"
+                            style={{ borderColor: '#E4DFD4' }}
+                          >
+                            {team.members.map((m) => (
+                              <div
+                                key={m.user_id}
+                                className="flex justify-between text-[10px] py-0.5"
+                              >
+                                <span style={{ color: '#4B5563' }}>{m.display_name}</span>
+                                <span style={{ color: '#64748b' }}>
+                                  {m.graded_items > 0 && m.avg_overall != null ? (
+                                    <>
+                                      <span style={{ color: gradeColor(m.avg_overall) }}>
+                                        {m.avg_overall}
+                                      </span>
+                                      {m.avg_role_fit != null && (
+                                        <span> · fit {m.avg_role_fit}</span>
+                                      )}
+                                      <span> · {m.graded_items} graded</span>
+                                    </>
+                                  ) : (
+                                    'no graded output'
+                                  )}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Player Judgement Ledger (full-width) */}
       <div className="px-4 pb-6">
         <div
           className="rounded-xl border"
-          style={{ backgroundColor: '#141414', borderColor: '#232323' }}
+          style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
         >
           <div
             className="flex items-start justify-between gap-3 px-4 py-3 border-b flex-wrap"
-            style={{ borderColor: '#232323' }}
+            style={{ borderColor: '#E4DFD4' }}
           >
             <div>
-              <h2 className="text-sm font-bold" style={{ color: '#fff' }}>
+              <h2 className="text-sm font-bold" style={{ color: '#1E3A5F' }}>
                 Player Judgement Ledger
               </h2>
               <p className="text-[11px]" style={{ color: '#64748b' }}>
@@ -1735,26 +2006,59 @@ export default function TrainerSimDashboard() {
                 snapshot to each action).
               </p>
             </div>
-            <div className="flex flex-wrap gap-1.5">
-              {(ledger?.players ?? []).map((pl, idx) => {
-                const active = selectedLedgerPlayer
-                  ? selectedLedgerPlayer === pl.player_id
-                  : idx === 0;
-                return (
-                  <button
-                    key={pl.player_id}
-                    onClick={() => setSelectedLedgerPlayer(pl.player_id)}
-                    className="text-[11px] px-2.5 py-1 rounded-lg font-semibold transition-opacity hover:opacity-90"
-                    style={{
-                      backgroundColor: active ? '#1d4ed8' : '#1a1a1a',
-                      color: active ? '#fff' : '#94a3b8',
-                      border: '1px solid #2a2a2a',
-                    }}
-                  >
-                    {pl.display_name} ({pl.entries.length})
-                  </button>
-                );
-              })}
+            <div className="flex flex-wrap gap-x-4 gap-y-2">
+              {(() => {
+                const players = ledger?.players ?? [];
+                // Group players under their fixed team; unassigned last.
+                const groups = new Map<string, LedgerPlayer[]>();
+                for (const pl of players) {
+                  const key = pl.team_name || 'Unassigned';
+                  const list = groups.get(key) || [];
+                  list.push(pl);
+                  groups.set(key, list);
+                }
+                const orderedKeys = [
+                  ...Object.keys(TEAM_COLOR).filter((t) => groups.has(t)),
+                  ...Array.from(groups.keys()).filter(
+                    (k) => !(k in TEAM_COLOR) && k !== 'Unassigned',
+                  ),
+                  ...(groups.has('Unassigned') ? ['Unassigned'] : []),
+                ];
+                return orderedKeys.map((groupName) => (
+                  <div key={groupName} className="flex items-center gap-1.5 flex-wrap">
+                    <span
+                      className="text-[9px] font-bold uppercase tracking-wider"
+                      style={{
+                        color: groupName === 'Unassigned' ? '#64748b' : teamColor(groupName),
+                      }}
+                    >
+                      {groupName}
+                    </span>
+                    {(groups.get(groupName) || []).map((pl) => {
+                      const active = selectedLedgerPlayer
+                        ? selectedLedgerPlayer === pl.player_id
+                        : players[0]?.player_id === pl.player_id;
+                      return (
+                        <button
+                          key={pl.player_id}
+                          onClick={() => setSelectedLedgerPlayer(pl.player_id)}
+                          className="text-[11px] px-2.5 py-1 rounded-lg font-semibold transition-opacity hover:opacity-90"
+                          style={{
+                            backgroundColor: active ? '#1E3A5F' : '#FFFFFF',
+                            color: active ? '#fff' : '#6B7280',
+                            border: `1px solid ${active ? '#1E3A5F' : '#E4DFD4'}`,
+                            borderLeft: `3px solid ${
+                              groupName === 'Unassigned' ? '#E4DFD4' : teamColor(groupName)
+                            }`,
+                          }}
+                        >
+                          {pl.display_name} ({pl.entries.length})
+                        </button>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
 
@@ -1787,7 +2091,7 @@ export default function TrainerSimDashboard() {
                         <div
                           key={e.id}
                           className="rounded-lg p-3 border"
-                          style={{ backgroundColor: '#0f0f0f', borderColor: '#232323' }}
+                          style={{ backgroundColor: '#FAF8F4', borderColor: '#E4DFD4' }}
                         >
                           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                             <span
@@ -1814,7 +2118,7 @@ export default function TrainerSimDashboard() {
                                   {Math.round(effect.value)}
                                 </span>
                                 {effect.delta != null && effect.delta !== 0 && (
-                                  <span style={{ color: effect.delta > 0 ? '#22c55e' : '#ef4444' }}>
+                                  <span style={{ color: effect.delta > 0 ? '#15803D' : '#B91C1C' }}>
                                     {' '}
                                     {effect.delta > 0 ? '+' : ''}
                                     {Math.round(effect.delta)}
@@ -1827,14 +2131,14 @@ export default function TrainerSimDashboard() {
                           {e.content && (
                             <p
                               className="text-xs leading-relaxed whitespace-pre-wrap mb-2"
-                              style={{ color: '#cbd5e1' }}
+                              style={{ color: '#4B5563' }}
                             >
                               {e.content}
                             </p>
                           )}
 
                           {g ? (
-                            <div className="rounded-md p-2" style={{ backgroundColor: '#141414' }}>
+                            <div className="rounded-md p-2" style={{ backgroundColor: '#FFFFFF' }}>
                               <div className="flex flex-wrap gap-2 text-[10px] font-bold mb-1">
                                 {g.accuracy != null && (
                                   <span style={{ color: gradeColor(g.accuracy) }}>
@@ -1864,6 +2168,18 @@ export default function TrainerSimDashboard() {
                                     CLAR {g.clarity}
                                   </span>
                                 )}
+                                {g.role_fit != null && (
+                                  <span
+                                    style={{ color: gradeColor(g.role_fit) }}
+                                    title={
+                                      g.graded_as_team
+                                        ? `Role fit — graded as ${g.graded_as_team}`
+                                        : 'Role fit'
+                                    }
+                                  >
+                                    FIT {g.role_fit}
+                                  </span>
+                                )}
                                 {g.overall != null && (
                                   <span
                                     className="ml-auto"
@@ -1873,10 +2189,21 @@ export default function TrainerSimDashboard() {
                                   </span>
                                 )}
                               </div>
+                              {g.signals?.within_mandate === false && (
+                                <div
+                                  className="text-[9px] font-bold px-1.5 py-0.5 rounded inline-block mb-1"
+                                  style={{
+                                    backgroundColor: 'rgba(217,119,6,0.12)',
+                                    color: '#D97706',
+                                  }}
+                                >
+                                  OUT OF LANE
+                                </div>
+                              )}
                               {g.feedback && (
                                 <p
                                   className="text-[11px] italic leading-snug"
-                                  style={{ color: '#94a3b8' }}
+                                  style={{ color: '#6B7280' }}
                                 >
                                   {g.feedback}
                                 </p>
@@ -1885,13 +2212,13 @@ export default function TrainerSimDashboard() {
                                 <div className="mt-1.5">
                                   <div
                                     className="text-[9px] font-bold uppercase"
-                                    style={{ color: '#22c55e' }}
+                                    style={{ color: '#15803D' }}
                                   >
                                     Strengths
                                   </div>
                                   <ul
                                     className="list-disc ml-4 text-[10px]"
-                                    style={{ color: '#94a3b8' }}
+                                    style={{ color: '#6B7280' }}
                                   >
                                     {g.strengths.map((s, i) => (
                                       <li key={i}>{s}</li>
@@ -1903,13 +2230,13 @@ export default function TrainerSimDashboard() {
                                 <div className="mt-1.5">
                                   <div
                                     className="text-[9px] font-bold uppercase"
-                                    style={{ color: '#f59e0b' }}
+                                    style={{ color: '#D97706' }}
                                   >
                                     Improvements
                                   </div>
                                   <ul
                                     className="list-disc ml-4 text-[10px]"
-                                    style={{ color: '#94a3b8' }}
+                                    style={{ color: '#6B7280' }}
                                   >
                                     {g.improvements.map((s, i) => (
                                       <li key={i}>{s}</li>
@@ -1930,17 +2257,17 @@ export default function TrainerSimDashboard() {
                               )}
                             </div>
                           ) : e.dispute ? (
-                            <div className="rounded-md p-2" style={{ backgroundColor: '#141414' }}>
+                            <div className="rounded-md p-2" style={{ backgroundColor: '#FFFFFF' }}>
                               <span
                                 className="text-[10px] font-bold"
                                 style={{
                                   color:
                                     e.dispute.status === 'upheld' ||
                                     e.dispute.status === 'corrected'
-                                      ? '#22c55e'
+                                      ? '#15803D'
                                       : e.dispute.status === 'rejected'
-                                        ? '#ef4444'
-                                        : '#f59e0b',
+                                        ? '#B91C1C'
+                                        : '#D97706',
                                 }}
                               >
                                 Dispute {e.dispute.status.toUpperCase()}
@@ -1951,7 +2278,7 @@ export default function TrainerSimDashboard() {
                               {e.dispute.verdict_reason && (
                                 <p
                                   className="text-[11px] italic leading-snug mt-1"
-                                  style={{ color: '#94a3b8' }}
+                                  style={{ color: '#6B7280' }}
                                 >
                                   {e.dispute.verdict_reason}
                                 </p>
@@ -1960,7 +2287,7 @@ export default function TrainerSimDashboard() {
                           ) : (
                             <span
                               className="text-[9px] px-1.5 py-0.5 rounded"
-                              style={{ backgroundColor: '#1a1a1a', color: '#64748b' }}
+                              style={{ backgroundColor: '#FFFFFF', color: '#64748b' }}
                             >
                               {e.kind === 'dm' ? 'DM · no AI grade' : 'no AI grade'}
                             </span>
@@ -1980,19 +2307,19 @@ export default function TrainerSimDashboard() {
       {showExplainer && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center"
-          style={{ backgroundColor: 'rgba(0,0,0,0.8)' }}
+          style={{ backgroundColor: 'rgba(23,32,51,0.5)' }}
           onClick={() => setShowExplainer(false)}
         >
           <div
             className="relative w-full max-w-3xl max-h-[85vh] overflow-y-auto rounded-2xl mx-4"
-            style={{ backgroundColor: '#111', border: '1px solid #2a2a2a' }}
+            style={{ backgroundColor: '#FFFFFF', border: '1px solid #E4DFD4' }}
             onClick={(e) => e.stopPropagation()}
           >
             <div
               className="sticky top-0 flex items-center justify-between px-6 py-4 z-10"
-              style={{ backgroundColor: '#111', borderBottom: '1px solid #2a2a2a' }}
+              style={{ backgroundColor: '#FFFFFF', borderBottom: '1px solid #E4DFD4' }}
             >
-              <h2 className="text-lg font-bold" style={{ color: '#fff' }}>
+              <h2 className="text-lg font-bold" style={{ color: '#1E3A5F' }}>
                 How the Dashboard Works
               </h2>
               <button
@@ -2005,7 +2332,7 @@ export default function TrainerSimDashboard() {
             </div>
             <div
               className="px-6 py-4 space-y-6 text-[13px] leading-relaxed"
-              style={{ color: '#cbd5e1' }}
+              style={{ color: '#4B5563' }}
             >
               <section>
                 <h3 className="text-[15px] font-bold mb-2" style={{ color: '#3b82f6' }}>
@@ -2017,32 +2344,32 @@ export default function TrainerSimDashboard() {
                 </p>
                 <ul className="list-disc ml-5 mt-2 space-y-1.5">
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Overall Sentiment (0-100)</strong> —
+                    <strong style={{ color: '#172033' }}>Overall Sentiment (0-100)</strong> —
                     Weighted average of all post sentiments. Posts by designed NPCs and
                     high-virality posts carry more weight. Drops when hostile/inflammatory posts
                     dominate the feed.
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Public Trust (0-100)</strong> — Measures
+                    <strong style={{ color: '#172033' }}>Public Trust (0-100)</strong> — Measures
                     whether stakeholders perceive the response team as competent. Increases when
                     players publish official statements and respond to harmful content quickly.
                     Decreases when harmful posts go unaddressed or the team is silent.
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Stakeholder Confidence (0-100)</strong> —
+                    <strong style={{ color: '#172033' }}>Stakeholder Confidence (0-100)</strong> —
                     Tracks how safe and confident affected parties feel. Drops when harmful
                     narratives, inflammatory content, or pressure campaigns appear and remain
                     unaddressed. Recovers when counter-narratives are published and key stakeholders
                     are contacted.
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Narrative Control (0-100)</strong> — Ratio
+                    <strong style={{ color: '#172033' }}>Narrative Control (0-100)</strong> — Ratio
                     of player-created impressions vs. hostile content impressions. High narrative
                     control means the player's content is getting more engagement than the hostile
                     posts. Penalized by unaddressed harmful posts (weighted by age).
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Escalation Risk (0-100, inverted)</strong>{' '}
+                    <strong style={{ color: '#172033' }}>Escalation Risk (0-100, inverted)</strong>{' '}
                     — Higher is worse. Increases when harmful content, organized pressure campaigns,
                     and misinformation accumulate without response. Decreases when players flag
                     content, publish statements, and contact key stakeholders.
@@ -2051,7 +2378,7 @@ export default function TrainerSimDashboard() {
               </section>
 
               <section>
-                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#ef4444' }}>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#B91C1C' }}>
                   Unattended Harmful Posts
                 </h3>
                 <p>
@@ -2076,7 +2403,7 @@ export default function TrainerSimDashboard() {
               </section>
 
               <section>
-                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#8b5cf6' }}>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#1E3A5F' }}>
                   Strategic Actions
                 </h3>
                 <p>Categorizes every player action into three tiers:</p>
@@ -2092,18 +2419,18 @@ export default function TrainerSimDashboard() {
                     contacting community leaders. Shows deliberate communication strategy.
                   </li>
                   <li>
-                    <strong style={{ color: '#8b5cf6' }}>Tier 3 — Advanced</strong> — Multi-platform
+                    <strong style={{ color: '#1E3A5F' }}>Tier 3 — Advanced</strong> — Multi-platform
                     coordination, video concepts, rally calls, creative/humor formats deployed at
                     the right timing. Demonstrates mastery.
                   </li>
                 </ul>
                 <p className="mt-2">
-                  <strong style={{ color: '#e5e5e5' }}>Strategic Ratio</strong> — Percentage of Tier
+                  <strong style={{ color: '#172033' }}>Strategic Ratio</strong> — Percentage of Tier
                   2+3 actions out of total. Above 50% is considered good (green). Below 50% means
                   the player is mostly reactive (amber).
                 </p>
                 <p className="mt-1">
-                  <strong style={{ color: '#e5e5e5' }}>Checklist items</strong> track whether the
+                  <strong style={{ color: '#172033' }}>Checklist items</strong> track whether the
                   player has completed key crisis communication actions (official statement,
                   community outreach, counter-narratives, misinfo flagging, rally calls). Click to
                   expand and see the actual posts.
@@ -2111,7 +2438,7 @@ export default function TrainerSimDashboard() {
               </section>
 
               <section>
-                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#22c55e' }}>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#15803D' }}>
                   Player Response Grading
                 </h3>
                 <p>
@@ -2120,20 +2447,20 @@ export default function TrainerSimDashboard() {
                 </p>
                 <ul className="list-disc ml-5 mt-2 space-y-1">
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Accuracy (ACC)</strong> — Does the response
+                    <strong style={{ color: '#172033' }}>Accuracy (ACC)</strong> — Does the response
                     align with confirmed facts from the fact sheet? Does it avoid speculation?
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Tone (TONE)</strong> — Is the language
+                    <strong style={{ color: '#172033' }}>Tone (TONE)</strong> — Is the language
                     appropriate, empathetic, and professional? Does it avoid escalatory rhetoric?
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Cultural Sensitivity (CULT)</strong> — Does
+                    <strong style={{ color: '#172033' }}>Cultural Sensitivity (CULT)</strong> — Does
                     the response show awareness of the affected communities? Does it avoid
                     stereotyping?
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Persuasiveness (PERS)</strong> — Would this
+                    <strong style={{ color: '#172033' }}>Persuasiveness (PERS)</strong> — Would this
                     response effectively counter the harmful narrative? Does it provide actionable
                     information?
                   </li>
@@ -2145,19 +2472,19 @@ export default function TrainerSimDashboard() {
               </section>
 
               <section>
-                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#f59e0b' }}>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#D97706' }}>
                   Consequence Log
                 </h3>
                 <p>Tracks automated system reactions to player behavior:</p>
                 <ul className="list-disc ml-5 mt-2 space-y-1">
                   <li>
-                    <strong style={{ color: '#22c55e' }}>Positive</strong> — Triggered when players
+                    <strong style={{ color: '#15803D' }}>Positive</strong> — Triggered when players
                     post high-quality responses, publish official statements on time, or
                     successfully counter misinformation. The system generates supportive NPC
                     reactions.
                   </li>
                   <li>
-                    <strong style={{ color: '#ef4444' }}>Negative</strong> — Triggered when harmful
+                    <strong style={{ color: '#B91C1C' }}>Negative</strong> — Triggered when harmful
                     posts go unaddressed too long, players post poor-quality responses, or the team
                     stays silent. The system generates critical NPC reactions.
                   </li>
@@ -2180,7 +2507,7 @@ export default function TrainerSimDashboard() {
               </section>
 
               <section>
-                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#e5e5e5' }}>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#172033' }}>
                   Live Feed
                 </h3>
                 <p>Real-time stream of all posts in the simulation. Color-coded borders:</p>
@@ -2189,18 +2516,18 @@ export default function TrainerSimDashboard() {
                     <span style={{ color: '#3b82f6' }}>Blue border</span> — Player posts
                   </li>
                   <li>
-                    <span style={{ color: '#f59e0b' }}>Amber border</span> — NPC posts (both ambient
+                    <span style={{ color: '#D97706' }}>Amber border</span> — NPC posts (both ambient
                     and designed NPCs)
                   </li>
                   <li>
-                    <span style={{ color: '#ef4444' }}>Red pulsing border</span> — Harmful posts
+                    <span style={{ color: '#B91C1C' }}>Red pulsing border</span> — Harmful posts
                     that have not been addressed yet
                   </li>
                 </ul>
               </section>
 
               <section className="pb-2">
-                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#a855f7' }}>
+                <h3 className="text-[15px] font-bold mb-2" style={{ color: '#1E3A5F' }}>
                   SOP Timeline
                 </h3>
                 <p>
@@ -2209,27 +2536,27 @@ export default function TrainerSimDashboard() {
                 </p>
                 <ol className="list-decimal ml-5 mt-2 space-y-1">
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Monitor</strong> — Player is actively
+                    <strong style={{ color: '#172033' }}>Monitor</strong> — Player is actively
                     viewing and tracking the feed
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Assess</strong> — Player has identified the
+                    <strong style={{ color: '#172033' }}>Assess</strong> — Player has identified the
                     nature and severity of the crisis
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Fact-Check</strong> — Player has verified
+                    <strong style={{ color: '#172033' }}>Fact-Check</strong> — Player has verified
                     claims against the fact sheet before responding
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Escalate</strong> — Player has flagged
+                    <strong style={{ color: '#172033' }}>Escalate</strong> — Player has flagged
                     content or contacted authorities/community leaders
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Draft</strong> — Player has composed a
+                    <strong style={{ color: '#172033' }}>Draft</strong> — Player has composed a
                     strategic response
                   </li>
                   <li>
-                    <strong style={{ color: '#e5e5e5' }}>Publish</strong> — Player has posted the
+                    <strong style={{ color: '#172033' }}>Publish</strong> — Player has posted the
                     response publicly
                   </li>
                 </ol>

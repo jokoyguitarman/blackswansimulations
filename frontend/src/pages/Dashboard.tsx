@@ -16,73 +16,71 @@ export const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen scanline">
-      {/* Background grid */}
-      <div
-        className="fixed inset-0 opacity-10 pointer-events-none"
-        style={{
-          backgroundImage:
-            'linear-gradient(rgba(255, 184, 0, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 107, 53, 0.1) 1px, transparent 1px)',
-          backgroundSize: '50px 50px',
-        }}
-      ></div>
-
+    <div className="min-h-screen">
       {/* Top Navigation */}
-      <nav className="military-border border-b-2 border-robotic-yellow relative z-10">
+      <nav className="bg-brand text-white relative z-10 shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-4">
-              <div className="w-2 h-2 bg-robotic-yellow rounded-full animate-pulse"></div>
-              <h1 className="text-lg terminal-text uppercase tracking-wider">
-                [USE] Unified Simulation Environment
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-accent grid place-items-center font-extrabold text-brand text-sm">
+                BS
+              </div>
+              <h1 className="text-base font-bold leading-tight">
+                Black Swan
+                <span className="block text-[11px] font-normal text-white/60">
+                  Unified Simulation Environment
+                </span>
               </h1>
             </div>
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center gap-4">
               {/* Role-based navigation */}
-              <div className="flex items-center space-x-4">
+              <div className="flex items-center gap-1">
                 {isTrainer && (
                   <>
                     <a
                       href="/scenarios"
-                      className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
                     >
-                      [SCENARIOS]
+                      Scenarios
                     </a>
                     <a
                       href="/warroom"
-                      className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
                     >
-                      [WAR_ROOM]
+                      War Room
                     </a>
                     <a
                       href="/demo"
-                      className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-red text-robotic-red hover:bg-robotic-red/10 transition-all"
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
                     >
-                      [DEMO]
+                      Demo
                     </a>
                   </>
                 )}
                 <a
                   href="/sessions"
-                  className="px-3 py-1 text-xs terminal-text uppercase border border-robotic-yellow text-robotic-yellow hover:bg-robotic-yellow/10 transition-all"
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
                 >
-                  [SESSIONS]
+                  Sessions
                 </a>
               </div>
               {/* Notification Bell */}
               <NotificationBell />
-              <div className="text-right">
-                <div className="text-xs terminal-text text-robotic-yellow/70 uppercase">[USER]</div>
-                <div className="text-sm terminal-text">{user?.displayName || user?.email}</div>
-                <div className="text-xs terminal-text text-robotic-yellow/50">
-                  [{user?.role?.toUpperCase()}]
+              <a
+                href="/account"
+                className="text-right leading-tight text-white hover:opacity-80 transition-opacity"
+                title="Account settings"
+              >
+                <div className="text-sm font-semibold text-white">
+                  {user?.displayName || user?.email}
                 </div>
-              </div>
+                <div className="text-[11px] text-white/60 capitalize">{user?.role} · settings</div>
+              </a>
               <button
                 onClick={handleSignOut}
-                className="px-4 py-2 text-xs terminal-text uppercase border border-robotic-orange text-robotic-orange hover:bg-robotic-orange/10 transition-all"
+                className="px-4 py-2 text-sm font-medium rounded-lg border border-white/30 text-white hover:bg-white/10 transition-all"
               >
-                [LOGOUT]
+                Log out
               </button>
             </div>
           </div>
@@ -92,40 +90,40 @@ export const Dashboard = () => {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Status Bar */}
-        <div className="military-border p-4 mb-6">
+        <div className="bg-surface border border-border rounded-xl shadow-sm p-4 mb-6">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <div className="w-2 h-2 bg-robotic-yellow rounded-full animate-pulse"></div>
-                <span className="text-xs terminal-text text-robotic-yellow">[SYSTEM] ONLINE</span>
-              </div>
-              <span className="text-xs terminal-text text-robotic-yellow/50">|</span>
-              <span className="text-xs terminal-text text-robotic-yellow/70">
-                [CLEARANCE] {user?.role?.toUpperCase() || 'NONE'}
+            <div className="flex items-center gap-4">
+              <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full bg-success/10 text-success">
+                <span className="w-1.5 h-1.5 rounded-full bg-success"></span>
+                System online
+              </span>
+              <span className="text-sm text-muted">
+                Clearance ·{' '}
+                <span className="text-ink font-semibold capitalize">{user?.role || 'none'}</span>
               </span>
             </div>
-            <div className="text-xs terminal-text text-robotic-yellow/50">
+            <div className="text-sm text-muted tabular-nums">
               {new Date().toLocaleTimeString('en-US', { hour12: false })}
             </div>
           </div>
         </div>
 
         {/* Dashboard Content */}
-        <div className="military-border p-6">
+        <div className="bg-surface border border-border rounded-xl shadow-sm p-6">
           {/* User Info Panel */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <div className="military-border p-4">
-              <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [CLEARANCE_LEVEL]
+            <div className="bg-surface-2 border border-border rounded-lg p-4">
+              <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                Clearance level
               </div>
-              <div className="text-lg terminal-text uppercase">{user?.role || 'NONE'}</div>
+              <div className="text-lg font-bold text-ink capitalize">{user?.role || 'None'}</div>
             </div>
-            <div className="military-border p-4">
-              <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [AGENCY]
+            <div className="bg-surface-2 border border-border rounded-lg p-4">
+              <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+                {user?.role === 'admin' ? 'Organisation' : 'Agency'}
               </div>
-              <div className="text-lg terminal-text uppercase">
-                {user?.agency || 'NOT_ASSIGNED'}
+              <div className="text-lg font-bold text-ink">
+                {user?.role === 'admin' ? 'Advanced AI Solutions' : user?.agency || 'Not assigned'}
               </div>
             </div>
           </div>
@@ -134,22 +132,28 @@ export const Dashboard = () => {
           {isTrainer ? <TrainerDashboard /> : <AgencyDashboard />}
 
           {/* System Status */}
-          <div className="military-border p-4 mt-6">
-            <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-3">
-              [SYSTEM_STATUS]
+          <div className="bg-surface-2 border border-border rounded-lg p-4 mt-6">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-3">
+              System status
             </div>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-sm terminal-text">[DATABASE]</span>
-                <span className="text-sm terminal-text text-robotic-yellow">CONNECTED</span>
+                <span className="text-sm text-ink">Database</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-success/10 text-success">
+                  Connected
+                </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm terminal-text">[WEBSOCKET]</span>
-                <span className="text-sm terminal-text text-robotic-yellow">ACTIVE</span>
+                <span className="text-sm text-ink">Realtime / WebSocket</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-success/10 text-success">
+                  Active
+                </span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm terminal-text">[AI_ENGINE]</span>
-                <span className="text-sm terminal-text text-robotic-yellow">STANDBY</span>
+                <span className="text-sm text-ink">AI engine</span>
+                <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase px-2 py-0.5 rounded-full bg-accent/10 text-accent">
+                  Standby
+                </span>
               </div>
             </div>
           </div>
@@ -157,8 +161,8 @@ export const Dashboard = () => {
 
         {/* Footer */}
         <div className="mt-6 text-center">
-          <p className="text-xs terminal-text text-robotic-yellow/30">
-            [SYSTEM] USE v1.0.0 // Secure Connection Established
+          <p className="text-xs text-muted">
+            Black Swan Simulations v2.0 · Secure connection established
           </p>
         </div>
       </main>

@@ -156,7 +156,7 @@ export function DemoPinResponseReplay({ sessionId }: { sessionId: string }) {
       }}
     >
       <div
-        className="w-[340px] bg-robotic-gray-300/95 backdrop-blur-xl border border-robotic-yellow/40 rounded-xl shadow-2xl overflow-hidden"
+        className="w-[340px] bg-surface/90 backdrop-blur-xl border border-border rounded-xl shadow-2xl overflow-hidden"
         style={{ borderTopWidth: 4, borderTopColor: teamColor }}
       >
         {/* Header */}
@@ -169,36 +169,34 @@ export function DemoPinResponseReplay({ sessionId }: { sessionId: string }) {
             >
               {formatTeamName(active.team_name)}
             </span>
-            <span className="ml-auto text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+            <span className="ml-auto text-[10px] terminal-text text-muted uppercase">
               {isCasualty ? 'Casualty Response' : 'Hazard Mitigation'}
             </span>
           </div>
-          <div className="text-sm terminal-text text-robotic-yellow font-semibold">
-            {active.target_label}
-          </div>
+          <div className="text-sm terminal-text text-ink font-semibold">{active.target_label}</div>
           {active.description && (
-            <div className="text-xs terminal-text text-robotic-yellow/60 mt-1 line-clamp-2">
+            <div className="text-xs terminal-text text-muted mt-1 line-clamp-2">
               {active.description}
             </div>
           )}
         </div>
 
         {/* Divider */}
-        <div className="h-px bg-robotic-yellow/20 mx-3" />
+        <div className="h-px bg-border mx-3" />
 
         {/* Actions */}
         {active.actions.length > 0 && (
           <div className="px-4 py-2">
-            <div className="text-[10px] terminal-text text-robotic-yellow/50 uppercase mb-1.5">
+            <div className="text-[10px] terminal-text text-muted uppercase mb-1.5">
               Actions Taken
             </div>
             <div className="flex flex-col gap-1">
               {active.actions.slice(0, revealedActions).map((a, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/80 animate-fadeInUp"
+                  className="flex items-center gap-2 text-xs terminal-text text-ink animate-fadeInUp"
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-robotic-yellow/60 shrink-0" />
+                  <span className="w-1.5 h-1.5 rounded-full bg-muted shrink-0" />
                   {a}
                 </div>
               ))}
@@ -209,16 +207,16 @@ export function DemoPinResponseReplay({ sessionId }: { sessionId: string }) {
         {/* Resources */}
         {active.resources.length > 0 && (
           <div className="px-4 py-2">
-            <div className="text-[10px] terminal-text text-robotic-yellow/50 uppercase mb-1.5">
+            <div className="text-[10px] terminal-text text-muted uppercase mb-1.5">
               Resources Deployed
             </div>
             <div className="flex flex-wrap gap-1.5">
               {active.resources.slice(0, revealedResources).map((r, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-1 px-2 py-0.5 bg-robotic-gray-200/50 border border-robotic-yellow/20 rounded text-[11px] terminal-text text-robotic-yellow/70 animate-fadeInUp"
+                  className="flex items-center gap-1 px-2 py-0.5 bg-surface-2/50 border border-border rounded text-[11px] terminal-text text-muted animate-fadeInUp"
                 >
-                  <span className="font-bold text-robotic-yellow">{r.quantity}x</span>
+                  <span className="font-bold text-ink">{r.quantity}x</span>
                   {r.label}
                 </div>
               ))}
@@ -229,7 +227,7 @@ export function DemoPinResponseReplay({ sessionId }: { sessionId: string }) {
         {/* Triage Tag (casualty only) */}
         {showTriage && triageMeta && (
           <div className="px-4 py-2">
-            <div className="text-[10px] terminal-text text-robotic-yellow/50 uppercase mb-1.5">
+            <div className="text-[10px] terminal-text text-muted uppercase mb-1.5">
               Triage Assessment
             </div>
             <div
@@ -248,10 +246,10 @@ export function DemoPinResponseReplay({ sessionId }: { sessionId: string }) {
                           : '#6b7280',
                 }}
               />
-              <span className="text-xs terminal-text font-bold text-white uppercase">
+              <span className="text-xs terminal-text font-bold text-ink uppercase">
                 {triageMeta.label}
               </span>
-              <span className="text-[10px] terminal-text text-white/60 uppercase">
+              <span className="text-[10px] terminal-text text-muted uppercase">
                 ({active.triage_color})
               </span>
             </div>
@@ -259,9 +257,9 @@ export function DemoPinResponseReplay({ sessionId }: { sessionId: string }) {
         )}
 
         {/* Footer progress bar */}
-        <div className="h-1 bg-robotic-gray-200/30 mt-1">
+        <div className="h-1 bg-surface-2/30 mt-1">
           <div
-            className="h-full bg-robotic-yellow/50 transition-all ease-linear"
+            className="h-full bg-accent transition-all ease-linear"
             style={{
               width: phase === 'visible' ? '100%' : '0%',
               transitionDuration: `${PANEL_DISPLAY_MS - 1000}ms`,
@@ -272,7 +270,7 @@ export function DemoPinResponseReplay({ sessionId }: { sessionId: string }) {
 
       {/* Queue indicator */}
       {queue.length > 0 && (
-        <div className="mt-2 text-center text-[10px] terminal-text text-robotic-yellow/40">
+        <div className="mt-2 text-center text-[10px] terminal-text text-muted">
           +{queue.length} more response{queue.length > 1 ? 's' : ''} queued
         </div>
       )}

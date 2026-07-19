@@ -1004,7 +1004,10 @@ export function SceneEditor({
       const snapped = snapToStud(sim);
       const sp = snapped.pos;
       const ctx = (snapped.stud?.spatialContext ?? undefined) as
-        'inside_building' | 'road' | 'open_air' | undefined;
+        | 'inside_building'
+        | 'road'
+        | 'open_air'
+        | undefined;
       if (drag.type === 'blastSite') {
         setBlastSite(sp);
         // Move zones that haven't been individually repositioned
@@ -1523,20 +1526,18 @@ export function SceneEditor({
         >
           {/* GPS status */}
           {!lat && !lng && (
-            <div className="px-3 py-2 bg-cyan-900/20 border border-cyan-500/30 text-xs terminal-text text-cyan-400 animate-pulse">
+            <div className="px-3 py-2 bg-accent/10 border border-accent text-xs terminal-text text-accent animate-pulse">
               Locating you...
             </div>
           )}
 
           {/* Country dropdown */}
           <div>
-            <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
-              Country
-            </label>
+            <label className="text-[10px] terminal-text text-muted uppercase">Country</label>
             <select
               value={searchCountry}
               onChange={(e) => setSearchCountry(e.target.value)}
-              className="w-full mt-0.5 px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+              className="w-full mt-0.5 px-2 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm"
             >
               <option value="">All Countries</option>
               <option value="AF">Afghanistan</option>
@@ -1610,23 +1611,21 @@ export function SceneEditor({
 
           {/* Search input (debounced) */}
           <div className="relative">
-            <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
-              Search Place
-            </label>
+            <label className="text-[10px] terminal-text text-muted uppercase">Search Place</label>
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => handleSearchInput(e.target.value)}
               placeholder="Type to search (3+ chars)..."
-              className="w-full mt-0.5 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+              className="w-full mt-0.5 px-3 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm"
             />
             {searchOpen && searchResults.length > 0 && (
-              <div className="absolute z-20 bg-gray-900 border border-robotic-yellow/50 rounded mt-1 max-h-48 overflow-y-auto w-full">
+              <div className="absolute z-20 bg-surface border border-border rounded mt-1 max-h-48 overflow-y-auto w-full">
                 {searchResults.map((r, i) => (
                   <button
                     key={i}
                     onClick={() => handleSelectResult(r)}
-                    className="block w-full text-left px-3 py-2 text-xs terminal-text text-robotic-yellow/70 hover:bg-robotic-yellow/10 border-b border-robotic-gray-200 last:border-b-0"
+                    className="block w-full text-left px-3 py-2 text-xs terminal-text text-muted hover:bg-accent/10 border-b border-border last:border-b-0"
                   >
                     {r.display_name}
                   </button>
@@ -1638,7 +1637,7 @@ export function SceneEditor({
           {/* Lat / Lng / Radius */}
           <div className="flex gap-2">
             <div className="flex-1">
-              <label className="text-[10px] terminal-text text-robotic-yellow/40">Lat</label>
+              <label className="text-[10px] terminal-text text-muted">Lat</label>
               <input
                 value={lat}
                 onChange={(e) => setLat(e.target.value)}
@@ -1649,7 +1648,7 @@ export function SceneEditor({
               />
             </div>
             <div className="flex-1">
-              <label className="text-[10px] terminal-text text-robotic-yellow/40">Lng</label>
+              <label className="text-[10px] terminal-text text-muted">Lng</label>
               <input
                 value={lng}
                 onChange={(e) => setLng(e.target.value)}
@@ -1660,7 +1659,7 @@ export function SceneEditor({
               />
             </div>
             <div className="w-16">
-              <label className="text-[10px] terminal-text text-robotic-yellow/40">Radius</label>
+              <label className="text-[10px] terminal-text text-muted">Radius</label>
               <input
                 value={radius}
                 onChange={(e) => setRadius(e.target.value)}
@@ -1689,12 +1688,12 @@ export function SceneEditor({
           {/* Drawing mode status */}
           {isDrawing ? (
             <div className="space-y-3">
-              <div className="px-3 py-2 bg-amber-900/20 border border-amber-500/30 text-xs terminal-text text-amber-400">
+              <div className="px-3 py-2 bg-accent/10 border border-accent text-xs terminal-text text-accent">
                 Click on the map to place vertices. Close the polygon by clicking the first vertex
                 or press Enter. ESC to cancel.
               </div>
               <div>
-                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+                <label className="text-[10px] terminal-text text-muted uppercase">
                   Building Name (optional)
                 </label>
                 <input
@@ -1702,7 +1701,7 @@ export function SceneEditor({
                   value={drawnBuildingName}
                   onChange={(e) => setDrawnBuildingName(e.target.value)}
                   placeholder="e.g. San Pedro Cathedral"
-                  className="w-full mt-0.5 px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                  className="w-full mt-0.5 px-3 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm"
                 />
               </div>
               <button
@@ -1710,7 +1709,7 @@ export function SceneEditor({
                   setIsDrawing(false);
                   setDrawnBuildingName('');
                 }}
-                className="w-full px-4 py-2 text-xs terminal-text border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+                className="w-full px-4 py-2 text-xs terminal-text border border-border text-muted hover:border-border"
               >
                 Cancel Drawing
               </button>
@@ -1727,17 +1726,15 @@ export function SceneEditor({
               </button>
 
               <div className="flex items-center gap-2">
-                <div className="flex-1 border-t border-robotic-gray-200" />
-                <span className="text-[10px] terminal-text text-robotic-yellow/30 uppercase">
-                  or
-                </span>
-                <div className="flex-1 border-t border-robotic-gray-200" />
+                <div className="flex-1 border-t border-border" />
+                <span className="text-[10px] terminal-text text-muted uppercase">or</span>
+                <div className="flex-1 border-t border-border" />
               </div>
 
               <button
                 type="button"
                 onClick={() => setIsDrawing(true)}
-                className="w-full px-4 py-2 text-xs terminal-text border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/20 hover:border-cyan-400"
+                className="w-full px-4 py-2 text-xs terminal-text border border-accent text-accent hover:bg-accent/10 hover:border-accent"
               >
                 Draw Building on Map
               </button>
@@ -1749,7 +1746,7 @@ export function SceneEditor({
                   setAutoTracePreview(null);
                   setAutoTraceStatus('Click on a building on the map to auto-trace its outline.');
                 }}
-                className="w-full px-4 py-2 text-xs terminal-text border border-purple-500/50 text-purple-400 hover:bg-purple-900/20 hover:border-purple-400"
+                className="w-full px-4 py-2 text-xs terminal-text border border-brand text-brand hover:bg-brand/10 hover:border-brand"
               >
                 Auto-Trace Building (Magic Wand)
               </button>
@@ -1763,12 +1760,12 @@ export function SceneEditor({
                 <div
                   className={`px-3 py-2 text-xs terminal-text border rounded ${
                     autoTraceStatus === 'Tracing...'
-                      ? 'bg-purple-900/20 border-purple-500/30 text-purple-400 animate-pulse'
+                      ? 'bg-brand/10 border-brand text-brand animate-pulse'
                       : autoTraceStatus.includes('No building') ||
                           autoTraceStatus.includes('failed') ||
                           autoTraceStatus.includes('Could not')
-                        ? 'bg-red-900/20 border-red-500/30 text-red-400'
-                        : 'bg-purple-900/20 border-purple-500/30 text-purple-400'
+                        ? 'bg-danger/10 border-danger text-danger'
+                        : 'bg-brand/10 border-brand text-brand'
                   }`}
                 >
                   {autoTraceStatus}
@@ -1776,7 +1773,7 @@ export function SceneEditor({
               )}
 
               <div>
-                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+                <label className="text-[10px] terminal-text text-muted uppercase">
                   Color Tolerance: {autoTraceTolerance}
                 </label>
                 <input
@@ -1787,7 +1784,7 @@ export function SceneEditor({
                   onChange={(e) => setAutoTraceTolerance(Number(e.target.value))}
                   className="w-full"
                 />
-                <div className="flex justify-between text-[9px] terminal-text text-robotic-yellow/20">
+                <div className="flex justify-between text-[9px] terminal-text text-muted">
                   <span>Tight</span>
                   <span>Loose</span>
                 </div>
@@ -1795,7 +1792,7 @@ export function SceneEditor({
 
               {autoTracePreview && autoTracePreview.length >= 3 && (
                 <div className="space-y-2">
-                  <p className="text-xs terminal-text text-purple-400">
+                  <p className="text-xs terminal-text text-brand">
                     Traced {autoTracePreview.length} vertices. Accept or retry.
                   </p>
                   <div className="flex gap-2">
@@ -1815,7 +1812,7 @@ export function SceneEditor({
                         setAutoTracePreview(null);
                         setAutoTraceStatus('Click on a building to trace again.');
                       }}
-                      className="flex-1 px-3 py-2 text-xs terminal-text border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+                      className="flex-1 px-3 py-2 text-xs terminal-text border border-border text-muted hover:border-border"
                     >
                       Retry
                     </button>
@@ -1829,34 +1826,37 @@ export function SceneEditor({
                   setAutoTracePreview(null);
                   setAutoTraceStatus(null);
                 }}
-                className="w-full px-4 py-2 text-xs terminal-text border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50"
+                className="w-full px-4 py-2 text-xs terminal-text border border-border text-muted hover:border-border"
               >
                 Cancel Auto-Trace
               </button>
             </div>
           )}
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && <p className="text-xs text-danger">{error}</p>}
 
           {/* Building results list */}
           {!isDrawing && fetchResult && (
             <div className="space-y-2">
+<<<<<<< feature/enable-5km-radius
               <p className="text-xs terminal-text text-robotic-yellow/50">
                 {fetchResult.grids.length} buildings found. {displayRoadPolylines.length} drivable
                 roads shown in blue with estimated width. Source mode:{' '}
                 {osmSourceMode === 'local_cache' ? 'local cache' : 'live OSM'}. Select one:
+=======
+              <p className="text-xs terminal-text text-muted">
+                {fetchResult.grids.length} buildings found. Select one:
+>>>>>>> master
               </p>
               <div className="space-y-1 max-h-60 overflow-y-auto">
                 {fetchResult.grids.map((g, i) => (
                   <button
                     key={i}
                     onClick={() => selectBuilding(i)}
-                    className="w-full text-left px-3 py-2 border border-robotic-yellow/30 hover:border-robotic-yellow text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow bg-black/30 hover:bg-black/50"
+                    className="w-full text-left px-3 py-2 border border-border hover:border-border text-xs terminal-text text-muted hover:text-ink bg-surface-2 hover:bg-surface-2"
                   >
                     <div className="font-bold">{g.buildingName || `Building ${i + 1}`}</div>
-                    <div className="text-[10px] text-robotic-yellow/40">
-                      {g.polygon.length} vertices
-                    </div>
+                    <div className="text-[10px] text-muted">{g.polygon.length} vertices</div>
                   </button>
                 ))}
               </div>
@@ -1865,7 +1865,7 @@ export function SceneEditor({
         </div>
 
         {/* Map: full-width below controls on portrait, right sidebar on landscape */}
-        <div className="flex-1 relative rounded overflow-hidden border border-robotic-gray-200 min-h-[250px]">
+        <div className="flex-1 relative rounded overflow-hidden border border-border min-h-[250px]">
           <MapContainer
             center={[mapPhaseLat, mapPhaseLng]}
             zoom={16}
@@ -1990,36 +1990,34 @@ export function SceneEditor({
       <div className="w-full lg:w-56 overflow-y-auto lg:overflow-x-visible space-y-2 flex-shrink-0 max-h-[35vh] lg:max-h-none">
         <button
           onClick={backToMap}
-          className="w-full text-xs terminal-text text-robotic-yellow/50 hover:text-robotic-yellow border border-robotic-gray-200 px-2 py-1"
+          className="w-full text-xs terminal-text text-muted hover:text-ink border border-border px-2 py-1"
         >
           &larr; Back to Map
         </button>
 
-        <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-1">
-          Scene Tools
-        </div>
+        <div className="text-xs terminal-text text-muted uppercase mb-1">Scene Tools</div>
 
         <button
           onClick={() => setActiveMode('place_exit')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_exit' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_exit' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-border'}`}
         >
           Place Exit
         </button>
         <button
           onClick={() => setActiveMode('place_service_entry')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_service_entry' ? 'border-orange-400 bg-orange-900/30 text-orange-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_service_entry' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-border'}`}
         >
           Place Service Entry
         </button>
         <button
           onClick={() => setActiveMode('place_blast_site')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_blast_site' ? 'border-red-400 bg-red-900/30 text-red-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_blast_site' ? 'border-danger bg-danger/10 text-danger' : 'border-border text-muted hover:border-border'}`}
         >
           Blast Site {blastSite ? '(replace)' : ''}
         </button>
         <button
           onClick={() => setActiveMode('place_stairwell')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_stairwell' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_stairwell' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-border'}`}
         >
           Place Stairwell
         </button>
@@ -2033,7 +2031,7 @@ export function SceneEditor({
               wallDrawStartRef.current = null;
             }
           }}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'draw_wall' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'draw_wall' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-border'}`}
         >
           Draw Interior Wall{' '}
           {activeMode === 'draw_wall' && wallDrawStartRef.current
@@ -2041,12 +2039,12 @@ export function SceneEditor({
             : '(click start → end)'}
         </button>
 
-        <div className="text-xs text-robotic-yellow/50 mt-2">Hazards:</div>
+        <div className="text-xs text-muted mt-2">Hazards:</div>
         {(Object.keys(HAZARD_DEFS) as HazardType[]).map((ht) => (
           <button
             key={ht}
             onClick={() => setActiveMode(`place_hazard_${ht}`)}
-            className={`w-full text-left text-xs px-2 py-1 border rounded ${activeMode === `place_hazard_${ht}` ? 'border-cyan-400 bg-cyan-900/30' : 'border-robotic-gray-200 hover:border-robotic-yellow/50'}`}
+            className={`w-full text-left text-xs px-2 py-1 border rounded ${activeMode === `place_hazard_${ht}` ? 'border-accent bg-accent/10' : 'border-border hover:border-border'}`}
             style={{ color: HAZARD_DEFS[ht].color }}
           >
             {HAZARD_DEFS[ht].icon} {HAZARD_DEFS[ht].label}
@@ -2054,10 +2052,8 @@ export function SceneEditor({
         ))}
 
         {blastSite && (
-          <div className="border-t border-robotic-gray-200 pt-2 mt-2 space-y-2">
-            <label className="text-[10px] terminal-text text-robotic-yellow/40">
-              Blast Radius (m)
-            </label>
+          <div className="border-t border-border pt-2 mt-2 space-y-2">
+            <label className="text-[10px] terminal-text text-muted">Blast Radius (m)</label>
             <input
               type="range"
               min={5}
@@ -2066,11 +2062,9 @@ export function SceneEditor({
               onChange={(e) => setBlastRadius(Number(e.target.value))}
               className="w-full"
             />
-            <div className="text-xs terminal-text text-robotic-yellow/50 text-center">
-              {blastRadius}m
-            </div>
+            <div className="text-xs terminal-text text-muted text-center">{blastRadius}m</div>
 
-            <label className="text-[10px] terminal-text text-robotic-yellow/40 block mt-2">
+            <label className="text-[10px] terminal-text text-muted block mt-2">
               Weapon / Chemical Type
             </label>
             <select
@@ -2079,7 +2073,7 @@ export function SceneEditor({
                 setLocalWeaponType(e.target.value);
                 onWeaponTypeChange?.(e.target.value);
               }}
-              className="w-full px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow text-xs"
+              className="w-full px-2 py-1 bg-surface-2 border border-border text-ink text-xs"
             >
               <option value="">-- Select or type below --</option>
               <option value="ied_pipe_bomb">IED / Pipe Bomb</option>
@@ -2101,15 +2095,13 @@ export function SceneEditor({
                 onWeaponTypeChange?.(e.target.value);
               }}
               placeholder="Or type custom weapon/chemical..."
-              className="w-full px-2 py-1 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-[10px]"
+              className="w-full px-2 py-1 bg-surface-2 border border-border text-ink text-[10px]"
             />
 
             <div className="mt-3">
-              <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase mb-1">
+              <div className="text-[10px] terminal-text text-muted uppercase mb-1">
                 Operational Zones
-                <span className="normal-case ml-1 text-robotic-yellow/20">
-                  (drag center on map)
-                </span>
+                <span className="normal-case ml-1 text-muted">(drag center on map)</span>
               </div>
               {gameZones.map((zone, i) => {
                 const colors: Record<string, string> = {
@@ -2138,7 +2130,7 @@ export function SceneEditor({
                         }}
                         className="flex-1"
                       />
-                      <span className="text-[10px] terminal-text text-robotic-yellow/50 w-10 text-right">
+                      <span className="text-[10px] terminal-text text-muted w-10 text-right">
                         {zone.radius}m
                       </span>
                     </div>
@@ -2149,7 +2141,7 @@ export function SceneEditor({
                           newZones[i] = { ...zone, center: undefined };
                           setGameZones(newZones);
                         }}
-                        className="text-[9px] terminal-text text-robotic-yellow/30 hover:text-robotic-yellow/60 mt-0.5 ml-12"
+                        className="text-[9px] terminal-text text-muted hover:text-ink/60 mt-0.5 ml-12"
                       >
                         Reset to blast center
                       </button>
@@ -2161,21 +2153,21 @@ export function SceneEditor({
           </div>
         )}
 
-        <div className="border-t border-robotic-gray-200 pt-2 mt-2">
-          <label className="text-[10px] terminal-text text-robotic-yellow/40">Pedestrians</label>
+        <div className="border-t border-border pt-2 mt-2">
+          <label className="text-[10px] terminal-text text-muted">Pedestrians</label>
           <input
             type="number"
             min={10}
             max={5000}
             value={pedestrianCount}
             onChange={(e) => setPedestrianCount(Number(e.target.value))}
-            className="w-full px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow text-xs"
+            className="w-full px-2 py-1 bg-surface-2 border border-border text-ink text-xs"
           />
         </div>
 
-        <div className="border-t border-robotic-gray-200 pt-2 mt-2">
-          <div className="text-[10px] terminal-text text-robotic-yellow/40 mb-1">Stats</div>
-          <div className="text-[10px] terminal-text text-robotic-yellow/30 space-y-0.5">
+        <div className="border-t border-border pt-2 mt-2">
+          <div className="text-[10px] terminal-text text-muted mb-1">Stats</div>
+          <div className="text-[10px] terminal-text text-muted space-y-0.5">
             <div>Exits: {exits.length}</div>
             <div>Walls: {interiorWalls.length}</div>
             <div>Hazards: {hazardZones.length}</div>
@@ -2186,8 +2178,8 @@ export function SceneEditor({
           </div>
         </div>
 
-        <div className="border-t border-robotic-gray-200 pt-2 mt-2">
-          <label className="flex items-center gap-2 text-xs text-cyan-500 cursor-pointer">
+        <div className="border-t border-border pt-2 mt-2">
+          <label className="flex items-center gap-2 text-xs text-accent cursor-pointer">
             <input
               type="checkbox"
               checked={studInspectMode}
@@ -2195,30 +2187,30 @@ export function SceneEditor({
                 setStudInspectMode(e.target.checked);
                 if (!e.target.checked) setInspectedStud(null);
               }}
-              className="rounded border-cyan-700"
+              className="rounded border-border"
             />
             Inspect studs (tap to examine)
           </label>
           {inspectedStud && (
-            <div className="bg-gray-950 border border-cyan-800 rounded p-2 text-xs space-y-0.5 mt-2">
-              <div className="text-cyan-300 font-bold">{inspectedStud.id}</div>
-              <div className="text-green-400">
+            <div className="bg-surface-2 border border-border rounded p-2 text-xs space-y-0.5 mt-2">
+              <div className="text-accent font-bold">{inspectedStud.id}</div>
+              <div className="text-success">
                 Context:{' '}
                 <span
                   className={
                     inspectedStud.spatialContext === 'inside_building'
-                      ? 'text-green-300'
-                      : 'text-gray-400'
+                      ? 'text-success'
+                      : 'text-muted'
                   }
                 >
                   {inspectedStud.spatialContext ?? 'unknown'}
                 </span>
               </div>
-              <div className="text-gray-400">Type: {inspectedStud.studType}</div>
-              <div className="text-gray-400">
+              <div className="text-muted">Type: {inspectedStud.studType}</div>
+              <div className="text-muted">
                 Lat: {inspectedStud.lat.toFixed(6)}, Lng: {inspectedStud.lng.toFixed(6)}
               </div>
-              <div className="text-gray-400">
+              <div className="text-muted">
                 Sim: ({inspectedStud.simPos.x.toFixed(1)}, {inspectedStud.simPos.y.toFixed(1)})
               </div>
               {(() => {
@@ -2230,16 +2222,14 @@ export function SceneEditor({
                     ) <= h.radius,
                 );
                 if (inZones.length === 0)
-                  return <div className="text-gray-600 italic">No fuel (no hazard zone)</div>;
+                  return <div className="text-muted italic">No fuel (no hazard zone)</div>;
                 return (
-                  <div className="text-orange-400">
-                    Fuel: {inZones.map((z) => z.label).join(', ')}
-                  </div>
+                  <div className="text-accent">Fuel: {inZones.map((z) => z.label).join(', ')}</div>
                 );
               })()}
               <button
                 onClick={() => setInspectedStud(null)}
-                className="text-xs text-cyan-600 hover:text-cyan-400 mt-1"
+                className="text-xs text-accent hover:text-accent mt-1"
               >
                 Dismiss
               </button>
@@ -2250,18 +2240,18 @@ export function SceneEditor({
         <button
           onClick={handleSave}
           disabled={saving}
-          className="w-full mt-2 bg-blue-800 hover:bg-blue-700 disabled:opacity-50 text-blue-100 text-xs px-3 py-1.5 rounded border border-blue-600"
+          className="w-full mt-2 bg-brand hover:bg-brand disabled:opacity-50 text-white text-xs px-3 py-1.5 rounded border border-brand"
         >
           {saving ? 'Saving...' : sceneConfigId ? 'Update Scene' : 'Save Scene'}
         </button>
         {sceneConfigId && (
-          <div className="text-xs text-blue-500 mt-0.5">Saved: {sceneConfigId.slice(0, 8)}...</div>
+          <div className="text-xs text-brand mt-0.5">Saved: {sceneConfigId.slice(0, 8)}...</div>
         )}
       </div>
 
       {/* Map + Canvas: below on portrait/narrow, right on landscape/wide */}
       <div
-        className="flex-1 relative overflow-hidden rounded border border-robotic-gray-200 min-h-[350px]"
+        className="flex-1 relative overflow-hidden rounded border border-border min-h-[350px]"
         ref={containerRef}
       >
         <MapContainer
@@ -2324,7 +2314,7 @@ export function SceneEditor({
         />
         {activeMode !== 'select' && (
           <div
-            className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1 text-xs text-robotic-yellow pointer-events-none"
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-surface-2 rounded px-3 py-1 text-xs text-ink pointer-events-none"
             style={{ zIndex: 1001 }}
           >
             Click map to place — ESC or click a tool to cancel
@@ -2334,27 +2324,24 @@ export function SceneEditor({
         {/* Floating wall inspection / photo viewer panel */}
         {activeWallPoint && (
           <div
-            className="absolute top-4 right-4 w-[400px] bg-gray-900/95 border border-cyan-700 rounded-lg shadow-2xl overflow-hidden"
+            className="absolute top-4 right-4 w-[400px] bg-surface border border-border rounded-lg shadow-2xl overflow-hidden"
             style={{ zIndex: 1002 }}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-3 py-2 bg-gray-800/80 border-b border-cyan-800">
-              <div className="text-xs text-cyan-300 font-bold">
+            <div className="flex items-center justify-between px-3 py-2 bg-surface-2 border-b border-border">
+              <div className="text-xs text-accent font-bold">
                 Wall Inspection — Point {activeWallPoint.id}
               </div>
-              <button
-                onClick={closePhotoCard}
-                className="text-gray-400 hover:text-white text-sm px-1"
-              >
+              <button onClick={closePhotoCard} className="text-muted hover:text-ink text-sm px-1">
                 ✕
               </button>
             </div>
 
             {/* Photo area */}
-            <div className="relative bg-black" style={{ minHeight: 180 }}>
+            <div className="relative bg-surface-2" style={{ minHeight: 180 }}>
               {wallPointLoading && (
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-cyan-400 text-xs animate-pulse">Loading Street View...</div>
+                  <div className="text-accent text-xs animate-pulse">Loading Street View...</div>
                 </div>
               )}
               {wallPointImage && (
@@ -2365,13 +2352,11 @@ export function SceneEditor({
                 />
               )}
               {!wallPointImage && !wallPointLoading && (
-                <div className="flex flex-col items-center justify-center h-44 text-xs text-gray-500 px-4 text-center">
+                <div className="flex flex-col items-center justify-center h-44 text-xs text-muted px-4 text-center">
                   {GOOGLE_MAPS_KEY ? (
                     <>
-                      <span className="text-gray-400 mb-1">
-                        No outdoor Street View coverage here
-                      </span>
-                      <span className="text-gray-600">Upload a photo or try a nearby point.</span>
+                      <span className="text-muted mb-1">No outdoor Street View coverage here</span>
+                      <span className="text-muted">Upload a photo or try a nearby point.</span>
                     </>
                   ) : (
                     'Set VITE_GOOGLE_MAPS_API_KEY to enable Street View'
@@ -2381,7 +2366,7 @@ export function SceneEditor({
             </div>
 
             {/* Upload / replace photo */}
-            <div className="px-3 py-1.5 border-t border-gray-800 flex gap-2 items-center">
+            <div className="px-3 py-1.5 border-t border-border flex gap-2 items-center">
               <input
                 ref={photoUploadRef}
                 type="file"
@@ -2399,17 +2384,17 @@ export function SceneEditor({
               />
               <button
                 onClick={() => photoUploadRef.current?.click()}
-                className="bg-amber-800 hover:bg-amber-700 text-amber-100 text-xs px-3 py-1 rounded border border-amber-600"
+                className="bg-accent hover:bg-accent text-white text-xs px-3 py-1 rounded border border-accent"
               >
                 Take Photo
               </button>
               <button
                 onClick={() => document.getElementById('se-photo-gallery-input')?.click()}
-                className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-3 py-1 rounded border border-gray-600"
+                className="bg-surface-2 hover:bg-surface-2 text-ink text-xs px-3 py-1 rounded border border-border"
               >
                 Gallery
               </button>
-              <span className="text-xs text-gray-600">
+              <span className="text-xs text-muted">
                 {activeWallPoint.imageSource === 'custom'
                   ? 'Custom'
                   : activeWallPoint.imageSource === 'streetview'
@@ -2419,7 +2404,7 @@ export function SceneEditor({
             </div>
 
             {/* Coordinates */}
-            <div className="px-3 py-1.5 text-xs text-gray-500 border-t border-gray-800 flex gap-3">
+            <div className="px-3 py-1.5 text-xs text-muted border-t border-border flex gap-3">
               <span>
                 Wall: {activeWallPoint.lat.toFixed(6)}, {activeWallPoint.lng.toFixed(6)}
               </span>
@@ -2427,11 +2412,11 @@ export function SceneEditor({
             </div>
 
             {/* Plant threat section */}
-            <div className="px-3 py-2 border-t border-red-900/50 bg-red-950/20">
+            <div className="px-3 py-2 border-t border-danger/40 bg-danger/10">
               <div className="flex items-center justify-between mb-1.5">
-                <label className="text-xs text-red-400 font-bold">Plant Threat (Trainer)</label>
+                <label className="text-xs text-danger font-bold">Plant Threat (Trainer)</label>
                 {plantedItems.filter((p) => p.wallPointId === activeWallPoint.id).length > 0 && (
-                  <span className="text-xs text-red-300 bg-red-900/40 px-1.5 py-0.5 rounded">
+                  <span className="text-xs text-danger bg-danger/10 px-1.5 py-0.5 rounded">
                     {plantedItems.filter((p) => p.wallPointId === activeWallPoint.id).length}{' '}
                     planted
                   </span>
@@ -2442,13 +2427,13 @@ export function SceneEditor({
                 .map((p) => (
                   <div
                     key={p.id}
-                    className="flex items-start gap-1.5 mb-1.5 bg-red-900/20 rounded px-2 py-1"
+                    className="flex items-start gap-1.5 mb-1.5 bg-danger/10 rounded px-2 py-1"
                   >
-                    <span className="text-xs text-red-300 flex-1">{p.description}</span>
-                    <span className="text-xs text-red-500">{p.threatLevel}</span>
+                    <span className="text-xs text-danger flex-1">{p.description}</span>
+                    <span className="text-xs text-danger">{p.threatLevel}</span>
                     <button
                       onClick={() => handleRemovePlantedItem(p.id)}
-                      className="text-red-600 hover:text-red-400 text-xs"
+                      className="text-danger hover:text-danger text-xs"
                     >
                       ✕
                     </button>
@@ -2458,7 +2443,7 @@ export function SceneEditor({
                 value={plantDescription}
                 onChange={(e) => setPlantDescription(e.target.value)}
                 placeholder="Describe what is hidden here — e.g. 'Pipe bomb concealed inside the green recycling bin'"
-                className="w-full bg-gray-800 border border-red-800 text-red-200 text-xs rounded px-2 py-1.5 resize-none focus:border-red-500 focus:outline-none"
+                className="w-full bg-surface-2 border border-danger text-ink text-xs rounded px-2 py-1.5 resize-none focus:border-danger focus:outline-none"
                 rows={2}
               />
               <div className="flex gap-2 mt-1.5">
@@ -2467,7 +2452,7 @@ export function SceneEditor({
                   onChange={(e) =>
                     setPlantThreatLevel(e.target.value as PlantedItem['threatLevel'])
                   }
-                  className="bg-gray-800 border border-red-800 text-red-300 text-xs rounded px-1 py-1 flex-1"
+                  className="bg-surface-2 border border-danger text-danger text-xs rounded px-1 py-1 flex-1"
                 >
                   <option value="real_device">Real Device</option>
                   <option value="secondary_device">Secondary Device</option>
@@ -2476,7 +2461,7 @@ export function SceneEditor({
                 <button
                   onClick={handlePlantItem}
                   disabled={!plantDescription.trim()}
-                  className="bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-3 py-1 rounded border border-red-600"
+                  className="bg-danger hover:bg-danger disabled:opacity-30 text-white text-xs px-3 py-1 rounded border border-danger"
                 >
                   Plant
                 </button>
@@ -2488,7 +2473,7 @@ export function SceneEditor({
         {/* Floating hazard inspector panel (full) */}
         {activeHazard && (
           <div
-            className="absolute top-4 bg-gray-900/95 border border-orange-700 rounded-lg shadow-2xl overflow-hidden"
+            className="absolute top-4 bg-surface border border-accent rounded-lg shadow-2xl overflow-hidden"
             style={{
               zIndex: 1002,
               left: 16,
@@ -2497,7 +2482,7 @@ export function SceneEditor({
               overflowY: 'auto',
             }}
           >
-            <div className="flex items-center justify-between px-3 py-2 bg-orange-900/40 border-b border-orange-800">
+            <div className="flex items-center justify-between px-3 py-2 bg-accent/10 border-b border-accent">
               <div
                 className="text-xs font-bold"
                 style={{
@@ -2509,15 +2494,15 @@ export function SceneEditor({
               </div>
               <button
                 onClick={() => setActiveHazard(null)}
-                className="text-gray-400 hover:text-white text-sm px-1"
+                className="text-muted hover:text-ink text-sm px-1"
               >
                 ✕
               </button>
             </div>
 
             {/* Radius slider */}
-            <div className="px-3 py-2 border-b border-gray-800">
-              <label className="block text-xs text-orange-400 mb-1">
+            <div className="px-3 py-2 border-b border-border">
+              <label className="block text-xs text-accent mb-1">
                 Radius: {activeHazard.radius}m
               </label>
               <input
@@ -2535,15 +2520,15 @@ export function SceneEditor({
                 }}
                 className="w-full"
               />
-              <div className="flex justify-between text-[10px] text-gray-600 mt-0.5">
+              <div className="flex justify-between text-[10px] text-muted mt-0.5">
                 <span>2m</span>
                 <span>50m</span>
               </div>
             </div>
 
             {/* Description */}
-            <div className="px-3 py-2 border-b border-gray-800">
-              <label className="block text-xs text-orange-400 mb-1">Description</label>
+            <div className="px-3 py-2 border-b border-border">
+              <label className="block text-xs text-accent mb-1">Description</label>
               <textarea
                 value={activeHazard.description}
                 onChange={(e) => {
@@ -2554,7 +2539,7 @@ export function SceneEditor({
                   setActiveHazard((prev) => (prev ? { ...prev, description: desc } : prev));
                 }}
                 placeholder="Describe the hazard — chemical type, material, risk level, containment needs..."
-                className="w-full bg-gray-800 border border-gray-700 text-green-300 text-xs rounded px-2 py-1.5 resize-none focus:border-orange-500 focus:outline-none"
+                className="w-full bg-surface-2 border border-border text-success text-xs rounded px-2 py-1.5 resize-none focus:border-accent focus:outline-none"
                 rows={3}
               />
             </div>
@@ -2562,9 +2547,7 @@ export function SceneEditor({
             {/* Photos */}
             <div className="px-3 py-2">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs text-orange-400">
-                  Photos ({activeHazard.photos.length})
-                </label>
+                <label className="text-xs text-accent">Photos ({activeHazard.photos.length})</label>
                 <div className="flex gap-1">
                   <input
                     ref={hazardPhotoRef}
@@ -2592,7 +2575,7 @@ export function SceneEditor({
                   />
                   <button
                     onClick={() => hazardPhotoRef.current?.click()}
-                    className="bg-orange-800 hover:bg-orange-700 text-orange-100 text-xs px-2 py-0.5 rounded border border-orange-600"
+                    className="bg-accent hover:bg-accent text-white text-xs px-2 py-0.5 rounded border border-accent"
                   >
                     Take Photo
                   </button>
@@ -2619,14 +2602,14 @@ export function SceneEditor({
                       };
                       input.click();
                     }}
-                    className="bg-gray-700 hover:bg-gray-600 text-gray-200 text-xs px-2 py-0.5 rounded border border-gray-600"
+                    className="bg-surface-2 hover:bg-surface-2 text-ink text-xs px-2 py-0.5 rounded border border-border"
                   >
                     Gallery
                   </button>
                 </div>
               </div>
               {activeHazard.photos.length === 0 && (
-                <p className="text-xs text-gray-600 italic">
+                <p className="text-xs text-muted italic">
                   No photos yet — add photos of the potential hazard
                 </p>
               )}
@@ -2636,7 +2619,7 @@ export function SceneEditor({
                     <img
                       src={photo}
                       alt={`Hazard photo ${i + 1}`}
-                      className="w-full h-24 object-cover rounded border border-gray-700"
+                      className="w-full h-24 object-cover rounded border border-border"
                     />
                     <button
                       onClick={() => {
@@ -2648,7 +2631,7 @@ export function SceneEditor({
                         );
                         setActiveHazard((prev) => (prev ? { ...prev, photos: updated } : prev));
                       }}
-                      className="absolute top-0.5 right-0.5 bg-red-800 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute top-0.5 right-0.5 bg-danger text-white text-xs rounded-full w-5 h-5 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
                       ✕
                     </button>
@@ -2658,13 +2641,13 @@ export function SceneEditor({
             </div>
 
             {/* Delete hazard */}
-            <div className="px-3 py-2 border-t border-gray-800">
+            <div className="px-3 py-2 border-t border-border">
               <button
                 onClick={() => {
                   setHazardZones((prev) => prev.filter((h) => h.id !== activeHazard.id));
                   setActiveHazard(null);
                 }}
-                className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
+                className="w-full bg-danger/10 hover:bg-danger text-danger text-xs px-3 py-1.5 rounded border border-danger"
               >
                 Delete This Hazard
               </button>
@@ -2675,23 +2658,21 @@ export function SceneEditor({
         {/* Floating interior wall panel */}
         {activeWall && (
           <div
-            className="absolute bottom-4 left-4 w-[340px] bg-gray-900/95 border border-slate-600 rounded-lg shadow-2xl overflow-hidden"
+            className="absolute bottom-4 left-4 w-[340px] bg-surface border border-border rounded-lg shadow-2xl overflow-hidden"
             style={{ zIndex: 1002 }}
           >
-            <div className="flex items-center justify-between px-3 py-2 bg-slate-800/80 border-b border-slate-700">
-              <div className="text-xs text-slate-300 font-bold">
-                Interior Wall — {activeWall.id}
-              </div>
+            <div className="flex items-center justify-between px-3 py-2 bg-surface-2 border-b border-border">
+              <div className="text-xs text-ink font-bold">Interior Wall — {activeWall.id}</div>
               <button
                 onClick={() => setActiveWall(null)}
-                className="text-gray-400 hover:text-white text-sm px-1"
+                className="text-muted hover:text-ink text-sm px-1"
               >
                 ✕
               </button>
             </div>
 
             {/* Length */}
-            <div className="px-3 py-1.5 text-xs text-gray-400 border-b border-gray-800">
+            <div className="px-3 py-1.5 text-xs text-muted border-b border-border">
               Length:{' '}
               {Math.hypot(
                 activeWall.end.x - activeWall.start.x,
@@ -2701,8 +2682,8 @@ export function SceneEditor({
             </div>
 
             {/* Material dropdown */}
-            <div className="px-3 py-2 border-b border-gray-800">
-              <label className="block text-xs text-slate-400 mb-1">Material</label>
+            <div className="px-3 py-2 border-b border-border">
+              <label className="block text-xs text-muted mb-1">Material</label>
               <select
                 value={activeWall.material}
                 onChange={(e) => {
@@ -2712,7 +2693,7 @@ export function SceneEditor({
                   );
                   setActiveWall((prev) => (prev ? { ...prev, material: mat } : prev));
                 }}
-                className="w-full bg-gray-800 border border-slate-700 text-slate-300 text-xs rounded px-2 py-1"
+                className="w-full bg-surface-2 border border-border text-ink text-xs rounded px-2 py-1"
               >
                 <option value="">-- Select material --</option>
                 <option value="concrete">Concrete</option>
@@ -2729,8 +2710,8 @@ export function SceneEditor({
             </div>
 
             {/* Description */}
-            <div className="px-3 py-2 border-b border-gray-800">
-              <label className="block text-xs text-slate-400 mb-1">Description</label>
+            <div className="px-3 py-2 border-b border-border">
+              <label className="block text-xs text-muted mb-1">Description</label>
               <textarea
                 value={activeWall.description}
                 onChange={(e) => {
@@ -2741,14 +2722,14 @@ export function SceneEditor({
                   setActiveWall((prev) => (prev ? { ...prev, description: desc } : prev));
                 }}
                 placeholder="Describe the wall — load-bearing, partial, damaged, etc."
-                className="w-full bg-gray-800 border border-gray-700 text-slate-300 text-xs rounded px-2 py-1.5 resize-none focus:border-slate-500 focus:outline-none"
+                className="w-full bg-surface-2 border border-border text-ink text-xs rounded px-2 py-1.5 resize-none focus:border-border focus:outline-none"
                 rows={2}
               />
             </div>
 
             {/* Has door toggle */}
-            <div className="px-3 py-2 border-b border-gray-800 flex items-center gap-2">
-              <label className="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+            <div className="px-3 py-2 border-b border-border flex items-center gap-2">
+              <label className="flex items-center gap-2 text-xs text-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={activeWall.hasDoor}
@@ -2759,20 +2740,20 @@ export function SceneEditor({
                     );
                     setActiveWall((prev) => (prev ? { ...prev, hasDoor: val } : prev));
                   }}
-                  className="rounded border-slate-600"
+                  className="rounded border-border"
                 />
                 Has a door / opening
               </label>
             </div>
 
             {/* Delete wall */}
-            <div className="px-3 py-2 border-t border-gray-800">
+            <div className="px-3 py-2 border-t border-border">
               <button
                 onClick={() => {
                   setInteriorWalls((prev) => prev.filter((w) => w.id !== activeWall.id));
                   setActiveWall(null);
                 }}
-                className="w-full bg-red-900/40 hover:bg-red-800 text-red-300 text-xs px-3 py-1.5 rounded border border-red-700"
+                className="w-full bg-danger/10 hover:bg-danger text-danger text-xs px-3 py-1.5 rounded border border-danger"
               >
                 Delete This Wall
               </button>

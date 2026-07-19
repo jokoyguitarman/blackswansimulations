@@ -291,43 +291,41 @@ export function SceneSetup({
     <div className="flex gap-4" style={{ height: 500 }}>
       {/* Left: tools */}
       <div className="w-52 overflow-y-auto space-y-2 flex-shrink-0">
-        <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-1">
-          Scene Tools
-        </div>
+        <div className="text-xs terminal-text text-muted uppercase mb-1">Scene Tools</div>
 
         <button
           onClick={() => setActiveMode('place_exit')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_exit' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_exit' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-border'}`}
         >
           🚪 Place Exit
         </button>
         <button
           onClick={() => setActiveMode('place_blast')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_blast' ? 'border-red-400 bg-red-900/30 text-red-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_blast' ? 'border-danger bg-danger/10 text-danger' : 'border-border text-muted hover:border-border'}`}
         >
           💥 Blast Site {blastSite ? '(replace)' : ''}
         </button>
         {ENABLE_CASUALTY_PLACEMENT && (
           <button
             onClick={() => setActiveMode('place_casualty')}
-            className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_casualty' ? 'border-red-400 bg-red-900/30 text-red-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+            className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_casualty' ? 'border-danger bg-danger/10 text-danger' : 'border-border text-muted hover:border-border'}`}
           >
             🏥 Place Casualties
           </button>
         )}
         <button
           onClick={() => setActiveMode('place_stairwell')}
-          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_stairwell' ? 'border-cyan-400 bg-cyan-900/30 text-cyan-300' : 'border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50'}`}
+          className={`w-full text-left text-xs px-2 py-1.5 border rounded ${activeMode === 'place_stairwell' ? 'border-accent bg-accent/10 text-accent' : 'border-border text-muted hover:border-border'}`}
         >
           🪜 Place Stairwell
         </button>
 
-        <div className="text-xs text-robotic-yellow/50 mt-2">Hazards:</div>
+        <div className="text-xs text-muted mt-2">Hazards:</div>
         {(Object.keys(HAZARD_DEFS) as HazardType[]).map((ht) => (
           <button
             key={ht}
             onClick={() => setActiveMode(`place_hazard_${ht}`)}
-            className={`w-full text-left text-xs px-2 py-1 border rounded ${activeMode === `place_hazard_${ht}` ? 'border-cyan-400 bg-cyan-900/30' : 'border-robotic-gray-200 hover:border-robotic-yellow/50'}`}
+            className={`w-full text-left text-xs px-2 py-1 border rounded ${activeMode === `place_hazard_${ht}` ? 'border-accent bg-accent/10' : 'border-border hover:border-border'}`}
             style={{ color: HAZARD_DEFS[ht].color }}
           >
             {HAZARD_DEFS[ht].icon} {HAZARD_DEFS[ht].label}
@@ -335,7 +333,7 @@ export function SceneSetup({
         ))}
 
         <div className="mt-2">
-          <label className="text-xs text-robotic-yellow/50 block mb-1">Exit Width (m)</label>
+          <label className="text-xs text-muted block mb-1">Exit Width (m)</label>
           <input
             type="range"
             min={1}
@@ -345,33 +343,33 @@ export function SceneSetup({
             onChange={(e) => setNewExitWidth(Number(e.target.value))}
             className="w-full"
           />
-          <span className="text-xs text-robotic-yellow/70">{newExitWidth}m</span>
+          <span className="text-xs text-muted">{newExitWidth}m</span>
         </div>
         <div>
-          <label className="text-xs text-robotic-yellow/50 block mb-1">Pedestrians</label>
+          <label className="text-xs text-muted block mb-1">Pedestrians</label>
           <input
             type="number"
             min={1}
             step={10}
             value={pedestrianCount}
             onChange={(e) => setPedestrianCount(Math.max(1, Number(e.target.value) || 1))}
-            className="w-full bg-black/50 border border-robotic-yellow/30 text-robotic-yellow text-xs px-2 py-1 rounded"
+            className="w-full bg-surface-2 border border-border text-ink text-xs px-2 py-1 rounded"
           />
         </div>
 
-        <div className="text-xs text-robotic-yellow/50 mt-2">
+        <div className="text-xs text-muted mt-2">
           Exits: {exits.length} · Blast: {blastSite ? '✓' : '—'} · Casualties:{' '}
           {casualtyClusters.length}
         </div>
 
         <button onClick={handleSave} className="w-full mt-3 military-button px-4 py-2 text-xs">
-          [SAVE SCENE]
+          Save scene
         </button>
       </div>
 
       {/* Right: map + canvas */}
       <div
-        className="flex-1 relative overflow-hidden rounded border border-robotic-gray-200"
+        className="flex-1 relative overflow-hidden rounded border border-border"
         ref={containerRef}
       >
         <MapContainer
@@ -413,7 +411,7 @@ export function SceneSetup({
         />
         {activeMode !== 'select' && (
           <div
-            className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1 text-xs text-robotic-yellow pointer-events-none"
+            className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-surface-2 rounded px-3 py-1 text-xs text-ink pointer-events-none"
             style={{ zIndex: 1001 }}
           >
             Click map to place — ESC or click a tool to cancel

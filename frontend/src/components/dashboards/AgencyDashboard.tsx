@@ -7,27 +7,27 @@ export function AgencyDashboard() {
   return (
     <div className="space-y-6">
       {/* Role-specific header */}
-      <div className="border-b-2 border-robotic-yellow pb-4 mb-6">
-        <h2 className="text-2xl terminal-text uppercase tracking-wider mb-2">
-          [DASHBOARD] {role.replace(/_/g, ' ').toUpperCase()} Command Center
+      <div className="border-b border-border pb-4 mb-6">
+        <h2 className="text-2xl font-extrabold text-brand mb-1 capitalize">
+          {role.replace(/_/g, ' ')} command center
         </h2>
-        <p className="text-xs terminal-text text-robotic-yellow/70">[STATUS] {roleDescription}</p>
+        <p className="text-sm text-muted">{roleDescription}</p>
       </div>
 
       {/* Blind spots warning */}
       {blindSpots.length > 0 && (
-        <div className="military-border bg-robotic-yellow/20 border-robotic-yellow p-4 mb-6">
-          <div className="flex items-center space-x-2 mb-2">
-            <div className="w-2 h-2 bg-robotic-yellow rounded-full animate-pulse"></div>
-            <span className="text-xs terminal-text text-robotic-yellow uppercase">
-              [WARNING] Information Blind Spots Detected
+        <div className="border-l-4 border-warning bg-warning/10 rounded-md p-4 mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-1.5 h-1.5 bg-warning rounded-full"></div>
+            <span className="text-xs font-bold text-warning uppercase tracking-wide">
+              Information blind spots detected
             </span>
           </div>
-          <p className="text-xs terminal-text text-robotic-yellow/70 mb-2">
+          <p className="text-sm text-muted mb-2">
             Your role has limited visibility. Some information requires coordination with other
             agencies.
           </p>
-          <div className="mt-2 text-xs terminal-text text-robotic-yellow/50">
+          <div className="text-xs text-muted">
             Hidden information types: {blindSpots.slice(0, 5).join(', ')}
             {blindSpots.length > 5 && ` +${blindSpots.length - 5} more`}
           </div>
@@ -38,83 +38,71 @@ export function AgencyDashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Visible: Incidents */}
         <ClassifiedBlocker informationType="incidents">
-          <div className="military-border bg-robotic-gray-300/50 p-4">
-            <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [MODULE] Active Incidents
+          <div className="bg-surface-2 border border-border rounded-lg p-4">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+              Active incidents
             </div>
-            <div className="text-sm terminal-text text-robotic-yellow/30">
-              [STATUS] No active incidents
-            </div>
+            <div className="text-sm text-muted">No active incidents</div>
           </div>
         </ClassifiedBlocker>
 
         {/* Visible: Decisions */}
         <ClassifiedBlocker informationType="decisions">
-          <div className="military-border bg-robotic-gray-300/50 p-4">
-            <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [MODULE] Decision Queue
+          <div className="bg-surface-2 border border-border rounded-lg p-4">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+              Decision queue
             </div>
-            <div className="text-sm terminal-text text-robotic-yellow/30">
-              [STATUS] No pending decisions
-            </div>
+            <div className="text-sm text-muted">No pending decisions</div>
           </div>
         </ClassifiedBlocker>
 
         {/* Hidden: Casualties (for most roles) */}
         <ClassifiedBlocker informationType="casualties">
-          <div className="military-border bg-robotic-gray-300/50 p-4">
-            <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [MODULE] Casualty Reports
+          <div className="bg-surface-2 border border-border rounded-lg p-4">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+              Casualty reports
             </div>
-            <div className="text-sm terminal-text text-robotic-yellow/30">
-              [STATUS] No reports available
-            </div>
+            <div className="text-sm text-muted">No reports available</div>
           </div>
         </ClassifiedBlocker>
 
         {/* Hidden: Intelligence (for most roles) */}
         <ClassifiedBlocker informationType="intelligence">
-          <div className="military-border bg-robotic-gray-300/50 p-4">
-            <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [MODULE] Intelligence Reports
+          <div className="bg-surface-2 border border-border rounded-lg p-4">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+              Intelligence reports
             </div>
-            <div className="text-sm terminal-text text-robotic-yellow/30">
-              [STATUS] No reports available
-            </div>
+            <div className="text-sm text-muted">No reports available</div>
           </div>
         </ClassifiedBlocker>
 
         {/* Hidden: Public Sentiment (for most roles) */}
         <ClassifiedBlocker informationType="public_sentiment">
-          <div className="military-border bg-robotic-gray-300/50 p-4">
-            <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [MODULE] Public Sentiment Analysis
+          <div className="bg-surface-2 border border-border rounded-lg p-4">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+              Public sentiment analysis
             </div>
-            <div className="text-sm terminal-text text-robotic-yellow/30">
-              [STATUS] No data available
-            </div>
+            <div className="text-sm text-muted">No data available</div>
           </div>
         </ClassifiedBlocker>
 
         {/* Hidden: Infrastructure Status (for most roles) */}
         <ClassifiedBlocker informationType="infrastructure_status">
-          <div className="military-border bg-robotic-gray-300/50 p-4">
-            <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-              [MODULE] Infrastructure Status
+          <div className="bg-surface-2 border border-border rounded-lg p-4">
+            <div className="text-xs font-semibold text-muted uppercase tracking-wide mb-2">
+              Infrastructure status
             </div>
-            <div className="text-sm terminal-text text-robotic-yellow/30">
-              [STATUS] No data available
-            </div>
+            <div className="text-sm text-muted">No data available</div>
           </div>
         </ClassifiedBlocker>
       </div>
 
       {/* Communication reminder */}
-      <div className="military-border bg-robotic-yellow/20 border-robotic-yellow p-4 mt-6">
-        <div className="text-xs terminal-text text-robotic-yellow uppercase mb-2">
-          [ACTION_REQUIRED] Inter-Agency Communication
+      <div className="border-l-4 border-accent bg-accent/10 rounded-md p-4 mt-6">
+        <div className="text-xs font-bold text-accent uppercase tracking-wide mb-2">
+          Action required · inter-agency communication
         </div>
-        <p className="text-xs terminal-text text-robotic-yellow/70">
+        <p className="text-sm text-muted">
           To access classified information, use communication channels to request data from
           appropriate agencies. Information sharing is critical for effective crisis coordination.
         </p>

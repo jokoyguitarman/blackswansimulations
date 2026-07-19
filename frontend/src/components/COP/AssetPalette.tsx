@@ -161,26 +161,26 @@ export const AssetPalette = ({
 
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`w-full px-3 py-1.5 bg-black/90 border border-robotic-yellow/50 text-xs terminal-text text-robotic-yellow hover:bg-black/95 transition-colors flex items-center justify-between ${
+        className={`w-full px-3 py-1.5 bg-surface border border-border text-xs terminal-text text-ink hover:bg-surface-2 transition-colors flex items-center justify-between ${
           isDrawing ? '' : 'rounded-t'
         }`}
       >
         <span className="font-medium">Assets — {teamName}</span>
-        <span className="text-robotic-yellow/50">{isExpanded ? '▼' : '▶'}</span>
+        <span className="text-muted">{isExpanded ? '▼' : '▶'}</span>
       </button>
 
       {isExpanded && paletteLocked && (
-        <div className="bg-black/90 border border-t-0 border-robotic-yellow/50 px-3 py-2">
-          <div className="text-[11px] terminal-text text-robotic-yellow/50 text-center leading-snug">
-            Press <span className="text-robotic-yellow/80 font-medium">Record Actions</span> below
-            to deploy assets on the map
+        <div className="bg-surface border border-t-0 border-border px-3 py-2">
+          <div className="text-[11px] terminal-text text-muted text-center leading-snug">
+            Press <span className="text-ink font-medium">Record Actions</span> below to deploy
+            assets on the map
           </div>
         </div>
       )}
 
       {isExpanded && (
         <div
-          className={`bg-black/90 border border-t-0 border-robotic-yellow/50 p-2 grid grid-cols-2 gap-1.5 ${paletteLocked ? 'opacity-40 pointer-events-none' : ''}`}
+          className={`bg-surface border border-t-0 border-border p-2 grid grid-cols-2 gap-1.5 ${paletteLocked ? 'opacity-40 pointer-events-none' : ''}`}
         >
           {assets.map((asset) => {
             const count = placedCounts[asset.asset_type] ?? 0;
@@ -207,8 +207,8 @@ export const AssetPalette = ({
                       isActiveDrawing
                         ? 'border-amber-500 text-amber-300 bg-amber-500/20 ring-1 ring-amber-500/50'
                         : isDisabled
-                          ? 'border-gray-700 text-gray-600 cursor-not-allowed opacity-50'
-                          : 'border-robotic-yellow/30 text-robotic-yellow hover:border-robotic-yellow/60 hover:bg-robotic-yellow/10 cursor-pointer'
+                          ? 'border-border text-muted cursor-not-allowed opacity-50'
+                          : 'border-border text-ink hover:border-border-strong hover:bg-accent/10 cursor-pointer'
                     }
                   `}
                   title={
@@ -228,11 +228,11 @@ export const AssetPalette = ({
                   </div>
                   <div className="flex items-center justify-between mt-0.5">
                     {asset.max_count != null && (
-                      <span className="text-[10px] text-robotic-yellow/40">
+                      <span className="text-[10px] text-muted">
                         {count}/{asset.max_count}
                       </span>
                     )}
-                    <span className="text-[10px] text-robotic-yellow/50 ml-auto">
+                    <span className="text-[10px] text-muted ml-auto">
                       {isActiveDrawing ? '● drawing' : '✏ draw'}
                     </span>
                   </div>
@@ -250,8 +250,8 @@ export const AssetPalette = ({
                   transition-all duration-150
                   ${
                     isDisabled
-                      ? 'border-gray-700 text-gray-600 cursor-not-allowed opacity-50'
-                      : 'border-robotic-yellow/30 text-robotic-yellow hover:border-robotic-yellow/60 hover:bg-robotic-yellow/10'
+                      ? 'border-border text-muted cursor-not-allowed opacity-50'
+                      : 'border-border text-ink hover:border-border-strong hover:bg-accent/10'
                   }
                 `}
                 title={
@@ -266,7 +266,7 @@ export const AssetPalette = ({
                   <span className="truncate">{asset.label}</span>
                 </div>
                 {asset.max_count != null && (
-                  <div className="text-[10px] text-robotic-yellow/40 mt-0.5">
+                  <div className="text-[10px] text-muted mt-0.5">
                     {count}/{asset.max_count}
                   </div>
                 )}
@@ -278,11 +278,11 @@ export const AssetPalette = ({
 
       {/* Action Recording Controls */}
       {actionRecording?.active ? (
-        <div className="bg-black/95 border border-t-0 border-robotic-yellow/50 rounded-b px-3 py-2 space-y-2">
+        <div className="bg-surface border border-t-0 border-border rounded-b px-3 py-2 space-y-2">
           {/* Response banner — shows which incident this responds to */}
           {actionRecording.incidentTitle && (
-            <div className="px-2 py-1.5 bg-cyan-900/40 border border-cyan-500/40 rounded text-[11px] terminal-text text-cyan-300 leading-snug">
-              <span className="text-cyan-400 font-medium">RESPONDING TO:</span>{' '}
+            <div className="px-2 py-1.5 bg-accent/10 border border-accent/40 rounded text-[11px] terminal-text text-accent leading-snug">
+              <span className="text-accent font-medium">Responding to:</span>{' '}
               {actionRecording.incidentTitle}
             </div>
           )}
@@ -290,8 +290,8 @@ export const AssetPalette = ({
           {/* Recording indicator + action count */}
           <div className="flex items-center gap-2 text-xs terminal-text">
             <span className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-red-300 font-medium">RECORDING</span>
-            <span className="text-robotic-yellow/60 ml-auto">
+            <span className="text-danger font-medium">Recording</span>
+            <span className="text-muted ml-auto">
               {actionRecording.actions.length + (actionRecording.crowdMoves?.length ?? 0)} action
               {actionRecording.actions.length + (actionRecording.crowdMoves?.length ?? 0) !== 1
                 ? 's'
@@ -304,15 +304,12 @@ export const AssetPalette = ({
             (actionRecording.crowdMoves?.length ?? 0) > 0) && (
             <div className="space-y-0.5 max-h-24 overflow-y-auto">
               {actionRecording.actions.map((a, i) => (
-                <div
-                  key={`p-${i}`}
-                  className="text-[10px] terminal-text text-robotic-yellow/50 truncate"
-                >
+                <div key={`p-${i}`} className="text-[10px] terminal-text text-muted truncate">
                   {i + 1}. Placed {a.label}
                 </div>
               ))}
               {actionRecording.crowdMoves?.map((m, i) => (
-                <div key={`m-${i}`} className="text-[10px] terminal-text text-cyan-400/60 truncate">
+                <div key={`m-${i}`} className="text-[10px] terminal-text text-accent/60 truncate">
                   {actionRecording.actions.length + i + 1}. Moved {m.label}
                 </div>
               ))}
@@ -324,7 +321,7 @@ export const AssetPalette = ({
             value={submitDescription}
             onChange={(e) => setSubmitDescription(e.target.value)}
             placeholder="Describe your strategy (optional)..."
-            className="w-full bg-black/60 border border-robotic-yellow/30 rounded px-2 py-1 text-xs terminal-text text-robotic-yellow placeholder-robotic-yellow/30 resize-none"
+            className="w-full bg-surface-2 border border-border rounded px-2 py-1 text-xs terminal-text text-ink placeholder-muted resize-none"
             rows={2}
           />
 
@@ -342,7 +339,7 @@ export const AssetPalette = ({
               className={`flex-1 px-2 py-1.5 rounded border text-xs terminal-text font-medium transition-colors ${
                 actionRecording.actions.length > 0 || (actionRecording.crowdMoves?.length ?? 0) > 0
                   ? 'border-green-500/70 text-green-300 bg-green-900/50 hover:bg-green-800/60'
-                  : 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
+                  : 'border-border text-muted cursor-not-allowed opacity-50'
               }`}
             >
               Submit Actions
@@ -361,14 +358,14 @@ export const AssetPalette = ({
       ) : (
         /* Start recording button when not currently recording */
         onStartRecording && (
-          <div className="bg-black/90 border border-t-0 border-robotic-yellow/50 rounded-b px-3 py-2">
+          <div className="bg-surface border border-t-0 border-border rounded-b px-3 py-2">
             <button
               onClick={onStartRecording}
               disabled={isDrawing}
               className={`w-full px-2 py-1.5 rounded border text-xs terminal-text font-medium transition-colors ${
                 isDrawing
-                  ? 'border-gray-600 text-gray-500 cursor-not-allowed opacity-50'
-                  : 'border-robotic-yellow/40 text-robotic-yellow/80 hover:bg-robotic-yellow/10 hover:border-robotic-yellow/60'
+                  ? 'border-border text-muted cursor-not-allowed opacity-50'
+                  : 'border-border text-ink hover:bg-accent/10 hover:border-border-strong'
               }`}
             >
               Record Actions as Decision

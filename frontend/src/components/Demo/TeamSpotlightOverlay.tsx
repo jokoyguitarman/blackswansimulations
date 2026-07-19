@@ -150,8 +150,8 @@ export function TeamSpotlightOverlay({
   if (!activeTeam) {
     return (
       <div className="absolute bottom-16 left-4 z-[1000]">
-        <div className="px-4 py-3 bg-robotic-gray-300/90 backdrop-blur-md border border-robotic-yellow/30 rounded-lg">
-          <span className="text-xs terminal-text text-robotic-yellow/50 animate-pulse">
+        <div className="px-4 py-3 bg-surface/90 backdrop-blur-md border border-border rounded-lg">
+          <span className="text-xs terminal-text text-muted animate-pulse">
             Waiting for team activity...
           </span>
         </div>
@@ -172,7 +172,7 @@ export function TeamSpotlightOverlay({
       style={{ opacity: fade ? 1 : 0 }}
     >
       <div
-        className="bg-robotic-gray-300/95 backdrop-blur-md border border-robotic-yellow/30 rounded-lg overflow-hidden shadow-2xl"
+        className="bg-surface/90 backdrop-blur-md border border-border rounded-lg overflow-hidden shadow-2xl"
         style={{ borderTopWidth: 4, borderTopColor: color }}
       >
         {/* Team header */}
@@ -187,7 +187,7 @@ export function TeamSpotlightOverlay({
           >
             {activeTeam.displayName}
           </span>
-          <span className="ml-auto text-[10px] terminal-text text-robotic-yellow/40 uppercase">
+          <span className="ml-auto text-[10px] terminal-text text-muted uppercase">
             Team Spotlight
           </span>
         </div>
@@ -195,7 +195,7 @@ export function TeamSpotlightOverlay({
         {/* Actions list */}
         <div className="px-4 py-2 space-y-1.5 max-h-52 overflow-y-auto">
           {activeTeam.actions.length === 0 ? (
-            <p className="text-xs terminal-text text-robotic-yellow/40 py-2 text-center italic">
+            <p className="text-xs terminal-text text-muted py-2 text-center italic">
               No recent activity
             </p>
           ) : (
@@ -203,10 +203,8 @@ export function TeamSpotlightOverlay({
               <div key={action.id} className="flex items-start gap-2 py-1">
                 <span className="text-xs mt-0.5 shrink-0">{typeIcons[action.type] ?? '•'}</span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs terminal-text text-robotic-yellow/80 line-clamp-2">
-                    {action.text}
-                  </p>
-                  <span className="text-[9px] text-robotic-yellow/30">
+                  <p className="text-xs terminal-text text-ink line-clamp-2">{action.text}</p>
+                  <span className="text-[9px] text-muted">
                     {action.timestamp.toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
@@ -221,14 +219,14 @@ export function TeamSpotlightOverlay({
 
         {/* Team counter */}
         {teamNames.length > 1 && (
-          <div className="px-4 py-2 border-t border-robotic-yellow/10 flex items-center gap-1 justify-center">
+          <div className="px-4 py-2 border-t border-border flex items-center gap-1 justify-center">
             {teamNames.map((tn) => (
               <div
                 key={tn}
                 className="w-1.5 h-1.5 rounded-full transition-colors"
                 style={{
                   backgroundColor:
-                    tn === activeTeam.name ? getTeamColor(tn) : 'rgba(255,255,255,0.15)',
+                    tn === activeTeam.name ? getTeamColor(tn) : 'var(--border-strong)',
                 }}
                 title={formatTeamName(tn)}
               />

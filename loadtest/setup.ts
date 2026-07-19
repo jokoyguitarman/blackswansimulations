@@ -222,24 +222,34 @@ export async function provisionUsers(
 
   let done = 0;
   let rateLimited = 0;
+  let consecutiveRateLimited = 0;
   const players = await mapWithConcurrency(
     Array.from({ length: playerCount }, (_, i) => i + 1),
     4, // gentle on the Supabase auth rate limit
     async (n): Promise<TestUser | null> => {
       const email = playerEmail(n);
       const cached = cache[email];
+      // Circuit breaker: once the auth endpoint is clearly rate-limiting us,
+      // stop hammering it and let the remaining spectators borrow tokens.
       const user = cached
         ? { email, ...cached }
-        : await ensureUser(
-            admin,
-            supabaseUrl,
-            serviceRoleKey,
-            email,
-            `Load Test Player ${n}`,
-            0, // players don't wait: fall back to token borrowing instead
-          );
+        : consecutiveRateLimited >= 8
+          ? null
+          : await ensureUser(
+              admin,
+              supabaseUrl,
+              serviceRoleKey,
+              email,
+              `Load Test Player ${n}`,
+              0, // players don't wait: fall back to token borrowing instead
+            );
       done++;
-      if (!user) rateLimited++;
+      if (!user) {
+        rateLimited++;
+        consecutiveRateLimited++;
+      } else if (!cached) {
+        consecutiveRateLimited = 0;
+      }
       if (done % 25 === 0 || done === playerCount)
         log(`  ${done}/${playerCount} players processed`);
       return user;

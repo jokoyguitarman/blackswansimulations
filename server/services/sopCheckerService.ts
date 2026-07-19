@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { getPlayerTeamName } from './teamCharterService.js';
 
 export interface SOPComplianceResult {
   step_id: string;
@@ -85,6 +86,10 @@ export async function recordPlayerAction(
   metadata: Record<string, unknown> = {},
   sopStepMatched: string | null = null,
 ): Promise<void> {
+  // Stamp the author's team at write time so mid-session reassignment never
+  // retroactively shifts team attribution. Null when unassigned (safe fallback).
+  const teamAtAction = await getPlayerTeamName(sessionId, playerId);
+
   const { error } = await supabaseAdmin.from('player_actions').insert({
     session_id: sessionId,
     player_id: playerId,
@@ -93,6 +98,7 @@ export async function recordPlayerAction(
     content,
     metadata,
     sop_step_matched: sopStepMatched,
+    team_at_action: teamAtAction,
   });
 
   if (error) {

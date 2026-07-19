@@ -723,7 +723,7 @@ export const ScenarioLocationMarker = ({
               </div>
             )}
             {anyAdversary && testsContainment && (
-              <div className="text-xs text-purple-400 mt-0.5 font-mono font-bold">
+              <div className="text-xs text-accent mt-0.5 font-mono font-bold">
                 ⚡ TESTING PERIMETER
               </div>
             )}

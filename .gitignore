@@ -14,12 +14,14 @@ coverage/
 # Environment & secrets
 .env
 .env.*
+*.env
 !.env.example
 .supabase
 
 # Editor / OS
 .DS_Store
 Thumbs.db
+~$*
 .vscode/
 .idea/
 *.swp
@@ -35,6 +37,28 @@ logs/
 docs/Sample of Radical Messages*/
 docs/Sample of Radical Messages*.zip
 
+# Local working documents & ad-hoc explainers (not for repo)
+*.docx
+Abbott_Formula_Recall_SEA_Scenario.txt
+frontend/*-preview.html
+docs/blueprint-review-explained.html
+docs/blueprint-review-field-help-preview.html
+docs/code-simplification-guide.html
+docs/code-simplification-risks.html
+docs/crisis-scoring-implementation-plan.html
+docs/extremist-escalation-combat-plan.html
+docs/gap-report-applied-vs-not.html
+docs/geospatial-consultant-briefer.html
+docs/geospatial-developer-briefer.html
+docs/geospatial-sow-redline.html
+docs/npc-thread-interaction-potency.html
+docs/page-post-feed-visibility-fix.html
+docs/social-crisis-scoring-demo.html
+docs/social-crisis-scoring-explained.html
+docs/social-session-review-mode-plan.html
+docs/payment-portal-plan.html
+docs/payment-portal-mockups.html
+
 
 # Load test output
 loadtest-report*.json
@@ -43,3 +67,4 @@ loadtest/.token-cache.json
 # Local OSM source and generated cache artifacts
 server/data/*.osm.pbf
 server/data/generated/
+.vercel

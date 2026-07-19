@@ -74,7 +74,120 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
   return response.json();
 };
 
+// ---------- Payment portal types ----------
+export interface BillingInvoice {
+  id: string;
+  organisation_id: string;
+  trainer_id: string;
+  stripe_invoice_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: 'sent' | 'paid' | 'void';
+  hosted_invoice_url: string | null;
+  sent_at: string;
+  paid_at: string | null;
+}
+
+export interface ClientOrganisation {
+  id: string;
+  trainer_id: string;
+  name: string;
+  contact_name: string | null;
+  contact_email: string;
+  notes: string | null;
+  stripe_customer_id: string | null;
+  created_at: string;
+  invoices?: BillingInvoice[];
+}
+
+export interface BillingPayout {
+  id: string;
+  invoice_id: string;
+  trainer_id: string;
+  session_id: string | null;
+  amount_cents: number;
+  currency: string;
+  status: 'awaiting_completion' | 'pending_release' | 'released' | 'held' | 'failed';
+  hold_reason: string | null;
+  stripe_transfer_id: string | null;
+  aar_generated_at: string | null;
+  released_at: string | null;
+  created_at: string;
+  invoice?: {
+    id: string;
+    amount_cents: number;
+    currency: string;
+    paid_at: string | null;
+    organisation?: { id: string; name: string } | null;
+  } | null;
+}
+
+export interface AdminPayout extends BillingPayout {
+  trainer?: { id: string; full_name: string; username: string } | null;
+  trainer_onboarding_status?: 'none' | 'pending' | 'complete';
+  funded_sessions?: Array<{
+    id: string;
+    status: string;
+    start_time: string | null;
+    end_time: string | null;
+  }>;
+}
+
+export interface AdminTrainerSummary {
+  id: string;
+  full_name: string;
+  username: string;
+  agency_name: string | null;
+  created_at: string;
+  onboarding_status: 'none' | 'pending' | 'complete';
+  client_count: number;
+  client_names: string[];
+  invoices: { sent: number; paid: number; void: number; paid_amount_cents: number };
+  credits: { scenario: number; session: number };
+  sessions: { total: number; upcoming: number; active: number; completed: number };
+  payouts: {
+    awaiting_completion_cents: number;
+    pending_release_cents: number;
+    released_cents: number;
+    held_cents: number;
+  };
+}
+
 export const api = {
+  // Profile
+  profile: {
+    get: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          id: string;
+          username: string;
+          full_name: string;
+          role: string;
+          agency_name: string;
+        };
+      }>(await fetch(apiUrl('/api/profile'), { headers }));
+    },
+
+    update: async (body: { full_name?: string; agency_name?: string }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl('/api/profile'), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    becomeTrainer: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { role: string } }>(
+        await fetch(apiUrl('/api/profile/become-trainer'), { method: 'POST', headers }),
+      );
+    },
+  },
+
   // Scenarios
   scenarios: {
     list: async () => {
@@ -172,8 +285,106 @@ export const api = {
           team_description: string;
           min_participants: number;
           max_participants: number;
+          charter?: {
+            mission?: string;
+            responsibilities?: string[];
+            out_of_lane?: string[];
+          } | null;
+          expected_actions?: Array<Record<string, unknown>> | null;
+          scoring_rubric?: string | null;
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/teams`), { headers }));
+    },
+    /** Whether the caller may edit this scenario right now (edit lock state). */
+    getEditability: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          editable: boolean;
+          reason: 'ok' | 'live_session' | 'no_session_credits';
+          session_credits: number;
+          live_session_id: string | null;
+        };
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/editability`), { headers }));
+    },
+    /** Edit one template inject (trainer personalisation, post-compile). */
+    updateInject: async (id: string, injectId: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects/${injectId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    /** Add a new trainer-authored template inject. */
+    createInject: async (id: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    /** Delete a template inject. */
+    deleteInject: async (id: string, injectId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ ok: boolean }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects/${injectId}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
+    /** Regenerate an inject's post image from its current content + author persona. */
+    regenerateInjectImage: async (id: string, injectId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/injects/${injectId}/regenerate-image`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+    /** Edit a team's charter wording / scoring rubric. */
+    updateTeam: async (id: string, teamId: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/teams/${teamId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    /** Get scenario objective rows (with ids, for the editor). */
+    getObjectives: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          scenario_id: string;
+          objective_id: string;
+          objective_name: string;
+          description: string | null;
+          weight: number;
+          success_criteria: Record<string, unknown>;
+        }>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/objectives`), { headers }));
+    },
+    /** Edit one scenario objective row. */
+    updateObjective: async (id: string, objectiveId: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/objectives/${objectiveId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
     },
     /** Get all map pin locations for a scenario (trainer only). */
     getScenarioLocations: async (id: string) => {
@@ -1976,6 +2187,177 @@ export const api = {
           method: 'POST',
           headers,
           body: JSON.stringify({ session_id: sessionId }),
+        }),
+      );
+    },
+  },
+
+  // Payment portal (client orgs, invoices, credits, Connect, payouts)
+  billing: {
+    listOrganisations: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: ClientOrganisation[] }>(
+        await fetch(apiUrl('/api/billing/organisations'), { headers }),
+      );
+    },
+
+    createOrganisation: async (body: {
+      name: string;
+      contact_name?: string;
+      contact_email: string;
+      notes?: string;
+    }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: ClientOrganisation }>(
+        await fetch(apiUrl('/api/billing/organisations'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    updateOrganisation: async (
+      orgId: string,
+      body: { name?: string; contact_name?: string; contact_email?: string; notes?: string },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: ClientOrganisation }>(
+        await fetch(apiUrl(`/api/billing/organisations/${orgId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    deleteOrganisation: async (orgId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/billing/organisations/${orgId}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
+
+    generateInvoice: async (orgId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingInvoice }>(
+        await fetch(apiUrl(`/api/billing/organisations/${orgId}/invoice`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    voidInvoice: async (invoiceId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/billing/invoices/${invoiceId}/void`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    getCredits: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { scenario: number; session: number } }>(
+        await fetch(apiUrl('/api/billing/credits'), { headers }),
+      );
+    },
+
+    connectOnboard: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { url: string } }>(
+        await fetch(apiUrl('/api/billing/connect/onboard'), { method: 'POST', headers }),
+      );
+    },
+
+    connectStatus: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { status: 'none' | 'pending' | 'complete' } }>(
+        await fetch(apiUrl('/api/billing/connect/status'), { headers }),
+      );
+    },
+
+    connectManage: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { url: string } }>(
+        await fetch(apiUrl('/api/billing/connect/manage'), { method: 'POST', headers }),
+      );
+    },
+
+    myPayouts: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout[] }>(
+        await fetch(apiUrl('/api/billing/payouts/mine'), { headers }),
+      );
+    },
+
+    // Admin
+    listPayouts: async (status?: string) => {
+      const headers = await getAuthHeaders();
+      const params = status ? `?status=${encodeURIComponent(status)}` : '';
+      return handleResponse<{ data: AdminPayout[] }>(
+        await fetch(apiUrl(`/api/billing/payouts${params}`), { headers }),
+      );
+    },
+
+    releasePayout: async (payoutId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout }>(
+        await fetch(apiUrl(`/api/billing/payouts/${payoutId}/release`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    holdPayout: async (payoutId: string, reason?: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout }>(
+        await fetch(apiUrl(`/api/billing/payouts/${payoutId}/hold`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ reason }),
+        }),
+      );
+    },
+
+    unholdPayout: async (payoutId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: BillingPayout }>(
+        await fetch(apiUrl(`/api/billing/payouts/${payoutId}/unhold`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+
+    adminTrainers: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: AdminTrainerSummary[] }>(
+        await fetch(apiUrl('/api/billing/admin/trainers'), { headers }),
+      );
+    },
+
+    enrollTrainer: async (body: { email: string; full_name: string; agency_name?: string }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          id: string;
+          email: string;
+          full_name: string;
+          temporary_password: string;
+          email_sent: boolean;
+        };
+      }>(
+        await fetch(apiUrl('/api/billing/admin/trainers'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
         }),
       );
     },

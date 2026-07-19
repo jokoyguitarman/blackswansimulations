@@ -103,9 +103,24 @@ const TEAM_INVENTORY = [
 ];
 
 export const WarRoom = () => {
-  const { isTrainer } = useRoleVisibility();
+  const { isTrainer, role } = useRoleVisibility();
   const [searchParams, setSearchParams] = useSearchParams();
   const resumedRef = useRef(false);
+
+  // Payment portal: scenario generation requires a scenario credit
+  // (granted when a client pays an invoice). Admins bypass. The server
+  // enforces this regardless - the banner is UX only.
+  const [scenarioCredits, setScenarioCredits] = useState<number | null>(null);
+  useEffect(() => {
+    if (role === 'admin') {
+      setScenarioCredits(1);
+      return;
+    }
+    api.billing
+      .getCredits()
+      .then((res) => setScenarioCredits(res.data.scenario))
+      .catch(() => setScenarioCredits(1)); // fail open in UI; server still enforces
+  }, [role]);
 
   // Draft picker
   const [existingDrafts, setExistingDrafts] = useState<
@@ -426,10 +441,33 @@ export const WarRoom = () => {
     return (
       <div className="min-h-screen scanline flex items-center justify-center">
         <div className="military-border p-8 text-center">
-          <h1 className="text-xl terminal-text uppercase mb-4">[ACCESS DENIED]</h1>
-          <p className="text-sm terminal-text text-robotic-yellow/70">
+          <h1 className="text-xl terminal-text mb-4">Access denied</h1>
+          <p className="text-sm terminal-text text-muted">
             War Room is available to trainers only.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (scenarioCredits === 0 && role !== 'admin') {
+    return (
+      <div className="min-h-screen scanline flex items-center justify-center p-6">
+        <div className="bg-surface border border-border rounded-xl shadow-sm p-8 text-center max-w-md">
+          <div className="text-3xl mb-3">🔒</div>
+          <h1 className="text-lg font-extrabold text-brand mb-2">
+            Scenario generation requires a paid engagement
+          </h1>
+          <p className="text-sm text-muted mb-6">
+            You have <b>0 scenario credits</b>. Invoice a client from the Clients page — when they
+            pay, the War Room unlocks automatically with 1 scenario credit and 2 session credits.
+          </p>
+          <button
+            onClick={() => navigate('/clients')}
+            className="military-button px-6 py-2.5 text-sm"
+          >
+            Go to Clients &amp; billing
+          </button>
         </div>
       </div>
     );
@@ -479,12 +517,12 @@ export const WarRoom = () => {
       <div className="w-full px-1 sm:px-4">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl terminal-text uppercase tracking-wider">[WAR ROOM]</h1>
-          <span className="text-xs terminal-text text-robotic-yellow/50">v2.0</span>
+          <h1 className="text-2xl terminal-text">War Room</h1>
+          <span className="text-xs terminal-text text-muted">v2.0</span>
         </div>
 
         {/* Step progress bar */}
-        <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-robotic-gray-300 flex-shrink-0">
+        <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0 sticky top-0 z-30 shadow-md">
           <div className="flex items-center gap-1 overflow-x-auto">
             {VISIBLE_STEPS.map((s, i) => {
               const isCurrent = s === step;
@@ -492,28 +530,24 @@ export const WarRoom = () => {
               return (
                 <div key={s} className="flex items-center">
                   {i > 0 && (
-                    <div
-                      className={`w-4 h-px mx-1 ${
-                        isPast ? 'bg-robotic-yellow' : 'bg-robotic-gray-200'
-                      }`}
-                    />
+                    <div className={`w-4 h-px mx-1 ${isPast ? 'bg-accent' : 'bg-surface-2'}`} />
                   )}
                   <div
                     className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] terminal-text uppercase whitespace-nowrap ${
                       isCurrent
-                        ? 'border border-robotic-yellow bg-robotic-yellow/10 text-robotic-yellow'
+                        ? 'border border-accent bg-accent/10 text-ink'
                         : isPast
-                          ? 'text-robotic-yellow/70'
-                          : 'text-robotic-yellow/30'
+                          ? 'text-muted'
+                          : 'text-muted'
                     }`}
                   >
                     <span
                       className={`w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold ${
                         isCurrent
-                          ? 'bg-robotic-yellow text-black'
+                          ? 'bg-accent text-black'
                           : isPast
-                            ? 'bg-robotic-yellow/30 text-robotic-yellow'
-                            : 'bg-robotic-gray-200 text-robotic-yellow/30'
+                            ? 'bg-accent/10 text-ink'
+                            : 'bg-surface-2 text-muted'
                       }`}
                     >
                       {isPast ? '\u2713' : VISIBLE_STEPS.indexOf(s) + 1}
@@ -528,14 +562,14 @@ export const WarRoom = () => {
 
         {/* Draft picker banner */}
         {showDraftPicker && existingDrafts.length > 0 && (
-          <div className="military-border p-4 mb-4 bg-cyan-900/10">
+          <div className="military-border p-4 mb-4 bg-accent/10">
             <div className="flex justify-between items-center mb-3">
-              <div className="text-sm terminal-text text-cyan-400 uppercase">
+              <div className="text-sm terminal-text text-accent">
                 Resume an in-progress scenario
               </div>
               <button
                 onClick={() => setShowDraftPicker(false)}
-                className="text-xs terminal-text text-robotic-yellow/40 hover:text-robotic-yellow/70"
+                className="text-xs terminal-text text-muted hover:text-muted"
               >
                 Dismiss
               </button>
@@ -558,23 +592,21 @@ export const WarRoom = () => {
                 return (
                   <div
                     key={draft.id}
-                    className={`flex items-center justify-between border rounded px-3 py-2 hover:bg-robotic-gray-200/20 ${
-                      isCompleted ? 'border-green-700/50' : 'border-robotic-gray-200'
+                    className={`flex items-center justify-between border rounded px-3 py-2 hover:bg-surface-2/20 ${
+                      isCompleted ? 'border-success' : 'border-border'
                     }`}
                   >
                     <div>
-                      <div className="text-xs terminal-text text-robotic-yellow/70 capitalize">
+                      <div className="text-xs terminal-text text-muted capitalize">
                         {sceneName}
                         {isSocialCrisis && (
-                          <span className="ml-2 text-[9px] text-purple-400 uppercase">social</span>
+                          <span className="ml-2 text-[9px] text-accent uppercase">social</span>
                         )}
                         {isCompleted && (
-                          <span className="ml-2 text-[9px] text-green-500 uppercase">
-                            completed
-                          </span>
+                          <span className="ml-2 text-[9px] text-success uppercase">completed</span>
                         )}
                       </div>
-                      <div className="text-[10px] terminal-text text-robotic-yellow/30">
+                      <div className="text-[10px] terminal-text text-muted">
                         {stepLabel} — {updated}
                       </div>
                     </div>
@@ -590,10 +622,10 @@ export const WarRoom = () => {
                       }}
                       className={`text-xs terminal-text border px-3 py-1 ${
                         isCompleted
-                          ? 'text-green-400 border-green-500/50 hover:bg-green-900/20'
+                          ? 'text-success border-success hover:bg-success/10'
                           : isSocialCrisis
-                            ? 'text-purple-400 border-purple-500/50 hover:bg-purple-900/20'
-                            : 'text-cyan-400 border-cyan-500/50 hover:bg-cyan-900/20'
+                            ? 'text-accent border-accent hover:bg-accent/10'
+                            : 'text-brand border-brand hover:bg-brand/10'
                       }`}
                     >
                       {isCompleted ? 'Re-compile' : 'Resume'}
@@ -606,13 +638,13 @@ export const WarRoom = () => {
         )}
 
         {/* Step content */}
-        <div className={`military-border mb-4 sm:mb-6 ${step === 3 ? 'p-0' : 'p-4 sm:p-6'}`}>
+        <div
+          className={`military-border mb-4 sm:mb-6 ${step === 3 ? 'p-0' : 'p-4 sm:p-6 pb-8 sm:pb-10'}`}
+        >
           {step === 0 && (
             <div className="space-y-6">
               <h2 className="text-xl terminal-text font-bold">Select Simulation Mode</h2>
-              <p className="text-sm text-robotic-yellow/60">
-                Choose the type of crisis simulation to create
-              </p>
+              <p className="text-sm text-muted">Choose the type of crisis simulation to create</p>
               <div className="grid grid-cols-2 gap-6">
                 <button
                   onClick={() => {
@@ -620,13 +652,13 @@ export const WarRoom = () => {
                   }}
                   className={`p-6 rounded-xl border-2 transition-all text-left ${
                     simMode === 'field_ops'
-                      ? 'border-robotic-yellow bg-robotic-yellow/10'
-                      : 'border-robotic-gray-200/30 hover:border-robotic-yellow/50'
+                      ? 'border-accent bg-accent/10'
+                      : 'border-border/30 hover:border-border'
                   }`}
                 >
                   <div className="text-4xl mb-3">🏗️</div>
                   <h3 className="text-lg font-bold terminal-text mb-2">Field Operations</h3>
-                  <p className="text-sm text-robotic-yellow/60">
+                  <p className="text-sm text-muted">
                     Physical crisis simulation with map, teams, hazards, casualties, and tactical
                     response. For bombing, shooting, CBRN, and other physical incident scenarios.
                   </p>
@@ -637,13 +669,13 @@ export const WarRoom = () => {
                   }}
                   className={`p-6 rounded-xl border-2 transition-all text-left ${
                     simMode === 'social_media'
-                      ? 'border-robotic-yellow bg-robotic-yellow/10'
-                      : 'border-robotic-gray-200/30 hover:border-robotic-yellow/50'
+                      ? 'border-accent bg-accent/10'
+                      : 'border-border/30 hover:border-border'
                   }`}
                 >
                   <div className="text-4xl mb-3">📱</div>
                   <h3 className="text-lg font-bold terminal-text mb-2">Social Media Crisis</h3>
-                  <p className="text-sm text-robotic-yellow/60">
+                  <p className="text-sm text-muted">
                     Social media crisis response simulation. Players use a simulated phone to
                     monitor feeds, address harmful narratives, and coordinate responses during any
                     crisis scenario.
@@ -655,8 +687,8 @@ export const WarRoom = () => {
 
           {step === 1 && (
             <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 1: INCIDENT SELECTION]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-6">
+              <h2 className="text-lg terminal-text mb-4">Step 1 · Incident selection</h2>
+              <p className="text-xs terminal-text text-muted mb-6">
                 Select the type of incident for this training scenario.
               </p>
 
@@ -664,7 +696,7 @@ export const WarRoom = () => {
                 const groupTypes = INCIDENT_TYPES.filter((t) => t.group === group);
                 return (
                   <div key={group} className="mb-5">
-                    <div className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider mb-2">
+                    <div className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2">
                       {group}
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -682,28 +714,28 @@ export const WarRoom = () => {
                             title={isDisabled ? 'Available soon' : t.label}
                             className={`relative px-3 py-3 border rounded text-center transition-all ${
                               isDisabled
-                                ? 'border-robotic-gray-200 opacity-30 cursor-not-allowed'
+                                ? 'border-border opacity-30 cursor-not-allowed'
                                 : isSelected
-                                  ? 'border-cyan-400 bg-cyan-900/30 cursor-pointer'
-                                  : 'border-robotic-gray-200 hover:border-robotic-yellow/50 cursor-pointer'
+                                  ? 'border-accent bg-accent/10 cursor-pointer'
+                                  : 'border-border hover:border-border cursor-pointer'
                             }`}
                           >
                             <div className="text-xl mb-1">{t.icon}</div>
                             <div
                               className={`text-xs terminal-text ${
                                 isSelected
-                                  ? 'text-cyan-300'
+                                  ? 'text-accent'
                                   : isDisabled
-                                    ? 'text-robotic-yellow/20'
-                                    : 'text-robotic-yellow/70'
+                                    ? 'text-muted'
+                                    : 'text-muted'
                               }`}
                             >
                               {t.label}
                             </div>
                             {isDisabled && (
                               <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="text-[8px] terminal-text text-robotic-yellow/30 bg-black/60 px-1.5 py-0.5 rounded">
-                                  SOON
+                                <span className="text-[8px] terminal-text text-muted bg-surface-2 px-1.5 py-0.5 rounded">
+                                  Soon
                                 </span>
                               </div>
                             )}
@@ -715,8 +747,8 @@ export const WarRoom = () => {
                 );
               })}
 
-              <div className="border-t border-robotic-gray-200 pt-4 mt-4">
-                <label className="text-[10px] terminal-text text-robotic-yellow/40 uppercase tracking-wider">
+              <div className="border-t border-border pt-4 mt-4">
+                <label className="text-[10px] terminal-text text-muted uppercase tracking-wider">
                   Or describe a custom bombing scenario
                 </label>
                 <input
@@ -731,7 +763,7 @@ export const WarRoom = () => {
                     }
                   }}
                   placeholder="e.g., IED hidden in a vehicle outside a government building..."
-                  className="w-full mt-1 px-4 py-2 bg-black/50 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-sm rounded focus:outline-none focus:border-robotic-yellow/70"
+                  className="w-full mt-1 px-4 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm rounded focus:outline-none focus:border-border"
                 />
               </div>
             </div>
@@ -739,13 +771,13 @@ export const WarRoom = () => {
 
           {step === 2 && (
             <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 2: TEAM SELECTION]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+              <h2 className="text-lg terminal-text mb-4">Step 2 · Team selection</h2>
+              <p className="text-xs terminal-text text-muted mb-4">
                 Configure the response teams for this scenario. Add or remove teams as needed.
               </p>
 
               {teamsLoading && (
-                <p className="text-sm terminal-text text-robotic-yellow/70 animate-pulse mb-4">
+                <p className="text-sm terminal-text text-muted animate-pulse mb-4">
                   Suggesting teams for {incidentType}...
                 </p>
               )}
@@ -754,19 +786,19 @@ export const WarRoom = () => {
                 {teams.map((t, i) => (
                   <div
                     key={i}
-                    className="border border-robotic-yellow/50 p-4 bg-black/30 flex flex-col gap-2"
+                    className="border border-border p-4 bg-surface-2 flex flex-col gap-2"
                   >
                     <div className="flex gap-2 items-center">
-                      <div className="flex-1 px-3 py-2 bg-black/30 border border-robotic-yellow/30 text-robotic-yellow terminal-text text-sm font-bold">
+                      <div className="flex-1 px-3 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm font-bold">
                         {t.team_name}
                       </div>
                       <button
                         type="button"
                         onClick={() => removeTeam(i)}
                         disabled={teams.length <= 1}
-                        className="px-3 py-2 text-xs terminal-text text-robotic-orange hover:bg-robotic-orange/10 disabled:opacity-50"
+                        className="px-3 py-2 text-xs terminal-text text-accent hover:bg-accent/10 disabled:opacity-50"
                       >
-                        [REMOVE]
+                        Remove
                       </button>
                     </div>
                     <input
@@ -774,10 +806,10 @@ export const WarRoom = () => {
                       value={t.team_description}
                       onChange={(e) => updateTeam(i, 'team_description', e.target.value)}
                       placeholder="Team description"
-                      className="px-3 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
+                      className="px-3 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm"
                     />
                     <div className="flex gap-4 items-center">
-                      <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                      <label className="flex items-center gap-2 text-xs terminal-text text-muted">
                         Min:
                         <input
                           type="number"
@@ -787,10 +819,10 @@ export const WarRoom = () => {
                           onChange={(e) =>
                             updateTeam(i, 'min_participants', parseInt(e.target.value, 10) || 1)
                           }
-                          className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow"
+                          className="w-16 px-2 py-1 bg-surface-2 border border-border text-ink"
                         />
                       </label>
-                      <label className="flex items-center gap-2 text-xs terminal-text text-robotic-yellow/70">
+                      <label className="flex items-center gap-2 text-xs terminal-text text-muted">
                         Max:
                         <input
                           type="number"
@@ -800,19 +832,19 @@ export const WarRoom = () => {
                           onChange={(e) =>
                             updateTeam(i, 'max_participants', parseInt(e.target.value, 10) || 10)
                           }
-                          className="w-16 px-2 py-1 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow"
+                          className="w-16 px-2 py-1 bg-surface-2 border border-border text-ink"
                         />
                       </label>
                       <button
                         type="button"
                         onClick={() => updateTeam(i, 'is_investigative', !t.is_investigative)}
-                        className={`px-3 py-1.5 text-[10px] terminal-text uppercase tracking-wider border transition-all ${
+                        className={`px-3 py-1.5 text-[10px] terminal-text border transition-all ${
                           t.is_investigative
-                            ? 'border-cyan-500 bg-cyan-500/15 text-cyan-300'
-                            : 'border-robotic-yellow/30 text-robotic-yellow/50 hover:border-robotic-yellow/60'
+                            ? 'border-accent bg-accent/10 text-accent'
+                            : 'border-border text-muted hover:border-border'
                         }`}
                       >
-                        {t.is_investigative ? '\u2B21 INVESTIGATIVE' : '\u25CB INVESTIGATIVE'}
+                        {t.is_investigative ? '\u2B21 Investigative' : '\u25CB Investigative'}
                       </button>
                     </div>
                   </div>
@@ -823,29 +855,27 @@ export const WarRoom = () => {
               <div className="relative">
                 <button
                   onClick={() => setShowAddTeam(!showAddTeam)}
-                  className="text-xs terminal-text text-robotic-yellow/70 hover:text-robotic-yellow border border-robotic-yellow/50 px-3 py-2"
+                  className="text-xs terminal-text text-muted hover:text-ink border border-border px-3 py-2"
                 >
-                  [+ ADD TEAM]
+                  + Add team
                 </button>
                 {showAddTeam && (
-                  <div className="absolute top-full left-0 mt-1 bg-gray-900 border border-robotic-yellow/50 rounded shadow-xl z-10 max-h-60 overflow-y-auto">
+                  <div className="absolute top-full left-0 mt-1 bg-surface-2 border border-border rounded shadow-xl z-10 max-h-60 overflow-y-auto">
                     {TEAM_INVENTORY.filter(
                       (inv) => !teams.some((t) => t.team_name === inv.name),
                     ).map((inv) => (
                       <button
                         key={inv.name}
                         onClick={() => addTeamFromInventory(inv.name)}
-                        className="block w-full text-left px-4 py-2 text-xs terminal-text text-robotic-yellow/70 hover:bg-robotic-yellow/10 hover:text-robotic-yellow border-b border-robotic-gray-200 last:border-b-0"
+                        className="block w-full text-left px-4 py-2 text-xs terminal-text text-muted hover:bg-accent/10 hover:text-ink border-b border-border last:border-b-0"
                       >
                         <div className="font-bold">{inv.name}</div>
-                        <div className="text-[10px] text-robotic-yellow/40 mt-0.5">
-                          {inv.description}
-                        </div>
+                        <div className="text-[10px] text-muted mt-0.5">{inv.description}</div>
                       </button>
                     ))}
                     {TEAM_INVENTORY.filter((inv) => !teams.some((t) => t.team_name === inv.name))
                       .length === 0 && (
-                      <div className="px-4 py-2 text-xs terminal-text text-robotic-yellow/30">
+                      <div className="px-4 py-2 text-xs terminal-text text-muted">
                         All teams added
                       </div>
                     )}
@@ -856,7 +886,7 @@ export const WarRoom = () => {
           )}
 
           {step === 3 && (
-            <div className="w-full" style={{ height: 'calc(100vh - 200px)', minHeight: 350 }}>
+            <div className="w-full" style={{ height: 'calc(100vh - 240px)', minHeight: 350 }}>
               <SceneEditor
                 incidentType={incidentType || 'bombing'}
                 initialSceneId={rtsSceneId}
@@ -873,10 +903,8 @@ export const WarRoom = () => {
 
           {step === 5 && (
             <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">
-                [STEP 5: LOCATION VALIDATION]
-              </h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+              <h2 className="text-lg terminal-text mb-4">Step 5 · Location validation</h2>
+              <p className="text-xs terminal-text text-muted mb-4">
                 Review nearby facilities, routes, and points of interest. Remove or adjust as
                 needed.
               </p>
@@ -892,8 +920,8 @@ export const WarRoom = () => {
 
           {step === 6 && (
             <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 6: INCIDENT RESEARCH]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+              <h2 className="text-lg terminal-text mb-4">Step 6 · Incident research</h2>
+              <p className="text-xs terminal-text text-muted mb-4">
                 AI researches similar incidents, generates scenario narrative, and produces per-team
                 doctrines and workflows.
               </p>
@@ -906,8 +934,8 @@ export const WarRoom = () => {
 
           {step === 7 && (
             <div>
-              <h2 className="text-lg terminal-text uppercase mb-4">[STEP 7: COMPILE SCENARIO]</h2>
-              <p className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+              <h2 className="text-lg terminal-text mb-4">Step 7 · Compile scenario</h2>
+              <p className="text-xs terminal-text text-muted mb-4">
                 Compile all research, hazard analysis, and doctrines into a playable scenario.
               </p>
               <CompileStep wizardDraftId={wizardDraftId} onComplete={(id) => setScenarioId(id)} />
@@ -916,24 +944,24 @@ export const WarRoom = () => {
         </div>
 
         {/* Navigation buttons */}
-        <div className="flex justify-between items-center flex-shrink-0 pt-2">
+        <div className="flex justify-between items-center flex-shrink-0 sticky bottom-0 z-30 bg-surface border-t border-border px-4 py-3 shadow-[0_-3px_8px_rgba(23,32,51,0.04)]">
           <button
             onClick={goBack}
             disabled={!canGoBack}
-            className="px-6 py-3 text-xs terminal-text uppercase border border-robotic-gray-200 text-robotic-yellow/70 hover:border-robotic-yellow/50 disabled:opacity-30 disabled:cursor-not-allowed"
+            className="px-6 py-3 text-xs terminal-text border border-border text-muted hover:border-border disabled:opacity-30 disabled:cursor-not-allowed"
           >
-            [BACK]
+            Back
           </button>
-          <span className="text-xs terminal-text text-robotic-yellow/40">
+          <span className="text-xs terminal-text text-muted">
             Step {VISIBLE_STEPS.indexOf(step) + 1} of {VISIBLE_STEPS.length}
           </span>
           {step === 7 ? (
             scenarioId ? (
               <a href="/scenarios" className="military-button px-8 py-3 text-center">
-                [VIEW SCENARIOS]
+                View scenarios
               </a>
             ) : (
-              <span className="text-xs terminal-text text-robotic-yellow/30">
+              <span className="text-xs terminal-text text-muted">
                 Compile the scenario above to finish
               </span>
             )
@@ -943,7 +971,7 @@ export const WarRoom = () => {
               disabled={!canGoNext}
               className="military-button px-8 py-3 disabled:opacity-30 disabled:cursor-not-allowed"
             >
-              [NEXT]
+              Next
             </button>
           )}
         </div>

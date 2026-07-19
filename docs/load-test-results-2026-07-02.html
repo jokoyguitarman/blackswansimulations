@@ -112,9 +112,9 @@
     </p>
     <div class="hero-stats">
       <div class="stat good"><b>100+</b><span>Field ops: healthy</span></div>
-      <div class="stat warn"><b>50</b><span>Social: last healthy stage</span></div>
-      <div class="stat"><b>100%</b><span>Overall delivery</span></div>
-      <div class="stat"><b>0</b><span>Disconnects / conn failures</span></div>
+      <div class="stat warn"><b>50 &#8594; 100+</b><span>Social: after Round 1 fixes</span></div>
+      <div class="stat good"><b>-81%</b><span>Social p95 after fixes</span></div>
+      <div class="stat good"><b>1,000</b><span>players &middot; 10 sessions (3 Jul)</span></div>
     </div>
   </div>
 </header>
@@ -149,6 +149,149 @@
       during the 100-player stage vs 2,100 in field mode). All of that shares one CPU core with the probe
       broadcasts, and at 100 players the queue starts backing up.
     </div>
+    <div class="verdict" style="border-left-color: var(--cyan); margin-top: 14px;">
+      <b>UPDATE, 23:13 same night:</b> the Round 1 fixes were deployed and the test re-run.
+      <b>The social knee at 100 players is gone</b> &mdash; p95 dropped from 7.3s to 1.4s.
+      See <a href="#round1">the before/after section</a> below. The numbers above are preserved as the baseline.
+    </div>
+  </div>
+</section>
+
+<section id="round1">
+  <div class="wrap">
+    <div class="sec-num">Re-test &middot; after Round 1 fixes</div>
+    <h2 class="sec-title">Before / after: the fixes worked <span class="pill good">SOCIAL KNEE ELIMINATED</span></h2>
+    <p class="sec-sub">
+      Deployed at ~22:58: batched chat notifications (one bulk DB write instead of ~100 sequential),
+      broadcast-before-audit-logging, and the session_events constraint fix (migration 190).
+      Same test, same server, same stages, re-run 23:05&ndash;23:13 SGT.
+    </p>
+
+    <table class="matrix">
+      <tr><th>Metric (100 players)</th><th>Baseline (22:02)</th><th>After Round 1 (23:05)</th><th>Change</th></tr>
+      <tr>
+        <td><b>Social fan-out p95</b></td>
+        <td>7,259 ms</td>
+        <td><b>1,372 ms</b></td>
+        <td><b style="color:var(--green)">-81% &mdash; knee eliminated</b></td>
+      </tr>
+      <tr>
+        <td><b>Social fan-out p99</b></td>
+        <td>7,264 ms</td>
+        <td><b>1,580 ms</b></td>
+        <td><b style="color:var(--green)">-78%</b></td>
+      </tr>
+      <tr>
+        <td><b>Social probe HTTP p95</b></td>
+        <td>12,489 ms</td>
+        <td><b>1,956 ms</b></td>
+        <td><b style="color:var(--green)">-84%</b></td>
+      </tr>
+      <tr>
+        <td><b>Field fan-out p95</b></td>
+        <td>1,674 ms</td>
+        <td>1,668 ms</td>
+        <td>unchanged (was already healthy)</td>
+      </tr>
+      <tr>
+        <td><b>Field probe HTTP p95</b></td>
+        <td>7,678 ms</td>
+        <td><b>2,299 ms</b></td>
+        <td><b style="color:var(--green)">-70%</b></td>
+      </tr>
+      <tr>
+        <td><b>Delivery / disconnects</b></td>
+        <td>100% / 0</td>
+        <td>99.8&ndash;100% / 0</td>
+        <td>equally solid</td>
+      </tr>
+    </table>
+
+    <div class="chart" style="margin-top:20px;">
+      <div class="row"><div class="lbl">Social p95, before</div><div class="track"><div class="bar bad" style="width:100%"></div></div><div class="val">7259 ms</div></div>
+      <div class="row"><div class="lbl">Social p95, after</div><div class="track"><div class="bar" style="width:19%"></div></div><div class="val">1372 ms</div></div>
+    </div>
+
+    <p class="sec-sub" style="margin-top:16px;">
+      Notably, the social run's 100-player stage is now its <em>fastest</em> stage &mdash; latency no longer grows
+      with player count in the tested range, even with the feed engine at full tilt (4,588 passive events
+      reached spectators during that stage, more than the baseline run's 3,508). The feed-broadcast
+      coalescing planned for Round 2 is <b>not needed</b> at this scale.
+    </p>
+
+    <div class="card" style="margin-top:14px;">
+      <h3>One honest footnote: the warm-up blip</h3>
+      <p>
+        In the re-test, the <em>first</em> stage of each run (25 players) briefly breached the 2s threshold
+        (field p95 2.03s, social p95 3.0s with 2% undelivered in one probe) and then everything got faster as load
+        <em>increased</em> &mdash; the opposite of a capacity problem. This run started minutes after Render finished
+        deploying, so the first stage absorbed cold caches and instance warm-up. Degradation that disappears
+        as load grows is warm-up, not a knee; the report tooling now only flags degradation that persists
+        through the highest stage.
+      </p>
+    </div>
+
+    <div class="verdict">
+      <b>Updated operating guidance:</b> both game types are healthy at 100 concurrent players on the current
+      Render Standard instance. The true ceiling for both is now above the tested range &mdash; a follow-up run
+      with <code>--stages 100,150,200</code> would locate it. Raw data: <code>loadtest-report-prod-round1.json</code>.
+    </div>
+  </div>
+</section>
+
+<section id="multisession">
+  <div class="wrap">
+    <div class="sec-num">Multi-session test &middot; 3 Jul 2026</div>
+    <h2 class="sec-title">10 sessions &times; 100 players = 1,000 concurrent <span class="pill good">PASS</span></h2>
+    <p class="sec-sub">
+      The previous tests put every player in one big session. This run answers the other real-world question:
+      <b>how many separate 100-player exercises can run at the same time?</b> Ramped 2 &#8594; 5 &#8594; 10 concurrent
+      sessions per game type (13:28&ndash;13:48 SGT), each session its own room with its own probes; in social mode
+      every session ran its own live feed engine. 1,000 real socket connections at peak.
+    </p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3>Field Operations <span class="pill good">flat to 10 sessions</span></h3>
+        <table class="matrix">
+          <tr><th>Sessions</th><th>Players</th><th>p50</th><th>p95</th><th>Delivery</th><th>Worst session p95</th></tr>
+          <tr><td><b>2</b></td><td>200</td><td>1280 ms</td><td>1679 ms</td><td>100%</td><td>1850 ms</td></tr>
+          <tr><td><b>5</b></td><td>500</td><td>1284 ms</td><td>1651 ms</td><td>99.9%</td><td>1884 ms</td></tr>
+          <tr><td><b>10</b></td><td>1000</td><td>1286 ms</td><td><b>1465 ms</b></td><td>99.9%</td><td>1719 ms</td></tr>
+        </table>
+        <p style="margin-top:10px;">Latency is completely flat from 200 to 1,000 players &mdash; the median moved 6ms.
+        Two brief disconnects in 1,000 sockets over 20 minutes, both auto-reconnected. No ceiling in sight.</p>
+      </div>
+      <div class="card">
+        <h3>Social Media Crisis <span class="pill good">healthy, tail stretching</span></h3>
+        <table class="matrix">
+          <tr><th>Sessions</th><th>Players</th><th>p50</th><th>p95</th><th>Delivery</th><th>Worst session p95</th></tr>
+          <tr><td><b>2</b></td><td>200</td><td>1264 ms</td><td>1362 ms</td><td>100%</td><td>1617 ms</td></tr>
+          <tr><td><b>5</b></td><td>500</td><td>1268 ms</td><td>1711 ms</td><td>100%</td><td>1961 ms</td></tr>
+          <tr><td><b>10</b></td><td>1000</td><td>1301 ms</td><td><b>1906 ms</b></td><td>100%</td><td style="color:var(--amber)">2882 ms</td></tr>
+        </table>
+        <p style="margin-top:10px;">With <b>10 feed engines running simultaneously</b>, aggregate p95 stayed under the
+        2s threshold and delivery was perfect &mdash; but the spread between sessions widened: the slowest of the
+        10 sessions hit p95 2.9s. That's the single CPU core starting to arbitrate between feed engines.</p>
+      </div>
+    </div>
+
+    <div class="verdict" style="margin-top:18px;">
+      <b>Verdict:</b> the platform handles <b>1,000 concurrent players across 10 simultaneous 100-player sessions</b>
+      on the current Render Standard instance. Field ops: effortless, ceiling not found. Social: passes at 10 sessions
+      with 100% delivery, but the worst-session tail (2.9s) says this is approaching the comfortable limit &mdash;
+      plan <b>up to ~8 concurrent 100-player social sessions</b> for headroom, or upgrade the instance for events
+      bigger than that. Session-count load costs roughly nothing in field mode; in social mode each extra session
+      adds a feed engine's worth of AI and CPU work regardless of how many players are in it.
+    </div>
+
+    <p class="note" style="margin-top:14px;">
+      Method notes: session ramp created sessions cumulatively (2 &#8594; 5 &#8594; 10) with probes staggered across each
+      5s interval (one probe per session per cycle); per-session latency tracked separately so a single sick session
+      can't hide in the average. ~120 test identities backed the 1,000 sockets (Supabase sign-in rate limits;
+      connection count and room membership unaffected). Raw data: <code>loadtest-report-multi-field.json</code>,
+      <code>loadtest-report-multi-social-a.json</code> (stages 2 and 5), <code>loadtest-report-multi-social-b.json</code> (stage 10).
+    </p>
   </div>
 </section>
 

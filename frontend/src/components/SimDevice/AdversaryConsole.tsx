@@ -102,23 +102,23 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
   return (
     <div
       className="rounded-xl border overflow-hidden flex flex-col"
-      style={{ backgroundColor: '#1a1a1a', borderColor: '#2a2a2a' }}
+      style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
     >
       <div
         className="px-4 py-2.5 border-b text-xs font-semibold tracking-wider uppercase flex items-center justify-between"
-        style={{ borderColor: '#2a2a2a', color: '#94a3b8' }}
+        style={{ borderColor: '#E4DFD4', color: '#6B7280' }}
       >
         <span>Adversary Console ({pages.length})</span>
         <span
           className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: 'rgba(239,68,68,0.15)', color: '#ef4444' }}
+          style={{ backgroundColor: 'rgba(185,28,28,0.12)', color: '#B91C1C' }}
         >
           rivals
         </span>
       </div>
       <div className="flex-1 p-4 overflow-y-auto space-y-3">
         {pages.length === 0 && (
-          <div className="text-[12px]" style={{ color: '#64748b' }}>
+          <div className="text-[12px]" style={{ color: '#6B7280' }}>
             No antagonist pages in this scenario.
           </div>
         )}
@@ -130,17 +130,17 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
               key={p.org_key}
               className="rounded-lg p-3"
               style={{
-                backgroundColor: '#141414',
-                border: '1px solid #2a2a2a',
-                borderLeft: '3px solid #ef4444',
+                backgroundColor: '#FAF8F4',
+                border: '1px solid #E4DFD4',
+                borderLeft: '3px solid #B91C1C',
               }}
             >
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <span className="text-[13px] font-semibold" style={{ color: '#e5e5e5' }}>
+                  <span className="text-[13px] font-semibold" style={{ color: '#172033' }}>
                     {p.display_name}
                   </span>{' '}
-                  <span className="text-[11px]" style={{ color: '#64748b' }}>
+                  <span className="text-[11px]" style={{ color: '#6B7280' }}>
                     {handle}
                   </span>
                 </div>
@@ -151,14 +151,14 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
                   style={
                     mode === 'trainer'
                       ? {
-                          color: '#f59e0b',
-                          borderColor: '#5a4a1f',
-                          backgroundColor: 'rgba(245,158,11,0.12)',
+                          color: '#D97706',
+                          borderColor: 'rgba(217,119,6,0.4)',
+                          backgroundColor: 'rgba(217,119,6,0.1)',
                         }
                       : {
-                          color: '#a78bfa',
-                          borderColor: '#3a2f5a',
-                          backgroundColor: 'rgba(167,139,250,0.12)',
+                          color: '#1E3A5F',
+                          borderColor: 'rgba(30,58,95,0.35)',
+                          backgroundColor: 'rgba(30,58,95,0.07)',
                         }
                   }
                 >
@@ -169,7 +169,7 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
               {mode === 'trainer' && (
                 <div
                   className="mt-2 rounded-lg p-2"
-                  style={{ backgroundColor: '#0f0f0f', border: '1px solid #2a2a2a' }}
+                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E4DFD4' }}
                 >
                   <div className="flex gap-1 mb-1">
                     {(['x_twitter', 'facebook'] as const).map((pf) => (
@@ -179,8 +179,8 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
                         className="text-[10px] px-2 py-0.5 rounded"
                         style={
                           (platform[p.org_key] || 'x_twitter') === pf
-                            ? { backgroundColor: '#2a2a2a', color: '#e5e5e5' }
-                            : { color: '#64748b' }
+                            ? { backgroundColor: '#1E3A5F', color: '#FFFFFF' }
+                            : { color: '#6B7280' }
                         }
                       >
                         {pf === 'x_twitter' ? 'X' : 'Facebook'}
@@ -193,14 +193,14 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
                     onChange={(e) => setDraft((d) => ({ ...d, [p.org_key]: e.target.value }))}
                     placeholder={`Post as ${p.display_name}...`}
                     className="w-full bg-transparent text-[12px] outline-none resize-none"
-                    style={{ color: '#cbd5e1' }}
+                    style={{ color: '#172033' }}
                   />
                   <div className="text-right">
                     <button
                       onClick={() => postAs(p.org_key)}
                       disabled={busy === p.org_key || !(draft[p.org_key] || '').trim()}
                       className="text-[11px] font-bold px-3 py-1 rounded disabled:opacity-50"
-                      style={{ backgroundColor: '#ef4444', color: '#fff' }}
+                      style={{ backgroundColor: '#B91C1C', color: '#fff' }}
                     >
                       Post as page
                     </button>

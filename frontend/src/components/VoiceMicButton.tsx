@@ -113,7 +113,7 @@ export const VoiceMicButton = ({
         title={title}
         className={`
           military-button px-3 py-2 flex items-center justify-center transition-all
-          ${isRecording ? 'bg-red-900/60 border-red-500 text-red-400' : ''}
+          ${isRecording ? '!bg-danger/10 !border-danger !text-danger' : ''}
           ${isTranscribing ? 'opacity-60 cursor-wait' : ''}
           ${disabled ? 'opacity-40 cursor-not-allowed' : ''}
         `}
@@ -145,7 +145,7 @@ export const VoiceMicButton = ({
       </button>
 
       {showError && error && (
-        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 text-xs terminal-text text-red-400 bg-robotic-gray-400 border border-red-500/30 rounded whitespace-nowrap z-50">
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1 text-xs text-danger bg-surface border border-danger/30 rounded whitespace-nowrap z-50 shadow-sm">
           {error}
         </div>
       )}

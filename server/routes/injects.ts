@@ -142,6 +142,8 @@ export async function publishInjectToSession(
       delivery_config: deliveryConfig as Parameters<typeof routeInjectToApp>[2]['delivery_config'],
       requires_response: (inject as { requires_response?: boolean }).requires_response,
       trigger_time_minutes: inject.trigger_time_minutes,
+      inject_scope: ((inject as Record<string, unknown>).inject_scope as string) || 'universal',
+      target_teams: ((inject as Record<string, unknown>).target_teams as string[] | null) || [],
     }).catch((err) => logger.error({ err, sessionId, injectId }, 'Feed engine routing failed'));
   }
 

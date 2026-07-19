@@ -79,4 +79,18 @@ export const env = {
   enableScenarioDirector:
     process.env.ENABLE_SCENARIO_DIRECTOR === 'true' ||
     (nodeEnv === 'production' && process.env.ENABLE_SCENARIO_DIRECTOR !== 'false'),
+  // ---------- Stripe payment portal ----------
+  // All optional: without a secret key the app boots normally and billing
+  // endpoints return 503. Webhook secret comes from `stripe listen` in dev
+  // and from the dashboard webhook endpoint in production.
+  stripeSecretKey: process.env.STRIPE_SECRET_KEY,
+  stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
+  // Fixed engagement fee invoiced to the trainer's client, in SGD.
+  invoiceAmountSgd: Number(process.env.INVOICE_AMOUNT_SGD ?? 10000),
+  // Trainer's share of a paid invoice, released after the AAR (percent).
+  trainerSharePercent: Number(process.env.TRAINER_SHARE_PERCENT ?? 30),
+  // Credits granted per paid invoice. 2 session credits = pre- and
+  // post-training games on the same scenario.
+  scenarioCreditsPerInvoice: Number(process.env.SCENARIO_CREDITS_PER_INVOICE ?? 1),
+  sessionCreditsPerInvoice: Number(process.env.SESSION_CREDITS_PER_INVOICE ?? 2),
 };

@@ -17,6 +17,17 @@ export interface ContentGrade {
   signals: Record<string, boolean>;
   media_concept_grade?: number;
   media_feedback?: string;
+  /** How well the content fits the author's team mandate (only when a team charter was in context). */
+  role_fit?: number;
+  /** Team the author belonged to when the content was graded. */
+  graded_as_team?: string;
+}
+
+export interface TeamCharterContext {
+  team_name: string;
+  mission: string;
+  scoring_rubric: string;
+  out_of_lane: string[];
 }
 
 const FORMAT_RUBRICS: Record<string, string> = {
@@ -140,6 +151,10 @@ export async function gradePlayerContent(
     image_prompt?: string;
     is_official_page_post?: boolean;
     org_name?: string;
+    /** When present, the content is judged against the author's team mandate
+     *  and the grade gains role_fit + within_mandate. Absent = generic grading
+     *  identical to the pre-teams behaviour. */
+    team_charter?: TeamCharterContext;
   },
 ): Promise<ContentGrade> {
   if (!env.openAiApiKey) {
@@ -154,8 +169,17 @@ export async function gradePlayerContent(
       ? `\n\nCRITICAL: This is an OFFICIAL post from the organization's public page. Grade MORE HARSHLY -- this represents the brand voice. Tone must be professional, facts must be verified, and any misstep is amplified because it comes from the official account. Deduct extra points for: informal language, unverified claims, emotional tone, missing call-to-action, or anything that could be screenshotted and used against the organization.\n`
       : '';
 
+    const charter = context.team_charter;
+    const teamMandateBlock = charter
+      ? `\n\nTEAM MANDATE: The author belongs to the "${charter.team_name}" team. Their mandate: ${charter.mission}
+Judge the content additionally against this team-specific rubric: ${charter.scoring_rubric}
+Actions OUTSIDE this team's mandate (should be escalated/handed off, not done by them): ${charter.out_of_lane.map((o) => `\n- ${o}`).join('')}
+
+Include a "role_fit" field (0-100) in your JSON: did this action fall within the ${charter.team_name} team's mandate, and does it fulfil their role well? Grade the content itself on its merits; reflect mandate breaches in role_fit and coach them in "feedback"/"improvements" (e.g. "strong statement, but this should have been routed to Communications"). Also include a boolean "within_mandate" in the "signals" object.\n`
+      : '';
+
     const systemPrompt = `You are an expert evaluator for a crisis response team. Evaluate responses based on the specific crisis context provided below.
-You evaluate responses from a STAKEHOLDER AND PUBLIC PROTECTION perspective -- NOT whether the response "wins an argument."${officialPageWarning}
+You evaluate responses from a STAKEHOLDER AND PUBLIC PROTECTION perspective -- NOT whether the response "wins an argument."${officialPageWarning}${teamMandateBlock}
 
 ${rubric}
 
@@ -243,6 +267,12 @@ Evaluate the media concept as part of your grading. Include these additional fie
     }
     if (!grade.signals) {
       grade.signals = {};
+    }
+    if (charter) {
+      grade.graded_as_team = charter.team_name;
+      if (grade.role_fit == null || Number.isNaN(grade.role_fit)) {
+        grade.role_fit = 50;
+      }
     }
     return grade;
   } catch (err) {

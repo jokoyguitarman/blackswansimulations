@@ -84,72 +84,58 @@ export const CasualtyAssessmentModal = ({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-[#0f1218] border border-robotic-yellow/30 rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-ink/40 backdrop-blur-sm p-4">
+      <div className="bg-surface border border-border rounded-lg shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-robotic-yellow/20">
-          <h3 className="text-sm font-bold terminal-text text-robotic-yellow uppercase tracking-wider">
-            Patient Assessment
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-robotic-yellow/40 hover:text-robotic-yellow text-lg leading-none"
-          >
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <h3 className="text-sm font-bold terminal-text text-ink">Patient Assessment</h3>
+          <button onClick={onClose} className="text-muted hover:text-ink text-lg leading-none">
             ×
           </button>
         </div>
 
         {/* Patient description + triage options — scrollable area */}
         <div className="flex-1 overflow-y-auto min-h-0">
-          <div className="p-4 space-y-3 border-b border-robotic-yellow/10">
-            {visibleDesc && (
-              <p className="text-sm text-robotic-yellow/80 leading-relaxed">{visibleDesc}</p>
-            )}
+          <div className="p-4 space-y-3 border-b border-border">
+            {visibleDesc && <p className="text-sm text-ink leading-relaxed">{visibleDesc}</p>}
 
             <div className="grid grid-cols-3 gap-2 text-xs terminal-text">
               <div>
-                <span className="text-robotic-yellow/40">Mobility:</span>
-                <span className="ml-1 text-robotic-yellow capitalize">
-                  {mobility.replace(/_/g, ' ')}
-                </span>
+                <span className="text-muted">Mobility:</span>
+                <span className="ml-1 text-ink capitalize">{mobility.replace(/_/g, ' ')}</span>
               </div>
               <div>
-                <span className="text-robotic-yellow/40">Conscious:</span>
-                <span className="ml-1 text-robotic-yellow capitalize">{consciousness}</span>
+                <span className="text-muted">Conscious:</span>
+                <span className="ml-1 text-ink capitalize">{consciousness}</span>
               </div>
               <div>
-                <span className="text-robotic-yellow/40">Breathing:</span>
-                <span className="ml-1 text-robotic-yellow capitalize">{breathing}</span>
+                <span className="text-muted">Breathing:</span>
+                <span className="ml-1 text-ink capitalize">{breathing}</span>
               </div>
             </div>
 
             {accessibility !== 'open' && (
-              <div className="text-xs terminal-text text-orange-400 capitalize">
+              <div className="text-xs terminal-text text-accent capitalize">
                 Access: {accessibility.replace(/_/g, ' ')}
               </div>
             )}
 
             {injuries.length > 0 && (
               <div className="space-y-1">
-                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase">
-                  Visible injuries:
-                </div>
+                <div className="text-xs terminal-text text-muted uppercase">Visible injuries:</div>
                 {injuries.map((inj, i) => (
-                  <div
-                    key={i}
-                    className="text-xs text-robotic-yellow/70 pl-2 border-l border-robotic-yellow/20"
-                  >
+                  <div key={i} className="text-xs text-ink pl-2 border-l border-border">
                     <span className="capitalize font-medium">
                       {String(inj.type ?? '').replace(/_/g, ' ')}
                     </span>
                     {typeof inj.severity === 'string' && inj.severity && (
-                      <span className="text-robotic-yellow/40 ml-1">({inj.severity})</span>
+                      <span className="text-muted ml-1">({inj.severity})</span>
                     )}
                     {typeof inj.body_part === 'string' && inj.body_part && (
-                      <span className="text-robotic-yellow/50 ml-1">— {inj.body_part}</span>
+                      <span className="text-muted ml-1">— {inj.body_part}</span>
                     )}
                     {typeof inj.visible_signs === 'string' && inj.visible_signs && (
-                      <div className="text-robotic-yellow/40 mt-0.5">{inj.visible_signs}</div>
+                      <div className="text-muted mt-0.5">{inj.visible_signs}</div>
                     )}
                   </div>
                 ))}
@@ -157,7 +143,7 @@ export const CasualtyAssessmentModal = ({
             )}
 
             {existingTag && (
-              <div className="text-xs terminal-text text-robotic-yellow/50">
+              <div className="text-xs terminal-text text-muted">
                 Previously tagged: <span className="uppercase font-bold">{existingTag}</span>
               </div>
             )}
@@ -165,7 +151,7 @@ export const CasualtyAssessmentModal = ({
 
           {/* Triage color selection */}
           <div className="p-4 space-y-2">
-            <div className="text-xs terminal-text text-robotic-yellow/60 uppercase mb-2">
+            <div className="text-xs terminal-text text-muted uppercase mb-2">
               Assign triage tag:
             </div>
             {TRIAGE_OPTIONS.map((opt) => (
@@ -175,33 +161,31 @@ export const CasualtyAssessmentModal = ({
                 className={`w-full text-left p-3 rounded border-2 transition-all ${
                   selected === opt.color
                     ? `${opt.bg} ${opt.border} shadow-lg`
-                    : 'border-transparent bg-white/5 hover:bg-white/10'
+                    : 'border-transparent bg-surface-2 hover:bg-border'
                 }`}
               >
-                <div className="text-sm font-bold terminal-text text-robotic-yellow">
-                  {opt.label}
-                </div>
-                <div className="text-xs text-robotic-yellow/50 mt-0.5">{opt.description}</div>
+                <div className="text-sm font-bold terminal-text text-ink">{opt.label}</div>
+                <div className="text-xs text-muted mt-0.5">{opt.description}</div>
               </button>
             ))}
           </div>
         </div>
 
         {/* Actions — always visible at bottom */}
-        <div className="p-4 border-t border-robotic-yellow/20 flex items-center gap-3 shrink-0">
-          {error && <div className="text-xs text-red-400 flex-1">{error}</div>}
+        <div className="p-4 border-t border-border flex items-center gap-3 shrink-0">
+          {error && <div className="text-xs text-danger flex-1">{error}</div>}
           <button
             onClick={onClose}
-            className="px-4 py-2 text-xs terminal-text text-robotic-yellow/60 hover:text-robotic-yellow border border-robotic-yellow/20 rounded"
+            className="px-4 py-2 text-xs terminal-text text-muted hover:text-ink border border-border rounded"
           >
-            CANCEL
+            Cancel
           </button>
           {onDeployResources && (
             <button
               onClick={onDeployResources}
-              className="px-4 py-2 text-xs terminal-text text-cyan-400 hover:text-cyan-300 border border-cyan-500/40 rounded hover:bg-cyan-900/30"
+              className="px-4 py-2 text-xs terminal-text text-accent hover:text-accent-strong border border-accent/40 rounded hover:bg-accent/10"
             >
-              DEPLOY RESOURCES
+              Deploy Resources
             </button>
           )}
           <button
@@ -209,7 +193,7 @@ export const CasualtyAssessmentModal = ({
             disabled={!selected || submitting}
             className="px-6 py-2 text-xs terminal-text bg-green-700 hover:bg-green-600 text-white rounded border border-green-500 disabled:opacity-40 disabled:cursor-not-allowed ml-auto"
           >
-            {submitting ? 'TAGGING...' : 'CONFIRM TAG'}
+            {submitting ? 'Tagging...' : 'Confirm Tag'}
           </button>
         </div>
       </div>

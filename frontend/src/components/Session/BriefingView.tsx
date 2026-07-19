@@ -33,9 +33,7 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
   if (loading) {
     return (
       <div className="military-border p-6">
-        <p className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-          [LOADING_BRIEFING...]
-        </p>
+        <p className="text-sm terminal-text text-muted animate-pulse">Loading briefing…</p>
       </div>
     );
   }
@@ -43,7 +41,7 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
   if (!briefing) {
     return (
       <div className="military-border p-6">
-        <p className="text-sm terminal-text text-robotic-orange">[ERROR] Failed to load briefing</p>
+        <p className="text-sm terminal-text text-danger">Failed to load briefing</p>
       </div>
     );
   }
@@ -51,12 +49,12 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
   return (
     <div className="space-y-6">
       {/* General Briefing */}
-      <div className="military-border p-6 bg-robotic-gray-300">
-        <h3 className="text-lg terminal-text uppercase mb-4 text-robotic-yellow">
-          [GENERAL_BRIEFING] {briefing.scenario_title}
+      <div className="military-border p-6 bg-surface">
+        <h3 className="text-lg terminal-text mb-4 text-ink">
+          General briefing — {briefing.scenario_title}
         </h3>
         <div className="prose prose-invert max-w-none">
-          <div className="text-sm terminal-text text-robotic-yellow/90 whitespace-pre-wrap">
+          <div className="text-sm terminal-text text-ink whitespace-pre-wrap">
             {briefing.general_briefing}
           </div>
         </div>
@@ -64,16 +62,16 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
 
       {/* Team / role-specific briefing */}
       {briefing.role_specific_briefing && (briefing.team_name || briefing.user_role) && (
-        <div className="military-border p-6 bg-robotic-yellow/10 border-robotic-yellow">
-          <h3 className="text-lg terminal-text uppercase mb-4 text-robotic-yellow">
-            [TEAM_BRIEF]{' '}
+        <div className="military-border p-6 bg-accent/10 border-accent">
+          <h3 className="text-lg terminal-text mb-4 text-ink">
+            Team brief —{' '}
             {(briefing.team_name || briefing.user_role || '')
               .toString()
               .toUpperCase()
               .replace('_', ' ')}
           </h3>
           <div className="prose prose-invert max-w-none">
-            <div className="text-sm terminal-text text-robotic-yellow/90 whitespace-pre-wrap">
+            <div className="text-sm terminal-text text-ink whitespace-pre-wrap">
               {briefing.role_specific_briefing}
             </div>
           </div>
@@ -81,16 +79,16 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
       )}
 
       {!briefing.role_specific_briefing && (briefing.team_name || briefing.user_role) && (
-        <div className="military-border p-4 bg-robotic-gray-300">
-          <p className="text-xs terminal-text text-robotic-yellow/50">
-            [NO_TEAM_BRIEF] No additional briefing provided for your team.
+        <div className="military-border p-4 bg-surface">
+          <p className="text-xs terminal-text text-muted">
+            No additional briefing provided for your team.
           </p>
         </div>
       )}
 
       {/* Volunteer / Insider note */}
-      <div className="military-border p-4 bg-robotic-gray-300">
-        <p className="text-sm terminal-text text-robotic-yellow/90">
+      <div className="military-border p-4 bg-surface">
+        <p className="text-sm terminal-text text-ink">
           You have a Volunteer in the field you can message through the chat. The contact appears as{' '}
           <strong>the Insider</strong>.
         </p>

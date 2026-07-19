@@ -91,7 +91,7 @@ function ContentWithLinks({ content }: { content: string }) {
       <a
         key={`link-${key++}`}
         href={match[2]}
-        className="underline text-green-400 hover:text-green-300"
+        className="underline text-success hover:text-success/80"
         target="_self"
         rel="noopener noreferrer"
       >
@@ -126,41 +126,39 @@ export const ChatInterface = ({
     container: isWA
       ? 'h-full flex flex-col bg-wa-bg wa-chat-font p-3'
       : 'military-border p-6 h-[600px] flex flex-col',
-    tabBar: isWA
-      ? 'mb-3 border-b border-wa-border pb-3'
-      : 'mb-4 border-b border-robotic-yellow/30 pb-4',
+    tabBar: isWA ? 'mb-3 border-b border-wa-border pb-3' : 'mb-4 border-b border-border pb-4',
     tabButton: (active: boolean) =>
       isWA
         ? `px-4 py-1.5 text-xs font-medium rounded-full transition-all ${active ? 'bg-wa-teal text-white' : 'bg-wa-input text-wa-text-secondary hover:bg-[#3B4A54]'}`
-        : `px-3 py-1 text-xs terminal-text uppercase border transition-all ${active ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-robotic-yellow/50'}`,
+        : `px-3 py-1 text-xs terminal-text border transition-all ${active ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted hover:border-accent'}`,
     voiceTabButton: (active: boolean) =>
       isWA
         ? `px-4 py-1.5 text-xs font-medium rounded-full transition-all ${active ? 'bg-wa-teal text-white' : 'bg-wa-input text-wa-text-secondary hover:bg-[#3B4A54]'}`
-        : `px-3 py-1 text-xs terminal-text uppercase border transition-all ${active ? 'border-green-500 text-green-400 bg-green-500/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-500/50'}`,
+        : `px-3 py-1 text-xs terminal-text border transition-all ${active ? 'border-success text-success bg-success/10' : 'border-border text-muted hover:border-success'}`,
     channelButton: (active: boolean) =>
       isWA
         ? `px-3 py-1.5 text-xs rounded-full transition-all ${active ? 'bg-wa-teal/20 text-wa-teal border border-wa-teal/40' : 'bg-wa-input text-[#D1D7DB] hover:bg-[#3B4A54] border border-transparent'}`
-        : `px-4 py-2 text-xs terminal-text uppercase border transition-all ${active ? 'border-robotic-yellow text-robotic-yellow bg-robotic-yellow/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-robotic-yellow/50'}`,
+        : `px-4 py-2 text-xs terminal-text border transition-all ${active ? 'border-accent text-accent bg-accent/10' : 'border-border text-muted hover:border-accent'}`,
     dmButton: (active: boolean) =>
       isWA
         ? `px-3 py-1.5 text-xs rounded-full transition-all ${active ? 'bg-wa-teal/20 text-wa-teal border border-wa-teal/40' : 'bg-wa-input text-[#D1D7DB] hover:bg-[#3B4A54] border border-transparent'}`
-        : `px-4 py-2 text-xs terminal-text uppercase border transition-all ${active ? 'border-green-400 text-green-400 bg-green-400/10' : 'border-robotic-gray-200 text-robotic-gray-50 hover:border-green-400/50'}`,
+        : `px-4 py-2 text-xs terminal-text border transition-all ${active ? 'border-success text-success bg-success/10' : 'border-border text-muted hover:border-success'}`,
     messageBubble: (isOwn: boolean, isDM: boolean) =>
       isWA
         ? `max-w-[85%] px-3 py-2 rounded-lg text-sm ${isOwn ? 'ml-auto bg-wa-sent rounded-tr-none' : 'mr-auto bg-wa-received rounded-tl-none'}`
-        : `military-border p-3 ${isOwn ? 'ml-8' : 'mr-8'} ${isDM ? 'border-green-400/30' : ''}`,
+        : `military-border p-3 ${isOwn ? 'ml-8' : 'mr-8'} ${isDM ? 'border-success/30' : ''}`,
     senderName: (isDM: boolean, _senderIndex?: number) =>
       isWA
         ? 'text-xs font-medium'
-        : `text-xs terminal-text font-semibold ${isDM ? 'text-green-400' : 'text-robotic-yellow'}`,
+        : `text-xs terminal-text font-semibold ${isDM ? 'text-success' : 'text-ink'}`,
     messageText: (isDM: boolean) =>
       isWA
         ? 'text-sm text-wa-text'
-        : `text-sm terminal-text ${isDM ? 'text-green-400/90' : 'text-robotic-yellow/90'}`,
+        : `text-sm terminal-text ${isDM ? 'text-success/90' : 'text-ink'}`,
     timestamp: (isDM: boolean) =>
       isWA
         ? 'text-[10px] text-wa-text-secondary'
-        : `text-xs terminal-text ${isDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`,
+        : `text-xs terminal-text ${isDM ? 'text-success/70' : 'text-muted'}`,
     input: isWA
       ? 'flex-1 px-4 py-2 bg-wa-input text-wa-text text-sm rounded-full border-none outline-none placeholder:text-wa-text-secondary focus:ring-1 focus:ring-wa-teal/50'
       : 'flex-1 px-4 py-2 military-input terminal-text text-sm',
@@ -170,23 +168,23 @@ export const ChatInterface = ({
     emptyText: (isDM: boolean) =>
       isWA
         ? 'text-sm text-wa-text-secondary text-center'
-        : `text-sm terminal-text ${isDM ? 'text-green-400/50' : 'text-robotic-yellow/50'}`,
+        : `text-sm terminal-text ${isDM ? 'text-success/70' : 'text-muted'}`,
     loadingText: isWA
       ? 'text-sm text-wa-text-secondary animate-pulse'
-      : 'text-sm terminal-text text-robotic-yellow/50 animate-pulse',
+      : 'text-sm terminal-text text-muted animate-pulse',
     userListPanel: isWA
       ? 'mt-3 p-3 bg-wa-header border border-wa-border rounded-lg max-h-40 overflow-y-auto'
-      : 'mt-3 p-3 bg-robotic-gray-200 border border-green-400/50 max-h-40 overflow-y-auto',
+      : 'mt-3 p-3 bg-surface-2 border border-success/50 max-h-40 overflow-y-auto',
     userListLabel: isWA
       ? 'text-xs text-wa-text-secondary mb-2'
-      : 'text-xs terminal-text text-green-400 mb-2 uppercase',
+      : 'text-xs terminal-text text-success mb-2',
     userListItem: isWA
       ? 'w-full text-left px-3 py-2 text-sm text-wa-text hover:bg-wa-input rounded-lg transition-colors'
-      : 'w-full text-left px-2 py-1 text-xs terminal-text hover:bg-green-400/10 border border-transparent hover:border-green-400/30',
+      : 'w-full text-left px-2 py-1 text-xs terminal-text hover:bg-success/10 border border-transparent hover:border-success/30',
     newDmButton: isWA
       ? 'px-3 py-1.5 text-xs font-medium rounded-full bg-wa-teal text-white hover:bg-wa-teal-light transition-colors'
-      : 'px-3 py-1 text-xs terminal-text uppercase border border-green-400 text-green-400 hover:bg-green-400/10',
-    dmHeader: isWA ? 'text-xs text-wa-teal mb-2' : 'text-xs terminal-text text-green-400 uppercase',
+      : 'px-3 py-1 text-xs terminal-text border border-success text-success hover:bg-success/10',
+    dmHeader: isWA ? 'text-xs text-wa-teal mb-2' : 'text-xs terminal-text text-success',
   };
 
   const { user } = useAuth();
@@ -1351,7 +1349,7 @@ export const ChatInterface = ({
           {
             id: `insider-err-${Date.now()}`,
             role: 'insider',
-            content: `[ERROR] ${err instanceof Error ? err.message : 'Failed to get answer'}`,
+            content: err instanceof Error ? err.message : 'Failed to get answer',
             created_at: new Date().toISOString(),
           },
         ]);
@@ -1408,7 +1406,7 @@ export const ChatInterface = ({
             {
               id: `hospital-err-${Date.now()}`,
               role: 'insider',
-              content: `[ERROR] ${err instanceof Error ? err.message : 'Failed to get answer'}`,
+              content: err instanceof Error ? err.message : 'Failed to get answer',
               created_at: new Date().toISOString(),
             },
           ],
@@ -1499,7 +1497,7 @@ export const ChatInterface = ({
     return (
       <div className={isWA ? 'p-6 bg-wa-bg wa-chat-font' : 'military-border p-6'}>
         <div className="text-center">
-          <div className={s.loadingText}>{isWA ? 'Loading...' : '[LOADING_CHANNELS]'}</div>
+          <div className={s.loadingText}>{isWA ? 'Loading...' : 'Loading channels…'}</div>
         </div>
       </div>
     );
@@ -1548,7 +1546,7 @@ export const ChatInterface = ({
               }}
               className={s.tabButton(viewMode === 'channels')}
             >
-              [CHANNELS]
+              Channels
             </button>
             <button
               onClick={() => {
@@ -1558,7 +1556,7 @@ export const ChatInterface = ({
               }}
               className={s.tabButton(viewMode === 'dms')}
             >
-              [DIRECT MESSAGES]
+              Direct messages
             </button>
             <button
               onClick={() => {
@@ -1568,11 +1566,11 @@ export const ChatInterface = ({
               }}
               className={s.voiceTabButton(viewMode === 'voice')}
             >
-              {`${webrtc.state.isInCall ? '🔴 ' : '🎙 '}[VOICE]`}
+              {`${webrtc.state.isInCall ? '🔴 ' : '🎙 '}Voice`}
             </button>
             {viewMode === 'dms' && (
               <button onClick={() => setShowUserList(!showUserList)} className={s.newDmButton}>
-                [+ NEW DM]
+                + New DM
               </button>
             )}
           </div>
@@ -1586,7 +1584,7 @@ export const ChatInterface = ({
                   onClick={() => setSelectedChannel(channel.id)}
                   className={s.channelButton(selectedChannel === channel.id)}
                 >
-                  {`[${channel.name}]`}
+                  {channel.name}
                 </button>
               ))}
             {viewMode === 'dms' && (
@@ -1596,7 +1594,7 @@ export const ChatInterface = ({
                   onClick={() => setSelectedDM(INSIDER_DM_ID)}
                   className={s.dmButton(selectedDM === INSIDER_DM_ID)}
                 >
-                  [INSIDER]
+                  Insider
                 </button>
                 {hospitals.map((h) => {
                   const dmId = toHospitalDMId(h.id);
@@ -1606,7 +1604,7 @@ export const ChatInterface = ({
                       onClick={() => setSelectedDM(dmId)}
                       className={s.dmButton(selectedDM === dmId)}
                     >
-                      {`[${h.label}]`}
+                      {h.label}
                     </button>
                   );
                 })}
@@ -1616,7 +1614,7 @@ export const ChatInterface = ({
                     onClick={() => setSelectedDM(dm.id)}
                     className={s.dmButton(selectedDM === dm.id)}
                   >
-                    {`[${dm.recipient?.full_name || 'Unknown'}]`}
+                    {dm.recipient?.full_name || 'Unknown'}
                   </button>
                 ))}
               </>
@@ -1626,7 +1624,7 @@ export const ChatInterface = ({
           {/* User List for Starting DMs */}
           {showUserList && (
             <div className={s.userListPanel}>
-              <p className={s.userListLabel}>[SELECT_USER]</p>
+              <p className={s.userListLabel}>Select user</p>
               <div className="space-y-1">
                 {participants
                   .filter((participant) => participant.id !== user?.id)
@@ -1636,13 +1634,11 @@ export const ChatInterface = ({
                       onClick={() => handleStartDM(participant.id)}
                       className={s.userListItem}
                     >
-                      {`${participant.full_name} [${participant.team_name || participant.role}]`}
+                      {`${participant.full_name} (${participant.team_name || participant.role})`}
                     </button>
                   ))}
                 {participants.filter((p) => p.id !== user?.id).length === 0 && (
-                  <p className="text-xs terminal-text text-robotic-yellow/50">
-                    No other participants
-                  </p>
+                  <p className="text-xs terminal-text text-muted">No other participants</p>
                 )}
               </div>
             </div>
@@ -1678,33 +1674,33 @@ export const ChatInterface = ({
           <>
             {selectedDM === INSIDER_DM_ID && (
               <div
-                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-green-400/30'}`}
+                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-success/30'}`}
               >
                 <p className={s.dmHeader}>
-                  {isWA ? 'Insider' : 'Direct Message with: Insider [trainer]'}
+                  {isWA ? 'Insider' : 'Direct message with: Insider (trainer)'}
                 </p>
               </div>
             )}
             {isHospitalDM(selectedDM) && (
               <div
-                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-green-400/30'}`}
+                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-success/30'}`}
               >
                 <p className={s.dmHeader}>
                   {isWA
                     ? (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ??
                       'Hospital')
-                    : `Direct Message with: ${hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital'}`}
+                    : `Direct message with: ${hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital'}`}
                 </p>
               </div>
             )}
             {currentDM && selectedDM !== INSIDER_DM_ID && !isHospitalDM(selectedDM) && (
               <div
-                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-green-400/30'}`}
+                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-success/30'}`}
               >
                 <p className={s.dmHeader}>
                   {isWA
                     ? currentDM.recipient?.full_name || 'Unknown'
-                    : `Direct Message with: ${currentDM.recipient?.full_name || 'Unknown'} [${currentDM.recipient?.team_name || currentDM.recipient?.role || 'UNKNOWN'}]`}
+                    : `Direct message with: ${currentDM.recipient?.full_name || 'Unknown'} (${currentDM.recipient?.team_name || currentDM.recipient?.role || 'Unknown'})`}
                 </p>
               </div>
             )}
@@ -1723,7 +1719,7 @@ export const ChatInterface = ({
                           ? msg.role === 'user'
                             ? user?.displayName || 'You'
                             : 'Insider'
-                          : `${msg.role === 'user' ? user?.displayName || 'You' : 'Insider'} [${msg.role === 'user' ? participants.find((p) => p.id === user?.id)?.team_name || user?.role || 'unknown' : 'trainer'}]`}
+                          : `${msg.role === 'user' ? user?.displayName || 'You' : 'Insider'} (${msg.role === 'user' ? participants.find((p) => p.id === user?.id)?.team_name || user?.role || 'unknown' : 'trainer'})`}
                       </span>
                       <span className={s.timestamp(true)}>
                         {new Date(msg.created_at).toLocaleTimeString()}
@@ -1738,12 +1734,10 @@ export const ChatInterface = ({
                   <div className={s.messageBubble(false, true)}>
                     <p
                       className={
-                        isWA
-                          ? 'text-xs text-wa-text-secondary'
-                          : 'text-xs terminal-text text-green-400/50'
+                        isWA ? 'text-xs text-wa-text-secondary' : 'text-xs terminal-text text-muted'
                       }
                     >
-                      {isWA ? 'Insider is typing...' : 'Insider is typing...'}
+                      {isWA ? 'Insider is typing…' : 'Insider is typing…'}
                     </p>
                   </div>
                 )}
@@ -1752,7 +1746,7 @@ export const ChatInterface = ({
                     <p className={s.emptyText(true)}>
                       {isWA
                         ? 'Ask the Insider about the scenario, map, hospitals, routes...'
-                        : '[ASK_INSIDER] Ask about map, layout, hospitals, police, fire stations, routes, etc.'}
+                        : 'Ask about map, layout, hospitals, police, fire stations, routes, etc.'}
                     </p>
                   </div>
                 )}
@@ -1777,7 +1771,7 @@ export const ChatInterface = ({
                               ? user?.displayName || 'You'
                               : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)
                                   ?.label ?? 'Hospital')
-                            : `${msg.role === 'user' ? user?.displayName || 'You' : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital')} [${msg.role === 'user' ? participants.find((p) => p.id === user?.id)?.team_name || user?.role || 'unknown' : 'hospital'}]`}
+                            : `${msg.role === 'user' ? user?.displayName || 'You' : (hospitals.find((h) => toHospitalDMId(h.id) === selectedDM)?.label ?? 'Hospital')} (${msg.role === 'user' ? participants.find((p) => p.id === user?.id)?.team_name || user?.role || 'unknown' : 'hospital'})`}
                         </span>
                         <span className={s.timestamp(true)}>
                           {new Date(msg.created_at).toLocaleTimeString()}
@@ -1793,12 +1787,10 @@ export const ChatInterface = ({
                   <div className={s.messageBubble(false, true)}>
                     <p
                       className={
-                        isWA
-                          ? 'text-xs text-wa-text-secondary'
-                          : 'text-xs terminal-text text-green-400/50'
+                        isWA ? 'text-xs text-wa-text-secondary' : 'text-xs terminal-text text-muted'
                       }
                     >
-                      Hospital is responding...
+                      Hospital is responding…
                     </p>
                   </div>
                 )}
@@ -1839,7 +1831,7 @@ export const ChatInterface = ({
                         >
                           {isWA
                             ? message.sender?.full_name || 'Unknown'
-                            : `${message.sender?.full_name || 'Unknown'} [${message.sender?.team_name || message.sender?.role || 'UNKNOWN'}]`}
+                            : `${message.sender?.full_name || 'Unknown'} (${message.sender?.team_name || message.sender?.role || 'Unknown'})`}
                         </span>
                         <span className={s.timestamp(!!selectedDM)}>
                           {new Date(message.created_at).toLocaleTimeString()}
@@ -1889,7 +1881,7 @@ export const ChatInterface = ({
                 {messages.length === 0 && (
                   <div className="text-center py-8">
                     <p className={s.emptyText(!!selectedDM)}>
-                      {isWA ? 'No messages yet' : '[NO_MESSAGES] No messages yet'}
+                      {isWA ? 'No messages yet' : 'No messages yet'}
                     </p>
                   </div>
                 )}
@@ -1905,8 +1897,8 @@ export const ChatInterface = ({
                   ? 'Select a chat to start messaging'
                   : 'Select a conversation or start a new DM'
                 : viewMode === 'channels'
-                  ? '[SELECT_CHANNEL] Select a channel'
-                  : '[SELECT_DM] Select a conversation or start a new DM'}
+                  ? 'Select a channel'
+                  : 'Select a conversation or start a new DM'}
             </p>
           </div>
         )}
@@ -1936,7 +1928,7 @@ export const ChatInterface = ({
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
             ) : (
-              '[SEND]'
+              'Send'
             )}
           </button>
         </form>

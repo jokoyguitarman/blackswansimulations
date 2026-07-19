@@ -15,11 +15,18 @@ import {
   generateOrgPageConfig,
   buildSOPFromResearch,
   assemblePayload,
+  adaptTeamCharters,
   type NPCPersona,
   type FactSheet,
   type TeamDef,
   type SocialInject,
 } from '../services/socialCrisisGeneratorService.js';
+import {
+  TEAM_CATALOG,
+  FIXED_TEAM_NAMES,
+  benchmarksFromCharters,
+  type TeamCharter,
+} from '../services/teamCharterService.js';
 import { RESPONSE_STANDARDS } from '../config/responseStandards.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -28,10 +35,39 @@ import { extractBlueprint } from '../services/blueprint/blueprintExtractionServi
 import { emptyBlueprint, coerceBlueprint } from '../services/blueprint/blueprintTypes.js';
 import { getOrResearchTeamDoctrines } from '../services/doctrineCacheService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
+import { hasCredit, consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
+import type { Response, NextFunction } from 'express';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
+
+/**
+ * Credit gate for cost-incurring social-crisis Warroom steps: trainer role
+ * required, and non-admins need >= 1 scenario credit to run the AI generator
+ * steps. The credit itself is only consumed at /compile. Only admins bypass.
+ */
+const NO_SCENARIO_CREDITS_BODY = {
+  error: 'No scenario credits. Invoice a client from Clients & billing to unlock the War Room.',
+  code: 'NO_SCENARIO_CREDITS',
+};
+
+const scenarioCreditGate = async (
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> => {
+  const user = req.user!;
+  if (user.role !== 'trainer' && user.role !== 'admin') {
+    res.status(403).json({ error: 'Only trainers can use the War Room' });
+    return;
+  }
+  if (!isAdmin(user) && !(await hasCredit(user.id, 'scenario'))) {
+    res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+    return;
+  }
+  next();
+};
 
 // In-memory job store for async AI generation tasks
 const aiJobs = new Map<
@@ -57,6 +93,7 @@ setInterval(
 router.post(
   '/generate-npcs',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -130,6 +167,7 @@ router.get('/generate-npcs/status/:jobId', requireAuth, async (req: Authenticate
 router.post(
   '/suggest-teams',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -156,6 +194,7 @@ router.post(
 router.post(
   '/generate-storyline',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -189,17 +228,60 @@ router.post(
         orgName: org_name,
       };
 
-      const injects = await generateUnifiedStoryline(
-        crisisContext,
-        personas as NPCPersona[],
-        fact_sheet as FactSheet,
-        (msg: string) => {
-          res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
-        },
-        env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+      // Adapt the four fixed team charters (Communications, Procurement,
+      // Sales, Legal) to this crisis, then generate the universal backbone
+      // and the four team-scoped pressure arcs in parallel.
+      res.write(
+        JSON.stringify({ type: 'progress', message: 'Adapting team charters to the crisis...' }) +
+          '\n',
       );
+      const charters = await adaptTeamCharters(crisis_type, context, country, org_name);
 
-      res.write(JSON.stringify({ type: 'complete', injects }) + '\n');
+      const fixedTeams: TeamDef[] = charters.map((c) => ({
+        team_name: c.team_name,
+        team_description: `${c.mission} Responsibilities: ${c.responsibilities.join('; ')}`,
+        min_participants: c.min_participants,
+        max_participants: c.max_participants,
+      }));
+
+      const teamCrisisContext = { ...crisisContext, location: '' };
+
+      const [injects, teamStorylines] = await Promise.all([
+        generateUnifiedStoryline(
+          crisisContext,
+          personas as NPCPersona[],
+          fact_sheet as FactSheet,
+          (msg: string) => {
+            res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+          },
+          env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+        ),
+        generateAllTeamStorylines(
+          fixedTeams,
+          teamCrisisContext,
+          personas as NPCPersona[],
+          fact_sheet as FactSheet,
+          (teamName: string, injectCount: number) => {
+            res.write(
+              JSON.stringify({ type: 'team_complete', team: teamName, inject_count: injectCount }) +
+                '\n',
+            );
+          },
+        ),
+      ]);
+
+      res.write(
+        JSON.stringify({
+          type: 'complete',
+          injects,
+          team_storylines: teamStorylines,
+          team_charters: charters.map((c) => ({
+            team_name: c.team_name,
+            mission: c.mission,
+            responsibilities: c.responsibilities,
+          })),
+        }) + '\n',
+      );
       res.end();
     } catch (err) {
       logger.error({ err }, 'Failed to generate unified storyline');
@@ -217,6 +299,7 @@ router.post(
 router.post(
   '/generate-storylines',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -284,6 +367,7 @@ router.post(
 router.post(
   '/generate-convergence',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -348,6 +432,7 @@ router.post(
 router.post(
   '/research',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -435,6 +520,15 @@ router.post(
         }),
         communities: z.array(z.string()),
         team_storylines: z.record(z.string(), z.unknown()).optional().default({}),
+        team_charters: z
+          .array(
+            z.object({
+              team_name: z.string(),
+              mission: z.string(),
+              responsibilities: z.array(z.string()),
+            }),
+          )
+          .optional(),
         storyline_injects: z.array(z.unknown()).optional(),
         shared_injects: z.array(z.unknown()),
         convergence_gates: z.array(z.unknown()),
@@ -458,6 +552,19 @@ router.post(
       return res.status(403).json({ error: 'Only trainers can compile scenarios' });
     }
 
+    // The compile consumes the scenario credit. Consume up-front (race-safe)
+    // before starting the async job; refund if compilation fails.
+    let creditInvoiceId: string | null = null;
+    let creditLedgerId: string | null = null;
+    if (!isAdmin(user)) {
+      const consume = await consumeCredit(user.id, 'scenario', 'scenario_generated');
+      if (!consume.ok) {
+        return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
+      }
+      creditInvoiceId = consume.fundingInvoiceId ?? null;
+      creditLedgerId = consume.ledgerId ?? null;
+    }
+
     const jobId = `compile_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
     res.json({ job_id: jobId, status: 'generating' });
@@ -467,6 +574,49 @@ router.post(
     void (async () => {
       try {
         const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
+
+        // Fixed teams: the four built-in teams are always compiled into social
+        // crisis scenarios. Client-sent team definitions are ignored; only the
+        // adapted mission/responsibilities wording is accepted from the client
+        // (validated against the fixed names). Expected actions, scoring
+        // rubrics, and weights always come from the server-side catalog.
+        const clientCharters = (body.team_charters || []) as Array<{
+          team_name: string;
+          mission: string;
+          responsibilities: string[];
+        }>;
+        let teamCharters: TeamCharter[];
+        const clientCoversAllTeams =
+          clientCharters.length > 0 &&
+          FIXED_TEAM_NAMES.every((name) => clientCharters.some((c) => c.team_name === name));
+        if (clientCoversAllTeams) {
+          teamCharters = FIXED_TEAM_NAMES.map((name) => {
+            const base = TEAM_CATALOG[name];
+            const client = clientCharters.find((c) => c.team_name === name)!;
+            return {
+              ...base,
+              mission: client.mission || base.mission,
+              responsibilities:
+                Array.isArray(client.responsibilities) && client.responsibilities.length > 0
+                  ? client.responsibilities.filter((r) => typeof r === 'string').slice(0, 6)
+                  : base.responsibilities,
+            };
+          });
+        } else {
+          teamCharters = await adaptTeamCharters(
+            body.crisis_type || '',
+            '',
+            body.country || 'Singapore',
+            body.org_name,
+          );
+        }
+
+        const fixedTeams: TeamDef[] = teamCharters.map((c) => ({
+          team_name: c.team_name,
+          team_description: c.mission,
+          min_participants: c.min_participants,
+          max_participants: c.max_participants,
+        }));
 
         let strategyWindows;
         try {
@@ -488,7 +638,7 @@ router.post(
 
         const payload = assemblePayload(
           body.narrative,
-          (body.teams || []) as TeamDef[],
+          fixedTeams,
           body.objectives as Array<{
             objective_id: string;
             objective_name: string;
@@ -518,7 +668,20 @@ router.post(
           (payload.scenario.initial_state as Record<string, unknown>).country = body.country;
         }
 
-        const scenarioId = await persistSocialCrisisScenario(payload, user.id);
+        // Charter-derived benchmarks keyed to the four fixed teams (consumed
+        // by team scoring and the AAR doctrine-compliance section).
+        (payload.scenario.initial_state as Record<string, unknown>).strategic_benchmarks =
+          benchmarksFromCharters(teamCharters);
+
+        const scenarioId = await persistSocialCrisisScenario(payload, user.id, teamCharters);
+
+        // Backfill the scenario id onto the credit spend row for auditing.
+        if (creditLedgerId) {
+          await supabaseAdmin
+            .from('credit_ledger')
+            .update({ scenario_id: scenarioId })
+            .eq('id', creditLedgerId);
+        }
 
         // Pre-generate images in background (doesn't block compile result)
         const personas = body.personas as NPCPersona[];
@@ -587,6 +750,9 @@ router.post(
         logger.info({ jobId, scenarioId }, 'Compile completed');
       } catch (err) {
         logger.error({ err, jobId }, 'Social crisis compile failed');
+        if (creditLedgerId) {
+          await refundCredit(user.id, 'scenario', creditInvoiceId);
+        }
         aiJobs.set(jobId, { status: 'failed', error: 'Compilation failed', startedAt: Date.now() });
       }
     })();
@@ -594,21 +760,26 @@ router.post(
 );
 
 // Keep old endpoints for backward compatibility
-router.post('/suggest-communities', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { crisis_type, context, country, location } = req.body;
-    const result = await generateNPCsAndFactSheet(
-      crisis_type || '',
-      context || '',
-      country || 'Singapore',
-      location || '',
-    );
-    res.json({ data: result.communities });
-  } catch (err) {
-    logger.error({ err }, 'Failed to suggest communities');
-    res.status(500).json({ error: 'Failed' });
-  }
-});
+router.post(
+  '/suggest-communities',
+  requireAuth,
+  scenarioCreditGate,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { crisis_type, context, country, location } = req.body;
+      const result = await generateNPCsAndFactSheet(
+        crisis_type || '',
+        context || '',
+        country || 'Singapore',
+        location || '',
+      );
+      res.json({ data: result.communities });
+    } catch (err) {
+      logger.error({ err }, 'Failed to suggest communities');
+      res.status(500).json({ error: 'Failed' });
+    }
+  },
+);
 
 router.post('/generate-sop', requireAuth, async (_req: AuthenticatedRequest, res) => {
   const sop = buildSOPFromResearch({
@@ -623,42 +794,53 @@ router.post('/generate-sop', requireAuth, async (_req: AuthenticatedRequest, res
   res.json({ data: sop });
 });
 
-router.post('/generate-personas', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { crisis_type, context, country, location } = req.body;
-    const result = await generateNPCsAndFactSheet(
-      crisis_type || '',
-      context || '',
-      country || 'Singapore',
-      location || '',
-    );
-    res.json({ data: result.personas });
-  } catch (err) {
-    logger.error({ err }, 'Failed to generate personas');
-    res.status(500).json({ error: 'Failed' });
-  }
-});
+router.post(
+  '/generate-personas',
+  requireAuth,
+  scenarioCreditGate,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { crisis_type, context, country, location } = req.body;
+      const result = await generateNPCsAndFactSheet(
+        crisis_type || '',
+        context || '',
+        country || 'Singapore',
+        location || '',
+      );
+      res.json({ data: result.personas });
+    } catch (err) {
+      logger.error({ err }, 'Failed to generate personas');
+      res.status(500).json({ error: 'Failed' });
+    }
+  },
+);
 
-router.post('/generate-factsheet', requireAuth, async (req: AuthenticatedRequest, res) => {
-  try {
-    const { crisis_type, context, country, location } = req.body;
-    const result = await generateNPCsAndFactSheet(
-      crisis_type || '',
-      context || '',
-      country || 'Singapore',
-      location || '',
-    );
-    res.json({ data: result.factSheet });
-  } catch (err) {
-    logger.error({ err }, 'Failed to generate factsheet');
-    res.status(500).json({ error: 'Failed' });
-  }
-});
+router.post(
+  '/generate-factsheet',
+  requireAuth,
+  scenarioCreditGate,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { crisis_type, context, country, location } = req.body;
+      const result = await generateNPCsAndFactSheet(
+        crisis_type || '',
+        context || '',
+        country || 'Singapore',
+        location || '',
+      );
+      res.json({ data: result.factSheet });
+    } catch (err) {
+      logger.error({ err }, 'Failed to generate factsheet');
+      res.status(500).json({ error: 'Failed' });
+    }
+  },
+);
 
 // Generate org page identity and branded history
 router.post(
   '/generate-org-page',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({
@@ -833,6 +1015,7 @@ router.post(
 router.post(
   '/extract-blueprint',
   requireAuth,
+  scenarioCreditGate,
   validate(
     z.object({
       body: z.object({

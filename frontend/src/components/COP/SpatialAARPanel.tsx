@@ -38,16 +38,12 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
   }, [sessionId]);
 
   if (loading) {
-    return (
-      <div className="p-4 text-xs terminal-text text-robotic-yellow/50">
-        Loading spatial analysis...
-      </div>
-    );
+    return <div className="p-4 text-xs terminal-text text-muted">Loading spatial analysis...</div>;
   }
 
   if (!placements.length) {
     return (
-      <div className="p-4 text-xs terminal-text text-robotic-yellow/50">
+      <div className="p-4 text-xs terminal-text text-muted">
         No placements were made during this session.
       </div>
     );
@@ -75,23 +71,19 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
 
   return (
     <div className="space-y-4">
-      <h3 className="text-sm font-semibold terminal-text text-robotic-yellow uppercase">
-        Spatial Placement Analysis
-      </h3>
+      <h3 className="text-sm font-semibold terminal-text text-ink">Spatial Placement Analysis</h3>
 
       {/* Team Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         {teamStats.map((ts) => (
-          <div key={ts.team} className="bg-black/50 border border-robotic-yellow/30 rounded p-3">
-            <div className="text-xs font-medium terminal-text text-robotic-yellow mb-2">
-              {ts.team}
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-[10px] terminal-text text-robotic-yellow/70">
+          <div key={ts.team} className="bg-surface-2 border border-border rounded p-3">
+            <div className="text-xs font-medium terminal-text text-ink mb-2">{ts.team}</div>
+            <div className="grid grid-cols-2 gap-2 text-[10px] terminal-text text-muted">
               <div>
-                <span className="text-robotic-yellow/40">Placements:</span> {ts.total}
+                <span className="text-muted">Placements:</span> {ts.total}
               </div>
               <div>
-                <span className="text-robotic-yellow/40">Avg Score:</span>{' '}
+                <span className="text-muted">Avg Score:</span>{' '}
                 <span
                   style={{
                     color:
@@ -102,10 +94,10 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
                 </span>
               </div>
               <div>
-                <span className="text-robotic-yellow/40">Relocated:</span> {ts.relocated}
+                <span className="text-muted">Relocated:</span> {ts.relocated}
               </div>
               <div>
-                <span className="text-robotic-yellow/40">Removed:</span> {ts.removed}
+                <span className="text-muted">Removed:</span> {ts.removed}
               </div>
             </div>
           </div>
@@ -114,7 +106,7 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
 
       {/* Detailed Placement Timeline */}
       <div className="space-y-2">
-        <h4 className="text-xs font-medium terminal-text text-robotic-yellow/70 uppercase">
+        <h4 className="text-xs font-medium terminal-text text-muted uppercase">
           Placement Timeline
         </h4>
         <div className="max-h-64 overflow-y-auto space-y-1.5">
@@ -134,25 +126,23 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
               return (
                 <div
                   key={p.id}
-                  className="flex items-center gap-3 px-2 py-1.5 bg-black/30 rounded border border-robotic-yellow/10 text-[10px] terminal-text"
+                  className="flex items-center gap-3 px-2 py-1.5 bg-surface-2 rounded border border-border text-[10px] terminal-text"
                 >
-                  <span className="text-robotic-yellow/40 w-16 shrink-0">
+                  <span className="text-muted w-16 shrink-0">
                     {new Date(p.placed_at).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit',
                     })}
                   </span>
-                  <span className="text-robotic-yellow/70 w-20 truncate shrink-0">
-                    {p.team_name}
-                  </span>
-                  <span className="text-robotic-yellow flex-1 truncate">{p.label}</span>
+                  <span className="text-muted w-20 truncate shrink-0">{p.team_name}</span>
+                  <span className="text-ink flex-1 truncate">{p.label}</span>
                   {score != null && (
                     <span style={{ color: scoreColor }} className="font-medium shrink-0">
                       {Math.round(score * 100)}%
                     </span>
                   )}
                   {p.status !== 'active' && (
-                    <span className="text-red-400/60 shrink-0 uppercase">{p.status}</span>
+                    <span className="text-danger/60 shrink-0 uppercase">{p.status}</span>
                   )}
                 </div>
               );
@@ -162,9 +152,7 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
 
       {/* Dimension Breakdown (worst performers) */}
       <div className="space-y-2">
-        <h4 className="text-xs font-medium terminal-text text-robotic-yellow/70 uppercase">
-          Key Issues
-        </h4>
+        <h4 className="text-xs font-medium terminal-text text-muted uppercase">Key Issues</h4>
         <div className="space-y-1">
           {placements
             .filter((p) => p.placement_score?.dimensions?.some((d) => d.score < 0.5))
@@ -174,9 +162,9 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
                 key={`issue-${p.id}`}
                 className="px-2 py-1.5 bg-red-900/10 border border-red-500/20 rounded text-[10px] terminal-text"
               >
-                <span className="text-robotic-yellow">{p.label}</span>
-                <span className="text-robotic-yellow/40 mx-1">({p.team_name})</span>
-                <div className="mt-0.5 text-red-400/70">
+                <span className="text-ink">{p.label}</span>
+                <span className="text-muted mx-1">({p.team_name})</span>
+                <div className="mt-0.5 text-danger/70">
                   {p.placement_score?.dimensions
                     ?.filter((d) => d.score < 0.5)
                     .map((d) => d.reasoning)
@@ -185,7 +173,7 @@ export const SpatialAARPanel = ({ sessionId }: SpatialAARPanelProps) => {
               </div>
             ))}
           {!placements.some((p) => p.placement_score?.dimensions?.some((d) => d.score < 0.5)) && (
-            <div className="text-[10px] terminal-text text-green-500/70 px-2 py-1">
+            <div className="text-[10px] terminal-text text-success/70 px-2 py-1">
               No critical spatial issues detected.
             </div>
           )}

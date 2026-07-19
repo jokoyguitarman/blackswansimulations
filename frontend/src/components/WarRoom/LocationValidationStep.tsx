@@ -154,14 +154,14 @@ export function LocationValidationStep({
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-[400px]">
-        <div className="text-lg terminal-text text-cyan-400 animate-pulse mb-4">
-          VALIDATING LOCATION...
+        <div className="text-lg terminal-text text-accent animate-pulse mb-4">
+          Validating location…
         </div>
-        <div className="text-xs terminal-text text-robotic-yellow/40">
+        <div className="text-xs terminal-text text-muted">
           Fetching nearby hospitals, police stations, fire stations, routes...
         </div>
-        <div className="mt-6 w-48 h-1 bg-robotic-gray-200 rounded overflow-hidden">
-          <div className="h-full bg-cyan-500 animate-pulse" style={{ width: '60%' }} />
+        <div className="mt-6 w-48 h-1 bg-surface-2 rounded overflow-hidden">
+          <div className="h-full bg-accent animate-pulse" style={{ width: '60%' }} />
         </div>
       </div>
     );
@@ -170,15 +170,15 @@ export function LocationValidationStep({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-[400px]">
-        <div className="text-lg terminal-text text-red-400 mb-4">VALIDATION FAILED</div>
-        <div className="text-xs terminal-text text-red-300/70 max-w-md text-center">{error}</div>
+        <div className="text-lg terminal-text text-danger mb-4">Validation failed</div>
+        <div className="text-xs terminal-text text-danger max-w-md text-center">{error}</div>
       </div>
     );
   }
 
   if (!geo) {
     return (
-      <div className="text-sm terminal-text text-robotic-yellow/40 text-center py-12">
+      <div className="text-sm terminal-text text-muted text-center py-12">
         No location data available. Go back and complete the scene editor first.
       </div>
     );
@@ -194,17 +194,17 @@ export function LocationValidationStep({
       {/* Left: POI panel */}
       <div className="w-full lg:w-80 flex-shrink-0 overflow-y-auto space-y-3">
         {/* Venue / Location header */}
-        <div className="border border-robotic-gray-200 rounded p-3">
-          <div className="text-xs terminal-text text-cyan-400 font-bold uppercase">
+        <div className="border border-border rounded p-3">
+          <div className="text-xs terminal-text text-accent font-bold">
             {geo.venueName || geo.parsed?.venue_name || 'Location'}
           </div>
           {geo.geocode?.display_name && (
-            <div className="text-[10px] terminal-text text-robotic-yellow/40 mt-1">
+            <div className="text-[10px] terminal-text text-muted mt-1">
               {geo.geocode.display_name}
             </div>
           )}
           {center && (
-            <div className="text-[10px] terminal-text text-robotic-yellow/20 mt-1">
+            <div className="text-[10px] terminal-text text-muted mt-1">
               {center.lat.toFixed(6)}, {center.lng.toFixed(6)}
             </div>
           )}
@@ -212,16 +212,16 @@ export function LocationValidationStep({
 
         {/* Area summary (collapsible) */}
         {geo.areaSummary && (
-          <div className="border border-robotic-gray-200 rounded">
+          <div className="border border-border rounded">
             <button
               onClick={() => setAreaExpanded(!areaExpanded)}
-              className="w-full text-left px-3 py-2 text-xs terminal-text text-robotic-yellow/60 hover:text-robotic-yellow/80 flex justify-between items-center"
+              className="w-full text-left px-3 py-2 text-xs terminal-text text-muted hover:text-muted flex justify-between items-center"
             >
               <span>Area Research Summary</span>
               <span>{areaExpanded ? '−' : '+'}</span>
             </button>
             {areaExpanded && (
-              <div className="px-3 pb-3 text-[10px] terminal-text text-robotic-yellow/40 whitespace-pre-wrap max-h-48 overflow-y-auto">
+              <div className="px-3 pb-3 text-[10px] terminal-text text-muted whitespace-pre-wrap max-h-48 overflow-y-auto">
                 {geo.areaSummary}
               </div>
             )}
@@ -233,23 +233,19 @@ export function LocationValidationStep({
           const pois = (vicinity?.[cat] as POI[] | undefined) ?? [];
           const color = POI_COLORS[cat];
           return (
-            <div key={cat} className="border border-robotic-gray-200 rounded">
-              <div className="px-3 py-2 flex justify-between items-center border-b border-robotic-gray-200">
+            <div key={cat} className="border border-border rounded">
+              <div className="px-3 py-2 flex justify-between items-center border-b border-border">
                 <div className="flex items-center gap-2">
                   <span
                     className="w-3 h-3 rounded-full inline-block"
                     style={{ backgroundColor: color }}
                   />
-                  <span className="text-xs terminal-text text-robotic-yellow/70">
-                    {POI_LABELS[cat]}
-                  </span>
+                  <span className="text-xs terminal-text text-muted">{POI_LABELS[cat]}</span>
                 </div>
-                <span className="text-[10px] terminal-text text-robotic-yellow/30">
-                  {pois.length}
-                </span>
+                <span className="text-[10px] terminal-text text-muted">{pois.length}</span>
               </div>
               {pois.length === 0 && (
-                <div className="px-3 py-2 text-[10px] terminal-text text-robotic-yellow/20 italic">
+                <div className="px-3 py-2 text-[10px] terminal-text text-muted italic">
                   None found in area
                 </div>
               )}
@@ -260,8 +256,8 @@ export function LocationValidationStep({
                 return (
                   <div
                     key={i}
-                    className={`px-3 py-1.5 flex items-center justify-between border-b border-robotic-gray-200 last:border-b-0 cursor-pointer hover:bg-robotic-gray-200/30 ${
-                      isSelected ? 'bg-cyan-900/20' : ''
+                    className={`px-3 py-1.5 flex items-center justify-between border-b border-border last:border-b-0 cursor-pointer hover:bg-surface-2/30 ${
+                      isSelected ? 'bg-accent/10' : ''
                     }`}
                     onClick={() => {
                       setSelectedPoi(poiKey);
@@ -269,11 +265,11 @@ export function LocationValidationStep({
                     }}
                   >
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs terminal-text text-robotic-yellow/70 truncate">
+                      <div className="text-xs terminal-text text-muted truncate">
                         {poi.name || 'Unnamed'}
                       </div>
                       {dist !== null && (
-                        <div className="text-[9px] terminal-text text-robotic-yellow/30">
+                        <div className="text-[9px] terminal-text text-muted">
                           {dist < 1 ? `${Math.round(dist * 1000)}m` : `${dist.toFixed(1)}km`} away
                         </div>
                       )}
@@ -283,7 +279,7 @@ export function LocationValidationStep({
                         e.stopPropagation();
                         removePoi(cat, i);
                       }}
-                      className="text-red-500/50 hover:text-red-400 text-xs ml-2 flex-shrink-0"
+                      className="text-danger hover:text-danger text-xs ml-2 flex-shrink-0"
                     >
                       ✕
                     </button>
@@ -296,7 +292,7 @@ export function LocationValidationStep({
       </div>
 
       {/* Right: Map */}
-      <div className="flex-1 relative rounded overflow-hidden border border-robotic-gray-200 min-h-[300px]">
+      <div className="flex-1 relative rounded overflow-hidden border border-border min-h-[300px]">
         <MapContainer
           center={[mapCenter.lat, mapCenter.lng]}
           zoom={15}
@@ -402,18 +398,18 @@ export function LocationValidationStep({
 
         {/* Map legend */}
         <div
-          className="absolute bottom-3 right-3 bg-black/80 rounded px-3 py-2 text-[10px] terminal-text space-y-1 pointer-events-none"
+          className="absolute bottom-3 right-3 bg-surface-2 rounded px-3 py-2 text-[10px] terminal-text space-y-1 pointer-events-none"
           style={{ zIndex: 1000 }}
         >
           {Object.entries(POI_COLORS).map(([key, color]) => (
             <div key={key} className="flex items-center gap-2">
               <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
-              <span className="text-robotic-yellow/50">{POI_LABELS[key]}</span>
+              <span className="text-muted">{POI_LABELS[key]}</span>
             </div>
           ))}
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
-            <span className="text-robotic-yellow/50">Incident Center</span>
+            <span className="text-muted">Incident Center</span>
           </div>
         </div>
       </div>

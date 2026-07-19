@@ -37,6 +37,103 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   recommendations: 'Key takeaways and recommendations',
 };
 
+/** Slugify a section heading into a DOM id for the sticky jump-nav. */
+function slugifyHeading(heading: string): string {
+  return heading
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-+|-+$)/g, '');
+}
+
+/** Keyword-based mapping of heading text → icon tile + hue classes (presentational only). */
+const SECTION_HEADING_STYLES: Array<{
+  pattern: RegExp;
+  icon: string;
+  tile: string;
+  title: string;
+  border: string;
+}> = [
+  {
+    pattern: /executive|summary|overview/i,
+    icon: '📋',
+    tile: 'bg-brand',
+    title: 'text-brand',
+    border: 'border-brand/25',
+  },
+  {
+    pattern: /metric|score|matri|statistic/i,
+    icon: '📊',
+    tile: 'bg-accent',
+    title: 'text-accent',
+    border: 'border-accent/25',
+  },
+  {
+    pattern: /strength|positive|recommendation|takeaway/i,
+    icon: '✅',
+    tile: 'bg-success',
+    title: 'text-success',
+    border: 'border-success/25',
+  },
+  {
+    pattern: /weakness|escalation|failure|cancel/i,
+    icon: '⚠️',
+    tile: 'bg-danger',
+    title: 'text-danger',
+    border: 'border-danger/25',
+  },
+];
+
+const DEFAULT_HEADING_STYLE = {
+  icon: '📄',
+  tile: 'bg-brand',
+  title: 'text-brand',
+  border: 'border-brand/25',
+};
+
+function SectionHeading({ title }: { title: string }) {
+  const style = SECTION_HEADING_STYLES.find((s) => s.pattern.test(title)) ?? DEFAULT_HEADING_STYLE;
+  return (
+    <div className={`flex items-center gap-2.5 mb-3 pb-2 border-b-2 ${style.border}`}>
+      <span
+        aria-hidden="true"
+        className={`w-7 h-7 rounded-lg grid place-items-center text-sm text-white ${style.tile}`}
+      >
+        {style.icon}
+      </span>
+      <h4 className={`text-sm font-extrabold uppercase tracking-wide ${style.title}`}>{title}</h4>
+    </div>
+  );
+}
+
+const VERDICT_PILL_BASE = 'text-[10px] font-extrabold uppercase px-2.5 py-1 rounded-full';
+
+/** Map a quality/verdict string to pill classes; null if it doesn't look like a verdict. */
+function verdictPillClasses(verdict: string): string | null {
+  if (/\b(good|strong|robust|high)\b/i.test(verdict)) return 'bg-success/10 text-success';
+  if (/\b(poor|costly|weak|low|fragile)\b/i.test(verdict)) return 'bg-danger/10 text-danger';
+  if (/\b(mixed|neutral|moderate|medium|adequate)\b/i.test(verdict))
+    return 'bg-accent/10 text-accent';
+  return null;
+}
+
+/** Render a verdict string as a pill badge when recognized, otherwise as plain text. */
+function VerdictBadge({ verdict }: { verdict: string }) {
+  const classes = verdictPillClasses(verdict);
+  if (!classes) return <>{verdict}</>;
+  return <span className={`${VERDICT_PILL_BASE} ${classes}`}>{verdict}</span>;
+}
+
+/** Stat card for a simple label → value pair (key-metrics style sections). */
+function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="bg-surface border border-border rounded-xl p-4 shadow-sm">
+      <div className="text-[10px] font-bold text-muted uppercase tracking-wide">{label}</div>
+      <div className="text-2xl font-extrabold text-brand break-words">{value}</div>
+      <div className="h-[3px] w-8 bg-accent rounded mt-2" />
+    </div>
+  );
+}
+
 interface AARData {
   aar: {
     id: string;
@@ -92,9 +189,31 @@ function AARSectionView({
   };
 }) {
   const sections = aar.sections ?? {};
+  const presentKeys = AAR_SECTION_KEYS.filter((key) => sections[key] != null);
   return (
-    <div className="military-border p-6 space-y-8">
-      <div className="text-xs terminal-text text-robotic-yellow/50 mb-4">
+    <div className="military-border space-y-8 pb-6">
+      {presentKeys.length > 0 && (
+        <nav
+          aria-label="AAR sections"
+          className="sticky top-0 z-20 bg-surface border-b border-border shadow-sm flex gap-1 overflow-x-auto px-2 rounded-t-xl"
+        >
+          {presentKeys.map((key) => (
+            <button
+              key={key}
+              type="button"
+              className="text-xs font-semibold text-muted px-3 py-2.5 border-b-2 border-transparent hover:text-brand whitespace-nowrap"
+              onClick={() =>
+                document
+                  .getElementById(`aar-section-${slugifyHeading(AAR_SECTION_LABELS[key])}`)
+                  ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+              }
+            >
+              {AAR_SECTION_LABELS[key]}
+            </button>
+          ))}
+        </nav>
+      )}
+      <div className="text-xs terminal-text text-muted mb-4 px-6">
         Generated: {new Date(aar.generated_at).toLocaleString()} (section-based report)
       </div>
       {AAR_SECTION_KEYS.map((key) => {
@@ -104,28 +223,25 @@ function AARSectionView({
         const analysis = entry.analysis;
         const label = AAR_SECTION_LABELS[key];
         return (
-          <div key={key} className="space-y-2">
-            <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase border-b border-robotic-yellow/30 pb-1">
-              {label}
-            </h4>
+          <div
+            key={key}
+            id={`aar-section-${slugifyHeading(label)}`}
+            style={{ scrollMarginTop: 56 }}
+            className="space-y-2 px-6"
+          >
+            <SectionHeading title={label} />
             {data != null && (
-              <div className="military-border p-4 bg-black/20">
-                <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-2">
-                  Data
-                </div>
+              <div className="military-border p-4 bg-surface-2">
+                <div className="text-xs terminal-text text-muted mb-2">Data</div>
                 <SectionDataDisplay keyName={key} data={data} />
               </div>
             )}
             <div className="military-border p-4">
-              <div className="text-xs terminal-text text-robotic-green/70 uppercase mb-2">
-                Analysis
-              </div>
+              <div className="text-xs terminal-text text-success mb-2">Analysis</div>
               {analysis ? (
                 <p className="text-sm terminal-text whitespace-pre-wrap">{analysis}</p>
               ) : (
-                <p className="text-xs terminal-text text-robotic-yellow/50">
-                  Analysis not available.
-                </p>
+                <p className="text-xs terminal-text text-muted">Analysis not available.</p>
               )}
             </div>
           </div>
@@ -143,7 +259,7 @@ function formatCellValue(value: unknown): React.ReactNode {
     if (value.length === 0) return '—';
     const first = value[0];
     if (typeof first === 'object' && first !== null && !Array.isArray(first)) {
-      return <span className="text-robotic-yellow/70">[{value.length} items]</span>;
+      return <span className="text-muted">[{value.length} items]</span>;
     }
     return value.map((v) => String(v)).join(', ');
   }
@@ -155,7 +271,7 @@ function formatCellValue(value: unknown): React.ReactNode {
       .join('; ');
   }
   return (
-    <span className="text-robotic-yellow/70">
+    <span className="text-muted">
       {entries
         .slice(0, 2)
         .map(([k, v]) => `${k}: ${v == null || typeof v !== 'object' ? v : '…'}`)
@@ -165,22 +281,32 @@ function formatCellValue(value: unknown): React.ReactNode {
   );
 }
 
-/** Key-value table for a plain object. */
+/** Key-value table for a plain object. Flat all-numeric objects render as stat cards. */
 function KeyValueTable({ data }: { data: Record<string, unknown> }) {
   const entries = Object.entries(data);
   if (entries.length === 0) return null;
+  const allNumeric = entries.every(([, v]) => typeof v === 'number' && Number.isFinite(v));
+  if (allNumeric) {
+    return (
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+        {entries.map(([k, v]) => (
+          <StatCard key={k} label={k.replace(/_/g, ' ')} value={String(v)} />
+        ))}
+      </div>
+    );
+  }
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs terminal-text">
         <thead>
-          <tr className="text-robotic-yellow/70 border-b border-robotic-yellow/30">
+          <tr className="text-muted border-b border-border">
             <th className="text-left py-1 pr-2">Key</th>
             <th className="text-left py-1 pr-2">Value</th>
           </tr>
         </thead>
         <tbody>
           {entries.map(([k, v]) => (
-            <tr key={k} className="border-b border-robotic-yellow/10">
+            <tr key={k} className="border-b border-border">
               <td className="py-1 pr-2 font-medium">{k}</td>
               <td className="py-1 pr-2 max-w-[300px] break-words">
                 {v != null && typeof v === 'object' && !Array.isArray(v)
@@ -238,17 +364,12 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
         const incDesc: string = inc.description != null ? String(inc.description) : '';
         const decDesc: string = dec.description != null ? String(dec.description) : '';
         return (
-          <div
-            key={i}
-            className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
-          >
+          <div key={i} className="border border-border p-3 bg-surface font-mono text-xs">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <div className="text-robotic-yellow/70 uppercase mb-1">Incident</div>
-                <div className="text-robotic-green font-semibold">
-                  {String(inc.title ?? '') || '—'}
-                </div>
-                <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
+                <div className="text-muted mb-1">Incident</div>
+                <div className="text-success font-semibold">{String(inc.title ?? '') || '—'}</div>
+                <div className="text-ink mt-1 whitespace-pre-wrap break-words">
                   {incDesc
                     ? incDesc.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD
                       ? (() => {
@@ -260,10 +381,10 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                           return (
                             <span>
                               <span className="whitespace-pre-wrap break-words">{display}</span>
-                              {!expanded && <span className="text-robotic-yellow/50">… </span>}
+                              {!expanded && <span className="text-muted">… </span>}
                               <button
                                 type="button"
-                                className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
+                                className="ml-1 text-ink hover:text-ink underline text-xs"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   toggle(key);
@@ -278,17 +399,15 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                     : '—'}
                 </div>
                 {inc.reported_at ? (
-                  <div className="text-robotic-yellow/50 mt-1">
+                  <div className="text-muted mt-1">
                     Reported: {new Date(inc.reported_at as string).toLocaleString()}
                   </div>
                 ) : null}
               </div>
               <div>
-                <div className="text-robotic-yellow/70 uppercase mb-1">Decision</div>
-                <div className="text-robotic-green font-semibold">
-                  {String(dec.title ?? '') || '—'}
-                </div>
-                <div className="text-robotic-yellow/90 mt-1 whitespace-pre-wrap break-words">
+                <div className="text-muted mb-1">Decision</div>
+                <div className="text-success font-semibold">{String(dec.title ?? '') || '—'}</div>
+                <div className="text-ink mt-1 whitespace-pre-wrap break-words">
                   {decDesc
                     ? decDesc.length > INCIDENT_RESPONSE_EXPAND_THRESHOLD
                       ? (() => {
@@ -300,10 +419,10 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                           return (
                             <span>
                               <span className="whitespace-pre-wrap break-words">{display}</span>
-                              {!expanded && <span className="text-robotic-yellow/50">… </span>}
+                              {!expanded && <span className="text-muted">… </span>}
                               <button
                                 type="button"
-                                className="ml-1 text-robotic-yellow/80 hover:text-robotic-yellow underline text-xs"
+                                className="ml-1 text-ink hover:text-ink underline text-xs"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   toggle(key);
@@ -318,14 +437,18 @@ function IncidentResponsePairsTable({ pairs }: { pairs: Array<Record<string, unk
                     : '—'}
                 </div>
                 {dec.executed_at ? (
-                  <div className="text-robotic-yellow/50 mt-1">
+                  <div className="text-muted mt-1">
                     Executed: {new Date(dec.executed_at as string).toLocaleString()}
                   </div>
                 ) : null}
               </div>
             </div>
-            <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-robotic-yellow/20 text-robotic-yellow/70">
-              {p.robustness != null && <span>Robustness: {String(p.robustness)}</span>}
+            <div className="flex flex-wrap gap-3 mt-2 pt-2 border-t border-border text-muted">
+              {p.robustness != null && (
+                <span className="inline-flex items-center gap-1">
+                  Robustness: <VerdictBadge verdict={String(p.robustness)} />
+                </span>
+              )}
               {p.latencyMinutes != null && <span>Latency: {String(p.latencyMinutes)} min</span>}
               {p.insiderConsulted != null && (
                 <span>Insider consulted: {p.insiderConsulted ? 'Yes' : 'No'}</span>
@@ -360,7 +483,7 @@ function InjectsPublishedTable({ rows }: { rows: Array<Record<string, unknown>> 
     <div className="overflow-x-auto">
       <table className="w-full text-xs terminal-text">
         <thead>
-          <tr className="text-robotic-yellow/70 border-b border-robotic-yellow/30">
+          <tr className="text-muted border-b border-border">
             <th className="text-left py-1 pr-2">at</th>
             <th className="text-left py-1 pr-2">title</th>
             <th className="text-left py-1 pr-2">content</th>
@@ -376,7 +499,7 @@ function InjectsPublishedTable({ rows }: { rows: Array<Record<string, unknown>> 
             const displayContent =
               isLong && !isExpanded ? contentStr.slice(0, CONTENT_PREVIEW_CHARS) : contentStr;
             return (
-              <tr key={i} className="border-b border-robotic-yellow/10 align-top">
+              <tr key={i} className="border-b border-border align-top">
                 <td className="py-1 pr-2 whitespace-nowrap">{formatCellValue(row.at)}</td>
                 <td className="py-1 pr-2 max-w-[200px] break-words">
                   {formatCellValue(row.title)}
@@ -386,7 +509,7 @@ function InjectsPublishedTable({ rows }: { rows: Array<Record<string, unknown>> 
                   {isLong && (
                     <button
                       type="button"
-                      className="ml-2 text-robotic-yellow/80 hover:text-robotic-yellow underline"
+                      className="ml-2 text-ink hover:text-ink underline"
                       onClick={() => toggle(i)}
                     >
                       {isExpanded ? 'See less' : 'See more'}
@@ -408,7 +531,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
   // Injects published: columns at, title, content, inject_scope; all rows, full text, See more for long content
   if (keyName === 'injects_published' && Array.isArray(data)) {
     if (data.length === 0)
-      return <p className="text-xs terminal-text text-robotic-yellow/50">No injects published.</p>;
+      return <p className="text-xs terminal-text text-muted">No injects published.</p>;
     return <InjectsPublishedTable rows={data as Array<Record<string, unknown>>} />;
   }
   // Pathway outcomes: decision text and pathway outcome(s) only
@@ -418,32 +541,27 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
       pathway_outcomes?: Array<{ title?: string; content?: string }>;
     }>;
     if (pairs.length === 0)
-      return (
-        <p className="text-xs terminal-text text-robotic-yellow/50">No pathway outcome pairs.</p>
-      );
+      return <p className="text-xs terminal-text text-muted">No pathway outcome pairs.</p>;
     return (
       <div className="space-y-4">
         {pairs.map((p, i) => (
-          <div
-            key={i}
-            className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
-          >
+          <div key={i} className="border border-border p-3 bg-surface font-mono text-xs">
             <div className="mb-3">
-              <div className="text-robotic-yellow/70 uppercase mb-1">Decision</div>
-              <div className="text-robotic-green whitespace-pre-wrap break-words">
+              <div className="text-muted mb-1">Decision</div>
+              <div className="text-success whitespace-pre-wrap break-words">
                 {p.decision_text || '—'}
               </div>
             </div>
             <div>
-              <div className="text-robotic-yellow/70 uppercase mb-1">Pathway outcome(s)</div>
+              <div className="text-muted mb-1">Pathway outcome(s)</div>
               {(p.pathway_outcomes ?? []).length === 0 ? (
-                <p className="text-robotic-yellow/50">—</p>
+                <p className="text-muted">—</p>
               ) : (
                 <div className="space-y-2">
                   {(p.pathway_outcomes ?? []).map((o, j) => (
-                    <div key={j} className="border-l-2 border-robotic-yellow/30 pl-2">
-                      <div className="text-robotic-green font-semibold">{o.title || '—'}</div>
-                      <div className="text-robotic-yellow/90 mt-0.5 whitespace-pre-wrap break-words">
+                    <div key={j} className="border-l-2 border-border pl-2">
+                      <div className="text-success font-semibold">{o.title || '—'}</div>
+                      <div className="text-ink mt-0.5 whitespace-pre-wrap break-words">
                         {o.content || '—'}
                       </div>
                     </div>
@@ -467,20 +585,17 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
     return (
       <div className="space-y-4">
         <div>
-          <div className="text-robotic-yellow/70 uppercase mb-2 text-xs">Questions asked</div>
+          <div className="text-muted mb-2 text-xs">Questions asked</div>
           {questions.length === 0 ? (
-            <p className="text-robotic-yellow/50 text-xs">No questions asked.</p>
+            <p className="text-muted text-xs">No questions asked.</p>
           ) : (
             <div className="space-y-2">
               {questions.map((q, i) => (
-                <div
-                  key={i}
-                  className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
-                >
-                  <div className="text-robotic-green font-semibold whitespace-pre-wrap break-words">
+                <div key={i} className="border border-border p-3 bg-surface font-mono text-xs">
+                  <div className="text-success font-semibold whitespace-pre-wrap break-words">
                     {String(q.question_text ?? '—')}
                   </div>
-                  <div className="text-robotic-yellow/70 mt-1">
+                  <div className="text-muted mt-1">
                     Category: {String(q.category ?? '—')} | Asked at:{' '}
                     {q.asked_at ? new Date(q.asked_at as string).toLocaleString() : '—'}
                   </div>
@@ -490,19 +605,14 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
           )}
         </div>
         <div>
-          <div className="text-robotic-yellow/70 uppercase mb-2 text-xs">
-            Gaps (incidents with intel not consulted)
-          </div>
+          <div className="text-muted mb-2 text-xs">Gaps (incidents with intel not consulted)</div>
           {gaps.length === 0 ? (
-            <p className="text-robotic-yellow/50 text-xs">No gaps.</p>
+            <p className="text-muted text-xs">No gaps.</p>
           ) : (
             <div className="space-y-2">
               {gaps.map((g, i) => (
-                <div
-                  key={i}
-                  className="border border-robotic-yellow/30 p-3 bg-robotic-gray-300/80 font-mono text-xs"
-                >
-                  <div className="text-robotic-green font-semibold whitespace-pre-wrap break-words">
+                <div key={i} className="border border-border p-3 bg-surface font-mono text-xs">
+                  <div className="text-success font-semibold whitespace-pre-wrap break-words">
                     {String(g.incident_title ?? '—')}
                   </div>
                 </div>
@@ -516,9 +626,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
   // Incident–response pairs: no ids, full text, See more only if very long
   if (keyName === 'incident_response' && Array.isArray(data)) {
     if (data.length === 0)
-      return (
-        <p className="text-xs terminal-text text-robotic-yellow/50">No incident–response pairs.</p>
-      );
+      return <p className="text-xs terminal-text text-muted">No incident–response pairs.</p>;
     return <IncidentResponsePairsTable pairs={data as Array<Record<string, unknown>>} />;
   }
   // Impact matrices: columns matrix, analysis, evaluated_at, response_taxonomy; full analysis text
@@ -528,7 +636,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
       <div className="overflow-x-auto">
         <table className="w-full text-xs terminal-text">
           <thead>
-            <tr className="text-robotic-yellow/70 border-b border-robotic-yellow/30">
+            <tr className="text-muted border-b border-border">
               <th className="text-left py-1 pr-2">matrix</th>
               <th className="text-left py-1 pr-2">analysis</th>
               <th className="text-left py-1 pr-2">evaluated_at</th>
@@ -537,7 +645,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
           </thead>
           <tbody>
             {rows.map((row, i) => (
-              <tr key={i} className="border-b border-robotic-yellow/10 align-top">
+              <tr key={i} className="border-b border-border align-top">
                 <td className="py-1 pr-2 max-w-[300px] break-words">
                   {formatCellValue(row.matrix)}
                 </td>
@@ -556,8 +664,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
     );
   }
   if (Array.isArray(data)) {
-    if (data.length === 0)
-      return <p className="text-xs terminal-text text-robotic-yellow/50">No entries.</p>;
+    if (data.length === 0) return <p className="text-xs terminal-text text-muted">No entries.</p>;
     const first = data[0];
     if (typeof first === 'object' && first !== null && !Array.isArray(first)) {
       const keys = Object.keys(first as Record<string, unknown>);
@@ -565,7 +672,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
         <div className="overflow-x-auto">
           <table className="w-full text-xs terminal-text">
             <thead>
-              <tr className="text-robotic-yellow/70 border-b border-robotic-yellow/30">
+              <tr className="text-muted border-b border-border">
                 {keys.map((k) => (
                   <th key={k} className="text-left py-1 pr-2">
                     {k}
@@ -575,7 +682,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
             </thead>
             <tbody>
               {data.slice(0, 30).map((row, i) => (
-                <tr key={i} className="border-b border-robotic-yellow/10">
+                <tr key={i} className="border-b border-border">
                   {keys.map((k) => (
                     <td key={k} className="py-1 pr-2 max-w-[200px]">
                       {formatCellValue((row as Record<string, unknown>)[k])}
@@ -586,9 +693,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
             </tbody>
           </table>
           {data.length > 30 && (
-            <p className="text-xs terminal-text text-robotic-yellow/50 mt-1">
-              … and {data.length - 30} more
-            </p>
+            <p className="text-xs terminal-text text-muted mt-1">… and {data.length - 30} more</p>
           )}
         </div>
       );
@@ -610,16 +715,12 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
           typeof obj.communication === 'object' &&
           !Array.isArray(obj.communication) ? (
             <div>
-              <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
-                Communication
-              </div>
+              <div className="text-xs terminal-text text-muted mb-1">Communication</div>
               <KeyValueTable data={obj.communication as Record<string, unknown>} />
             </div>
           ) : null}
           <div>
-            <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">
-              Participants
-            </div>
+            <div className="text-xs terminal-text text-muted mb-1">Participants</div>
             <SectionDataDisplay keyName="participants" data={obj.participantSummary} />
           </div>
         </div>
@@ -642,7 +743,7 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
         <div className="space-y-4">
           {arrayOfObjectsKeys.map((k) => (
             <div key={k}>
-              <div className="text-xs terminal-text text-robotic-yellow/50 uppercase mb-1">{k}</div>
+              <div className="text-xs terminal-text text-muted mb-1">{k}</div>
               <SectionDataDisplay keyName={k} data={obj[k]} />
             </div>
           ))}
@@ -735,9 +836,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
     return (
       <div className="military-border p-6">
         <div className="text-center">
-          <div className="text-sm terminal-text text-robotic-yellow/50 animate-pulse">
-            [LOADING_AAR]
-          </div>
+          <div className="text-sm terminal-text text-muted animate-pulse">Loading AAR…</div>
         </div>
       </div>
     );
@@ -746,9 +845,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
   if (!aarData) {
     return (
       <div className="military-border p-6">
-        <p className="text-sm terminal-text text-robotic-yellow/50">
-          [ERROR] Failed to load AAR data
-        </p>
+        <p className="text-sm terminal-text text-muted">Failed to load AAR data</p>
       </div>
     );
   }
@@ -760,7 +857,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
     <div className="space-y-6">
       {/* Header */}
       <div className="military-border p-4 flex justify-between items-center">
-        <h3 className="text-lg terminal-text uppercase">[AAR] After-Action Review</h3>
+        <h3 className="text-lg terminal-text">AAR — After-action review</h3>
         <div className="flex gap-2">
           {canGenerate && aarData.aar && (
             <>
@@ -769,14 +866,14 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                 disabled={exporting !== null}
                 className="military-button px-4 py-2 text-sm disabled:opacity-50"
               >
-                {exporting === 'excel' ? '[EXPORTING...]' : '[EXPORT_EXCEL]'}
+                {exporting === 'excel' ? 'Exporting…' : 'Export Excel'}
               </button>
               <button
                 onClick={() => handleExport('pdf')}
                 disabled={exporting !== null}
                 className="military-button px-4 py-2 text-sm disabled:opacity-50"
               >
-                {exporting === 'pdf' ? '[EXPORTING...]' : '[EXPORT_PDF]'}
+                {exporting === 'pdf' ? 'Exporting…' : 'Export PDF'}
               </button>
             </>
           )}
@@ -786,7 +883,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
               disabled={generating}
               className="military-button px-4 py-2 text-sm disabled:opacity-50"
             >
-              {generating ? '[GENERATING...]' : '[GENERATE_AAR]'}
+              {generating ? 'Generating…' : 'Generate AAR'}
             </button>
           )}
         </div>
@@ -799,53 +896,36 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
         ) : (
           <div className="military-border p-6 space-y-6">
             <div>
-              <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                [SUMMARY]
-              </h4>
+              <SectionHeading title="Summary" />
               <p className="text-sm terminal-text whitespace-pre-wrap">{aarData.aar.summary}</p>
             </div>
 
             {/* Key Metrics */}
             {metrics && (
               <div>
-                <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-4">
-                  [KEY_METRICS]
-                </h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <SectionHeading title="Key metrics" />
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {metrics.decision_latency ? (
-                    <div className="military-border p-4">
-                      <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                        [DECISION_LATENCY]
-                      </div>
-                      <div className="text-sm terminal-text">
-                        Avg:{' '}
-                        {(
-                          (metrics.decision_latency as { avg_minutes?: number }).avg_minutes || 0
-                        ).toFixed(1)}{' '}
-                        min
-                      </div>
-                    </div>
+                    <StatCard
+                      label="Decision latency (avg)"
+                      value={`${(
+                        (metrics.decision_latency as { avg_minutes?: number }).avg_minutes || 0
+                      ).toFixed(1)} min`}
+                    />
                   ) : null}
                   {metrics.coordination ? (
-                    <div className="military-border p-4">
-                      <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                        [COORDINATION_SCORE]
-                      </div>
-                      <div className="text-sm terminal-text">
-                        {(metrics.coordination as { overall_score?: number }).overall_score || 0}
-                        /100
-                      </div>
-                    </div>
+                    <StatCard
+                      label="Coordination score"
+                      value={`${
+                        (metrics.coordination as { overall_score?: number }).overall_score || 0
+                      }/100`}
+                    />
                   ) : null}
                   {metrics.compliance ? (
-                    <div className="military-border p-4">
-                      <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-2">
-                        [COMPLIANCE_RATE]
-                      </div>
-                      <div className="text-sm terminal-text">
-                        {((metrics.compliance as { rate?: number }).rate || 0).toFixed(1)}%
-                      </div>
-                    </div>
+                    <StatCard
+                      label="Compliance rate"
+                      value={`${((metrics.compliance as { rate?: number }).rate || 0).toFixed(1)}%`}
+                    />
                   ) : null}
                 </div>
               </div>
@@ -854,15 +934,13 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
             {/* AI Insights */}
             {aarData.aar.ai_insights && aarData.aar.ai_insights.length > 0 && (
               <div>
-                <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                  [AI_INSIGHTS]
-                </h4>
+                <SectionHeading title="AI insights" />
                 <div className="space-y-2">
                   {aarData.aar.ai_insights.map(
                     (insight: { type?: string; content?: string }, idx) => (
                       <div key={idx} className="military-border p-3">
-                        <div className="text-xs terminal-text text-robotic-green mb-1">
-                          [{insight.type || 'INSIGHT'}]
+                        <div className="text-xs terminal-text text-success mb-1">
+                          {insight.type || 'Insight'}
                         </div>
                         <p className="text-sm terminal-text">{insight.content || ''}</p>
                       </div>
@@ -874,9 +952,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
 
             {aarData.aar.key_decisions.length > 0 && (
               <div>
-                <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                  [KEY_DECISIONS]
-                </h4>
+                <SectionHeading title="Key decisions" />
                 <div className="space-y-2">
                   {aarData.aar.key_decisions.slice(0, 10).map((decision: unknown, idx: number) => {
                     const d = decision as { title?: string; type?: string; status?: string };
@@ -885,7 +961,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                         <div className="text-sm terminal-text font-semibold mb-1">
                           {d.title || 'Untitled Decision'}
                         </div>
-                        <div className="text-xs terminal-text text-robotic-yellow/70">
+                        <div className="text-xs terminal-text text-muted">
                           Type: {d.type || 'Unknown'} | Status: {d.status || 'Unknown'}
                         </div>
                       </div>
@@ -897,9 +973,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
 
             {aarData.aar.recommendations.length > 0 && (
               <div>
-                <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-2">
-                  [RECOMMENDATIONS]
-                </h4>
+                <SectionHeading title="Recommendations" />
                 <ul className="list-disc list-inside space-y-1">
                   {aarData.aar.recommendations.map((rec, idx) => (
                     <li key={idx} className="text-sm terminal-text">
@@ -910,18 +984,16 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
               </div>
             )}
 
-            <div className="text-xs terminal-text text-robotic-yellow/50">
+            <div className="text-xs terminal-text text-muted">
               Generated: {new Date(aarData.aar.generated_at).toLocaleString()}
             </div>
           </div>
         )
       ) : (
         <div className="military-border p-8 text-center">
-          <p className="text-sm terminal-text text-robotic-yellow/50 mb-4">
-            [NO_AAR] No AAR report available
-          </p>
+          <p className="text-sm terminal-text text-muted mb-4">No AAR report available</p>
           {canGenerate && (
-            <p className="text-xs terminal-text text-robotic-yellow/30">
+            <p className="text-xs terminal-text text-muted">
               Generate an AAR report to review session performance
             </p>
           )}
@@ -931,43 +1003,41 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
       {/* Decision Quality Heat Meter */}
       {heatMeter && Object.keys(heatMeter).length > 0 && (
         <div className="military-border p-6">
-          <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-4">
-            [DECISION_QUALITY]
-          </h4>
+          <SectionHeading title="Decision quality" />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {Object.entries(heatMeter).map(([team, data]) => {
               const pct = data.heat_percentage ?? 0;
               const color =
                 pct >= 60
-                  ? 'text-red-400'
+                  ? 'text-danger'
                   : pct >= 40
-                    ? 'text-orange-400'
+                    ? 'text-warning'
                     : pct >= 20
-                      ? 'text-yellow-400'
-                      : 'text-green-400';
+                      ? 'text-warning'
+                      : 'text-success';
               const barColor =
                 pct >= 60
-                  ? 'bg-red-500'
+                  ? 'bg-danger'
                   : pct >= 40
-                    ? 'bg-orange-500'
+                    ? 'bg-warning'
                     : pct >= 20
-                      ? 'bg-yellow-500'
-                      : 'bg-green-500';
+                      ? 'bg-warning'
+                      : 'bg-success';
               const label =
                 pct >= 60
-                  ? 'POOR'
+                  ? 'Poor'
                   : pct >= 40
-                    ? 'NEEDS IMPROVEMENT'
+                    ? 'Needs improvement'
                     : pct >= 20
-                      ? 'ADEQUATE'
-                      : 'GOOD';
+                      ? 'Adequate'
+                      : 'Good';
               const mistakes = data.mistake_points ?? 0;
               return (
                 <div key={team} className="military-border p-4">
                   <div className="text-sm terminal-text font-semibold mb-2">
                     {team.toUpperCase()}
                   </div>
-                  <div className="w-full h-3 bg-robotic-gray-100 rounded-sm overflow-hidden mb-2">
+                  <div className="w-full h-3 bg-surface-2 rounded-sm overflow-hidden mb-2">
                     <div
                       className={`h-full ${barColor} transition-all`}
                       style={{ width: `${Math.min(100, pct)}%` }}
@@ -975,20 +1045,20 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-xs terminal-text">
                     <div>
-                      <span className="text-robotic-yellow/70">Heat:</span>{' '}
+                      <span className="text-muted">Heat:</span>{' '}
                       <span className={color}>{pct.toFixed(1)}%</span>
                     </div>
                     <div>
-                      <span className="text-robotic-yellow/70">Rating:</span>{' '}
+                      <span className="text-muted">Rating:</span>{' '}
                       <span className={color}>{label}</span>
                     </div>
                     <div>
-                      <span className="text-robotic-yellow/70">Decisions:</span>{' '}
-                      <span className="text-robotic-yellow">{data.total_decisions}</span>
+                      <span className="text-muted">Decisions:</span>{' '}
+                      <span className="text-ink">{data.total_decisions}</span>
                     </div>
                     <div>
-                      <span className="text-robotic-yellow/70">Mistakes:</span>{' '}
-                      <span className="text-robotic-yellow">{mistakes}</span>
+                      <span className="text-muted">Mistakes:</span>{' '}
+                      <span className="text-ink">{mistakes}</span>
                     </div>
                   </div>
                 </div>
@@ -1001,34 +1071,32 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
       {/* Participant Scores */}
       {aarData.scores.length > 0 && (
         <div className="military-border p-6">
-          <h4 className="text-sm terminal-text text-robotic-yellow/70 uppercase mb-4">
-            [PARTICIPANT_SCORES]
-          </h4>
+          <SectionHeading title="Participant scores" />
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {aarData.scores.map((score) => (
               <div key={score.user_id} className="military-border p-4">
                 <div className="text-sm terminal-text font-semibold mb-1">
                   {score.participant?.full_name || 'Unknown'}
                 </div>
-                <div className="text-xs terminal-text text-robotic-yellow/70 mb-2">
-                  [{score.role || 'UNKNOWN'}]
+                <div className="text-xs terminal-text text-muted mb-2">
+                  {score.role || 'Unknown'}
                 </div>
                 <div className="grid grid-cols-2 gap-2 text-xs terminal-text">
                   <div>
-                    <span className="text-robotic-yellow/70">Coordination:</span>{' '}
-                    <span className="text-robotic-yellow">{score.coordination_score}/100</span>
+                    <span className="text-muted">Coordination:</span>{' '}
+                    <span className="text-ink">{score.coordination_score}/100</span>
                   </div>
                   <div>
-                    <span className="text-robotic-yellow/70">Leadership:</span>{' '}
-                    <span className="text-robotic-yellow">{score.leadership_score}/100</span>
+                    <span className="text-muted">Leadership:</span>{' '}
+                    <span className="text-ink">{score.leadership_score}/100</span>
                   </div>
                   <div>
-                    <span className="text-robotic-yellow/70">Decisions:</span>{' '}
-                    <span className="text-robotic-yellow">{score.decisions_proposed}</span>
+                    <span className="text-muted">Decisions:</span>{' '}
+                    <span className="text-ink">{score.decisions_proposed}</span>
                   </div>
                   <div>
-                    <span className="text-robotic-yellow/70">Messages:</span>{' '}
-                    <span className="text-robotic-yellow">{score.communications_sent}</span>
+                    <span className="text-muted">Messages:</span>{' '}
+                    <span className="text-ink">{score.communications_sent}</span>
                   </div>
                 </div>
               </div>
@@ -1042,34 +1110,20 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
 
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="military-border p-4">
-          <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-1">
-            [EVENTS]
-          </div>
-          <div className="text-2xl terminal-text text-robotic-yellow">{aarData.events.length}</div>
-        </div>
-        <div className="military-border p-4">
-          <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-1">
-            [DECISIONS]
-          </div>
-          <div className="text-2xl terminal-text text-robotic-yellow">
-            {aarData.decisions.length}
-          </div>
-        </div>
-        <div className="military-border p-4">
-          <div className="text-xs terminal-text text-robotic-yellow/70 uppercase mb-1">
-            [DURATION]
-          </div>
-          <div className="text-sm terminal-text text-robotic-yellow">
-            {aarData.session.start_time && aarData.session.end_time
+        <StatCard label="Events" value={aarData.events.length} />
+        <StatCard label="Decisions" value={aarData.decisions.length} />
+        <StatCard
+          label="Duration"
+          value={
+            aarData.session.start_time && aarData.session.end_time
               ? `${Math.round(
                   (new Date(aarData.session.end_time).getTime() -
                     new Date(aarData.session.start_time).getTime()) /
                     60000,
-                )} minutes`
-              : 'N/A'}
-          </div>
-        </div>
+                )} min`
+              : 'N/A'
+          }
+        />
       </div>
     </div>
   );
