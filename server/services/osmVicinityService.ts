@@ -331,6 +331,64 @@ function haversine(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function getMetersPerDegreeLng(lat: number): number {
+  return 111_320 * Math.cos((lat * Math.PI) / 180);
+}
+
+function projectLatLngToLocalMeters(
+  lat: number,
+  lng: number,
+  refLat: number,
+  refLng: number,
+): { x: number; y: number } {
+  return {
+    x: (lng - refLng) * getMetersPerDegreeLng(refLat),
+    y: (refLat - lat) * 111_320,
+  };
+}
+
+function distanceFromOriginToSegmentMeters(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+): number {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const segLenSq = dx * dx + dy * dy;
+
+  if (segLenSq < 0.001) return Math.hypot(start.x, start.y);
+
+  const t = Math.max(0, Math.min(1, -((start.x * dx + start.y * dy) / segLenSq)));
+  const closestX = start.x + dx * t;
+  const closestY = start.y + dy * t;
+  return Math.hypot(closestX, closestY);
+}
+
+function getMinDistanceToPolylineMeters(
+  coordinates: [number, number][],
+  centerLat: number,
+  centerLng: number,
+): number {
+  if (coordinates.length === 0) return Number.POSITIVE_INFINITY;
+  if (coordinates.length === 1) {
+    return haversine(centerLat, centerLng, coordinates[0][0], coordinates[0][1]);
+  }
+
+  const projected = coordinates.map(([lat, lng]) =>
+    projectLatLngToLocalMeters(lat, lng, centerLat, centerLng),
+  );
+
+  let minDistance = Number.POSITIVE_INFINITY;
+  for (let i = 1; i < projected.length; i += 1) {
+    minDistance = Math.min(
+      minDistance,
+      distanceFromOriginToSegmentMeters(projected[i - 1], projected[i]),
+    );
+    if (minDistance <= 0.5) return 0;
+  }
+
+  return minDistance;
+}
+
 // ---------------------------------------------------------------------------
 // Generic Overpass runner (accepts arbitrary query text)
 // ---------------------------------------------------------------------------
@@ -598,13 +656,16 @@ async function fetchLocalSingaporeRouteGeometries(
   maxResults?: number,
 ): Promise<OsmRouteGeometry[]> {
   const bbox = getBoundingBoxForRadius(lat, lng, radiusMeters);
-  const effectivePrefetchTarget = maxResults == null ? 12000 : maxResults * 3;
-  const prefetchLimit = Math.min(Math.max(effectivePrefetchTarget, 1500), 20000);
+  const maxFetchedRows =
+    maxResults == null
+      ? Math.min(Math.max(Math.ceil(radiusMeters * 18), 20_000), 100_000)
+      : Math.min(Math.max(maxResults * 12, 5_000), 100_000);
   const pageSize = 1000;
   const rows: LocalSingaporeRoadRow[] = [];
+  let hitFetchCap = false;
 
-  for (let offset = 0; offset < prefetchLimit; offset += pageSize) {
-    const rangeEnd = Math.min(offset + pageSize - 1, prefetchLimit - 1);
+  for (let offset = 0; offset < maxFetchedRows; offset += pageSize) {
+    const rangeEnd = Math.min(offset + pageSize - 1, maxFetchedRows - 1);
     const { data, error } = await supabaseAdmin
       .from('osm_sg_roads')
       .select(
@@ -622,6 +683,7 @@ async function fetchLocalSingaporeRouteGeometries(
     const pageRows = (data ?? []) as LocalSingaporeRoadRow[];
     rows.push(...pageRows);
     if (pageRows.length < pageSize) break;
+    if (rangeEnd >= maxFetchedRows - 1) hitFetchCap = true;
   }
 
   const results = rows
@@ -629,12 +691,7 @@ async function fetchLocalSingaporeRouteGeometries(
       const coordinates = parseLatLngPairs(row.coordinates_json);
       if (coordinates.length < 2 || !isDrivableRoadType(row.highway_type)) return null;
 
-      const dist = Math.round(
-        coordinates.reduce((best, [coordLat, coordLng]) => {
-          const pointDist = haversine(lat, lng, coordLat, coordLng);
-          return Math.min(best, pointDist);
-        }, Number.POSITIVE_INFINITY),
-      );
+      const dist = Math.round(getMinDistanceToPolylineMeters(coordinates, lat, lng));
       if (dist > radiusMeters) return null;
 
       return {
@@ -648,6 +705,19 @@ async function fetchLocalSingaporeRouteGeometries(
     .filter((row): row is OsmRouteGeometry => row !== null)
     .sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
+  if (hitFetchCap) {
+    logger.warn(
+      {
+        radiusMeters,
+        maxResults,
+        fetchedRows: rows.length,
+        maxFetchedRows,
+        returnedRows: results.length,
+      },
+      'Singapore local OSM route query hit row prefetch cap; some road fragments may be omitted',
+    );
+  }
+
   return maxResults == null ? results : results.slice(0, maxResults);
 }
 
@@ -657,12 +727,13 @@ async function fetchLocalSingaporeBuildings(
   radiusMeters: number,
 ): Promise<OsmBuilding[]> {
   const bbox = getBoundingBoxForRadius(lat, lng, radiusMeters);
-  const prefetchLimit = Math.min(Math.max(radiusMeters * 12, 2000), 12000);
+  const maxFetchedRows = Math.min(Math.max(Math.ceil(radiusMeters * 20), 8_000), 120_000);
   const pageSize = 1000;
   const rows: LocalSingaporeBuildingRow[] = [];
+  let hitFetchCap = false;
 
-  for (let offset = 0; offset < prefetchLimit; offset += pageSize) {
-    const rangeEnd = Math.min(offset + pageSize - 1, prefetchLimit - 1);
+  for (let offset = 0; offset < maxFetchedRows; offset += pageSize) {
+    const rangeEnd = Math.min(offset + pageSize - 1, maxFetchedRows - 1);
     const { data, error } = await supabaseAdmin
       .from('osm_sg_buildings')
       .select(
@@ -680,6 +751,7 @@ async function fetchLocalSingaporeBuildings(
     const pageRows = (data ?? []) as LocalSingaporeBuildingRow[];
     rows.push(...pageRows);
     if (pageRows.length < pageSize) break;
+    if (rangeEnd >= maxFetchedRows - 1) hitFetchCap = true;
   }
 
   const mappedResults: Array<OsmBuilding | null> = rows.map((row) => {
@@ -721,6 +793,18 @@ async function fetchLocalSingaporeBuildings(
     .filter((row): row is OsmBuilding => row !== null)
     .sort((a, b) => a.distance_from_center_m - b.distance_from_center_m);
 
+  if (hitFetchCap) {
+    logger.warn(
+      {
+        radiusMeters,
+        fetchedRows: rows.length,
+        maxFetchedRows,
+        returnedRows: results.length,
+      },
+      'Singapore local OSM building query hit row prefetch cap; some buildings may be omitted',
+    );
+  }
+
   return results;
 }
 
@@ -728,10 +812,15 @@ function isDrivableRoadType(highwayType: string | undefined): boolean {
   if (!highwayType) return false;
   return [
     'motorway',
+    'motorway_link',
     'trunk',
+    'trunk_link',
     'primary',
+    'primary_link',
     'secondary',
+    'secondary_link',
     'tertiary',
+    'tertiary_link',
     'residential',
     'unclassified',
     'service',
@@ -783,7 +872,7 @@ export async function fetchRouteGeometries(
   const query = `
 [out:json][timeout:90];
 (
-  way["highway"~"^(primary|secondary|tertiary|trunk|motorway|residential|unclassified|service|footway|pedestrian|path|cycleway|living_street|steps|track)"](around:${radius},${lat},${lng});
+  way["highway"~"^(primary|primary_link|secondary|secondary_link|tertiary|tertiary_link|trunk|trunk_link|motorway|motorway_link|residential|unclassified|service|footway|pedestrian|path|cycleway|living_street|steps|track)"](around:${radius},${lat},${lng});
 );
 out body geom;
 `;
@@ -860,7 +949,7 @@ export async function fetchVenueBuilding(
   radiusMeters?: number,
   opts?: { withLog?: boolean; sourcePreference?: OsmSourcePreference },
 ): Promise<OsmBuilding[] | FetchVenueBuildingResult> {
-  const radius = Math.min(radiusMeters ?? 500, 2000);
+  const radius = Math.min(radiusMeters ?? 500, 10000);
   const fetchLog: FetchLogEntry[] = [];
   const wantLog = opts?.withLog === true;
 
