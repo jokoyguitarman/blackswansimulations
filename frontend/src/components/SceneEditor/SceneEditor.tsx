@@ -133,14 +133,24 @@ function getEstimatedRoadWidthM(highwayType: string): number {
   switch (highwayType) {
     case 'motorway':
       return 16;
+    case 'motorway_link':
+      return 14;
     case 'trunk':
       return 14;
+    case 'trunk_link':
+      return 12;
     case 'primary':
       return 12;
+    case 'primary_link':
+      return 10;
     case 'secondary':
       return 10;
+    case 'secondary_link':
+      return 9;
     case 'tertiary':
       return 9;
+    case 'tertiary_link':
+      return 8;
     case 'residential':
     case 'unclassified':
       return 7;
@@ -418,6 +428,7 @@ export function SceneEditor({
   const [lat, setLat] = useState('');
   const [lng, setLng] = useState('');
   const [radius, setRadius] = useState('500');
+  const [appliedRadius, setAppliedRadius] = useState('500');
   const [osmSourceMode, setOsmSourceMode] = useState<OsmSourceMode>('local_cache');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<
@@ -427,9 +438,8 @@ export function SceneEditor({
   const [searchCountry, setSearchCountry] = useState('');
   const [userGeoPos, setUserGeoPos] = useState<{ lat: number; lng: number } | null>(null);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const radiusRefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFetchedMapResultsRef = useRef(false);
-  const prevRadiusRef = useRef('500');
+  const prevOsmSourceModeRef = useRef<OsmSourceMode>('local_cache');
   const mapPhaseMapRef = useRef<L.Map | null>(null);
   const [fetchResult, setFetchResult] = useState<{
     grids: Array<{
@@ -552,7 +562,7 @@ export function SceneEditor({
   const displayRoadPolylines = useMemo(() => {
     const centerLatForRoads = parseFloat(lat);
     const centerLngForRoads = parseFloat(lng);
-    const radiusForRoads = parseFloat(radius) || 500;
+    const radiusForRoads = parseFloat(appliedRadius) || 500;
 
     return (fetchResult?.roadPolylines ?? []).map((road) => ({
       ...road,
@@ -563,7 +573,7 @@ export function SceneEditor({
         radiusForRoads,
       ),
     }));
-  }, [fetchResult, lat, lng, radius]);
+  }, [fetchResult, lat, lng, appliedRadius]);
   const projectedVerts = useMemo(
     () => (selectedGrid ? projectPolygon(selectedGrid.polygon) : []),
     [selectedGrid],
@@ -776,6 +786,7 @@ export function SceneEditor({
         roads: data.roads ?? [],
         roadPolylines: data.roadPolylines ?? [],
       });
+      setAppliedRadius(radius);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -784,47 +795,14 @@ export function SceneEditor({
   }, [lat, lng, radius, osmSourceMode]);
 
   useEffect(() => {
-    const radiusChanged = prevRadiusRef.current !== radius;
-    prevRadiusRef.current = radius;
+    const sourceChanged = prevOsmSourceModeRef.current !== osmSourceMode;
+    prevOsmSourceModeRef.current = osmSourceMode;
 
-    if (!radiusChanged) return;
+    if (!sourceChanged) return;
     if (phase !== 'map' || isDrawing) return;
     if (!hasFetchedMapResultsRef.current) return;
     if (!lat || !lng) return;
-
-    if (radiusRefetchTimerRef.current) {
-      clearTimeout(radiusRefetchTimerRef.current);
-    }
-
-    radiusRefetchTimerRef.current = setTimeout(() => {
-      void handleFetch();
-    }, 350);
-
-    return () => {
-      if (radiusRefetchTimerRef.current) {
-        clearTimeout(radiusRefetchTimerRef.current);
-      }
-    };
-  }, [radius, phase, isDrawing, lat, lng, handleFetch]);
-
-  useEffect(() => {
-    if (phase !== 'map' || isDrawing) return;
-    if (!hasFetchedMapResultsRef.current) return;
-    if (!lat || !lng) return;
-
-    if (radiusRefetchTimerRef.current) {
-      clearTimeout(radiusRefetchTimerRef.current);
-    }
-
-    radiusRefetchTimerRef.current = setTimeout(() => {
-      void handleFetch();
-    }, 200);
-
-    return () => {
-      if (radiusRefetchTimerRef.current) {
-        clearTimeout(radiusRefetchTimerRef.current);
-      }
-    };
+    void handleFetch();
   }, [osmSourceMode, phase, isDrawing, lat, lng, handleFetch]);
 
   // ── Select building → enter edit mode ─────────────────────────────────
@@ -1664,6 +1642,9 @@ export function SceneEditor({
               <input
                 value={lat}
                 onChange={(e) => setLat(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
                 className="w-full px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
               />
             </div>
@@ -1672,6 +1653,9 @@ export function SceneEditor({
               <input
                 value={lng}
                 onChange={(e) => setLng(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
                 className="w-full px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
               />
             </div>
@@ -1680,6 +1664,9 @@ export function SceneEditor({
               <input
                 value={radius}
                 onChange={(e) => setRadius(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
                 className="w-full px-2 py-2 bg-black/50 border border-robotic-yellow/50 text-robotic-yellow terminal-text text-sm"
               />
             </div>
@@ -1731,6 +1718,7 @@ export function SceneEditor({
           ) : (
             <div className="flex flex-col gap-2">
               <button
+                type="button"
                 onClick={handleFetch}
                 disabled={fetchLoading || !lat || !lng}
                 className="military-button w-full px-4 py-2 text-xs disabled:opacity-50"
@@ -1747,6 +1735,7 @@ export function SceneEditor({
               </div>
 
               <button
+                type="button"
                 onClick={() => setIsDrawing(true)}
                 className="w-full px-4 py-2 text-xs terminal-text border border-cyan-500/50 text-cyan-400 hover:bg-cyan-900/20 hover:border-cyan-400"
               >
@@ -1754,6 +1743,7 @@ export function SceneEditor({
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setIsAutoTracing(true);
                   setAutoTracePreview(null);
@@ -1897,7 +1887,7 @@ export function SceneEditor({
               <>
                 <Circle
                   center={[parseFloat(lat), parseFloat(lng)]}
-                  radius={parseFloat(radius) || 500}
+                  radius={parseFloat(appliedRadius) || 500}
                   pathOptions={{
                     color: '#22c55e',
                     weight: 1,
