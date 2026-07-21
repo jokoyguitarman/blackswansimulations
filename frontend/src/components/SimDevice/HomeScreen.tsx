@@ -360,7 +360,7 @@ export default function HomeScreen() {
       path: 'news',
       badge: badges.news,
     },
-    { id: 'drafts', label: 'DraftPad', icon: '/icons/icon-drafts.png', path: 'drafts' },
+    { id: 'drafts', label: 'Docs', icon: '/icons/icon-docs.svg', path: 'drafts' },
   ];
 
   const dockApps = apps.filter((a) => a.inDock);

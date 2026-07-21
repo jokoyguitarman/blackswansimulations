@@ -44,6 +44,7 @@ import { socialEventsRouter } from './routes/socialEvents.js';
 import { socialCrisisWarroomRouter } from './routes/socialCrisisWarroom.js';
 import { billingRouter } from './routes/billing.js';
 import { billingWebhookRouter } from './routes/billingWebhook.js';
+import { playerDraftsRouter } from './routes/playerDrafts.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -225,6 +226,7 @@ app.use('/api/social/groups', socialGroupsRouter);
 app.use('/api/social/events', socialEventsRouter);
 app.use('/api/warroom/social-crisis', socialCrisisWarroomRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/drafts', playerDraftsRouter);
 
 // 404 handler
 app.use((req, res) => {

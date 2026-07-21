@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trainer Scenario Editing - Warroom Pipeline &amp; Edit Propagation Plan</title>
+<style>
+  :root {
+    --bg: #0c0f16; --panel: #151a24; --panel-2: #1c2330; --border: #2a3342;
+    --text: #e6ebf2; --muted: #93a0b4; --green: #34c759; --amber: #ff9f0a;
+    --red: #ff453a; --blue: #4aa8ff; --purple: #bf5af2; --accent: #5e9bff;
+    --gold: #e0c089;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55; font-size: 15px; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 24px 120px; }
+  header.hero { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 8px; }
+  .kicker { text-transform: uppercase; letter-spacing: 2px; font-size: 12px; color: var(--accent); font-weight: 700; }
+  h1 { font-size: 30px; margin: 8px 0 6px; letter-spacing: -0.5px; }
+  h2 { font-size: 21px; margin: 44px 0 12px; padding-top: 18px; border-top: 1px solid var(--border); letter-spacing: -0.3px; }
+  h3 { font-size: 16px; margin: 26px 0 8px; color: #fff; }
+  h4 { font-size: 13px; margin: 18px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  p { color: #cdd6e3; }
+  .lead { font-size: 16px; color: var(--muted); }
+  a { color: var(--accent); }
+  code { background: #0a0d13; border: 1px solid var(--border); border-radius: 5px; padding: 1px 6px;
+    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 13px; color: var(--gold); }
+  pre { background: #0a0d13; border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; overflow-x: auto;
+    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace; font-size: 12.5px; color: #c6d2e0; line-height: 1.5; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px 22px; margin: 16px 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  @media (max-width: 820px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;
+    text-transform: uppercase; letter-spacing: 0.6px; }
+  .tag.green { background: rgba(52,199,89,0.16); color: var(--green); }
+  .tag.amber { background: rgba(255,159,10,0.16); color: var(--amber); }
+  .tag.red { background: rgba(255,69,58,0.16); color: var(--red); }
+  .tag.blue { background: rgba(74,168,255,0.16); color: var(--blue); }
+  .tag.purple { background: rgba(191,90,242,0.16); color: var(--purple); }
+  .tag.gray { background: rgba(147,160,180,0.16); color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 11px; letter-spacing: 0.7px; }
+  tr:last-child td { border-bottom: none; }
+  .callout { border-radius: 12px; padding: 16px 18px; margin: 16px 0; border: 1px solid; }
+  .callout.warn { background: rgba(255,69,58,0.07); border-color: rgba(255,69,58,0.4); }
+  .callout.info { background: rgba(74,168,255,0.07); border-color: rgba(74,168,255,0.35); }
+  .callout.ok { background: rgba(52,199,89,0.07); border-color: rgba(52,199,89,0.35); }
+  .callout.gold { background: rgba(224,192,137,0.07); border-color: rgba(224,192,137,0.4); }
+  .callout h3 { margin-top: 0; }
+  .toc { font-size: 14px; columns: 2; column-gap: 28px; }
+  .toc a { display: block; padding: 3px 0; text-decoration: none; color: #cdd6e3; }
+  .toc a:hover { color: #fff; }
+  @media (max-width: 760px) { .toc { columns: 1; } }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+  .file { color: var(--gold); font-family: "SF Mono", ui-monospace, monospace; font-size: 12.5px; }
+  .phase-badge { display:inline-flex; align-items:center; justify-content:center; min-width: 26px; height: 26px;
+    padding: 0 8px; border-radius: 7px; background: var(--accent); color: #04101f; font-weight: 800; font-size: 13px; margin-right: 8px; }
+  .pipe { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:14px 0; font-size:12.5px; }
+  .pipe .node { background: var(--panel-2); border:1px solid var(--border); border-radius:8px; padding:8px 11px; }
+  .pipe .node b { display:block; font-size:12px; }
+  .pipe .node .who { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.5px; }
+  .pipe .arrow { color: var(--muted); font-weight:700; }
+  .pipe .node.ai { border-color: rgba(191,90,242,0.5); }
+  .pipe .node.money { border-color: rgba(52,199,89,0.5); }
+  .pipe .node.gate { border-color: rgba(255,159,10,0.5); }
+  .pipe .node.edit { border-color: rgba(94,155,255,0.6); }
+  footer { margin-top: 60px; padding-top: 20px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12.5px; }
+
+  /* State machine */
+  .states { display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin: 12px 0; }
+  .state { border:1px solid var(--border); background: var(--panel-2); border-radius: 999px; padding: 6px 14px; font-size: 12.5px; font-weight:600; }
+  .state.start { border-color: rgba(147,160,180,0.6); }
+  .state.mid { border-color: rgba(255,159,10,0.6); color: var(--amber); }
+  .state.good { border-color: rgba(52,199,89,0.6); color: var(--green); }
+  .state.bad { border-color: rgba(255,69,58,0.6); color: var(--red); }
+  .sarrow { color: var(--muted); font-weight: 700; }
+  .slabel { font-size: 11px; color: var(--muted); }
+
+  /* Verdict pills for propagation table */
+  .verdict { display:inline-block; font-size:11px; font-weight:700; padding:2px 9px; border-radius:999px; white-space:nowrap; }
+  .verdict.live { background: rgba(52,199,89,0.16); color: var(--green); }
+  .verdict.atstart { background: rgba(74,168,255,0.16); color: var(--blue); }
+  .verdict.trap { background: rgba(255,69,58,0.16); color: var(--red); }
+  .verdict.dead { background: rgba(147,160,180,0.16); color: var(--muted); }
+
+  /* Lock decision boxes */
+  .lockflow { display:flex; flex-wrap:wrap; gap:10px; align-items:stretch; margin:14px 0; }
+  .lockflow .q { background: var(--panel-2); border:1px solid rgba(255,159,10,0.5); border-radius:10px; padding:10px 14px; font-size:12.5px; font-weight:600; }
+  .lockflow .res { border-radius:10px; padding:10px 14px; font-size:12.5px; font-weight:700; display:flex; align-items:center; }
+  .lockflow .res.ok { background: rgba(52,199,89,0.12); color: var(--green); border:1px solid rgba(52,199,89,0.5); }
+  .lockflow .res.no { background: rgba(255,69,58,0.12); color: var(--red); border:1px solid rgba(255,69,58,0.5); }
+
+  .kbd { background: var(--panel-2); border:1px solid var(--border); border-bottom-width: 2px; border-radius:6px;
+    padding: 1px 7px; font-size: 12px; font-family: "SF Mono", ui-monospace, monospace; }
+  ol.steps li { margin-bottom: 8px; }
+  .num-badge { display:inline-flex; align-items:center; justify-content:center; width:22px; height:22px; border-radius:50%;
+    background: var(--panel-2); border:1px solid var(--border); font-size:11.5px; font-weight:700; margin-right:8px; color: var(--accent); }
+  .actor { border-left: 3px solid var(--accent); }
+  .actor h3 { margin-top: 0; }
+  .actor.trap { border-left-color: var(--red); }
+  .actor.fix { border-left-color: var(--green); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="hero">
+  <div class="kicker">Engineering Plan &middot; Trainer Scenario Editing &mdash; Phase 1 (Social Media Crisis)</div>
+  <h1>Warroom Generates, Trainer Personalises, The Sim Obeys</h1>
+  <p class="lead">The War Room stays the fast path: a trainer builds an entire crisis scenario &mdash; NPCs, storyline
+  injects, org pages, fact sheet &mdash; in one guided wizard. This feature adds three things on top:
+  a <b>rich read-only review step before compile</b> so the trainer sees exactly what was produced,
+  <b>unlimited free editing after compile</b> of everything the warroom made, and a <b>guarantee</b> that every edit
+  actually reaches the running simulation &mdash; no field is editable unless something at runtime provably consumes it.</p>
+  <div style="margin-top:14px">
+    <span class="tag blue">Phase 1: Social Media Crisis</span>
+    <span class="tag gray">Phase 2 (later): Field Ops</span>
+    <span class="tag green">Edits are free &amp; unlimited</span>
+    <span class="tag amber">Locked at 0 session credits</span>
+    <span class="tag red">Locked during live sessions</span>
+  </div>
+</header>
+
+<nav class="panel">
+  <h4 style="margin-top:0">Contents</h4>
+  <div class="toc">
+    <a href="#lifecycle">1. The full scenario lifecycle</a>
+    <a href="#generation">2. Warroom generation path (pre-compile)</a>
+    <a href="#compile">3. What compile actually does</a>
+    <a href="#review">4. The new read-only Review step</a>
+    <a href="#editing">5. Editing after compile</a>
+    <a href="#propagation">6. How edits reach the game (propagation map)</a>
+    <a href="#traps">7. The four staleness traps &amp; their fixes</a>
+    <a href="#locks">8. Edit lock rules</a>
+    <a href="#endpoints">9. New &amp; changed backend endpoints</a>
+    <a href="#frontend">10. Frontend changes</a>
+    <a href="#errors">11. No-silent-failure policy</a>
+    <a href="#verify">12. Verification checklist</a>
+    <a href="#phase2">13. Phase 2 preview: Field Ops</a>
+  </div>
+</nav>
+
+<!-- ============================================================ -->
+<h2 id="lifecycle">1. The full scenario lifecycle</h2>
+<p>One line to keep in mind while reading everything below: <b>the social-crisis runtime reads almost everything live,
+every tick.</b> The inject scheduler re-queries <code>scenario_injects</code> on every tick, and the NPC engines re-read
+<code>scenarios.initial_state</code> on every tick. That architecture is what makes post-compile editing safe &mdash;
+most edits flow into a not-yet-started session with <i>zero</i> extra machinery. The plan's job is to fix the four
+places where that is <i>not</i> true.</p>
+
+<div class="pipe">
+  <div class="node money"><b>Invoice paid</b><span class="who">+1 scenario, +2 session credits</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node ai"><b>Warroom wizard</b><span class="who">Setup &rarr; Building (AI)</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node edit"><b>Review step</b><span class="who">read-only, sees everything</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node money"><b>Compile</b><span class="who">consumes 1 scenario credit</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node edit"><b>Edit freely</b><span class="who">scenario detail view</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node money"><b>Create session</b><span class="who">consumes 1 session credit</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node gate"><b>Start session</b><span class="who">editing locks</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><b>Live sim runs</b><span class="who">reads edited content</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node"><b>AAR / debrief</b><span class="who">editing unlocks if credits remain</span></div>
+</div>
+
+<div class="callout info">
+  <h3>The agreed product rules</h3>
+  <ul>
+    <li><b>All editing happens after compile.</b> The pre-compile review step is strictly read-only &mdash; it exists so the trainer can see what the warroom produced before committing.</li>
+    <li><b>Edits are unlimited and free.</b> No credit is consumed by editing or by image regeneration.</li>
+    <li><b>The edit button locks when the trainer has 0 session launch credits.</b> It unlocks automatically if credits are topped up (new invoice).</li>
+    <li><b>The edit button locks while any session on the scenario is live</b> (<code>in_progress</code> or <code>paused</code>) and unlocks when it ends &mdash; provided the trainer still has session credits.</li>
+  </ul>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="generation">2. Warroom generation path (pre-compile)</h2>
+<p>The Social Crisis wizard (<span class="file">frontend/src/pages/SocialCrisisWizard.tsx</span>) generates all
+simulation content <b>before</b> compile, holding it in wizard state (and the resumable draft). This is what makes a
+full pre-compile review possible without any pipeline changes.</p>
+
+<div class="pipe">
+  <div class="node"><b>Step 1 &middot; Scenario Setup</b><span class="who">crisis type, country, org, teams</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node ai"><b>Step 2 &middot; Building</b><span class="who">4 chained AI stages</span></div>
+  <span class="arrow">&rarr;</span>
+  <div class="node edit"><b>Step 7 &middot; Review &amp; Compile</b><span class="who">enriched in this plan</span></div>
+</div>
+
+<h3>What the Building step produces (all held in wizard state)</h3>
+<table>
+  <tr><th>AI stage</th><th>Output</th><th>Wizard state variable</th></tr>
+  <tr><td>1. Characters</td><td>NPC personas: name, handle, personality, bias, interests, image prompts</td><td><code>personas</code>, <code>factSheet</code>, <code>communities</code></td></tr>
+  <tr><td>2. Storyline</td><td>Timed &amp; conditional injects per team + shared chaos injects, narrative</td><td><code>storylineInjects</code>, <code>sharedInjects</code>, <code>narrative</code></td></tr>
+  <tr><td>3. Convergence</td><td>Convergence gates, objectives, scoring dimension labels</td><td><code>convergenceGates</code>, <code>objectives</code>, <code>dimensionLabels</code></td></tr>
+  <tr><td>4. Org pages</td><td>The org's social page, ally/competitor/antagonist brand pages</td><td><code>orgPage</code>, <code>allyEntries</code>, <code>competitorEntries</code>, <code>autoAntagonist</code></td></tr>
+</table>
+
+<p class="small muted">Scenario credits gate entry to the AI steps (402 <code>NO_SCENARIO_CREDITS</code> when the
+balance is zero), but the credit is only <i>consumed</i> at compile. Admins bypass credit checks entirely.</p>
+
+<!-- ============================================================ -->
+<h2 id="compile">3. What compile actually does</h2>
+<p>Compile (<span class="file">server/routes/socialCrisisWarroom.ts</span> &middot; <code>POST /api/warroom/social-crisis/compile</code>)
+is the moment wizard state becomes a real, launchable scenario. It runs as an async job the wizard polls.</p>
+
+<ol class="steps">
+  <li><span class="num-badge">1</span><b>Consume 1 scenario credit</b> (refunded automatically if the job fails).</li>
+  <li><span class="num-badge">2</span><b>Generate strategy windows</b> and assemble the full payload (<code>assemblePayload</code> in <span class="file">server/services/socialCrisisGeneratorService.ts</span>).</li>
+  <li><span class="num-badge">3</span><b>Persist</b> (<span class="file">server/services/socialCrisisPersistenceService.ts</span>) in order:
+    <code>scenarios</code> &rarr; <code>scenario_teams</code> &rarr; <code>scenario_objectives</code> &rarr; <code>sop_definitions</code> &rarr; <code>scenario_injects</code>.</li>
+  <li><span class="num-badge">4</span><b>Pre-generate NPC post images</b> in the background: walks each persona's
+    <code>image_prompts</code>, calls <code>generatePostImage</code>, uploads to the <code>sim-media</code> storage bucket, and writes the
+    URL into the matching inject's <code>delivery_config.media_urls</code> (matched by author handle).</li>
+</ol>
+
+<h3>Where each artifact lands</h3>
+<table>
+  <tr><th>Artifact</th><th>Storage after compile</th></tr>
+  <tr><td>Title, description, briefing, objectives list</td><td><code>scenarios</code> row (columns)</td></tr>
+  <tr><td>NPC personas, fact sheet, org page(s), dimension labels, strategic benchmarks, research guidelines, affected communities</td><td><code>scenarios.initial_state</code> (JSONB)</td></tr>
+  <tr><td>All injects (timed / conditional / decision), incl. author + platform + media in <code>delivery_config</code></td><td><code>scenario_injects</code> rows, <code>session_id IS NULL</code> (templates), <code>generation_source = 'war_room'</code></td></tr>
+  <tr><td>Objectives (weighted, with success criteria)</td><td><code>scenario_objectives</code> rows</td></tr>
+  <tr><td>Teams</td><td><code>scenario_teams</code> rows</td></tr>
+  <tr><td>SOPs</td><td><code>sop_definitions</code> rows</td></tr>
+  <tr><td>Pre-generated post images</td><td><code>sim-media</code> bucket; URLs inside <code>scenario_injects.delivery_config.media_urls</code></td></tr>
+</table>
+
+<div class="callout gold">
+  <h3>Why this matters for editing</h3>
+  <p style="margin:0">Everything above is <b>the editable surface</b>. Because injects are template rows and everything
+  else is a scenario row or its <code>initial_state</code>, editing is plain row updates and JSON merge-patches &mdash;
+  no re-compile, no second scenario credit, and the original warroom output is simply overwritten in place.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="review">4. The new read-only Review step</h2>
+<p>Today, Step 7 "Review &amp; Compile" shows only <i>counts</i> (X injects, Y personas, Z gates) plus a truncated
+narrative. The trainer compiles half-blind. Since all content already sits in wizard state, we enrich this step into a
+full read-through &mdash; <b>display-only</b>, per the product decision that editing lives post-compile.</p>
+
+<div class="grid2">
+  <div class="panel">
+    <h3>What the enriched review shows</h3>
+    <ul>
+      <li><b>Narrative</b> &mdash; full title, description, briefing</li>
+      <li><b>Inject timeline</b> &mdash; every inject in chronological order, grouped per team + shared, with author handle, platform, trigger time/condition, and full content</li>
+      <li><b>NPC persona cards</b> &mdash; name, handle, personality, bias, interests</li>
+      <li><b>Fact sheet</b> &mdash; confirmed facts vs unconfirmed claims</li>
+      <li><b>Org page &amp; brand roster</b> &mdash; the org's page plus allies / competitors / antagonist</li>
+      <li><b>Objectives &amp; convergence gates</b> &mdash; with weights and criteria</li>
+    </ul>
+  </div>
+  <div class="panel">
+    <h3>What it deliberately does not have</h3>
+    <ul>
+      <li><b>No edit fields.</b> A banner states: <i>"Everything here can be edited after compile from the scenario's detail page."</i></li>
+      <li><b>No new endpoints.</b> Rendered entirely from React state already present in the wizard (<code>personas</code>, <code>storylineInjects</code>, <code>sharedInjects</code>, <code>factSheet</code>, <code>orgPage</code>, <code>objectives</code>, <code>convergenceGates</code>, <code>narrative</code>).</li>
+      <li><b>No change to compile.</b> The existing counts grid, compile button, progress log, and job polling stay as they are.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="editing">5. Editing after compile</h2>
+<p>The social branch of <span class="file">frontend/src/components/Scenario/ScenarioDetailView.tsx</span> is currently a
+fully read-only modal. It becomes the <b>single editing surface</b>, section by section. Every section reuses the
+existing proven dirty-tracking / save / inline-message pattern from the map-pin editor.</p>
+
+<table>
+  <tr><th>Section</th><th>Editable fields</th><th>Save target</th></tr>
+  <tr><td><b>Overview</b></td><td>Title, description, briefing</td><td><code>PATCH /api/scenarios/:id</code> (existing endpoint)</td></tr>
+  <tr><td><b>NPC Personas</b></td><td>Name, handle, personality, bias, interests &mdash; plus add / remove persona</td><td>Merge-patch of <code>initial_state.npc_personas</code> via <code>PATCH /api/scenarios/:id</code></td></tr>
+  <tr><td><b>Fact Sheet</b></td><td>Confirmed facts, unconfirmed claims (add / edit / remove rows)</td><td><code>initial_state.fact_sheet</code></td></tr>
+  <tr><td><b>Org Page</b></td><td>Name, handle, bio, branded history entries</td><td><code>initial_state.org_page</code></td></tr>
+  <tr><td><b>Research Guidelines</b></td><td>Per-team and group-wide guidance, case studies</td><td><code>initial_state.research_guidelines</code></td></tr>
+  <tr><td><b>Strategic Benchmarks</b></td><td>Doctrine benchmarks used in the AAR (works once Trap 4 is fixed)</td><td><code>initial_state.strategic_benchmarks</code></td></tr>
+  <tr><td><b>Objectives</b></td><td>Name, description, weight, success criteria</td><td><code>scenario_objectives</code> rows + <code>scenarios.objectives</code></td></tr>
+  <tr><td><b>Injects</b></td><td>Title, content, type, severity, trigger time / condition, author handle &amp; platform (<code>delivery_config</code>), target teams, appear/cancel conditions &mdash; plus add and delete injects, and per-inject image regenerate / remove</td><td>New inject endpoints (see <a href="#endpoints">&sect;9</a>)</td></tr>
+</table>
+
+<div class="callout warn">
+  <h3>Deliberately NOT exposed in the editor</h3>
+  <p><code>initial_state.facebook_groups</code> and <code>initial_state.sentiment_curve</code> have <b>no runtime
+  consumer</b> &mdash; groups are AI-generated fresh at session init and sentiment is computed live from posts. Exposing
+  them would be the exact silent failure this plan exists to prevent: the trainer edits, saves successfully, and nothing
+  in the game changes. They stay hidden until something actually reads them.</p>
+</div>
+
+<p>Edited injects are stamped <code>generation_source = 'trainer'</code> (already permitted by the DB CHECK constraint
+from migration 150 &mdash; no new migration needed), so warroom output and human overrides remain distinguishable.</p>
+
+<!-- ============================================================ -->
+<h2 id="propagation">6. How edits reach the game (propagation map)</h2>
+<p>This is the audit that backs the "edits must take effect" requirement. Each artifact was traced from its storage
+location to the runtime code that consumes it.</p>
+
+<table>
+  <tr><th>Artifact</th><th>Runtime consumer</th><th>Read pattern</th><th>Edit takes effect?</th></tr>
+  <tr>
+    <td><b>Injects</b> (content, title, timing, conditions, severity, targets, <code>delivery_config</code>)</td>
+    <td>Inject scheduler tick loop (<span class="file">server/services/injectSchedulerService.ts</span>) &rarr; publish &rarr; feed engine creates <code>social_posts</code></td>
+    <td>Re-queries <code>scenario_injects</code> templates <b>every tick</b>; publisher re-fetches the row at fire time</td>
+    <td><span class="verdict live">LIVE &mdash; automatic</span></td>
+  </tr>
+  <tr>
+    <td><b>NPC personas</b></td>
+    <td>Ambient content, feed engine, NPC messenger / reactions / email replies, engagement algorithm, state updater, director, participant fact-check UI</td>
+    <td>All re-read <code>scenarios.initial_state.npc_personas</code> <b>every tick</b></td>
+    <td><span class="verdict live">LIVE &mdash; automatic</span></td>
+  </tr>
+  <tr>
+    <td><b>Fact sheet</b></td>
+    <td>Antagonist engine, content disputes, statement watchdog, email replies, participant fact-check</td>
+    <td>Live from <code>initial_state</code></td>
+    <td><span class="verdict live">LIVE &mdash; automatic</span></td>
+  </tr>
+  <tr>
+    <td><b>Dimension labels, org stance</b></td>
+    <td>Social state updater, antagonist engine, player UI</td>
+    <td>Live from <code>initial_state</code></td>
+    <td><span class="verdict live">LIVE &mdash; automatic</span></td>
+  </tr>
+  <tr>
+    <td><b>Objectives &amp; gates</b></td>
+    <td>Objective tracking + gate evaluation</td>
+    <td>Materialized into session progress rows <b>at session start</b>; gates also re-read live each tick</td>
+    <td><span class="verdict atstart">AT START &mdash; edit before launch</span></td>
+  </tr>
+  <tr>
+    <td><b>Research guidelines</b></td>
+    <td>Content grader (live) + inject scheduler (reads the <code>current_state</code> snapshot)</td>
+    <td>Mixed</td>
+    <td><span class="verdict trap">TRAP 1 &mdash; fixed by this plan</span></td>
+  </tr>
+  <tr>
+    <td><b>Org page identity &amp; branded history</b></td>
+    <td>Session-scoped <code>sim_org_pages</code>, seeded from <code>initial_state.org_page</code></td>
+    <td>Seeded at session <b>create</b></td>
+    <td><span class="verdict trap">TRAP 2 &mdash; fixed by this plan</span></td>
+  </tr>
+  <tr>
+    <td><b>Pre-generated inject images</b></td>
+    <td>Feed engine copies <code>delivery_config.media_urls</code> onto the fired post</td>
+    <td>Generated <b>once at compile</b>, never refreshed</td>
+    <td><span class="verdict trap">TRAP 3 &mdash; fixed by this plan</span></td>
+  </tr>
+  <tr>
+    <td><b>Strategic benchmarks</b></td>
+    <td>AAR doctrine-compliance section</td>
+    <td>Reads <code>sessions.scenario_data</code> &mdash; a column <b>never written anywhere</b></td>
+    <td><span class="verdict trap">TRAP 4 &mdash; fixed by this plan</span></td>
+  </tr>
+  <tr>
+    <td><b>Facebook groups, sentiment curve</b></td>
+    <td>Nothing &mdash; groups are AI-generated at init, sentiment computed from posts</td>
+    <td>Dead fields</td>
+    <td><span class="verdict dead">NOT EXPOSED in editor</span></td>
+  </tr>
+</table>
+
+<div class="callout ok">
+  <h3>The net guarantee after this plan ships</h3>
+  <p style="margin:0">Every field the editor exposes has a verified runtime consumer, and every consumer either reads
+  live (most engines) or is refreshed from the live scenario at session start (the fixes below). Combined with the
+  live-session edit lock, there is no window where a successful save can silently fail to reach the game.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="traps">7. The four staleness traps &amp; their fixes</h2>
+
+<div class="panel actor trap">
+  <h3><span class="tag red">Trap 1</span> &nbsp;<code>sessions.current_state</code> is snapshotted at session <i>create</i></h3>
+  <p>When a session is created, the entire <code>scenario.initial_state</code> is copied into
+  <code>sessions.current_state</code> (<span class="file">server/routes/sessions.ts</span>, create handler). A trainer who
+  creates a session, <i>then</i> edits the scenario, then starts the session, would have the inject scheduler reading
+  stale <code>research_guidelines</code> from that frozen copy.</p>
+  <div class="callout ok" style="margin-bottom:0"><b>Fix:</b> when the session first transitions to
+  <code>in_progress</code>, re-fetch the scenario and merge the scenario-derived keys of <code>initial_state</code> into
+  <code>current_state</code>, preserving runtime-computed keys (e.g. <code>social_state</code>). Session <b>start</b>
+  becomes the single moment content is frozen &mdash; which matches the edit lock exactly.</div>
+</div>
+
+<div class="panel actor trap">
+  <h3><span class="tag red">Trap 2</span> &nbsp;Org pages are seeded into <code>sim_org_pages</code> at session <i>create</i></h3>
+  <p><code>seedOrgPages</code> writes session-scoped org page rows from <code>initial_state.org_page</code> when the
+  session is created. Edits to the org page between create and start would not reach the participant-facing page.</p>
+  <div class="callout ok" style="margin-bottom:0"><b>Fix:</b> re-run <code>seedOrgPages</code> from the live
+  <code>initial_state</code> in the same session-start block as the Trap 1 fix (social sims only). The existing upsert
+  behavior refreshes identity fields; branded history re-seeds correctly because the one-time guard checks the DB, and
+  the session has no posts before start.</div>
+</div>
+
+<div class="panel actor trap">
+  <h3><span class="tag red">Trap 3</span> &nbsp;Pre-generated post images go stale when their inject is edited</h3>
+  <p>Compile generates images from persona <code>image_prompts</code> and attaches URLs to injects via
+  <code>delivery_config.media_urls</code>. Nothing ever regenerates them. Edit an inject's content or author and it
+  fires with the <b>new text but the old image</b> &mdash; a content/image mismatch delivered mid-simulation.</p>
+  <div class="callout ok" style="margin-bottom:0"><b>Fix:</b> the inject editor shows the attached image thumbnail.
+  When content or author changes on an inject that has media, the UI flags the image as possibly stale and offers two
+  explicit actions: <b>Regenerate image</b> (new endpoint, rebuilds from current content + persona via
+  <code>generatePostImage</code>, replaces the URL) or <b>Remove image</b> (clears <code>media_urls</code>). Free, no
+  credit cost, synchronous with a visible success/failure result.</div>
+</div>
+
+<div class="panel actor trap">
+  <h3><span class="tag red">Trap 4</span> &nbsp;The AAR reads strategic benchmarks from a column that is never written</h3>
+  <p>The AAR doctrine-compliance section (<span class="file">server/services/aarSocialMediaService.ts</span>) reads
+  <code>session.scenario_data.scenario.initial_state.strategic_benchmarks</code> &mdash; but a repo-wide search shows
+  <code>sessions.scenario_data</code> is never populated by anything. Benchmarks have been silently empty in every AAR
+  since the feature was written, edited or not.</p>
+  <div class="callout ok" style="margin-bottom:0"><b>Fix:</b> change the AAR to fetch the scenario row and read
+  <code>initial_state.strategic_benchmarks</code> directly. This is a pre-existing bug fix that also makes the
+  benchmarks editor meaningful &mdash; trainer-edited benchmarks now genuinely shape the debrief.</div>
+</div>
+
+<p class="small muted">Known non-issue: <code>ambientContentService</code> keeps in-memory caches (NPC registry, player
+bubbles) per session. These only affect <i>already-running</i> sessions &mdash; which the live-session lock prevents
+editing anyway. The registry re-upserts personas every tick, so pre-start edits load fresh.</p>
+
+<!-- ============================================================ -->
+<h2 id="locks">8. Edit lock rules</h2>
+<p>Enforced <b>server-side on every edit request</b> and mirrored in the UI as a lock banner with the specific reason.
+Both conditions are evaluated live &mdash; nothing is permanently locked.</p>
+
+<div class="lockflow">
+  <div class="q">Session-credit balance &gt; 0?<br /><span class="slabel">(admins bypass this check)</span></div>
+  <div class="res no">NO &rarr; locked: "Out of session launch credits"</div>
+</div>
+<div class="lockflow">
+  <div class="q">Any session on this scenario<br /><code>in_progress</code> or <code>paused</code>?<br /><span class="slabel">(applies to admins too &mdash; data-consistency rule)</span></div>
+  <div class="res no">YES &rarr; locked: "Session in progress &mdash; editing resumes when it ends"</div>
+</div>
+<div class="lockflow">
+  <div class="q">Both checks pass</div>
+  <div class="res ok">EDITABLE &mdash; unlimited free edits</div>
+</div>
+
+<div class="states">
+  <div class="state good">Editable</div>
+  <span class="sarrow">&rarr;</span><span class="slabel">session starts</span><span class="sarrow">&rarr;</span>
+  <div class="state bad">Locked (live session)</div>
+  <span class="sarrow">&rarr;</span><span class="slabel">session ends, credits remain</span><span class="sarrow">&rarr;</span>
+  <div class="state good">Editable again</div>
+  <span class="sarrow">&rarr;</span><span class="slabel">credits hit 0</span><span class="sarrow">&rarr;</span>
+  <div class="state bad">Locked (no credits)</div>
+  <span class="sarrow">&rarr;</span><span class="slabel">new invoice paid</span><span class="sarrow">&rarr;</span>
+  <div class="state good">Editable again</div>
+</div>
+
+<p>Implementation: a new <code>canEditScenario(scenarioId, user)</code> helper in
+<span class="file">server/services/scenarioEditService.ts</span> combining <code>getBalances</code> /
+<code>isAdmin</code> from the credit service with a <code>sessions</code> status query. It returns
+<code>{ editable, reason, sessionCredits, liveSessionId }</code> and backs both a
+<code>GET /api/scenarios/:id/editability</code> endpoint (for the UI banner) and the guard inside every edit endpoint
+(so the UI can never bypass it).</p>
+
+<!-- ============================================================ -->
+<h2 id="endpoints">9. New &amp; changed backend endpoints</h2>
+<table>
+  <tr><th>Endpoint</th><th>Status</th><th>Purpose &amp; guards</th></tr>
+  <tr>
+    <td><code>GET /api/scenarios/:id/editability</code></td>
+    <td><span class="tag green">New</span></td>
+    <td>Returns the lock state + reason for the UI banner. Owner-or-admin.</td>
+  </tr>
+  <tr>
+    <td><code>PATCH /api/scenarios/:id/injects/:injectId</code></td>
+    <td><span class="tag green">New</span></td>
+    <td>Edit one template inject (<code>session_id IS NULL</code> only). Zod-validated field allowlist: title, content, type, severity, trigger time/condition, scope, target teams, appear/cancel conditions, <code>delivery_config</code>. Sets <code>generation_source='trainer'</code>. Guards: owner + <code>canEditScenario</code>.</td>
+  </tr>
+  <tr>
+    <td><code>POST /api/scenarios/:id/injects</code></td>
+    <td><span class="tag green">New</span></td>
+    <td>Trainer adds a brand-new inject (<code>generation_source='trainer'</code>, <code>ai_generated=false</code>). Same guards.</td>
+  </tr>
+  <tr>
+    <td><code>DELETE /api/scenarios/:id/injects/:injectId</code></td>
+    <td><span class="tag green">New</span></td>
+    <td>Remove a template inject. Same guards. Safe: the scheduler dedups already-fired injects per session via <code>session_events</code>.</td>
+  </tr>
+  <tr>
+    <td><code>POST /api/scenarios/:id/injects/:injectId/regenerate-image</code></td>
+    <td><span class="tag green">New</span></td>
+    <td>Rebuilds the post image from the inject's <i>current</i> content and author persona, uploads to <code>sim-media</code>, replaces <code>delivery_config.media_urls</code>. Synchronous, explicit success/error response. Same guards.</td>
+  </tr>
+  <tr>
+    <td><code>PATCH /api/scenarios/:id</code></td>
+    <td><span class="tag amber">Changed</span></td>
+    <td>Already supports <code>initial_state</code>, <code>objectives</code>, <code>briefing</code>. Adds the <code>canEditScenario</code> guard <i>only when content fields are touched</i>, so non-content toggles (e.g. <code>is_active</code>) keep working while locked.</td>
+  </tr>
+  <tr>
+    <td><code>PATCH /api/sessions/:id</code> (start transition)</td>
+    <td><span class="tag amber">Changed</span></td>
+    <td>On first transition to <code>in_progress</code>: re-merge live <code>initial_state</code> into <code>current_state</code> and re-seed org pages (Traps 1 &amp; 2).</td>
+  </tr>
+  <tr>
+    <td>AAR service (internal)</td>
+    <td><span class="tag amber">Changed</span></td>
+    <td>Reads <code>strategic_benchmarks</code> from the live scenario instead of the never-written <code>sessions.scenario_data</code> (Trap 4).</td>
+  </tr>
+</table>
+
+<p class="small">All new endpoints follow the house pattern: <code>requireAuth</code> &rarr; inline trainer/admin role
+check &rarr; <code>assertScenarioOwner</code> &rarr; <code>canEditScenario</code> &rarr; zod validation &rarr; Supabase
+write with the <code>error</code> result explicitly checked and surfaced as a 4xx/5xx JSON response.</p>
+
+<!-- ============================================================ -->
+<h2 id="frontend">10. Frontend changes</h2>
+<div class="grid2">
+  <div class="panel">
+    <h3>API client <span class="file">frontend/src/lib/api.ts</span></h3>
+    <p class="small">New methods under <code>api.scenarios</code>, following the existing
+    <code>updatePinPositions</code> pattern:</p>
+    <ul class="small">
+      <li><code>getEditability(id)</code></li>
+      <li><code>updateInject(id, injectId, fields)</code></li>
+      <li><code>createInject(id, fields)</code></li>
+      <li><code>deleteInject(id, injectId)</code></li>
+      <li><code>regenerateInjectImage(id, injectId)</code></li>
+    </ul>
+    <p class="small muted"><code>handleResponse</code> already converts non-2xx responses into thrown errors with
+    friendly messages &mdash; every caller surfaces them.</p>
+  </div>
+  <div class="panel">
+    <h3>Detail view <span class="file">ScenarioDetailView.tsx</span></h3>
+    <ul class="small">
+      <li>Fetch editability on mount; render the <b>lock banner</b> with the exact reason when locked, and disable all inputs.</li>
+      <li>Convert each read-only section of the social branch into an editable section (see <a href="#editing">&sect;5</a>).</li>
+      <li>Reuse the map-pin editor's pattern per section: local dirty state &rarr; Save button &rarr; optimistic local update on success &rarr; inline error message on failure.</li>
+      <li>Inject editor: chronological list, expandable edit form, image thumbnail with stale warning + Regenerate / Remove, add-inject and delete-inject actions.</li>
+    </ul>
+  </div>
+</div>
+<div class="panel">
+  <h3>Wizard review step <span class="file">SocialCrisisWizard.tsx</span></h3>
+  <p class="small" style="margin-bottom:0">Enrich <code>renderStep7</code> with collapsible read-only sections (inject
+  timeline, persona cards, fact sheet, org page, objectives, gates) rendered from wizard state already in memory. Keep
+  the counts grid, compile button, progress log, and success panel untouched.</p>
+</div>
+
+<!-- ============================================================ -->
+<h2 id="errors">11. No-silent-failure policy</h2>
+<p>The explicit requirement: every edit either <b>demonstrably reaches the game</b> or <b>visibly fails</b>. Four layers
+enforce this:</p>
+<ol class="steps">
+  <li><span class="num-badge">1</span><b>Field allowlisting by consumer.</b> The editor only exposes fields with a
+  verified runtime read path (<a href="#propagation">&sect;6</a>). Dead fields are not editable at all.</li>
+  <li><span class="num-badge">2</span><b>No swallowed database errors.</b> Every Supabase write in the new endpoints
+  checks the <code>error</code> result and returns a structured 4xx/5xx &mdash; never a 200 with a failed write.</li>
+  <li><span class="num-badge">3</span><b>Visible save feedback.</b> Every save button shows saving / saved / failed
+  states inline (the established <code>saveMsg</code> convention); failures render the thrown error message, and local
+  state only updates after a confirmed 2xx.</li>
+  <li><span class="num-badge">4</span><b>Snapshot elimination.</b> The Trap 1&ndash;4 fixes remove every known point
+  where a successful save could still be invisible at runtime; the live-session lock removes the only remaining window
+  (mid-run edits).</li>
+</ol>
+
+<!-- ============================================================ -->
+<h2 id="verify">12. Verification checklist</h2>
+<table>
+  <tr><th>#</th><th>Check</th><th>Expected result</th></tr>
+  <tr><td>1</td><td>Compile a social scenario, edit an inject's content + author, launch and start a session</td><td>Inject fires with the edited text, attributed to the edited handle</td></tr>
+  <tr><td>2</td><td>Edit an NPC persona's personality/bias before start</td><td>Ambient posts and NPC replies reflect the edited persona</td></tr>
+  <tr><td>3</td><td>Edit fact sheet + research guidelines, create the session <i>before</i> editing, start after</td><td>Fact-check UI, watchdog, and grader use edited values (Trap 1 fix)</td></tr>
+  <tr><td>4</td><td>Edit org page name/bio between session create and start</td><td>Participant-facing org page shows edits (Trap 2 fix)</td></tr>
+  <tr><td>5</td><td>Edit an inject that has a pre-generated image, click Regenerate</td><td>New image matches new content; Remove clears it; old behavior (stale image) is impossible without ignoring the warning</td></tr>
+  <tr><td>6</td><td>Edit strategic benchmarks, run a session to completion</td><td>AAR doctrine section reflects edited benchmarks (Trap 4 fix)</td></tr>
+  <tr><td>7</td><td>Drain session credits to 0</td><td>Edit UI locks with the credits reason; server rejects direct API edits with 403</td></tr>
+  <tr><td>8</td><td>Start a session, attempt edits mid-run</td><td>Locked with the live-session reason; unlocks when the session completes (credits permitting)</td></tr>
+  <tr><td>9</td><td>Pay a new invoice while locked at 0 credits</td><td>Editing reopens automatically</td></tr>
+  <tr><td>10</td><td>Unit tests for <code>canEditScenario</code></td><td>Covers: zero credits, live session, paused session, admin bypass (credits only), both-pass</td></tr>
+</table>
+
+<!-- ============================================================ -->
+<h2 id="phase2">13. Phase 2 preview: Field Ops</h2>
+<p>Field ops differs in one structural way: injects, hazards, and casualties are generated <i>inside</i> compile
+(<code>stageGenerateAndPersist</code> in <span class="file">server/services/warroomService.ts</span>), so a true
+pre-compile review requires splitting that function into generate (payload stashed on the wizard draft) and persist.
+The persistence boundary is already a single call at the end of the function, so the split is clean.</p>
+<p>Everything else carries over from Phase 1 unchanged: the <code>canEditScenario</code> lock, the inject CRUD
+endpoints (same <code>scenario_injects</code> table), the detail-view editing framework, and the no-silent-failure
+policy. Phase 2 adds the field-ops-specific surfaces (hazards, casualties, equipment, insider knowledge) and two
+targeted regeneration jobs (hazard deterioration timelines / zones when a hazard's type or severity changes).</p>
+
+<footer>
+  Trainer Scenario Editing &mdash; Phase 1 engineering plan &middot; Black Swan Simulations &middot; July 2026<br />
+  Companion to the implementation plan; runtime propagation claims verified against the inject scheduler, ambient/feed/NPC engines, session create/start handlers, and the AAR service.
+</footer>
+
+</div>
+</body>
+</html>

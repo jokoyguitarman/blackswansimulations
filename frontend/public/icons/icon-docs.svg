@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-labelledby="title">
+  <title id="title">Docs</title>
+  <rect width="128" height="128" rx="27" fill="#185ABD"/>
+  <rect x="42" y="24" width="62" height="80" rx="8" fill="#FFFFFF" opacity=".96"/>
+  <path d="M82 24h14a8 8 0 0 1 8 8v14z" fill="#D8E6F7"/>
+  <rect x="23" y="35" width="55" height="58" rx="7" fill="#124078"/>
+  <path d="M34 49h10l7 27 7-27h9l-11 34H46z" fill="#FFFFFF"/>
+  <path d="M85 58h10M85 69h10M85 80h10" stroke="#8BAAD3" stroke-width="5" stroke-linecap="round"/>
+</svg>

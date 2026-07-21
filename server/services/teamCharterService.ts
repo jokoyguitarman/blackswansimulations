@@ -251,9 +251,9 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
         tier: 1,
       },
       {
-        action_id: 'legal_review_advice',
-        description: 'Advise the team on drafts and legal risk',
-        detection_action_type: 'chat_message_sent',
+        action_id: 'legal_review_drafts',
+        description: 'Review and approve team drafts before publication',
+        detection_action_type: 'draft_approved',
         timing_benchmark_minutes: 30,
         weight: 25,
         tier: 2,

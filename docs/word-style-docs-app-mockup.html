@@ -1,0 +1,1690 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Black Swan Docs — Word-Style DraftPad Mockup</title>
+  <style>
+    :root {
+      /* Black Swan design language (document shell) */
+      --bs-navy: #2f527d;
+      --bs-navy-dark: #213e63;
+      --bs-orange: #f28c00;
+      --bs-bg: #f3f2ee;
+      --bs-card: #fbfaf7;
+      --bs-card-muted: #ebe9e2;
+      --bs-line: #d8d5cc;
+      --bs-text: #23344b;
+      --bs-muted: #6d7784;
+      --bs-success: #2d8a48;
+      --bs-danger: #b73a3a;
+
+      /* Word-inspired Docs application */
+      --word-blue: #185abd;
+      --word-blue-dark: #124078;
+      --word-blue-tint: #e8eef7;
+      --word-heading: #2f5496;
+      --word-chrome: #f3f2f1;
+      --word-canvas: #e6e6e6;
+      --word-paper: #ffffff;
+      --word-border: #e1dfdd;
+      --word-text: #323130;
+      --word-secondary: #605e5c;
+      --word-disabled: #a19f9d;
+      --word-green: #107c10;
+      --word-green-bg: #dff6dd;
+      --word-amber: #8f6200;
+      --word-amber-bg: #fff4ce;
+      --word-red: #a80000;
+      --word-red-bg: #fde7e9;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      background: var(--bs-bg);
+      color: var(--bs-text);
+      font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.55;
+    }
+    button, input, textarea { font: inherit; }
+    button { cursor: pointer; }
+    a { color: inherit; }
+
+    .bs-topbar {
+      height: 58px;
+      padding: 0 26px;
+      background: var(--bs-navy);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 3px solid var(--bs-orange);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 0;
+    }
+    .brand-mark {
+      width: 31px;
+      height: 31px;
+      border-radius: 7px;
+      background: var(--bs-orange);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: -.03em;
+    }
+    .brand-name {
+      font-size: 15px;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+    .brand-sub {
+      opacity: .67;
+      font-size: 9px;
+      line-height: 1.2;
+      margin-top: 2px;
+    }
+    .topbar-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      opacity: .86;
+    }
+    .topbar-meta .chip {
+      border: 1px solid rgba(255,255,255,.25);
+      border-radius: 5px;
+      padding: 5px 9px;
+    }
+
+    .page { max-width: 1320px; margin: 0 auto; padding: 28px 26px 70px; }
+    .eyebrow {
+      color: var(--bs-orange);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+    h1, h2, h3, p { margin-top: 0; }
+    h1 {
+      margin-bottom: 12px;
+      font-size: clamp(29px, 4vw, 46px);
+      line-height: 1.07;
+      letter-spacing: -.035em;
+      color: var(--bs-navy-dark);
+    }
+    h2 {
+      font-size: 24px;
+      line-height: 1.2;
+      color: var(--bs-navy-dark);
+      letter-spacing: -.02em;
+      margin-bottom: 9px;
+    }
+    h3 {
+      font-size: 16px;
+      color: var(--bs-text);
+      margin-bottom: 7px;
+    }
+    .lead {
+      max-width: 830px;
+      color: var(--bs-muted);
+      font-size: 16px;
+      margin-bottom: 0;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: 1.25fr .75fr;
+      gap: 34px;
+      align-items: center;
+      padding: 34px 0 30px;
+    }
+    .hero-summary {
+      background: var(--bs-card-muted);
+      border: 1px solid var(--bs-line);
+      border-left: 4px solid var(--bs-orange);
+      border-radius: 7px;
+      padding: 18px 20px;
+    }
+    .hero-summary strong {
+      display: block;
+      color: var(--bs-orange);
+      font-size: 11px;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: 9px;
+    }
+    .hero-summary ul {
+      padding-left: 18px;
+      margin: 0;
+      color: var(--bs-muted);
+      font-size: 13px;
+    }
+    .hero-summary li + li { margin-top: 5px; }
+
+    .doc-nav {
+      background: rgba(243,242,238,.94);
+      border-top: 1px solid var(--bs-line);
+      border-bottom: 1px solid var(--bs-line);
+      position: sticky;
+      top: 58px;
+      z-index: 90;
+      overflow-x: auto;
+    }
+    .doc-nav-inner {
+      max-width: 1320px;
+      margin: 0 auto;
+      padding: 0 26px;
+      display: flex;
+      min-width: max-content;
+    }
+    .doc-nav a {
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 650;
+      color: var(--bs-muted);
+      padding: 11px 13px 10px;
+      border-bottom: 2px solid transparent;
+    }
+    .doc-nav a:hover { color: var(--bs-navy); border-color: var(--bs-orange); }
+
+    section {
+      padding: 42px 0;
+      border-top: 1px solid var(--bs-line);
+    }
+    .section-copy {
+      max-width: 850px;
+      color: var(--bs-muted);
+      margin-bottom: 24px;
+      font-size: 14px;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-top: 22px;
+    }
+    .decision {
+      padding: 16px;
+      background: var(--bs-card);
+      border: 1px solid var(--bs-line);
+      border-radius: 7px;
+    }
+    .decision .num {
+      font-size: 10px;
+      color: var(--bs-orange);
+      letter-spacing: .1em;
+      font-weight: 800;
+      margin-bottom: 6px;
+    }
+    .decision b { display: block; font-size: 13px; margin-bottom: 4px; }
+    .decision span { color: var(--bs-muted); font-size: 12px; }
+
+    /* Prototype controls */
+    .prototype-shell {
+      background: var(--bs-card);
+      border: 1px solid var(--bs-line);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    .prototype-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      padding: 13px 16px;
+      background: var(--bs-card-muted);
+      border-bottom: 1px solid var(--bs-line);
+    }
+    .prototype-header .label {
+      font-size: 11px;
+      font-weight: 800;
+      color: var(--bs-muted);
+      text-transform: uppercase;
+      letter-spacing: .09em;
+    }
+    .segmented {
+      display: inline-flex;
+      padding: 3px;
+      background: #dcd9d0;
+      border-radius: 6px;
+      gap: 2px;
+    }
+    .segmented button {
+      border: 0;
+      background: transparent;
+      color: var(--bs-muted);
+      padding: 6px 13px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+    .segmented button.active {
+      background: #fff;
+      color: var(--bs-navy);
+    }
+    .demo-note {
+      font-size: 11px;
+      color: var(--bs-muted);
+    }
+    .prototype-stage {
+      min-height: 780px;
+      padding: 28px;
+      background:
+        linear-gradient(rgba(47,82,125,.035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(47,82,125,.035) 1px, transparent 1px),
+        #efeee9;
+      background-size: 28px 28px;
+    }
+    .prototype-view[hidden] { display: none !important; }
+
+    /* Mobile mock */
+    .mobile-layout {
+      display: grid;
+      grid-template-columns: minmax(340px, 400px) 1fr;
+      gap: 34px;
+      align-items: start;
+      max-width: 1080px;
+      margin: 0 auto;
+    }
+    .phone {
+      width: 393px;
+      max-width: 100%;
+      height: 748px;
+      padding: 10px;
+      border-radius: 42px;
+      background: #2f3032;
+      border: 3px solid #46484c;
+      position: relative;
+      margin: auto;
+    }
+    .phone-screen {
+      height: 100%;
+      border-radius: 33px;
+      overflow: hidden;
+      background: #fff;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .phone-status {
+      height: 34px;
+      flex: 0 0 34px;
+      background: var(--word-blue);
+      color: #fff;
+      padding: 8px 20px 0;
+      display: flex;
+      justify-content: space-between;
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .phone-island {
+      position: absolute;
+      z-index: 8;
+      top: 6px;
+      left: 50%;
+      width: 86px;
+      height: 20px;
+      transform: translateX(-50%);
+      border-radius: 14px;
+      background: #111;
+    }
+    .mobile-appbar {
+      height: 46px;
+      flex: 0 0 46px;
+      padding: 0 12px;
+      background: var(--word-blue);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-top: 1px solid rgba(255,255,255,.08);
+    }
+    .icon-btn {
+      width: 30px;
+      height: 30px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      border: 0;
+      border-radius: 5px;
+      background: transparent;
+      color: inherit;
+    }
+    .icon-btn:hover { background: rgba(255,255,255,.14); }
+    .icon-btn svg { width: 18px; height: 18px; }
+    .mobile-doc-name {
+      flex: 1;
+      min-width: 0;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      text-overflow: ellipsis;
+    }
+    .save-cloud {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 9px;
+      white-space: nowrap;
+      opacity: .86;
+    }
+    .status-strip {
+      display: none;
+      min-height: 30px;
+      padding: 6px 12px;
+      font-size: 10px;
+      font-weight: 650;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .status-strip.visible { display: flex; }
+    .status-strip.in-review { color: var(--word-amber); background: var(--word-amber-bg); }
+    .status-strip.approved { color: var(--word-green); background: var(--word-green-bg); }
+    .status-strip.changes-requested { color: var(--word-red); background: var(--word-red-bg); }
+    .mobile-page-scroll {
+      flex: 1;
+      overflow-y: auto;
+      background: #fff;
+    }
+    .mobile-page {
+      min-height: 100%;
+      padding: 22px 21px 80px;
+      color: var(--word-text);
+      outline: 0;
+      font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .mobile-page h1, .desktop-page h1 {
+      color: var(--word-heading);
+      font-family: "Segoe UI", Calibri, sans-serif;
+      font-size: 24px;
+      font-weight: 300;
+      line-height: 1.2;
+      letter-spacing: 0;
+      margin: 0 0 12px;
+    }
+    .mobile-page h2, .desktop-page h2 {
+      color: var(--word-heading);
+      font-family: "Segoe UI", Calibri, sans-serif;
+      font-size: 18px;
+      font-weight: 400;
+      margin: 18px 0 7px;
+    }
+    .mobile-page p, .desktop-page p { margin: 0 0 10px; }
+    .mobile-toolbar {
+      height: 49px;
+      flex: 0 0 49px;
+      background: #fff;
+      border-top: 1px solid var(--word-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-around;
+      padding: 4px 8px;
+    }
+    .format-btn {
+      min-width: 31px;
+      height: 32px;
+      padding: 0 7px;
+      border: 0;
+      border-radius: 6px;
+      background: transparent;
+      color: var(--word-text);
+      display: grid;
+      place-items: center;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .format-btn:hover, .format-btn.active {
+      color: var(--word-blue);
+      background: var(--word-blue-tint);
+    }
+    .toolbar-sep { width: 1px; height: 23px; background: var(--word-border); }
+    .mobile-home-indicator {
+      height: 18px;
+      flex: 0 0 18px;
+      background: #fff;
+      position: relative;
+    }
+    .mobile-home-indicator::after {
+      content: "";
+      position: absolute;
+      width: 110px;
+      height: 4px;
+      background: #111;
+      border-radius: 4px;
+      bottom: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .callout-list {
+      display: grid;
+      gap: 11px;
+    }
+    .callout {
+      display: grid;
+      grid-template-columns: 29px 1fr;
+      gap: 10px;
+      background: var(--bs-card);
+      border: 1px solid var(--bs-line);
+      border-radius: 7px;
+      padding: 12px;
+    }
+    .callout-num {
+      width: 29px;
+      height: 29px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--bs-navy);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 800;
+    }
+    .callout b { display: block; font-size: 13px; margin-bottom: 2px; }
+    .callout p { margin: 0; color: var(--bs-muted); font-size: 12px; }
+
+    /* Desktop mock */
+    .desktop-wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    .desktop-window {
+      height: 720px;
+      min-width: 940px;
+      overflow: hidden;
+      border: 1px solid #8c8c8c;
+      background: #fff;
+      display: flex;
+      flex-direction: column;
+    }
+    .sim-window-bar {
+      height: 31px;
+      flex: 0 0 31px;
+      display: flex;
+      align-items: center;
+      padding: 0 10px;
+      background: #252a31;
+      color: #e7e9ec;
+      font-size: 11px;
+      gap: 8px;
+    }
+    .sim-word-mark {
+      width: 18px;
+      height: 18px;
+      background: var(--word-blue);
+      color: #fff;
+      font-weight: 750;
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+    }
+    .window-controls { margin-left: auto; display: flex; height: 31px; }
+    .window-controls span { width: 38px; display: grid; place-items: center; color: #aeb5bf; }
+
+    .word-title-row {
+      height: 38px;
+      flex: 0 0 38px;
+      background: var(--word-blue);
+      color: #fff;
+      display: grid;
+      grid-template-columns: 190px 1fr 190px;
+      align-items: center;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+    .autosave {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 11px;
+    }
+    .toggle {
+      width: 29px;
+      height: 15px;
+      border-radius: 9px;
+      background: rgba(255,255,255,.95);
+      padding: 2px;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .toggle::after {
+      content: "";
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--word-blue);
+    }
+    .desktop-title-input {
+      width: 100%;
+      max-width: 420px;
+      justify-self: center;
+      text-align: center;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .share-copy {
+      justify-self: end;
+      border: 1px solid rgba(255,255,255,.45);
+      background: rgba(255,255,255,.12);
+      color: #fff;
+      height: 27px;
+      border-radius: 3px;
+      padding: 0 11px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .ribbon-tabs {
+      height: 32px;
+      flex: 0 0 32px;
+      display: flex;
+      align-items: flex-end;
+      gap: 1px;
+      padding-left: 8px;
+      background: var(--word-chrome);
+      border-bottom: 1px solid var(--word-border);
+    }
+    .ribbon-tab {
+      height: 31px;
+      padding: 0 15px;
+      border: 0;
+      background: transparent;
+      color: var(--word-secondary);
+      font-size: 12px;
+      border-bottom: 2px solid transparent;
+    }
+    .ribbon-tab.active {
+      background: #fff;
+      color: var(--word-text);
+      border-color: var(--word-blue);
+    }
+    .ribbon {
+      height: 66px;
+      flex: 0 0 66px;
+      background: #fff;
+      border-bottom: 1px solid var(--word-border);
+      display: flex;
+      align-items: stretch;
+      padding: 5px 8px;
+      gap: 5px;
+      overflow-x: auto;
+    }
+    .ribbon-group {
+      display: flex;
+      align-items: center;
+      gap: 3px;
+      padding: 0 7px 13px;
+      border-right: 1px solid var(--word-border);
+      position: relative;
+      white-space: nowrap;
+    }
+    .ribbon-group::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: -1px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: var(--word-secondary);
+      font-size: 9px;
+    }
+    .select-like {
+      height: 27px;
+      border: 1px solid var(--word-border);
+      background: #fff;
+      color: var(--word-text);
+      padding: 0 8px;
+      min-width: 105px;
+      font-size: 11px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .select-like.small { min-width: 46px; }
+    .ribbon-btn {
+      min-width: 29px;
+      height: 29px;
+      border: 0;
+      border-radius: 3px;
+      background: transparent;
+      color: var(--word-text);
+      display: grid;
+      place-items: center;
+      padding: 0 6px;
+      font-size: 12px;
+    }
+    .ribbon-btn:hover, .ribbon-btn.active { background: var(--word-blue-tint); color: var(--word-blue); }
+    .style-card {
+      height: 41px;
+      min-width: 66px;
+      border: 1px solid var(--word-border);
+      background: #fff;
+      color: var(--word-text);
+      padding: 3px 7px;
+      font-size: 10px;
+      text-align: left;
+    }
+    .style-card.active { border: 2px solid var(--word-blue); background: var(--word-blue-tint); }
+    .style-card.heading { color: var(--word-heading); font-size: 12px; }
+    .desktop-workspace {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      background: var(--word-canvas);
+    }
+    .page-canvas {
+      flex: 1;
+      overflow: auto;
+      padding: 28px 40px 70px;
+    }
+    .desktop-page {
+      width: 680px;
+      min-height: 820px;
+      margin: 0 auto;
+      background: #fff;
+      padding: 62px 58px;
+      color: var(--word-text);
+      outline: 0;
+      box-shadow: 0 2px 8px rgba(0,0,0,.22);
+      font-family: Calibri, Carlito, "Segoe UI", sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+    .editor-pane {
+      width: 300px;
+      flex: 0 0 300px;
+      background: #fff;
+      border-left: 1px solid var(--word-border);
+      overflow-y: auto;
+      display: none;
+    }
+    .editor-pane.open { display: block; }
+    .editor-pane-head {
+      height: 42px;
+      padding: 0 13px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--word-border);
+      font-weight: 650;
+      font-size: 13px;
+    }
+    .editor-body { padding: 15px; }
+    .score-ring {
+      width: 92px;
+      height: 92px;
+      border-radius: 50%;
+      margin: 5px auto 17px;
+      display: grid;
+      place-items: center;
+      border: 8px solid var(--word-green);
+      color: var(--word-green);
+      font-size: 28px;
+      font-weight: 700;
+    }
+    .score-ring span { font-size: 10px; color: var(--word-secondary); display: block; text-align: center; margin-top: -5px; }
+    .metric { margin: 9px 0; }
+    .metric-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--word-secondary); }
+    .metric-bar { height: 5px; background: var(--word-chrome); margin-top: 4px; }
+    .metric-fill { height: 100%; background: var(--word-blue); }
+    .editor-feedback {
+      margin-top: 15px;
+      padding: 11px;
+      background: var(--word-chrome);
+      color: var(--word-secondary);
+      font-size: 11px;
+      border-left: 3px solid var(--word-blue);
+    }
+    .primary-btn {
+      width: 100%;
+      border: 0;
+      border-radius: 3px;
+      background: var(--word-blue);
+      color: #fff;
+      padding: 8px 12px;
+      margin-top: 12px;
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .desktop-status {
+      height: 24px;
+      flex: 0 0 24px;
+      padding: 0 11px;
+      background: var(--word-blue);
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+    }
+    .desktop-explanation {
+      margin-top: 18px;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+    }
+
+    /* Mobile bottom sheet */
+    .sheet-backdrop {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      background: rgba(0,0,0,.32);
+      align-items: flex-end;
+    }
+    .sheet-backdrop.open { display: flex; }
+    .bottom-sheet {
+      width: 100%;
+      max-height: 68%;
+      overflow-y: auto;
+      background: #fff;
+      border-radius: 16px 16px 0 0;
+      padding: 9px 16px 21px;
+    }
+    .sheet-handle { width: 36px; height: 4px; margin: 0 auto 13px; background: #c8c6c4; border-radius: 4px; }
+    .bottom-sheet h3 { color: var(--word-text); font-size: 16px; margin-bottom: 4px; }
+    .bottom-sheet p { color: var(--word-secondary); font-size: 11px; }
+    .score-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--word-border);
+      color: var(--word-secondary);
+      font-size: 12px;
+    }
+    .score-pill {
+      min-width: 42px;
+      border-radius: 9px;
+      padding: 2px 8px;
+      text-align: center;
+      background: var(--word-green-bg);
+      color: var(--word-green);
+      font-weight: 700;
+    }
+
+    /* Feature guide */
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 13px;
+    }
+    .feature {
+      background: var(--bs-card);
+      border: 1px solid var(--bs-line);
+      border-radius: 7px;
+      padding: 18px;
+    }
+    .feature-tag {
+      color: var(--bs-orange);
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      margin-bottom: 6px;
+    }
+    .feature p { margin: 0; color: var(--bs-muted); font-size: 12px; }
+
+    .design-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .spec-card {
+      background: var(--bs-card);
+      border: 1px solid var(--bs-line);
+      border-radius: 7px;
+      overflow: hidden;
+    }
+    .spec-card-head {
+      padding: 11px 14px;
+      background: var(--bs-card-muted);
+      border-bottom: 1px solid var(--bs-line);
+      color: var(--bs-muted);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+    .spec-card-body { padding: 14px; }
+    .swatch-row {
+      display: grid;
+      grid-template-columns: 28px 1fr 82px;
+      gap: 9px;
+      align-items: center;
+      padding: 6px 0;
+      border-bottom: 1px solid #e8e6e0;
+      font-size: 12px;
+    }
+    .swatch-row:last-child { border: 0; }
+    .swatch { width: 26px; height: 26px; border: 1px solid rgba(0,0,0,.12); }
+    .swatch-row code { color: var(--bs-muted); font-size: 10px; }
+    .type-sample { padding: 10px 0; border-bottom: 1px solid #e8e6e0; }
+    .type-sample:last-child { border: 0; }
+    .type-sample small { display: block; color: var(--bs-muted); margin-top: 3px; }
+    .body-sample { font-family: Calibri, Carlito, "Segoe UI", sans-serif; font-size: 15px; }
+    .h1-sample { font-size: 24px; font-weight: 300; color: var(--word-heading); }
+    .h2-sample { font-size: 18px; font-weight: 400; color: var(--word-heading); }
+    .title-sample { font-size: 30px; font-weight: 300; border-bottom: 1px solid var(--word-border); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 8px;
+      align-items: stretch;
+      margin-top: 22px;
+    }
+    .flow-step {
+      position: relative;
+      background: var(--bs-card);
+      border: 1px solid var(--bs-line);
+      border-top: 3px solid var(--bs-navy);
+      padding: 14px 12px;
+      min-height: 112px;
+    }
+    .flow-step:not(:last-child)::after {
+      content: "›";
+      position: absolute;
+      right: -9px;
+      top: 43%;
+      z-index: 2;
+      width: 17px;
+      height: 17px;
+      border-radius: 50%;
+      background: var(--bs-orange);
+      color: #fff;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+    }
+    .flow-step b { display: block; font-size: 12px; margin-bottom: 5px; }
+    .flow-step span { color: var(--bs-muted); font-size: 11px; }
+
+    .security-note {
+      margin-top: 22px;
+      padding: 16px 18px;
+      background: #eef4ed;
+      border: 1px solid #c8d9c6;
+      border-left: 4px solid var(--bs-success);
+      border-radius: 6px;
+      font-size: 12px;
+      color: #4f6752;
+    }
+    .security-note b { color: #2c5233; }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 22px;
+      z-index: 1000;
+      transform: translate(-50%, 20px);
+      background: #323130;
+      color: #fff;
+      padding: 9px 14px;
+      border-radius: 4px;
+      font-size: 12px;
+      opacity: 0;
+      pointer-events: none;
+      transition: .2s ease;
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+    .footer {
+      padding: 28px 0 0;
+      color: var(--bs-muted);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    @media (max-width: 1050px) {
+      .desktop-scroller { overflow-x: auto; padding-bottom: 7px; }
+      .desktop-window { transform-origin: top left; }
+      .decision-grid, .desktop-explanation { grid-template-columns: repeat(2, 1fr); }
+      .feature-grid { grid-template-columns: repeat(2, 1fr); }
+      .flow { grid-template-columns: repeat(3, 1fr); }
+      .flow-step:nth-child(3)::after { display: none; }
+    }
+    @media (max-width: 800px) {
+      .hero { grid-template-columns: 1fr; }
+      .mobile-layout { grid-template-columns: 1fr; }
+      .design-grid { grid-template-columns: 1fr; }
+      .prototype-stage { padding: 18px 10px; }
+      .phone { width: 360px; height: 720px; }
+      .feature-grid, .decision-grid, .desktop-explanation { grid-template-columns: 1fr; }
+      .flow { grid-template-columns: 1fr; }
+      .flow-step::after { display: none !important; }
+      .topbar-meta { display: none; }
+      .bs-topbar { padding: 0 16px; }
+      .page { padding-left: 16px; padding-right: 16px; }
+      .doc-nav-inner { padding: 0 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="bs-topbar">
+    <div class="brand">
+      <div class="brand-mark">BS</div>
+      <div>
+        <div class="brand-name">Black Swan</div>
+        <div class="brand-sub">UNIFIED SIMULATION ENVIRONMENT</div>
+      </div>
+    </div>
+    <div class="topbar-meta">
+      <span>PRODUCT DESIGN SPECIFICATION</span>
+      <span class="chip">Docs app mockup · v1</span>
+    </div>
+  </header>
+
+  <nav class="doc-nav">
+    <div class="doc-nav-inner">
+      <a href="#overview">Overview</a>
+      <a href="#prototype">Interactive mockup</a>
+      <a href="#features">Feature guide</a>
+      <a href="#design">Colours & typography</a>
+      <a href="#workflow">Review workflow</a>
+      <a href="#engineering">Engineering notes</a>
+    </div>
+  </nav>
+
+  <main class="page">
+    <section id="overview" style="border-top:0;padding-top:0;">
+      <div class="hero">
+        <div>
+          <div class="eyebrow">DraftPad replacement</div>
+          <h1>A shared document editor built like Word.</h1>
+          <p class="lead">
+            DraftPad becomes <strong>Docs</strong>: one team-shared document library, a Word-mobile
+            editing experience inside the simulated phone, and a ribbon-based Word-desktop experience
+            inside Desktop Mode. Both views open the same server-persisted document.
+          </p>
+        </div>
+        <aside class="hero-summary">
+          <strong>Confirmed product rules</strong>
+          <ul>
+            <li>Documents are shared with the author's assigned team.</li>
+            <li>Review and approval are available, but never mandatory.</li>
+            <li>Players copy text into Social or Mail; Docs does not publish directly.</li>
+            <li>Autosave keeps work intact when switching between mobile and desktop.</li>
+          </ul>
+        </aside>
+      </div>
+
+      <div class="decision-grid">
+        <div class="decision">
+          <div class="num">01 · IDENTITY</div>
+          <b>Word-inspired, not copied</b>
+          <span>Word-blue interaction patterns and ribbon composition, with a custom Docs icon and Black Swan framing.</span>
+        </div>
+        <div class="decision">
+          <div class="num">02 · CONTINUITY</div>
+          <b>One document, two views</b>
+          <span>Server persistence and 800ms debounced autosave make phone-to-desktop switching seamless.</span>
+        </div>
+        <div class="decision">
+          <div class="num">03 · TEAMWORK</div>
+          <b>Shared with the team</b>
+          <span>Teammates read and review; the author remains the only editor, avoiding simultaneous-edit conflicts.</span>
+        </div>
+        <div class="decision">
+          <div class="num">04 · FREE USE</div>
+          <b>Copy, don't publish</b>
+          <span>Approval is a training signal—not a technical gate. Players can copy their text at any lifecycle status.</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="prototype">
+      <div class="eyebrow">Interactive prototype</div>
+      <h2>Try the same document in both views</h2>
+      <p class="section-copy">
+        Edit text, apply basic formatting, submit it for review, open the AI Editor, copy it,
+        and switch between phone and desktop. The mockup synchronises the sample document in your
+        browser to demonstrate the intended cross-view continuity.
+      </p>
+
+      <div class="prototype-shell">
+        <div class="prototype-header">
+          <div>
+            <div class="label">Preview mode</div>
+            <div class="demo-note">Changes in one view are mirrored into the other.</div>
+          </div>
+          <div class="segmented" aria-label="Preview view">
+            <button class="active" data-prototype="mobile">Word mobile</button>
+            <button data-prototype="desktop">Word desktop</button>
+          </div>
+          <div class="segmented" aria-label="Document status">
+            <button class="active" data-status="draft">Draft</button>
+            <button data-status="in-review">In review</button>
+            <button data-status="approved">Approved</button>
+          </div>
+        </div>
+
+        <div class="prototype-stage">
+          <!-- MOBILE -->
+          <div id="mobilePrototype" class="prototype-view mobile-layout">
+            <div class="phone">
+              <div class="phone-screen">
+                <div class="phone-island"></div>
+                <div class="phone-status"><span>9:41</span><span>5G&nbsp;&nbsp; 86%</span></div>
+                <div class="mobile-appbar">
+                  <button class="icon-btn" title="Back to recent documents" aria-label="Back">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+                  </button>
+                  <input id="mobileTitle" class="mobile-doc-name" value="Initial Public Statement" aria-label="Document title" />
+                  <div class="save-cloud">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 17a4 4 0 01-.5-7.97A7 7 0 0118 8a4.5 4.5 0 01.5 9H5z"/><path d="M9 13l2 2 4-4"/></svg>
+                    <span class="mobileSaveState">Saved</span>
+                  </div>
+                  <button class="icon-btn mobileMenuButton" title="Document actions" aria-label="Actions">
+                    <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="19" cy="12" r="1.7"/></svg>
+                  </button>
+                </div>
+                <div id="mobileStatusStrip" class="status-strip">
+                  <span class="statusText">Draft</span>
+                  <span class="statusHint"></span>
+                </div>
+                <div class="mobile-page-scroll">
+                  <article id="mobileEditor" class="mobile-page shared-editor" contenteditable="true" spellcheck="true">
+                    <h1>Initial Public Statement</h1>
+                    <p>We are aware of the reports concerning the affected product and understand the concern this has caused customers and partners.</p>
+                    <p>Our teams are reviewing the available information with urgency. We will share verified updates through our official channels as soon as they are confirmed.</p>
+                    <h2>Immediate guidance</h2>
+                    <ul>
+                      <li>Please follow the safety guidance sent to registered customers.</li>
+                      <li>Contact our customer care team if you require direct assistance.</li>
+                      <li>Do not rely on screenshots that do not link to an official source.</li>
+                    </ul>
+                  </article>
+                </div>
+                <div class="mobile-toolbar">
+                  <button class="format-btn" data-command="undo" title="Undo">↶</button>
+                  <button class="format-btn" data-command="redo" title="Redo">↷</button>
+                  <span class="toolbar-sep"></span>
+                  <button class="format-btn" data-command="bold" title="Bold"><strong>B</strong></button>
+                  <button class="format-btn" data-command="italic" title="Italic"><em>I</em></button>
+                  <button class="format-btn" data-command="underline" title="Underline"><u>U</u></button>
+                  <span class="toolbar-sep"></span>
+                  <button class="format-btn" data-command="insertUnorderedList" title="Bulleted list">•≡</button>
+                  <button class="format-btn" data-command="insertOrderedList" title="Numbered list">1≡</button>
+                  <button id="mobileEditorButton" class="format-btn" title="AI Editor">A✓</button>
+                </div>
+                <div class="mobile-home-indicator"></div>
+
+                <div id="mobileGradeSheet" class="sheet-backdrop">
+                  <div class="bottom-sheet">
+                    <div class="sheet-handle"></div>
+                    <h3>Editor</h3>
+                    <p>AI feedback uses your crisis facts and team charter. The role-fit score checks whether this work belongs to Communications.</p>
+                    <div class="score-row"><span>Accuracy</span><span class="score-pill">91</span></div>
+                    <div class="score-row"><span>Tone</span><span class="score-pill">84</span></div>
+                    <div class="score-row"><span>Clarity</span><span class="score-pill">87</span></div>
+                    <div class="score-row"><span>Completeness</span><span class="score-pill" style="color:var(--word-amber);background:var(--word-amber-bg)">68</span></div>
+                    <div class="score-row"><span>Role fit</span><span class="score-pill">94</span></div>
+                    <div class="editor-feedback">
+                      Strong acknowledgement and calm tone. Add a concrete time for the next update and identify the official customer-support channel.
+                    </div>
+                    <button class="primary-btn">Grade again</button>
+                  </div>
+                </div>
+
+                <div id="mobileActionsSheet" class="sheet-backdrop">
+                  <div class="bottom-sheet">
+                    <div class="sheet-handle"></div>
+                    <h3>Document actions</h3>
+                    <button class="primary-btn copyAction">Copy text</button>
+                    <button class="primary-btn submitAction" style="background:#fff;color:var(--word-blue);border:1px solid var(--word-blue)">Submit for review</button>
+                    <p style="margin-top:10px">Copying is available in Draft, In review, and Approved states. Review is optional and never blocks use.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <div class="eyebrow">Mobile composition</div>
+              <h2 style="font-size:21px;">Word mobile, adapted to the simulated phone</h2>
+              <div class="callout-list">
+                <div class="callout">
+                  <div class="callout-num">1</div>
+                  <div><b>Blue document bar</b><p>Back, editable title, AutoSave state, and a compact actions menu are kept within thumb reach.</p></div>
+                </div>
+                <div class="callout">
+                  <div class="callout-num">2</div>
+                  <div><b>Lifecycle status strip</b><p>Appears only when a draft is in review, approved, or returned with changes. It never blocks copying.</p></div>
+                </div>
+                <div class="callout">
+                  <div class="callout-num">3</div>
+                  <div><b>Distraction-free page</b><p>The document fills the screen with Calibri-like body text and Word-style Heading 1/2 treatments.</p></div>
+                </div>
+                <div class="callout">
+                  <div class="callout-num">4</div>
+                  <div><b>Keyboard-adjacent toolbar</b><p>Undo, redo, bold, italic, underline, lists, styles, and AI Editor sit in a persistent bottom row.</p></div>
+                </div>
+                <div class="callout">
+                  <div class="callout-num">5</div>
+                  <div><b>Bottom-sheet tools</b><p>AI grading, styles, sharing, and review use native mobile bottom sheets rather than cramped desktop dialogs.</p></div>
+                </div>
+                <div class="callout">
+                  <div class="callout-num">6</div>
+                  <div><b>Server-backed autosave</b><p>Typing waits 800ms, saves HTML and plain text, then shows “Saved.” Switching views cannot erase the draft.</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- DESKTOP -->
+          <div id="desktopPrototype" class="prototype-view desktop-wrap" hidden>
+            <div class="desktop-scroller">
+              <div class="desktop-window">
+                <div class="sim-window-bar">
+                  <div class="sim-word-mark">W</div>
+                  <span>Docs</span>
+                  <div class="window-controls"><span>—</span><span>□</span><span>×</span></div>
+                </div>
+                <div class="word-title-row">
+                  <div class="autosave"><span>AutoSave</span><span class="toggle"></span></div>
+                  <input id="desktopTitle" class="desktop-title-input" value="Initial Public Statement — Saved" aria-label="Document title" />
+                  <button class="share-copy copyAction">Copy text</button>
+                </div>
+                <div class="ribbon-tabs">
+                  <button class="ribbon-tab">File</button>
+                  <button class="ribbon-tab active" data-ribbon="home">Home</button>
+                  <button class="ribbon-tab" data-ribbon="review">Review</button>
+                </div>
+                <div id="homeRibbon" class="ribbon">
+                  <div class="ribbon-group" data-label="Undo">
+                    <button class="ribbon-btn" data-command="undo" title="Undo">↶</button>
+                    <button class="ribbon-btn" data-command="redo" title="Redo">↷</button>
+                  </div>
+                  <div class="ribbon-group" data-label="Font">
+                    <div class="select-like">Calibri (Body)<span>⌄</span></div>
+                    <div class="select-like small">11<span>⌄</span></div>
+                    <button class="ribbon-btn" data-command="bold"><strong>B</strong></button>
+                    <button class="ribbon-btn" data-command="italic"><em>I</em></button>
+                    <button class="ribbon-btn" data-command="underline"><u>U</u></button>
+                    <button class="ribbon-btn" data-command="strikeThrough"><s>ab</s></button>
+                  </div>
+                  <div class="ribbon-group" data-label="Paragraph">
+                    <button class="ribbon-btn" data-command="insertUnorderedList">•≡</button>
+                    <button class="ribbon-btn" data-command="insertOrderedList">1≡</button>
+                    <button class="ribbon-btn" data-command="justifyLeft">≡</button>
+                    <button class="ribbon-btn" data-command="justifyCenter">≡</button>
+                  </div>
+                  <div class="ribbon-group" data-label="Styles">
+                    <button class="style-card active" data-block="p">Normal</button>
+                    <button class="style-card heading" data-block="h1">Heading 1</button>
+                    <button class="style-card heading" data-block="h2">Heading 2</button>
+                    <button class="style-card" data-block="h1">Title</button>
+                  </div>
+                  <div class="ribbon-group" data-label="Editor" style="border-right:0">
+                    <button id="desktopEditorButton" class="ribbon-btn" style="min-width:58px;color:var(--word-blue);font-weight:650">A✓ Editor</button>
+                  </div>
+                </div>
+                <div id="reviewRibbon" class="ribbon" style="display:none">
+                  <div class="ribbon-group" data-label="AI review">
+                    <button class="ribbon-btn" id="reviewEditorButton" style="min-width:70px">A✓ Editor</button>
+                  </div>
+                  <div class="ribbon-group" data-label="Workflow">
+                    <button class="ribbon-btn submitAction" style="min-width:110px;color:var(--word-blue)">Submit for review</button>
+                    <button class="ribbon-btn approveAction" style="min-width:72px;color:var(--word-green)">Approve</button>
+                    <button class="ribbon-btn changesAction" style="min-width:112px;color:var(--word-red)">Request changes</button>
+                  </div>
+                  <div class="ribbon-group" data-label="Status" style="border-right:0">
+                    <span id="reviewSummary" style="font-size:11px;color:var(--word-secondary);padding:0 8px;">Draft · Not submitted</span>
+                  </div>
+                </div>
+                <div id="desktopStatusStrip" class="status-strip">
+                  <span class="statusText">Draft</span><span class="statusHint"></span>
+                </div>
+                <div class="desktop-workspace">
+                  <div class="page-canvas">
+                    <article id="desktopEditor" class="desktop-page shared-editor" contenteditable="true" spellcheck="true">
+                      <h1>Initial Public Statement</h1>
+                      <p>We are aware of the reports concerning the affected product and understand the concern this has caused customers and partners.</p>
+                      <p>Our teams are reviewing the available information with urgency. We will share verified updates through our official channels as soon as they are confirmed.</p>
+                      <h2>Immediate guidance</h2>
+                      <ul>
+                        <li>Please follow the safety guidance sent to registered customers.</li>
+                        <li>Contact our customer care team if you require direct assistance.</li>
+                        <li>Do not rely on screenshots that do not link to an official source.</li>
+                      </ul>
+                    </article>
+                  </div>
+                  <aside id="desktopEditorPane" class="editor-pane">
+                    <div class="editor-pane-head">
+                      <span>Editor</span>
+                      <button id="closeEditorPane" class="icon-btn" style="color:var(--word-text)">×</button>
+                    </div>
+                    <div class="editor-body">
+                      <div class="score-ring"><div>86<span>overall</span></div></div>
+                      <div class="metric"><div class="metric-head"><span>Accuracy</span><b>91</b></div><div class="metric-bar"><div class="metric-fill" style="width:91%"></div></div></div>
+                      <div class="metric"><div class="metric-head"><span>Tone</span><b>84</b></div><div class="metric-bar"><div class="metric-fill" style="width:84%"></div></div></div>
+                      <div class="metric"><div class="metric-head"><span>Clarity</span><b>87</b></div><div class="metric-bar"><div class="metric-fill" style="width:87%"></div></div></div>
+                      <div class="metric"><div class="metric-head"><span>Completeness</span><b>68</b></div><div class="metric-bar"><div class="metric-fill" style="width:68%;background:var(--word-amber)"></div></div></div>
+                      <div class="metric"><div class="metric-head"><span>Role fit</span><b>94</b></div><div class="metric-bar"><div class="metric-fill" style="width:94%;background:var(--word-green)"></div></div></div>
+                      <div class="editor-feedback">Strong acknowledgement and calm tone. Add a concrete time for the next update and identify the official customer-support channel.</div>
+                      <button class="primary-btn">Grade again</button>
+                    </div>
+                  </aside>
+                </div>
+                <div class="desktop-status">
+                  <span>Page 1 of 1 · <span class="wordCount">67</span> words</span>
+                  <span><span class="desktopSaveState">Saved</span> · Communications · <span class="statusText">Draft</span></span>
+                </div>
+              </div>
+            </div>
+
+            <div class="desktop-explanation">
+              <div class="callout"><div class="callout-num">1</div><div><b>Title + AutoSave row</b><p>Persistent identity and save confidence without a manual Save button.</p></div></div>
+              <div class="callout"><div class="callout-num">2</div><div><b>Home / Review ribbon</b><p>Formatting and workflow tools are grouped like desktop Word.</p></div></div>
+              <div class="callout"><div class="callout-num">3</div><div><b>Paper on canvas</b><p>A centred 680px page creates a familiar document-writing environment.</p></div></div>
+              <div class="callout"><div class="callout-num">4</div><div><b>Docked Editor pane</b><p>AI feedback stays beside the document instead of covering it.</p></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="eyebrow">Feature guide</div>
+      <h2>What each feature does</h2>
+      <p class="section-copy">The application is a writing and review workspace—not another publishing channel.</p>
+      <div class="feature-grid">
+        <article class="feature">
+          <div class="feature-tag">Persistence</div>
+          <h3>Autosave and cross-view continuity</h3>
+          <p>HTML and plain text save to the server 800ms after typing stops. The phone and desktop fetch the same `player_drafts` row, so neither refresh nor switching routes destroys work.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Editing</div>
+          <h3>Rich text with controlled styles</h3>
+          <p>Bold, italic, underline, strike, lists, alignment, Normal, Heading 1, Heading 2, and Title. A focused subset keeps generated HTML safe and social-copy output clean.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Teamwork</div>
+          <h3>Team-shared document library</h3>
+          <p>A document is stamped with the author's team at creation. Teammates see it in Recent, can read it, and can review it; only the original author edits it.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Workflow</div>
+          <h3>Optional submit and approval</h3>
+          <p>Authors can submit for review. A teammate can approve or request changes with a note. Approval is a training event and score signal, never a technical requirement to use the text.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">AI support</div>
+          <h3>Word-like Editor panel</h3>
+          <p>The existing crisis-aware grader becomes “Editor.” It scores accuracy, tone, clarity, completeness, and team role fit, then provides specific improvement guidance.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Handoff</div>
+          <h3>Copy text into Social or Mail</h3>
+          <p>“Copy text” writes clean plain text to the clipboard and confirms: “Copied — paste it into a post or an email.” The editor never posts on the player's behalf.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Lifecycle</div>
+          <h3>Draft status and review history</h3>
+          <p>Draft, In review, Approved, and Changes requested appear consistently in Recent, the editor, and the desktop status bar. Editing an approved document resets it to Draft.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Scoring</div>
+          <h3>Observable team behaviour</h3>
+          <p>Creating, submitting, approving, and grading produce existing `player_actions` events. Legal receives task credit for meaningful draft review; trainers see the workflow in the ledger.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Safety</div>
+          <h3>Author-only editing and sanitised HTML</h3>
+          <p>The API checks session and team access for every operation. Stored HTML is allowlist-sanitised before teammates render it, preventing stored-script injection.</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="design">
+      <div class="eyebrow">Visual specification</div>
+      <h2>Colours, typefaces, and composition</h2>
+      <p class="section-copy">
+        The containing product keeps Black Swan's navy, orange, cream, and bordered-card language.
+        Inside the simulated Docs app, Word-blue and Fluent neutrals establish the familiar document-editor model.
+      </p>
+      <div class="design-grid">
+        <div class="spec-card">
+          <div class="spec-card-head">Application colour tokens</div>
+          <div class="spec-card-body">
+            <div class="swatch-row"><span class="swatch" style="background:#185abd"></span><span>Primary app bars, active states</span><code>#185ABD</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#124078"></span><span>Pressed / dark blue</span><code>#124078</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#e8eef7"></span><span>Selected controls</span><code>#E8EEF7</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#2f5496"></span><span>Document headings</span><code>#2F5496</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#f3f2f1"></span><span>Ribbon and list chrome</span><code>#F3F2F1</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#e6e6e6"></span><span>Desktop page canvas</span><code>#E6E6E6</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#323130"></span><span>Primary text</span><code>#323130</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#605e5c"></span><span>Secondary text</span><code>#605E5C</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#107c10"></span><span>Approved / good score</span><code>#107C10</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#8f6200"></span><span>In review / warning</span><code>#8F6200</code></div>
+            <div class="swatch-row"><span class="swatch" style="background:#a80000"></span><span>Changes requested / error</span><code>#A80000</code></div>
+          </div>
+        </div>
+        <div class="spec-card">
+          <div class="spec-card-head">Typography and document styles</div>
+          <div class="spec-card-body">
+            <div class="type-sample">
+              <div style="font-family:'Segoe UI',sans-serif;font-size:13px;font-weight:600;">Segoe UI — interface chrome</div>
+              <small>Ribbon labels 12–13px · title bars 13px semibold · status text 10–12px</small>
+            </div>
+            <div class="type-sample">
+              <div class="body-sample">Calibri / Carlito — Normal body copy</div>
+              <small>Desktop 15px / 1.5 · mobile 16px / 1.6 · colour #323130</small>
+            </div>
+            <div class="type-sample">
+              <div class="h1-sample">Heading 1</div>
+              <small>24px · weight 300 · #2F5496 · 12px space above</small>
+            </div>
+            <div class="type-sample">
+              <div class="h2-sample">Heading 2</div>
+              <small>18px · weight 400 · #2F5496</small>
+            </div>
+            <div class="type-sample">
+              <div class="title-sample">Document Title</div>
+              <small>34px · weight 300 · #323130 · subtle bottom rule</small>
+            </div>
+            <div class="type-sample">
+              <strong>Iconography</strong>
+              <small>Inline SVG · 16–20px · 1.5px stroke · no emoji in production chrome</small>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow">
+      <div class="eyebrow">User workflow</div>
+      <h2>Optional review without blocking real play</h2>
+      <p class="section-copy">
+        The review flow creates observable coordination and Legal-team scoring while preserving player freedom.
+        At every stage, the author may copy the document and use it elsewhere.
+      </p>
+      <div class="flow">
+        <div class="flow-step"><b>1 · Create</b><span>Document inherits the author's session and team. `draft_created` is recorded.</span></div>
+        <div class="flow-step"><b>2 · Write</b><span>Rich text autosaves. Phone and desktop always reopen the same server copy.</span></div>
+        <div class="flow-step"><b>3 · Grade</b><span>AI Editor checks crisis facts, tone, completeness, and team role fit.</span></div>
+        <div class="flow-step"><b>4 · Submit</b><span>Optional. Status becomes In review and `draft_submitted_for_approval` is recorded.</span></div>
+        <div class="flow-step"><b>5 · Review</b><span>A teammate approves or requests changes with a note. Legal approval earns task credit.</span></div>
+        <div class="flow-step"><b>6 · Copy</b><span>Author copies clean text and pastes it into Social or Mail—regardless of review status.</span></div>
+      </div>
+      <div class="security-note">
+        <b>Important behaviour:</b> editing an approved or in-review document resets it to Draft and clears
+        the old review result. Past action events remain in the trainer ledger, but nobody can mistakenly treat
+        revised text as the version that was approved.
+      </div>
+    </section>
+
+    <section id="engineering">
+      <div class="eyebrow">Engineering reference</div>
+      <h2>How the mockup maps to the build</h2>
+      <div class="feature-grid">
+        <article class="feature">
+          <div class="feature-tag">Database</div>
+          <h3>`player_drafts`</h3>
+          <p>Stores session, author, team, title, sanitised HTML, plain text, lifecycle status, reviewer metadata, grade, and timestamps.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">API</div>
+          <h3>`/api/drafts`</h3>
+          <p>List, create, autosave, delete, submit, review, and grade. Every endpoint validates session access and author/team permissions.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Editor</div>
+          <h3>TipTap core</h3>
+          <p>One controlled rich-text engine, shared hooks, and two UI presentations: `EditorMobile` and `EditorDesktop`.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Phone</div>
+          <h3>`WordAppMobile`</h3>
+          <p>Mounted at `/sim/:sessionId/device/drafts`; uses compact bars, sticky formatting, and bottom sheets.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Desktop</div>
+          <h3>`WordAppDesktop`</h3>
+          <p>Mounted from `DesktopShell` with a 1000×680 default window; uses a ribbon, paper canvas, and docked Editor pane.</p>
+        </article>
+        <article class="feature">
+          <div class="feature-tag">Scoring</div>
+          <h3>Existing action types</h3>
+          <p>`draft_created`, `draft_submitted_for_approval`, `draft_approved`, and `content_graded` feed the trainer ledger and team score.</p>
+        </article>
+      </div>
+      <div class="security-note">
+        <b>Explicit non-goals:</b> no real-time co-editing, track changes, images, tables, pagination,
+        direct posting, or direct emailing. These exclusions keep the first build dependable and focused on
+        crisis-writing, review, and cross-view continuity.
+      </div>
+    </section>
+
+    <div class="footer">
+      Black Swan Simulations · Docs application UX mockup · Word-inspired interface · July 2026
+    </div>
+  </main>
+
+  <div id="toast" class="toast">Copied — paste it into a post or an email.</div>
+
+  <script>
+    (() => {
+      const mobileEditor = document.getElementById('mobileEditor');
+      const desktopEditor = document.getElementById('desktopEditor');
+      const mobileTitle = document.getElementById('mobileTitle');
+      const desktopTitle = document.getElementById('desktopTitle');
+      const toast = document.getElementById('toast');
+      const storageKey = 'blackSwanDocsMockup';
+      let saveTimer;
+      let status = 'draft';
+      let lastFocusedEditor = mobileEditor;
+
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        try {
+          const data = JSON.parse(saved);
+          if (data.html) {
+            mobileEditor.innerHTML = data.html;
+            desktopEditor.innerHTML = data.html;
+          }
+          if (data.title) {
+            mobileTitle.value = data.title;
+            desktopTitle.value = data.title + ' — Saved';
+          }
+        } catch (_) {}
+      }
+
+      function cleanTitle(value) {
+        return value.replace(/\s+—\s+(Saved|Saving…|Unsaved)$/, '');
+      }
+
+      function wordCount() {
+        const text = (desktopEditor.innerText || '').trim();
+        return text ? text.split(/\s+/).length : 0;
+      }
+
+      function setSaveState(value) {
+        document.querySelectorAll('.mobileSaveState, .desktopSaveState').forEach(el => el.textContent = value);
+        const base = cleanTitle(desktopTitle.value || mobileTitle.value || 'Untitled document');
+        desktopTitle.value = base + ' — ' + value;
+        document.querySelectorAll('.wordCount').forEach(el => el.textContent = wordCount());
+      }
+
+      function scheduleSave(source) {
+        setSaveState('Saving…');
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+          const html = source.innerHTML;
+          if (source !== mobileEditor) mobileEditor.innerHTML = html;
+          if (source !== desktopEditor) desktopEditor.innerHTML = html;
+          const title = cleanTitle(source === desktopTitle ? desktopTitle.value : mobileTitle.value);
+          localStorage.setItem(storageKey, JSON.stringify({ html, title }));
+          setSaveState('Saved');
+        }, 800);
+      }
+
+      [mobileEditor, desktopEditor].forEach(editor => {
+        editor.addEventListener('focus', () => { lastFocusedEditor = editor; });
+        editor.addEventListener('input', () => scheduleSave(editor));
+      });
+
+      mobileTitle.addEventListener('input', () => {
+        desktopTitle.value = mobileTitle.value + ' — Saving…';
+        scheduleSave(mobileEditor);
+      });
+      desktopTitle.addEventListener('input', () => {
+        const title = cleanTitle(desktopTitle.value);
+        mobileTitle.value = title;
+        scheduleSave(desktopEditor);
+      });
+
+      document.querySelectorAll('[data-prototype]').forEach(button => {
+        button.addEventListener('click', () => {
+          document.querySelectorAll('[data-prototype]').forEach(b => b.classList.remove('active'));
+          button.classList.add('active');
+          const target = button.dataset.prototype;
+          document.getElementById('mobilePrototype').hidden = target !== 'mobile';
+          document.getElementById('desktopPrototype').hidden = target !== 'desktop';
+          lastFocusedEditor = target === 'mobile' ? mobileEditor : desktopEditor;
+        });
+      });
+
+      function setStatus(next) {
+        status = next;
+        const labels = {
+          'draft': ['Draft', ''],
+          'in-review': ['In review', 'Submitted to Communications'],
+          'approved': ['Approved', 'Reviewed by Priya N.']
+        };
+        const [label, hint] = labels[next];
+        document.querySelectorAll('.statusText').forEach(el => el.textContent = label);
+        document.querySelectorAll('.statusHint').forEach(el => el.textContent = hint);
+        document.getElementById('reviewSummary').textContent =
+          next === 'draft' ? 'Draft · Not submitted' :
+          next === 'in-review' ? 'In review · Awaiting teammate response' :
+          'Approved by Priya N. · 10:32';
+
+        ['mobileStatusStrip','desktopStatusStrip'].forEach(id => {
+          const strip = document.getElementById(id);
+          strip.className = 'status-strip';
+          if (next !== 'draft') strip.classList.add('visible', next);
+        });
+        document.querySelectorAll('[data-status]').forEach(b => {
+          b.classList.toggle('active', b.dataset.status === next);
+        });
+      }
+      document.querySelectorAll('[data-status]').forEach(button => {
+        button.addEventListener('click', () => setStatus(button.dataset.status));
+      });
+
+      document.querySelectorAll('[data-command]').forEach(button => {
+        button.addEventListener('mousedown', event => {
+          event.preventDefault();
+          lastFocusedEditor.focus();
+          document.execCommand(button.dataset.command, false, null);
+          scheduleSave(lastFocusedEditor);
+        });
+      });
+      document.querySelectorAll('[data-block]').forEach(button => {
+        button.addEventListener('mousedown', event => {
+          event.preventDefault();
+          lastFocusedEditor.focus();
+          document.execCommand('formatBlock', false, button.dataset.block);
+          document.querySelectorAll('[data-block]').forEach(b => b.classList.remove('active'));
+          button.classList.add('active');
+          scheduleSave(lastFocusedEditor);
+        });
+      });
+
+      const gradeSheet = document.getElementById('mobileGradeSheet');
+      const actionsSheet = document.getElementById('mobileActionsSheet');
+      document.getElementById('mobileEditorButton').addEventListener('click', () => gradeSheet.classList.add('open'));
+      document.getElementById('mobileMenuButton').addEventListener('click', () => actionsSheet.classList.add('open'));
+      [gradeSheet, actionsSheet].forEach(backdrop => {
+        backdrop.addEventListener('click', e => {
+          if (e.target === backdrop) backdrop.classList.remove('open');
+        });
+      });
+
+      function openDesktopEditor() {
+        document.getElementById('desktopEditorPane').classList.add('open');
+      }
+      document.getElementById('desktopEditorButton').addEventListener('click', openDesktopEditor);
+      document.getElementById('reviewEditorButton').addEventListener('click', openDesktopEditor);
+      document.getElementById('closeEditorPane').addEventListener('click', () =>
+        document.getElementById('desktopEditorPane').classList.remove('open'));
+
+      document.querySelectorAll('[data-ribbon]').forEach(tab => {
+        tab.addEventListener('click', () => {
+          document.querySelectorAll('[data-ribbon]').forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          const review = tab.dataset.ribbon === 'review';
+          document.getElementById('homeRibbon').style.display = review ? 'none' : 'flex';
+          document.getElementById('reviewRibbon').style.display = review ? 'flex' : 'none';
+        });
+      });
+
+      function showToast(message) {
+        toast.textContent = message;
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2200);
+      }
+      document.querySelectorAll('.copyAction').forEach(button => {
+        button.addEventListener('click', async () => {
+          const text = (lastFocusedEditor || mobileEditor).innerText;
+          try { await navigator.clipboard.writeText(text); } catch (_) {}
+          actionsSheet.classList.remove('open');
+          showToast('Copied — paste it into a post or an email.');
+        });
+      });
+      document.querySelectorAll('.submitAction').forEach(button => {
+        button.addEventListener('click', () => {
+          setStatus('in-review');
+          actionsSheet.classList.remove('open');
+          showToast('Submitted to your team for review.');
+        });
+      });
+      document.querySelectorAll('.approveAction').forEach(button => {
+        button.addEventListener('click', () => {
+          setStatus('approved');
+          showToast('Document approved. The author can still copy or revise it.');
+        });
+      });
+      document.querySelectorAll('.changesAction').forEach(button => {
+        button.addEventListener('click', () => {
+          status = 'draft';
+          setStatus('draft');
+          showToast('Changes requested. The document is back in Draft.');
+        });
+      });
+
+      document.querySelectorAll('.shared-editor').forEach(editor => {
+        editor.addEventListener('input', () => {
+          if (status === 'approved' || status === 'in-review') setStatus('draft');
+        });
+      });
+
+      document.querySelectorAll('.wordCount').forEach(el => el.textContent = wordCount());
+    })();
+  </script>
+</body>
+</html>
