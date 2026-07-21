@@ -151,14 +151,14 @@ export function EditorMobile(props: WordEditorProps) {
             active={Boolean(editor?.isActive('bulletList'))}
             onClick={() => editor?.chain().focus().toggleBulletList().run()}
           >
-            <span>•≡</span>
+            <WordIcon name="list-bulleted" />
           </MobileFormatButton>
           <MobileFormatButton
             label="Numbered list"
             active={Boolean(editor?.isActive('orderedList'))}
             onClick={() => editor?.chain().focus().toggleOrderedList().run()}
           >
-            <span>1≡</span>
+            <WordIcon name="list-numbered" />
           </MobileFormatButton>
           <MobileFormatButton
             label="Styles"

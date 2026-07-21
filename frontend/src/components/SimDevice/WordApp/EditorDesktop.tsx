@@ -322,7 +322,7 @@ function HomeRibbon({
           disabled={disabled}
           onClick={() => editor?.chain().focus().toggleBulletList().run()}
         >
-          •≡
+          <WordIcon name="list-bulleted" />
         </RibbonButton>
         <RibbonButton
           label="Numbered list"
@@ -330,7 +330,7 @@ function HomeRibbon({
           disabled={disabled}
           onClick={() => editor?.chain().focus().toggleOrderedList().run()}
         >
-          1≡
+          <WordIcon name="list-numbered" />
         </RibbonButton>
         <RibbonButton
           label="Align left"
@@ -338,7 +338,7 @@ function HomeRibbon({
           disabled={disabled}
           onClick={() => editor?.chain().focus().setTextAlign('left').run()}
         >
-          ≡
+          <WordIcon name="align-left" />
         </RibbonButton>
         <RibbonButton
           label="Align center"
@@ -346,7 +346,7 @@ function HomeRibbon({
           disabled={disabled}
           onClick={() => editor?.chain().focus().setTextAlign('center').run()}
         >
-          ≡
+          <WordIcon name="align-center" />
         </RibbonButton>
         <RibbonButton
           label="Align right"
@@ -354,7 +354,15 @@ function HomeRibbon({
           disabled={disabled}
           onClick={() => editor?.chain().focus().setTextAlign('right').run()}
         >
-          ≡
+          <WordIcon name="align-right" />
+        </RibbonButton>
+        <RibbonButton
+          label="Justify"
+          active={Boolean(editor?.isActive({ textAlign: 'justify' }))}
+          disabled={disabled}
+          onClick={() => editor?.chain().focus().setTextAlign('justify').run()}
+        >
+          <WordIcon name="align-justify" />
         </RibbonButton>
       </RibbonGroup>
 

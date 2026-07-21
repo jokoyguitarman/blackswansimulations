@@ -443,7 +443,29 @@
 .docs-prosemirror ul,
 .docs-prosemirror ol {
   margin: 7px 0 12px;
-  padding-left: 24px;
+  padding-inline-start: 28px;
+  list-style-position: outside;
+}
+.docs-prosemirror ul {
+  list-style-type: disc !important;
+}
+.docs-prosemirror ol {
+  list-style-type: decimal !important;
+}
+.docs-prosemirror ul ul {
+  list-style-type: circle !important;
+}
+.docs-prosemirror ul ul ul {
+  list-style-type: square !important;
+}
+.docs-prosemirror ol ol {
+  list-style-type: lower-alpha !important;
+}
+.docs-prosemirror li {
+  display: list-item;
+}
+.docs-prosemirror li::marker {
+  color: currentColor;
 }
 .docs-prosemirror li {
   margin: 3px 0;

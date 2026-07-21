@@ -1,6 +1,10 @@
 import type { SVGProps } from 'react';
 
 export type WordIconName =
+  | 'align-center'
+  | 'align-justify'
+  | 'align-left'
+  | 'align-right'
   | 'arrow-left'
   | 'check'
   | 'chevron-down'
@@ -8,6 +12,8 @@ export type WordIconName =
   | 'cloud-check'
   | 'copy'
   | 'document'
+  | 'list-bulleted'
+  | 'list-numbered'
   | 'menu'
   | 'more'
   | 'plus'
@@ -37,6 +43,30 @@ export function WordIcon({
   };
 
   switch (name) {
+    case 'align-left':
+      return (
+        <svg {...common} {...props}>
+          <path d="M4 6h16M4 10h10M4 14h16M4 18h12" />
+        </svg>
+      );
+    case 'align-center':
+      return (
+        <svg {...common} {...props}>
+          <path d="M4 6h16M7 10h10M4 14h16M6 18h12" />
+        </svg>
+      );
+    case 'align-right':
+      return (
+        <svg {...common} {...props}>
+          <path d="M4 6h16M10 10h10M4 14h16M8 18h12" />
+        </svg>
+      );
+    case 'align-justify':
+      return (
+        <svg {...common} {...props}>
+          <path d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+        </svg>
+      );
     case 'arrow-left':
       return (
         <svg {...common} {...props}>
@@ -86,6 +116,30 @@ export function WordIcon({
       return (
         <svg {...common} {...props}>
           <path d="M4 7h16M4 12h16M4 17h16" />
+        </svg>
+      );
+    case 'list-bulleted':
+      return (
+        <svg {...common} {...props}>
+          <circle cx="4" cy="6" r="1" fill="currentColor" stroke="none" />
+          <circle cx="4" cy="12" r="1" fill="currentColor" stroke="none" />
+          <circle cx="4" cy="18" r="1" fill="currentColor" stroke="none" />
+          <path d="M8 6h12M8 12h12M8 18h12" />
+        </svg>
+      );
+    case 'list-numbered':
+      return (
+        <svg {...common} {...props}>
+          <text x="1.8" y="8" fill="currentColor" stroke="none" fontSize="6.5" fontWeight="600">
+            1
+          </text>
+          <text x="1.5" y="14" fill="currentColor" stroke="none" fontSize="6.5" fontWeight="600">
+            2
+          </text>
+          <text x="1.5" y="20" fill="currentColor" stroke="none" fontSize="6.5" fontWeight="600">
+            3
+          </text>
+          <path d="M8 6h12M8 12h12M8 18h12" />
         </svg>
       );
     case 'more':
