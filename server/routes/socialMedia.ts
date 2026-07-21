@@ -26,6 +26,11 @@ import {
 import { deriveEmailAddress } from '../services/npcEmailReplyService.js';
 import { adjudicateDispute } from '../services/contentDisputeService.js';
 import { buildPlayerLedger } from '../services/playerLedgerService.js';
+import {
+  getSessionPlayerDirectory,
+  resolveAddressesToPlayers,
+} from '../services/playerDirectoryService.js';
+import { recordIntelShareFromForward, getIntelStatus } from '../services/intelSharingService.js';
 
 const router = Router();
 
@@ -1053,13 +1058,18 @@ router.get('/emails/session/:sessionId', requireAuth, async (req: AuthenticatedR
 
     // Per-recipient filtering: team-scoped inject emails carry
     // recipient_user_ids; null means visible to the whole session (legacy).
-    // Players also always see their own outbound emails. Trainers see all.
+    // Players always see their own outbound emails. Another player's outbound
+    // mail is only visible when it is addressed to you (player-to-player
+    // delivery) — never session-wide. Trainers see all.
     const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
     const filtered = isTrainerOrAdmin
       ? data
       : (data || []).filter((email) => {
           if (email.sent_by_player_id === user.id) return true;
           const recipients = email.recipient_user_ids as string[] | null;
+          if (email.direction === 'outbound') {
+            return !!recipients && recipients.includes(user.id);
+          }
           if (!recipients || recipients.length === 0) return true;
           return recipients.includes(user.id);
         });
@@ -1115,6 +1125,7 @@ const sendEmailSchema = z.object({
     subject: z.string().min(1).max(500),
     body_text: z.string().min(1),
     replied_to_id: z.string().uuid().optional(),
+    forwarded_email_id: z.string().uuid().optional(),
   }),
 });
 
@@ -1125,8 +1136,15 @@ router.post(
   async (req: AuthenticatedRequest, res) => {
     try {
       const user = req.user!;
-      const { session_id, to_addresses, cc_addresses, subject, body_text, replied_to_id } =
-        req.body;
+      const {
+        session_id,
+        to_addresses,
+        cc_addresses,
+        subject,
+        body_text,
+        replied_to_id,
+        forwarded_email_id,
+      } = req.body;
 
       // Resolve root thread_id: look up the parent's thread_id so
       // multi-reply chains all share the same root thread_id.
@@ -1140,12 +1158,26 @@ router.post(
         resolvedThreadId = parentEmail?.thread_id || replied_to_id;
       }
 
+      // Player-to-player delivery: resolve to/cc addresses against the session
+      // directory. Matches get recipient_user_ids so the mail lands in their
+      // inbox (and only theirs).
+      const directory = await getSessionPlayerDirectory(session_id);
+      const selfEntry = directory.find((d) => d.user_id === user.id);
+      const playerRecipients = resolveAddressesToPlayers(
+        [...to_addresses, ...(cc_addresses || [])],
+        directory,
+      ).filter((p) => p.user_id !== user.id);
+
+      const fromAddress =
+        selfEntry?.address ||
+        `${(user.email || 'player').replace(/@.*/, '').replace(/\s+/g, '.')}@crisisresponse.sim`;
+
       const { data: email, error } = await supabaseAdmin
         .from('sim_emails')
         .insert({
           session_id,
           direction: 'outbound',
-          from_address: `${(user.email || 'player').replace(/@.*/, '').replace(/\s+/g, '.')}@crisisresponse.sim`,
+          from_address: fromAddress,
           from_name: (user.metadata?.full_name as string) || user.email || 'Player',
           to_addresses,
           cc_addresses: cc_addresses || [],
@@ -1155,6 +1187,9 @@ router.post(
           replied_to_id: replied_to_id || null,
           thread_id: resolvedThreadId,
           sent_by_player_id: user.id,
+          ...(playerRecipients.length > 0
+            ? { recipient_user_ids: playerRecipients.map((p) => p.user_id) }
+            : {}),
         })
         .select()
         .single();
@@ -1167,9 +1202,33 @@ router.post(
         'email_sent',
         email.id,
         body_text,
-        {},
+        {
+          ...(playerRecipients.length > 0
+            ? {
+                recipient_user_ids: playerRecipients.map((p) => p.user_id),
+                recipient_teams: Array.from(
+                  new Set(playerRecipients.map((p) => p.team_name).filter(Boolean)),
+                ),
+              }
+            : {}),
+          ...(forwarded_email_id ? { forwarded_email_id } : {}),
+        },
         'escalate',
       );
+
+      // Deterministic intel-share detection: forwarding a tagged intel email
+      // to a member of a team that needs it counts immediately.
+      if (forwarded_email_id && playerRecipients.length > 0) {
+        void recordIntelShareFromForward(
+          session_id,
+          user.id,
+          forwarded_email_id,
+          playerRecipients,
+          email.id,
+        ).catch((err) =>
+          logger.warn({ err, sessionId: session_id }, 'Forward intel detection failed'),
+        );
+      }
 
       getWebSocketService().broadcastToSession(session_id, {
         type: 'sim_email.sent',
@@ -1237,27 +1296,36 @@ router.post(
         }
       })();
 
-      // Trigger NPC reply if the email is to an NPC (non-blocking)
-      void (async () => {
-        try {
-          const { triggerNPCEmailReply } = await import('../services/npcEmailReplyService.js');
-          const delay = 2000 + Math.floor(Math.random() * 3000);
-          setTimeout(() => {
-            void triggerNPCEmailReply(session_id, {
-              id: email.id,
-              to_addresses,
-              subject,
-              body_text,
-              from_name: (user.metadata?.full_name as string) || user.email || 'Player',
-              from_address: email.from_address,
-              replied_to_id: replied_to_id || null,
-              thread_id: resolvedThreadId,
-            });
-          }, delay);
-        } catch {
-          /* non-critical */
-        }
-      })();
+      // Trigger NPC reply if the email is to an NPC (non-blocking). Skipped
+      // when the primary recipient is a session player — player-to-player mail
+      // must never spawn an invented NPC respondent.
+      const primaryRecipientIsPlayer = resolveAddressesToPlayers(
+        [to_addresses[0] || ''],
+        directory,
+      ).some((p) => p.user_id !== user.id);
+      if (!primaryRecipientIsPlayer) {
+        void (async () => {
+          try {
+            const { triggerNPCEmailReply } = await import('../services/npcEmailReplyService.js');
+            const delay = 2000 + Math.floor(Math.random() * 3000);
+            setTimeout(() => {
+              void triggerNPCEmailReply(session_id, {
+                id: email.id,
+                to_addresses,
+                subject,
+                body_text,
+                from_name: (user.metadata?.full_name as string) || user.email || 'Player',
+                from_address: email.from_address,
+                replied_to_id: replied_to_id || null,
+                thread_id: resolvedThreadId,
+                sender_user_id: user.id,
+              });
+            }, delay);
+          } catch {
+            /* non-critical */
+          }
+        })();
+      }
 
       res.status(201).json({ data: email });
     } catch (err) {
@@ -1275,21 +1343,39 @@ router.get(
   async (req: AuthenticatedRequest, res) => {
     try {
       const { sessionId } = req.params;
+      const user = req.user!;
 
-      // 1. Get unique inbound email senders (most recent first)
+      const contacts: Array<{
+        address: string;
+        name: string;
+        source: string;
+        team_name?: string | null;
+      }> = [];
+      const seenAddresses = new Set<string>();
+
+      // 1. Session players (colleagues) with their team names, so intel can be
+      // forwarded to the right team. The requester is excluded.
+      const directory = await getSessionPlayerDirectory(sessionId);
+      for (const entry of directory) {
+        if (entry.user_id === user.id) continue;
+        const addr = entry.address.toLowerCase();
+        if (seenAddresses.has(addr)) continue;
+        seenAddresses.add(addr);
+        contacts.push({
+          address: entry.address,
+          name: entry.full_name,
+          source: 'player',
+          team_name: entry.team_name,
+        });
+      }
+
+      // 2. Get unique inbound email senders (most recent first)
       const { data: inboundSenders } = await supabaseAdmin
         .from('sim_emails')
         .select('from_address, from_name')
         .eq('session_id', sessionId)
         .eq('direction', 'inbound')
         .order('created_at', { ascending: false });
-
-      const contacts: Array<{
-        address: string;
-        name: string;
-        source: string;
-      }> = [];
-      const seenAddresses = new Set<string>();
 
       for (const sender of inboundSenders || []) {
         const addr = (sender.from_address as string).toLowerCase();
@@ -1303,7 +1389,7 @@ router.get(
         }
       }
 
-      // 2. Get key NPC personas and derive email addresses
+      // 3. Get key NPC personas and derive email addresses
       const { data: session } = await supabaseAdmin
         .from('sessions')
         .select('scenario_id')
@@ -1565,6 +1651,27 @@ router.get(
       return res.json({ data: report });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /social/team-scores/session/:sessionId');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Cross-team intel status (trainer only): every planted intel item with its
+// holder, needed-by teams, and live shared/missed state.
+router.get(
+  '/intel-status/session/:sessionId',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+      const { sessionId } = req.params;
+      const status = await getIntelStatus(sessionId);
+      return res.json({ data: status });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /social/intel-status/session/:sessionId');
       return res.status(500).json({ error: 'Internal server error' });
     }
   },

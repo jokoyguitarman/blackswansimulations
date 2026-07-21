@@ -766,7 +766,10 @@ export class InjectSchedulerService {
     // --- Social media crisis: compute social state before condition evaluation ---
     if (session.sim_mode === 'social_media') {
       try {
-        await computeSocialState(session.id, elapsedMinutes);
+        // Feed the freshly computed state into this tick's evaluation context
+        // (computeSocialState persists it to current_state itself); otherwise
+        // conditions would evaluate against the previous tick's social_state.
+        nextState.social_state = await computeSocialState(session.id, elapsedMinutes);
       } catch (stateErr) {
         logger.warn({ err: stateErr, sessionId: session.id }, 'Social state computation error');
       }

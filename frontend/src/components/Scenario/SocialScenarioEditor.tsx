@@ -1203,6 +1203,17 @@ const InjectForm = ({
   const [error, setError] = useState(false);
   const [mediaUrls, setMediaUrls] = useState<string[]>((dcInit.media_urls || []) as string[]);
   const [mediaRemoved, setMediaRemoved] = useState(false);
+  // Cross-team intel tagging (email injects only)
+  const [intelKey, setIntelKey] = useState(String(dcInit.intel_key ?? ''));
+  const [intelNeededBy, setIntelNeededBy] = useState<string[]>(
+    Array.isArray(dcInit.intel_needed_by) ? (dcInit.intel_needed_by as string[]) : [],
+  );
+  const [intelKeywords, setIntelKeywords] = useState(
+    Array.isArray(dcInit.detection_keywords)
+      ? (dcInit.detection_keywords as string[]).join(', ')
+      : '',
+  );
+  const [intelSummary, setIntelSummary] = useState(String(dcInit.intel_summary ?? ''));
 
   const contentChanged =
     inject !== null &&
@@ -1220,6 +1231,26 @@ const InjectForm = ({
     };
     if (mediaRemoved) dc.media_urls = [];
     else if (mediaUrls.length > 0) dc.media_urls = mediaUrls;
+    // Cross-team intel tagging: only meaningful on emails; clearing the key
+    // removes the whole tag so detection and gates stop referencing it.
+    if (app === 'email' && intelKey.trim()) {
+      dc.intel_key = intelKey
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '');
+      dc.intel_needed_by = intelNeededBy;
+      dc.detection_keywords = intelKeywords
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      dc.intel_summary = intelSummary.trim();
+    } else {
+      delete dc.intel_key;
+      delete dc.intel_needed_by;
+      delete dc.detection_keywords;
+      delete dc.intel_summary;
+    }
     return dc;
   };
 
@@ -1403,6 +1434,69 @@ const InjectForm = ({
           />
         </div>
       </div>
+
+      {app === 'email' && (
+        <div className="mt-2 border border-border rounded p-2 bg-surface-2">
+          <label className={labelCls}>Cross-team intel (optional)</label>
+          <p className="text-[10px] text-muted mb-1.5">
+            Tag this email as carrying a fact another team needs. Detection keywords are matched
+            when players relay it; paired gates use conditions <code>intel_shared:&lt;key&gt;</code>{' '}
+            / <code>intel_missing:&lt;key&gt;</code>.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div>
+              <label className={labelCls}>Intel key</label>
+              <input
+                value={intelKey}
+                onChange={(e) => setIntelKey(e.target.value)}
+                placeholder="e.g. supplier_batch_confirmation"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Needed by</label>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {teamList.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() =>
+                      setIntelNeededBy((prev) =>
+                        prev.includes(t.team_name)
+                          ? prev.filter((n) => n !== t.team_name)
+                          : [...prev, t.team_name],
+                      )
+                    }
+                    className={`text-[10px] px-2 py-1 rounded border ${intelNeededBy.includes(t.team_name) ? 'bg-brand text-white border-brand' : 'bg-surface text-muted border-border'}`}
+                  >
+                    {t.team_name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            <div>
+              <label className={labelCls}>Detection keywords (comma-separated)</label>
+              <input
+                value={intelKeywords}
+                onChange={(e) => setIntelKeywords(e.target.value)}
+                placeholder="batch 4471, eastern region, SG-Recall-7"
+                className={inputCls}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Trainer summary</label>
+              <input
+                value={intelSummary}
+                onChange={(e) => setIntelSummary(e.target.value)}
+                placeholder="Why another team needs this"
+                className={inputCls}
+              />
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
         <div>

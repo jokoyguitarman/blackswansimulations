@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { getWebSocketService } from './websocketService.js';
 import { logger } from '../lib/logger.js';
 import { hiveRosterFor } from './extremistDoctrine.js';
+import { detectIntelSharing } from './intelSharingService.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 
 export interface SocialState {
@@ -96,6 +97,9 @@ export interface SocialState {
   player_message_is_consistent_across_channels: boolean;
   player_message_inconsistent_across_channels: boolean;
 
+  /** Cross-team intel keys that have been relayed to a team that needs them. */
+  shared_intel_keys: string[];
+
   dimension_labels?: {
     public_trust: string;
     community_safety: string;
@@ -130,7 +134,7 @@ export async function computeSocialState(
       .eq('session_id', sessionId),
     supabaseAdmin
       .from('player_actions')
-      .select('action_type, target_id, content, metadata, sop_step_matched, created_at')
+      .select('action_type, target_id, content, metadata, sop_step_matched, created_at, player_id')
       .eq('session_id', sessionId)
       .order('created_at', { ascending: true }),
     supabaseAdmin
@@ -200,6 +204,19 @@ export async function computeSocialState(
         narrative_control: dl.narrative_control || 'Narrative Control',
         escalation_risk: dl.escalation_risk || 'Escalation Risk',
       };
+    }
+  }
+
+  // Cross-team intel: detect any new sharing (deterministic keyword scan over
+  // player emails and the shared group chat) and collect the shared keys for
+  // the intel_shared:/intel_missing: gate conditions. Best-effort; a failure
+  // must never break state computation.
+  let sharedIntelKeys: string[] = [];
+  if (scenarioId) {
+    try {
+      sharedIntelKeys = await detectIntelSharing(sessionId, scenarioId, allActions);
+    } catch (err) {
+      logger.warn({ err, sessionId }, 'Intel share detection failed (non-critical)');
     }
   }
 
@@ -701,6 +718,8 @@ export async function computeSocialState(
       return true;
     })(),
     player_message_inconsistent_across_channels: false,
+
+    shared_intel_keys: sharedIntelKeys,
 
     dimension_labels: dimensionLabels,
   };

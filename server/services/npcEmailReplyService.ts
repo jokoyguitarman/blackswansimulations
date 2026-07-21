@@ -30,6 +30,8 @@ interface PlayerEmail {
   from_address: string;
   replied_to_id: string | null;
   thread_id: string | null;
+  /** Author of the player email; the NPC reply is addressed to them only. */
+  sender_user_id?: string | null;
 }
 
 const VALID_PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
@@ -450,6 +452,11 @@ Return ONLY valid JSON:
             thread_id: replyThreadId,
             inject_id: null,
             sent_by_player_id: null,
+            // Private correspondence: the reply lands only in the author's
+            // inbox instead of the whole session (legacy NULL behaviour).
+            ...(playerEmail.sender_user_id
+              ? { recipient_user_ids: [playerEmail.sender_user_id] }
+              : {}),
           })
           .select()
           .single();

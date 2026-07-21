@@ -329,6 +329,9 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
               content_quality: t.content_quality,
               task_completion: t.task_completion,
               role_fit: t.role_fit,
+              collaboration: t.collaboration,
+              intel_held: t.intel_held,
+              intel_shared_count: t.intel_shared_count,
               tasks_done: t.tasks_done,
               tasks_total: t.tasks_total,
               task_outcomes: t.tasks.map((task) => ({
@@ -343,6 +346,36 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         }
       } catch (teamErr) {
         logger.warn({ teamErr, sessionId }, 'AAR team performance rollup failed (non-critical)');
+      }
+
+      // Cross-team intel sharing outcomes: what each team held, what they
+      // relayed (and when), and what stayed siloed past its deadline.
+      try {
+        const { getIntelStatus } = await import('../services/intelSharingService.js');
+        const intelStatus = await getIntelStatus(sessionId);
+        if (intelStatus.length > 0) {
+          keyMetrics.cross_team_sharing = {
+            total: intelStatus.length,
+            shared: intelStatus.filter((i) => i.shared).length,
+            missed: intelStatus.filter((i) => !i.shared && i.deadline_missed).length,
+            items: intelStatus.map((i) => ({
+              intel_key: i.intel_key,
+              title: i.source_title,
+              summary: i.summary,
+              holder_team: i.holder_team,
+              needed_by: i.needed_by,
+              arrived_at_minutes: i.trigger_time_minutes,
+              deadline_minutes: i.deadline_minutes,
+              shared: i.shared,
+              shared_at_minutes: i.shared_at_minutes,
+              shared_by_team: i.shared_by_team,
+              shared_via: i.shared_via,
+              deadline_missed: i.deadline_missed,
+            })),
+          };
+        }
+      } catch (intelErr) {
+        logger.warn({ intelErr, sessionId }, 'AAR intel sharing rollup failed (non-critical)');
       }
     }
 

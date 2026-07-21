@@ -569,6 +569,24 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
     return context.gateStatusByGateId[gateId] === 'met';
   }
 
+  // Cross-team intel sharing (social crisis module). Keys are generated per
+  // scenario as intel_shared:<intel_key> / intel_missing:<intel_key> and
+  // resolve against social_state.shared_intel_keys (written each tick by
+  // computeSocialState). intel_missing is the strict negation so the paired
+  // escalation gate fires only while the intel remains unshared.
+  const prefixIntelShared = 'intel_shared:';
+  if (key.startsWith(prefixIntelShared)) {
+    const intelKey = key.slice(prefixIntelShared.length);
+    const shared = (getSocialState(context).shared_intel_keys as string[] | undefined) ?? [];
+    return shared.includes(intelKey);
+  }
+  const prefixIntelMissing = 'intel_missing:';
+  if (key.startsWith(prefixIntelMissing)) {
+    const intelKey = key.slice(prefixIntelMissing.length);
+    const shared = (getSocialState(context).shared_intel_keys as string[] | undefined) ?? [];
+    return !shared.includes(intelKey);
+  }
+
   const prefixLocationClaimed = 'location_claimed:';
   if (key.startsWith(prefixLocationClaimed)) {
     const targetLabel = key.slice(prefixLocationClaimed.length).toLowerCase().replace(/_/g, ' ');

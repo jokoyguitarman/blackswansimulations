@@ -67,6 +67,14 @@ export interface SocialInjectDeliveryConfig {
   category?: string;
   sender_name?: string;
   channel_type?: string;
+  // Cross-team intel tagging (emails only). intel_key marks this email as
+  // carrying information another team needs; intel_needed_by names those
+  // teams; detection_keywords fingerprint the fact so runtime detection can
+  // recognise it in player free-text.
+  intel_key?: string;
+  intel_needed_by?: string[];
+  detection_keywords?: string[];
+  intel_summary?: string;
 }
 
 export interface SocialInject {
@@ -638,6 +646,8 @@ For each team, rewrite the mission (1-2 sentences) and the responsibilities (4-6
 
 Do NOT rename teams, add teams, or remove teams. Do NOT include scoring criteria or step-by-step instructions — responsibilities describe WHAT the team owns, not how to do it.
 
+EVERY team's final responsibility bullet MUST keep the cross-team information duty (in words fitting this scenario): relay information your team receives that another team needs, and ask other teams for facts you are missing. Teams may hold facts vital to each other.
+
 Default charters:
 ${catalogSummary}
 
@@ -991,6 +1001,250 @@ Return ONLY valid JSON:
       escalation_risk: 'Escalation Risk',
     },
   };
+}
+
+// ─── Stage 4c: Cross-Team Intel Dependencies ────────────────────────────────
+
+export interface IntelDependencyResult {
+  /** Team-scoped intel emails, keyed by holder team name. */
+  intelInjects: Record<string, SocialInject[]>;
+  /** Paired consequence gates (condition injects) for each intel key. */
+  intelGates: SocialInject[];
+}
+
+interface RawIntelItem {
+  intel_key?: string;
+  holder_team?: string;
+  needed_by?: string[];
+  trigger_time_minutes?: number;
+  deadline_minutes?: number;
+  from_name?: string;
+  from_address?: string;
+  priority?: string;
+  email_title?: string;
+  email_content?: string;
+  intel_summary?: string;
+  detection_keywords?: string[];
+  positive_gate?: {
+    title?: string;
+    content?: string;
+    author_handle?: string;
+    author_display_name?: string;
+    author_type?: string;
+    platform?: string;
+  };
+  negative_gate?: {
+    title?: string;
+    content?: string;
+    author_handle?: string;
+    author_display_name?: string;
+    author_type?: string;
+    platform?: string;
+  };
+}
+
+function slugifyIntelKey(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+}
+
+/** Fallback keyword derivation: distinctive tokens (numbers, capitalised names). */
+function deriveDetectionKeywords(text: string): string[] {
+  const tokens = new Set<string>();
+  for (const m of text.match(/\b\d[\d,.:-]{2,}\b/g) || []) tokens.add(m);
+  for (const m of text.match(/\b[A-Z][a-z]{3,}(?:\s[A-Z][a-z]{3,})?\b/g) || []) {
+    if (!/^(Subject|From|The|This|That|Please|Confirmed)$/.test(m)) tokens.add(m);
+  }
+  return Array.from(tokens).slice(0, 6);
+}
+
+/**
+ * Generate cross-team intel dependencies: for some teams, a team-scoped email
+ * carrying a concrete verified fact that a DIFFERENT team needs, plus a pair
+ * of condition gates that fire depending on whether the fact was relayed.
+ * The email itself must never instruct the holder to share it — discovering
+ * the dependency is the training point.
+ */
+export async function generateIntelDependencies(
+  teamStorylines: Record<string, SocialInject[]>,
+  npcs: NPCPersona[],
+  factSheet: FactSheet,
+  crisisContext: {
+    crisisType: string;
+    country: string;
+    context: string;
+    duration: number;
+    orgName?: string;
+  },
+): Promise<IntelDependencyResult> {
+  const teamNames = Object.keys(teamStorylines).filter((t) =>
+    (FIXED_TEAM_NAMES as readonly string[]).includes(t),
+  );
+  if (teamNames.length < 2) return { intelInjects: {}, intelGates: [] };
+
+  const storylineSummary = teamNames
+    .map(
+      (team) =>
+        `${team}: ${(teamStorylines[team] || [])
+          .map((i) => `T+${i.trigger_time_minutes ?? '?'} ${i.title}`)
+          .join(', ')}`,
+    )
+    .join('\n');
+
+  const npcHandles = npcs
+    .filter((p) => p.type === 'npc_media' || p.type === 'npc_influencer' || p.tier === 'key')
+    .slice(0, 8)
+    .map((p) => `${p.handle} (${p.name}, ${p.type})`)
+    .join(', ');
+
+  const result = await callAI(
+    `You are designing CROSS-TEAM INTEL DEPENDENCIES for a social media crisis simulation with these teams: ${teamNames.join(', ')}.
+
+An intel dependency is a concrete, verified fact that arrives BY EMAIL to exactly ONE team (the holder) but is operationally vital to a DIFFERENT team. If the holder relays it in time, the crisis eases; if they sit on it, the dependent team acts on incomplete information and the crisis worsens. This trains information sharing across silos.
+
+Create ${Math.min(teamNames.length, 4)} intel items — at most one held by each team, each needed by a DIFFERENT team. For each item provide:
+
+1. "intel_key": short snake_case identifier (e.g. "supplier_batch_confirmation").
+2. "holder_team": the team whose inbox receives the email. "needed_by": 1-2 OTHER team names that need the fact.
+3. "trigger_time_minutes" (5-20): when the email arrives. "deadline_minutes" (15-40, later than trigger): if not relayed by then, consequences fire.
+4. The EMAIL itself: "email_title", "email_content" (start with "Subject: ..."), realistic "from_name"/"from_address" (a supplier, authority, regulator, or internal operations contact appropriate to the holder team), "priority".
+   CRITICAL RULES for the email: it contains ONLY verified facts with SPECIFIC details (numbers, names, locations, codes). It must read as routine correspondence for the holder's own domain. It must NOT say "share this with X team", must NOT mention other teams, and must NOT include talking points or PR guidance. The cross-team relevance must be implicit.
+5. "intel_summary": one sentence a trainer reads describing why another team needs this.
+6. "detection_keywords": 3-6 distinctive strings from the fact (codes, numbers, proper nouns) that would appear when a player relays it in their own words.
+7. "positive_gate": a social post or news beat that appears AFTER the intel was relayed and acted on — the situation visibly improves (e.g. a journalist notes the response was specific and accurate). Provide title, content, author_handle/author_display_name/author_type from the NPC list, platform.
+8. "negative_gate": the organic consequence if the intel was NOT relayed by the deadline — the dependent team's blind spot becomes public (e.g. a vague or wrong statement gets torn apart, a customer exposes the contradiction). Same fields.
+
+Facts to build on (stay consistent, do not contradict): ${factSheet.confirmed_facts.slice(0, 8).join('; ')}
+
+Existing team storylines (the intel emails must fit these arcs without duplicating an existing beat):
+${storylineSummary}
+
+NPCs for gate authorship: ${npcHandles}
+
+Return ONLY valid JSON:
+{ "intel_items": [{ "intel_key": "...", "holder_team": "...", "needed_by": ["..."], "trigger_time_minutes": 8, "deadline_minutes": 25, "from_name": "...", "from_address": "...", "priority": "high", "email_title": "...", "email_content": "Subject: ...\\n...", "intel_summary": "...", "detection_keywords": ["..."], "positive_gate": { "title": "...", "content": "...", "author_handle": "@npc", "author_display_name": "...", "author_type": "npc_media", "platform": "x_twitter" }, "negative_gate": { "title": "...", "content": "...", "author_handle": "@npc", "author_display_name": "...", "author_type": "npc_media", "platform": "x_twitter" } }] }`,
+    `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes`,
+    8000,
+    0.8,
+  );
+
+  const rawItems = (result?.intel_items as RawIntelItem[]) || [];
+  const intelInjects: Record<string, SocialInject[]> = {};
+  const intelGates: SocialInject[] = [];
+  const usedKeys = new Set<string>();
+
+  for (const item of rawItems) {
+    const holder = String(item.holder_team || '');
+    if (!teamNames.includes(holder)) continue;
+
+    const neededBy = (item.needed_by || [])
+      .map(String)
+      .filter((t) => teamNames.includes(t) && t !== holder);
+    if (neededBy.length === 0) continue;
+
+    const key = slugifyIntelKey(String(item.intel_key || ''));
+    if (!key || usedKeys.has(key)) continue;
+
+    const emailContent = String(item.email_content || '').trim();
+    if (!emailContent) continue;
+    usedKeys.add(key);
+
+    let keywords = (item.detection_keywords || [])
+      .map((k) => String(k).trim())
+      .filter((k) => k.length >= 2)
+      .slice(0, 8);
+    if (keywords.length === 0) keywords = deriveDetectionKeywords(emailContent);
+    if (keywords.length === 0) continue;
+
+    const triggerTime = Math.max(2, Math.min(Number(item.trigger_time_minutes) || 8, 30));
+    const deadline = Math.max(triggerTime + 8, Math.min(Number(item.deadline_minutes) || 25, 50));
+
+    const emailInject: SocialInject = {
+      trigger_time_minutes: triggerTime,
+      type: 'email_inbound',
+      title: String(item.email_title || `Verified update for ${holder}`),
+      content: emailContent,
+      severity: 'high',
+      inject_scope: 'team_specific',
+      target_teams: [holder],
+      requires_response: false,
+      delivery_config: {
+        app: 'email',
+        email_category: 'verified_facts',
+        from_name: String(item.from_name || 'Operations Desk'),
+        from_address: String(item.from_address || 'operations@sim.local'),
+        priority: String(item.priority || 'high'),
+        intel_key: key,
+        intel_needed_by: neededBy,
+        detection_keywords: keywords,
+        intel_summary: String(item.intel_summary || ''),
+      } as SocialInjectDeliveryConfig,
+    };
+    intelInjects[holder] = [...(intelInjects[holder] || []), emailInject];
+
+    const gateAuthorDefaults = {
+      author_handle: '@npc_media',
+      author_display_name: 'News Desk',
+      author_type: 'npc_media',
+      platform: 'x_twitter',
+    };
+
+    if (item.positive_gate?.content) {
+      intelGates.push({
+        type: 'social_post',
+        title: String(item.positive_gate.title || `Intel relayed: ${key}`),
+        content: String(item.positive_gate.content),
+        severity: 'medium',
+        inject_scope: 'universal',
+        target_teams: [],
+        delivery_config: {
+          app: 'social_feed',
+          author_handle: String(
+            item.positive_gate.author_handle || gateAuthorDefaults.author_handle,
+          ),
+          author_display_name: String(
+            item.positive_gate.author_display_name || gateAuthorDefaults.author_display_name,
+          ),
+          author_type: String(item.positive_gate.author_type || gateAuthorDefaults.author_type),
+          platform: String(item.positive_gate.platform || gateAuthorDefaults.platform),
+          virality_score: 55,
+        } as SocialInjectDeliveryConfig,
+        conditions_to_appear: { threshold: 1, conditions: [`intel_shared:${key}`] },
+        eligible_after_minutes: triggerTime + 2,
+      });
+    }
+
+    if (item.negative_gate?.content) {
+      intelGates.push({
+        type: 'social_post',
+        title: String(item.negative_gate.title || `Intel withheld: ${key}`),
+        content: String(item.negative_gate.content),
+        severity: 'high',
+        inject_scope: 'universal',
+        target_teams: [],
+        delivery_config: {
+          app: 'social_feed',
+          author_handle: String(
+            item.negative_gate.author_handle || gateAuthorDefaults.author_handle,
+          ),
+          author_display_name: String(
+            item.negative_gate.author_display_name || gateAuthorDefaults.author_display_name,
+          ),
+          author_type: String(item.negative_gate.author_type || gateAuthorDefaults.author_type),
+          platform: String(item.negative_gate.platform || gateAuthorDefaults.platform),
+          virality_score: 75,
+        } as SocialInjectDeliveryConfig,
+        conditions_to_appear: { threshold: 1, conditions: [`intel_missing:${key}`] },
+        conditions_to_cancel: [`intel_shared:${key}`],
+        eligible_after_minutes: deadline,
+      });
+    }
+  }
+
+  return { intelInjects, intelGates };
 }
 
 // ─── Stage 5: Research + Best Practices ─────────────────────────────────────

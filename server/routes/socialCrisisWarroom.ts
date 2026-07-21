@@ -9,6 +9,7 @@ import {
   suggestSocialCrisisTeams,
   generateAllTeamStorylines,
   generateConvergenceLayer,
+  generateIntelDependencies,
   generateUnifiedStoryline,
   generateStrategyWindows,
   researchBestPractices,
@@ -407,15 +408,40 @@ router.post(
     void (async () => {
       try {
         const crisisContext = { crisisType: crisis_type, location, country, context, duration };
-        const result = await generateConvergenceLayer(
-          team_storylines as Record<string, SocialInject[]>,
-          personas as NPCPersona[],
-          fact_sheet as FactSheet,
-          crisisContext,
-          env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+        const [result, intelResult] = await Promise.all([
+          generateConvergenceLayer(
+            team_storylines as Record<string, SocialInject[]>,
+            personas as NPCPersona[],
+            fact_sheet as FactSheet,
+            crisisContext,
+            env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+          ),
+          generateIntelDependencies(
+            team_storylines as Record<string, SocialInject[]>,
+            personas as NPCPersona[],
+            fact_sheet as FactSheet,
+            crisisContext,
+          ).catch((err) => {
+            logger.warn({ err, jobId }, 'Intel dependency generation failed (non-critical)');
+            return { intelInjects: {}, intelGates: [] };
+          }),
+        ]);
+        // Paired intel gates ride the convergence-gate bucket; intel emails are
+        // returned separately so the wizard can merge them into team storylines.
+        const data = {
+          ...result,
+          convergenceGates: [...result.convergenceGates, ...intelResult.intelGates],
+          intel_injects: intelResult.intelInjects,
+        };
+        aiJobs.set(jobId, { status: 'completed', data, startedAt: Date.now() });
+        logger.info(
+          {
+            jobId,
+            intelEmails: Object.values(intelResult.intelInjects).flat().length,
+            intelGates: intelResult.intelGates.length,
+          },
+          'Convergence generation completed',
         );
-        aiJobs.set(jobId, { status: 'completed', data: result, startedAt: Date.now() });
-        logger.info({ jobId }, 'Convergence generation completed');
       } catch (err) {
         logger.error({ err, jobId }, 'Convergence generation failed');
         aiJobs.set(jobId, {

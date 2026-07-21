@@ -2,14 +2,18 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService.js';
+import { getIntelManifest } from './intelSharingService.js';
 
 /**
  * Live per-team scoring for the social media crisis module.
  *
  * The team score is a pure, recomputable rollup over immutable event history —
  * nothing mutates on the hot path, so a crash or double-recompute can never
- * corrupt it. Composite = ~50% content quality (AI grades on members'
- * posts/emails), ~35% expected-task completion/timeliness, ~15% role fit.
+ * corrupt it. Composite = ~45% content quality (AI grades on members'
+ * posts/emails), ~30% expected-task completion/timeliness, ~15% role fit,
+ * ~10% collaboration (cross-team intel the team held and shared on time —
+ * null when the scenario gave the team no intel, so old scenarios keep the
+ * previous 50/35/15 behaviour via weight renormalisation).
  *
  * Teams with zero members score null ("unstaffed"), never 0 — an empty team is
  * a staffing problem for the trainer, not a failing grade.
@@ -47,6 +51,10 @@ export interface TeamScore {
   content_quality: number | null;
   task_completion: number | null;
   role_fit: number | null;
+  /** Cross-team intel sharing: % of held intel shared (on time = full credit). */
+  collaboration: number | null;
+  intel_held: number;
+  intel_shared_count: number;
   composite_score: number | null;
   graded_items: number;
   most_urgent_overdue: { description: string; minutes_overdue: number } | null;
@@ -195,6 +203,20 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
 
   const actions = actionsRes.data || [];
 
+  // Cross-team intel: which keys each team held, and when each key was shared.
+  // Derived from scenario_injects (cached) + intel_shared actions already loaded.
+  const intelManifest = await getIntelManifest(session.scenario_id).catch(() => []);
+  const intelShareTimes = new Map<string, number | null>();
+  for (const a of actions) {
+    if (String(a.action_type) !== 'intel_shared') continue;
+    const key = ((a.metadata as Record<string, unknown> | null) || {}).intel_key;
+    if (typeof key !== 'string' || !key || intelShareTimes.has(key)) continue;
+    intelShareTimes.set(
+      key,
+      startTime ? (new Date(String(a.created_at)).getTime() - startTime) / 60000 : null,
+    );
+  }
+
   const teams: TeamScore[] = scenarioTeams.map((teamRow) => {
     const teamName = String(teamRow.team_name);
     const memberIds = membersByTeam.get(teamName) || [];
@@ -320,14 +342,36 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     const contentQuality = overallCount > 0 ? Math.round(overallSum / overallCount) : null;
     const roleFit = roleFitCount > 0 ? Math.round(roleFitSum / roleFitCount) : null;
 
+    // Collaboration: of the intel this team held, how much was shared with the
+    // team(s) that needed it. Sharing after the deadline earns 60% credit
+    // (mirrors late task completion). Null when the team held no intel.
+    const heldIntel = intelManifest.filter((m) => m.holder_team === teamName);
+    let intelSharedCount = 0;
+    let collaboration: number | null = null;
+    if (!unstaffed && heldIntel.length > 0) {
+      let earned = 0;
+      for (const entry of heldIntel) {
+        if (!intelShareTimes.has(entry.intel_key)) continue;
+        intelSharedCount++;
+        const sharedAt = intelShareTimes.get(entry.intel_key);
+        const late =
+          entry.deadline_minutes != null && sharedAt != null && sharedAt > entry.deadline_minutes;
+        earned += late ? 0.6 : 1;
+      }
+      collaboration = Math.round((earned / heldIntel.length) * 100);
+    } else if (heldIntel.length > 0) {
+      intelSharedCount = heldIntel.filter((m) => intelShareTimes.has(m.intel_key)).length;
+    }
+
     // Composite: weighted average over the available components so a team is
     // not penalised for components that have no data yet.
     let composite: number | null = null;
     if (!unstaffed) {
       const components: Array<{ value: number; weight: number }> = [];
-      if (contentQuality != null) components.push({ value: contentQuality, weight: 0.5 });
-      if (taskCompletion != null) components.push({ value: taskCompletion, weight: 0.35 });
+      if (contentQuality != null) components.push({ value: contentQuality, weight: 0.45 });
+      if (taskCompletion != null) components.push({ value: taskCompletion, weight: 0.3 });
       if (roleFit != null) components.push({ value: roleFit, weight: 0.15 });
+      if (collaboration != null) components.push({ value: collaboration, weight: 0.1 });
       const weightSum = components.reduce((s, c) => s + c.weight, 0);
       if (weightSum > 0) {
         composite = Math.round(components.reduce((s, c) => s + c.value * c.weight, 0) / weightSum);
@@ -357,6 +401,9 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       content_quality: contentQuality,
       task_completion: taskCompletion,
       role_fit: roleFit,
+      collaboration,
+      intel_held: heldIntel.length,
+      intel_shared_count: intelSharedCount,
       composite_score: composite,
       graded_items: overallCount,
       most_urgent_overdue: mostUrgent,
@@ -406,6 +453,7 @@ export async function snapshotTeamScores(sessionId: string): Promise<void> {
         content_quality: t.content_quality,
         task_completion: t.task_completion,
         role_fit: t.role_fit,
+        collaboration: t.collaboration,
         tasks_done: t.tasks_done,
         tasks_total: t.tasks_total,
         member_count: t.member_count,
@@ -421,6 +469,7 @@ export async function snapshotTeamScores(sessionId: string): Promise<void> {
           composite_score: t.composite_score,
           tasks_done: t.tasks_done,
           tasks_total: t.tasks_total,
+          collaboration: t.collaboration,
         })),
       },
       timestamp: new Date().toISOString(),

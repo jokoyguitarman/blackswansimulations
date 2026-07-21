@@ -37,6 +37,8 @@ interface SimEmail {
   thread_id: string | null;
   replied_to_id: string | null;
   created_at: string;
+  sent_by_player_id?: string | null;
+  recipient_user_ids?: string[] | null;
 }
 
 interface EmailDraft {
@@ -77,11 +79,19 @@ export default function EmailApp() {
   const [replyData, setReplyData] = useState({ to: '', subject: '', body: '' });
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [forwardingEmailId, setForwardingEmailId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const [contacts, setContacts] = useState<
-    Array<{ address: string; name: string; source: string }>
+    Array<{ address: string; name: string; source: string; team_name?: string | null }>
   >([]);
   const [showContactDropdown, setShowContactDropdown] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setCurrentUserId(session?.user?.id || null);
+    });
+  }, []);
 
   // Load drafts from localStorage on mount
   useEffect(() => {
@@ -247,11 +257,13 @@ export default function EmailApp() {
           subject: replyData.subject || '(No Subject)',
           body_text: replyData.body,
           replied_to_id: selectedEmail?.id,
+          forwarded_email_id: forwardingEmailId || undefined,
         }),
       });
       setComposing(false);
       setReplying(false);
       setReplyData({ to: '', subject: '', body: '' });
+      setForwardingEmailId(null);
       if (editingDraftId) {
         deleteDraft(editingDraftId);
         setEditingDraftId(null);
@@ -351,9 +363,43 @@ export default function EmailApp() {
     setTimeout(() => replyRef.current?.focus(), 100);
   }
 
-  const filteredEmails = emails.filter((e) =>
-    folder === 'inbox' ? e.direction === 'inbound' : e.direction === 'outbound',
-  );
+  function startForward() {
+    if (!selectedEmail) return;
+    const quoted = [
+      '',
+      '',
+      '---------- Forwarded message ----------',
+      `From: ${selectedEmail.from_name} <${selectedEmail.from_address}>`,
+      `Subject: ${selectedEmail.subject}`,
+      '',
+      selectedEmail.body_text,
+    ].join('\n');
+    setForwardingEmailId(selectedEmail.id);
+    setReplyData({
+      to: '',
+      subject: selectedEmail.subject.startsWith('FWD:')
+        ? selectedEmail.subject
+        : `FWD: ${selectedEmail.subject}`,
+      body: quoted,
+    });
+    setSelectedEmail(null);
+    setReplying(false);
+    setComposing(true);
+    loadContacts();
+  }
+
+  // Inbox shows inject/NPC mail plus mail other players addressed to me;
+  // Sent shows only my own outbound (another player's outbound reaching me
+  // belongs in my inbox, not my sent folder). Trainers keep the legacy
+  // all-outbound Sent view to monitor player email traffic.
+  const filteredEmails = emails.filter((e) => {
+    const isMine = !!currentUserId && e.sent_by_player_id === currentUserId;
+    if (folder === 'sent') {
+      return e.direction === 'outbound' && (isTrainer || isMine || !currentUserId);
+    }
+    if (e.direction === 'inbound') return true;
+    return !isMine && !!currentUserId && (e.recipient_user_ids || []).includes(currentUserId);
+  });
 
   // ─── Compose New Email View ─────────────────────────────────────────────────
   if (composing && !selectedEmail) {
@@ -376,6 +422,7 @@ export default function EmailApp() {
               setComposing(false);
               setReplyData({ to: '', subject: '', body: '' });
               setEditingDraftId(null);
+              setForwardingEmailId(null);
             }}
             className="text-[17px] ios-btn-bounce"
             style={{ color: '#007AFF' }}
@@ -383,7 +430,7 @@ export default function EmailApp() {
             Cancel
           </button>
           <span className="text-[17px] font-semibold" style={{ color: '#000000' }}>
-            New Message
+            {forwardingEmailId ? 'Forward' : 'New Message'}
           </span>
           <button onClick={sendEmail} className="ios-btn-bounce" style={{ color: '#007AFF' }}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF">
@@ -452,11 +499,21 @@ export default function EmailApp() {
                               : 'none',
                         }}
                       >
-                        <span
-                          className="text-[14px] font-medium truncate"
-                          style={{ color: '#000' }}
-                        >
-                          {contact.name}
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="text-[14px] font-medium truncate"
+                            style={{ color: '#000' }}
+                          >
+                            {contact.name}
+                          </span>
+                          {contact.source === 'player' && (
+                            <span
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: '#E8F0FE', color: '#1A73E8' }}
+                            >
+                              {contact.team_name || 'Colleague'}
+                            </span>
+                          )}
                         </span>
                         <span
                           className="text-[12px] ml-2 flex-shrink-0"
@@ -709,7 +766,11 @@ export default function EmailApp() {
               </svg>
               <span className="text-[15px]">Reply</span>
             </button>
-            <button className="flex items-center gap-2 ios-btn-bounce" style={{ color: '#007AFF' }}>
+            <button
+              onClick={startForward}
+              className="flex items-center gap-2 ios-btn-bounce"
+              style={{ color: '#007AFF' }}
+            >
               <svg
                 width="20"
                 height="20"

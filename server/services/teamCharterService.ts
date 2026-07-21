@@ -50,6 +50,7 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
       'Respond to press and media inquiries arriving by email',
       'Counter harmful narratives on the feed with verified facts',
       'Keep all public messaging consistent, calm, and factual',
+      'Check with the other teams for verified facts before going public — they may hold details you need',
     ],
     expected_actions: [
       {
@@ -114,6 +115,7 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
       'Feed verified operational facts to Communications for public use',
       'Plan continuity: alternatives, timelines, and mitigations',
       'Stay out of public channels — you do not post publicly',
+      'Relay information you receive that other teams need, and ask them for what you are missing',
     ],
     expected_actions: [
       {
@@ -169,6 +171,7 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
       'Stay consistent with the official line from Communications',
       'Escalate complaints with legal risk to Legal',
       'De-escalate angry customers with empathy and facts',
+      'Relay information you receive that other teams need, and ask them for what you are missing',
     ],
     expected_actions: [
       {
@@ -224,6 +227,7 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
       'File fact-based disputes and takedown requests on provably false content',
       'Flag any public messaging that admits liability',
       'Advise the other teams on legal risk in their channels',
+      'Relay information you receive that other teams need, and ask them for what you are missing',
     ],
     expected_actions: [
       {

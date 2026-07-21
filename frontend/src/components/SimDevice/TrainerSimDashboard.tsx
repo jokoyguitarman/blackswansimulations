@@ -188,6 +188,9 @@ interface TeamScoreRow {
   content_quality: number | null;
   task_completion: number | null;
   role_fit: number | null;
+  collaboration: number | null;
+  intel_held: number;
+  intel_shared_count: number;
   composite_score: number | null;
   most_urgent_overdue: { description: string; minutes_overdue: number } | null;
 }
@@ -196,6 +199,21 @@ interface TeamScoreReport {
   teams: TeamScoreRow[];
   unassigned: Array<{ user_id: string; display_name: string }>;
   elapsed_minutes: number | null;
+}
+
+interface IntelStatusRow {
+  intel_key: string;
+  holder_team: string;
+  needed_by: string[];
+  summary: string;
+  source_title: string;
+  trigger_time_minutes: number | null;
+  deadline_minutes: number | null;
+  shared: boolean;
+  shared_at_minutes: number | null;
+  shared_by_team: string | null;
+  shared_via: string | null;
+  deadline_missed: boolean;
 }
 
 const TEAM_COLOR: Record<string, string> = {
@@ -296,6 +314,12 @@ const CONDITION_LABELS: Record<string, string> = {
 };
 
 function conditionLabel(key: string): string {
+  if (key.startsWith('intel_shared:')) {
+    return `Intel shared: ${key.slice('intel_shared:'.length).replace(/_/g, ' ')}`;
+  }
+  if (key.startsWith('intel_missing:')) {
+    return `Intel not shared: ${key.slice('intel_missing:'.length).replace(/_/g, ' ')}`;
+  }
   return CONDITION_LABELS[key] || key.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
@@ -716,6 +740,7 @@ export default function TrainerSimDashboard() {
   const [ledger, setLedger] = useState<PlayerLedger | null>(null);
   const [selectedLedgerPlayer, setSelectedLedgerPlayer] = useState<string | null>(null);
   const [teamScores, setTeamScores] = useState<TeamScoreReport | null>(null);
+  const [intelStatus, setIntelStatus] = useState<IntelStatusRow[]>([]);
   const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [elapsedMinutes, setElapsedMinutes] = useState(0);
   const [sessionInfo, setSessionInfo] = useState<Record<string, unknown> | null>(null);
@@ -881,6 +906,20 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  const loadIntelStatus = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/social/intel-status/session/${sessionId}`), {
+        headers,
+      });
+      const json = await res.json();
+      if (Array.isArray(json.data)) setIntelStatus(json.data as IntelStatusRow[]);
+    } catch {
+      /* retry on next poll */
+    }
+  }, [sessionId]);
+
   const loadAll = useCallback(() => {
     loadSocialState();
     loadPosts();
@@ -891,6 +930,7 @@ export default function TrainerSimDashboard() {
     loadDisputes();
     loadLedger();
     loadTeamScores();
+    loadIntelStatus();
   }, [
     loadSocialState,
     loadPosts,
@@ -901,6 +941,7 @@ export default function TrainerSimDashboard() {
     loadDisputes,
     loadLedger,
     loadTeamScores,
+    loadIntelStatus,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -941,6 +982,7 @@ export default function TrainerSimDashboard() {
     onEvent: (evt) => {
       if (evt.type === 'social_state.updated' && evt.data) {
         setSocialState(evt.data as unknown as SocialState);
+        loadIntelStatus();
       } else if (evt.type === 'team_scores.updated') {
         loadTeamScores();
       } else {
@@ -1800,8 +1842,8 @@ export default function TrainerSimDashboard() {
                   Team Performance
                 </h2>
                 <p className="text-[11px]" style={{ color: '#64748b' }}>
-                  Composite = content quality (50%) + task completion (35%) + role fit (15%).
-                  Unstaffed teams are not scored.
+                  Composite = content quality (45%) + task completion (30%) + role fit (15%) + intel
+                  sharing (10%, only for teams holding intel). Unstaffed teams are not scored.
                 </p>
               </div>
               {teamScores.unassigned.length > 0 && (
@@ -1886,7 +1928,7 @@ export default function TrainerSimDashboard() {
                       </div>
                     )}
 
-                    <div className="flex gap-3 text-[10px] font-bold mb-2">
+                    <div className="flex gap-3 text-[10px] font-bold mb-2 flex-wrap">
                       {team.content_quality != null && (
                         <span style={{ color: gradeColor(team.content_quality) }}>
                           QUALITY {team.content_quality}
@@ -1900,6 +1942,11 @@ export default function TrainerSimDashboard() {
                       {team.role_fit != null && (
                         <span style={{ color: gradeColor(team.role_fit) }}>
                           FIT {team.role_fit}
+                        </span>
+                      )}
+                      {team.collaboration != null && (
+                        <span style={{ color: gradeColor(team.collaboration) }}>
+                          INTEL {team.collaboration}
                         </span>
                       )}
                     </div>
@@ -1979,6 +2026,81 @@ export default function TrainerSimDashboard() {
                         )}
                       </div>
                     )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cross-Team Intel (full-width) — which planted intel has been relayed */}
+      {intelStatus.length > 0 && (
+        <div className="px-4 pb-4">
+          <div
+            className="rounded-xl border"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
+          >
+            <div className="px-4 py-3 border-b" style={{ borderColor: '#E4DFD4' }}>
+              <h2 className="text-sm font-bold" style={{ color: '#1E3A5F' }}>
+                Cross-Team Intel
+              </h2>
+              <p className="text-[11px]" style={{ color: '#64748b' }}>
+                Vital facts planted in one team&apos;s inbox that another team needs. Sharing in
+                time defuses the paired escalation; sitting on it triggers consequences.
+              </p>
+            </div>
+            <div className="p-3 space-y-2">
+              {intelStatus.map((item) => {
+                const statusLabel = item.shared
+                  ? `Shared T+${item.shared_at_minutes ?? '?'}m${item.shared_by_team ? ` by ${item.shared_by_team}` : ''}${item.shared_via ? ` (${item.shared_via === 'email_forward' ? 'forwarded' : item.shared_via === 'group_chat' ? 'group chat' : 'email'})` : ''}`
+                  : item.deadline_missed
+                    ? `Not shared — deadline T+${item.deadline_minutes}m missed`
+                    : `Held by ${item.holder_team}${item.deadline_minutes != null ? ` — share before T+${item.deadline_minutes}m` : ''}`;
+                const statusColor = item.shared
+                  ? '#15803D'
+                  : item.deadline_missed
+                    ? '#B91C1C'
+                    : '#D97706';
+                return (
+                  <div
+                    key={item.intel_key}
+                    className="rounded-lg border px-3 py-2 flex items-start justify-between gap-3 flex-wrap"
+                    style={{ backgroundColor: '#FAF8F4', borderColor: '#E4DFD4' }}
+                  >
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-[11px] font-bold" style={{ color: '#1E3A5F' }}>
+                          {item.source_title}
+                        </span>
+                        <span className="text-[10px] font-semibold" style={{ color: '#64748b' }}>
+                          <span style={{ color: teamColor(item.holder_team) }}>
+                            {item.holder_team}
+                          </span>
+                          {' → '}
+                          {item.needed_by.map((t, i) => (
+                            <span key={t} style={{ color: teamColor(t) }}>
+                              {i > 0 ? ', ' : ''}
+                              {t}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                      {item.summary && (
+                        <p className="text-[10px] mt-0.5" style={{ color: '#4B5563' }}>
+                          {item.summary}
+                        </p>
+                      )}
+                    </div>
+                    <span
+                      className="text-[10px] font-bold px-2 py-1 rounded flex-shrink-0"
+                      style={{
+                        color: statusColor,
+                        backgroundColor: `${statusColor}18`,
+                      }}
+                    >
+                      {statusLabel}
+                    </span>
                   </div>
                 );
               })}

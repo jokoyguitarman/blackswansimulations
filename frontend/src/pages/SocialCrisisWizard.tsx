@@ -787,6 +787,19 @@ export const SocialCrisisWizard = () => {
         if (Array.isArray(d.objectives)) setObjectives(d.objectives as ObjectiveDef[]);
         const dl = (d.dimensionLabels || d.dimension_labels) as Record<string, string> | undefined;
         if (dl && typeof dl === 'object') setDimensionLabels(dl);
+        // Cross-team intel emails: merge into the holder teams' storylines so
+        // they compile as ordinary team-scoped injects.
+        const intel = d.intel_injects as Record<string, SocialInject[]> | undefined;
+        if (intel && typeof intel === 'object') {
+          setTeamStorylines((prev) => {
+            const next = { ...prev };
+            for (const [team, injects] of Object.entries(intel)) {
+              if (!Array.isArray(injects) || injects.length === 0) continue;
+              next[team] = [...(next[team] || []), ...injects];
+            }
+            return next;
+          });
+        }
         return (Array.isArray(si) && si.length > 0) || (Array.isArray(cg) && cg.length > 0);
       };
 
