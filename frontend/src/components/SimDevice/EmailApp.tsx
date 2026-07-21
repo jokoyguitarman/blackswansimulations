@@ -44,10 +44,32 @@ interface SimEmail {
 interface EmailDraft {
   id: string;
   to: string;
+  cc?: string;
   subject: string;
   body: string;
   replyToId?: string;
   savedAt: string;
+}
+
+/** Split a free-text recipient field on commas/semicolons into addresses. */
+function splitAddresses(raw: string): string[] {
+  return raw
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** Case-insensitive dedupe preserving first occurrence. */
+function dedupeAddresses(addresses: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const a of addresses) {
+    const key = a.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(a);
+  }
+  return out;
 }
 
 function getDraftsKey(sessionId: string): string {
@@ -77,6 +99,9 @@ export default function EmailApp() {
   const [replying, setReplying] = useState(false);
   const [folder, setFolder] = useState<'inbox' | 'sent' | 'drafts'>('inbox');
   const [replyData, setReplyData] = useState({ to: '', subject: '', body: '' });
+  // Confirmed To recipients (chips); replyData.to holds the segment being typed.
+  const [toChips, setToChips] = useState<string[]>([]);
+  const [ccText, setCcText] = useState('');
   const [drafts, setDrafts] = useState<EmailDraft[]>([]);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [forwardingEmailId, setForwardingEmailId] = useState<string | null>(null);
@@ -101,6 +126,8 @@ export default function EmailApp() {
   // Auto-save draft on unmount (navigating away via notification, home button, etc.)
   const composingRef = useRef(composing);
   const replyDataRef = useRef(replyData);
+  const toChipsRef = useRef(toChips);
+  const ccTextRef = useRef(ccText);
   const editingDraftIdRef = useRef(editingDraftId);
   const draftsRef = useRef(drafts);
 
@@ -110,6 +137,12 @@ export default function EmailApp() {
   useEffect(() => {
     replyDataRef.current = replyData;
   }, [replyData]);
+  useEffect(() => {
+    toChipsRef.current = toChips;
+  }, [toChips]);
+  useEffect(() => {
+    ccTextRef.current = ccText;
+  }, [ccText]);
   useEffect(() => {
     editingDraftIdRef.current = editingDraftId;
   }, [editingDraftId]);
@@ -122,7 +155,10 @@ export default function EmailApp() {
       if (!sessionId) return;
       const isComposing = composingRef.current;
       const data = replyDataRef.current;
-      if (!isComposing || (!data.to && !data.subject && !data.body)) return;
+      const draftTo = dedupeAddresses([...toChipsRef.current, ...splitAddresses(data.to)]).join(
+        ', ',
+      );
+      if (!isComposing || (!draftTo && !data.subject && !data.body)) return;
 
       const currentDrafts = [...draftsRef.current];
       const draftId = editingDraftIdRef.current;
@@ -132,7 +168,8 @@ export default function EmailApp() {
         if (idx >= 0) {
           currentDrafts[idx] = {
             ...currentDrafts[idx],
-            to: data.to,
+            to: draftTo,
+            cc: ccTextRef.current,
             subject: data.subject,
             body: data.body,
             savedAt: new Date().toISOString(),
@@ -141,7 +178,8 @@ export default function EmailApp() {
       } else {
         currentDrafts.unshift({
           id: `draft-${Date.now()}`,
-          to: data.to,
+          to: draftTo,
+          cc: ccTextRef.current,
           subject: data.subject,
           body: data.body,
           savedAt: new Date().toISOString(),
@@ -153,7 +191,8 @@ export default function EmailApp() {
 
   function saveDraft() {
     if (!sessionId) return;
-    if (!replyData.to && !replyData.subject && !replyData.body) return;
+    const draftTo = dedupeAddresses([...toChips, ...splitAddresses(replyData.to)]).join(', ');
+    if (!draftTo && !replyData.subject && !replyData.body) return;
 
     const updated = [...drafts];
     if (editingDraftId) {
@@ -161,7 +200,8 @@ export default function EmailApp() {
       if (idx >= 0) {
         updated[idx] = {
           ...updated[idx],
-          to: replyData.to,
+          to: draftTo,
+          cc: ccText,
           subject: replyData.subject,
           body: replyData.body,
           savedAt: new Date().toISOString(),
@@ -170,7 +210,8 @@ export default function EmailApp() {
     } else {
       updated.unshift({
         id: `draft-${Date.now()}`,
-        to: replyData.to,
+        to: draftTo,
+        cc: ccText,
         subject: replyData.subject,
         body: replyData.body,
         replyToId: selectedEmail?.id,
@@ -190,7 +231,9 @@ export default function EmailApp() {
   }
 
   function openDraft(draft: EmailDraft) {
-    setReplyData({ to: draft.to, subject: draft.subject, body: draft.body });
+    setToChips(dedupeAddresses(splitAddresses(draft.to)));
+    setCcText(draft.cc || '');
+    setReplyData({ to: '', subject: draft.subject, body: draft.body });
     setEditingDraftId(draft.id);
     setComposing(true);
     setSelectedEmail(null);
@@ -245,7 +288,11 @@ export default function EmailApp() {
   }
 
   async function sendEmail() {
-    if (!replyData.body.trim() || !replyData.to.trim() || !sessionId) return;
+    const toAddresses = dedupeAddresses([...toChips, ...splitAddresses(replyData.to)]);
+    const ccAddresses = dedupeAddresses(splitAddresses(ccText)).filter(
+      (a) => !toAddresses.some((t) => t.toLowerCase() === a.toLowerCase()),
+    );
+    if (!replyData.body.trim() || toAddresses.length === 0 || !sessionId) return;
     try {
       const headers = await getAuthHeaders();
       await fetch(apiUrl('/api/social/emails'), {
@@ -253,7 +300,8 @@ export default function EmailApp() {
         headers,
         body: JSON.stringify({
           session_id: sessionId,
-          to_addresses: [replyData.to],
+          to_addresses: toAddresses,
+          ...(ccAddresses.length > 0 ? { cc_addresses: ccAddresses } : {}),
           subject: replyData.subject || '(No Subject)',
           body_text: replyData.body,
           replied_to_id: selectedEmail?.id,
@@ -263,6 +311,8 @@ export default function EmailApp() {
       setComposing(false);
       setReplying(false);
       setReplyData({ to: '', subject: '', body: '' });
+      setToChips([]);
+      setCcText('');
       setForwardingEmailId(null);
       if (editingDraftId) {
         deleteDraft(editingDraftId);
@@ -353,6 +403,8 @@ export default function EmailApp() {
   function startReply() {
     if (!selectedEmail) return;
     setReplying(true);
+    setToChips([]);
+    setCcText('');
     setReplyData({
       to: selectedEmail.from_address,
       subject: selectedEmail.subject.startsWith('RE:')
@@ -375,6 +427,8 @@ export default function EmailApp() {
       selectedEmail.body_text,
     ].join('\n');
     setForwardingEmailId(selectedEmail.id);
+    setToChips([]);
+    setCcText('');
     setReplyData({
       to: '',
       subject: selectedEmail.subject.startsWith('FWD:')
@@ -386,6 +440,15 @@ export default function EmailApp() {
     setReplying(false);
     setComposing(true);
     loadContacts();
+  }
+
+  /** Move the current To input text into chips (comma/Enter/blur commit). */
+  function commitToInput(raw?: string) {
+    const text = raw ?? replyData.to;
+    const parts = splitAddresses(text);
+    if (parts.length === 0) return;
+    setToChips((prev) => dedupeAddresses([...prev, ...parts]));
+    setReplyData((prev) => ({ ...prev, to: '' }));
   }
 
   // Inbox shows inject/NPC mail plus mail other players addressed to me;
@@ -416,11 +479,13 @@ export default function EmailApp() {
         >
           <button
             onClick={() => {
-              if (replyData.to || replyData.subject || replyData.body) {
+              if (toChips.length > 0 || replyData.to || replyData.subject || replyData.body) {
                 saveDraft();
               }
               setComposing(false);
               setReplyData({ to: '', subject: '', body: '' });
+              setToChips([]);
+              setCcText('');
               setEditingDraftId(null);
               setForwardingEmailId(null);
             }}
@@ -440,36 +505,86 @@ export default function EmailApp() {
         </div>
         <div className="flex-1 overflow-y-auto" style={{ backgroundColor: '#FFFFFF' }}>
           <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)', position: 'relative' }}>
-            <div className="flex items-center px-4 py-2.5">
-              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+            <div className="flex items-start px-4 py-2.5">
+              <span className="text-[15px] w-16 pt-0.5 flex-shrink-0" style={{ color: '#8E8E93' }}>
                 To:
               </span>
-              <input
-                value={replyData.to}
-                onChange={(e) => {
-                  setReplyData({ ...replyData, to: e.target.value });
-                  setShowContactDropdown(e.target.value.length > 0);
-                }}
-                onFocus={() => {
-                  if (replyData.to.length > 0 || contacts.length > 0) setShowContactDropdown(true);
-                }}
-                onBlur={() => setTimeout(() => setShowContactDropdown(false), 200)}
-                placeholder="Recipient email address"
-                className="flex-1 text-[15px] outline-none"
-                style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
-                autoFocus
-              />
+              <div className="flex-1 flex flex-wrap items-center gap-1.5 min-w-0">
+                {toChips.map((chip) => (
+                  <span
+                    key={chip}
+                    className="flex items-center gap-1 text-[13px] px-2 py-0.5 rounded-full max-w-full"
+                    style={{ backgroundColor: '#E8F0FE', color: '#1A73E8' }}
+                  >
+                    <span className="truncate">
+                      {contacts.find((c) => c.address.toLowerCase() === chip.toLowerCase())?.name ||
+                        chip}
+                    </span>
+                    <button
+                      onClick={() => setToChips((prev) => prev.filter((c) => c !== chip))}
+                      className="flex-shrink-0 leading-none"
+                      style={{ color: '#1A73E8', fontSize: 14 }}
+                      aria-label={`Remove ${chip}`}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+                <input
+                  value={replyData.to}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    // Typing a comma/semicolon commits the completed part(s)
+                    // as chips and keeps the remainder in the input.
+                    if (/[,;]/.test(value)) {
+                      const parts = value.split(/[,;]/);
+                      const remainder = parts.pop() ?? '';
+                      const complete = parts.map((s) => s.trim()).filter(Boolean);
+                      if (complete.length > 0) {
+                        setToChips((prev) => dedupeAddresses([...prev, ...complete]));
+                      }
+                      setReplyData({ ...replyData, to: remainder.trimStart() });
+                      setShowContactDropdown(remainder.trim().length > 0);
+                      return;
+                    }
+                    setReplyData({ ...replyData, to: value });
+                    setShowContactDropdown(value.length > 0);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && replyData.to.trim()) {
+                      e.preventDefault();
+                      commitToInput();
+                    } else if (e.key === 'Backspace' && replyData.to === '' && toChips.length > 0) {
+                      setToChips((prev) => prev.slice(0, -1));
+                    }
+                  }}
+                  onFocus={() => {
+                    if (replyData.to.length > 0 || contacts.length > 0)
+                      setShowContactDropdown(true);
+                  }}
+                  onBlur={() => {
+                    setTimeout(() => setShowContactDropdown(false), 200);
+                    if (replyData.to.trim()) commitToInput();
+                  }}
+                  placeholder={toChips.length === 0 ? 'Recipients (comma-separated)' : ''}
+                  className="flex-1 text-[15px] outline-none min-w-[120px]"
+                  style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+                  autoFocus
+                />
+              </div>
             </div>
             {showContactDropdown &&
               (() => {
                 const query = replyData.to.toLowerCase();
+                const chipSet = new Set(toChips.map((c) => c.toLowerCase()));
+                const available = contacts.filter((c) => !chipSet.has(c.address.toLowerCase()));
                 const filtered = query
-                  ? contacts.filter(
+                  ? available.filter(
                       (c) =>
                         c.name.toLowerCase().includes(query) ||
                         c.address.toLowerCase().includes(query),
                     )
-                  : contacts;
+                  : available;
                 if (filtered.length === 0) return null;
                 return (
                   <div
@@ -488,7 +603,8 @@ export default function EmailApp() {
                         key={contact.address}
                         onMouseDown={(e) => e.preventDefault()}
                         onClick={() => {
-                          setReplyData({ ...replyData, to: contact.address });
+                          setToChips((prev) => dedupeAddresses([...prev, contact.address]));
+                          setReplyData({ ...replyData, to: '' });
                           setShowContactDropdown(false);
                         }}
                         className="w-full text-left flex items-center justify-between px-3 py-2.5 active:bg-gray-50"
@@ -534,6 +650,20 @@ export default function EmailApp() {
                   </span>
                 </div>
               )}
+          </div>
+          <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
+            <div className="flex items-center px-4 py-2.5">
+              <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+                Cc:
+              </span>
+              <input
+                value={ccText}
+                onChange={(e) => setCcText(e.target.value)}
+                placeholder="Optional, comma-separated"
+                className="flex-1 text-[15px] outline-none"
+                style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+              />
+            </div>
           </div>
           <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
             <div className="flex items-center px-4 py-2.5">
@@ -825,6 +955,8 @@ export default function EmailApp() {
             onClick={() => {
               setComposing(true);
               setReplyData({ to: '', subject: '', body: '' });
+              setToChips([]);
+              setCcText('');
               loadContacts();
             }}
             className="ios-btn-bounce"
@@ -1008,7 +1140,9 @@ export default function EmailApp() {
               const priorityBadge = getPriorityBadge(email.priority);
               const categoryBadge = getCategoryBadge(email.email_category);
               const senderName =
-                email.direction === 'inbound' ? email.from_name : `To: ${email.to_addresses[0]}`;
+                email.direction === 'inbound'
+                  ? email.from_name
+                  : `To: ${email.to_addresses.join(', ')}`;
               return (
                 <button
                   key={email.id}
@@ -1102,6 +1236,8 @@ export default function EmailApp() {
         onClick={() => {
           setComposing(true);
           setReplyData({ to: '', subject: '', body: '' });
+          setToChips([]);
+          setCcText('');
           loadContacts();
         }}
         className="absolute ios-btn-bounce flex items-center justify-center"
