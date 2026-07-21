@@ -123,7 +123,10 @@ export function useDraftAutosave(
       if (mountedRef.current) setSaveState('saved');
       return saved;
     } catch (err) {
-      const newer = pendingRef.current;
+      // A newer edit may have been queued while the request was in flight.
+      // TypeScript cannot observe that asynchronous ref mutation, so widen it
+      // back to the declared ref type before merging.
+      const newer = pendingRef.current as PendingSave | null;
       pendingRef.current = {
         id: pending.id,
         patch: newer?.id === pending.id ? { ...pending.patch, ...newer.patch } : pending.patch,

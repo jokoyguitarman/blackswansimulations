@@ -1012,6 +1012,11 @@
   gap: 6px;
   font-size: 9px;
 }
+select.docs-ribbon-select {
+  display: block;
+  appearance: auto;
+  padding: 0 3px;
+}
 .docs-font-select {
   width: 104px;
 }
@@ -1236,7 +1241,7 @@
   max-width: min(440px, calc(100vw - 28px));
   padding: 9px 14px;
   border-radius: 4px;
-  background: var(--docs-text);
+  background: var(--docs-text, #323130);
   color: #fff;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
   font:

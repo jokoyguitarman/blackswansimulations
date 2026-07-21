@@ -273,7 +273,7 @@ router.post(
         draft.id,
         null,
         { title: draft.title, team_name: teamName },
-        'draft',
+        null,
       );
 
       return res.status(201).json({ data: await oneDraftResponse(draft) });

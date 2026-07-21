@@ -29,6 +29,7 @@ import { incidentsRouter } from '../server/routes/incidents.js';
 import { teamsRouter } from '../server/routes/teams.js';
 import { objectivesRouter } from '../server/routes/objectives.js';
 import { notificationsRouter } from '../server/routes/notifications.js';
+import { playerDraftsRouter } from '../server/routes/playerDrafts.js';
 
 // Create Express app
 const app = express();
@@ -85,6 +86,7 @@ app.use('/api/incidents', incidentsRouter);
 app.use('/api/teams', teamsRouter);
 app.use('/api/objectives', objectivesRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/drafts', playerDraftsRouter);
 
 // Error handling middleware
 app.use((error: Error, req: express.Request, res: express.Response) => {
