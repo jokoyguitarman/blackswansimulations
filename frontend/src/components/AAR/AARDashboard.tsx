@@ -1,7 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { api } from '../../lib/api';
 import { PursuitTimeline } from './PursuitTimeline';
+import {
+  SocialGlanceBoard,
+  SocialSentimentSectionData,
+  SocialInformationFlowSectionData,
+  SocialTeamSectionData,
+  SocialExecutiveSectionData,
+  socialSectionsPresent,
+} from './SocialAARCharts';
 
 const AAR_SECTION_KEYS = [
   'executive',
@@ -18,6 +26,20 @@ const AAR_SECTION_KEYS = [
   'pathway_outcomes',
   'information_analysis',
   'recommendations',
+  // Social media crisis report sections (list order = display order)
+  'social_executive',
+  'social_timeline',
+  'social_public_comms',
+  'social_team_communications',
+  'social_team_procurement',
+  'social_team_sales',
+  'social_team_legal',
+  'social_information_flow',
+  'social_misinformation',
+  'social_sentiment',
+  'social_crisis_standards',
+  'social_player_performance',
+  'social_recommendations',
 ] as const;
 
 const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
@@ -35,6 +57,19 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   pathway_outcomes: 'Pathway outcomes',
   information_analysis: 'Information-sharing analysis',
   recommendations: 'Key takeaways and recommendations',
+  social_executive: 'Executive summary',
+  social_timeline: 'Crisis timeline reconstruction',
+  social_public_comms: 'Public communications review',
+  social_team_communications: 'Team deep-dive: Communications',
+  social_team_procurement: 'Team deep-dive: Procurement',
+  social_team_sales: 'Team deep-dive: Sales',
+  social_team_legal: 'Team deep-dive: Legal',
+  social_information_flow: 'Cross-team information flow',
+  social_misinformation: 'Misinformation and moderation',
+  social_sentiment: 'Sentiment journey and turning points',
+  social_crisis_standards: 'Crisis communication standards',
+  social_player_performance: 'Individual player performance',
+  social_recommendations: 'Key takeaways and recommendations',
 };
 
 /** Slugify a section heading into a DOM id for the sticky jump-nav. */
@@ -75,11 +110,39 @@ const SECTION_HEADING_STYLES: Array<{
     border: 'border-success/25',
   },
   {
-    pattern: /weakness|escalation|failure|cancel/i,
+    pattern: /weakness|escalation|failure|cancel|misinformation/i,
     icon: '⚠️',
     tile: 'bg-danger',
     title: 'text-danger',
     border: 'border-danger/25',
+  },
+  {
+    pattern: /team deep-dive/i,
+    icon: '👥',
+    tile: 'bg-brand',
+    title: 'text-brand',
+    border: 'border-brand/25',
+  },
+  {
+    pattern: /sentiment|journey/i,
+    icon: '📈',
+    tile: 'bg-accent',
+    title: 'text-accent',
+    border: 'border-accent/25',
+  },
+  {
+    pattern: /information flow|communications review/i,
+    icon: '🔁',
+    tile: 'bg-accent',
+    title: 'text-accent',
+    border: 'border-accent/25',
+  },
+  {
+    pattern: /standards|doctrine|timeline|player performance/i,
+    icon: '📄',
+    tile: 'bg-brand',
+    title: 'text-brand',
+    border: 'border-brand/25',
   },
 ];
 
@@ -216,6 +279,7 @@ function AARSectionView({
       <div className="text-xs terminal-text text-muted mb-4 px-6">
         Generated: {new Date(aar.generated_at).toLocaleString()} (section-based report)
       </div>
+      {socialSectionsPresent(sections) && <SocialGlanceBoard sections={sections} />}
       {AAR_SECTION_KEYS.map((key) => {
         const entry = sections[key];
         if (!entry) return null;
@@ -230,7 +294,7 @@ function AARSectionView({
             className="space-y-2 px-6"
           >
             <SectionHeading title={label} />
-            {data != null && (
+            {data != null && key !== 'social_recommendations' && (
               <div className="military-border p-4 bg-surface-2">
                 <div className="text-xs terminal-text text-muted mb-2">Data</div>
                 <SectionDataDisplay keyName={key} data={data} />
@@ -528,6 +592,22 @@ function InjectsPublishedTable({ rows }: { rows: Array<Record<string, unknown>> 
 
 function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown }) {
   if (data == null) return null;
+  // Social crisis sections get designed renderers (charts, team cards, intel strips)
+  if (keyName.startsWith('social_team_') && typeof data === 'object' && !Array.isArray(data)) {
+    return <SocialTeamSectionData data={data as Record<string, unknown>} />;
+  }
+  if (keyName === 'social_sentiment' && typeof data === 'object' && !Array.isArray(data)) {
+    return <SocialSentimentSectionData data={data as Record<string, unknown>} />;
+  }
+  if (keyName === 'social_information_flow' && typeof data === 'object' && !Array.isArray(data)) {
+    return <SocialInformationFlowSectionData data={data as Record<string, unknown>} />;
+  }
+  if (keyName === 'social_executive' && typeof data === 'object' && !Array.isArray(data)) {
+    return <SocialExecutiveSectionData data={data as Record<string, unknown>} />;
+  }
+  if (keyName === 'social_recommendations') {
+    return null; // the analysis text is the whole section; no raw data panel
+  }
   // Injects published: columns at, title, content, inject_scope; all rows, full text, See more for long content
   if (keyName === 'injects_published' && Array.isArray(data)) {
     if (data.length === 0)
@@ -802,17 +882,39 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
     }
   };
 
+  // While the multi-call AI generation runs, the backend persists each section
+  // as it completes — poll so sections appear progressively instead of the
+  // page sitting frozen for minutes.
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
+
   const handleGenerate = async () => {
     if (!confirm('Generate AAR report? This will overwrite any existing report.')) return;
 
     setGenerating(true);
+    pollRef.current = setInterval(async () => {
+      try {
+        const result = await api.aar.get(sessionId);
+        setAarData(result.data as AARData);
+      } catch {
+        /* keep polling */
+      }
+    }, 5000);
     try {
       await api.aar.generate(sessionId);
-      await loadAAR();
     } catch (error) {
       console.error('Failed to generate AAR:', error);
       alert('Failed to generate AAR report');
     } finally {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      await loadAAR();
       setGenerating(false);
     }
   };
@@ -853,29 +955,47 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
   const canGenerate = isTrainer && aarData.session.status === 'completed';
   const metrics = aarData.aar?.key_metrics as Record<string, unknown> | undefined;
 
+  // Progress across section AI analyses (backend persists after each call).
+  const sectionEntries =
+    aarData.aar?.report_format === 'sections' && aarData.aar.sections
+      ? Object.values(aarData.aar.sections)
+      : [];
+  const analysedCount = sectionEntries.filter((s) => s?.analysis).length;
+
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="military-border p-4 flex justify-between items-center">
-        <h3 className="text-lg terminal-text">AAR — After-action review</h3>
+      <div className="military-border p-4 flex flex-wrap justify-between items-center gap-3">
+        <div className="flex items-center gap-3">
+          <h3 className="text-lg terminal-text">AAR — After-action review</h3>
+          {generating && (
+            <span className="text-xs terminal-text text-warning animate-pulse">
+              Generating…{' '}
+              {sectionEntries.length > 0
+                ? `${analysedCount} of ${sectionEntries.length} sections analysed`
+                : 'assembling report data'}
+            </span>
+          )}
+        </div>
         <div className="flex gap-2">
           {canGenerate && aarData.aar && (
-            <>
-              <button
-                onClick={() => handleExport('excel')}
-                disabled={exporting !== null}
-                className="military-button px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {exporting === 'excel' ? 'Exporting…' : 'Export Excel'}
-              </button>
-              <button
-                onClick={() => handleExport('pdf')}
-                disabled={exporting !== null}
-                className="military-button px-4 py-2 text-sm disabled:opacity-50"
-              >
-                {exporting === 'pdf' ? 'Exporting…' : 'Export PDF'}
-              </button>
-            </>
+            <button
+              onClick={() => handleExport('excel')}
+              disabled={exporting !== null}
+              className="military-button px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {exporting === 'excel' ? 'Exporting…' : 'Export Excel'}
+            </button>
+          )}
+          {/* PDF export is open to participants of completed sessions too. */}
+          {aarData.aar && aarData.session.status === 'completed' && (
+            <button
+              onClick={() => handleExport('pdf')}
+              disabled={exporting !== null}
+              className="military-button px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {exporting === 'pdf' ? 'Exporting…' : 'Export PDF'}
+            </button>
           )}
           {canGenerate && (
             <button

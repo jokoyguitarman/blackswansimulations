@@ -15,6 +15,7 @@ import { SocialCrisisWizard } from './pages/SocialCrisisWizard';
 import { WarRoomLegacy } from './pages/WarRoomLegacy';
 import { Sessions } from './pages/Sessions';
 import { SessionView } from './pages/SessionView';
+import AARPage from './pages/AARPage';
 import { JoinSessionPage } from './pages/JoinSessionPage';
 import { DemoLanding } from './pages/DemoLanding';
 import { DebugBuildingStuds } from './pages/DebugBuildingStuds';
@@ -163,6 +164,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <SessionView />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/sessions/:id/aar"
+              element={
+                <ProtectedRoute>
+                  <AARPage />
                 </ProtectedRoute>
               }
             />

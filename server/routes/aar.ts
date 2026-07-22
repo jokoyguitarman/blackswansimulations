@@ -480,8 +480,21 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
       // Don't fail the entire request if participant scoring fails
     }
 
-    // Generate AI summary if OpenAI API key is configured
-    if (env.openAiApiKey) {
+    // Social crisis sessions get their own section-based pipeline (one AI call
+    // per social section), regardless of AAR_REPORT_FORMAT. Section data is
+    // stored even without an OpenAI key so the report's charts still render.
+    if (session.sim_mode === 'social_media') {
+      try {
+        const { generateSocialAarReport } = await import('../services/aarSocialSectionService.js');
+        await generateSocialAarReport(sessionId, aar.id, env.openAiApiKey);
+      } catch (socialErr) {
+        logger.error(
+          { error: socialErr, sessionId },
+          'Social AAR section generation failed, keeping basic summary',
+        );
+      }
+    } else if (env.openAiApiKey) {
+      // Generate AI summary if OpenAI API key is configured (field-ops path)
       try {
         // Get session start/end times, scenario_id, and current_state (for final counters when state_history is empty)
         const { data: sessionDetails } = await supabaseAdmin
@@ -1137,10 +1150,6 @@ router.post('/session/:sessionId/export', requireAuth, async (req: Authenticated
     const { format } = req.query; // 'pdf' or 'excel'
     const user = req.user!;
 
-    if (user.role !== 'trainer' && user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only trainers can export AAR reports' });
-    }
-
     // Verify session exists and is completed
     const { data: session } = await supabaseAdmin
       .from('sessions')
@@ -1152,8 +1161,29 @@ router.post('/session/:sessionId/export', requireAuth, async (req: Authenticated
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    if (session.trainer_id !== user.id && user.role !== 'admin') {
-      return res.status(403).json({ error: 'Access denied' });
+    const isTrainerOrAdmin = user.role === 'trainer' || user.role === 'admin';
+    if (isTrainerOrAdmin) {
+      if (session.trainer_id !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    } else {
+      // Participants may keep a PDF record of a completed session they were
+      // part of; Excel (raw data workbook) stays trainer-only.
+      if (format !== 'pdf') {
+        return res.status(403).json({ error: 'Only trainers can export Excel reports' });
+      }
+      if (session.status !== 'completed') {
+        return res.status(403).json({ error: 'AAR export is available after session completion' });
+      }
+      const { data: participant } = await supabaseAdmin
+        .from('session_participants')
+        .select('user_id')
+        .eq('session_id', sessionId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (!participant) {
+        return res.status(403).json({ error: 'Access denied' });
+      }
     }
 
     // Get AAR report

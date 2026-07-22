@@ -1,0 +1,2794 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Social Crisis AAR — Full-Page Experience Mockup</title>
+    <style>
+      :root {
+        --bg: #faf8f4;
+        --surface: #ffffff;
+        --surface-2: #f4f1eb;
+        --ink: #172033;
+        --muted: #64748b;
+        --brand: #1e3a5f;
+        --brand-strong: #102a49;
+        --accent: #d97706;
+        --accent-soft: #fff4df;
+        --border: #e4dfd4;
+        --border-strong: #cfc7b9;
+        --success: #15803d;
+        --success-soft: #edf8f0;
+        --danger: #b91c1c;
+        --danger-soft: #fff0f0;
+        --warning: #b45309;
+        --blue: #3b82f6;
+        --blue-soft: #eaf2ff;
+        --purple: #7c3aed;
+        --purple-soft: #f2ecff;
+        --comms: #3b82f6;
+        --proc: #d97706;
+        --sales: #15803d;
+        --legal: #1e3a5f;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family:
+          Inter,
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        line-height: 1.5;
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      button {
+        cursor: pointer;
+      }
+
+      .app-shell {
+        min-height: 100vh;
+      }
+
+      .prototype-banner {
+        background: var(--brand-strong);
+        color: #fff;
+        padding: 8px 24px;
+        font-size: 12px;
+        text-align: center;
+        letter-spacing: 0.02em;
+      }
+
+      .prototype-banner strong {
+        color: #fbbf24;
+      }
+
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 50;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        min-height: 66px;
+        padding: 10px 24px;
+        background: rgba(250, 248, 244, 0.96);
+        border-bottom: 1px solid var(--border);
+        backdrop-filter: blur(12px);
+      }
+
+      .topbar-left,
+      .topbar-actions,
+      .inline {
+        display: flex;
+        align-items: center;
+      }
+
+      .topbar-left {
+        gap: 14px;
+        min-width: 0;
+      }
+
+      .topbar-actions {
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .back-button,
+      .button {
+        border: 1px solid var(--border-strong);
+        border-radius: 9px;
+        background: var(--surface);
+        color: var(--brand);
+        font-weight: 700;
+        font-size: 12px;
+        padding: 9px 12px;
+      }
+
+      .back-button:hover,
+      .button:hover {
+        border-color: var(--accent);
+      }
+
+      .button.primary {
+        background: var(--brand);
+        border-color: var(--brand);
+        color: #fff;
+      }
+
+      .button.accent {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .button.is-on {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+        color: var(--warning);
+      }
+
+      .report-identity {
+        min-width: 0;
+      }
+
+      .report-identity .eyebrow {
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+      }
+
+      .report-identity .title {
+        color: var(--brand);
+        font-size: 15px;
+        font-weight: 800;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 230px minmax(0, 1fr);
+        max-width: 1500px;
+        margin: 0 auto;
+      }
+
+      .toc {
+        position: sticky;
+        top: 67px;
+        height: calc(100vh - 67px);
+        overflow-y: auto;
+        padding: 24px 16px;
+        border-right: 1px solid var(--border);
+        background: var(--bg);
+      }
+
+      .toc-label {
+        padding: 0 10px 8px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .toc a {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 650;
+        text-decoration: none;
+      }
+
+      .toc a:hover,
+      .toc a.active {
+        background: var(--surface-2);
+        color: var(--brand);
+      }
+
+      .toc .dot {
+        width: 7px;
+        height: 7px;
+        border: 1.5px solid currentColor;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+
+      .toc a.active .dot {
+        background: var(--accent);
+        border-color: var(--accent);
+      }
+
+      .toc-divider {
+        height: 1px;
+        margin: 14px 10px;
+        background: var(--border);
+      }
+
+      .generation-status {
+        margin: 18px 8px 0;
+        padding: 11px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+
+      .generation-status .row {
+        display: flex;
+        justify-content: space-between;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 750;
+      }
+
+      .progress {
+        height: 5px;
+        margin-top: 8px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--surface-2);
+      }
+
+      .progress > span {
+        display: block;
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--success);
+      }
+
+      main {
+        min-width: 0;
+        padding: 30px clamp(18px, 4vw, 54px) 90px;
+      }
+
+      .hero {
+        position: relative;
+        overflow: hidden;
+        padding: clamp(24px, 4vw, 48px);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        background: var(--surface);
+      }
+
+      .hero::after {
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 220px;
+        height: 100%;
+        background:
+          linear-gradient(90deg, transparent, rgba(217, 119, 6, 0.06)),
+          repeating-linear-gradient(
+            -45deg,
+            transparent,
+            transparent 12px,
+            rgba(30, 58, 95, 0.035) 12px,
+            rgba(30, 58, 95, 0.035) 13px
+          );
+        content: '';
+        pointer-events: none;
+      }
+
+      .hero-copy {
+        position: relative;
+        z-index: 2;
+        max-width: 850px;
+      }
+
+      .kicker {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+      }
+
+      .kicker::before {
+        width: 18px;
+        height: 2px;
+        background: var(--accent);
+        content: '';
+      }
+
+      h1 {
+        max-width: 780px;
+        margin: 14px 0 12px;
+        color: var(--brand-strong);
+        font-size: clamp(31px, 5vw, 54px);
+        line-height: 1.08;
+        letter-spacing: -0.035em;
+      }
+
+      .hero-sub {
+        max-width: 760px;
+        margin: 0;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
+      .hero-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        margin-top: 22px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 650;
+      }
+
+      .hero-meta strong {
+        color: var(--ink);
+      }
+
+      .verdict-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+        gap: 18px;
+        margin-top: 24px;
+      }
+
+      .verdict {
+        padding: 20px;
+        border-left: 4px solid var(--accent);
+        border-radius: 0 12px 12px 0;
+        background: var(--accent-soft);
+      }
+
+      .verdict-label {
+        color: var(--warning);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+
+      .verdict h2 {
+        margin: 7px 0 7px;
+        color: var(--brand);
+        font-size: 20px;
+      }
+
+      .verdict p {
+        margin: 0;
+        color: #4b5563;
+        font-size: 13px;
+      }
+
+      .grade-lockup {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding: 18px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: var(--surface-2);
+      }
+
+      .grade-score {
+        color: var(--brand);
+        font-size: 42px;
+        font-weight: 900;
+        letter-spacing: -0.05em;
+        line-height: 1;
+      }
+
+      .grade-score span {
+        color: var(--muted);
+        font-size: 15px;
+        letter-spacing: 0;
+      }
+
+      .grade-text strong,
+      .grade-text span {
+        display: block;
+      }
+
+      .grade-text strong {
+        color: var(--success);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .grade-text span {
+        margin-top: 3px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .section {
+        scroll-margin-top: 92px;
+        margin-top: 38px;
+      }
+
+      .section-heading {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 20px;
+        padding-bottom: 10px;
+        border-bottom: 2px solid rgba(30, 58, 95, 0.16);
+      }
+
+      .section-heading h2 {
+        margin: 0;
+        color: var(--brand);
+        font-size: 20px;
+        letter-spacing: -0.015em;
+      }
+
+      .section-heading p {
+        max-width: 700px;
+        margin: 4px 0 0;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .section-number {
+        color: var(--accent);
+        font-size: 11px;
+        font-weight: 850;
+        letter-spacing: 0.1em;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      .grid-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .grid-4 {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .mt-14 {
+        margin-top: 14px;
+      }
+
+      .card {
+        min-width: 0;
+        padding: 18px;
+        border: 1px solid var(--border);
+        border-radius: 13px;
+        background: var(--surface);
+      }
+
+      .card.tint {
+        background: var(--surface-2);
+      }
+
+      .card-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+        color: var(--brand);
+        font-size: 12px;
+        font-weight: 850;
+      }
+
+      .caption {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      .stat-value {
+        color: var(--brand);
+        font-size: 28px;
+        font-weight: 900;
+        line-height: 1;
+      }
+
+      .stat-label {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .metric-accent {
+        width: 30px;
+        height: 3px;
+        margin-top: 10px;
+        border-radius: 999px;
+        background: var(--accent);
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        font-size: 9px;
+        font-weight: 850;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .pill.success {
+        background: var(--success-soft);
+        color: var(--success);
+      }
+
+      .pill.warning {
+        background: var(--accent-soft);
+        color: var(--warning);
+      }
+
+      .pill.danger {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+
+      .pill.blue {
+        background: var(--blue-soft);
+        color: #1d4ed8;
+      }
+
+      .dimensions {
+        margin-top: 18px;
+      }
+
+      .gauge {
+        text-align: center;
+      }
+
+      .gauge svg {
+        display: block;
+        width: 100%;
+        max-width: 132px;
+        margin: 0 auto;
+      }
+
+      .gauge-track,
+      .gauge-value {
+        fill: none;
+        stroke-width: 9;
+        stroke-linecap: round;
+      }
+
+      .gauge-track {
+        stroke: #e9e4da;
+      }
+
+      .gauge-value {
+        transform: rotate(-90deg);
+        transform-origin: 50% 50%;
+      }
+
+      .gauge-number {
+        fill: var(--brand);
+        font-size: 19px;
+        font-weight: 900;
+        text-anchor: middle;
+      }
+
+      .gauge-label {
+        margin-top: -4px;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 750;
+      }
+
+      .chart-wrap {
+        position: relative;
+        overflow-x: auto;
+      }
+
+      .chart-wrap svg {
+        display: block;
+        width: 100%;
+        min-width: 620px;
+        height: auto;
+      }
+
+      .axis-label {
+        fill: var(--muted);
+        font-size: 9px;
+      }
+
+      .chart-grid {
+        stroke: #e9e4da;
+        stroke-width: 1;
+      }
+
+      .chart-reference {
+        stroke: #cfc7b9;
+        stroke-width: 1;
+        stroke-dasharray: 5 5;
+      }
+
+      .chart-line {
+        fill: none;
+        stroke: var(--brand);
+        stroke-width: 3;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+      }
+
+      .chart-area {
+        fill: rgba(30, 58, 95, 0.08);
+      }
+
+      .event-line {
+        stroke-width: 1;
+        stroke-dasharray: 3 3;
+      }
+
+      .event-dot {
+        stroke: #fff;
+        stroke-width: 2;
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 10px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+      }
+
+      .legend i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+      }
+
+      .turning-points {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .turn {
+        display: grid;
+        grid-template-columns: 50px 14px 1fr;
+        gap: 8px;
+        align-items: start;
+        padding: 8px 0;
+        border-top: 1px solid var(--border);
+      }
+
+      .turn time {
+        color: var(--brand);
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .turn-dot {
+        width: 9px;
+        height: 9px;
+        margin-top: 3px;
+        border-radius: 50%;
+      }
+
+      .turn strong {
+        display: block;
+        color: var(--ink);
+        font-size: 11px;
+      }
+
+      .turn p {
+        margin: 2px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .bar-group {
+        display: grid;
+        gap: 12px;
+      }
+
+      .team-row {
+        display: grid;
+        grid-template-columns: 100px 1fr 40px;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .team-row .name {
+        color: var(--ink);
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .bar-track {
+        height: 10px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--surface-2);
+      }
+
+      .bar-fill {
+        height: 100%;
+        border-radius: inherit;
+      }
+
+      .team-row .score {
+        color: var(--brand);
+        font-size: 11px;
+        font-weight: 850;
+        text-align: right;
+      }
+
+      .component-legend {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 5px;
+        margin-top: 13px;
+      }
+
+      .component-legend div {
+        padding: 6px;
+        border-radius: 7px;
+        background: var(--surface-2);
+        color: var(--muted);
+        font-size: 8px;
+        text-align: center;
+      }
+
+      .component-legend strong {
+        display: block;
+        color: var(--brand);
+        font-size: 11px;
+      }
+
+      .donut-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 25px;
+        min-height: 180px;
+      }
+
+      .donut {
+        position: relative;
+        width: 135px;
+        height: 135px;
+        border-radius: 50%;
+        background: conic-gradient(
+          var(--brand) 0 41%,
+          var(--accent) 41% 77%,
+          var(--success) 77% 100%
+        );
+      }
+
+      .donut::after {
+        position: absolute;
+        inset: 22px;
+        display: grid;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--surface);
+        content: '59%';
+        color: var(--brand);
+        font-size: 23px;
+        font-weight: 900;
+      }
+
+      .donut-copy {
+        display: grid;
+        gap: 7px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .donut-copy span {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+
+      .donut-copy i {
+        width: 8px;
+        height: 8px;
+        border-radius: 2px;
+      }
+
+      .ai-analysis {
+        position: relative;
+        padding: 22px 22px 22px 52px;
+        border: 1px solid rgba(30, 58, 95, 0.2);
+        border-radius: 13px;
+        background: #f8fafc;
+      }
+
+      .ai-analysis::before {
+        position: absolute;
+        top: 20px;
+        left: 18px;
+        display: grid;
+        width: 23px;
+        height: 23px;
+        place-items: center;
+        border-radius: 7px;
+        background: var(--brand);
+        color: #fff;
+        content: 'AI';
+        font-size: 8px;
+        font-weight: 900;
+      }
+
+      .ai-analysis .label {
+        color: var(--brand);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .ai-analysis p {
+        margin: 8px 0 0;
+        color: #39465a;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .flow-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .flow-item {
+        display: grid;
+        grid-template-columns:
+          minmax(95px, 0.8fr) 28px minmax(95px, 0.8fr) minmax(140px, 1.4fr)
+          auto;
+        gap: 10px;
+        align-items: center;
+        padding: 11px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+
+      .flow-team {
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .flow-arrow {
+        color: var(--accent);
+        font-size: 18px;
+        font-weight: 900;
+        text-align: center;
+      }
+
+      .flow-desc {
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .timeline {
+        position: relative;
+        margin-top: 14px;
+        padding-left: 25px;
+      }
+
+      .timeline::before {
+        position: absolute;
+        top: 8px;
+        bottom: 8px;
+        left: 7px;
+        width: 2px;
+        background: var(--border);
+        content: '';
+      }
+
+      .timeline-event {
+        position: relative;
+        display: grid;
+        grid-template-columns: 64px 1fr;
+        gap: 14px;
+        padding: 0 0 17px;
+      }
+
+      .timeline-event::before {
+        position: absolute;
+        top: 5px;
+        left: -22px;
+        width: 10px;
+        height: 10px;
+        border: 2px solid var(--surface);
+        border-radius: 50%;
+        background: var(--brand);
+        content: '';
+      }
+
+      .timeline-event.positive::before {
+        background: var(--success);
+      }
+
+      .timeline-event.negative::before {
+        background: var(--danger);
+      }
+
+      .timeline-event time {
+        color: var(--accent);
+        font-size: 10px;
+        font-weight: 850;
+      }
+
+      .timeline-event strong {
+        display: block;
+        color: var(--ink);
+        font-size: 11px;
+      }
+
+      .timeline-event p {
+        margin: 2px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 14px;
+      }
+
+      .tab {
+        padding: 8px 12px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .tab.active {
+        border-color: var(--brand);
+        background: var(--brand);
+        color: #fff;
+      }
+
+      .team-panel {
+        margin-top: 10px;
+      }
+
+      .team-panel[hidden] {
+        display: none;
+      }
+
+      .team-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 17px;
+        border-radius: 12px 12px 0 0;
+        background: var(--brand);
+        color: #fff;
+      }
+
+      .team-header h3 {
+        margin: 0;
+        font-size: 17px;
+      }
+
+      .team-header p {
+        margin: 3px 0 0;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 10px;
+      }
+
+      .team-score {
+        font-size: 31px;
+        font-weight: 900;
+      }
+
+      .team-score span {
+        font-size: 11px;
+        opacity: 0.7;
+      }
+
+      .team-body {
+        padding: 16px;
+        border: 1px solid var(--border);
+        border-top: 0;
+        border-radius: 0 0 12px 12px;
+        background: var(--surface);
+      }
+
+      .subhead {
+        margin: 0 0 9px;
+        color: var(--brand);
+        font-size: 10px;
+        font-weight: 850;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+
+      .checklist {
+        display: grid;
+        gap: 7px;
+      }
+
+      .check {
+        display: grid;
+        grid-template-columns: 18px 1fr auto;
+        gap: 8px;
+        align-items: start;
+        color: #465166;
+        font-size: 10px;
+      }
+
+      .check i {
+        display: grid;
+        width: 16px;
+        height: 16px;
+        place-items: center;
+        border-radius: 50%;
+        font-size: 9px;
+        font-style: normal;
+        font-weight: 900;
+      }
+
+      .check.done i {
+        background: var(--success-soft);
+        color: var(--success);
+      }
+
+      .check.missed i {
+        background: var(--danger-soft);
+        color: var(--danger);
+      }
+
+      .check .time {
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      .feedback-box {
+        padding: 13px;
+        border-radius: 9px;
+      }
+
+      .feedback-box.good {
+        background: var(--success-soft);
+      }
+
+      .feedback-box.improve {
+        background: var(--accent-soft);
+      }
+
+      .feedback-box h4 {
+        margin: 0 0 7px;
+        color: var(--brand);
+        font-size: 11px;
+      }
+
+      .feedback-box ul {
+        margin: 0;
+        padding-left: 16px;
+        color: #4b5563;
+        font-size: 10px;
+      }
+
+      .quote {
+        margin: 0;
+        padding: 13px;
+        border-left: 3px solid var(--brand);
+        background: var(--surface-2);
+        color: #3e495b;
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 12px;
+      }
+
+      .quote small {
+        display: block;
+        margin-top: 7px;
+        color: var(--muted);
+        font-family: Inter, sans-serif;
+        font-size: 9px;
+      }
+
+      .table-wrap {
+        overflow-x: auto;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      table {
+        width: 100%;
+        min-width: 650px;
+        border-collapse: collapse;
+        background: var(--surface);
+        font-size: 10px;
+      }
+
+      th,
+      td {
+        padding: 10px 11px;
+        border-bottom: 1px solid var(--border);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        background: var(--surface-2);
+        color: var(--brand);
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+      }
+
+      tr:last-child td {
+        border-bottom: 0;
+      }
+
+      td {
+        color: #465166;
+      }
+
+      .standards-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .standard {
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+      }
+
+      .standard .name {
+        color: var(--muted);
+        font-size: 9px;
+        font-weight: 800;
+        text-transform: uppercase;
+      }
+
+      .standard .score {
+        margin-top: 4px;
+        color: var(--brand);
+        font-size: 25px;
+        font-weight: 900;
+      }
+
+      .standard p {
+        margin: 7px 0 0;
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      .recommendations {
+        counter-reset: rec;
+        display: grid;
+        gap: 9px;
+        margin-top: 14px;
+      }
+
+      .recommendation {
+        position: relative;
+        min-height: 64px;
+        padding: 13px 13px 13px 52px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface);
+        counter-increment: rec;
+      }
+
+      .recommendation::before {
+        position: absolute;
+        top: 13px;
+        left: 13px;
+        display: grid;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border-radius: 8px;
+        background: var(--brand);
+        color: #fff;
+        content: counter(rec);
+        font-size: 11px;
+        font-weight: 900;
+      }
+
+      .recommendation strong {
+        color: var(--brand);
+        font-size: 11px;
+      }
+
+      .recommendation p {
+        margin: 3px 0 0;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .recommendation a {
+        color: var(--accent);
+        font-weight: 750;
+      }
+
+      .focus-tag {
+        display: none;
+        position: absolute;
+        z-index: 20;
+        width: 26px;
+        height: 26px;
+        place-items: center;
+        border: 2px solid #fff;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        font-size: 10px;
+        font-weight: 900;
+      }
+
+      body.focus-mode .focus-tag {
+        display: grid;
+      }
+
+      .has-focus {
+        position: relative;
+      }
+
+      .has-focus > .focus-tag {
+        top: -10px;
+        right: -10px;
+      }
+
+      .focus-panel {
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        z-index: 80;
+        display: none;
+        width: min(390px, calc(100vw - 36px));
+        max-height: 72vh;
+        overflow-y: auto;
+        padding: 18px;
+        border: 1px solid var(--border-strong);
+        border-radius: 14px;
+        background: var(--surface);
+      }
+
+      body.focus-mode .focus-panel {
+        display: block;
+      }
+
+      .focus-panel h3 {
+        margin: 0;
+        color: var(--brand);
+        font-size: 15px;
+      }
+
+      .focus-panel > p {
+        margin: 5px 0 14px;
+        color: var(--muted);
+        font-size: 10px;
+      }
+
+      .focus-item {
+        display: grid;
+        grid-template-columns: 24px 1fr;
+        gap: 9px;
+        padding: 9px 0;
+        border-top: 1px solid var(--border);
+      }
+
+      .focus-item b {
+        display: grid;
+        width: 22px;
+        height: 22px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--accent);
+        color: #fff;
+        font-size: 9px;
+      }
+
+      .focus-item strong {
+        display: block;
+        color: var(--brand);
+        font-size: 10px;
+      }
+
+      .focus-item span {
+        display: block;
+        margin-top: 2px;
+        color: var(--muted);
+        font-size: 9px;
+      }
+
+      .export-dialog {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        display: none;
+        place-items: center;
+        padding: 20px;
+        background: rgba(16, 42, 73, 0.45);
+      }
+
+      .export-dialog.open {
+        display: grid;
+      }
+
+      .export-card {
+        width: min(460px, 100%);
+        padding: 23px;
+        border-radius: 15px;
+        background: var(--surface);
+      }
+
+      .export-card h3 {
+        margin: 0;
+        color: var(--brand);
+        font-size: 18px;
+      }
+
+      .export-card p {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .export-preview {
+        display: grid;
+        grid-template-columns: 82px 1fr;
+        gap: 14px;
+        align-items: center;
+        margin: 17px 0;
+        padding: 14px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--surface-2);
+      }
+
+      .pdf-sheet {
+        position: relative;
+        width: 68px;
+        height: 88px;
+        padding: 8px;
+        border: 1px solid var(--border-strong);
+        background: #fff;
+      }
+
+      .pdf-sheet::before,
+      .pdf-sheet::after {
+        display: block;
+        height: 4px;
+        margin-bottom: 5px;
+        background: var(--brand);
+        content: '';
+      }
+
+      .pdf-sheet::after {
+        width: 65%;
+        background: var(--accent);
+      }
+
+      .pdf-lines {
+        height: 36px;
+        margin-top: 9px;
+        background: repeating-linear-gradient(
+          to bottom,
+          #d8d3ca 0,
+          #d8d3ca 2px,
+          transparent 2px,
+          transparent 7px
+        );
+      }
+
+      .export-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .page-footer {
+        margin-top: 50px;
+        padding-top: 18px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 9px;
+        text-align: center;
+      }
+
+      @media (max-width: 1000px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .toc {
+          position: sticky;
+          top: 67px;
+          z-index: 40;
+          display: flex;
+          height: auto;
+          padding: 8px 14px;
+          overflow-x: auto;
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+          white-space: nowrap;
+        }
+
+        .toc-label,
+        .toc-divider,
+        .generation-status {
+          display: none;
+        }
+
+        .toc a {
+          flex: 0 0 auto;
+        }
+
+        .grid-3,
+        .grid-4 {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .verdict-row {
+          grid-template-columns: 1fr;
+        }
+
+        .flow-item {
+          grid-template-columns: 1fr;
+          gap: 4px;
+        }
+
+        .flow-arrow {
+          transform: rotate(90deg);
+          text-align: left;
+        }
+
+        .standards-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+
+      @media (max-width: 700px) {
+        .prototype-banner {
+          padding: 7px 12px;
+        }
+
+        .topbar {
+          align-items: flex-start;
+          padding: 10px 12px;
+        }
+
+        .report-identity {
+          display: none;
+        }
+
+        .topbar-actions {
+          flex-wrap: wrap;
+          justify-content: flex-end;
+        }
+
+        main {
+          padding: 18px 12px 60px;
+        }
+
+        .hero {
+          padding: 23px 18px;
+        }
+
+        .grid-2,
+        .grid-3,
+        .grid-4,
+        .standards-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .dimensions {
+          grid-template-columns: repeat(2, 1fr);
+        }
+
+        .section-heading {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .donut-row {
+          flex-direction: column;
+        }
+
+        .team-header {
+          align-items: flex-start;
+        }
+      }
+
+      @media print {
+        .prototype-banner,
+        .topbar,
+        .toc,
+        .focus-panel,
+        .focus-tag,
+        .button {
+          display: none !important;
+        }
+
+        body {
+          background: #fff;
+        }
+
+        .layout {
+          display: block;
+        }
+
+        main {
+          padding: 0;
+        }
+
+        .card,
+        .hero,
+        .team-panel,
+        .ai-analysis {
+          break-inside: avoid;
+        }
+
+        .section {
+          break-before: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app-shell">
+      <div class="prototype-banner">
+        <strong>Interactive concept mockup</strong> — sample scenario data only; use “Focus points”
+        to see what each area is designed to accomplish.
+      </div>
+
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="back-button" onclick="history.back()">← Sessions</button>
+          <div class="report-identity">
+            <div class="eyebrow">After-Action Report</div>
+            <div class="title">Fault Lines: Singapore’s 60-Minute Spiral</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button class="button" id="focusToggle">Focus points</button>
+          <button class="button primary" onclick="window.print()">Print view</button>
+          <button class="button accent" id="exportButton">Export PDF</button>
+        </div>
+      </header>
+
+      <div class="layout">
+        <nav class="toc" aria-label="Report sections">
+          <div class="toc-label">Report sections</div>
+          <a href="#overview" class="active"><span class="dot"></span>Overview</a>
+          <a href="#sentiment"><span class="dot"></span>Sentiment journey</a>
+          <a href="#timeline"><span class="dot"></span>Crisis timeline</a>
+          <a href="#teams"><span class="dot"></span>Team deep-dives</a>
+          <a href="#intel"><span class="dot"></span>Information flow</a>
+          <a href="#misinformation"><span class="dot"></span>Misinformation</a>
+          <a href="#standards"><span class="dot"></span>Crisis standards</a>
+          <a href="#recommendations"><span class="dot"></span>Recommendations</a>
+          <div class="toc-divider"></div>
+          <div class="generation-status">
+            <div class="row"><span>AI analysis</span><strong>13 / 13</strong></div>
+            <div class="progress"><span></span></div>
+            <div class="caption">All report sections analysed and saved.</div>
+          </div>
+        </nav>
+
+        <main>
+          <section class="hero has-focus" id="overview">
+            <span class="focus-tag">1</span>
+            <div class="hero-copy">
+              <div class="kicker">Social media crisis · Final report</div>
+              <h1>Fault Lines: Singapore’s 60-Minute Spiral</h1>
+              <p class="hero-sub">
+                An evidence-led reconstruction of how four response teams handled misinformation,
+                stakeholder pressure, customer anxiety, and cross-team information dependencies.
+              </p>
+              <div class="hero-meta">
+                <span><strong>Session:</strong> 22 July 2026</span>
+                <span><strong>Duration:</strong> 60 minutes</span>
+                <span><strong>Participants:</strong> 9</span>
+                <span><strong>Artifacts reviewed:</strong> 47</span>
+                <span><strong>AI section calls:</strong> 13</span>
+              </div>
+              <div class="verdict-row">
+                <div class="verdict">
+                  <div class="verdict-label">Executive verdict</div>
+                  <h2>Strong recovery, but information reached the public too late.</h2>
+                  <p>
+                    The response stabilised trust after T+31, driven by a specific, fact-backed
+                    statement and customer outreach. The largest avoidable loss occurred when
+                    Procurement held the affected-batch confirmation for 11 minutes before
+                    Communications received it.
+                  </p>
+                </div>
+                <div class="grade-lockup">
+                  <div class="grade-score">74<span>/100</span></div>
+                  <div class="grade-text">
+                    <strong>Effective with gaps</strong>
+                    <span>Final composite across content, tasks, role fit and collaboration</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <div class="grid grid-4 dimensions">
+            <div class="card gauge has-focus">
+              <span class="focus-tag">2</span>
+              <svg viewBox="0 0 120 120" aria-label="Public trust 68 out of 100">
+                <circle class="gauge-track" cx="60" cy="60" r="43" />
+                <circle
+                  class="gauge-value"
+                  cx="60"
+                  cy="60"
+                  r="43"
+                  stroke="var(--success)"
+                  stroke-dasharray="184 271"
+                />
+                <text class="gauge-number" x="60" y="66">68</text>
+              </svg>
+              <div class="gauge-label">Public Trust</div>
+            </div>
+            <div class="card gauge">
+              <svg viewBox="0 0 120 120" aria-label="Stakeholder confidence 72 out of 100">
+                <circle class="gauge-track" cx="60" cy="60" r="43" />
+                <circle
+                  class="gauge-value"
+                  cx="60"
+                  cy="60"
+                  r="43"
+                  stroke="var(--success)"
+                  stroke-dasharray="195 271"
+                />
+                <text class="gauge-number" x="60" y="66">72</text>
+              </svg>
+              <div class="gauge-label">Stakeholder Confidence</div>
+            </div>
+            <div class="card gauge">
+              <svg viewBox="0 0 120 120" aria-label="Narrative control 61 out of 100">
+                <circle class="gauge-track" cx="60" cy="60" r="43" />
+                <circle
+                  class="gauge-value"
+                  cx="60"
+                  cy="60"
+                  r="43"
+                  stroke="var(--accent)"
+                  stroke-dasharray="165 271"
+                />
+                <text class="gauge-number" x="60" y="66">61</text>
+              </svg>
+              <div class="gauge-label">Narrative Control</div>
+            </div>
+            <div class="card gauge">
+              <svg viewBox="0 0 120 120" aria-label="Escalation risk 29 out of 100">
+                <circle class="gauge-track" cx="60" cy="60" r="43" />
+                <circle
+                  class="gauge-value"
+                  cx="60"
+                  cy="60"
+                  r="43"
+                  stroke="var(--success)"
+                  stroke-dasharray="79 271"
+                />
+                <text class="gauge-number" x="60" y="66">29</text>
+              </svg>
+              <div class="gauge-label">Escalation Risk · lower is better</div>
+            </div>
+          </div>
+
+          <section class="section" id="sentiment">
+            <div class="section-heading">
+              <div>
+                <div class="section-number">01 · At a glance</div>
+                <h2>Sentiment journey and turning points</h2>
+                <p>
+                  The chart shows how public sentiment moved during the game and pins the player
+                  actions or missed actions that explain each inflection.
+                </p>
+              </div>
+              <span class="pill success">Recovered +34 points</span>
+            </div>
+
+            <div class="grid grid-3 mt-14">
+              <div class="card has-focus" style="grid-column: span 2">
+                <span class="focus-tag">3</span>
+                <div class="card-title">
+                  <span>Overall sentiment score over simulated time</span>
+                  <span class="pill blue">T+0 to T+60</span>
+                </div>
+                <div class="chart-wrap">
+                  <svg viewBox="0 0 760 290" role="img" aria-label="Sentiment score line chart">
+                    <line class="chart-grid" x1="55" y1="35" x2="730" y2="35" />
+                    <line class="chart-grid" x1="55" y1="90" x2="730" y2="90" />
+                    <line class="chart-reference" x1="55" y1="145" x2="730" y2="145" />
+                    <line class="chart-grid" x1="55" y1="200" x2="730" y2="200" />
+                    <line class="chart-grid" x1="55" y1="250" x2="730" y2="250" />
+                    <text class="axis-label" x="22" y="39">100</text>
+                    <text class="axis-label" x="28" y="94">75</text>
+                    <text class="axis-label" x="28" y="149">50</text>
+                    <text class="axis-label" x="28" y="204">25</text>
+                    <text class="axis-label" x="34" y="254">0</text>
+                    <text class="axis-label" x="53" y="274">T+0</text>
+                    <text class="axis-label" x="214" y="274">T+15</text>
+                    <text class="axis-label" x="382" y="274">T+30</text>
+                    <text class="axis-label" x="550" y="274">T+45</text>
+                    <text class="axis-label" x="704" y="274">T+60</text>
+                    <text
+                      class="axis-label"
+                      transform="translate(12 183) rotate(-90)"
+                      text-anchor="middle"
+                    >
+                      Sentiment score (0–100)
+                    </text>
+                    <text class="axis-label" x="355" y="289">Simulated time (minutes)</text>
+                    <path
+                      class="chart-area"
+                      d="M55 112 L110 129 L165 164 L220 184 L275 177 L330 207 L385 194 L440 155 L495 131 L550 117 L605 107 L665 99 L730 93 L730 250 L55 250 Z"
+                    />
+                    <path
+                      class="chart-line"
+                      d="M55 112 L110 129 L165 164 L220 184 L275 177 L330 207 L385 194 L440 155 L495 131 L550 117 L605 107 L665 99 L730 93"
+                    />
+                    <line
+                      class="event-line"
+                      x1="220"
+                      y1="75"
+                      x2="220"
+                      y2="184"
+                      stroke="var(--danger)"
+                    />
+                    <circle class="event-dot" cx="220" cy="184" r="6" fill="var(--danger)">
+                      <title>T+15: Vague holding statement — sentiment -9</title>
+                    </circle>
+                    <line
+                      class="event-line"
+                      x1="330"
+                      y1="75"
+                      x2="330"
+                      y2="207"
+                      stroke="var(--danger)"
+                    />
+                    <circle class="event-dot" cx="330" cy="207" r="6" fill="var(--danger)">
+                      <title>T+25: Batch confirmation remained siloed — sentiment -12</title>
+                    </circle>
+                    <line
+                      class="event-line"
+                      x1="440"
+                      y1="75"
+                      x2="440"
+                      y2="155"
+                      stroke="var(--success)"
+                    />
+                    <circle class="event-dot" cx="440" cy="155" r="6" fill="var(--success)">
+                      <title>T+35: Specific correction published — sentiment +18</title>
+                    </circle>
+                    <circle class="event-dot" cx="605" cy="107" r="6" fill="var(--success)">
+                      <title>T+50: Community leader amplification — sentiment +8</title>
+                    </circle>
+                  </svg>
+                </div>
+                <div class="legend">
+                  <span><i style="background: var(--brand)"></i>Sentiment score</span>
+                  <span><i style="background: var(--danger)"></i>Negative turning point</span>
+                  <span><i style="background: var(--success)"></i>Positive turning point</span>
+                  <span
+                    ><i style="background: var(--border-strong)"></i>Neutral reference (50)</span
+                  >
+                </div>
+                <div class="caption">
+                  Source: sentiment_snapshots + session consequence events · simulated T+0 to T+60 ·
+                  sample data
+                </div>
+              </div>
+
+              <div class="card">
+                <div class="card-title">Turning-point explanation</div>
+                <div class="turning-points">
+                  <div class="turn">
+                    <time>T+15</time>
+                    <span class="turn-dot" style="background: var(--danger)"></span>
+                    <div>
+                      <strong>Holding statement lacked actionable detail</strong>
+                      <p>NPC questions exposed the missing affected scope and update time.</p>
+                    </div>
+                  </div>
+                  <div class="turn">
+                    <time>T+25</time>
+                    <span class="turn-dot" style="background: var(--danger)"></span>
+                    <div>
+                      <strong>Supplier fact remained inside Procurement</strong>
+                      <p>
+                        Communications could not answer the batch-number question for 11 minutes.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="turn">
+                    <time>T+35</time>
+                    <span class="turn-dot" style="background: var(--success)"></span>
+                    <div>
+                      <strong>Fact-backed correction changed the narrative</strong>
+                      <p>
+                        The specific batch range and customer advice produced the steepest recovery.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="turn">
+                    <time>T+50</time>
+                    <span class="turn-dot" style="background: var(--success)"></span>
+                    <div>
+                      <strong>Trusted third party amplified the update</strong>
+                      <p>
+                        Community leader reach moved the message beyond the organisation’s audience.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="grid grid-2 mt-14">
+              <div class="card">
+                <div class="card-title">Team composite performance</div>
+                <div class="bar-group">
+                  <div class="team-row">
+                    <div class="name" style="color: var(--comms)">Communications</div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style="width: 79%; background: var(--comms)"></div>
+                    </div>
+                    <div class="score">79</div>
+                  </div>
+                  <div class="team-row">
+                    <div class="name" style="color: var(--proc)">Procurement</div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style="width: 66%; background: var(--proc)"></div>
+                    </div>
+                    <div class="score">66</div>
+                  </div>
+                  <div class="team-row">
+                    <div class="name" style="color: var(--sales)">Sales</div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style="width: 82%; background: var(--sales)"></div>
+                    </div>
+                    <div class="score">82</div>
+                  </div>
+                  <div class="team-row">
+                    <div class="name" style="color: var(--legal)">Legal</div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style="width: 71%; background: var(--legal)"></div>
+                    </div>
+                    <div class="score">71</div>
+                  </div>
+                </div>
+                <div class="component-legend">
+                  <div><strong>76</strong>Quality</div>
+                  <div><strong>71</strong>Tasks</div>
+                  <div><strong>84</strong>Role fit</div>
+                  <div><strong>50</strong>Intel</div>
+                </div>
+                <div class="caption">
+                  Composite = quality 45% + tasks 30% + role fit 15% + intel sharing 10%
+                </div>
+              </div>
+
+              <div class="card has-focus">
+                <span class="focus-tag">4</span>
+                <div class="card-title">Action mix: reactive vs strategic</div>
+                <div class="donut-row">
+                  <div class="donut" title="59% of tiered actions were strategic or advanced"></div>
+                  <div class="donut-copy">
+                    <span
+                      ><i style="background: var(--brand)"></i>Tier 1 reactive · 18 actions</span
+                    >
+                    <span
+                      ><i style="background: var(--accent)"></i>Tier 2 strategic · 16 actions</span
+                    >
+                    <span
+                      ><i style="background: var(--success)"></i>Tier 3 advanced · 10 actions</span
+                    >
+                    <strong style="color: var(--brand)">59% strategic ratio</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="ai-analysis mt-14 has-focus">
+              <span class="focus-tag">5</span>
+              <div class="label">AI analysis · sentiment and turning points</div>
+              <p>
+                The response did not recover because it posted more frequently; it recovered when
+                the content became more specific. The inflection at T+35 followed the first post
+                that named the affected batch range, gave a customer action, and committed to a next
+                update. This aligns with the stored grade: accuracy 94, clarity 90 and
+                persuasiveness 84. The earlier T+15 holding statement was appropriately cautious,
+                but its failure to state the known geographic scope allowed the “all products”
+                rumour to dominate for another 20 minutes.
+              </p>
+            </div>
+          </section>
+
+          <section class="section" id="timeline">
+            <div class="section-heading">
+              <div>
+                <div class="section-number">02 · Reconstruction</div>
+                <h2>What happened, in sequence</h2>
+                <p>
+                  Injects, player actions, missed responses, intel handoffs and public consequences
+                  are merged into one chronological account.
+                </p>
+              </div>
+              <span class="pill blue">47 actions analysed</span>
+            </div>
+
+            <div class="grid grid-2 mt-14">
+              <div class="card has-focus">
+                <span class="focus-tag">6</span>
+                <div class="card-title">Phase-by-phase event stream</div>
+                <div class="timeline">
+                  <div class="timeline-event">
+                    <time>T+02</time>
+                    <div>
+                      <strong>Inject: Product defect allegation goes viral</strong>
+                      <p>
+                        Creator posts video claiming every unit is unsafe. 43,200 initial views.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="timeline-event">
+                    <time>T+08</time>
+                    <div>
+                      <strong>Procurement receives supplier confirmation</strong>
+                      <p>
+                        Only batches 4471–4478 are affected; eastern-region distribution confirmed.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="timeline-event negative">
+                    <time>T+15</time>
+                    <div>
+                      <strong>Communications publishes a cautious holding statement</strong>
+                      <p>
+                        Safe but vague. NPCs ask which batches, stores and customer actions apply.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="timeline-event negative">
+                    <time>T+25</time>
+                    <div>
+                      <strong>Negative consequence: “Company cannot define affected scope”</strong>
+                      <p>
+                        Intel deadline passes. News post compares the vague statement with supplier
+                        claims.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="timeline-event positive">
+                    <time>T+31</time>
+                    <div>
+                      <strong>Procurement forwards verified batch confirmation</strong>
+                      <p>
+                        Intel reaches Communications and Sales. Collaboration action recorded, 11
+                        minutes late.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="timeline-event positive">
+                    <time>T+35</time>
+                    <div>
+                      <strong>Communications publishes specific correction</strong>
+                      <p>
+                        Batch range, affected outlets, helpline and T+45 next-update commitment
+                        included.
+                      </p>
+                    </div>
+                  </div>
+                  <div class="timeline-event positive">
+                    <time>T+49</time>
+                    <div>
+                      <strong>Sales resolves top customer threads</strong>
+                      <p>
+                        Response consistency rises; hostile impression share drops below player
+                        reach.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <div class="ai-analysis">
+                  <div class="label">AI analysis · crisis timeline</div>
+                  <p>
+                    The session divides into three phases: awareness (T+0–15), information
+                    fragmentation (T+15–31), and coordinated recovery (T+31–60). The central
+                    training issue was not fact verification—the correct fact existed at T+8—but
+                    transmission. The public penalty at T+25 therefore reflects an internal
+                    coordination failure rather than a messaging failure alone.
+                  </p>
+                </div>
+                <div class="card mt-14">
+                  <div class="card-title">Response-speed snapshot</div>
+                  <div class="grid grid-2">
+                    <div>
+                      <div class="stat-value">7m</div>
+                      <div class="stat-label">First public response</div>
+                      <div class="metric-accent"></div>
+                    </div>
+                    <div>
+                      <div class="stat-value">14m</div>
+                      <div class="stat-label">Median harmful-post response</div>
+                      <div class="metric-accent"></div>
+                    </div>
+                    <div>
+                      <div class="stat-value">3</div>
+                      <div class="stat-label">Missed opportunities</div>
+                      <div class="metric-accent"></div>
+                    </div>
+                    <div>
+                      <div class="stat-value">2</div>
+                      <div class="stat-label">Positive consequences</div>
+                      <div class="metric-accent"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="teams">
+            <div class="section-heading">
+              <div>
+                <div class="section-number">03 · Deep-dives</div>
+                <h2>Team-by-team performance</h2>
+                <p>
+                  Each team receives its own AI analysis call, using its complete task history,
+                  artifacts, member ledger, role-fit grades and information-sharing record.
+                </p>
+              </div>
+              <span class="pill success">4 teams analysed</span>
+            </div>
+
+            <div class="tabs has-focus">
+              <span class="focus-tag">7</span>
+              <button class="tab active" data-team="communications">Communications · 79</button>
+              <button class="tab" data-team="procurement">Procurement · 66</button>
+              <button class="tab" data-team="sales">Sales · 82</button>
+              <button class="tab" data-team="legal">Legal · 71</button>
+            </div>
+
+            <div class="team-panel" data-panel="communications">
+              <div class="team-header" style="background: var(--comms)">
+                <div>
+                  <h3>Communications</h3>
+                  <p>Own public-facing communication and the organisation’s official voice.</p>
+                </div>
+                <div class="team-score">79<span>/100</span></div>
+              </div>
+              <div class="team-body">
+                <div class="grid grid-2">
+                  <div>
+                    <h4 class="subhead">Task outcomes</h4>
+                    <div class="checklist">
+                      <div class="check done">
+                        <i>✓</i><span>Flag harmful or misleading posts</span
+                        ><span class="time">T+06 · on time</span>
+                      </div>
+                      <div class="check done">
+                        <i>✓</i><span>Publish official statement</span
+                        ><span class="time">T+15 · on time</span>
+                      </div>
+                      <div class="check done">
+                        <i>✓</i><span>Respond to media inquiry</span
+                        ><span class="time">T+23 · on time</span>
+                      </div>
+                      <div class="check missed">
+                        <i>!</i><span>Counter specific “all products” claim</span
+                        ><span class="time">T+35 · late</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h4 class="subhead">Member contribution</h4>
+                    <div class="table-wrap">
+                      <table style="min-width: 0">
+                        <thead>
+                          <tr>
+                            <th>Participant</th>
+                            <th>Artifacts</th>
+                            <th>Quality</th>
+                            <th>Role fit</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr>
+                            <td>Amelia Tan</td>
+                            <td>6</td>
+                            <td>84</td>
+                            <td>92</td>
+                          </tr>
+                          <tr>
+                            <td>Marcus Lim</td>
+                            <td>5</td>
+                            <td>77</td>
+                            <td>86</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="grid grid-2 mt-14">
+                  <div class="feedback-box good">
+                    <h4>What the team did well</h4>
+                    <ul>
+                      <li>Responded publicly within seven minutes of the first critical inject.</li>
+                      <li>Never repeated the inflammatory claim verbatim.</li>
+                      <li>The T+35 correction scored 94 for accuracy and 90 for clarity.</li>
+                    </ul>
+                  </div>
+                  <div class="feedback-box improve">
+                    <h4>What should improve</h4>
+                    <ul>
+                      <li>Ask Procurement for scope before drafting the first statement.</li>
+                      <li>Include the next-update time in holding statements.</li>
+                      <li>
+                        Answer the highest-reach misinformation post directly, not only via a new
+                        post.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div class="grid grid-2 mt-14">
+                  <blockquote class="quote">
+                    “Only batches 4471–4478 distributed to eastern-region outlets are included.
+                    Customers should stop use and call 1800-555-0147.”
+                    <small>Best artifact · T+35 official statement · overall 89</small>
+                  </blockquote>
+                  <blockquote class="quote" style="border-color: var(--accent)">
+                    “We are aware of the situation and are investigating. Updates will follow.”
+                    <small>Growth artifact · T+15 holding statement · overall 62</small>
+                  </blockquote>
+                </div>
+
+                <div class="ai-analysis mt-14">
+                  <div class="label">Dedicated AI analysis · Communications</div>
+                  <p>
+                    Communications was quick, disciplined and within mandate. Its early holding
+                    statement was legally safe, but it underused facts already available elsewhere
+                    in the organisation. Amelia’s later correction was the session’s strongest
+                    artifact because it converted supplier data into clear public action without
+                    overstating cause or liability. The next exercise goal should be to establish a
+                    pre-publication fact check with Procurement and Legal before T+10.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="team-panel" data-panel="procurement" hidden>
+              <div class="team-header" style="background: var(--proc)">
+                <div>
+                  <h3>Procurement</h3>
+                  <p>Own supplier communication, supply-chain verification and continuity facts.</p>
+                </div>
+                <div class="team-score">66<span>/100</span></div>
+              </div>
+              <div class="team-body">
+                <div class="grid grid-2">
+                  <div class="feedback-box good">
+                    <h4>What the team did well</h4>
+                    <ul>
+                      <li>Read the supplier email at T+09 and verified the batch range.</li>
+                      <li>Kept operational claims off the public feed, staying within mandate.</li>
+                    </ul>
+                  </div>
+                  <div class="feedback-box improve">
+                    <h4>What should improve</h4>
+                    <ul>
+                      <li>Forward the batch scope to Communications and Sales immediately.</li>
+                      <li>Use the shared channel for urgent verified operational facts.</li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="ai-analysis mt-14">
+                  <div class="label">Dedicated AI analysis · Procurement</div>
+                  <p>
+                    Procurement solved the factual problem but not the organisational problem. The
+                    team had the decisive fact at T+09, yet the `intel_shared` action was not
+                    recorded until T+31. Its collaboration score of 40—not its content quality—was
+                    the principal cause of the 66 composite.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="team-panel" data-panel="sales" hidden>
+              <div class="team-header" style="background: var(--sales)">
+                <div>
+                  <h3>Sales</h3>
+                  <p>Manage customer expectations and de-escalate direct complaints.</p>
+                </div>
+                <div class="team-score">82<span>/100</span></div>
+              </div>
+              <div class="team-body">
+                <div class="grid grid-2">
+                  <div class="feedback-box good">
+                    <h4>What the team did well</h4>
+                    <ul>
+                      <li>Responded to 12 of 14 customer threads with high empathy.</li>
+                      <li>Did not promise refunds or delivery timelines without authority.</li>
+                    </ul>
+                  </div>
+                  <div class="feedback-box improve">
+                    <h4>What should improve</h4>
+                    <ul>
+                      <li>Escalate the legal-threat complaint before answering.</li>
+                      <li>Request the affected outlet list earlier from Procurement.</li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="ai-analysis mt-14">
+                  <div class="label">Dedicated AI analysis · Sales</div>
+                  <p>
+                    Sales delivered the strongest role-fit performance in the exercise (91). Its
+                    direct replies were empathetic and avoided unapproved promises. The team’s
+                    remaining opportunity is escalation discipline: one customer complaint contained
+                    a credible legal threat and should have reached Legal before a reply.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div class="team-panel" data-panel="legal" hidden>
+              <div class="team-header" style="background: var(--legal)">
+                <div>
+                  <h3>Legal</h3>
+                  <p>Review legal exposure, regulator correspondence and disputes.</p>
+                </div>
+                <div class="team-score">71<span>/100</span></div>
+              </div>
+              <div class="team-body">
+                <div class="grid grid-2">
+                  <div class="feedback-box good">
+                    <h4>What the team did well</h4>
+                    <ul>
+                      <li>Flagged the liability-admission wording before publication.</li>
+                      <li>Filed one evidence-backed dispute that was upheld.</li>
+                    </ul>
+                  </div>
+                  <div class="feedback-box improve">
+                    <h4>What should improve</h4>
+                    <ul>
+                      <li>
+                        Review the holding statement earlier; approval arrived after publication.
+                      </li>
+                      <li>
+                        Give Communications a clear risk statement, not rewritten PR language.
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+                <div class="ai-analysis mt-14">
+                  <div class="label">Dedicated AI analysis · Legal</div>
+                  <p>
+                    Legal’s interventions were technically sound, especially the upheld dispute, but
+                    late. The first draft was reviewed only after Communications had already
+                    published it. The team should establish a rapid review channel that preserves
+                    Communications’ ownership of public language while surfacing risk before
+                    release.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="intel">
+            <div class="section-heading">
+              <div>
+                <div class="section-number">04 · Coordination</div>
+                <h2>Cross-team information flow</h2>
+                <p>
+                  Every planted information dependency is traced from holder to needed team, with
+                  its timing and consequence.
+                </p>
+              </div>
+              <span class="pill warning">1 of 2 shared late</span>
+            </div>
+
+            <div class="card tint mt-14 has-focus">
+              <span class="focus-tag">8</span>
+              <div class="card-title">Intel handoff map</div>
+              <div class="flow-list">
+                <div class="flow-item">
+                  <div class="flow-team" style="color: var(--proc)">Procurement</div>
+                  <div class="flow-arrow">→</div>
+                  <div class="flow-team" style="color: var(--comms)">Communications + Sales</div>
+                  <div class="flow-desc">Affected batches 4471–4478 and eastern outlet scope</div>
+                  <span class="pill danger">Shared T+31 · 11m late</span>
+                </div>
+                <div class="flow-item">
+                  <div class="flow-team" style="color: var(--legal)">Legal</div>
+                  <div class="flow-arrow">→</div>
+                  <div class="flow-team" style="color: var(--comms)">Communications</div>
+                  <div class="flow-desc">
+                    Regulator requires notice before customer remedy claim
+                  </div>
+                  <span class="pill success">Shared T+18 · on time</span>
+                </div>
+              </div>
+              <div class="caption">
+                Source: scenario intel manifest + player_actions.intel_shared + paired condition
+                injects
+              </div>
+            </div>
+
+            <div class="grid grid-3 mt-14">
+              <div class="card">
+                <div class="stat-value">2</div>
+                <div class="stat-label">Intel dependencies</div>
+                <div class="metric-accent"></div>
+              </div>
+              <div class="card">
+                <div class="stat-value">50%</div>
+                <div class="stat-label">Shared before deadline</div>
+                <div class="metric-accent"></div>
+              </div>
+              <div class="card">
+                <div class="stat-value">1</div>
+                <div class="stat-label">Escalation caused by a silo</div>
+                <div class="metric-accent"></div>
+              </div>
+            </div>
+
+            <div class="ai-analysis mt-14">
+              <div class="label">AI analysis · information sharing</div>
+              <p>
+                The exercise’s most valuable coordination lesson is that possession of a verified
+                fact did not translate into organisational knowledge. Procurement’s verification was
+                timely, but the cross-team handoff was not. Legal demonstrated the stronger pattern:
+                it shared the regulator constraint at T+18, before Communications made a remedy
+                claim, preventing a second negative consequence. Future runs should treat verified
+                facts as handoff tasks, not merely inbox tasks.
+              </p>
+            </div>
+          </section>
+
+          <section class="section" id="misinformation">
+            <div class="section-heading">
+              <div>
+                <div class="section-number">05 · Rumour control</div>
+                <h2>Misinformation and moderation discipline</h2>
+                <p>
+                  Response timing, valid reports, disputes and missed harmful posts are evaluated
+                  together—so activity is distinguished from effective moderation.
+                </p>
+              </div>
+              <span class="pill warning">3 missed opportunities</span>
+            </div>
+
+            <div class="grid grid-4 mt-14">
+              <div class="card">
+                <div class="stat-value">14m</div>
+                <div class="stat-label">Median response</div>
+                <div class="metric-accent"></div>
+              </div>
+              <div class="card">
+                <div class="stat-value">83%</div>
+                <div class="stat-label">Report precision</div>
+                <div class="metric-accent"></div>
+              </div>
+              <div class="card">
+                <div class="stat-value">2/3</div>
+                <div class="stat-label">Disputes upheld</div>
+                <div class="metric-accent"></div>
+              </div>
+              <div class="card">
+                <div class="stat-value">3</div>
+                <div class="stat-label">Never addressed</div>
+                <div class="metric-accent"></div>
+              </div>
+            </div>
+
+            <div class="table-wrap mt-14 has-focus">
+              <span class="focus-tag">9</span>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Claim / pressure point</th>
+                    <th>Peak reach</th>
+                    <th>Team response</th>
+                    <th>Latency</th>
+                    <th>Outcome</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>“Every unit is contaminated”</td>
+                    <td>88,400 views</td>
+                    <td>Specific correction with batch range</td>
+                    <td>29m</td>
+                    <td><span class="pill warning">Late but effective</span></td>
+                  </tr>
+                  <tr>
+                    <td>“Company knew for months”</td>
+                    <td>42,100 views</td>
+                    <td>Evidence-backed dispute filed</td>
+                    <td>17m</td>
+                    <td><span class="pill success">Upheld</span></td>
+                  </tr>
+                  <tr>
+                    <td>“Hospitals report mass poisonings”</td>
+                    <td>21,800 views</td>
+                    <td>No direct response</td>
+                    <td>—</td>
+                    <td><span class="pill danger">Missed</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section class="section" id="standards">
+            <div class="section-heading">
+              <div>
+                <div class="section-number">06 · Doctrine</div>
+                <h2>Crisis communication standards</h2>
+                <p>
+                  Final watchdog posture and hidden doctrine benchmarks show whether the response
+                  was merely active or professionally sound.
+                </p>
+              </div>
+              <span class="pill blue">Final posture</span>
+            </div>
+
+            <div class="standards-grid mt-14">
+              <div class="standard">
+                <div class="name">Transparency</div>
+                <div class="score">78</div>
+                <p>
+                  Good factual disclosure after T+35; first statement omitted known geographic
+                  scope.
+                </p>
+              </div>
+              <div class="standard">
+                <div class="name">Consistency</div>
+                <div class="score">86</div>
+                <p>X, Facebook, email and customer replies aligned after the correction.</p>
+              </div>
+              <div class="standard">
+                <div class="name">RDAP posture</div>
+                <div class="score">72</div>
+                <p>
+                  Accommodative: accepted required responsibility without unsupported admission.
+                </p>
+              </div>
+              <div class="standard">
+                <div class="name">Victim-centring</div>
+                <div class="score">81</div>
+                <p>Appropriate empathy for an accidental-cluster product safety incident.</p>
+              </div>
+            </div>
+
+            <div class="grid grid-2 mt-14">
+              <div class="card">
+                <div class="card-title">Doctrine benchmarks</div>
+                <div class="checklist">
+                  <div class="check done">
+                    <i>✓</i><span>First holding response within 15 minutes</span
+                    ><span class="time">met</span>
+                  </div>
+                  <div class="check missed">
+                    <i>!</i><span>Specific rumour countered within 20 minutes</span
+                    ><span class="time">late</span>
+                  </div>
+                  <div class="check done">
+                    <i>✓</i><span>Regulator risk reviewed before remedy claim</span
+                    ><span class="time">met</span>
+                  </div>
+                  <div class="check done">
+                    <i>✓</i><span>Customer guidance published in plain language</span
+                    ><span class="time">met</span>
+                  </div>
+                </div>
+              </div>
+              <div class="ai-analysis">
+                <div class="label">AI analysis · final standards posture</div>
+                <p>
+                  The team finished with an accommodative RDAP posture and appropriate
+                  victim-centring. Its strongest professional quality was consistency after T+35.
+                  The chief standards gap was “Tell it Fast”: the team knew more than it published
+                  during the first third of the exercise.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section class="section" id="recommendations">
+            <div class="section-heading">
+              <div>
+                <div class="section-number">07 · Takeaways</div>
+                <h2>Prioritised recommendations</h2>
+                <p>
+                  The final synthesis call reads all preceding section analyses and converts them
+                  into concrete behaviours for the next exercise.
+                </p>
+              </div>
+              <span class="pill success">5 actions</span>
+            </div>
+
+            <div class="recommendations has-focus">
+              <span class="focus-tag">10</span>
+              <div class="recommendation">
+                <strong>Turn verified facts into explicit cross-team handoff tasks.</strong>
+                <p>
+                  Every team that verifies a fact should identify who else needs it and send it
+                  immediately. See <a href="#intel">Information flow</a>.
+                </p>
+              </div>
+              <div class="recommendation">
+                <strong>Use a minimum viable holding-statement checklist.</strong>
+                <p>
+                  Include confirmed scope, immediate public action, known unknowns and the time of
+                  the next update. See <a href="#timeline">Crisis timeline</a>.
+                </p>
+              </div>
+              <div class="recommendation">
+                <strong>Prioritise misinformation by reach and decision harm.</strong>
+                <p>
+                  Directly answer the highest-reach harmful claim before lower-impact comment
+                  threads. See <a href="#misinformation">Misinformation</a>.
+                </p>
+              </div>
+              <div class="recommendation">
+                <strong>Establish a rapid Legal–Communications review channel.</strong>
+                <p>
+                  Legal should surface risk before publication without taking ownership of public
+                  language. See <a href="#teams">Team deep-dives</a>.
+                </p>
+              </div>
+              <div class="recommendation">
+                <strong>Track recovery by specificity, not posting volume.</strong>
+                <p>
+                  The decisive recovery followed the most specific statement, not the busiest period
+                  of posting. See <a href="#sentiment">Sentiment journey</a>.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <div class="page-footer">
+            Black Swan Simulations · Social Media Crisis After-Action Report · Interactive UI
+            concept · Sample data
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <aside class="focus-panel" id="focusPanel">
+      <h3>What this mockup is demonstrating</h3>
+      <p>Numbered markers connect the visual design to the product focus points in the AAR plan.</p>
+      <div class="focus-item">
+        <b>1</b>
+        <div>
+          <strong>Dedicated full-page experience</strong
+          ><span
+            >No iframe or constrained tab. The report has its own route, sticky actions and
+            full-width reading space.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>2</b>
+        <div>
+          <strong>Scenario-specific outcome dimensions</strong
+          ><span
+            >Four final gauges use the scenario’s labels. Escalation risk is visibly identified as
+            inverse.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>3</b>
+        <div>
+          <strong>Sentiment is explained, not merely plotted</strong
+          ><span
+            >The line chart overlays positive and negative consequence events; the adjacent list
+            explains each inflection.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>4</b>
+        <div>
+          <strong>Strategy at a glance</strong
+          ><span
+            >The action-mix donut distinguishes reactive clicks from strategic and advanced
+            interventions.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>5</b>
+        <div>
+          <strong>AI interpretation beside deterministic data</strong
+          ><span
+            >Charts and tables show what happened; the prose cites exact actions and explains why
+            the pattern matters.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>6</b>
+        <div>
+          <strong>One reconstructed timeline</strong
+          ><span
+            >Injects, artifacts, intel handoffs, consequences and recovery actions appear in a
+            single causal chronology.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>7</b>
+        <div>
+          <strong>One high-token call per team</strong
+          ><span
+            >Each fixed team gets task outcomes, member contribution, best/worst evidence, strengths
+            and growth areas.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>8</b>
+        <div>
+          <strong>Information asymmetry becomes visible</strong
+          ><span
+            >The holder-to-recipient flow displays whether intel was shared in time and which
+            consequence followed.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>9</b>
+        <div>
+          <strong>Moderation quality, not activity count</strong
+          ><span
+            >Reach, response latency, report precision and dispute outcomes reveal what mattered and
+            what was missed.</span
+          >
+        </div>
+      </div>
+      <div class="focus-item">
+        <b>10</b>
+        <div>
+          <strong>Recommendations are traceable</strong
+          ><span
+            >The final synthesis links every recommendation back to evidence in an earlier report
+            section.</span
+          >
+        </div>
+      </div>
+    </aside>
+
+    <div class="export-dialog" id="exportDialog" role="dialog" aria-modal="true">
+      <div class="export-card">
+        <h3>Export participant PDF</h3>
+        <p>
+          The production export will preserve the cover, final dimensions, sentiment chart, section
+          analyses and evidence tables in a print-friendly record.
+        </p>
+        <div class="export-preview">
+          <div class="pdf-sheet"><div class="pdf-lines"></div></div>
+          <div>
+            <strong style="display: block; color: var(--brand); font-size: 12px">
+              Social-Crisis-AAR-Fault-Lines.pdf
+            </strong>
+            <span style="color: var(--muted); font-size: 10px">
+              Cover + charts + 13 analysed sections<br />
+              Available to trainer and session participants
+            </span>
+          </div>
+        </div>
+        <div class="export-actions">
+          <button class="button" id="cancelExport">Cancel</button>
+          <button class="button accent" onclick="window.print()">Preview print/PDF</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const focusToggle = document.getElementById('focusToggle');
+      focusToggle.addEventListener('click', () => {
+        document.body.classList.toggle('focus-mode');
+        focusToggle.classList.toggle('is-on');
+        focusToggle.textContent = document.body.classList.contains('focus-mode')
+          ? 'Hide focus points'
+          : 'Focus points';
+      });
+
+      const exportDialog = document.getElementById('exportDialog');
+      document.getElementById('exportButton').addEventListener('click', () => {
+        exportDialog.classList.add('open');
+      });
+      document.getElementById('cancelExport').addEventListener('click', () => {
+        exportDialog.classList.remove('open');
+      });
+      exportDialog.addEventListener('click', (event) => {
+        if (event.target === exportDialog) exportDialog.classList.remove('open');
+      });
+
+      const tabs = [...document.querySelectorAll('.tab')];
+      const panels = [...document.querySelectorAll('.team-panel')];
+      tabs.forEach((tab) => {
+        tab.addEventListener('click', () => {
+          const target = tab.dataset.team;
+          tabs.forEach((item) => item.classList.toggle('active', item === tab));
+          panels.forEach((panel) => {
+            panel.hidden = panel.dataset.panel !== target;
+          });
+        });
+      });
+
+      const links = [...document.querySelectorAll('.toc a')];
+      const sections = links
+        .map((link) => document.querySelector(link.getAttribute('href')))
+        .filter(Boolean);
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (!visible) return;
+          links.forEach((link) => {
+            link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`);
+          });
+        },
+        { rootMargin: '-20% 0px -65% 0px', threshold: [0.05, 0.2, 0.5] },
+      );
+      sections.forEach((section) => observer.observe(section));
+    </script>
+  </body>
+</html>

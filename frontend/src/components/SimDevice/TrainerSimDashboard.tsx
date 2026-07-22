@@ -1162,12 +1162,21 @@ export default function TrainerSimDashboard() {
             How It Works
           </button>
           {isReview ? (
-            <span
-              className="text-[11px] px-2 py-1 rounded font-semibold"
-              style={{ backgroundColor: 'rgba(21,128,61,0.12)', color: '#15803D' }}
-            >
-              COMPLETED · REVIEW
-            </span>
+            <>
+              <button
+                onClick={() => navigate(`/sessions/${sessionId || ''}/aar`)}
+                className="text-[11px] font-bold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity"
+                style={{ backgroundColor: '#1E3A5F', color: '#fff' }}
+              >
+                After-Action Report
+              </button>
+              <span
+                className="text-[11px] px-2 py-1 rounded font-semibold"
+                style={{ backgroundColor: 'rgba(21,128,61,0.12)', color: '#15803D' }}
+              >
+                COMPLETED · REVIEW
+              </span>
+            </>
           ) : (
             <span
               className="text-[11px] px-2 py-1 rounded font-semibold"

@@ -102,6 +102,9 @@ export interface SocialMediaAARData {
     content_quality: number | null;
     task_completion: number | null;
     role_fit: number | null;
+    collaboration: number | null;
+    intel_held: number;
+    intel_shared_count: number;
     tasks_done: number;
     tasks_total: number;
     task_outcomes: Array<{
@@ -426,6 +429,9 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
         content_quality: team.content_quality,
         task_completion: team.task_completion,
         role_fit: team.role_fit,
+        collaboration: team.collaboration,
+        intel_held: team.intel_held,
+        intel_shared_count: team.intel_shared_count,
         tasks_done: team.tasks_done,
         tasks_total: team.tasks_total,
         task_outcomes: team.tasks.map((t) => ({

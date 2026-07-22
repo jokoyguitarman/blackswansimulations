@@ -3016,12 +3016,23 @@ export const SessionView = () => {
                     <h3 className="text-xs font-extrabold uppercase tracking-wide text-brand">
                       AAR — After Action Review
                     </h3>
-                    {cardNotifications['aar'] === 'new' && (
-                      <div className="ml-auto w-3 h-3 bg-success rounded-full"></div>
-                    )}
-                    {cardNotifications['aar'] === 'viewed' && (
-                      <div className="ml-auto w-3 h-3 bg-accent rounded-full"></div>
-                    )}
+                    <div className="ml-auto flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/sessions/${id}/aar`);
+                        }}
+                        className="text-[11px] font-bold px-3 py-1 rounded-lg bg-brand text-white hover:opacity-90 transition-opacity"
+                      >
+                        Open full report
+                      </button>
+                      {cardNotifications['aar'] === 'new' && (
+                        <div className="w-3 h-3 bg-success rounded-full"></div>
+                      )}
+                      {cardNotifications['aar'] === 'viewed' && (
+                        <div className="w-3 h-3 bg-accent rounded-full"></div>
+                      )}
+                    </div>
                   </div>
                   <div
                     className="flex-1 overflow-y-auto min-h-0"
