@@ -1232,7 +1232,8 @@ router.post('/session/:sessionId/export', requireAuth, async (req: Authenticated
     const exportFormat = format === 'pdf' ? 'pdf' : 'excel';
 
     try {
-      const { generatePDF, generateExcel, uploadExportToStorage } = aarExportService;
+      const { generatePDF, generateExcel, uploadExportToStorage, getSignedExportUrl } =
+        aarExportService;
 
       const fileBuffer =
         exportFormat === 'pdf' ? await generatePDF(aarData) : await generateExcel(aarData);
@@ -1245,7 +1246,11 @@ router.post('/session/:sessionId/export', requireAuth, async (req: Authenticated
           ? 'application/pdf'
           : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-      const url = await uploadExportToStorage(fileBuffer, fileName, contentType);
+      await uploadExportToStorage(fileBuffer, fileName, contentType);
+      // Signed URL (1h) instead of the public URL: works whether the
+      // aar-exports bucket is public or private, and these reports carry
+      // named player assessments so the bucket should stay private.
+      const url = await getSignedExportUrl(fileName, 3600);
 
       logger.info(
         { sessionId, format: exportFormat, fileName },

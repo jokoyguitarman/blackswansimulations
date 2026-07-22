@@ -923,12 +923,25 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
     setExporting(format);
     try {
       const result = await api.aar.export(sessionId, format);
-      window.open(result.data.url, '_blank', 'noopener,noreferrer');
+      const { url, fileName } = result.data;
+      // Download via blob + anchor instead of window.open: window.open after an
+      // async wait is silently killed by popup blockers (always on mobile
+      // Chrome). A programmatic anchor click with the download attribute goes
+      // through the browser's download manager instead.
+      const fileResponse = await fetch(url);
+      if (!fileResponse.ok) throw new Error(`File fetch failed (${fileResponse.status})`);
+      const blob = await fileResponse.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = objectUrl;
+      anchor.download = fileName || `aar-export.${format === 'pdf' ? 'pdf' : 'xlsx'}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 10_000);
     } catch (error) {
       console.error(`Failed to export AAR as ${format}:`, error);
-      alert(
-        `Failed to export AAR as ${format}. Export functionality may not be fully implemented yet.`,
-      );
+      alert(`Failed to export AAR as ${format}. Please try again.`);
     } finally {
       setExporting(null);
     }
