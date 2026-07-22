@@ -182,6 +182,37 @@ export async function triggerNPCReactions(
       )
       .join('\n');
 
+    // Official crisis communication (a holding statement or any post published
+    // as the org page) draws substantive scrutiny, not sarcasm: NPCs must
+    // engage with what the statement says and fails to say. The fact sheet
+    // grounds those critiques in the scenario's actual open questions.
+    const isOfficialComms = postFormat === 'official_statement' || isOfficialPagePost;
+    let officialScrutinyBlock = '';
+    if (isOfficialComms) {
+      const factSheet = (initialState.fact_sheet || {}) as {
+        confirmed_facts?: string[];
+        unconfirmed_claims?: Array<{ claim?: string; status?: string }>;
+      };
+      const confirmed = (factSheet.confirmed_facts || []).slice(0, 6).join('; ');
+      const circulating = (factSheet.unconfirmed_claims || [])
+        .slice(0, 5)
+        .map((c) => `"${String(c.claim || '')}" (${String(c.status || 'UNVERIFIED')})`)
+        .join('; ');
+
+      officialScrutinyBlock = `
+OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName ? ` from ${orgName}` : ''}):
+- React to the CONTENT of the statement, not to the fact that it exists. Quote or paraphrase its specific wording when challenging it.
+- Point out concrete gaps: which public questions it leaves unanswered, missing numbers/timelines/affected scope, no cause, no remedy, no time for the next update.
+- If it makes claims, ask what verifies them. If it is vague, name precisely WHAT is missing instead of mocking the vagueness.
+- Do NOT use sarcasm, memes, or one-line dunks on this post. Pressure comes from pointed questions and specific criticism a comms team would have to answer.
+- Supportive/neutral NPCs should acknowledge what the statement DID answer and ask a follow-up, not cheerlead blindly.${
+        circulating
+          ? `\n- Claims currently circulating that the public wants addressed: ${circulating}`
+          : ''
+      }${confirmed ? `\n- Publicly known confirmed facts NPCs may cite: ${confirmed}` : ''}
+`;
+    }
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -200,8 +231,16 @@ The player posted a ${postFormat} format post. Their handle is ${String(playerPo
 ${npcContext}
 
 Reaction types:
-- "attack": hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias
-- "cover": media-style coverage -- neutral to positive news angle about the response team's communication
+- "attack": ${
+              isOfficialComms
+                ? 'critical challenge -- engage with the SUBSTANCE of the statement: quote its exact words, point out what it fails to address, question unverified claims, demand specifics (numbers, timelines, affected scope, next update). Sceptical and demanding, never sarcastic or mocking.'
+                : 'hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias'
+            }
+- "cover": media-style coverage -- ${
+              isOfficialComms
+                ? 'report what the statement said and what remains unanswered, like a journalist covering a press release'
+                : "neutral to positive news angle about the response team's communication"
+            }
 - "support": endorsing reply or repost with supportive commentary, OR just "like" the post
 - "neutral": ambiguous reaction that could go either way
 - "position": subtle competitive messaging -- highlight own values, imply superiority without directly attacking. Professional and strategic, not aggressive. Used by competitor brands.
@@ -210,7 +249,7 @@ IMPORTANT RULES:
 - When replying, START the reply by tagging the player: "${String(playerPost.author_handle || '@player')} ..." so they get notified
 - Some NPCs can just LIKE the post instead of replying. Use action: "like" for this.
 - Supportive NPCs are more likely to like; hostile NPCs are more likely to reply attacking.
-
+${officialScrutinyBlock}
 Crisis context: ${String(scenario.description || '').substring(0, 300)}${orgName ? `\nOrganization: ${orgName}` : ''}
 ${threadContext}
 
