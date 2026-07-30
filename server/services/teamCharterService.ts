@@ -15,6 +15,53 @@ export const FIXED_TEAM_NAMES = ['Communications', 'Procurement', 'Sales', 'Lega
 
 export type FixedTeamName = (typeof FIXED_TEAM_NAMES)[number];
 
+/**
+ * The closed vocabulary of detectable player actions (mirrors the
+ * player_actions.action_type CHECK constraint, migration 191). Every
+ * expected action's detection_action_type MUST come from this list —
+ * otherwise task-completion scoring can never detect it and the team
+ * silently scores zero. AI-synthesized charters are validated against it.
+ */
+export const ALLOWED_DETECTION_ACTION_TYPES = [
+  'post_created',
+  'reply_posted',
+  'post_liked',
+  'post_reposted',
+  'post_flagged',
+  'post_reported',
+  'dm_sent',
+  'dm_read',
+  'email_sent',
+  'email_read',
+  'call_answered',
+  'call_declined',
+  'news_read',
+  'fact_checked',
+  'draft_created',
+  'draft_submitted_for_approval',
+  'draft_approved',
+  'draft_published',
+  'escalated',
+  'chat_message_sent',
+  'content_graded',
+  'misinfo_flagged',
+  'group_post_created',
+  'group_joined',
+  'event_created',
+  'event_responded',
+  'event_discussed',
+  'dispute_filed',
+  'dispute_upheld',
+  'dispute_rejected',
+] as const;
+
+export const SENTIMENT_DIMENSIONS = [
+  'public_trust',
+  'community_safety',
+  'narrative_control',
+  'escalation_risk',
+] as const;
+
 export interface TeamExpectedAction {
   action_id: string;
   description: string;
@@ -29,7 +76,8 @@ export interface TeamExpectedAction {
 }
 
 export interface TeamCharter {
-  team_name: FixedTeamName;
+  /** Preset catalog name OR a trainer-defined custom team name. */
+  team_name: string;
   mission: string;
   responsibilities: string[];
   expected_actions: TeamExpectedAction[];
@@ -37,6 +85,111 @@ export interface TeamCharter {
   out_of_lane: string[];
   min_participants: number;
   max_participants: number;
+  /** True for trainer-created teams (charter AI-synthesized from description). */
+  is_custom?: boolean;
+  /** Exactly one team per scenario holds the org's public voice (official-statement rubric). */
+  can_post_publicly?: boolean;
+  /** Sentiment dimension this team's benchmarks influence. */
+  sentiment_dimension?: string;
+}
+
+/**
+ * Fallback expected actions for custom teams when AI synthesis fails or
+ * returns nothing valid: generic, always-detectable duties so a custom team
+ * is never silently unscoreable.
+ */
+export function genericExpectedActions(teamName: string): TeamExpectedAction[] {
+  const slug = teamName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .slice(0, 24);
+  return [
+    {
+      action_id: `${slug}_respond_email`,
+      description: 'Respond to incoming emails relevant to the team',
+      detection_action_type: 'email_sent',
+      timing_benchmark_minutes: 25,
+      weight: 35,
+      tier: 2,
+    },
+    {
+      action_id: `${slug}_read_intel`,
+      description: 'Read incoming emails and intel promptly',
+      detection_action_type: 'email_read',
+      timing_benchmark_minutes: 10,
+      weight: 20,
+      tier: 1,
+    },
+    {
+      action_id: `${slug}_fact_check`,
+      description: 'Verify claims against the confirmed fact sheet',
+      detection_action_type: 'fact_checked',
+      timing_benchmark_minutes: 25,
+      weight: 20,
+      tier: 2,
+    },
+    {
+      action_id: `${slug}_escalate`,
+      description: 'Escalate findings and risks to the wider team',
+      detection_action_type: 'chat_message_sent',
+      timing_benchmark_minutes: 30,
+      weight: 25,
+      tier: 3,
+    },
+  ];
+}
+
+/**
+ * Validate expected actions (AI-synthesized or trainer-edited): drop entries
+ * with unknown detection types, clamp weights/tiers, and fall back to the
+ * generic set when nothing valid remains.
+ */
+export function sanitizeExpectedActions(actions: unknown, teamName: string): TeamExpectedAction[] {
+  const allowed = new Set<string>(ALLOWED_DETECTION_ACTION_TYPES);
+  const list = Array.isArray(actions) ? actions : [];
+  const valid: TeamExpectedAction[] = [];
+
+  for (const raw of list) {
+    const a = raw as Record<string, unknown>;
+    const detection = String(a.detection_action_type || '');
+    if (!allowed.has(detection)) {
+      logger.warn(
+        { teamName, detection, description: a.description },
+        'Expected action dropped: unknown detection_action_type',
+      );
+      continue;
+    }
+    const description = String(a.description || '').trim();
+    if (!description) continue;
+    const tierNum = Number(a.tier);
+    const timing = a.timing_benchmark_minutes;
+    valid.push({
+      action_id:
+        String(a.action_id || '').trim() ||
+        `${teamName
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .slice(0, 20)}_${detection}_${valid.length}`,
+      description: description.slice(0, 300),
+      detection_action_type: detection,
+      detection_hints:
+        a.detection_hints && typeof a.detection_hints === 'object'
+          ? (a.detection_hints as Record<string, unknown>)
+          : undefined,
+      timing_benchmark_minutes:
+        timing == null || Number.isNaN(Number(timing))
+          ? null
+          : Math.max(1, Math.min(240, Math.round(Number(timing)))),
+      weight: Math.max(1, Math.min(100, Math.round(Number(a.weight)) || 20)),
+      tier: (tierNum === 1 || tierNum === 2 || tierNum === 3 ? tierNum : 2) as 1 | 2 | 3,
+    });
+  }
+
+  if (valid.length === 0) {
+    logger.warn({ teamName }, 'No valid expected actions; using generic fallback set');
+    return genericExpectedActions(teamName);
+  }
+  return valid.slice(0, 8);
 }
 
 export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
@@ -104,6 +257,8 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
     ],
     min_participants: 1,
     max_participants: 4,
+    can_post_publicly: true,
+    sentiment_dimension: 'narrative_control',
   },
   Procurement: {
     team_name: 'Procurement',
@@ -160,6 +315,8 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
     ],
     min_participants: 1,
     max_participants: 3,
+    can_post_publicly: false,
+    sentiment_dimension: 'community_safety',
   },
   Sales: {
     team_name: 'Sales',
@@ -216,6 +373,8 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
     ],
     min_participants: 1,
     max_participants: 3,
+    can_post_publicly: false,
+    sentiment_dimension: 'public_trust',
   },
   Legal: {
     team_name: 'Legal',
@@ -272,6 +431,8 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
     ],
     min_participants: 1,
     max_participants: 2,
+    can_post_publicly: false,
+    sentiment_dimension: 'escalation_risk',
   },
 };
 
@@ -335,7 +496,8 @@ export function benchmarksFromCharters(charters: TeamCharter[]): Array<{
       doctrine_source: 'Team charter',
       detection_action_type: action.detection_action_type,
       timing_benchmark_minutes: action.timing_benchmark_minutes,
-      sentiment_dimension: dimensionByTeam[charter.team_name] || 'public_trust',
+      sentiment_dimension:
+        charter.sentiment_dimension || dimensionByTeam[charter.team_name] || 'public_trust',
       impact_if_done: action.tier + 2,
       impact_if_missed: -(action.tier + 1),
       consequence_if_done: `${charter.team_name} fulfilled: ${action.description}`,
@@ -355,6 +517,8 @@ export interface TeamContext {
     scoring_rubric: string;
     out_of_lane: string[];
     expected_actions: TeamExpectedAction[];
+    /** True when this team holds the org's public voice (official-statement rubric). */
+    can_post_publicly: boolean;
   } | null;
 }
 
@@ -440,6 +604,10 @@ export async function getPlayerTeamContext(
           (teamRow.expected_actions as TeamExpectedAction[]) ||
           catalogFallback?.expected_actions ||
           [],
+        can_post_publicly:
+          typeof charterJson.can_post_publicly === 'boolean'
+            ? charterJson.can_post_publicly
+            : (catalogFallback?.can_post_publicly ?? teamName === 'Communications'),
       },
     };
   } catch (err) {

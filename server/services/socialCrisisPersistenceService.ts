@@ -102,6 +102,9 @@ export async function persistSocialCrisisScenario(
                   mission: charter.mission,
                   responsibilities: charter.responsibilities,
                   out_of_lane: charter.out_of_lane,
+                  is_custom: !!charter.is_custom,
+                  can_post_publicly: !!charter.can_post_publicly,
+                  sentiment_dimension: charter.sentiment_dimension || 'public_trust',
                 }
               : null,
             expected_actions: charter ? charter.expected_actions : null,

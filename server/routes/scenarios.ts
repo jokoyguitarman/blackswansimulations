@@ -19,6 +19,13 @@ import { assertScenarioOwner } from '../lib/access.js';
 import { canEditScenario } from '../services/scenarioEditService.js';
 import { sanitizeTeamTargeting } from '../services/socialCrisisPersistenceService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
+import {
+  benchmarksFromCharters,
+  getCatalogCharter,
+  sanitizeExpectedActions,
+  type TeamCharter,
+  type TeamExpectedAction,
+} from '../services/teamCharterService.js';
 
 const router = Router();
 
@@ -915,9 +922,57 @@ router.post(
   },
 );
 
-// Edit a team's charter wording / scoring rubric. Team names and
-// expected_actions are immutable (they drive action detection and the
-// compile-derived strategic benchmarks).
+/**
+ * Recompute initial_state.strategic_benchmarks from the scenario's current
+ * team charters + expected actions. Called after expected-action edits so
+ * the compile-derived benchmarks (used by the AAR doctrine section) never
+ * silently go stale.
+ */
+async function recomputeStrategicBenchmarks(scenarioId: string): Promise<void> {
+  const { data: teamRows, error: teamsErr } = await supabaseAdmin
+    .from('scenario_teams')
+    .select('team_name, team_description, charter, expected_actions')
+    .eq('scenario_id', scenarioId);
+  if (teamsErr)
+    throw new Error(`Failed to load teams for benchmark recompute: ${teamsErr.message}`);
+
+  const charters: TeamCharter[] = (teamRows ?? []).map((t) => {
+    const cj = (t.charter || {}) as Record<string, unknown>;
+    const catalog = getCatalogCharter(t.team_name as string);
+    return {
+      team_name: t.team_name as string,
+      mission: (cj.mission as string) || (t.team_description as string) || '',
+      responsibilities: (cj.responsibilities as string[]) || [],
+      out_of_lane: (cj.out_of_lane as string[]) || [],
+      scoring_rubric: '',
+      expected_actions:
+        (t.expected_actions as TeamExpectedAction[] | null) || catalog?.expected_actions || [],
+      min_participants: 1,
+      max_participants: 4,
+      sentiment_dimension: (cj.sentiment_dimension as string) || catalog?.sentiment_dimension,
+    };
+  });
+
+  const { data: scen, error: scenErr } = await supabaseAdmin
+    .from('scenarios')
+    .select('initial_state')
+    .eq('id', scenarioId)
+    .single();
+  if (scenErr)
+    throw new Error(`Failed to load scenario for benchmark recompute: ${scenErr.message}`);
+
+  const is = (scen?.initial_state || {}) as Record<string, unknown>;
+  const { error: updErr } = await supabaseAdmin
+    .from('scenarios')
+    .update({ initial_state: { ...is, strategic_benchmarks: benchmarksFromCharters(charters) } })
+    .eq('id', scenarioId);
+  if (updErr) throw new Error(`Failed to save recomputed benchmarks: ${updErr.message}`);
+}
+
+// Edit a team's charter wording / scoring rubric / expected actions /
+// public-voice flag. Team names are immutable. Expected-action detection
+// types are validated against the closed action vocabulary, and edits
+// trigger a strategic-benchmark recompute.
 const updateTeamSchema = z.object({
   params: z.object({ id: z.string().uuid(), teamId: z.string().uuid() }),
   body: z.object({
@@ -930,6 +985,8 @@ const updateTeamSchema = z.object({
       })
       .optional(),
     scoring_rubric: z.string().max(4000).optional(),
+    expected_actions: z.array(z.unknown()).max(8).optional(),
+    can_post_publicly: z.boolean().optional(),
   }),
 });
 
@@ -944,7 +1001,7 @@ router.patch(
 
       const { data: existing, error: fetchErr } = await supabaseAdmin
         .from('scenario_teams')
-        .select('id, charter')
+        .select('id, team_name, charter')
         .eq('id', teamId)
         .eq('scenario_id', id)
         .maybeSingle();
@@ -956,16 +1013,32 @@ router.patch(
         return res.status(404).json({ error: 'Team not found' });
       }
 
+      if (req.body.can_post_publicly === false) {
+        return res.status(400).json({
+          error:
+            'One team must always hold the public voice. Designate another team instead of unsetting this one.',
+        });
+      }
+
       const updates: Record<string, unknown> = {};
       if (req.body.team_description !== undefined)
         updates.team_description = req.body.team_description;
       if (req.body.scoring_rubric !== undefined) updates.scoring_rubric = req.body.scoring_rubric;
-      if (req.body.charter !== undefined) {
+      if (req.body.charter !== undefined || req.body.can_post_publicly === true) {
         // Merge onto the existing charter so partial edits never drop fields.
         updates.charter = {
           ...((existing.charter || {}) as Record<string, unknown>),
-          ...req.body.charter,
+          ...(req.body.charter ?? {}),
+          ...(req.body.can_post_publicly === true ? { can_post_publicly: true } : {}),
         };
+      }
+      if (req.body.expected_actions !== undefined) {
+        // Validated against the closed detection vocabulary so an edit can
+        // never make the team silently unscoreable.
+        updates.expected_actions = sanitizeExpectedActions(
+          req.body.expected_actions,
+          existing.team_name as string,
+        );
       }
 
       if (Object.keys(updates).length === 0) {
@@ -983,6 +1056,49 @@ router.patch(
       if (error) {
         logger.error({ error, teamId, scenarioId: id }, 'Failed to update team');
         return res.status(500).json({ error: `Failed to update team: ${error.message}` });
+      }
+
+      // Exactly-one-public-voice rule: designating this team clears the flag
+      // on every sibling row.
+      if (req.body.can_post_publicly === true) {
+        const { data: siblings, error: sibErr } = await supabaseAdmin
+          .from('scenario_teams')
+          .select('id, charter')
+          .eq('scenario_id', id)
+          .neq('id', teamId);
+        if (sibErr) {
+          logger.error({ error: sibErr, scenarioId: id }, 'Failed to load sibling teams');
+          return res
+            .status(500)
+            .json({ error: `Saved, but failed to update other teams: ${sibErr.message}` });
+        }
+        for (const sib of siblings ?? []) {
+          const cj = (sib.charter || {}) as Record<string, unknown>;
+          if (cj.can_post_publicly === true) {
+            const { error: unsetErr } = await supabaseAdmin
+              .from('scenario_teams')
+              .update({ charter: { ...cj, can_post_publicly: false } })
+              .eq('id', sib.id);
+            if (unsetErr) {
+              logger.error({ error: unsetErr, teamId: sib.id }, 'Failed to unset public voice');
+              return res.status(500).json({
+                error: `Saved, but failed to unset the previous public-voice team: ${unsetErr.message}`,
+              });
+            }
+          }
+        }
+      }
+
+      // Keep the compile-derived benchmarks in sync with edited expected actions.
+      if (req.body.expected_actions !== undefined) {
+        try {
+          await recomputeStrategicBenchmarks(id);
+        } catch (benchErr) {
+          logger.error({ error: benchErr, scenarioId: id }, 'Benchmark recompute failed');
+          return res.status(500).json({
+            error: `Team saved, but benchmark recompute failed: ${(benchErr as Error).message}`,
+          });
+        }
       }
 
       logger.info(

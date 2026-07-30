@@ -50,6 +50,45 @@ interface ObjectiveDef {
   weight: number;
 }
 
+/** Full charter payload streamed from the server and round-tripped into compile. */
+interface TeamCharterWire {
+  team_name: string;
+  mission: string;
+  responsibilities: string[];
+  out_of_lane?: string[];
+  scoring_rubric?: string;
+  expected_actions?: Array<Record<string, unknown>>;
+  min_participants?: number;
+  max_participants?: number;
+  is_custom?: boolean;
+  can_post_publicly?: boolean;
+  sentiment_dimension?: string;
+}
+
+/** A team the trainer picked for this scenario: preset or their own division. */
+interface RosterEntry {
+  team_name: string;
+  description: string;
+  is_custom: boolean;
+  is_public_voice: boolean;
+}
+
+interface PresetTeamCard {
+  team_name: string;
+  mission: string;
+  responsibilities: string[];
+  default_public_voice: boolean;
+}
+
+const PRESET_TEAM_NAMES = ['Communications', 'Procurement', 'Sales', 'Legal'];
+
+const DEFAULT_TEAM_ROSTER: RosterEntry[] = PRESET_TEAM_NAMES.map((n) => ({
+  team_name: n,
+  description: '',
+  is_custom: false,
+  is_public_voice: n === 'Communications',
+}));
+
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
 // Feature flag (default off): when enabled and a document is uploaded, an extra
@@ -197,13 +236,74 @@ export const SocialCrisisWizard = () => {
   const [step3Progress, setStep3Progress] = useState<string[]>([]);
   const [step3Error, setStep3Error] = useState<string | null>(null);
 
-  /* Fixed response teams (Communications, Procurement, Sales, Legal):
-     per-team storylines + crisis-adapted charters generated alongside the
-     universal storyline backbone. */
+  /* Response teams: the trainer assembles a roster (2-6) of preset teams
+     and/or their company's own divisions. Per-team storylines + charters are
+     generated for the actual roster alongside the universal backbone. */
   const [teamStorylines, setTeamStorylines] = useState<Record<string, SocialInject[]>>({});
-  const [teamCharters, setTeamCharters] = useState<
-    Array<{ team_name: string; mission: string; responsibilities: string[] }>
-  >([]);
+  const [teamCharters, setTeamCharters] = useState<TeamCharterWire[]>([]);
+  const [teamRoster, setTeamRoster] = useState<RosterEntry[]>(DEFAULT_TEAM_ROSTER);
+  const [presetCatalog, setPresetCatalog] = useState<PresetTeamCard[]>([]);
+
+  useEffect(() => {
+    const loadCatalog = async () => {
+      try {
+        const headers = await authHeaders();
+        const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/team-catalog'), { headers });
+        if (res.ok) {
+          const json = await res.json();
+          if (Array.isArray(json.data)) setPresetCatalog(json.data as PresetTeamCard[]);
+        }
+      } catch {
+        /* cards fall back to name-only rendering */
+      }
+    };
+    loadCatalog();
+  }, []);
+
+  /** Roster validity mirrors server-side validateRoster (server still enforces). */
+  const rosterError = useMemo((): string | null => {
+    if (teamRoster.length < 2) return 'Pick at least 2 teams';
+    if (teamRoster.length > 6) return 'Maximum 6 teams';
+    const names = teamRoster.map((t) => t.team_name.trim().toLowerCase());
+    if (names.some((n) => !n)) return 'Every custom team needs a name';
+    if (new Set(names).size !== names.length) return 'Team names must be unique';
+    const bad = teamRoster.find((t) => t.is_custom && t.description.trim().length < 10);
+    if (bad)
+      return `Describe what "${bad.team_name || 'your custom team'}" does (min 10 characters)`;
+    if (teamRoster.filter((t) => t.is_public_voice).length !== 1)
+      return 'Tick exactly one team as the public voice';
+    return null;
+  }, [teamRoster]);
+
+  const setPublicVoice = useCallback((teamName: string) => {
+    setTeamRoster((prev) => prev.map((t) => ({ ...t, is_public_voice: t.team_name === teamName })));
+  }, []);
+
+  const togglePreset = useCallback((preset: PresetTeamCard) => {
+    setTeamRoster((prev) => {
+      const exists = prev.some((t) => !t.is_custom && t.team_name === preset.team_name);
+      let next: RosterEntry[];
+      if (exists) {
+        next = prev.filter((t) => t.is_custom || t.team_name !== preset.team_name);
+      } else {
+        next = [
+          ...prev,
+          {
+            team_name: preset.team_name,
+            description: '',
+            is_custom: false,
+            is_public_voice: false,
+          },
+        ];
+      }
+      // Keep exactly one public voice whenever possible.
+      if (next.length > 0 && !next.some((t) => t.is_public_voice)) {
+        const comms = next.find((t) => t.team_name === 'Communications');
+        (comms ?? next[0]).is_public_voice = true;
+      }
+      return next;
+    });
+  }, []);
 
   /* Step 4 — Convergence + Shared Chaos */
   const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
@@ -288,6 +388,7 @@ export const SocialCrisisWizard = () => {
       storyline_injects: storylineInjects,
       team_storylines: teamStorylines,
       team_charters: teamCharters,
+      team_roster: teamRoster,
       shared_injects: sharedInjects,
       convergence_gates: convergenceGates,
       narrative,
@@ -311,6 +412,7 @@ export const SocialCrisisWizard = () => {
       storylineInjects,
       teamStorylines,
       teamCharters,
+      teamRoster,
       sharedInjects,
       convergenceGates,
       narrative,
@@ -394,13 +496,9 @@ export const SocialCrisisWizard = () => {
         if (input.team_storylines && typeof input.team_storylines === 'object')
           setTeamStorylines(input.team_storylines as Record<string, SocialInject[]>);
         if (Array.isArray(input.team_charters))
-          setTeamCharters(
-            input.team_charters as Array<{
-              team_name: string;
-              mission: string;
-              responsibilities: string[];
-            }>,
-          );
+          setTeamCharters(input.team_charters as TeamCharterWire[]);
+        if (Array.isArray(input.team_roster) && input.team_roster.length > 0)
+          setTeamRoster(input.team_roster as RosterEntry[]);
         if (Array.isArray(input.shared_injects))
           setSharedInjects(input.shared_injects as SocialInject[]);
         if (Array.isArray(input.convergence_gates))
@@ -443,7 +541,7 @@ export const SocialCrisisWizard = () => {
   const canProceed = useMemo(() => {
     switch (step) {
       case 1:
-        return crisisDescription.length >= 50;
+        return crisisDescription.length >= 50 && rosterError === null;
       case 3:
         // Blueprint Review: can proceed once extraction settles.
         return !extracting;
@@ -455,7 +553,7 @@ export const SocialCrisisWizard = () => {
       default:
         return false;
     }
-  }, [step, crisisDescription, extracting]);
+  }, [step, crisisDescription, extracting, rosterError]);
 
   /* ─── File upload ───────────────────────────────────────────────────── */
 
@@ -701,6 +799,12 @@ export const SocialCrisisWizard = () => {
             personas: personasIn,
             fact_sheet: factSheetIn,
             blueprint: blueprint ?? undefined,
+            team_roster: teamRoster.map((t) => ({
+              team_name: t.team_name.trim(),
+              description: t.description.trim() || undefined,
+              is_custom: t.is_custom,
+              is_public_voice: t.is_public_voice,
+            })),
           }),
         });
 
@@ -734,13 +838,7 @@ export const SocialCrisisWizard = () => {
                   setStorylineInjects(injects);
                   setTeamStorylines(teamMap);
                   if (Array.isArray(msg.team_charters)) {
-                    setTeamCharters(
-                      msg.team_charters as Array<{
-                        team_name: string;
-                        mission: string;
-                        responsibilities: string[];
-                      }>,
-                    );
+                    setTeamCharters(msg.team_charters as TeamCharterWire[]);
                   }
                 } else if (msg.type === 'error') {
                   setStep3Error(String(msg.message || 'Storyline generation failed'));
@@ -759,7 +857,7 @@ export const SocialCrisisWizard = () => {
       setStep3Loading(false);
       return result;
     },
-    [crisisDescription, country, orgName, personas, factSheet, blueprint],
+    [crisisDescription, country, orgName, personas, factSheet, blueprint, teamRoster],
   );
 
   const generateConvergence = useCallback(
@@ -1390,6 +1488,140 @@ export const SocialCrisisWizard = () => {
         </div>
       </div>
 
+      {/* Response teams: presets + the trainer's own divisions */}
+      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
+          Response Teams ({teamRoster.length}/6)
+        </label>
+        <p className="text-[10px] terminal-text text-muted mb-3">
+          Every company divides differently — pick from the preset teams and/or add your own
+          divisions. Each team&apos;s name and description shape its storyline pressure, injects,
+          and scoring. Mark exactly one team as the <b>public voice</b>: it publishes official
+          statements and is graded to the official-statement standard.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+          {(presetCatalog.length > 0
+            ? presetCatalog
+            : PRESET_TEAM_NAMES.map((n) => ({
+                team_name: n,
+                mission: '',
+                responsibilities: [],
+                default_public_voice: n === 'Communications',
+              }))
+          ).map((preset) => {
+            const entry = teamRoster.find((t) => !t.is_custom && t.team_name === preset.team_name);
+            const selected = !!entry;
+            return (
+              <div
+                key={preset.team_name}
+                className={`border rounded p-2.5 cursor-pointer transition-colors ${selected ? 'border-accent bg-accent/10' : 'border-border hover:border-accent/50'}`}
+                onClick={() => togglePreset(preset)}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs terminal-text text-ink font-bold">
+                    {selected ? '☑' : '☐'} {preset.team_name}
+                  </span>
+                  {selected && (
+                    <label
+                      className={`text-[9px] terminal-text cursor-pointer px-1.5 py-0.5 rounded border ${entry!.is_public_voice ? 'border-accent text-accent' : 'border-border text-muted hover:text-ink'}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPublicVoice(preset.team_name);
+                      }}
+                    >
+                      {entry!.is_public_voice ? '◉ Public voice' : '○ Public voice'}
+                    </label>
+                  )}
+                </div>
+                {preset.mission && (
+                  <div className="text-[10px] terminal-text text-muted mt-1 leading-relaxed line-clamp-2">
+                    {preset.mission}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Custom teams */}
+        {teamRoster.filter((t) => t.is_custom).length > 0 && (
+          <div className="space-y-2 mb-3">
+            {teamRoster.map((t, idx) =>
+              t.is_custom ? (
+                <div key={idx} className="border border-border rounded p-2.5">
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <input
+                      value={t.team_name}
+                      onChange={(e) =>
+                        setTeamRoster((prev) =>
+                          prev.map((x, i) => (i === idx ? { ...x, team_name: e.target.value } : x)),
+                        )
+                      }
+                      placeholder="Team name (e.g. Franchise Relations)"
+                      className="flex-1 bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
+                    />
+                    <label
+                      className={`text-[9px] terminal-text cursor-pointer px-1.5 py-0.5 rounded border whitespace-nowrap ${t.is_public_voice ? 'border-accent text-accent' : 'border-border text-muted hover:text-ink'}`}
+                      onClick={() => setPublicVoice(t.team_name)}
+                    >
+                      {t.is_public_voice ? '◉ Public voice' : '○ Public voice'}
+                    </label>
+                    <button
+                      onClick={() =>
+                        setTeamRoster((prev) => {
+                          const next = prev.filter((_, i) => i !== idx);
+                          if (next.length > 0 && !next.some((x) => x.is_public_voice)) {
+                            const comms = next.find((x) => x.team_name === 'Communications');
+                            (comms ?? next[0]).is_public_voice = true;
+                          }
+                          return next;
+                        })
+                      }
+                      className="text-[10px] terminal-text text-danger hover:opacity-80 border border-danger/30 px-2 py-0.5 rounded"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                  <textarea
+                    value={t.description}
+                    onChange={(e) =>
+                      setTeamRoster((prev) =>
+                        prev.map((x, i) => (i === idx ? { ...x, description: e.target.value } : x)),
+                      )
+                    }
+                    rows={2}
+                    placeholder="What does this team do? (feeds the AI: their injects, pressure, duties, and scoring are built from this)"
+                    className="w-full bg-surface border border-border text-ink terminal-text text-[11px] px-2 py-1 rounded resize-y"
+                  />
+                </div>
+              ) : null,
+            )}
+          </div>
+        )}
+
+        <button
+          onClick={() =>
+            setTeamRoster((prev) =>
+              prev.length >= 6
+                ? prev
+                : [
+                    ...prev,
+                    { team_name: '', description: '', is_custom: true, is_public_voice: false },
+                  ],
+            )
+          }
+          disabled={teamRoster.length >= 6}
+          className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded disabled:opacity-40"
+        >
+          + Add your own team
+        </button>
+
+        {rosterError && (
+          <div className="mt-2 text-[10px] terminal-text text-warning">{rosterError}</div>
+        )}
+      </div>
+
       {/* Brand pages: protagonist allies + antagonist competitors */}
       <div className="mb-4 p-3 border border-border rounded bg-surface-2">
         <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
@@ -1900,18 +2132,30 @@ export const SocialCrisisWizard = () => {
           {teamCharters.length > 0 && (
             <div className="border border-border rounded p-4 mb-4">
               <h3 className="text-xs terminal-text text-muted uppercase mb-3">
-                Response teams · built-in
+                Response teams ({teamCharters.length})
               </h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {teamCharters.map((team) => (
                   <div key={team.team_name} className="border border-border rounded p-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs terminal-text text-ink font-bold">
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span className="text-xs terminal-text text-ink font-bold truncate">
                         {team.team_name}
                       </span>
-                      <span className="text-[10px] terminal-text text-accent">
+                      <span className="text-[10px] terminal-text text-accent whitespace-nowrap">
                         {(teamStorylines[team.team_name] || []).length} injects
                       </span>
+                    </div>
+                    <div className="flex gap-1.5 mb-1">
+                      {team.is_custom && (
+                        <span className="text-[9px] terminal-text px-1.5 py-0.5 rounded border border-accent/40 text-accent">
+                          Custom
+                        </span>
+                      )}
+                      {team.can_post_publicly && (
+                        <span className="text-[9px] terminal-text px-1.5 py-0.5 rounded border border-success/40 text-success">
+                          Public voice
+                        </span>
+                      )}
                     </div>
                     <div className="text-[10px] terminal-text text-muted leading-relaxed line-clamp-2">
                       {team.mission}
@@ -1921,7 +2165,8 @@ export const SocialCrisisWizard = () => {
               </div>
               <p className="text-[9px] terminal-text text-muted mt-3">
                 Players are assigned to these teams in the session lobby. Each team has its own
-                storyline pressure, tasks, and scoring rubric.
+                storyline pressure, tasks, and scoring rubric — all editable after compile from the
+                scenario&apos;s detail page.
               </p>
             </div>
           )}

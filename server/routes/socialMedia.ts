@@ -1261,13 +1261,13 @@ router.post(
           const { gradePlayerContent } = await import('../services/contentGraderService.js');
           const { getPlayerTeamContext } = await import('../services/teamCharterService.js');
           const teamCtx = await getPlayerTeamContext(session_id, user.id);
-          // Communications emails are held to the official-statement rubric;
-          // other teams' emails (supplier/customer/regulator correspondence)
-          // are graded as professional text against their own charter.
+          // The public-voice team's emails are held to the official-statement
+          // rubric; other teams' emails (supplier/customer/regulator
+          // correspondence) are graded as professional text against their own
+          // charter. The flag lives on the charter (legacy scenarios fall back
+          // to Communications inside getPlayerTeamContext).
           const emailFormat =
-            teamCtx?.charter && teamCtx.team_name !== 'Communications'
-              ? 'text'
-              : 'official_statement';
+            teamCtx?.charter && !teamCtx.charter.can_post_publicly ? 'text' : 'official_statement';
           const grade = await gradePlayerContent(`${subject}\n\n${body_text}`, {
             crisis_description: scenario.description || '',
             confirmed_facts: confirmedFacts,

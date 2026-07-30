@@ -40,10 +40,41 @@ interface TeamRow {
     mission?: string;
     responsibilities?: string[];
     out_of_lane?: string[];
+    is_custom?: boolean;
+    can_post_publicly?: boolean;
+    sentiment_dimension?: string;
   } | null;
   expected_actions?: Array<Record<string, unknown>> | null;
   scoring_rubric?: string | null;
 }
+
+interface ExpectedActionDraft {
+  action_id?: string;
+  description: string;
+  detection_action_type: string;
+  timing_benchmark_minutes: number | null;
+  weight: number;
+  tier: number;
+}
+
+/** Mirrors the server's closed detection vocabulary (server re-validates). */
+const DETECTION_ACTION_TYPES = [
+  'post_created',
+  'reply_posted',
+  'post_flagged',
+  'misinfo_flagged',
+  'email_sent',
+  'email_read',
+  'dm_sent',
+  'fact_checked',
+  'chat_message_sent',
+  'dispute_filed',
+  'draft_created',
+  'draft_published',
+  'escalated',
+  'group_post_created',
+  'news_read',
+];
 
 interface ObjectiveRow {
   id: string;
@@ -1634,6 +1665,7 @@ const TeamsSection = ({
   const [responsibilities, setResponsibilities] = useState<string[]>([]);
   const [outOfLane, setOutOfLane] = useState<string[]>([]);
   const [rubric, setRubric] = useState('');
+  const [expectedActions, setExpectedActions] = useState<ExpectedActionDraft[]>([]);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState(false);
@@ -1644,6 +1676,17 @@ const TeamsSection = ({
     setResponsibilities([...(t.charter?.responsibilities || [])]);
     setOutOfLane([...(t.charter?.out_of_lane || [])]);
     setRubric(t.scoring_rubric || '');
+    setExpectedActions(
+      ((t.expected_actions || []) as Array<Record<string, unknown>>).map((a) => ({
+        action_id: a.action_id ? String(a.action_id) : undefined,
+        description: String(a.description || ''),
+        detection_action_type: String(a.detection_action_type || 'email_sent'),
+        timing_benchmark_minutes:
+          a.timing_benchmark_minutes == null ? null : Number(a.timing_benchmark_minutes),
+        weight: Number(a.weight) || 20,
+        tier: Number(a.tier) || 2,
+      })),
+    );
     setMsg(null);
   };
 
@@ -1651,7 +1694,7 @@ const TeamsSection = ({
     setSaving(true);
     setMsg(null);
     try {
-      const fields = {
+      const fields: Record<string, unknown> = {
         team_description: mission,
         charter: {
           mission,
@@ -1660,6 +1703,21 @@ const TeamsSection = ({
         },
         scoring_rubric: rubric,
       };
+      // Expected actions are only editable on custom teams (presets keep the
+      // catalog machinery). The server re-validates detection types and
+      // recomputes the strategic benchmarks.
+      if (t.charter?.is_custom) {
+        fields.expected_actions = expectedActions
+          .filter((a) => a.description.trim())
+          .map((a) => ({
+            ...a,
+            description: a.description.trim(),
+            timing_benchmark_minutes:
+              a.timing_benchmark_minutes == null || Number.isNaN(a.timing_benchmark_minutes)
+                ? null
+                : a.timing_benchmark_minutes,
+          }));
+      }
       const res = await api.scenarios.updateTeam(scenarioId, t.id, fields);
       setTeamList((list) =>
         list.map((x) =>
@@ -1677,12 +1735,33 @@ const TeamsSection = ({
     }
   };
 
+  const makePublicVoice = async (t: TeamRow) => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      await api.scenarios.updateTeam(scenarioId, t.id, { can_post_publicly: true });
+      setTeamList((list) =>
+        list.map((x) => ({
+          ...x,
+          charter: { ...(x.charter || {}), can_post_publicly: x.id === t.id },
+        })),
+      );
+      setMsg(`${t.team_name} is now the public voice`);
+      setError(false);
+    } catch (err) {
+      setMsg((err as Error).message);
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (teamList.length === 0) return null;
 
   return (
     <SectionCard
       title="Team Charters"
-      subtitle="Grading and scoring read these live. Team names and expected actions are fixed (they drive action detection); the wording is yours."
+      subtitle="Grading and scoring read these live. Team names are fixed; wording is yours. Custom teams can also edit their expected actions (detection types come from a fixed vocabulary); preset teams keep the catalog machinery."
     >
       <div className="space-y-3">
         {teamList.map((t) =>
@@ -1719,6 +1798,96 @@ const TeamsSection = ({
                 onChange={(e) => setRubric(e.target.value)}
                 className={`${inputCls} resize-y`}
               />
+              {t.charter?.is_custom && (
+                <>
+                  <label className={`${labelCls} mt-2`}>
+                    Expected actions (what task-completion scoring detects — detection types are a
+                    fixed vocabulary)
+                  </label>
+                  <div className="space-y-1.5">
+                    {expectedActions.map((a, ai) => (
+                      <div
+                        key={ai}
+                        className="flex flex-wrap gap-1.5 items-center bg-surface-2 border border-border rounded p-1.5"
+                      >
+                        <input
+                          value={a.description}
+                          onChange={(e) => {
+                            const next = [...expectedActions];
+                            next[ai] = { ...next[ai], description: e.target.value };
+                            setExpectedActions(next);
+                          }}
+                          placeholder="What should the player do?"
+                          className={`${inputCls} flex-1 min-w-[180px]`}
+                        />
+                        <select
+                          value={a.detection_action_type}
+                          onChange={(e) => {
+                            const next = [...expectedActions];
+                            next[ai] = { ...next[ai], detection_action_type: e.target.value };
+                            setExpectedActions(next);
+                          }}
+                          className="text-[10px] bg-surface border border-border rounded px-1 py-1.5 text-ink"
+                          title="Detected via this player action"
+                        >
+                          {DETECTION_ACTION_TYPES.map((d) => (
+                            <option key={d} value={d}>
+                              {d.replace(/_/g, ' ')}
+                            </option>
+                          ))}
+                        </select>
+                        <input
+                          type="number"
+                          min={1}
+                          max={240}
+                          value={a.timing_benchmark_minutes ?? ''}
+                          onChange={(e) => {
+                            const next = [...expectedActions];
+                            next[ai] = {
+                              ...next[ai],
+                              timing_benchmark_minutes:
+                                e.target.value === '' ? null : Number(e.target.value),
+                            };
+                            setExpectedActions(next);
+                          }}
+                          placeholder="min"
+                          title="Timing benchmark (minutes)"
+                          className="w-14 text-[10px] bg-surface border border-border rounded px-1 py-1.5 text-ink"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpectedActions(expectedActions.filter((_, j) => j !== ai))
+                          }
+                          className="text-muted hover:text-danger text-sm px-1"
+                          title="Remove expected action"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      disabled={expectedActions.length >= 8}
+                      onClick={() =>
+                        setExpectedActions([
+                          ...expectedActions,
+                          {
+                            description: '',
+                            detection_action_type: 'email_sent',
+                            timing_benchmark_minutes: 25,
+                            weight: 20,
+                            tier: 2,
+                          },
+                        ])
+                      }
+                      className="text-xs text-brand hover:underline disabled:opacity-40"
+                    >
+                      + Add expected action
+                    </button>
+                  </div>
+                </>
+              )}
               <div className="flex gap-2 mt-2 items-center">
                 <button
                   onClick={() => save(t)}
@@ -1739,15 +1908,39 @@ const TeamsSection = ({
             </div>
           ) : (
             <div key={t.id} className="bg-surface border border-border rounded-lg p-3">
-              <div className="flex items-center justify-between">
-                <div className="text-sm font-semibold text-ink">{t.team_name}</div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="text-sm font-semibold text-ink truncate">{t.team_name}</div>
+                  {t.charter?.is_custom && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-accent/10 text-accent rounded shrink-0">
+                      Custom
+                    </span>
+                  )}
+                  {t.charter?.can_post_publicly && (
+                    <span className="text-[10px] px-1.5 py-0.5 bg-success/10 text-success rounded shrink-0">
+                      Public voice
+                    </span>
+                  )}
+                </div>
                 {!locked && (
-                  <button
-                    onClick={() => startEdit(t)}
-                    className="text-xs text-brand hover:underline"
-                  >
-                    Edit
-                  </button>
+                  <div className="flex gap-2 shrink-0">
+                    {!t.charter?.can_post_publicly && (
+                      <button
+                        onClick={() => makePublicVoice(t)}
+                        disabled={saving}
+                        className="text-xs text-muted hover:text-ink disabled:opacity-40"
+                        title="Make this team the org's public voice (clears it on the current one)"
+                      >
+                        Make public voice
+                      </button>
+                    )}
+                    <button
+                      onClick={() => startEdit(t)}
+                      className="text-xs text-brand hover:underline"
+                    >
+                      Edit
+                    </button>
+                  </div>
                 )}
               </div>
               <div className="text-xs text-muted mt-1">
@@ -1766,7 +1959,11 @@ const TeamsSection = ({
                     <span
                       key={i}
                       className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-muted rounded"
-                      title="Expected actions are fixed — they drive scoring detection"
+                      title={
+                        t.charter?.is_custom
+                          ? 'Expected actions drive scoring detection — editable via Edit'
+                          : 'Preset expected actions are fixed — they drive scoring detection'
+                      }
                     >
                       {String(a.description || a.action_id)}
                     </span>
@@ -1776,6 +1973,9 @@ const TeamsSection = ({
             </div>
           ),
         )}
+      </div>
+      <div className="mt-2">
+        {editingId === null && <SaveStatus saving={saving} msg={msg} error={error} />}
       </div>
     </SectionCard>
   );

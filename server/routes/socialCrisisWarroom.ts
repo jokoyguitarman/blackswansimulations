@@ -17,6 +17,7 @@ import {
   buildSOPFromResearch,
   assemblePayload,
   adaptTeamCharters,
+  synthesizeTeamCharter,
   type NPCPersona,
   type FactSheet,
   type TeamDef,
@@ -25,7 +26,11 @@ import {
 import {
   TEAM_CATALOG,
   FIXED_TEAM_NAMES,
+  SENTIMENT_DIMENSIONS,
   benchmarksFromCharters,
+  getCatalogCharter,
+  sanitizeExpectedActions,
+  genericExpectedActions,
   type TeamCharter,
 } from '../services/teamCharterService.js';
 import { RESPONSE_STANDARDS } from '../config/responseStandards.js';
@@ -69,6 +74,164 @@ const scenarioCreditGate = async (
   }
   next();
 };
+
+// ─── Team roster (presets + trainer-defined custom teams) ───────────────────
+
+interface RosterEntry {
+  team_name: string;
+  description?: string;
+  is_custom?: boolean;
+  is_public_voice?: boolean;
+}
+
+const teamRosterSchema = z
+  .array(
+    z.object({
+      team_name: z.string().min(2).max(60),
+      description: z.string().max(2000).optional(),
+      is_custom: z.boolean().optional(),
+      is_public_voice: z.boolean().optional(),
+    }),
+  )
+  .min(2)
+  .max(6);
+
+const DEFAULT_ROSTER: RosterEntry[] = FIXED_TEAM_NAMES.map((n) => ({
+  team_name: n,
+  is_custom: false,
+  is_public_voice: n === 'Communications',
+}));
+
+/**
+ * Validate a trainer-supplied roster: 2-6 unique teams, presets must match
+ * catalog names, customs need a description, and exactly one team holds the
+ * public voice (defaulted to Communications, else the first team).
+ */
+function validateRoster(
+  input: RosterEntry[],
+): { ok: true; roster: RosterEntry[] } | { ok: false; error: string } {
+  const roster = input.map((r) => ({ ...r, team_name: r.team_name.trim() }));
+  if (roster.length < 2 || roster.length > 6) {
+    return { ok: false, error: 'Choose between 2 and 6 teams' };
+  }
+  const lower = roster.map((r) => r.team_name.toLowerCase());
+  if (new Set(lower).size !== lower.length) {
+    return { ok: false, error: 'Team names must be unique' };
+  }
+  for (const r of roster) {
+    if (!r.team_name) return { ok: false, error: 'Every team needs a name' };
+    const isPreset = (FIXED_TEAM_NAMES as readonly string[]).includes(r.team_name);
+    if (r.is_custom && isPreset) {
+      return { ok: false, error: `"${r.team_name}" is a preset name — rename the custom team` };
+    }
+    if (!r.is_custom && !isPreset) {
+      return { ok: false, error: `Unknown preset team "${r.team_name}"` };
+    }
+    if (r.is_custom && !(r.description || '').trim()) {
+      return { ok: false, error: `Custom team "${r.team_name}" needs a description` };
+    }
+  }
+  const voices = roster.filter((r) => r.is_public_voice);
+  if (voices.length > 1) {
+    return { ok: false, error: 'Exactly one team can be designated as the public voice' };
+  }
+  if (voices.length === 0) {
+    const comms = roster.find((r) => r.team_name === 'Communications');
+    (comms ?? roster[0]).is_public_voice = true;
+  }
+  return { ok: true, roster };
+}
+
+/** Adapt preset charters + synthesize custom charters for the roster, in roster order. */
+async function buildRosterCharters(
+  roster: RosterEntry[],
+  crisis: { crisisType: string; context: string; country: string; orgName?: string },
+): Promise<TeamCharter[]> {
+  const presetNames = roster.filter((r) => !r.is_custom).map((r) => r.team_name);
+  const customs = roster.filter((r) => r.is_custom);
+
+  const [presets, customCharters] = await Promise.all([
+    presetNames.length > 0
+      ? adaptTeamCharters(
+          crisis.crisisType,
+          crisis.context,
+          crisis.country,
+          crisis.orgName,
+          presetNames,
+        )
+      : Promise.resolve([] as TeamCharter[]),
+    Promise.all(
+      customs.map((c) =>
+        synthesizeTeamCharter(
+          c.team_name,
+          (c.description || '').trim(),
+          crisis,
+          !!c.is_public_voice,
+        ),
+      ),
+    ),
+  ]);
+
+  const byName = new Map<string, TeamCharter>();
+  for (const p of presets) byName.set(p.team_name, p);
+  for (const c of customCharters) byName.set(c.team_name, c);
+
+  return roster.map((r) => {
+    const charter = byName.get(r.team_name);
+    if (!charter) {
+      // Should not happen (both branches cover the roster) — deterministic fallback.
+      logger.error({ team: r.team_name }, 'Roster charter missing; using generic fallback');
+      return {
+        team_name: r.team_name,
+        mission: (r.description || r.team_name).trim(),
+        responsibilities: [],
+        expected_actions: genericExpectedActions(r.team_name),
+        scoring_rubric: '',
+        out_of_lane: [],
+        min_participants: 1,
+        max_participants: 4,
+        is_custom: !!r.is_custom,
+        can_post_publicly: !!r.is_public_voice,
+        sentiment_dimension: 'public_trust',
+      } satisfies TeamCharter;
+    }
+    return { ...charter, can_post_publicly: !!r.is_public_voice, is_custom: !!r.is_custom };
+  });
+}
+
+/** Full charter payload streamed to the wizard and round-tripped into compile. */
+function charterWirePayload(c: TeamCharter) {
+  return {
+    team_name: c.team_name,
+    mission: c.mission,
+    responsibilities: c.responsibilities,
+    out_of_lane: c.out_of_lane,
+    scoring_rubric: c.scoring_rubric,
+    expected_actions: c.expected_actions,
+    min_participants: c.min_participants,
+    max_participants: c.max_participants,
+    is_custom: !!c.is_custom,
+    can_post_publicly: !!c.can_post_publicly,
+    sentiment_dimension: c.sentiment_dimension || 'public_trust',
+  };
+}
+
+// Preset team cards for the wizard's roster builder.
+router.get('/team-catalog', requireAuth, (_req: AuthenticatedRequest, res) => {
+  res.json({
+    data: FIXED_TEAM_NAMES.map((name) => {
+      const c = TEAM_CATALOG[name];
+      return {
+        team_name: c.team_name,
+        mission: c.mission,
+        responsibilities: c.responsibilities,
+        min_participants: c.min_participants,
+        max_participants: c.max_participants,
+        default_public_voice: !!c.can_post_publicly,
+      };
+    }),
+  });
+});
 
 // In-memory job store for async AI generation tasks
 const aiJobs = new Map<
@@ -210,6 +373,7 @@ router.post(
           unconfirmed_claims: z.array(z.unknown()),
         }),
         blueprint: z.unknown().optional(),
+        team_roster: teamRosterSchema.optional(),
       }),
     }),
   ),
@@ -217,6 +381,16 @@ router.post(
     try {
       const { crisis_type, country, context, duration, personas, fact_sheet, org_name, blueprint } =
         req.body;
+
+      // Roster: trainer-selected presets + custom teams. Absent = the four
+      // presets (backward compatible). Validate BEFORE switching to NDJSON.
+      const rosterCheck = validateRoster(
+        (req.body.team_roster as RosterEntry[] | undefined) ?? DEFAULT_ROSTER,
+      );
+      if (!rosterCheck.ok) {
+        return res.status(400).json({ error: rosterCheck.error });
+      }
+      const roster = rosterCheck.roster;
 
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
@@ -229,14 +403,21 @@ router.post(
         orgName: org_name,
       };
 
-      // Adapt the four fixed team charters (Communications, Procurement,
-      // Sales, Legal) to this crisis, then generate the universal backbone
-      // and the four team-scoped pressure arcs in parallel.
+      // Adapt preset charters and synthesize custom-team charters for this
+      // crisis, then generate the universal backbone and the per-team
+      // pressure arcs (one per roster team) in parallel.
       res.write(
-        JSON.stringify({ type: 'progress', message: 'Adapting team charters to the crisis...' }) +
-          '\n',
+        JSON.stringify({
+          type: 'progress',
+          message: `Preparing charters for ${roster.length} teams (${roster.filter((r) => r.is_custom).length} custom)...`,
+        }) + '\n',
       );
-      const charters = await adaptTeamCharters(crisis_type, context, country, org_name);
+      const charters = await buildRosterCharters(roster, {
+        crisisType: crisis_type,
+        context,
+        country,
+        orgName: org_name,
+      });
 
       const fixedTeams: TeamDef[] = charters.map((c) => ({
         team_name: c.team_name,
@@ -276,11 +457,7 @@ router.post(
           type: 'complete',
           injects,
           team_storylines: teamStorylines,
-          team_charters: charters.map((c) => ({
-            team_name: c.team_name,
-            mission: c.mission,
-            responsibilities: c.responsibilities,
-          })),
+          team_charters: charters.map(charterWirePayload),
         }) + '\n',
       );
       res.end();
@@ -552,6 +729,14 @@ router.post(
               team_name: z.string(),
               mission: z.string(),
               responsibilities: z.array(z.string()),
+              out_of_lane: z.array(z.string()).optional(),
+              scoring_rubric: z.string().optional(),
+              expected_actions: z.array(z.unknown()).optional(),
+              min_participants: z.number().optional(),
+              max_participants: z.number().optional(),
+              is_custom: z.boolean().optional(),
+              can_post_publicly: z.boolean().optional(),
+              sentiment_dimension: z.string().optional(),
             }),
           )
           .optional(),
@@ -578,6 +763,28 @@ router.post(
       return res.status(403).json({ error: 'Only trainers can compile scenarios' });
     }
 
+    // Validate the team roster BEFORE consuming the credit so a bad roster
+    // never costs the trainer anything. (No charters = legacy default four.)
+    const compileClientCharters = (req.body.team_charters || []) as Array<
+      Record<string, unknown> & { team_name: string; mission: string; responsibilities: string[] }
+    >;
+    let compileRoster: RosterEntry[] | null = null;
+    if (compileClientCharters.length > 0) {
+      const rosterCheck = validateRoster(
+        compileClientCharters.map((c) => ({
+          team_name: c.team_name,
+          description: c.mission,
+          is_custom:
+            !!c.is_custom || !(FIXED_TEAM_NAMES as readonly string[]).includes(c.team_name.trim()),
+          is_public_voice: !!c.can_post_publicly,
+        })),
+      );
+      if (!rosterCheck.ok) {
+        return res.status(400).json({ error: `Invalid team roster: ${rosterCheck.error}` });
+      }
+      compileRoster = rosterCheck.roster;
+    }
+
     // The compile consumes the scenario credit. Consume up-front (race-safe)
     // before starting the async job; refund if compilation fails.
     let creditInvoiceId: string | null = null;
@@ -601,32 +808,60 @@ router.post(
       try {
         const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
 
-        // Fixed teams: the four built-in teams are always compiled into social
-        // crisis scenarios. Client-sent team definitions are ignored; only the
-        // adapted mission/responsibilities wording is accepted from the client
-        // (validated against the fixed names). Expected actions, scoring
-        // rubrics, and weights always come from the server-side catalog.
-        const clientCharters = (body.team_charters || []) as Array<{
-          team_name: string;
-          mission: string;
-          responsibilities: string[];
-        }>;
+        // Team roster: presets keep their catalog machinery (expected actions,
+        // weights) with client wording accepted; custom teams take the full
+        // client charter but the scoring machinery is re-sanitized server-side
+        // (detection types validated against the closed action vocabulary) so
+        // a custom team can never be silently unscoreable. No charters sent =
+        // legacy default: adapt the four presets.
         let teamCharters: TeamCharter[];
-        const clientCoversAllTeams =
-          clientCharters.length > 0 &&
-          FIXED_TEAM_NAMES.every((name) => clientCharters.some((c) => c.team_name === name));
-        if (clientCoversAllTeams) {
-          teamCharters = FIXED_TEAM_NAMES.map((name) => {
-            const base = TEAM_CATALOG[name];
-            const client = clientCharters.find((c) => c.team_name === name)!;
+        if (compileRoster) {
+          teamCharters = compileRoster.map((entry) => {
+            const client = compileClientCharters.find(
+              (c) => c.team_name.trim() === entry.team_name,
+            )!;
+            const base = getCatalogCharter(entry.team_name);
+            const clientResponsibilities = Array.isArray(client.responsibilities)
+              ? (client.responsibilities as unknown[])
+                  .filter((r): r is string => typeof r === 'string')
+                  .slice(0, 6)
+              : [];
+
+            if (base && !entry.is_custom) {
+              return {
+                ...base,
+                mission: client.mission || base.mission,
+                responsibilities:
+                  clientResponsibilities.length > 0
+                    ? clientResponsibilities
+                    : base.responsibilities,
+                is_custom: false,
+                can_post_publicly: !!entry.is_public_voice,
+              };
+            }
+
+            const dimension = String(client.sentiment_dimension || '');
             return {
-              ...base,
-              mission: client.mission || base.mission,
-              responsibilities:
-                Array.isArray(client.responsibilities) && client.responsibilities.length > 0
-                  ? client.responsibilities.filter((r) => typeof r === 'string').slice(0, 6)
-                  : base.responsibilities,
-            };
+              team_name: entry.team_name,
+              mission: String(client.mission || '').trim() || entry.team_name,
+              responsibilities: clientResponsibilities,
+              out_of_lane: Array.isArray(client.out_of_lane)
+                ? (client.out_of_lane as unknown[])
+                    .filter((r): r is string => typeof r === 'string')
+                    .slice(0, 4)
+                : [],
+              scoring_rubric:
+                String(client.scoring_rubric || '').trim() ||
+                `Judge as output of the "${entry.team_name}" team (${String(client.mission || '')}). Reward factual precision, professionalism, timeliness, and staying within the team's lane.`,
+              expected_actions: sanitizeExpectedActions(client.expected_actions, entry.team_name),
+              min_participants: 1,
+              max_participants: Math.max(2, Math.min(6, Number(client.max_participants) || 4)),
+              is_custom: true,
+              can_post_publicly: !!entry.is_public_voice,
+              sentiment_dimension: (SENTIMENT_DIMENSIONS as readonly string[]).includes(dimension)
+                ? dimension
+                : 'public_trust',
+            } satisfies TeamCharter;
           });
         } else {
           teamCharters = await adaptTeamCharters(

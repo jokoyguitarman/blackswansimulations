@@ -2,7 +2,15 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 import { BLUEPRINT_HONOR_THRESHOLD } from './blueprint/blueprintConfig.js';
-import { TEAM_CATALOG, FIXED_TEAM_NAMES, type TeamCharter } from './teamCharterService.js';
+import {
+  TEAM_CATALOG,
+  FIXED_TEAM_NAMES,
+  ALLOWED_DETECTION_ACTION_TYPES,
+  SENTIMENT_DIMENSIONS,
+  sanitizeExpectedActions,
+  genericExpectedActions,
+  type TeamCharter,
+} from './teamCharterService.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -614,19 +622,36 @@ Return ONLY valid JSON:
 }
 
 /**
- * Adapt the fixed team charters (Communications, Procurement, Sales, Legal)
- * to a specific crisis. Team names, expected action types, scoring rubrics,
- * and weights stay fixed from the catalog — only the mission wording and
- * responsibility descriptions are contextualised. Falls back to catalog
- * defaults per team when the AI is unavailable or returns bad data.
+ * Adapt preset team charters to a specific crisis. Team names, expected
+ * action types, scoring rubrics, and weights stay fixed from the catalog —
+ * only the mission wording and responsibility descriptions are
+ * contextualised. Falls back to catalog defaults per team when the AI is
+ * unavailable or returns bad data.
+ *
+ * @param subset - which preset teams to adapt (defaults to all four).
  */
 export async function adaptTeamCharters(
   crisisType: string,
   context: string,
   country: string,
   orgName?: string,
+  subset?: string[],
 ): Promise<TeamCharter[]> {
-  const catalog = FIXED_TEAM_NAMES.map((name) => TEAM_CATALOG[name]);
+  const names = (
+    subset && subset.length > 0
+      ? FIXED_TEAM_NAMES.filter((n) => subset.includes(n))
+      : [...FIXED_TEAM_NAMES]
+  ) as Array<(typeof FIXED_TEAM_NAMES)[number]>;
+  const catalog = names.map((name) => TEAM_CATALOG[name]);
+  if (catalog.length === 0) return [];
+
+  const roleSummary: Record<string, string> = {
+    Communications: 'public-facing communication (feed + press)',
+    Procurement:
+      'suppliers and supply chain / operational partners (adapt to vendors/partners if the org has no physical supply chain)',
+    Sales: 'direct customer/client expectation management',
+    Legal: 'legal counsel, review, regulators, disputes',
+  };
 
   const catalogSummary = catalog
     .map(
@@ -636,13 +661,10 @@ export async function adaptTeamCharters(
     .join('\n\n');
 
   const result = await callAI(
-    `You are adapting the fixed team charters of a crisis response organisation to a specific crisis scenario. There are exactly FOUR teams and their names are FIXED: Communications, Procurement, Sales, Legal.
+    `You are adapting the preset team charters of a crisis response organisation to a specific crisis scenario. The team names are FIXED: ${names.join(', ')}.
 
 For each team, rewrite the mission (1-2 sentences) and the responsibilities (4-6 bullet points) so they reference the specific crisis, organisation, stakeholders, suppliers, customers, and legal risks of THIS scenario. Keep each team's fundamental role unchanged:
-- Communications: public-facing communication (feed + press)
-- Procurement: suppliers and supply chain / operational partners (adapt to vendors/partners if the org has no physical supply chain)
-- Sales: direct customer/client expectation management
-- Legal: legal counsel, review, regulators, disputes
+${names.map((n) => `- ${n}: ${roleSummary[n]}`).join('\n')}
 
 Do NOT rename teams, add teams, or remove teams. Do NOT include scoring criteria or step-by-step instructions — responsibilities describe WHAT the team owns, not how to do it.
 
@@ -652,7 +674,7 @@ Default charters:
 ${catalogSummary}
 
 Return ONLY valid JSON:
-{ "teams": [{ "team_name": "Communications|Procurement|Sales|Legal", "mission": "...", "responsibilities": ["..."] }] }`,
+{ "teams": [{ "team_name": "${names.join('|')}", "mission": "...", "responsibilities": ["..."] }] }`,
     `Crisis: ${crisisType}${orgNameLine(orgName)}\nCountry: ${country}\nContext: ${context}`,
     6000,
   );
@@ -673,6 +695,97 @@ Return ONLY valid JSON:
       responsibilities: match.responsibilities.filter((r) => typeof r === 'string').slice(0, 6),
     };
   });
+}
+
+/**
+ * Synthesize a full charter for a trainer-created custom team from its name
+ * and description. Unlike presets, everything is AI-generated — but the
+ * expected actions are constrained to the closed detection vocabulary and
+ * validated with sanitizeExpectedActions, so a custom team can never end up
+ * silently unscoreable. Falls back to a deterministic generic charter when
+ * the AI is unavailable.
+ */
+export async function synthesizeTeamCharter(
+  teamName: string,
+  teamDescription: string,
+  crisisContext: { crisisType: string; context: string; country: string; orgName?: string },
+  isPublicVoice: boolean,
+): Promise<TeamCharter> {
+  const fallback: TeamCharter = {
+    team_name: teamName,
+    mission: teamDescription,
+    responsibilities: [
+      `Own the duties described by the trainer: ${teamDescription}`,
+      'Verify claims in your domain against the confirmed fact sheet',
+      'Relay information your team receives that another team needs, and ask other teams for facts you are missing',
+    ],
+    expected_actions: genericExpectedActions(teamName),
+    scoring_rubric: `Judge as output of the "${teamName}" team (${teamDescription}). Reward factual precision, professionalism, timeliness, and staying within the team's lane. Penalise unverified claims and out-of-lane commitments.`,
+    out_of_lane: ['Acting outside the duties described in the team mission'],
+    min_participants: 1,
+    max_participants: 4,
+    is_custom: true,
+    can_post_publicly: isPublicVoice,
+    sentiment_dimension: 'public_trust',
+  };
+
+  try {
+    const result = await callAI(
+      `You are writing the charter for a CUSTOM response team in a social media crisis simulation. The trainer defined the team; you turn it into a playable charter.
+
+TEAM NAME: "${teamName}"
+TRAINER'S DESCRIPTION: ${teamDescription}
+${isPublicVoice ? 'This team holds the ORGANISATION\u2019S PUBLIC VOICE: it publishes official statements on the public feed and answers the press.' : 'This team does NOT post publicly — public statements belong to another team; this team escalates facts to them instead.'}
+
+Produce:
+1. "mission": 1-2 sentences grounding the trainer's description in THIS crisis.
+2. "responsibilities": 4-6 bullets describing WHAT the team owns (not how). The FINAL bullet must be the cross-team information duty: relay information your team receives that another team needs, and ask other teams for facts you are missing.
+3. "out_of_lane": 2-4 things this team must NOT do (route to other functions instead).
+4. "scoring_rubric": 2-3 sentences telling an AI grader how to judge this team's written output (tone, factual discipline, what to reward/penalise).
+5. "expected_actions": 4-5 concrete detectable duties. Each has:
+   - "action_id": short snake_case id
+   - "description": what the player should do
+   - "detection_action_type": MUST be exactly one of: ${ALLOWED_DETECTION_ACTION_TYPES.join(', ')}
+   - "timing_benchmark_minutes": 5-40 (or null if untimed)
+   - "weight": 10-40 (relative importance, should roughly sum to 100)
+   - "tier": 1 (basic), 2 (core), or 3 (advanced coordination)
+   Pick detection types that genuinely match the duty (emails -> email_sent, public posts -> post_created, verification -> fact_checked, internal escalation -> chat_message_sent, DMs -> dm_sent).
+6. "sentiment_dimension": which crisis dimension this team most influences — one of: ${SENTIMENT_DIMENSIONS.join(', ')}.
+7. "min_participants" (1) and "max_participants" (2-4).
+
+Return ONLY valid JSON with exactly those keys.`,
+      `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}`,
+      4000,
+    );
+
+    if (!result) return fallback;
+    const mission = String(result.mission || '').trim();
+    const responsibilities = Array.isArray(result.responsibilities)
+      ? (result.responsibilities as unknown[]).map(String).filter(Boolean).slice(0, 6)
+      : [];
+    const dimension = String(result.sentiment_dimension || '');
+
+    return {
+      team_name: teamName,
+      mission: mission || fallback.mission,
+      responsibilities: responsibilities.length > 0 ? responsibilities : fallback.responsibilities,
+      expected_actions: sanitizeExpectedActions(result.expected_actions, teamName),
+      scoring_rubric: String(result.scoring_rubric || '').trim() || fallback.scoring_rubric,
+      out_of_lane: Array.isArray(result.out_of_lane)
+        ? (result.out_of_lane as unknown[]).map(String).filter(Boolean).slice(0, 4)
+        : fallback.out_of_lane,
+      min_participants: 1,
+      max_participants: Math.max(2, Math.min(4, Number(result.max_participants) || 4)),
+      is_custom: true,
+      can_post_publicly: isPublicVoice,
+      sentiment_dimension: (SENTIMENT_DIMENSIONS as readonly string[]).includes(dimension)
+        ? dimension
+        : 'public_trust',
+    };
+  } catch (err) {
+    logger.warn({ err, teamName }, 'Custom charter synthesis failed; using generic fallback');
+    return fallback;
+  }
 }
 
 // ─── Stage 3: Per-Team Storylines (parallel) ────────────────────────────────
@@ -1079,10 +1192,11 @@ export async function generateIntelDependencies(
     duration: number;
     orgName?: string;
   },
+  /** The scenario's actual team roster; defaults to the storyline keys (any roster, incl. custom teams). */
+  validTeamNames?: string[],
 ): Promise<IntelDependencyResult> {
-  const teamNames = Object.keys(teamStorylines).filter((t) =>
-    (FIXED_TEAM_NAMES as readonly string[]).includes(t),
-  );
+  const allowed = validTeamNames && validTeamNames.length > 0 ? new Set(validTeamNames) : null;
+  const teamNames = Object.keys(teamStorylines).filter((t) => (allowed ? allowed.has(t) : true));
   if (teamNames.length < 2) return { intelInjects: {}, intelGates: [] };
 
   const storylineSummary = teamNames
