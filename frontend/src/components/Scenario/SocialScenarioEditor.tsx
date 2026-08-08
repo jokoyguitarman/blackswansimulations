@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
 
 /**
- * Post-compile editor for social media crisis scenarios.
+ * Post-compile editor for social crisis scenarios.
  *
  * The warroom generates the full scenario quickly; this editor lets the
  * trainer personalise everything afterwards: narrative, NPC personas, fact
@@ -258,7 +258,7 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
               <h1 className="text-lg font-extrabold text-brand leading-snug">{scen.title}</h1>
               <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
                 <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-accent/10 text-accent">
-                  Social Media Crisis
+                  Social Crisis
                 </span>
                 <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
                   {scen.duration_minutes} min

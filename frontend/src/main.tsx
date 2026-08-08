@@ -207,7 +207,7 @@ const App = () => {
                 </ProtectedRoute>
               }
             />
-            {/* Social Media Crisis Simulation Device Routes */}
+            {/* Social Crisis Simulation Device Routes */}
             <Route
               path="/sim/:sessionId/device"
               element={

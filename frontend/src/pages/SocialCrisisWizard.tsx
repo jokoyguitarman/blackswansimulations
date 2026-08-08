@@ -127,7 +127,7 @@ interface BlueprintView {
   [key: string]: unknown;
 }
 
-const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social media crisis simulation.
+const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social crisis simulation.
 
 Examples:
 - A major electronics company announces a recall of 2 million smartphones due to battery fires. Leaked internal emails suggest the company knew about the defect for months...

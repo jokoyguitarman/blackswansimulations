@@ -234,7 +234,7 @@ export const Scenarios = () => {
                     }`}
                   >
                     <span aria-hidden>{isSocialCrisis ? '📱' : '🗺️'}</span>
-                    {isSocialCrisis ? 'Social media crisis' : 'Field operations'}
+                    {isSocialCrisis ? 'Social crisis' : 'Field operations'}
                   </span>
                   <div className="flex items-center gap-2">
                     <span

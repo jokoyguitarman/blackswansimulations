@@ -26,7 +26,7 @@ const AAR_SECTION_KEYS = [
   'pathway_outcomes',
   'information_analysis',
   'recommendations',
-  // Social media crisis report sections (list order = display order)
+  // Social crisis report sections (list order = display order)
   'social_executive',
   'social_timeline',
   'social_public_comms',

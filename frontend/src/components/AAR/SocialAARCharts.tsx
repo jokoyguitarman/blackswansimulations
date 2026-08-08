@@ -432,7 +432,7 @@ export function SocialGlanceBoard({ sections }: { sections: SectionsMap }) {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="text-[10px] font-extrabold uppercase tracking-widest text-accent">
-              Social media crisis · Final report
+              Social crisis · Final report
             </div>
             <h3 className="text-xl font-extrabold text-brand mt-1">
               {String(exec.scenario_title || 'After-Action Report')}
