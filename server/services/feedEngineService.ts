@@ -20,6 +20,10 @@ export interface DeliveryConfig {
   from_name?: string;
   priority?: string;
   email_category?: string;
+  /** Team that owns this stakeholder relationship — universal emails carrying
+   * this land only in that team's inboxes (customer mail -> Sales, supplier
+   * mail -> Procurement, press -> Communications, regulators -> Legal). */
+  stakeholder_team?: string;
   // News-specific
   outlet_name?: string;
   headline?: string;
@@ -419,6 +423,30 @@ async function routeToEmail(
     .join('\n')
     .trim();
 
+  // Stakeholder routing: a universal email tagged with the team that owns
+  // this stakeholder relationship lands only in that team's inboxes. Unlike
+  // team_specific intel, this is a routing preference, not a secret — when
+  // the tagged team is unstaffed the email falls back to session-wide
+  // delivery instead of being withheld.
+  let effectiveTargeting = targeting;
+  if (!effectiveTargeting && config.stakeholder_team) {
+    try {
+      const members = await resolveTeamMembers(sessionId, [config.stakeholder_team]);
+      if (members.length > 0) {
+        effectiveTargeting = { playerIds: members, teamNames: [config.stakeholder_team] };
+        logger.info(
+          { sessionId, injectId, stakeholderTeam: config.stakeholder_team },
+          'Email routed to stakeholder-owning team',
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        { err, sessionId, injectId },
+        'Stakeholder team resolution failed; delivering session-wide',
+      );
+    }
+  }
+
   const { data: email, error } = await supabaseAdmin
     .from('sim_emails')
     .insert({
@@ -435,8 +463,11 @@ async function routeToEmail(
       email_category: sanitizeEmailCategory(config.email_category),
       // Team-scoped emails are addressed to the resolved members only; null
       // means visible to the whole session (legacy behaviour).
-      ...(targeting?.playerIds
-        ? { recipient_user_ids: targeting.playerIds, target_teams: targeting.teamNames }
+      ...(effectiveTargeting?.playerIds
+        ? {
+            recipient_user_ids: effectiveTargeting.playerIds,
+            target_teams: effectiveTargeting.teamNames,
+          }
         : {}),
     })
     .select()
@@ -447,7 +478,7 @@ async function routeToEmail(
     return;
   }
 
-  await emitScoped(sessionId, targeting?.playerIds ?? null, {
+  await emitScoped(sessionId, effectiveTargeting?.playerIds ?? null, {
     type: 'sim_email.received',
     data: { email },
     timestamp: new Date().toISOString(),

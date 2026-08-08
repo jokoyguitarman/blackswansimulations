@@ -437,6 +437,9 @@ router.post(
             res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
           },
           env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+          // Teams enable stakeholder routing: shared-layer emails get tagged
+          // with the team that owns each stakeholder relationship.
+          fixedTeams,
         ),
         generateAllTeamStorylines(
           fixedTeams,

@@ -310,7 +310,7 @@ export async function triggerNPCEmailReply(
     const respondentInfo = useAiFallback
       ? `The player is emailing "${toAddress}". Based on the crisis context and this email address, determine:
 1. Whether someone at this address would realistically respond (set should_reply to false if not)
-2. Who that person would be (invent a realistic name and title)
+2. Who that person would be (invent a realistic name and title — if this is an internal/organisational address, the respondent is GROUND-LEVEL OPERATIONAL STAFF such as a duty manager, shift supervisor, or operations coordinator, never a C-suite executive)
 3. How they would respond given the crisis situation`
       : `You are ${respondentName} (${respondentAddress}).
 ${respondentRole ? `Role/Title: ${respondentRole}` : ''}
@@ -337,7 +337,7 @@ ${threadContext}
 
 RULES:
 - Reply in character as this specific person. Use appropriate formality for email.
-- If this is a senior leader/executive, your reply should reflect authority — share verified facts, approve/deny requests, set constraints, demand reports. But NEVER provide draft statements, talking points, suggested messaging, or PR strategy.
+- If this is an internal colleague or supervisor, reply at WORKING LEVEL (duty manager, ops coordinator, shift lead): share verified facts, request status, flag operational constraints. C-suite executives do not personally answer email during a crisis — if the address clearly belongs to an executive, the reply comes from their operations desk or assistant on their behalf. Internal replies must NEVER provide draft statements, talking points, suggested messaging, or PR strategy.
 - If this is a community leader or external contact, reflect their concerns and needs.
 - If this is media, be professional and guarded.
 - Keep the reply realistic: 2-6 sentences for quick replies, longer for substantive responses.

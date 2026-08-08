@@ -83,6 +83,11 @@ export interface SocialInjectDeliveryConfig {
   intel_needed_by?: string[];
   detection_keywords?: string[];
   intel_summary?: string;
+  // Stakeholder routing (emails only): the team that owns this stakeholder
+  // relationship (customer mail -> Sales, supplier mail -> Procurement,
+  // press -> Communications, regulators -> Legal). Universal emails carrying
+  // this land only in that team's inboxes at runtime.
+  stakeholder_team?: string;
 }
 
 export interface SocialInject {
@@ -823,10 +828,12 @@ Other teams in the exercise: ${otherTeams.map((t) => `${t.team_name} (${t.team_d
 You must generate 8-15 injects that ONLY this team will experience. These create a unique pressure arc for this team's specific role.
 
 The injects should be a MIX of:
-- EMAILS (app: "email") — these provide VERIFIED FACTS, STATUS REQUESTS, and EXTERNAL/PRESS correspondence ONLY. Generate at least 2-4 email injects. Each email MUST include "email_category" in its delivery_config. Use from_name and from_address matching the real-world supervisors and authorities this team would hear from. The ONLY allowed categories are:
-  * "verified_facts": Team's supervisor or authorities share confirmed facts relevant to this team's domain and address circulating rumours. E.g. for a health team: "Confirmed: 12 injured, 2 critical at SGH. SCDF deployed 5 emergency vehicles. No official cause released." Include ONLY confirmed information — no language to use, no talking points, no draft statements.
-  * "sitrep_request": Leadership asks this team for a status update — what they have observed and actioned. It requests information FROM the team; it does NOT instruct them how to handle the public.
+- EMAILS (app: "email") — these provide VERIFIED FACTS, STATUS REQUESTS, and EXTERNAL/PRESS correspondence ONLY. Generate at least 2-4 email injects. Each email MUST include "email_category" in its delivery_config. Use from_name and from_address matching the real-world working-level contacts this team would hear from. The ONLY allowed categories are:
+  * "verified_facts": Ground-level colleagues (duty manager, shift supervisor, operations coordinator, QA analyst, front-desk lead) or external authorities share confirmed facts relevant to this team's domain and address circulating rumours. E.g. for a health team: "Confirmed: 12 injured, 2 critical at SGH. SCDF deployed 5 emergency vehicles. No official cause released." Include ONLY confirmed information — no language to use, no talking points, no draft statements.
+  * "sitrep_request": The team's direct duty manager or shift lead asks this team for a status update — what they have observed and actioned. It requests information FROM the team; it does NOT instruct them how to handle the public.
   * "general": Journalist inquiries directed to this team, community/faith leader outreach, affected-party messages. External pressure only — never instructions on what to do.
+
+SENDER REALISM (CRITICAL): INTERNAL emails (verified_facts, sitrep_request) must come from GROUND-LEVEL OPERATIONAL STAFF — duty managers, shift supervisors, operations coordinators, store/floor leads, analysts, customer-service leads. NEVER from the CEO, CFO, CMO, or any C-suite executive: during a real crisis the working level circulates updates and requests status; executives do not mass-email teams. External senders (journalists, suppliers, regulators, community figures) stay realistic external identities.
 
 ANTI-COACHING RULE (CRITICAL): Emails must NEVER tell the team what to say publicly, provide draft statements, talking points, suggested messaging, approved language, PR strategy, communication red lines, approval chains, or stakeholder priority/comms-process instructions. Internal emails are limited to verified facts and status requests. The players must figure out their own procedures and public response. This is a training simulation — spoonfeeding the process or the message defeats the purpose.
 
@@ -837,12 +844,12 @@ ANTI-COACHING RULE (CRITICAL): Emails must NEVER tell the team what to say publi
 Each inject should create PRESSURE specific to this team's role. The storyline should have:
 - An OPENING phase (T+0 to T+5): the team becomes aware of the crisis. Early email: verified_facts (confirmed information for their domain).
 - A BUILDING phase (T+5 to T+20): pressure intensifies. Emails: updated verified_facts, a press request for comment (general).
-- A PEAK phase (T+20 to T+40): maximum pressure. Emails: sitrep_request (leadership asks for status), more external/press inquiries (general).
+- A PEAK phase (T+20 to T+40): maximum pressure. Emails: sitrep_request (duty manager asks for status), more external/press inquiries (general).
 - A RESOLUTION phase (T+40+): consequences appear. Emails: new verified_facts that change the situation.
 
 Mark critical injects with requires_response: true and response_deadline_minutes.
 
-CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "sitrep_request", or "general". Do NOT use any other category. Also set realistic "from_name", "from_address", and "priority". Use names and titles appropriate to this team's leadership chain or external contacts.
+CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "sitrep_request", or "general". Do NOT use any other category. Also set realistic "from_name", "from_address", and "priority". Internal senders are this team's working-level colleagues (never executives); external senders are this team's real-world stakeholders.
 
 ALL injects must have target_teams: ["${team.team_name}"].
 
@@ -908,6 +915,8 @@ export async function generateUnifiedStoryline(
   factSheet: FactSheet,
   onProgress?: (msg: string) => void,
   blueprint?: ScenarioBlueprint | null,
+  /** When the exercise runs fixed/custom teams, emails are tagged with the team that owns each stakeholder. */
+  teams?: TeamDef[],
 ): Promise<SocialInject[]> {
   const npcContext = npcs
     .map(
@@ -916,6 +925,17 @@ export async function generateUnifiedStoryline(
     )
     .join('\n');
   const factsContext = `Confirmed: ${factSheet.confirmed_facts.join('; ')}\nFalse claims: ${factSheet.unconfirmed_claims.map((c) => `"${c.claim}" (${c.status})`).join('; ')}`;
+
+  const teamNames = (teams || []).map((t) => t.team_name);
+  const stakeholderRoutingBlock =
+    teamNames.length > 0
+      ? `
+
+STAKEHOLDER ROUTING (CRITICAL): This exercise has response teams, and stakeholder emails must land with the team that owns that relationship. For EVERY email inject, ALSO set "stakeholder_team" in delivery_config to exactly ONE of: ${teamNames.map((n) => `"${n}"`).join(', ')}, or "all".
+Team responsibilities:
+${(teams || []).map((t) => `- ${t.team_name}: ${t.team_description.substring(0, 220)}`).join('\n')}
+Route by SENDER TYPE: customer complaints/questions go to the team that manages customers; supplier/vendor/logistics mail goes to the team that manages suppliers; press/media inquiries go to the team that owns public communication; regulator/legal-threat mail goes to the team that handles legal matters. Use "all" ONLY for organisation-wide internal updates every team genuinely needs (broad verified facts affecting everyone).`
+      : '';
 
   onProgress?.('Generating unified crisis storyline...');
 
@@ -929,9 +949,11 @@ IMPORTANT: Analyze the crisis description to understand the type of crisis (prod
 The injects should be a MIX of:
 - SOCIAL MEDIA POSTS (app: "social_feed") from NPC personas spreading outrage, misinformation, fear, criticism, support, or defense. The tone and content must match the crisis type (e.g., boycott calls for a product recall, employee anger for layoffs, privacy outrage for data breaches). For social_feed injects, set "platform" in delivery_config to either "x_twitter" or "facebook". Aim for 60% X/Twitter and 40% Facebook. X posts are short and hashtag-heavy; Facebook posts are longer and more personal.
 - EMAILS (app: "email") — these provide VERIFIED FACTS, STATUS REQUESTS, and EXTERNAL/PRESS correspondence ONLY. Generate at least 4-6 email injects. Each email MUST include "email_category" in its delivery_config. Use realistic from_name and from_address. The ONLY allowed categories are:
-  * "verified_facts" (T+3-5, T+15-20, T+30-35): Leadership or authorities share confirmed information and explicitly address/debunk circulating rumours. Include ONLY confirmed facts, numbers, timelines, and official advisories (e.g. "Authorities reiterated there is no basis for claims of multiple attackers. Police confirmed the cordon and investigation remain ongoing. No official casualty figures have been released."). Do NOT include language for the team to use, talking points, draft statements, or PR strategy.
-  * "sitrep_request" (T+10-30): Leadership asks the team for a status update. It requests information FROM the team (what have you observed, what have you actioned) — it does NOT instruct them on how to handle the public or what to say.
+  * "verified_facts" (T+3-5, T+15-20, T+30-35): The operations desk (duty manager, ops coordinator, shift supervisor) or external authorities share confirmed information and explicitly address/debunk circulating rumours. Include ONLY confirmed facts, numbers, timelines, and official advisories (e.g. "Authorities reiterated there is no basis for claims of multiple attackers. Police confirmed the cordon and investigation remain ongoing. No official casualty figures have been released."). Do NOT include language for the team to use, talking points, draft statements, or PR strategy.
+  * "sitrep_request" (T+10-30): The duty manager or operations lead asks the team for a status update. It requests information FROM the team (what have you observed, what have you actioned) — it does NOT instruct them on how to handle the public or what to say.
   * "general": Press briefings, journalist requests for comment, community/faith leader outreach, affected-party messages. These create external pressure but never tell the team what to do.
+
+SENDER REALISM (CRITICAL): INTERNAL emails (verified_facts, sitrep_request) must come from GROUND-LEVEL OPERATIONAL STAFF — duty managers, shift supervisors, operations coordinators, floor leads, analysts, customer-service leads. NEVER from the CEO, CFO, CMO, or any C-suite executive: during a real crisis the working level circulates updates and requests status; executives do not mass-email staff. External senders (journalists, suppliers, regulators, customers, community figures) stay realistic external identities.
 
 ANTI-COACHING RULE (CRITICAL): Emails must NEVER tell the team what to say publicly, provide draft statements, talking points, suggested messaging, approved language, PR strategy, communication red lines, approval chains, or stakeholder priority/comms-process instructions. Internal emails are limited to verified facts and status requests. The players must figure out their own procedures and public response. This is a training simulation — spoonfeeding the process or the message defeats the purpose.
 
@@ -941,7 +963,7 @@ ANTI-COACHING RULE (CRITICAL): Emails must NEVER tell the team what to say publi
 The storyline should have a clear PRESSURE ARC:
 - OPENING (T+0 to T+5): Crisis breaks. First social media posts appear. Team becomes aware. Early email: verified_facts (initial confirmed information).
 - BUILDING (T+5 to T+15): Public outrage and misinformation intensify. Emails: updated verified_facts (rumours addressed by authorities), a press request for comment (general).
-- ESCALATION (T+15 to T+30): Crisis peaks. Emails: sitrep_request (leadership asks for status), more press inquiries (general).
+- ESCALATION (T+15 to T+30): Crisis peaks. Emails: sitrep_request (duty manager asks for status), more press inquiries (general).
 - TURNING POINT (T+30 to T+45): Consequences appear. Emails: new verified_facts that change the situation.
 - RESOLUTION (T+45 to T+60): Final consequences. Either stabilization or further deterioration.
 
@@ -950,7 +972,7 @@ ALL injects must have inject_scope: "universal" and target_teams: [].
 
 CRITICAL: For every social_feed inject, you MUST set "author_handle" and "author_display_name" in the delivery_config using one of the NPC personas below. Do NOT leave them blank or use "@system". Each social post must come from a specific NPC character.
 
-CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "sitrep_request", or "general". Do NOT use any other category. Also set realistic "from_name", "from_address", and "priority" values. Use names and titles appropriate to the organization and crisis type (CEO, Director of Communications, journalists, community leaders, etc.).
+CRITICAL: For every email inject, you MUST set "email_category" in the delivery_config to one of: "verified_facts", "sitrep_request", or "general". Do NOT use any other category. Also set realistic "from_name", "from_address", and "priority" values. Use names and titles appropriate to the organization and crisis type (duty managers, operations coordinators, journalists, community leaders, etc.) — never C-suite executives for internal mail.${stakeholderRoutingBlock}
 
 Available NPCs:
 ${npcContext}
@@ -959,7 +981,7 @@ Facts and claims:
 ${factsContext}
 
 Return ONLY valid JSON:
-{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "email_category": "verified_facts|sitrep_request|general", "from_name": "...", "from_address": "...", "priority": "normal|high|urgent", ... } }] }`,
+{ "injects": [{ "trigger_time_minutes": 0, "type": "social_post|email_inbound|group_chat_message|phone_call", "title": "...", "content": "...", "severity": "low|medium|high|critical", "inject_scope": "universal", "target_teams": [], "requires_response": false, "response_deadline_minutes": null, "delivery_config": { "app": "social_feed|email|group_chat|phone_call", "platform": "x_twitter|facebook", "author_handle": "@npc_handle", "author_display_name": "NPC Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "email_category": "verified_facts|sitrep_request|general", "from_name": "...", "from_address": "...", "priority": "normal|high|urgent"${teamNames.length > 0 ? ', "stakeholder_team": "..."' : ''}, ... } }] }`,
     `Crisis: ${crisisContext.crisisType}${orgNameLine(crisisContext.orgName)}\nCountry: ${crisisContext.country}\nContext: ${crisisContext.context}\nDuration: ${crisisContext.duration} minutes${buildStorylineGuidance(blueprint)}`,
     12000,
     0.8,
@@ -968,11 +990,21 @@ Return ONLY valid JSON:
   const injects = (result?.injects as SocialInject[]) || [];
   onProgress?.(`Generated ${injects.length} storyline injects`);
 
-  return injects.map((inj) => ({
-    ...inj,
-    target_teams: [],
-    inject_scope: 'universal',
-  }));
+  // Sanitize stakeholder routing tags: only actual team names survive
+  // ("all"/unknown -> untagged, i.e. delivered to everyone as before).
+  const validTeams = new Set(teamNames);
+  return injects.map((inj) => {
+    const dc = inj.delivery_config ? { ...inj.delivery_config } : inj.delivery_config;
+    if (dc && dc.stakeholder_team && !validTeams.has(String(dc.stakeholder_team))) {
+      delete dc.stakeholder_team;
+    }
+    return {
+      ...inj,
+      ...(dc ? { delivery_config: dc } : {}),
+      target_teams: [],
+      inject_scope: 'universal',
+    };
+  });
 }
 
 // ─── Stage 4: Convergence Layer ─────────────────────────────────────────────
@@ -1224,7 +1256,7 @@ Create ${Math.min(teamNames.length, 4)} intel items — at most one held by each
 1. "intel_key": short snake_case identifier (e.g. "supplier_batch_confirmation").
 2. "holder_team": the team whose inbox receives the email. "needed_by": 1-2 OTHER team names that need the fact.
 3. "trigger_time_minutes" (5-20): when the email arrives. "deadline_minutes" (15-40, later than trigger): if not relayed by then, consequences fire.
-4. The EMAIL itself: "email_title", "email_content" (start with "Subject: ..."), realistic "from_name"/"from_address" (a supplier, authority, regulator, or internal operations contact appropriate to the holder team), "priority".
+4. The EMAIL itself: "email_title", "email_content" (start with "Subject: ..."), realistic "from_name"/"from_address" (a supplier, authority, regulator, or internal operations contact appropriate to the holder team — internal senders are ground-level staff like a duty manager or ops coordinator, NEVER a C-suite executive), "priority".
    CRITICAL RULES for the email: it contains ONLY verified facts with SPECIFIC details (numbers, names, locations, codes). It must read as routine correspondence for the holder's own domain. It must NOT say "share this with X team", must NOT mention other teams, and must NOT include talking points or PR guidance. The cross-team relevance must be implicit.
 5. "intel_summary": one sentence a trainer reads describing why another team needs this.
 6. "detection_keywords": 3-6 distinctive strings from the fact (codes, numbers, proper nouns) that would appear when a player relays it in their own words.
