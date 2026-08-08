@@ -1,6 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  content: ['./index.html', './simulations/**/*.html', './src/**/*.{js,ts,jsx,tsx}'],
   theme: {
     extend: {
       colors: {
@@ -25,6 +25,9 @@ export default {
         success: 'var(--success)',
         warning: 'var(--warning)',
         danger: 'var(--danger)',
+        // Deep navy used by the marketing pages' dark bands. A literal rather
+        // than a CSS var because those pages do not load the app's style.css.
+        deep: '#0E1A2B',
         // ── Legacy robotic-* names, temporarily aliased to the new
         //    tokens so un-migrated screens still render in the new skin.
         //    Removed in Phase 3 once no references remain. ──
@@ -57,6 +60,9 @@ export default {
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
         mono: ['JetBrains Mono', 'monospace'],
+      },
+      maxWidth: {
+        content: '72rem',
       },
     },
   },

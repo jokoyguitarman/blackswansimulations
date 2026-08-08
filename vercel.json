@@ -6,6 +6,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/simulations",
+      "destination": "/simulations/index.html"
+    },
+    {
+      "source": "/simulations/consultants",
+      "destination": "/simulations/consultants.html"
+    },
+    {
       "source": "/presentation",
       "destination": "/presentation/index.html"
     },

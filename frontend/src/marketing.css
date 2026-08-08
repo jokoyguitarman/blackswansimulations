@@ -1,0 +1,190 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Stylesheet for the public marketing pages only. The app's style.css is not
+ * loaded here, which is what keeps these pages down to a few KB.
+ *
+ * The brand tokens below are duplicated from src/style.css rather than
+ * imported, because these pages are built to be lifted into their own project
+ * later, where the app's stylesheet will not exist.
+ */
+:root {
+  --bg: #faf8f4;
+  --surface: #ffffff;
+  --surface-2: #f4f1ea;
+  --ink: #172033;
+  --muted: #6b7280;
+  --brand: #1e3a5f;
+  --brand-strong: #18304e;
+  --accent: #d97706;
+  --accent-strong: #b45309;
+  --border: #e4dfd4;
+  --border-strong: #d6cfc0;
+  --success: #15803d;
+  --warning: #d97706;
+  --danger: #b91c1c;
+}
+
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: 5rem;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* The logo PNG is transparent with a near-black swan, so it needs the white
+   disc behind it to stay legible on the dark hero. */
+.brand-mark {
+  display: inline-block;
+  flex: 0 0 auto;
+  border-radius: 9999px;
+  background-color: #ffffff;
+  background-image: url('/brand/black-swan-logo.png');
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  box-shadow:
+    0 0 0 1px rgba(228, 223, 212, 0.9),
+    0 2px 8px rgba(14, 26, 43, 0.12);
+}
+
+.deep-grid {
+  background-image:
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(217, 119, 6, 0.16), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(160deg, #0e1a2b 0%, #16293f 55%, #18304e 100%);
+  background-size:
+    100% 100%,
+    64px 64px,
+    64px 64px,
+    100% 100%;
+}
+
+/* Header: transparent over the dark hero, solid once scrolled past it. */
+#site-header.is-solid {
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(10px);
+  border-bottom-color: #e4dfd4;
+  box-shadow: 0 1px 2px rgba(23, 32, 51, 0.06);
+}
+#site-header.is-solid .hdr-link {
+  color: #172033;
+}
+#site-header.is-solid .hdr-link:hover {
+  background: #f4f1ea;
+  color: #1e3a5f;
+}
+#site-header.is-solid .hdr-title {
+  color: #172033;
+}
+#site-header.is-solid .hdr-sub {
+  color: #6b7280;
+}
+
+/* Scroll reveal is gated behind the `js` class that marketing.ts sets on
+   <html>. Without it every section stays visible, so a failed or blocked
+   script can never leave the page blank. */
+.js .reveal {
+  opacity: 0;
+  transform: translateY(18px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.js .reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.7);
+  }
+  70% {
+    opacity: 0.75;
+    box-shadow: 0 0 0 7px rgba(185, 28, 28, 0);
+  }
+}
+.live-dot {
+  animation: live-pulse 2s ease-out infinite;
+}
+
+@keyframes inject-glow {
+  0%,
+  100% {
+    border-color: rgba(217, 119, 6, 0.55);
+    background-color: rgba(217, 119, 6, 0.1);
+  }
+  50% {
+    border-color: rgba(217, 119, 6, 1);
+    background-color: rgba(217, 119, 6, 0.2);
+  }
+}
+.inject-firing {
+  animation: inject-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes heat-drift {
+  0%,
+  100% {
+    width: 58%;
+  }
+  50% {
+    width: 71%;
+  }
+}
+.heat-fill {
+  animation: heat-drift 6s ease-in-out infinite;
+}
+
+@keyframes bar-grow {
+  from {
+    transform: scaleY(0.15);
+  }
+}
+.score-bar {
+  transform-origin: bottom;
+  animation: bar-grow 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+details > summary {
+  list-style: none;
+  cursor: pointer;
+}
+details > summary::-webkit-details-marker {
+  display: none;
+}
+details[open] .faq-chevron {
+  transform: rotate(180deg);
+}
+.faq-chevron {
+  transition: transform 0.25s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .js .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .live-dot,
+  .inject-firing,
+  .heat-fill,
+  .score-bar {
+    animation: none !important;
+  }
+}
