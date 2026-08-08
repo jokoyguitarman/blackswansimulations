@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
+import { BrandMark } from '../components/BrandMark';
 
 interface JoinInfo {
   sessionTitle: string;
@@ -178,9 +179,7 @@ export const JoinSessionPage = () => {
         <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 space-y-6">
           {/* Header */}
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand text-white font-extrabold text-lg mb-3">
-              BS
-            </div>
+            <BrandMark className="w-12 h-12 mx-auto mb-3" />
             <div className="text-xs font-bold text-accent uppercase tracking-wide">
               Simulation exercise
             </div>

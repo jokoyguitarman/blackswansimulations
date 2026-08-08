@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import { BrandMark } from '../components/BrandMark';
 
 export const Login = () => {
   const [email, setEmail] = useState('');
@@ -45,9 +46,7 @@ export const Login = () => {
         <div className="bg-surface border border-border rounded-2xl shadow-lg p-8 space-y-6">
           {/* Header */}
           <div className="text-center">
-            <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-brand text-white font-extrabold text-lg mb-4">
-              BS
-            </div>
+            <BrandMark className="w-12 h-12 mx-auto mb-4" />
             <h2 className="text-2xl font-extrabold text-brand mb-1">Black Swan Simulations</h2>
             <p className="text-sm text-muted">Unified Simulation Environment</p>
           </div>

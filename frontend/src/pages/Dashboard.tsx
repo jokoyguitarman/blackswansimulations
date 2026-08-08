@@ -4,6 +4,7 @@ import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { TrainerDashboard } from '../components/dashboards/TrainerDashboard';
 import { AgencyDashboard } from '../components/dashboards/AgencyDashboard';
 import { NotificationBell } from '../components/Notifications/NotificationBell';
+import { BrandMark } from '../components/BrandMark';
 
 export const Dashboard = () => {
   const { user, signOut } = useAuth();
@@ -22,9 +23,7 @@ export const Dashboard = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-accent grid place-items-center font-extrabold text-brand text-sm">
-                BS
-              </div>
+              <BrandMark className="w-9 h-9" />
               <h1 className="text-base font-bold leading-tight">
                 Black Swan
                 <span className="block text-[11px] font-normal text-white/60">
