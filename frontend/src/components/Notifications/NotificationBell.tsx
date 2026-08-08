@@ -236,13 +236,16 @@ export const NotificationBell = () => {
       <button
         ref={buttonRef}
         onClick={toggleDropdown}
-        className="relative w-9 h-9 rounded-lg flex items-center justify-center text-white bg-white/10 hover:bg-white/20 transition-all flex-none"
+        className="relative w-9 h-9 p-0 rounded-lg flex items-center justify-center text-white bg-white/10 hover:bg-white/20 transition-all flex-none"
         aria-label="Notifications"
       >
         {/* Inline SVG instead of the bell emoji: emoji fonts (especially on
-            Windows) have unpredictable metrics and overflow the 36px box. */}
+            Windows) have unpredictable metrics and overflow the 36px box.
+            p-0 above is required: the base `button` rule in style.css sets
+            padding: 0.6em 1.2em, which collapses this 36px box and hides the
+            icon entirely. */}
         <svg
-          className="w-5 h-5"
+          className="w-5 h-5 flex-none"
           fill="none"
           stroke="currentColor"
           strokeWidth={2}
