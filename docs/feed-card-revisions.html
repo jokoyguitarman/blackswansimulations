@@ -1,0 +1,615 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Public feed card — three revisions</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              deep: '#0b1522',
+              ink: '#111827',
+              muted: '#6b7280',
+              border: '#e5e7eb',
+              'border-strong': '#d1d5db',
+              'surface-2': '#f9fafb',
+              brand: '#1e40af',
+              accent: '#d97706',
+              'accent-strong': '#b45309',
+              danger: '#dc2626',
+              success: '#16a34a',
+              zblue: '#1d9bf0',
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background: #0b1522;
+      }
+      .surface-card {
+        border-radius: 14px;
+        box-shadow:
+          0 26px 60px -18px rgba(0, 0, 0, 0.7),
+          0 0 0 1px rgba(255, 255, 255, 0.09);
+        overflow: hidden;
+      }
+      .surface-bar {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 9px 12px;
+      }
+      .surface-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+      }
+
+      /* A monogram avatar, the way the product renders NPCs that have no image. */
+      .mono-avatar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border-radius: 999px;
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: -0.02em;
+      }
+
+      @keyframes pulse-ring {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+      .pulse-dot {
+        animation: pulse-ring 1.6s ease-in-out infinite;
+      }
+
+      @keyframes bar-grow {
+        from {
+          width: 0;
+        }
+      }
+      .viral-bar > span {
+        animation: bar-grow 1.4s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      /* Photo stand-ins: a suggestion of a phone-shot scene rather than a grey box. */
+      .photo-smoke {
+        background-image:
+          radial-gradient(ellipse 55% 45% at 30% 20%, rgba(255, 255, 255, 0.55), transparent 70%),
+          radial-gradient(ellipse 40% 35% at 62% 12%, rgba(255, 255, 255, 0.32), transparent 70%),
+          linear-gradient(180deg, #6b7684 0%, #46505d 46%, #2b333d 100%);
+      }
+      .photo-forecourt {
+        background-image:
+          radial-gradient(circle at 22% 72%, rgba(220, 38, 38, 0.5), transparent 22%),
+          radial-gradient(circle at 34% 68%, rgba(59, 130, 246, 0.45), transparent 20%),
+          linear-gradient(180deg, #3f4956 0%, #262d36 100%);
+      }
+      .photo-doc {
+        background-image:
+          linear-gradient(180deg, #f4f1ea 0%, #e6e1d6 100%);
+      }
+      .doc-line {
+        display: block;
+        height: 3px;
+        border-radius: 2px;
+        background: rgba(17, 24, 39, 0.22);
+      }
+    </style>
+  </head>
+
+  <body class="font-sans text-white antialiased">
+    <div class="mx-auto max-w-[1320px] px-6 py-14">
+      <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Hero card &mdash; revisions</p>
+      <h1 class="mt-3 max-w-3xl text-3xl font-extrabold tracking-tight sm:text-4xl">
+        Making the public feed card read like a feed &mdash; and land like a crisis
+      </h1>
+
+      <div class="mt-8 grid gap-6 rounded-2xl border border-white/10 bg-white/[0.03] p-6 lg:grid-cols-2">
+        <div>
+          <h2 class="font-mono text-[11px] uppercase tracking-[0.16em] text-danger">Why the current card fails</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-white/70">
+            <li><span class="text-white">Grey skeleton bars where names go.</span> That is the visual language of a loading state, so the eye reads &ldquo;unfinished wireframe&rdquo;, not &ldquo;social platform&rdquo;.</li>
+            <li><span class="text-white">No engagement row.</span> Reply, repost, like and view icons are the single most recognisable signature of a feed. Without them it is just stacked boxes.</li>
+            <li><span class="text-white">No handles, no timestamps, no verification.</span> Nothing anchors it to a real platform.</li>
+            <li><span class="text-white">The copy is commentary about a crisis, not the crisis.</span> &ldquo;Still no statement. That tells you something&rdquo; is a shrug. Nobody&rsquo;s pulse moves.</li>
+            <li><span class="text-white">Nothing is at stake for the reader.</span> No deadline, no insider, no journalist, no consequence. So there is nothing to project themselves into.</li>
+          </ul>
+        </div>
+        <div>
+          <h2 class="font-mono text-[11px] uppercase tracking-[0.16em] text-success">What makes it land instead</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-white/70">
+            <li><span class="text-white">Use the real product&rsquo;s chrome.</span> The in-app network is branded <span class="font-mono text-accent">Z</span>, and posts really do carry a 0&ndash;100 virality score, misinformation flags and a response deadline. Showing those makes the card a screenshot rather than an illustration.</li>
+            <li><span class="text-white">Ordinary words, not dramatic ones.</span> &ldquo;They&rsquo;re walking everyone out and she isn&rsquo;t picking up&rdquo; is frightening. &ldquo;A crisis is unfolding&rdquo; is not.</li>
+            <li><span class="text-white">Cast the three voices every comms lead dreads:</span> the bystander with a photo, the ex-insider claiming documents exist, and the reporter with a filing time.</li>
+            <li><span class="text-white">Show the asymmetry.</span> The false claim outrunning the truth by two orders of magnitude is the whole argument for rehearsal, in one glance.</li>
+            <li><span class="text-white">Put a clock on it.</span> A visible countdown converts a picture into pressure.</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="mt-6 max-w-3xl text-sm leading-relaxed text-white/50">
+        All three use a fictional organisation and are tagged as exercise material, matching the
+        disclaimer already on the page. Counters and clocks below are live so you can see how they
+        behave in the hero.
+      </p>
+
+      <!-- ════════════════════════════════════════════════════════════════ -->
+      <div class="mt-14 grid gap-x-8 gap-y-14 lg:grid-cols-2 xl:grid-cols-3">
+        <!-- ── REVISION 1 ─────────────────────────────────────────────── -->
+        <section>
+          <div class="mb-5">
+            <p class="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">Revision 1</p>
+            <h3 class="mt-1.5 text-xl font-bold">The ladder</h3>
+            <p class="mt-2 text-sm leading-relaxed text-white/60">
+              The story climbs through three voices in ninety seconds: a frightened bystander, an
+              ex-employee claiming documents, then national media with a filing deadline. Ends on a
+              clock, so the card asks the reader a question rather than telling them a story.
+            </p>
+          </div>
+
+          <div class="surface-card mx-auto max-w-[440px] bg-white">
+            <div class="surface-bar bg-[#eae5da]">
+              <span class="surface-dot bg-[#ff5f57]"></span>
+              <span class="surface-dot bg-[#febc2e]"></span>
+              <span class="surface-dot bg-[#28c840]"></span>
+              <span class="ml-2 flex items-center gap-1.5">
+                <span class="flex h-4 w-4 items-center justify-center rounded bg-ink font-mono text-[10px] font-bold text-white">Z</span>
+                <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink/50">Live feed</span>
+              </span>
+              <span class="ml-auto rounded bg-ink/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-ink/45">Exercise</span>
+            </div>
+
+            <!-- trending strip -->
+            <div class="flex items-center gap-2 border-b border-border bg-surface-2 px-3.5 py-2">
+              <span class="pulse-dot h-1.5 w-1.5 rounded-full bg-danger"></span>
+              <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink/55">Trending &mdash; #Eastport</span>
+              <span class="ml-auto font-mono text-[10px] tabular-nums text-danger" data-count="mentions">18,402</span>
+              <span class="font-mono text-[10px] text-muted">posts</span>
+            </div>
+
+            <div class="divide-y divide-border">
+              <!-- bystander -->
+              <article class="flex gap-2.5 p-3.5">
+                <span class="mono-avatar h-9 w-9 bg-[#7c6f9e] text-[12px]">PN</span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1 text-[12px] leading-tight">
+                    <span class="truncate font-bold text-ink">Priya Nathan</span>
+                    <span class="truncate text-muted">@priya_nathan</span>
+                    <span class="text-muted">&middot;</span>
+                    <span class="shrink-0 text-muted">2m</span>
+                  </div>
+                  <p class="mt-1 text-[13px] leading-snug text-ink">
+                    Something is badly wrong at the Eastport site. Three ambulances and they are
+                    walking everyone out into the car park. My sister works in that building and she
+                    is not picking up.
+                  </p>
+                  <div class="photo-forecourt mt-2 h-24 rounded-lg"></div>
+                  <div class="mt-2 flex items-center gap-5 text-muted">
+                    <span class="flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                      <span class="tabular-nums">214</span>
+                    </span>
+                    <span class="flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                      <span class="tabular-nums" data-count="r1-rt">1,908</span>
+                    </span>
+                    <span class="flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                      <span class="tabular-nums" data-count="r1-lk">6,733</span>
+                    </span>
+                    <span class="ml-auto flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                      <span class="tabular-nums">412K</span>
+                    </span>
+                  </div>
+                </div>
+              </article>
+
+              <!-- ex-insider, flagged -->
+              <article class="flex gap-2.5 bg-danger/[0.035] p-3.5">
+                <span class="mono-avatar h-9 w-9 bg-[#b45309] text-[12px]">DK</span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1 text-[12px] leading-tight">
+                    <span class="truncate font-bold text-ink">Dan Kowalski</span>
+                    <span class="shrink-0 text-accent" title="Influencer">&#9733;</span>
+                    <span class="truncate text-muted">@dk_reports</span>
+                    <span class="text-muted">&middot;</span>
+                    <span class="shrink-0 text-muted">7m</span>
+                  </div>
+                  <p class="mt-1 text-[13px] leading-snug text-ink">
+                    I worked Eastport for six years. That line was flagged in an internal audit last
+                    March and nothing was done. The document exists. They knew. 1/7
+                  </p>
+                  <div class="mt-2 flex items-center gap-1.5">
+                    <span class="rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-danger">Misinformation</span>
+                    <span class="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-accent-strong">Unverified claim</span>
+                  </div>
+                  <div class="mt-2 flex items-center gap-2">
+                    <span class="font-mono text-[9px] uppercase tracking-wider text-muted">Virality</span>
+                    <span class="viral-bar h-1 flex-1 overflow-hidden rounded-full bg-ink/10">
+                      <span class="block h-full rounded-full bg-danger" style="width: 94%"></span>
+                    </span>
+                    <span class="font-mono text-[10px] font-bold tabular-nums text-danger">94</span>
+                  </div>
+                  <div class="mt-2 flex items-center gap-5 text-muted">
+                    <span class="flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                      <span class="tabular-nums">3,104</span>
+                    </span>
+                    <span class="flex items-center gap-1 text-[11px] font-semibold text-danger">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                      <span class="tabular-nums" data-count="r1-rt2">18,241</span>
+                    </span>
+                    <span class="flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                      <span class="tabular-nums" data-count="r1-lk2">42,806</span>
+                    </span>
+                    <span class="ml-auto flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                      <span class="tabular-nums">2.4M</span>
+                    </span>
+                  </div>
+                </div>
+              </article>
+
+              <!-- media, requires response -->
+              <article class="p-3.5">
+                <div class="mb-2.5 flex items-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-2.5 py-1.5">
+                  <svg class="h-3.5 w-3.5 shrink-0 text-accent-strong" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                  <span class="font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-accent-strong">Requires response</span>
+                  <span class="ml-auto font-mono text-[12px] font-bold tabular-nums text-accent-strong" data-clock="r1">04:38</span>
+                </div>
+                <div class="flex gap-2.5">
+                  <span class="mono-avatar h-9 w-9 bg-[#1f2937] text-[10px]">MW</span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1 text-[12px] leading-tight">
+                      <span class="truncate font-bold text-ink">Metro Wire</span>
+                      <svg class="h-3.5 w-3.5 shrink-0 text-zblue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 1.8 3-.3 1 2.8 2.6 1.6-.9 2.9.9 2.9-2.6 1.6-1 2.8-3-.3L12 22l-2.4-1.8-3 .3-1-2.8L3 16.1l.9-2.9-.9-2.9 2.6-1.6 1-2.8 3 .3z"/><path d="M10.6 15.2l-2.8-2.8 1.2-1.2 1.6 1.6 4-4 1.2 1.2z" fill="#fff"/></svg>
+                      <span class="truncate text-muted">@metrowire</span>
+                      <span class="text-muted">&middot;</span>
+                      <span class="shrink-0 text-muted">now</span>
+                    </div>
+                    <p class="mt-1 text-[13px] leading-snug text-ink">
+                      We are running the Eastport story at 15:00 with the audit claim in it. If there
+                      is no statement by then we will report that the company declined to comment.
+                    </p>
+                    <div class="mt-2 flex items-center gap-5 text-muted">
+                      <span class="flex items-center gap-1 text-[11px]">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                        <span class="tabular-nums">881</span>
+                      </span>
+                      <span class="flex items-center gap-1 text-[11px]">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                        <span class="tabular-nums" data-count="r1-rt3">2,660</span>
+                      </span>
+                      <span class="flex items-center gap-1 text-[11px]">
+                        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                        <span class="tabular-nums">4,190</span>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <div class="flex items-center gap-2 border-t border-border bg-surface-2 px-3.5 py-2.5">
+              <span class="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">Your account</span>
+              <span class="font-mono text-[11px] font-bold text-ink">Silent 41 min</span>
+              <span class="ml-auto font-mono text-[9px] uppercase tracking-wider text-danger">Every minute is scored</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── REVISION 2 ─────────────────────────────────────────────── -->
+        <section>
+          <div class="mb-5">
+            <p class="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">Revision 2</p>
+            <h3 class="mt-1.5 text-xl font-bold">The silence</h3>
+            <p class="mt-2 text-sm leading-relaxed text-white/60">
+              Makes the reader&rsquo;s own account the subject. Their last post is a cheerful award
+              announcement from Tuesday, still pinned at the top while the replies turn. This is the
+              one that makes a communications lead wince, because they have seen it happen to someone
+              else.
+            </p>
+          </div>
+
+          <div class="surface-card mx-auto max-w-[440px] bg-white">
+            <div class="surface-bar bg-[#eae5da]">
+              <span class="surface-dot bg-[#ff5f57]"></span>
+              <span class="surface-dot bg-[#febc2e]"></span>
+              <span class="surface-dot bg-[#28c840]"></span>
+              <span class="ml-2 flex items-center gap-1.5">
+                <span class="flex h-4 w-4 items-center justify-center rounded bg-ink font-mono text-[10px] font-bold text-white">Z</span>
+                <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink/50">Your profile</span>
+              </span>
+              <span class="ml-auto rounded bg-ink/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-ink/45">Exercise</span>
+            </div>
+
+            <!-- official account header -->
+            <div class="flex items-center gap-2.5 border-b border-border px-3.5 py-3">
+              <span class="mono-avatar h-10 w-10 bg-brand text-[13px]">HG</span>
+              <div class="min-w-0">
+                <div class="flex items-center gap-1">
+                  <span class="truncate text-[13px] font-bold text-ink">Halden Group</span>
+                  <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 1.8 3-.3 1 2.8 2.6 1.6-.9 2.9.9 2.9-2.6 1.6-1 2.8-3-.3L12 22l-2.4-1.8-3 .3-1-2.8L3 16.1l.9-2.9-.9-2.9 2.6-1.6 1-2.8 3 .3z"/><path d="M10.6 15.2l-2.8-2.8 1.2-1.2 1.6 1.6 4-4 1.2 1.2z" fill="#fff"/></svg>
+                </div>
+                <p class="truncate font-mono text-[10px] text-muted">@haldengroup &middot; 84.2K followers</p>
+              </div>
+              <span class="ml-auto shrink-0 rounded-full bg-danger/10 px-2 py-1 text-center font-mono text-[9px] font-bold uppercase leading-tight tracking-wider text-danger">
+                Mentions<br /><span class="tabular-nums" data-count="r2-mentions">+11,204</span>
+              </span>
+            </div>
+
+            <!-- the pinned, tone-deaf post -->
+            <article class="border-b border-border p-3.5">
+              <p class="mb-2 flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-[0.12em] text-muted">
+                <svg class="h-3 w-3" viewBox="0 0 24 24" fill="currentColor"><path d="M16 4v6l3 4v2H5v-2l3-4V4H6V2h12v2h-2z"/><path d="M11 16h2v6h-2z"/></svg>
+                Pinned &middot; Tuesday
+              </p>
+              <div class="flex gap-2.5">
+                <span class="mono-avatar h-9 w-9 bg-brand text-[11px]">HG</span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-[13px] leading-snug text-ink">
+                    Proud to share that Halden Group has been named Employer of the Year for the third
+                    time running. Thank you to every one of our 4,000 people. &#127881;
+                  </p>
+                  <div class="mt-2 flex items-center gap-5 text-muted">
+                    <span class="flex items-center gap-1 text-[11px] font-semibold text-danger">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                      <span class="tabular-nums" data-count="r2-replies">9,847</span>
+                    </span>
+                    <span class="flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                      <span class="tabular-nums">62</span>
+                    </span>
+                    <span class="flex items-center gap-1 text-[11px]">
+                      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                      <span class="tabular-nums">118</span>
+                    </span>
+                  </div>
+                  <p class="mt-2 rounded bg-danger/[0.07] px-2 py-1 font-mono text-[9px] font-semibold uppercase tracking-wider text-danger">
+                    Ratio detected &mdash; replies 84&times; likes
+                  </p>
+                </div>
+              </div>
+            </article>
+
+            <!-- the replies eating it -->
+            <div class="divide-y divide-border border-b border-border bg-surface-2">
+              <div class="flex gap-2.5 px-3.5 py-2.5 pl-7">
+                <span class="mono-avatar h-7 w-7 bg-[#4b5563] text-[10px]">SB</span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-[11px] leading-tight"><span class="font-bold text-ink">Sam Byrne</span> <span class="text-muted">@sbyrne_ &middot; 3m</span></p>
+                  <p class="mt-0.5 text-[12px] leading-snug text-ink/85">Employer of the year while your Eastport staff are stood in a car park with no information. Read the room.</p>
+                </div>
+              </div>
+              <div class="flex gap-2.5 px-3.5 py-2.5 pl-7">
+                <span class="mono-avatar h-7 w-7 bg-[#7f1d1d] text-[10px]">AR</span>
+                <div class="min-w-0 flex-1">
+                  <p class="text-[11px] leading-tight"><span class="font-bold text-ink">Aisha Rahman</span> <span class="text-muted">@aisha_rahman &middot; 5m</span></p>
+                  <p class="mt-0.5 text-[12px] leading-snug text-ink/85">My father is one of your 4,000 people. He has been sat outside for two hours. Nobody has called us. Where is the statement?</p>
+                </div>
+              </div>
+              <div class="flex gap-2.5 px-3.5 py-2.5 pl-7">
+                <span class="mono-avatar h-7 w-7 bg-[#1f2937] text-[9px]">MW</span>
+                <div class="min-w-0 flex-1">
+                  <p class="flex items-center gap-1 text-[11px] leading-tight">
+                    <span class="font-bold text-ink">Metro Wire</span>
+                    <svg class="h-3 w-3 shrink-0 text-zblue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 1.8 3-.3 1 2.8 2.6 1.6-.9 2.9.9 2.9-2.6 1.6-1 2.8-3-.3L12 22l-2.4-1.8-3 .3-1-2.8L3 16.1l.9-2.9-.9-2.9 2.6-1.6 1-2.8 3 .3z"/><path d="M10.6 15.2l-2.8-2.8 1.2-1.2 1.6 1.6 4-4 1.2 1.2z" fill="#fff"/></svg>
+                    <span class="text-muted">@metrowire &middot; 1m</span>
+                  </p>
+                  <p class="mt-0.5 text-[12px] leading-snug text-ink/85">Is this still the company&rsquo;s position? Filing at 15:00.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 bg-white px-3.5 py-3">
+              <div class="leading-tight">
+                <p class="font-mono text-[9px] uppercase tracking-[0.12em] text-muted">Last posted</p>
+                <p class="font-mono text-[13px] font-bold text-danger">3 days ago</p>
+              </div>
+              <span class="mx-1 h-7 w-px bg-border"></span>
+              <p class="text-[12px] leading-snug text-ink/70">
+                In the exercise, the silence is scored too.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- ── REVISION 3 ─────────────────────────────────────────────── -->
+        <section>
+          <div class="mb-5">
+            <p class="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">Revision 3</p>
+            <h3 class="mt-1.5 text-xl font-bold">The lie is winning</h3>
+            <p class="mt-2 text-sm leading-relaxed text-white/60">
+              One comparison, no reading required. The false claim and the careful official statement
+              sit one above the other with their real numbers showing. The gap between them is the
+              entire argument for rehearsing, and it lands in about two seconds.
+            </p>
+          </div>
+
+          <div class="surface-card mx-auto max-w-[440px] bg-white">
+            <div class="surface-bar bg-[#eae5da]">
+              <span class="surface-dot bg-[#ff5f57]"></span>
+              <span class="surface-dot bg-[#febc2e]"></span>
+              <span class="surface-dot bg-[#28c840]"></span>
+              <span class="ml-2 flex items-center gap-1.5">
+                <span class="flex h-4 w-4 items-center justify-center rounded bg-ink font-mono text-[10px] font-bold text-white">Z</span>
+                <span class="font-mono text-[10px] font-semibold uppercase tracking-[0.1em] text-ink/50">Reach comparison</span>
+              </span>
+              <span class="ml-auto rounded bg-ink/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-ink/45">Exercise</span>
+            </div>
+
+            <!-- the false claim -->
+            <article class="border-b-4 border-border p-3.5">
+              <p class="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-danger">The claim that is not true</p>
+              <div class="flex gap-2.5">
+                <span class="mono-avatar h-9 w-9 bg-[#7f1d1d] text-[12px]">TS</span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1 text-[12px] leading-tight">
+                    <span class="truncate font-bold text-ink">Truthstream</span>
+                    <span class="shrink-0 text-accent">&#9733;</span>
+                    <span class="truncate text-muted">@truthstream</span>
+                    <span class="text-muted">&middot;</span>
+                    <span class="shrink-0 text-muted">9m</span>
+                  </div>
+                  <p class="mt-1 text-[13px] font-medium leading-snug text-ink">
+                    CONFIRMED: chemical release at Eastport. Keep your windows shut and keep children
+                    indoors across the whole district tonight. They will not tell you this themselves.
+                  </p>
+                  <div class="photo-smoke mt-2 h-20 rounded-lg"></div>
+                  <div class="mt-2 flex items-center gap-1.5">
+                    <span class="rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-danger">Misinformation</span>
+                    <span class="rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-danger">Inflammatory</span>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-danger/[0.06] p-2.5">
+                <div>
+                  <p class="font-mono text-lg font-bold leading-none tabular-nums text-danger" data-count="r3-bad">31,806</p>
+                  <p class="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted">Reposts</p>
+                </div>
+                <div>
+                  <p class="font-mono text-lg font-bold leading-none text-danger">4.1M</p>
+                  <p class="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted">Reached</p>
+                </div>
+                <div>
+                  <p class="font-mono text-lg font-bold leading-none text-danger">97</p>
+                  <p class="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted">Virality</p>
+                </div>
+              </div>
+              <div class="viral-bar mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10">
+                <span class="block h-full rounded-full bg-danger" style="width: 97%"></span>
+              </div>
+            </article>
+
+            <!-- the true statement -->
+            <article class="p-3.5">
+              <p class="mb-2 font-mono text-[9px] font-bold uppercase tracking-[0.12em] text-success">What you actually put out</p>
+              <div class="flex gap-2.5">
+                <span class="mono-avatar h-9 w-9 bg-brand text-[12px]">HG</span>
+                <div class="min-w-0 flex-1">
+                  <div class="flex items-center gap-1 text-[12px] leading-tight">
+                    <span class="truncate font-bold text-ink">Halden Group</span>
+                    <svg class="h-3.5 w-3.5 shrink-0 text-accent" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 1.8 3-.3 1 2.8 2.6 1.6-.9 2.9.9 2.9-2.6 1.6-1 2.8-3-.3L12 22l-2.4-1.8-3 .3-1-2.8L3 16.1l.9-2.9-.9-2.9 2.6-1.6 1-2.8 3 .3z"/><path d="M10.6 15.2l-2.8-2.8 1.2-1.2 1.6 1.6 4-4 1.2 1.2z" fill="#fff"/></svg>
+                    <span class="truncate text-muted">@haldengroup</span>
+                    <span class="text-muted">&middot;</span>
+                    <span class="shrink-0 text-muted">1m</span>
+                  </div>
+                  <p class="mt-1 text-[13px] leading-snug text-ink">
+                    We are aware of an incident at our Eastport site and are working with the emergency
+                    services. All colleagues are accounted for. We will provide a further update as
+                    soon as we are able.
+                  </p>
+                  <span class="mt-2 inline-block rounded bg-brand/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-brand">Official statement</span>
+                </div>
+              </div>
+              <div class="mt-3 grid grid-cols-3 gap-2 rounded-lg bg-surface-2 p-2.5">
+                <div>
+                  <p class="font-mono text-lg font-bold leading-none tabular-nums text-ink" data-count="r3-good">204</p>
+                  <p class="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted">Reposts</p>
+                </div>
+                <div>
+                  <p class="font-mono text-lg font-bold leading-none text-ink">38K</p>
+                  <p class="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted">Reached</p>
+                </div>
+                <div>
+                  <p class="font-mono text-lg font-bold leading-none text-muted">11</p>
+                  <p class="mt-1 font-mono text-[9px] uppercase tracking-wider text-muted">Virality</p>
+                </div>
+              </div>
+              <div class="viral-bar mt-2 h-1.5 overflow-hidden rounded-full bg-ink/10">
+                <span class="block h-full rounded-full bg-border-strong" style="width: 11%"></span>
+              </div>
+            </article>
+
+            <div class="flex items-center gap-3 border-t border-border bg-deep px-3.5 py-3">
+              <p class="font-mono text-2xl font-bold leading-none text-danger">108&times;</p>
+              <p class="text-[12px] leading-snug text-white/70">
+                further than the truth travelled. Your team finds this out in the exercise, not on the day.
+              </p>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ════════════════════════════════════════════════════════════════ -->
+      <div class="mt-16 rounded-2xl border border-white/10 bg-white/[0.03] p-7">
+        <h2 class="text-lg font-bold">My recommendation</h2>
+        <p class="mt-3 max-w-3xl text-sm leading-relaxed text-white/70">
+          <span class="font-semibold text-white">Revision 1 for the hero.</span> It is the only one of
+          the three that works as a tall card, which is the shape the fan needs, and it carries the
+          most product truth per square inch: three different NPC archetypes, a live virality score, a
+          misinformation flag and a response clock. It also ends on a question rather than a
+          conclusion, which suits a hero.
+        </p>
+        <p class="mt-3 max-w-3xl text-sm leading-relaxed text-white/70">
+          <span class="font-semibold text-white">Revision 3 further down the page,</span> where there
+          is room for a wide two-up and where a single hard number does more work than a narrative.
+          <span class="font-semibold text-white">Revision 2</span> is the strongest emotionally but it
+          only bites once the reader already understands the product, so it belongs in the section
+          about scoring rather than at the top.
+        </p>
+      </div>
+    </div>
+
+    <script>
+      // Counters drift upward at different rates so a reader who lingers watches
+      // the situation get worse, rather than seeing an obvious loop.
+      const tick = (key, min, max, every) => {
+        const el = document.querySelector(`[data-count="${key}"]`);
+        if (!el) return;
+        let value = Number(el.textContent.replace(/[^\d]/g, ''));
+        const prefix = el.textContent.trim().startsWith('+') ? '+' : '';
+        setInterval(() => {
+          value += Math.floor(Math.random() * (max - min)) + min;
+          el.textContent = prefix + value.toLocaleString();
+        }, every);
+      };
+
+      tick('mentions', 12, 60, 1300);
+      tick('r1-rt', 3, 14, 1900);
+      tick('r1-lk', 8, 30, 1500);
+      tick('r1-rt2', 20, 90, 1200);
+      tick('r1-lk2', 40, 160, 1100);
+      tick('r1-rt3', 2, 9, 2600);
+      tick('r2-mentions', 14, 70, 1400);
+      tick('r2-replies', 6, 24, 1600);
+      tick('r3-bad', 25, 110, 1250);
+      tick('r3-good', 0, 3, 4200);
+
+      // The response deadline runs down, because a still clock is not pressure.
+      document.querySelectorAll('[data-clock]').forEach((el) => {
+        let left = 4 * 60 + 38;
+        setInterval(() => {
+          if (left > 0) left -= 1;
+          const m = String(Math.floor(left / 60)).padStart(2, '0');
+          const s = String(left % 60).padStart(2, '0');
+          el.textContent = `${m}:${s}`;
+        }, 1000);
+      });
+    </script>
+  </body>
+</html>

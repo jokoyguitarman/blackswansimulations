@@ -10,7 +10,15 @@
       "destination": "/simulations/index.html"
     },
     {
+      "source": "/simulations/",
+      "destination": "/simulations/index.html"
+    },
+    {
       "source": "/simulations/consultants",
+      "destination": "/simulations/consultants.html"
+    },
+    {
+      "source": "/simulations/consultants/",
       "destination": "/simulations/consultants.html"
     },
     {

@@ -45,48 +45,45 @@
             </span>
           </a>
 
-          <nav class="hidden items-center gap-1 lg:flex">
-            <a
-              href="#gap"
-              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
-              >The gap</a
-            >
+          <!-- whitespace-nowrap and shrink-0 are load-bearing: without them the
+               links compress as flex items and each label wraps onto two lines. -->
+          <nav class="hidden shrink-0 items-center gap-1 xl:flex">
             <a
               href="#engagement"
-              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
               >What you get</a
             >
             <a
               href="#evidence"
-              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
               >Evidence</a
             >
             <a
               href="#sectors"
-              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
               >Sectors</a
             >
             <a
-              href="#practical"
-              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
-              >Practicalities</a
+              href="#faq"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >FAQ</a
             >
             <a
-              href="#faq"
-              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
-              >FAQ</a
+              href="#try"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >Try it</a
             >
           </nav>
 
-          <div class="flex items-center gap-2 sm:gap-3">
+          <div class="flex shrink-0 items-center gap-2 sm:gap-3">
             <a
               href="/simulations/consultants"
-              class="hdr-link hidden rounded-lg px-3 py-2 text-sm font-semibold text-white/85 transition hover:text-white md:block"
+              class="hdr-link hidden whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-white/85 transition hover:text-white md:block"
               >For risk consultants</a
             >
             <a
               href="#enquire"
-              class="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-strong"
+              class="whitespace-nowrap rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-strong"
               >Book a scoping call</a
             >
           </div>
@@ -98,18 +95,27 @@
       <!-- ══════════════════════════════════════════════════════════
            HERO
            ═════════════════════════════════════════════════════════ -->
-      <section class="deep-grid relative overflow-hidden pt-28 pb-20 sm:pt-36 sm:pb-24">
-        <div class="mx-auto max-w-content px-5 sm:px-8">
-          <div class="grid items-center gap-14 lg:grid-cols-[1.05fr_1fr] lg:gap-12">
-            <!-- Copy -->
-            <div>
-              <p
-                class="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-accent"
-              >
-                <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
-                Preparedness rehearsed. Readiness measured.
-              </p>
+      <section class="relative isolate overflow-hidden bg-deep pt-28 pb-20 sm:pt-36 sm:pb-24">
+        <!-- A simulation session in progress, sitting behind everything. Eager and
+             high priority because it paints with the hero rather than after it. -->
+        <img
+          src="/marketing/crisis-multi-agency.webp"
+          alt=""
+          aria-hidden="true"
+          fetchpriority="high"
+          decoding="async"
+          class="absolute inset-0 -z-20 h-full w-full object-cover object-[65%_center]"
+        />
+        <!-- Darkest on the left so the copy always wins; the room stays readable
+             on the right where the cards sit. -->
+        <div class="absolute inset-0 -z-10 bg-gradient-to-r from-deep via-deep/93 to-deep/72"></div>
+        <div class="absolute inset-0 -z-10 bg-deep/25"></div>
+        <div class="hero-texture absolute inset-0 -z-10"></div>
 
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="grid items-center gap-14 lg:grid-cols-[1fr_1fr] lg:gap-10">
+            <!-- Copy -->
+            <div class="relative z-10">
               <h1
                 class="text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.3rem]"
               >
@@ -126,7 +132,7 @@
               <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
                 <a
                   href="#enquire"
-                  class="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-4 text-base font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-strong"
+                  class="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-accent px-5 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-strong"
                 >
                   Book a scoping call
                   <svg
@@ -143,7 +149,7 @@
                 </a>
                 <a
                   href="#engagement"
-                  class="inline-flex items-center justify-center rounded-xl border border-white/25 px-6 py-4 text-base font-semibold text-white transition hover:border-white/50 hover:bg-white/5"
+                  class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/25 px-5 py-3.5 text-[15px] font-semibold text-white transition hover:border-white/50 hover:bg-white/5"
                   >See what an exercise involves</a
                 >
               </div>
@@ -152,199 +158,679 @@
                 One risk-built scenario, two live simulations, one scored review.
               </p>
 
-              <!-- Stat strip -->
-              <dl class="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8 sm:gap-8">
+              <!-- Stat strip. Three even columns rather than a wrapping row, so the
+                   third stat never orphans onto a second line at an awkward width. -->
+              <dl class="mt-9 grid grid-cols-3 gap-5 border-t border-white/10 pt-7">
                 <div>
-                  <dt class="font-mono text-2xl font-bold text-white sm:text-3xl">4 hrs</dt>
-                  <dd class="mt-1 text-xs leading-snug text-white/50">per live simulation</dd>
+                  <dt class="font-mono text-xl font-bold leading-none text-white">4 hrs</dt>
+                  <dd class="mt-1.5 text-[11px] leading-snug text-white/50">per live simulation</dd>
                 </div>
                 <div>
-                  <dt class="font-mono text-2xl font-bold text-white sm:text-3xl">8&ndash;30</dt>
-                  <dd class="mt-1 text-xs leading-snug text-white/50">
+                  <dt class="font-mono text-xl font-bold leading-none text-white">8&ndash;30</dt>
+                  <dd class="mt-1.5 text-[11px] leading-snug text-white/50">
                     participants across your teams
                   </dd>
                 </div>
                 <div>
-                  <dt class="font-mono text-2xl font-bold text-accent sm:text-3xl">Same day</dt>
-                  <dd class="mt-1 text-xs leading-snug text-white/50">
+                  <dt class="font-mono text-xl font-bold leading-none text-accent">Same day</dt>
+                  <dd class="mt-1.5 text-[11px] leading-snug text-white/50">
                     scored after-action review
                   </dd>
                 </div>
               </dl>
             </div>
 
-            <!-- Exercise visual -->
-            <div class="relative lg:pl-4">
+            <!-- ── Fanned surfaces, cascading up and to the right so every card
+                 keeps a band of its own. Bleeds past the right edge on purpose. ── -->
+            <div class="surface-fan relative h-[640px] sm:h-[620px] lg:h-[690px]">
+              <!-- BACK · inbox under pressure -->
               <div
-                class="rounded-2xl border border-white/12 bg-deep/70 p-4 shadow-2xl backdrop-blur-sm sm:p-5"
+                class="card-mail surface-card absolute top-[-42px] z-0 hidden w-[320px] rotate-[-8deg] bg-white lg:left-[215px] lg:block xl:left-[300px] xl:w-[340px]"
+                aria-hidden="true"
               >
-                <div class="flex items-center justify-between border-b border-white/10 pb-3">
-                  <div class="flex items-center gap-2">
-                    <span class="live-dot h-2 w-2 rounded-full bg-danger"></span>
-                    <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/70"
-                      >Exercise running</span
-                    >
-                  </div>
-                  <span id="sim-clock" data-start="1334" class="font-mono text-[11px] tabular-nums text-accent"
-                    >T+ 00:22:14</span
+                <div class="surface-bar bg-[#eae5da]">
+                  <span class="surface-dot bg-[#ff5f57]"></span>
+                  <span class="surface-dot bg-[#febc2e]"></span>
+                  <span class="surface-dot bg-[#28c840]"></span>
+                  <span class="ml-2 font-mono text-[9px] uppercase tracking-[0.14em] text-ink/40">Inbox</span>
+                  <span
+                    id="mail-badge"
+                    class="ml-auto rounded-full bg-danger px-1.5 py-0.5 font-mono text-[9px] font-bold text-white"
+                    >17</span
                   >
                 </div>
-
-                <div class="mt-4">
-                  <p class="mb-2.5 font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
-                    Situation timeline
-                  </p>
-                  <ul class="space-y-2">
-                    <li
-                      class="flex items-center gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2"
-                    >
-                      <span class="font-mono text-[10px] text-white/40">00:06</span>
-                      <span class="flex-1 truncate text-[13px] text-white/45 line-through"
-                        >Incident confirmed at primary site</span
-                      >
-                      <svg
-                        class="h-3.5 w-3.5 shrink-0 text-success"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="3"
-                        stroke-linecap="round"
-                      >
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                    </li>
-                    <li
-                      class="flex items-center gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2"
-                    >
-                      <span class="font-mono text-[10px] text-white/40">00:15</span>
-                      <span class="flex-1 truncate text-[13px] text-white/45 line-through"
-                        >Footage circulating on social media</span
-                      >
-                      <svg
-                        class="h-3.5 w-3.5 shrink-0 text-success"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="3"
-                        stroke-linecap="round"
-                      >
-                        <path d="M20 6L9 17l-5-5" />
-                      </svg>
-                    </li>
-                    <li class="inject-firing flex items-center gap-3 rounded-lg border px-3 py-2">
-                      <span class="font-mono text-[10px] text-accent">00:22</span>
-                      <span class="flex-1 truncate text-[13px] font-medium text-white"
-                        >Regulator requests immediate briefing</span
-                      >
-                      <span
-                        class="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent"
-                        >now</span
-                      >
-                    </li>
-                    <li
-                      class="flex items-center gap-3 rounded-lg border border-dashed border-white/10 px-3 py-2"
-                    >
-                      <span class="font-mono text-[10px] text-white/30">00:31</span>
-                      <span class="flex-1 truncate text-[13px] text-white/35"
-                        >If no holding statement &rarr; speculation escalates</span
-                      >
-                      <span class="shrink-0 font-mono text-[9px] uppercase text-white/30"
-                        >pending</span
-                      >
-                    </li>
-                  </ul>
-                </div>
-
-                <div class="mt-5 rounded-lg border border-white/8 bg-white/[0.03] p-3">
-                  <div class="mb-2 flex items-baseline justify-between">
-                    <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-white/40"
-                      >Situation severity</span
-                    >
-                    <span class="font-mono text-xs font-semibold text-accent">Escalating</span>
-                  </div>
-                  <div class="h-1.5 overflow-hidden rounded-full bg-white/10">
-                    <div
-                      class="heat-fill h-full rounded-full"
-                      style="
-                        width: 64%;
-                        background: linear-gradient(90deg, #15803d, #d97706 60%, #b91c1c);
-                      "
-                    ></div>
-                  </div>
-                </div>
-
-                <div class="mt-3 rounded-lg border border-white/8 bg-white/[0.03] p-3">
-                  <div class="flex items-start justify-between gap-3">
+                <ul class="divide-y divide-border">
+                  <li class="flex items-start gap-2 px-3 py-2">
+                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger"></span>
                     <div class="min-w-0">
-                      <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
-                        Decision graded
-                      </p>
-                      <p class="mt-1 truncate text-[13px] font-medium text-white">
-                        Holding statement issued to media
-                      </p>
-                      <p class="mt-0.5 font-mono text-[10px] text-white/40">
-                        Latency 6m 12s · Coordination 7.4
-                      </p>
+                      <p class="truncate text-[11px] font-bold text-ink">Regulator &mdash; briefing required</p>
+                      <p class="truncate text-[10px] text-muted">Confirm attendance within the hour</p>
                     </div>
-                    <div class="flex shrink-0 items-end gap-2">
-                      <div class="flex h-9 items-end gap-[3px]">
-                        <span
-                          class="score-bar w-1.5 rounded-sm bg-accent/40"
-                          style="height: 42%; animation-delay: 0.05s"
-                        ></span>
-                        <span
-                          class="score-bar w-1.5 rounded-sm bg-accent/60"
-                          style="height: 58%; animation-delay: 0.12s"
-                        ></span>
-                        <span
-                          class="score-bar w-1.5 rounded-sm bg-accent/80"
-                          style="height: 74%; animation-delay: 0.19s"
-                        ></span>
-                        <span
-                          class="score-bar w-1.5 rounded-sm bg-accent"
-                          style="height: 86%; animation-delay: 0.26s"
-                        ></span>
-                      </div>
-                      <span class="font-mono text-xl font-bold leading-none text-white"
-                        >6<span class="text-sm text-white/40">/10</span></span
-                      >
+                  </li>
+                  <li class="flex items-start gap-2 px-3 py-2">
+                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger"></span>
+                    <div class="min-w-0">
+                      <p class="truncate text-[11px] font-bold text-ink">Press desk &mdash; filing 15:00</p>
+                      <p class="truncate text-[10px] text-muted">We are running the story regardless</p>
                     </div>
-                  </div>
+                  </li>
+                  <li class="flex items-start gap-2 px-3 py-2">
+                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"></span>
+                    <div class="min-w-0">
+                      <p class="truncate text-[11px] font-semibold text-ink">Legal &mdash; hold that statement</p>
+                      <p class="truncate text-[10px] text-muted">Do not confirm cause yet</p>
+                    </div>
+                  </li>
+                  <li class="flex items-start gap-2 px-3 py-2 opacity-60">
+                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong"></span>
+                    <div class="min-w-0">
+                      <p class="truncate text-[11px] text-ink">Site manager &mdash; headcount update</p>
+                    </div>
+                  </li>
+                  <li class="flex items-start gap-2 px-3 py-2 opacity-40">
+                    <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong"></span>
+                    <div class="min-w-0">
+                      <p class="truncate text-[11px] text-ink">Duty officer &mdash; shift handover</p>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+
+              <!-- MIDDLE · field operations -->
+              <div
+                class="card-map surface-card absolute top-[6px] z-10 hidden w-[370px] rotate-[-3.5deg] bg-deep lg:left-[105px] lg:block xl:left-[150px] xl:w-[400px]"
+                aria-hidden="true"
+              >
+                <div class="surface-bar bg-[#16202c]">
+                  <span class="surface-dot bg-[#ff5f57]"></span>
+                  <span class="surface-dot bg-[#febc2e]"></span>
+                  <span class="surface-dot bg-[#28c840]"></span>
+                  <span class="ml-2 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Field operations</span>
+                  <span class="ml-auto flex items-center gap-1.5">
+                    <span class="live-dot h-1.5 w-1.5 rounded-full bg-danger"></span>
+                    <span id="sim-clock" data-start="1334" class="font-mono text-[9px] tabular-nums text-accent">T+ 00:22:14</span>
+                  </span>
                 </div>
 
-                <div class="mt-4 flex flex-wrap gap-1.5 border-t border-white/10 pt-3.5">
-                  <span
-                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
-                    >Command</span
-                  >
-                  <span
-                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
-                    >Operations</span
-                  >
-                  <span
-                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
-                    >Comms</span
-                  >
-                  <span
-                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
-                    >Legal</span
-                  >
+                <div class="relative h-40 overflow-hidden bg-[#0b1522]">
+                  <!-- street grid -->
+                  <div
+                    class="absolute inset-0 opacity-60"
+                    style="
+                      background-image:
+                        linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+                        linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+                      background-size: 30px 30px;
+                    "
+                  ></div>
+                  <!-- arterial roads -->
+                  <div class="absolute left-0 top-1/2 h-[3px] w-full -translate-y-1/2 bg-white/[0.09]"></div>
+                  <div class="absolute left-[38%] top-0 h-full w-[3px] bg-white/[0.09]"></div>
+
+                  <!-- venue footprint -->
+                  <div class="absolute left-[30%] top-[30%] h-16 w-24 rounded-sm border border-white/15 bg-white/[0.05]"></div>
+
+                  <!-- cordon -->
+                  <div
+                    class="cordon absolute left-[26%] top-[22%] h-28 w-36 rounded-full border-2 border-dashed border-danger/70"
+                  ></div>
+                  <!-- incident -->
+                  <div class="absolute left-[41%] top-[43%] h-2.5 w-2.5 rounded-full bg-danger shadow-[0_0_12px_4px_rgba(185,28,28,0.5)]"></div>
+
+                  <!-- evacuating crowd, flowing to the north-east exit -->
+                  <span class="evac-dot" style="left: 34%; top: 52%; --dx: 96px; --dy: -54px; --dur: 4.2s; animation-delay: 0s"></span>
+                  <span class="evac-dot" style="left: 37%; top: 56%; --dx: 88px; --dy: -62px; --dur: 4.6s; animation-delay: 0.3s"></span>
+                  <span class="evac-dot" style="left: 31%; top: 58%; --dx: 104px; --dy: -48px; --dur: 5s; animation-delay: 0.6s"></span>
+                  <span class="evac-dot" style="left: 40%; top: 50%; --dx: 80px; --dy: -66px; --dur: 4.4s; animation-delay: 0.9s"></span>
+                  <span class="evac-dot" style="left: 28%; top: 50%; --dx: 110px; --dy: -42px; --dur: 4.8s; animation-delay: 1.2s"></span>
+                  <span class="evac-dot" style="left: 36%; top: 62%; --dx: 92px; --dy: -70px; --dur: 5.2s; animation-delay: 1.5s"></span>
+                  <span class="evac-dot" style="left: 43%; top: 58%; --dx: 74px; --dy: -60px; --dur: 4.3s; animation-delay: 1.8s"></span>
+                  <span class="evac-dot" style="left: 33%; top: 46%; --dx: 100px; --dy: -38px; --dur: 4.9s; animation-delay: 2.1s"></span>
+                  <span class="evac-dot" style="left: 39%; top: 66%; --dx: 86px; --dy: -78px; --dur: 5.4s; animation-delay: 2.4s"></span>
+                  <span class="evac-dot" style="left: 30%; top: 64%; --dx: 106px; --dy: -72px; --dur: 5.1s; animation-delay: 2.7s"></span>
+                  <span class="evac-dot" style="left: 45%; top: 52%; --dx: 70px; --dy: -52px; --dur: 4.1s; animation-delay: 3s"></span>
+                  <span class="evac-dot" style="left: 26%; top: 56%; --dx: 116px; --dy: -58px; --dur: 5.3s; animation-delay: 3.3s"></span>
+                  <span class="evac-dot" style="left: 42%; top: 46%; --dx: 78px; --dy: -34px; --dur: 4.5s; animation-delay: 3.6s"></span>
+                  <span class="evac-dot" style="left: 35%; top: 42%; --dx: 94px; --dy: -30px; --dur: 4.7s; animation-delay: 3.9s"></span>
+
+                  <!-- units -->
+                  <span class="absolute left-[58%] top-[26%] flex items-center gap-1">
+                    <span class="h-2 w-2 rounded-sm bg-[#4da3ff]"></span>
+                    <span class="font-mono text-[8px] uppercase tracking-wider text-white/55">cordon</span>
+                  </span>
+                  <span class="absolute left-[62%] top-[62%] flex items-center gap-1">
+                    <span class="h-2 w-2 rounded-sm bg-success"></span>
+                    <span class="font-mono text-[8px] uppercase tracking-wider text-white/55">triage</span>
+                  </span>
+                  <span class="absolute left-[18%] top-[74%] flex items-center gap-1">
+                    <span class="h-2 w-2 rounded-sm bg-accent"></span>
+                    <span class="font-mono text-[8px] uppercase tracking-wider text-white/55">evac</span>
+                  </span>
+                </div>
+
+                <!-- readout -->
+                <div class="grid grid-cols-3 divide-x divide-white/8 border-t border-white/10 bg-[#0e1a2b]">
+                  <div class="px-3 py-2">
+                    <p class="font-mono text-[8px] uppercase tracking-[0.14em] text-white/40">Evacuated</p>
+                    <p class="font-mono text-[13px] font-bold text-white"><span id="evac-count">312</span> / 1,480</p>
+                  </div>
+                  <div class="px-3 py-2">
+                    <p class="font-mono text-[8px] uppercase tracking-[0.14em] text-white/40">Cordon</p>
+                    <p class="font-mono text-[13px] font-bold text-accent">Partial</p>
+                  </div>
+                  <div class="px-3 py-2">
+                    <p class="font-mono text-[8px] uppercase tracking-[0.14em] text-white/40">Severity</p>
+                    <p class="font-mono text-[13px] font-bold text-danger">Escalating</p>
+                  </div>
                 </div>
               </div>
 
-              <p
-                class="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-white/30"
+              <!-- FRONT · the public turning on your organisation. Three voices,
+                   climbing: bystander, ex-insider, then media with a filing time. -->
+              <div
+                class="card-feed surface-card absolute left-0 top-8 z-20 w-full max-w-[420px] rotate-[1.5deg] bg-white sm:max-w-[455px] lg:top-[104px]"
               >
-                Illustrative exercise view
-              </p>
+                <div class="surface-bar bg-[#eae5da]">
+                  <span class="surface-dot bg-[#ff5f57]"></span>
+                  <span class="surface-dot bg-[#febc2e]"></span>
+                  <span class="surface-dot bg-[#28c840]"></span>
+                  <span class="ml-2 flex items-center gap-1.5">
+                    <span class="flex h-4 w-4 items-center justify-center rounded bg-ink font-mono text-[10px] font-bold leading-none text-white">Z</span>
+                    <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-ink/45">Live feed</span>
+                  </span>
+                  <span class="ml-auto rounded bg-ink/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-ink/40">Exercise</span>
+                </div>
+
+                <!-- trending strip -->
+                <div class="flex items-center gap-2 border-b border-border bg-surface-2 px-3.5 py-1.5">
+                  <span class="pulse-dot h-1.5 w-1.5 rounded-full bg-danger"></span>
+                  <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-ink/50">Trending &mdash; #Eastport</span>
+                  <span class="ml-auto font-mono text-[10px] font-bold tabular-nums text-danger" data-count="mentions">18,402</span>
+                </div>
+
+                <div class="divide-y divide-border">
+                  <!-- bystander: ordinary words, which is what makes it frightening -->
+                  <article class="flex gap-2.5 p-3">
+                    <span class="mono-avatar h-8 w-8 bg-[#7c6f9e] text-[11px]">PN</span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-1 text-[11px] leading-tight">
+                        <span class="truncate font-bold text-ink">Priya Nathan</span>
+                        <span class="truncate text-muted">@priya_nathan</span>
+                        <span class="text-muted">&middot;</span>
+                        <span class="shrink-0 text-muted">2m</span>
+                      </div>
+                      <p class="mt-1 text-[12px] leading-snug text-ink">
+                        Three ambulances at the Eastport site and they are walking everyone out into
+                        the car park. My sister works in that building and she is not picking up.
+                      </p>
+                      <img
+                        src="/marketing/post-site-photo.webp"
+                        alt=""
+                        aria-hidden="true"
+                        width="880"
+                        height="176"
+                        decoding="async"
+                        class="mt-2 h-20 w-full rounded-lg object-cover"
+                      />
+                      <div class="mt-1.5 flex items-center gap-4 text-muted">
+                        <span class="flex items-center gap-1 text-[10px]">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                          <span class="tabular-nums">214</span>
+                        </span>
+                        <span class="flex items-center gap-1 text-[10px]">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                          <span class="tabular-nums" data-count="by-rt">1,908</span>
+                        </span>
+                        <span class="flex items-center gap-1 text-[10px]">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                          <span class="tabular-nums" data-count="by-lk">6,733</span>
+                        </span>
+                        <span class="ml-auto flex items-center gap-1 text-[10px]">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                          <span class="tabular-nums">412K</span>
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+
+                  <!-- ex-insider claiming documents: flagged, and outrunning everything -->
+                  <article class="flex gap-2.5 bg-danger/[0.035] p-3">
+                    <span class="mono-avatar h-8 w-8 bg-[#B45309] text-[11px]">DK</span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-1 text-[11px] leading-tight">
+                        <span class="truncate font-bold text-ink">Dan Kowalski</span>
+                        <span class="shrink-0 text-accent" title="Influencer">&#9733;</span>
+                        <span class="truncate text-muted">@dk_reports</span>
+                        <span class="text-muted">&middot;</span>
+                        <span class="shrink-0 text-muted">7m</span>
+                      </div>
+                      <p class="mt-1 text-[12px] leading-snug text-ink">
+                        I worked Eastport six years. That line was flagged in an internal audit last
+                        March and nothing was done. The document exists. They knew. 1/7
+                      </p>
+                      <div class="mt-2 flex items-center gap-1.5">
+                        <span class="rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-danger">Misinformation</span>
+                        <span class="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-accent-strong">Unverified</span>
+                      </div>
+                      <div class="mt-2 flex items-center gap-2">
+                        <span class="font-mono text-[8px] uppercase tracking-wider text-muted">Virality</span>
+                        <span class="viral-bar h-1 flex-1 overflow-hidden rounded-full bg-ink/10">
+                          <span class="block h-full rounded-full bg-danger" style="width: 94%"></span>
+                        </span>
+                        <span class="font-mono text-[10px] font-bold tabular-nums text-danger">94</span>
+                      </div>
+                      <div class="mt-1.5 flex items-center gap-4 text-muted">
+                        <span class="flex items-center gap-1 text-[10px]">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                          <span class="tabular-nums">3,104</span>
+                        </span>
+                        <span class="flex items-center gap-1 text-[10px] font-bold text-danger">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                          <span class="tabular-nums" data-count="dk-rt">18,241</span>
+                        </span>
+                        <span class="flex items-center gap-1 text-[10px]">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                          <span class="tabular-nums" data-count="dk-lk">42,806</span>
+                        </span>
+                        <span class="ml-auto flex items-center gap-1 text-[10px]">
+                          <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                          <span class="tabular-nums">2.4M</span>
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+
+                  <!-- media with a filing time: the clock that turns a picture into pressure -->
+                  <article class="p-3">
+                    <div class="mb-2 flex items-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-2.5 py-1.5">
+                      <svg class="h-3.5 w-3.5 shrink-0 text-accent-strong" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                      <span class="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-accent-strong">Requires response</span>
+                      <span class="ml-auto font-mono text-[12px] font-bold tabular-nums text-accent-strong" data-countdown="278">04:38</span>
+                    </div>
+                    <div class="flex gap-2.5">
+                      <span class="mono-avatar h-8 w-8 bg-[#1f2937] text-[9px]">MW</span>
+                      <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-1 text-[11px] leading-tight">
+                          <span class="truncate font-bold text-ink">Metro Wire</span>
+                          <svg class="h-3 w-3 shrink-0 text-zblue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 1.8 3-.3 1 2.8 2.6 1.6-.9 2.9.9 2.9-2.6 1.6-1 2.8-3-.3L12 22l-2.4-1.8-3 .3-1-2.8L3 16.1l.9-2.9-.9-2.9 2.6-1.6 1-2.8 3 .3z"/><path d="M10.6 15.2l-2.8-2.8 1.2-1.2 1.6 1.6 4-4 1.2 1.2z" fill="#fff"/></svg>
+                          <span class="truncate text-muted">@metrowire</span>
+                          <span class="text-muted">&middot;</span>
+                          <span class="shrink-0 text-muted">now</span>
+                        </div>
+                        <p class="mt-1 text-[12px] leading-snug text-ink">
+                          We run the Eastport story at 15:00 with the audit claim in it. No statement
+                          by then and we report that the company declined to comment.
+                        </p>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+
+                <div class="flex items-center gap-2 border-t border-border bg-surface-2 px-3.5 py-2.5">
+                  <span class="font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Your account</span>
+                  <span class="font-mono text-[11px] font-bold text-ink">Silent 41 min</span>
+                  <span class="ml-auto font-mono text-[8px] uppercase tracking-wider text-danger">Every minute is scored</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- The cards are built as interface, so they need saying so. -->
+          <p
+            class="mt-10 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-white/25 lg:text-right"
+          >
+            Illustrative interface views
+          </p>
+
+          <p
+            class="mt-6 border-t border-white/10 pt-8 text-center text-sm leading-relaxed text-white/45"
+          >
+            Fictional, non-operational scenarios only &mdash; for government, defence, emergency
+            services, critical infrastructure, corporate crisis and communications teams.
+          </p>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           EXERCISE REPLAY
+           ═════════════════════════════════════════════════════════ -->
+      <section id="replay" class="border-b border-border bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Twenty-four seconds of a four-hour exercise
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Watch a crisis get away from a team
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              The situation moves on a clock. Each moment replaces the last, and the cost of a slow
+              decision compounds into the one after it.
+            </p>
+          </div>
+
+          <!-- Storyboard. One board at a time so the reader cannot see what is
+               coming, which is the feeling the section exists to sell. Every board
+               names the consequence rather than the event. -->
+          <div
+            class="reveal stage-shell relative mt-12 overflow-hidden rounded-2xl bg-deep p-4 shadow-2xl sm:p-6"
+            data-storyboard
+            data-temp="calm"
+            aria-label="Illustrative replay of a representative exercise"
+          >
+            <!-- Transport -->
+            <div class="flex items-center gap-3 border-b border-white/10 pb-4 sm:gap-4">
+              <span class="flex shrink-0 items-center gap-2">
+                <span class="live-dot h-2 w-2 rounded-full bg-danger"></span>
+                <span class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/70 sm:text-[11px]">Replay</span>
+              </span>
+              <div class="flex flex-1 items-center gap-1">
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+              </div>
+              <span class="shrink-0 font-mono text-[10px] tabular-nums text-white/40 sm:text-[11px]"
+                ><span data-board-index>1</span>/6</span
+              >
+            </div>
+
+            <!-- Art sits above the copy on a phone and beside it from the small
+                 breakpoint up. The stage sizes itself to the tallest board. -->
+            <div class="board-stage mt-5">
+              <article
+                class="board"
+                data-board
+                data-temp="calm"
+                data-pressure="14"
+                data-mentions="0"
+                data-trust="82"
+                data-latency="&mdash;"
+              >
+                <div class="grid items-center gap-4 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-6">
+                  <figure class="board-art relative overflow-hidden rounded-xl">
+                    <img
+                      src="/marketing/board-1-confirmed.webp"
+                      alt=""
+                      aria-hidden="true"
+                      width="960"
+                      height="540"
+                      decoding="async"
+                      class="h-32 w-full object-cover sm:h-44 lg:h-48"
+                    />
+                    <span class="art-tint absolute inset-0"></span>
+                  </figure>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:06</p>
+                      <span class="rounded-full border border-white/20 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/60">Contained</span>
+                    </div>
+                    <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">
+                      The incident is confirmed at your primary site.
+                    </h3>
+                    <p class="mt-2.5 text-[15px] leading-relaxed text-white/60">
+                      Operations know. Nobody outside that room does. This is the only moment in the
+                      next hour when you are ahead of the story, and it lasts nine minutes.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <article
+                class="board"
+                data-board
+                data-temp="calm"
+                data-pressure="31"
+                data-mentions="2418"
+                data-trust="74"
+                data-latency="1m 40s"
+              >
+                <div class="grid items-center gap-4 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-6">
+                  <figure class="board-art relative overflow-hidden rounded-xl">
+                    <img
+                      src="/marketing/board-2-footage.webp"
+                      alt=""
+                      aria-hidden="true"
+                      width="960"
+                      height="540"
+                      loading="lazy"
+                      decoding="async"
+                      class="h-32 w-full object-cover sm:h-44 lg:h-48"
+                    />
+                    <span class="art-tint absolute inset-0"></span>
+                  </figure>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:15</p>
+                      <span class="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-accent">Spreading</span>
+                    </div>
+                    <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">
+                      Footage is public before your first statement is drafted.
+                    </h3>
+                    <p class="mt-2.5 text-[15px] leading-relaxed text-white/60">
+                      Someone in the car park filmed the evacuation. The public now knows more than
+                      your own communications team, and every minute from here is spent catching up
+                      rather than leading.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <article
+                class="board"
+                data-board
+                data-temp="watch"
+                data-pressure="58"
+                data-mentions="9140"
+                data-trust="61"
+                data-latency="3m 05s"
+              >
+                <div class="grid items-center gap-4 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-6">
+                  <figure class="board-art relative overflow-hidden rounded-xl">
+                    <img
+                      src="/marketing/board-3-deadlock.webp"
+                      alt=""
+                      aria-hidden="true"
+                      width="960"
+                      height="540"
+                      loading="lazy"
+                      decoding="async"
+                      class="h-32 w-full object-cover sm:h-44 lg:h-48"
+                    />
+                    <span class="art-tint absolute inset-0"></span>
+                  </figure>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:22</p>
+                      <span class="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-accent">Escalating</span>
+                    </div>
+                    <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">
+                      The regulator wants a briefing within the hour.
+                    </h3>
+                    <p class="mt-2.5 text-[15px] leading-relaxed text-white/60">
+                      Legal advises saying nothing until the cause is confirmed. Communications argues
+                      the silence is already the story. Both are partly right, and nobody is certain
+                      whose call it is.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <article
+                class="board"
+                data-board
+                data-temp="critical"
+                data-pressure="94"
+                data-mentions="31806"
+                data-trust="38"
+                data-latency="6m 12s"
+                data-hold="5400"
+              >
+                <div class="grid items-center gap-4 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-6">
+                  <figure class="board-art board-art-critical relative overflow-hidden rounded-xl">
+                    <img
+                      src="/marketing/board-4-silence.webp"
+                      alt=""
+                      aria-hidden="true"
+                      width="960"
+                      height="540"
+                      loading="lazy"
+                      decoding="async"
+                      class="h-32 w-full object-cover sm:h-44 lg:h-48"
+                    />
+                    <span class="art-tint absolute inset-0"></span>
+                  </figure>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <p class="font-mono text-3xl font-bold tabular-nums text-danger sm:text-4xl">T+00:31</p>
+                      <span class="alarm-sweep relative overflow-hidden rounded-full border border-danger/50 bg-danger/15 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-danger">Out of control</span>
+                    </div>
+                    <h3 class="mt-3 text-2xl font-extrabold leading-snug text-white sm:text-3xl">
+                      Still no holding statement.
+                    </h3>
+                    <p class="mt-2.5 text-[15px] leading-relaxed text-white/70">
+                      An ex-employee&rsquo;s claim that an internal audit flagged this months ago is
+                      now the most-shared version of events. It is unverified, and it is winning. The
+                      story has stopped being about the incident and started being about the silence.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <article
+                class="board"
+                data-board
+                data-temp="watch"
+                data-pressure="71"
+                data-mentions="44210"
+                data-trust="41"
+                data-latency="6m 12s"
+              >
+                <div class="grid items-center gap-4 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-6">
+                  <figure class="board-art relative overflow-hidden rounded-xl">
+                    <img
+                      src="/marketing/board-5-correcting.webp"
+                      alt=""
+                      aria-hidden="true"
+                      width="960"
+                      height="540"
+                      loading="lazy"
+                      decoding="async"
+                      class="h-32 w-full object-cover sm:h-44 lg:h-48"
+                    />
+                    <span class="art-tint absolute inset-0"></span>
+                  </figure>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:47</p>
+                      <span class="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-accent">Correcting</span>
+                    </div>
+                    <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">
+                      Communications issues a corrected statement.
+                    </h3>
+                    <p class="mt-2.5 text-[15px] leading-relaxed text-white/60">
+                      It is accurate, careful and signed off. It reaches a small fraction of the
+                      people who saw the claim it was written to answer, because corrections never
+                      travel as far as the thing they correct.
+                    </p>
+                  </div>
+                </div>
+              </article>
+
+              <article
+                class="board"
+                data-board
+                data-temp="recover"
+                data-pressure="28"
+                data-mentions="51330"
+                data-trust="52"
+                data-latency="6m 12s"
+              >
+                <div class="grid items-center gap-4 sm:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)] sm:gap-6">
+                  <figure class="board-art relative overflow-hidden rounded-xl">
+                    <img
+                      src="/marketing/board-6-contained.webp"
+                      alt=""
+                      aria-hidden="true"
+                      width="960"
+                      height="540"
+                      loading="lazy"
+                      decoding="async"
+                      class="h-32 w-full object-cover sm:h-44 lg:h-48"
+                    />
+                    <span class="art-tint absolute inset-0"></span>
+                  </figure>
+                  <div>
+                    <div class="flex flex-wrap items-center gap-3">
+                      <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+01:04</p>
+                      <span class="rounded-full border border-success/40 bg-success/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-success">Contained</span>
+                    </div>
+                    <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">
+                      Narrative stabilised. Situation contained.
+                    </h3>
+                    <p class="mt-2.5 text-[15px] leading-relaxed text-white/60">
+                      The team recovered it. But the after-action review is not about the recovery, it
+                      is about the twenty-two minutes of silence that made it necessary &mdash; timed
+                      to the second and sitting in a report you can hand to your board.
+                    </p>
+                  </div>
+                </div>
+              </article>
+            </div>
+
+            <!-- Persistent readout -->
+            <div class="mt-6 border-t border-white/10 pt-4">
+              <div class="flex items-center gap-3">
+                <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Pressure</span>
+                <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <span class="pressure-fill block h-full w-[14%] rounded-full bg-success" data-pressure-fill></span>
+                </span>
+                <span class="w-8 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums text-white" data-pressure-value>14</span>
+              </div>
+
+              <dl class="mt-4 grid grid-cols-3 gap-3">
+                <div class="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+                  <dt class="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Mentions</dt>
+                  <dd class="mt-1 font-mono text-base font-bold tabular-nums text-white sm:text-lg" data-metric-mentions>0</dd>
+                </div>
+                <div class="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+                  <dt class="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Public trust</dt>
+                  <dd class="mt-1 font-mono text-base font-bold tabular-nums text-white sm:text-lg" data-metric-trust>82</dd>
+                </div>
+                <div class="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+                  <dt class="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Decision latency</dt>
+                  <dd class="mt-1 font-mono text-base font-bold tabular-nums text-white sm:text-lg" data-metric-latency>&mdash;</dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- Controls -->
+            <div class="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <button
+                type="button"
+                class="rounded-lg border border-white/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white/70 transition hover:border-white/40 hover:text-white"
+                data-replay-toggle
+              >
+                Pause
+              </button>
+              <div class="flex items-center gap-2">
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="0" aria-label="Show moment 1 of 6"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="1" aria-label="Show moment 2 of 6"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="2" aria-label="Show moment 3 of 6"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="3" aria-label="Show moment 4 of 6"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="4" aria-label="Show moment 5 of 6"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="5" aria-label="Show moment 6 of 6"></button>
+              </div>
+              <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-white/30">240&times;</span>
             </div>
           </div>
 
           <p
-            class="mt-16 border-t border-white/10 pt-8 text-center text-sm leading-relaxed text-white/45"
+            class="mt-5 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-muted"
           >
-            Fictional, non-operational scenarios only &mdash; for government, defence, emergency
-            services, critical infrastructure, corporate crisis and communications teams.
+            Illustrative replay of a representative exercise
           </p>
         </div>
       </section>
@@ -367,74 +853,191 @@
             </p>
           </div>
 
+          <!-- Reveal cards. The blurb is in the flow and defines the card height;
+               the artwork sits on top and slides away on hover, focus or tap. All
+               four blurbs stay in the HTML, so nothing is hidden from crawlers. -->
           <div class="reveal mt-14 grid gap-6 sm:grid-cols-2">
-            <article class="rounded-2xl border border-border bg-bg p-7">
-              <div class="flex items-center gap-3">
-                <span
-                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
-                  >01</span
-                >
-                <h3 class="text-lg font-bold text-ink">Multi-agency coordination</h3>
+            <article class="reveal-card group relative overflow-hidden rounded-2xl border border-border bg-bg">
+              <div class="p-7">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                    >01</span
+                  >
+                  <h3 class="text-lg font-bold text-ink">Multi-agency coordination</h3>
+                </div>
+                <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                  Crises do not respect a single jurisdiction, and operational success usually depends
+                  on coordinated action across several. Every participating agency works inside one
+                  shared environment, entering decisions concurrently rather than waiting its turn. The
+                  pressure lands where multi-agency response actually fails: asset deployment across
+                  organisations, communication workflows, and joint command.
+                </p>
               </div>
-              <p class="mt-4 text-[15px] leading-relaxed text-muted">
-                Crises do not respect a single jurisdiction, and operational success usually depends
-                on coordinated action across several. Every participating agency works inside one
-                shared environment, entering decisions concurrently rather than waiting its turn. The
-                pressure lands where multi-agency response actually fails: asset deployment across
-                organisations, communication workflows, and joint command.
-              </p>
+
+              <div class="rc-art absolute inset-0 bg-deep" aria-hidden="true">
+                <img
+                  src="/marketing/principle-1-multiagency.webp"
+                  alt=""
+                  aria-hidden="true"
+                  width="900"
+                  height="620"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-full w-full object-cover"
+                />
+                <span class="rc-scrim absolute inset-0"></span>
+                <div class="absolute inset-x-0 bottom-0 flex items-end gap-3 p-7">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent font-mono text-[13px] font-bold text-white"
+                    >01</span
+                  >
+                  <p class="flex-1 text-lg font-bold leading-snug text-white">Multi-agency coordination</p>
+                  <span class="rc-hint shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/50">Read</span>
+                </div>
+              </div>
+
+              <button type="button" class="rc-toggle absolute inset-0 z-20 cursor-pointer" aria-expanded="false">
+                <span class="sr-only">Read more about multi-agency coordination</span>
+              </button>
             </article>
 
-            <article class="rounded-2xl border border-border bg-bg p-7">
-              <div class="flex items-center gap-3">
-                <span
-                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
-                  >02</span
-                >
-                <h3 class="text-lg font-bold text-ink">Information asymmetry</h3>
+            <article class="reveal-card group relative overflow-hidden rounded-2xl border border-border bg-bg">
+              <div class="p-7">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                    >02</span
+                  >
+                  <h3 class="text-lg font-bold text-ink">Information asymmetry</h3>
+                </div>
+                <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                  No agency ever holds a complete assessment of the theatre, so nobody is given one.
+                  Information is deliberately partitioned into role-specific intelligence streams,
+                  stripping out the artificial clarity that makes conventional exercises easy. What is
+                  left is the real bottleneck: whether teams can build the protocols to validate each
+                  other&rsquo;s information quickly enough to construct a shared operational picture.
+                </p>
               </div>
-              <p class="mt-4 text-[15px] leading-relaxed text-muted">
-                No agency ever holds a complete assessment of the theatre, so nobody is given one.
-                Information is deliberately partitioned into role-specific intelligence streams,
-                stripping out the artificial clarity that makes conventional exercises easy. What is
-                left is the real bottleneck: whether teams can build the protocols to validate each
-                other&rsquo;s information quickly enough to construct a shared operational picture.
-              </p>
+
+              <div class="rc-art absolute inset-0 bg-deep" aria-hidden="true">
+                <img
+                  src="/marketing/principle-2-asymmetry.webp"
+                  alt=""
+                  aria-hidden="true"
+                  width="900"
+                  height="620"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-full w-full object-cover"
+                />
+                <span class="rc-scrim absolute inset-0"></span>
+                <div class="absolute inset-x-0 bottom-0 flex items-end gap-3 p-7">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent font-mono text-[13px] font-bold text-white"
+                    >02</span
+                  >
+                  <p class="flex-1 text-lg font-bold leading-snug text-white">Information asymmetry</p>
+                  <span class="rc-hint shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/50">Read</span>
+                </div>
+              </div>
+
+              <button type="button" class="rc-toggle absolute inset-0 z-20 cursor-pointer" aria-expanded="false">
+                <span class="sr-only">Read more about information asymmetry</span>
+              </button>
             </article>
 
-            <article class="rounded-2xl border border-border bg-bg p-7">
-              <div class="flex items-center gap-3">
-                <span
-                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
-                  >03</span
-                >
-                <h3 class="text-lg font-bold text-ink">Real-time adaptive injects</h3>
+            <article class="reveal-card group relative overflow-hidden rounded-2xl border border-border bg-bg">
+              <div class="p-7">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                    >03</span
+                  >
+                  <h3 class="text-lg font-bold text-ink">Real-time adaptive injects</h3>
+                </div>
+                <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                  There is no storyboard to work through. A condition-dependent engine evaluates what
+                  participants actually do and branches the scenario in real time, so the incident
+                  escalates or settles according to the speed and quality of the response. That removes
+                  predictability entirely &mdash; the trajectory follows the decisions, not a script.
+                </p>
               </div>
-              <p class="mt-4 text-[15px] leading-relaxed text-muted">
-                There is no storyboard to work through. A condition-dependent engine evaluates what
-                participants actually do and branches the scenario in real time, so the incident
-                escalates or settles according to the speed and quality of the response. That removes
-                predictability entirely &mdash; the trajectory follows the decisions, not a script.
-              </p>
+
+              <div class="rc-art absolute inset-0 bg-deep" aria-hidden="true">
+                <img
+                  src="/marketing/principle-3-adaptive.webp"
+                  alt=""
+                  aria-hidden="true"
+                  width="900"
+                  height="620"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-full w-full object-cover"
+                />
+                <span class="rc-scrim absolute inset-0"></span>
+                <div class="absolute inset-x-0 bottom-0 flex items-end gap-3 p-7">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent font-mono text-[13px] font-bold text-white"
+                    >03</span
+                  >
+                  <p class="flex-1 text-lg font-bold leading-snug text-white">Real-time adaptive injects</p>
+                  <span class="rc-hint shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/50">Read</span>
+                </div>
+              </div>
+
+              <button type="button" class="rc-toggle absolute inset-0 z-20 cursor-pointer" aria-expanded="false">
+                <span class="sr-only">Read more about real-time adaptive injects</span>
+              </button>
             </article>
 
-            <article class="rounded-2xl border border-border bg-bg p-7">
-              <div class="flex items-center gap-3">
-                <span
-                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
-                  >04</span
-                >
-                <h3 class="text-lg font-bold text-ink">
-                  Team interdependency and storyboard synthesis
-                </h3>
+            <article class="reveal-card group relative overflow-hidden rounded-2xl border border-border bg-bg">
+              <div class="p-7">
+                <div class="flex items-center gap-3">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                    >04</span
+                  >
+                  <h3 class="text-lg font-bold text-ink">
+                    Team interdependency and storyboard synthesis
+                  </h3>
+                </div>
+                <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                  Operational domains are interdependent, so no decision is made in isolation. One
+                  team&rsquo;s intervention alters the conditions every other team is working in,
+                  because a central synthesis layer feeds the output of each module straight back in as
+                  live input to the others. Separate operational threads run as a single engine, and
+                  teams have to absorb the compounding friction their counterparts create.
+                </p>
               </div>
-              <p class="mt-4 text-[15px] leading-relaxed text-muted">
-                Operational domains are interdependent, so no decision is made in isolation. One
-                team&rsquo;s intervention alters the conditions every other team is working in,
-                because a central synthesis layer feeds the output of each module straight back in as
-                live input to the others. Separate operational threads run as a single engine, and
-                teams have to absorb the compounding friction their counterparts create.
-              </p>
+
+              <div class="rc-art absolute inset-0 bg-deep" aria-hidden="true">
+                <img
+                  src="/marketing/principle-4-interdependency.webp"
+                  alt=""
+                  aria-hidden="true"
+                  width="900"
+                  height="620"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-full w-full object-cover"
+                />
+                <span class="rc-scrim absolute inset-0"></span>
+                <div class="absolute inset-x-0 bottom-0 flex items-end gap-3 p-7">
+                  <span
+                    class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-accent font-mono text-[13px] font-bold text-white"
+                    >04</span
+                  >
+                  <p class="flex-1 text-lg font-bold leading-snug text-white">
+                    Team interdependency and storyboard synthesis
+                  </p>
+                  <span class="rc-hint shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/50">Read</span>
+                </div>
+              </div>
+
+              <button type="button" class="rc-toggle absolute inset-0 z-20 cursor-pointer" aria-expanded="false">
+                <span class="sr-only">Read more about team interdependency and storyboard synthesis</span>
+              </button>
             </article>
           </div>
         </div>
@@ -609,6 +1212,86 @@
       <!-- ══════════════════════════════════════════════════════════
            THE ENGAGEMENT
            ═════════════════════════════════════════════════════════ -->
+      <section id="inside" class="deep-grid py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Inside an exercise
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              What your people are actually doing
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-white/60">
+              Not discussing a scenario around a table. Working a live picture, defending public
+              statements, and watching a conversation they do not control.
+            </p>
+          </div>
+
+          <div class="reveal mt-12 grid gap-6 lg:grid-cols-3">
+            <figure>
+              <img
+                src="/marketing/crisis-operating-picture-sm.webp"
+                alt="Hands working a tactical map marked with incident points, cordon rings and movement arrows"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-52 w-full rounded-2xl border border-white/12 object-cover"
+              />
+              <figcaption class="mt-4">
+                <h3 class="text-base font-bold text-white">Command works the picture</h3>
+                <p class="mt-1.5 text-sm leading-relaxed text-white/60">
+                  Positions, cordons and priorities change as the incident develops, and each team
+                  only sees the part of it they have been told.
+                </p>
+              </figcaption>
+            </figure>
+
+            <figure>
+              <img
+                src="/marketing/crisis-comms-response-sm.webp"
+                alt="Three people at laptops in a darkened room drafting public responses under time pressure"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-52 w-full rounded-2xl border border-white/12 object-cover"
+              />
+              <figcaption class="mt-4">
+                <h3 class="text-base font-bold text-white">Comms defends every statement</h3>
+                <p class="mt-1.5 text-sm leading-relaxed text-white/60">
+                  Anything your team says publicly is checked against what the scenario knows to be
+                  true, and challenged when it does not hold.
+                </p>
+              </figcaption>
+            </figure>
+
+            <figure>
+              <img
+                src="/marketing/crisis-social-feed-sm.webp"
+                alt="A column of abstract social posts multiplying outward, some glowing as they gain traction"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-52 w-full rounded-2xl border border-white/12 object-cover"
+              />
+              <figcaption class="mt-4">
+                <h3 class="text-base font-bold text-white">The public conversation runs regardless</h3>
+                <p class="mt-1.5 text-sm leading-relaxed text-white/60">
+                  A simulated feed, inbox and news cycle carries on with or without you, and
+                  misinformation spreads faster than corrections.
+                </p>
+              </figcaption>
+            </figure>
+          </div>
+
+          <p class="reveal mt-10 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-white/30">
+            Illustrations, not screenshots
+          </p>
+        </div>
+      </section>
+
       <section id="engagement" class="border-y border-border bg-surface py-20 sm:py-28">
         <div class="mx-auto max-w-content px-5 sm:px-8">
           <div class="reveal mx-auto max-w-2xl text-center">
@@ -795,7 +1478,16 @@
 
           <div class="reveal mt-14 grid gap-6 lg:grid-cols-3">
             <article class="overflow-hidden rounded-2xl border border-border bg-surface">
-              <div class="deep-grid p-6">
+              <img
+                src="/marketing/crisis-multi-agency-sm.webp"
+                alt="An emergency operations centre, figures at a wall of maps marked with incidents"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-44 w-full object-cover"
+              />
+              <div class="deep-grid px-6 py-5">
                 <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Type 01</p>
                 <h3 class="mt-2 text-xl font-bold text-white">Multi-agency coordination</h3>
               </div>
@@ -823,7 +1515,16 @@
             </article>
 
             <article class="overflow-hidden rounded-2xl border border-border bg-surface">
-              <div class="deep-grid p-6">
+              <img
+                src="/marketing/crisis-site-response-sm.webp"
+                alt="Responders in high-visibility jackets directing a crowd away from a venue at dusk"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-44 w-full object-cover"
+              />
+              <div class="deep-grid px-6 py-5">
                 <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Type 02</p>
                 <h3 class="mt-2 text-xl font-bold text-white">Site and public safety response</h3>
               </div>
@@ -851,7 +1552,16 @@
             </article>
 
             <article class="overflow-hidden rounded-2xl border border-border bg-surface">
-              <div class="deep-grid p-6">
+              <img
+                src="/marketing/crisis-reputational-sm.webp"
+                alt="A lone executive facing a rising swarm of glowing message cards and phone screens"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-44 w-full object-cover"
+              />
+              <div class="deep-grid px-6 py-5">
                 <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Type 03</p>
                 <h3 class="mt-2 text-xl font-bold text-white">Reputational and social crisis</h3>
               </div>
@@ -1332,6 +2042,110 @@
       <!-- ══════════════════════════════════════════════════════════
            ENQUIRY
            ═════════════════════════════════════════════════════════ -->
+      <section id="try" class="border-y border-border bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Thirty seconds, one decision
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              See how your call would be scored
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              One inject from a real exercise. Choose a response and it is graded the way your team
+              would be graded on the day.
+            </p>
+          </div>
+
+          <div class="reveal mx-auto mt-12 max-w-3xl rounded-2xl border border-white/12 bg-deep p-5 shadow-2xl sm:p-8">
+            <!-- The inject -->
+            <div id="try-inject">
+              <div class="flex items-center justify-between gap-4 border-b border-white/10 pb-4">
+                <span class="flex items-center gap-2">
+                  <span class="live-dot h-2 w-2 rounded-full bg-danger"></span>
+                  <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/70">Inject &middot; T+00:22</span>
+                </span>
+                <span id="try-timer" class="font-mono text-[11px] tabular-nums text-accent">00:00</span>
+              </div>
+
+              <p class="mt-5 text-lg font-semibold leading-snug text-white">
+                A regulator has asked for an immediate briefing. Your investigation has not confirmed
+                the cause, and footage is already circulating publicly.
+              </p>
+              <p class="mt-3 text-sm leading-relaxed text-white/55">
+                You are the incident lead. Choose one.
+              </p>
+
+              <div class="mt-6 space-y-3">
+                <button
+                  class="try-option w-full rounded-xl border border-white/15 bg-white/[0.03] px-5 py-4 text-left text-[15px] text-white transition hover:border-accent hover:bg-accent/10"
+                  data-score="4"
+                  data-verdict="Defensible but slow, and silence is itself a message."
+                  data-consequence="Speculation fills the gap. By the time you brief, the regulator has already read three versions of events."
+                >
+                  Wait for the investigation to confirm the cause before saying anything.
+                </button>
+                <button
+                  class="try-option w-full rounded-xl border border-white/15 bg-white/[0.03] px-5 py-4 text-left text-[15px] text-white transition hover:border-accent hover:bg-accent/10"
+                  data-score="8"
+                  data-verdict="Strong. Acknowledges without speculating, and buys back the narrative."
+                  data-consequence="The regulator gets a factual holding position. Comms now leads the story instead of chasing it."
+                >
+                  Brief now on what is confirmed, state clearly what is not yet known.
+                </button>
+                <button
+                  class="try-option w-full rounded-xl border border-white/15 bg-white/[0.03] px-5 py-4 text-left text-[15px] text-white transition hover:border-accent hover:bg-accent/10"
+                  data-score="2"
+                  data-verdict="High risk. An unverified cause becomes a correction you will have to issue publicly."
+                  data-consequence="Your initial account is contradicted within the hour. The story shifts from the incident to your credibility."
+                >
+                  Brief now with your working theory of the cause to appear in control.
+                </button>
+              </div>
+            </div>
+
+            <!-- The graded result -->
+            <div id="try-result" class="hidden">
+              <div class="flex flex-wrap items-end justify-between gap-6 border-b border-white/10 pb-6">
+                <div>
+                  <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">Your decision, graded</p>
+                  <p id="try-verdict" class="mt-2 max-w-lg text-lg font-semibold leading-snug text-white"></p>
+                </div>
+                <div class="flex items-end gap-6">
+                  <div class="text-right">
+                    <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">Latency</p>
+                    <p id="try-latency" class="font-mono text-2xl font-bold text-white"></p>
+                  </div>
+                  <div class="text-right">
+                    <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/40">Robustness</p>
+                    <p class="font-mono text-2xl font-bold text-white">
+                      <span id="try-score"></span><span class="text-base text-white/40">/10</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-6">
+                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">What happens next</p>
+                <p id="try-consequence" class="mt-2 text-[15px] leading-relaxed text-white/70"></p>
+              </div>
+
+              <div class="mt-8 flex flex-wrap items-center gap-4 border-t border-white/10 pt-6">
+                <button
+                  id="try-reset"
+                  class="rounded-xl border border-white/25 px-5 py-3 text-sm font-semibold text-white transition hover:border-white/50 hover:bg-white/5"
+                >
+                  Try a different response
+                </button>
+                <p class="text-sm text-white/50">
+                  In a real exercise this happens fifteen to twenty times, across four teams at once.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section id="enquire" class="deep-grid py-20 sm:py-28">
         <div class="mx-auto max-w-content px-5 sm:px-8">
           <div class="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:gap-16">

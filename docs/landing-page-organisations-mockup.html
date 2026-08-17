@@ -1,0 +1,1826 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="data:image/png;base64,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" />
+    <title>Black Swan Simulations — Crisis Simulated. Readiness Proven.</title>
+    <meta
+      name="description"
+      content="Crisis simulated. Readiness proven. Live, AI-scored crisis exercises built on your organisation's own risks, plans and operating procedures."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script>
+      // Mirrors frontend/tailwind.config.js + the :root tokens in frontend/src/style.css
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bg: '#FAF8F4',
+              surface: '#FFFFFF',
+              'surface-2': '#F4F1EA',
+              ink: '#172033',
+              muted: '#6B7280',
+              brand: { DEFAULT: '#1E3A5F', strong: '#18304E' },
+              accent: { DEFAULT: '#D97706', strong: '#B45309' },
+              border: { DEFAULT: '#E4DFD4', strong: '#D6CFC0' },
+              success: '#15803D',
+              warning: '#D97706',
+              danger: '#B91C1C',
+              deep: '#0E1A2B',
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            maxWidth: { content: '72rem' },
+          },
+        },
+      };
+    </script>
+    <style>
+      html {
+        scroll-behavior: smooth;
+        scroll-padding-top: 5rem;
+      }
+      body {
+        background: #faf8f4;
+        color: #172033;
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+
+
+      .brand-mark {
+        display: inline-block;
+        flex: 0 0 auto;
+        border-radius: 9999px;
+        background-color: #ffffff;
+        background-image: url('data:image/png;base64,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');
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: cover;
+        box-shadow:
+          0 0 0 1px rgba(228, 223, 212, 0.9),
+          0 2px 8px rgba(14, 26, 43, 0.12);
+      }
+
+      .deep-grid {
+        background-image:
+          radial-gradient(ellipse 80% 60% at 50% -10%, rgba(217, 119, 6, 0.16), transparent 70%),
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(160deg, #0e1a2b 0%, #16293f 55%, #18304e 100%);
+        background-size:
+          100% 100%,
+          64px 64px,
+          64px 64px,
+          100% 100%;
+      }
+
+      /* Header: solid state once scrolled off the dark hero. */
+      #site-header.is-solid {
+        background: rgba(255, 255, 255, 0.94);
+        backdrop-filter: blur(10px);
+        border-bottom-color: #e4dfd4;
+        box-shadow: 0 1px 2px rgba(23, 32, 51, 0.06);
+      }
+      #site-header.is-solid .hdr-link {
+        color: #172033;
+      }
+      #site-header.is-solid .hdr-link:hover {
+        background: #f4f1ea;
+        color: #1e3a5f;
+      }
+      #site-header.is-solid .hdr-title {
+        color: #172033;
+      }
+      #site-header.is-solid .hdr-sub {
+        color: #6b7280;
+      }
+
+      .reveal {
+        opacity: 0;
+        transform: translateY(18px);
+        transition:
+          opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+          transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .reveal.is-visible {
+        opacity: 1;
+        transform: none;
+      }
+
+      @keyframes live-pulse {
+        0%,
+        100% {
+          opacity: 1;
+          box-shadow: 0 0 0 0 rgba(185, 28, 28, 0.7);
+        }
+        70% {
+          opacity: 0.75;
+          box-shadow: 0 0 0 7px rgba(185, 28, 28, 0);
+        }
+      }
+      .live-dot {
+        animation: live-pulse 2s ease-out infinite;
+      }
+
+      @keyframes inject-glow {
+        0%,
+        100% {
+          border-color: rgba(217, 119, 6, 0.55);
+          background-color: rgba(217, 119, 6, 0.1);
+        }
+        50% {
+          border-color: rgba(217, 119, 6, 1);
+          background-color: rgba(217, 119, 6, 0.2);
+        }
+      }
+      .inject-firing {
+        animation: inject-glow 2.4s ease-in-out infinite;
+      }
+
+      @keyframes heat-drift {
+        0%,
+        100% {
+          width: 58%;
+        }
+        50% {
+          width: 71%;
+        }
+      }
+      .heat-fill {
+        animation: heat-drift 6s ease-in-out infinite;
+      }
+
+      @keyframes bar-grow {
+        from {
+          transform: scaleY(0.15);
+        }
+      }
+      .score-bar {
+        transform-origin: bottom;
+        animation: bar-grow 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+
+      details > summary {
+        list-style: none;
+        cursor: pointer;
+      }
+      details > summary::-webkit-details-marker {
+        display: none;
+      }
+      details[open] .faq-chevron {
+        transform: rotate(180deg);
+      }
+      .faq-chevron {
+        transition: transform 0.25s ease;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        html {
+          scroll-behavior: auto;
+        }
+        .reveal {
+          opacity: 1;
+          transform: none;
+          transition: none;
+        }
+        .live-dot,
+        .inject-firing,
+        .heat-fill,
+        .score-bar {
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+
+  <body class="antialiased">
+    <!-- ══════════════════════════════════════════════════════════
+         HEADER
+         ═════════════════════════════════════════════════════════ -->
+    <header
+      id="site-header"
+      class="fixed inset-x-0 top-0 z-50 border-b border-transparent transition-all duration-300"
+    >
+      <div class="mx-auto max-w-content px-5 sm:px-8">
+        <div class="flex h-16 items-center justify-between gap-4 sm:h-20">
+          <a href="#top" class="flex items-center gap-3">
+            <span class="brand-mark h-10 w-10" role="img" aria-label="Black Swan Simulations logo"></span>
+            <span class="leading-tight">
+              <span class="hdr-title block text-[15px] font-bold text-white">Black Swan</span>
+              <span class="hdr-sub block text-[10px] uppercase tracking-[0.14em] text-white/50"
+                >Simulations</span
+              >
+            </span>
+          </a>
+
+          <nav class="hidden items-center gap-1 lg:flex">
+            <a
+              href="#gap"
+              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >The gap</a
+            >
+            <a
+              href="#engagement"
+              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >What you get</a
+            >
+            <a
+              href="#evidence"
+              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >Evidence</a
+            >
+            <a
+              href="#sectors"
+              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >Sectors</a
+            >
+            <a
+              href="#practical"
+              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >Practicalities</a
+            >
+            <a
+              href="#faq"
+              class="hdr-link rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >FAQ</a
+            >
+          </nav>
+
+          <div class="flex items-center gap-2 sm:gap-3">
+            <a
+              href="landing-page-consultants-mockup.html"
+              class="hdr-link hidden rounded-lg px-3 py-2 text-sm font-semibold text-white/85 transition hover:text-white md:block"
+              >For risk consultants</a
+            >
+            <a
+              href="#enquire"
+              class="rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-strong"
+              >Book a scoping call</a
+            >
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <!-- ══════════════════════════════════════════════════════════
+           HERO
+           ═════════════════════════════════════════════════════════ -->
+      <section class="deep-grid relative overflow-hidden pt-28 pb-20 sm:pt-36 sm:pb-24">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="grid items-center gap-14 lg:grid-cols-[1.05fr_1fr] lg:gap-12">
+            <!-- Copy -->
+            <div>
+              <p
+                class="mb-6 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/5 px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-[0.16em] text-accent"
+              >
+                <span class="h-1.5 w-1.5 rounded-full bg-accent"></span>
+                Preparedness rehearsed. Readiness measured.
+              </p>
+
+              <h1
+                class="text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.3rem]"
+              >
+                Crisis simulated.
+                <span class="block text-accent">Readiness proven.</span>
+              </h1>
+
+              <p class="mt-6 max-w-xl text-lg leading-relaxed text-white/70">
+                We run a live, AI-scored crisis simulation for your team, built on your own risk
+                material. Your people make real decisions under pressure, every call is timed and
+                graded, and you leave with a report showing precisely where the response breaks.
+              </p>
+
+              <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <a
+                  href="#enquire"
+                  class="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-6 py-4 text-base font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-strong"
+                >
+                  Book a scoping call
+                  <svg
+                    class="h-4 w-4"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                  </svg>
+                </a>
+                <a
+                  href="#engagement"
+                  class="inline-flex items-center justify-center rounded-xl border border-white/25 px-6 py-4 text-base font-semibold text-white transition hover:border-white/50 hover:bg-white/5"
+                  >See what an exercise involves</a
+                >
+              </div>
+
+              <p class="mt-6 text-sm text-white/45">
+                One risk-built scenario, two live simulations, one scored review.
+              </p>
+
+              <!-- Stat strip -->
+              <dl class="mt-10 grid grid-cols-3 gap-4 border-t border-white/10 pt-8 sm:gap-8">
+                <div>
+                  <dt class="font-mono text-2xl font-bold text-white sm:text-3xl">4 hrs</dt>
+                  <dd class="mt-1 text-xs leading-snug text-white/50">per live simulation</dd>
+                </div>
+                <div>
+                  <dt class="font-mono text-2xl font-bold text-white sm:text-3xl">8&ndash;30</dt>
+                  <dd class="mt-1 text-xs leading-snug text-white/50">
+                    participants across your teams
+                  </dd>
+                </div>
+                <div>
+                  <dt class="font-mono text-2xl font-bold text-accent sm:text-3xl">Same day</dt>
+                  <dd class="mt-1 text-xs leading-snug text-white/50">
+                    scored after-action review
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- Exercise visual -->
+            <div class="relative lg:pl-4">
+              <div
+                class="rounded-2xl border border-white/12 bg-deep/70 p-4 shadow-2xl backdrop-blur-sm sm:p-5"
+              >
+                <div class="flex items-center justify-between border-b border-white/10 pb-3">
+                  <div class="flex items-center gap-2">
+                    <span class="live-dot h-2 w-2 rounded-full bg-danger"></span>
+                    <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/70"
+                      >Exercise running</span
+                    >
+                  </div>
+                  <span id="sim-clock" class="font-mono text-[11px] tabular-nums text-accent"
+                    >T+ 00:22:14</span
+                  >
+                </div>
+
+                <div class="mt-4">
+                  <p class="mb-2.5 font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
+                    Situation timeline
+                  </p>
+                  <ul class="space-y-2">
+                    <li
+                      class="flex items-center gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2"
+                    >
+                      <span class="font-mono text-[10px] text-white/40">00:06</span>
+                      <span class="flex-1 truncate text-[13px] text-white/45 line-through"
+                        >Incident confirmed at primary site</span
+                      >
+                      <svg
+                        class="h-3.5 w-3.5 shrink-0 text-success"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                      >
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    </li>
+                    <li
+                      class="flex items-center gap-3 rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2"
+                    >
+                      <span class="font-mono text-[10px] text-white/40">00:15</span>
+                      <span class="flex-1 truncate text-[13px] text-white/45 line-through"
+                        >Footage circulating on social media</span
+                      >
+                      <svg
+                        class="h-3.5 w-3.5 shrink-0 text-success"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="3"
+                        stroke-linecap="round"
+                      >
+                        <path d="M20 6L9 17l-5-5" />
+                      </svg>
+                    </li>
+                    <li class="inject-firing flex items-center gap-3 rounded-lg border px-3 py-2">
+                      <span class="font-mono text-[10px] text-accent">00:22</span>
+                      <span class="flex-1 truncate text-[13px] font-medium text-white"
+                        >Regulator requests immediate briefing</span
+                      >
+                      <span
+                        class="shrink-0 font-mono text-[9px] uppercase tracking-wider text-accent"
+                        >now</span
+                      >
+                    </li>
+                    <li
+                      class="flex items-center gap-3 rounded-lg border border-dashed border-white/10 px-3 py-2"
+                    >
+                      <span class="font-mono text-[10px] text-white/30">00:31</span>
+                      <span class="flex-1 truncate text-[13px] text-white/35"
+                        >If no holding statement &rarr; speculation escalates</span
+                      >
+                      <span class="shrink-0 font-mono text-[9px] uppercase text-white/30"
+                        >pending</span
+                      >
+                    </li>
+                  </ul>
+                </div>
+
+                <div class="mt-5 rounded-lg border border-white/8 bg-white/[0.03] p-3">
+                  <div class="mb-2 flex items-baseline justify-between">
+                    <span class="font-mono text-[10px] uppercase tracking-[0.16em] text-white/40"
+                      >Situation severity</span
+                    >
+                    <span class="font-mono text-xs font-semibold text-accent">Escalating</span>
+                  </div>
+                  <div class="h-1.5 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      class="heat-fill h-full rounded-full"
+                      style="
+                        width: 64%;
+                        background: linear-gradient(90deg, #15803d, #d97706 60%, #b91c1c);
+                      "
+                    ></div>
+                  </div>
+                </div>
+
+                <div class="mt-3 rounded-lg border border-white/8 bg-white/[0.03] p-3">
+                  <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                      <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-white/40">
+                        Decision graded
+                      </p>
+                      <p class="mt-1 truncate text-[13px] font-medium text-white">
+                        Holding statement issued to media
+                      </p>
+                      <p class="mt-0.5 font-mono text-[10px] text-white/40">
+                        Latency 6m 12s · Coordination 7.4
+                      </p>
+                    </div>
+                    <div class="flex shrink-0 items-end gap-2">
+                      <div class="flex h-9 items-end gap-[3px]">
+                        <span
+                          class="score-bar w-1.5 rounded-sm bg-accent/40"
+                          style="height: 42%; animation-delay: 0.05s"
+                        ></span>
+                        <span
+                          class="score-bar w-1.5 rounded-sm bg-accent/60"
+                          style="height: 58%; animation-delay: 0.12s"
+                        ></span>
+                        <span
+                          class="score-bar w-1.5 rounded-sm bg-accent/80"
+                          style="height: 74%; animation-delay: 0.19s"
+                        ></span>
+                        <span
+                          class="score-bar w-1.5 rounded-sm bg-accent"
+                          style="height: 86%; animation-delay: 0.26s"
+                        ></span>
+                      </div>
+                      <span class="font-mono text-xl font-bold leading-none text-white"
+                        >6<span class="text-sm text-white/40">/10</span></span
+                      >
+                    </div>
+                  </div>
+                </div>
+
+                <div class="mt-4 flex flex-wrap gap-1.5 border-t border-white/10 pt-3.5">
+                  <span
+                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
+                    >Command</span
+                  >
+                  <span
+                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
+                    >Operations</span
+                  >
+                  <span
+                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
+                    >Comms</span
+                  >
+                  <span
+                    class="rounded-md bg-white/8 px-2 py-1 font-mono text-[10px] uppercase tracking-wider text-white/60"
+                    >Legal</span
+                  >
+                </div>
+              </div>
+
+              <p
+                class="mt-3 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-white/30"
+              >
+                Illustrative exercise view
+              </p>
+            </div>
+          </div>
+
+          <p
+            class="mt-16 border-t border-white/10 pt-8 text-center text-sm leading-relaxed text-white/45"
+          >
+            Fictional, non-operational scenarios only &mdash; for government, defence, emergency
+            services, critical infrastructure, corporate crisis and communications teams.
+          </p>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           KEY HIGHLIGHTS
+           ═════════════════════════════════════════════════════════ -->
+      <section id="principles" class="border-b border-border bg-surface py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Key highlights
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Four things that make it behave like a real crisis
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              These are the design decisions that separate an exercise here from a scripted tabletop,
+              and the reason your team cannot settle into a comfortable answer.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-6 sm:grid-cols-2">
+            <article class="rounded-2xl border border-border bg-bg p-7">
+              <div class="flex items-center gap-3">
+                <span
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                  >01</span
+                >
+                <h3 class="text-lg font-bold text-ink">Multi-agency coordination</h3>
+              </div>
+              <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                Crises do not respect a single jurisdiction, and operational success usually depends
+                on coordinated action across several. Every participating agency works inside one
+                shared environment, entering decisions concurrently rather than waiting its turn. The
+                pressure lands where multi-agency response actually fails: asset deployment across
+                organisations, communication workflows, and joint command.
+              </p>
+            </article>
+
+            <article class="rounded-2xl border border-border bg-bg p-7">
+              <div class="flex items-center gap-3">
+                <span
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                  >02</span
+                >
+                <h3 class="text-lg font-bold text-ink">Information asymmetry</h3>
+              </div>
+              <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                No agency ever holds a complete assessment of the theatre, so nobody is given one.
+                Information is deliberately partitioned into role-specific intelligence streams,
+                stripping out the artificial clarity that makes conventional exercises easy. What is
+                left is the real bottleneck: whether teams can build the protocols to validate each
+                other&rsquo;s information quickly enough to construct a shared operational picture.
+              </p>
+            </article>
+
+            <article class="rounded-2xl border border-border bg-bg p-7">
+              <div class="flex items-center gap-3">
+                <span
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                  >03</span
+                >
+                <h3 class="text-lg font-bold text-ink">Real-time adaptive injects</h3>
+              </div>
+              <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                There is no storyboard to work through. A condition-dependent engine evaluates what
+                participants actually do and branches the scenario in real time, so the incident
+                escalates or settles according to the speed and quality of the response. That removes
+                predictability entirely &mdash; the trajectory follows the decisions, not a script.
+              </p>
+            </article>
+
+            <article class="rounded-2xl border border-border bg-bg p-7">
+              <div class="flex items-center gap-3">
+                <span
+                  class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-brand font-mono text-[13px] font-bold text-white"
+                  >04</span
+                >
+                <h3 class="text-lg font-bold text-ink">
+                  Team interdependency and storyboard synthesis
+                </h3>
+              </div>
+              <p class="mt-4 text-[15px] leading-relaxed text-muted">
+                Operational domains are interdependent, so no decision is made in isolation. One
+                team&rsquo;s intervention alters the conditions every other team is working in,
+                because a central synthesis layer feeds the output of each module straight back in as
+                live input to the others. Separate operational threads run as a single engine, and
+                teams have to absorb the compounding friction their counterparts create.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           THE READINESS GAP
+           ═════════════════════════════════════════════════════════ -->
+      <section id="gap" class="bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              The readiness gap
+            </p>
+            <h2 class="sr-only">The readiness gap</h2>
+            <blockquote class="rounded-2xl border border-border bg-surface px-6 py-8 shadow-sm sm:px-10 sm:py-10">
+              <p class="text-2xl font-extrabold leading-tight tracking-tight text-ink sm:text-3xl">
+                &ldquo;No plan of operations extends with any certainty beyond the first contact with
+                the main body of the enemy.&rdquo;
+              </p>
+              <footer class="mt-5 font-mono text-[11px] uppercase tracking-[0.16em] text-accent">
+                Helmuth von Moltke the Elder
+              </footer>
+            </blockquote>
+            <p class="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted">
+              Almost every organisation has a crisis plan. The readiness gap appears when people must
+              execute it under time pressure, incomplete information and changing conditions.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <span class="grid h-10 w-10 place-items-center rounded-xl bg-danger/10 text-danger">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3.5 2" />
+                </svg>
+              </span>
+              <h3 class="mt-4 text-base font-bold text-ink">Decisions arrive late</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                The correct call, made twenty minutes too late, is a different call. Nobody measures
+                this in a discussion-based exercise.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <span class="grid h-10 w-10 place-items-center rounded-xl bg-danger/10 text-danger">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M4 12h9" />
+                  <path d="M10 9l3 3-3 3" />
+                  <path d="M18 4v16" />
+                </svg>
+              </span>
+              <h3 class="mt-4 text-base font-bold text-ink">
+                Information stops at the function boundary
+              </h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Operations knew. Communications did not. In the real event, that gap becomes the
+                story.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <span class="grid h-10 w-10 place-items-center rounded-xl bg-danger/10 text-danger">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M3 11v2a1 1 0 001 1h2l5 4V5L6 10H4a1 1 0 00-1 1z" />
+                  <path d="M16 9a3.5 3.5 0 010 6" />
+                  <path d="M19 6a7 7 0 010 12" />
+                </svg>
+              </span>
+              <h3 class="mt-4 text-base font-bold text-ink">The first hour is lost to others</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Speculation and misinformation set the narrative while your holding statement is
+                still circulating for approval.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <span class="grid h-10 w-10 place-items-center rounded-xl bg-danger/10 text-danger">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="9" y="3" width="6" height="5" rx="1" />
+                  <rect x="2" y="16" width="6" height="5" rx="1" />
+                  <rect x="16" y="16" width="6" height="5" rx="1" />
+                  <path d="M12 8v3M5 16v-2h14v2" />
+                </svg>
+              </span>
+              <h3 class="mt-4 text-base font-bold text-ink">Nobody is certain who decides</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Escalation thresholds and delegated authority look unambiguous on paper and dissolve
+                under time pressure.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <span class="grid h-10 w-10 place-items-center rounded-xl bg-danger/10 text-danger">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 4l8 15H4z" />
+                  <path d="M12 10v4M12 17h.01" />
+                </svg>
+              </span>
+              <h3 class="mt-4 text-base font-bold text-ink">Untested assumptions fail quietly</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                The plan assumes a system, a supplier or a named individual that turns out to be
+                unavailable on the day.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border-2 border-brand bg-brand/[0.04] p-6">
+              <span class="grid h-10 w-10 place-items-center rounded-xl bg-brand text-white">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M4 20V10M10 20V4M16 20v-7M22 20v-4" />
+                </svg>
+              </span>
+              <h3 class="mt-4 text-base font-bold text-ink">And none of it is measured</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                A conventional tabletop ends in a discussion and a subjective debrief. You cannot
+                track something you never measured, which is the gap we close.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           THE ENGAGEMENT
+           ═════════════════════════════════════════════════════════ -->
+      <section id="engagement" class="border-y border-border bg-surface py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              What you get
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              One engagement, three deliverables
+            </h2>
+          </div>
+
+          <div class="reveal mt-14 grid gap-6 lg:grid-cols-3">
+            <div class="flex flex-col rounded-2xl border border-border bg-bg p-7">
+              <span
+                class="mb-5 grid h-10 w-10 place-items-center rounded-xl bg-brand font-mono text-sm font-bold text-white"
+                >01</span
+              >
+              <h3 class="text-lg font-bold text-ink">Build your crisis with professional risk consultants</h3>
+              <p class="mt-3 text-sm leading-relaxed text-muted">
+                Our risk consultants work with your team to turn your crisis plan, risk register
+                and standard operating procedures into a bespoke scenario. The exercise reflects your
+                sector, sites, stakeholders, dependencies and decision thresholds.
+              </p>
+              <p class="mt-auto border-t border-border pt-4 text-[13px] leading-relaxed text-ink/70">
+                Your team validates the scenario before the first simulation begins.
+              </p>
+            </div>
+
+            <div class="flex flex-col rounded-2xl border border-border bg-bg p-7">
+              <span
+                class="mb-5 grid h-10 w-10 place-items-center rounded-xl bg-brand font-mono text-sm font-bold text-white"
+                >02</span
+              >
+              <h3 class="text-lg font-bold text-ink">Two live simulations</h3>
+              <p class="mt-3 text-sm leading-relaxed text-muted">
+                The first simulation establishes a performance baseline. A facilitated reflection
+                then converts the findings into practical adjustments before the second simulation
+                tests whether those changes improve performance under pressure.
+              </p>
+              <p class="mt-auto border-t border-border pt-4 text-[13px] leading-relaxed text-ink/70">
+                Baseline, facilitated reflection, retest and measured improvement.
+              </p>
+            </div>
+
+            <div class="flex flex-col rounded-2xl border-2 border-accent bg-accent/[0.04] p-7 shadow-md">
+              <span
+                class="mb-5 grid h-10 w-10 place-items-center rounded-xl bg-accent font-mono text-sm font-bold text-white"
+                >03</span
+              >
+              <h3 class="text-lg font-bold text-ink">A scored after-action review</h3>
+              <p class="mt-3 text-sm leading-relaxed text-muted">
+                Receive a scored account of what happened, including decision latency, coordination,
+                team and participant performance, the complete decision timeline and prioritised
+                recommendations. Exported to PDF or Excel.
+              </p>
+              <p class="mt-auto border-t border-accent/25 pt-4 text-[13px] leading-relaxed text-ink/70">
+                Evidence generated from the simulations, not reconstructed from memory.
+              </p>
+            </div>
+          </div>
+
+          <!-- Scope band -->
+          <div
+            class="reveal mt-12 flex flex-col items-center justify-between gap-6 rounded-2xl border border-border bg-surface-2 px-7 py-8 text-center sm:flex-row sm:text-left"
+          >
+            <div>
+              <p class="text-lg font-bold text-ink">Every engagement includes all three</p>
+              <p class="mt-2 max-w-lg text-[13px] leading-relaxed text-muted">
+                Scope, format and dates are agreed with you at the scoping call, before anything is
+                built. Your organisation is invoiced directly and pays online, so nobody on your team
+                needs an account with us.
+              </p>
+            </div>
+            <a
+              href="#enquire"
+              class="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-brand-strong"
+            >
+              Discuss an engagement
+              <svg
+                class="h-4 w-4"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d="M5 12h14M13 6l6 6-6 6" />
+              </svg>
+            </a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           EVIDENCE (dark band)
+           ═════════════════════════════════════════════════════════ -->
+      <section id="evidence" class="deep-grid py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Evidence
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Readiness you can put in front of a board
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-white/60">
+              Every exercise produces the same four measures. That makes preparedness something you
+              can track across years and teams, rather than something you assert.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Measure 01</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Decision latency</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                How long each team took to act once the situation changed, timed to the second.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Measure 02</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Coordination</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                Whether information crossed function boundaries, and exactly where it stopped.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Measure 03</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Robustness, 1&ndash;10</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                Each decision assessed against sector standards, not against the loudest opinion in
+                the room.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Measure 04</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Impact matrix</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                Which team&rsquo;s decision created which other team&rsquo;s problem.
+              </p>
+            </div>
+          </div>
+
+          <div
+            class="reveal mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center"
+          >
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50"
+              >Complete decision timeline</span
+            >
+            <span class="hidden h-3 w-px bg-white/15 sm:block"></span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50"
+              >Replay of the exercise</span
+            >
+            <span class="hidden h-3 w-px bg-white/15 sm:block"></span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50"
+              >Per-participant scoring</span
+            >
+            <span class="hidden h-3 w-px bg-white/15 sm:block"></span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50"
+              >PDF and Excel export</span
+            >
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           EXERCISE TYPES
+           ═════════════════════════════════════════════════════════ -->
+      <section class="bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Exercise types
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Three ways to put your team under pressure
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              Same scoring and the same report in every case. We recommend a format once we
+              understand what you are trying to prove.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-6 lg:grid-cols-3">
+            <article class="overflow-hidden rounded-2xl border border-border bg-surface">
+              <div class="deep-grid p-6">
+                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Type 01</p>
+                <h3 class="mt-2 text-xl font-bold text-white">Multi-agency coordination</h3>
+              </div>
+              <div class="p-6">
+                <p class="text-sm leading-relaxed text-muted">
+                  Tests the handoffs &mdash; between your own functions, and with the external
+                  agencies you would actually depend on. Each team sees a different slice of the
+                  truth.
+                </p>
+                <ul class="mt-5 space-y-2.5">
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Deliberate information asymmetry between teams
+                  </li>
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Role-scoped channels, resource requests and negotiation
+                  </li>
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Best suited to command groups and executive teams
+                  </li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="overflow-hidden rounded-2xl border border-border bg-surface">
+              <div class="deep-grid p-6">
+                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Type 02</p>
+                <h3 class="mt-2 text-xl font-bold text-white">Site and public safety response</h3>
+              </div>
+              <div class="p-6">
+                <p class="text-sm leading-relaxed text-muted">
+                  For organisations responsible for physical sites and the people in them. A live map
+                  of a real location, with a crowd simulation running underneath that reacts to
+                  every decision.
+                </p>
+                <ul class="mt-5 space-y-2.5">
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Evacuation and cordon decisions with modelled consequences
+                  </li>
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Casualty condition deteriorates while decisions are pending
+                  </li>
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Built on real building footprints and street layouts
+                  </li>
+                </ul>
+              </div>
+            </article>
+
+            <article class="overflow-hidden rounded-2xl border border-border bg-surface">
+              <div class="deep-grid p-6">
+                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Type 03</p>
+                <h3 class="mt-2 text-xl font-bold text-white">Reputational and social crisis</h3>
+              </div>
+              <div class="p-6">
+                <p class="text-sm leading-relaxed text-muted">
+                  For communications, legal and leadership. A simulated feed, inbox and news cycle
+                  turns on your organisation while misinformation moves faster than your approval
+                  chain.
+                </p>
+                <ul class="mt-5 space-y-2.5">
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Simulated posts, direct messages and news coverage
+                  </li>
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Every public statement is fact-checked against the scenario
+                  </li>
+                  <li class="flex gap-2.5 text-[13px] text-ink/75">
+                    <span class="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-accent"></span>
+                    Hostile actors that respond to what you actually say
+                  </li>
+                </ul>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           SECTORS
+           ═════════════════════════════════════════════════════════ -->
+      <section id="sectors" class="border-y border-border bg-surface py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Who this is for
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Built for organisations that cannot afford a first attempt
+            </h2>
+          </div>
+
+          <div class="reveal mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <h3 class="text-base font-bold text-ink">Government &amp; defence</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Inter-agency coordination and public information under political and media pressure.
+              </p>
+              <p
+                class="mt-4 border-t border-border pt-3 font-mono text-[11px] uppercase tracking-wider text-accent"
+              >
+                Typical exercise
+              </p>
+              <p class="mt-1 text-[13px] text-ink/70">
+                Coordinated attack during a public event, with competing agency priorities.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <h3 class="text-base font-bold text-ink">Emergency services</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Mass-casualty response, cordon and evacuation decisions, multi-service command.
+              </p>
+              <p
+                class="mt-4 border-t border-border pt-3 font-mono text-[11px] uppercase tracking-wider text-accent"
+              >
+                Typical exercise
+              </p>
+              <p class="mt-1 text-[13px] text-ink/70">
+                Explosion at a crowded venue with a suspected secondary device.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <h3 class="text-base font-bold text-ink">Critical infrastructure &amp; utilities</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Service loss, cascading failure and communicating with a public that needs answers.
+              </p>
+              <p
+                class="mt-4 border-t border-border pt-3 font-mono text-[11px] uppercase tracking-wider text-accent"
+              >
+                Typical exercise
+              </p>
+              <p class="mt-1 text-[13px] text-ink/70">
+                Extended outage affecting hospitals and transport, cause unknown for hours.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <h3 class="text-base font-bold text-ink">Corporate crisis &amp; communications</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Product harm, data compromise or executive conduct playing out in public in real
+                time.
+              </p>
+              <p
+                class="mt-4 border-t border-border pt-3 font-mono text-[11px] uppercase tracking-wider text-accent"
+              >
+                Typical exercise
+              </p>
+              <p class="mt-1 text-[13px] text-ink/70">
+                A safety allegation goes viral before your own investigation has confirmed anything.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <h3 class="text-base font-bold text-ink">Media &amp; public affairs</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Verification pressure, misinformation, and reporting responsibly under uncertainty.
+              </p>
+              <p
+                class="mt-4 border-t border-border pt-3 font-mono text-[11px] uppercase tracking-wider text-accent"
+              >
+                Typical exercise
+              </p>
+              <p class="mt-1 text-[13px] text-ink/70">
+                Fabricated footage of a live incident spreading faster than official confirmation.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border-2 border-brand bg-brand/[0.04] p-6">
+              <h3 class="text-base font-bold text-ink">Not on this list?</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                The scenario is built from your material, so the sector matters less than the risk.
+                If you can describe what keeps you awake, we can build an exercise around it.
+              </p>
+              <a
+                href="#enquire"
+                class="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand transition hover:text-accent"
+              >
+                Tell us your risk
+                <svg
+                  class="h-3.5 w-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           PRACTICALITIES
+           ═════════════════════════════════════════════════════════ -->
+      <section id="practical" class="bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Practicalities
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              What running one actually involves
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              The honest answer to the questions procurement and your chief of staff will ask first.
+            </p>
+          </div>
+
+          <dl class="reveal mt-14 grid gap-x-10 gap-y-8 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="border-l-2 border-accent pl-5">
+              <dt class="text-sm font-bold uppercase tracking-wider text-ink">Time</dt>
+              <dd class="mt-2 text-[15px] leading-relaxed text-muted">
+                Around half a day per live simulation, including the briefing and the immediate
+                debrief. The two simulations usually sit a few weeks apart.
+              </dd>
+            </div>
+            <div class="border-l-2 border-accent pl-5">
+              <dt class="text-sm font-bold uppercase tracking-wider text-ink">People</dt>
+              <dd class="mt-2 text-[15px] leading-relaxed text-muted">
+                Eight to thirty participants across three to five teams. Bring the people who would
+                genuinely be in the room, not their delegates.
+              </dd>
+            </div>
+            <div class="border-l-2 border-accent pl-5">
+              <dt class="text-sm font-bold uppercase tracking-wider text-ink">Technology</dt>
+              <dd class="mt-2 text-[15px] leading-relaxed text-muted">
+                A browser. Nothing for participants to install, and voice communications are built
+                in rather than bolted on.
+              </dd>
+            </div>
+            <div class="border-l-2 border-accent pl-5">
+              <dt class="text-sm font-bold uppercase tracking-wider text-ink">Location</dt>
+              <dd class="mt-2 text-[15px] leading-relaxed text-muted">
+                One room, several sites, or fully remote. Separating the teams usually makes the
+                exercise harder in a useful way, because they can no longer read each other.
+              </dd>
+            </div>
+            <div class="border-l-2 border-accent pl-5">
+              <dt class="text-sm font-bold uppercase tracking-wider text-ink">From you</dt>
+              <dd class="mt-2 text-[15px] leading-relaxed text-muted">
+                One scoping call and whatever incident material you already have &mdash; a plan, a
+                risk register, an SOP. We build the rest and you approve it.
+              </dd>
+            </div>
+            <div class="border-l-2 border-accent pl-5">
+              <dt class="text-sm font-bold uppercase tracking-wider text-ink">Facilitation</dt>
+              <dd class="mt-2 text-[15px] leading-relaxed text-muted">
+                A Black Swan risk consultant designs the scenario with you, facilitates both live
+                simulations, and presents the scored after-action review to your leadership.
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           SAFETY & DATA
+           ═════════════════════════════════════════════════════════ -->
+      <section class="border-y border-border bg-surface py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Safety
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Safe to rehearse, and safe to hand to us
+            </h2>
+          </div>
+
+          <div class="reveal mt-14 grid gap-6 lg:grid-cols-3">
+            <div class="rounded-2xl border border-border bg-bg p-7">
+              <span class="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M12 3l8 4v5c0 5-3.4 8.2-8 9-4.6-.8-8-4-8-9V7z" />
+                  <path d="M9.5 12l1.8 1.8L15 10" />
+                </svg>
+              </span>
+              <h3 class="mt-5 text-lg font-bold text-ink">Fictional and non-operational</h3>
+              <p class="mt-3 text-sm leading-relaxed text-muted">
+                Scenarios are invented. They are built to resemble your exposure closely enough to
+                be uncomfortable, without documenting a real target, a real vulnerability or a real
+                operational plan.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-7">
+              <span class="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <rect x="3" y="4" width="18" height="14" rx="2" />
+                  <path d="M8 21h8M12 18v3M7 9h6M7 13h3" />
+                </svg>
+              </span>
+              <h3 class="mt-5 text-lg font-bold text-ink">Nothing touches a real platform</h3>
+              <p class="mt-3 text-sm leading-relaxed text-muted">
+                The feeds, inboxes, news outlets and messaging your people use during the exercise
+                are all simulated inside the environment. Nothing a participant posts can reach the
+                public internet or a real system.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-7">
+              <span class="grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg
+                  class="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="1.9"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z" />
+                  <path d="M14 3v5h5M9 13h6M9 17h4" />
+                </svg>
+              </span>
+              <h3 class="mt-5 text-lg font-bold text-ink">Data handling agreed up front</h3>
+              <p class="mt-3 text-sm leading-relaxed text-muted">
+                Exactly what material you share, how it is processed while the scenario is built,
+                and what is retained afterwards is settled during scoping &mdash; before anything is
+                created. Bring your security team to that call.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           FAQ
+           ═════════════════════════════════════════════════════════ -->
+      <section id="faq" class="bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-3xl px-5 sm:px-8">
+          <div class="reveal text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Questions
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Before you take this to your leadership
+            </h2>
+          </div>
+
+          <div class="reveal mt-12 divide-y divide-border border-y border-border">
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">
+                  How is this different from the tabletop exercise we already run?
+                </h3>
+                <svg
+                  class="faq-chevron h-5 w-5 shrink-0 text-muted"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                A tabletop is usually a structured discussion following a fixed script, closed out
+                by a subjective debrief. Here the situation advances on a clock and reacts to what
+                your team does or fails to do, so late decisions have consequences you can see. The
+                debrief is then assembled from measured decisions rather than from what people
+                remember agreeing.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">Who designs and runs it?</h3>
+                <svg
+                  class="faq-chevron h-5 w-5 shrink-0 text-muted"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                A Black Swan risk consultant. They build the scenario with you from your own
+                material, facilitate both simulations, and present the scored after-action review.
+                You are not being handed software to operate yourself.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">
+                  Do our people need training on the system first?
+                </h3>
+                <svg
+                  class="faq-chevron h-5 w-5 shrink-0 text-muted"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                No. Participants receive a role briefing and work in a browser. The interface is
+                deliberately plain, because the exercise is testing judgement and coordination, not
+                anyone&rsquo;s proficiency with a tool.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">
+                  Can you build it around our existing crisis plan?
+                </h3>
+                <svg
+                  class="faq-chevron h-5 w-5 shrink-0 text-muted"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                That is the preferred input. The exercise is most valuable when it tests the plan you
+                would genuinely follow, including the assumptions inside it that have never been
+                put under load.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">
+                  How long until the first simulation?
+                </h3>
+                <svg
+                  class="faq-chevron h-5 w-5 shrink-0 text-muted"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                Most of the elapsed time is your review, not our build. Once we have your material a
+                draft scenario comes back quickly, and we then iterate until you are satisfied it
+                reflects your real exposure. We will give you a firm date at the scoping call.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">
+                  What exactly do we hold at the end of it?
+                </h3>
+                <svg
+                  class="faq-chevron h-5 w-5 shrink-0 text-muted"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                A scored after-action review covering both simulations: a narrative of what
+                happened, metrics per team and participant, the complete decision timeline, and
+                prioritised recommendations. Exported to PDF or Excel for a board or audit pack.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">What does an engagement cost?</h3>
+                <svg
+                  class="faq-chevron h-5 w-5 shrink-0 text-muted"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                >
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                We go through it at the scoping call, once we know which format you need and how many
+                people are taking part. An engagement is quoted as a single figure covering the
+                scenario, both live simulations and the scored after-action review, so there is
+                nothing to reconcile afterwards.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           ENQUIRY
+           ═════════════════════════════════════════════════════════ -->
+      <section id="enquire" class="deep-grid py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="grid gap-12 lg:grid-cols-[1fr_1.1fr] lg:gap-16">
+            <div>
+              <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+                Get started
+              </p>
+              <h2
+                class="text-3xl font-extrabold leading-tight tracking-tight text-white sm:text-4xl"
+              >
+                Start with a scoping call
+              </h2>
+              <p class="mt-5 text-lg leading-relaxed text-white/65">
+                Tell us what you are actually worried about. We will come back with a scenario
+                outline, a recommended format, and what an exercise would look like for your team.
+              </p>
+
+              <ul class="mt-8 space-y-4">
+                <li class="flex gap-3">
+                  <svg
+                    class="mt-0.5 h-5 w-5 shrink-0 text-accent"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  <span class="text-[15px] leading-relaxed text-white/70"
+                    >A person replies, not an automated sequence.</span
+                  >
+                </li>
+                <li class="flex gap-3">
+                  <svg
+                    class="mt-0.5 h-5 w-5 shrink-0 text-accent"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  <span class="text-[15px] leading-relaxed text-white/70"
+                    >No commitment, and nothing gets built until you approve the scenario.</span
+                  >
+                </li>
+                <li class="flex gap-3">
+                  <svg
+                    class="mt-0.5 h-5 w-5 shrink-0 text-accent"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                  <span class="text-[15px] leading-relaxed text-white/70"
+                    >Bring your security or procurement lead if it helps.</span
+                  >
+                </li>
+              </ul>
+
+              <p class="mt-8 border-t border-white/10 pt-6 text-sm text-white/40">
+                Prefer to circulate something first?
+                <a
+                  href="/presentation/index.html"
+                  class="font-semibold text-white/70 underline hover:text-white"
+                  >Download the overview deck</a
+                >.
+              </p>
+            </div>
+
+            <!-- Form -->
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6 sm:p-8">
+              <form id="enquiry-form" class="space-y-5" novalidate>
+                <div>
+                  <label
+                    for="org"
+                    class="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/70"
+                    >Organisation <span class="text-accent">*</span></label
+                  >
+                  <input
+                    id="org"
+                    name="organisation"
+                    type="text"
+                    required
+                    placeholder="e.g. National Water Agency"
+                    class="w-full rounded-lg border border-white/15 bg-deep/60 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    for="sector"
+                    class="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/70"
+                    >Sector</label
+                  >
+                  <select
+                    id="sector"
+                    name="sector"
+                    class="w-full rounded-lg border border-white/15 bg-deep/60 px-4 py-3 text-sm text-white outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  >
+                    <option value="">Select a sector</option>
+                    <option>Government &amp; defence</option>
+                    <option>Emergency services</option>
+                    <option>Critical infrastructure &amp; utilities</option>
+                    <option>Corporate crisis &amp; communications</option>
+                    <option>Media &amp; public affairs</option>
+                    <option>Other</option>
+                  </select>
+                </div>
+
+                <div class="grid gap-5 sm:grid-cols-2">
+                  <div>
+                    <label
+                      for="name"
+                      class="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/70"
+                      >Your name <span class="text-accent">*</span></label
+                    >
+                    <input
+                      id="name"
+                      name="contact_name"
+                      type="text"
+                      required
+                      placeholder="Full name"
+                      class="w-full rounded-lg border border-white/15 bg-deep/60 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                    />
+                  </div>
+                  <div>
+                    <label
+                      for="email"
+                      class="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/70"
+                      >Work email <span class="text-accent">*</span></label
+                    >
+                    <input
+                      id="email"
+                      name="contact_email"
+                      type="email"
+                      required
+                      placeholder="you@organisation.gov"
+                      class="w-full rounded-lg border border-white/15 bg-deep/60 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label
+                    for="size"
+                    class="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/70"
+                    >Approximate number of participants</label
+                  >
+                  <select
+                    id="size"
+                    name="team_size"
+                    class="w-full rounded-lg border border-white/15 bg-deep/60 px-4 py-3 text-sm text-white outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  >
+                    <option value="">Not sure yet</option>
+                    <option>Fewer than 8</option>
+                    <option>8 to 15</option>
+                    <option>16 to 30</option>
+                    <option>More than 30</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label
+                    for="message"
+                    class="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/70"
+                    >What would you like to rehearse?</label
+                  >
+                  <textarea
+                    id="message"
+                    name="message"
+                    rows="4"
+                    placeholder="The scenario that worries you, or the part of the plan you have never tested."
+                    class="w-full resize-y rounded-lg border border-white/15 bg-deep/60 px-4 py-3 text-sm text-white placeholder-white/30 outline-none transition focus:border-accent focus:ring-2 focus:ring-accent/30"
+                  ></textarea>
+                </div>
+
+                <!-- Spam honeypot: hidden from users, filled by bots -->
+                <div class="hidden" aria-hidden="true">
+                  <label for="website">Website</label>
+                  <input id="website" name="website" type="text" tabindex="-1" autocomplete="off" />
+                </div>
+
+                <button
+                  type="submit"
+                  class="w-full rounded-xl bg-accent px-6 py-4 text-base font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-strong"
+                >
+                  Request a scoping call
+                </button>
+
+                <p class="text-center text-xs leading-relaxed text-white/40">
+                  We use your details only to respond to this enquiry.
+                </p>
+              </form>
+
+              <!-- Success state -->
+              <div id="enquiry-success" class="hidden py-10 text-center">
+                <span
+                  class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-success/15 text-success"
+                >
+                  <svg
+                    class="h-7 w-7"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2.4"
+                    stroke-linecap="round"
+                  >
+                    <path d="M20 6L9 17l-5-5" />
+                  </svg>
+                </span>
+                <h3 class="mt-5 text-xl font-bold text-white">Enquiry received</h3>
+                <p class="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-white/60">
+                  Thank you. We will be in touch shortly to arrange a scoping call, usually within
+                  one business day.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <p
+            class="mt-16 border-t border-white/10 pt-8 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-accent"
+          >
+            Every agency can rehearse chaos &mdash; safely
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- ══════════════════════════════════════════════════════════
+         FOOTER
+         ═════════════════════════════════════════════════════════ -->
+    <footer class="border-t border-border bg-surface py-12">
+      <div class="mx-auto max-w-content px-5 sm:px-8">
+        <div class="flex flex-col items-start justify-between gap-8 sm:flex-row sm:items-center">
+          <div class="flex items-center gap-3">
+            <span class="brand-mark h-10 w-10" role="img" aria-label="Black Swan Simulations logo"></span>
+            <span class="leading-tight">
+              <span class="block text-sm font-bold text-ink">Black Swan Simulations</span>
+              <span class="block text-[11px] text-muted">Unified Simulation Environment</span>
+            </span>
+          </div>
+          <nav class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+            <a href="#engagement" class="text-muted transition hover:text-brand">What you get</a>
+            <a href="#practical" class="text-muted transition hover:text-brand">Practicalities</a>
+            <a href="/presentation/index.html" class="text-muted transition hover:text-brand"
+              >Overview deck</a
+            >
+            <a href="landing-page-consultants-mockup.html" class="text-muted transition hover:text-brand"
+              >For risk consultants</a
+            >
+            <a href="/login" class="font-semibold text-brand transition hover:text-accent"
+              >Participant sign in</a
+            >
+          </nav>
+        </div>
+        <p class="mt-8 border-t border-border pt-6 text-xs text-muted">
+          &copy; 2026 Black Swan Simulations. Scenarios are fictional and non-operational.
+        </p>
+      </div>
+    </footer>
+
+    <script>
+      // Header: transparent over the dark hero, solid once scrolled past it.
+      const header = document.getElementById('site-header');
+      const onScroll = () => {
+        header.classList.toggle('is-solid', window.scrollY > 40);
+      };
+      window.addEventListener('scroll', onScroll, { passive: true });
+      onScroll();
+
+      // Scroll reveal
+      const io = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              entry.target.classList.add('is-visible');
+              io.unobserve(entry.target);
+            }
+          });
+        },
+        { rootMargin: '0px 0px -10% 0px', threshold: 0.05 },
+      );
+      document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+
+      // Exercise clock
+      const clock = document.getElementById('sim-clock');
+      let elapsed = 22 * 60 + 14;
+      setInterval(() => {
+        elapsed += 1;
+        const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+        const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+        const s = String(elapsed % 60).padStart(2, '0');
+        clock.textContent = `T+ ${h}:${m}:${s}`;
+      }, 1000);
+
+      // Mockup only: no network call, just show the success state.
+      const form = document.getElementById('enquiry-form');
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        if (!form.checkValidity()) {
+          form.querySelectorAll(':invalid')[0]?.focus();
+          return;
+        }
+        form.classList.add('hidden');
+        document.getElementById('enquiry-success').classList.remove('hidden');
+      });
+    </script>
+  </body>
+</html>

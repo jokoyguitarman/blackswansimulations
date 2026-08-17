@@ -28,6 +28,8 @@ export default {
         // Deep navy used by the marketing pages' dark bands. A literal rather
         // than a CSS var because those pages do not load the app's style.css.
         deep: '#0E1A2B',
+        // Verification-badge blue, matching the in-sim social feed.
+        zblue: '#1D9BF0',
         // ── Legacy robotic-* names, temporarily aliased to the new
         //    tokens so un-migrated screens still render in the new skin.
         //    Removed in Phase 3 once no references remain. ──

@@ -69,6 +69,121 @@ body {
     100% 100%;
 }
 
+/* ── Hero ─────────────────────────────────────────────────────────
+   Texture laid over the hero photograph: keeps a hint of the tactical
+   grid without losing the room behind it. */
+.hero-texture {
+  background-image:
+    radial-gradient(ellipse 90% 70% at 18% -10%, rgba(217, 119, 6, 0.16), transparent 70%),
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    64px 64px,
+    64px 64px;
+}
+
+/* Window chrome shared by the fanned hero surfaces. */
+.surface-card {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    0 40px 80px -24px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+  transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.surface-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 11px;
+}
+.surface-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+}
+
+/* Lifting the stack on hover makes it read as inspectable rather than
+   decorative, without moving anything on load. */
+.surface-fan:hover .card-feed {
+  transform: translateY(-6px) rotate(1deg);
+}
+.surface-fan:hover .card-map {
+  transform: translate(12px, -14px) rotate(-4.5deg);
+}
+.surface-fan:hover .card-mail {
+  transform: translate(24px, -22px) rotate(-9.5deg);
+}
+
+/* Monogram avatar, matching how the product renders an NPC with no image. */
+.mono-avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 9999px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+.pulse-dot {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+/* Named distinctly from .score-bar's bar-grow, which animates scaleY. */
+@keyframes viral-grow {
+  from {
+    width: 0;
+  }
+}
+.viral-bar > span {
+  animation: viral-grow 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Field-ops card: a crowd drifting toward the exit. */
+@keyframes evac-drift {
+  from {
+    transform: translate(0, 0);
+    opacity: 0;
+  }
+  10%,
+  85% {
+    opacity: 1;
+  }
+  to {
+    transform: translate(var(--dx), var(--dy));
+    opacity: 0;
+  }
+}
+.evac-dot {
+  animation: evac-drift var(--dur, 7s) linear var(--delay, 0s) infinite;
+}
+
+@keyframes cordon-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+.cordon {
+  animation: cordon-pulse 3s ease-in-out infinite;
+}
+
 /* Header: transparent over the dark hero, solid once scrolled past it. */
 #site-header.is-solid {
   background: rgba(255, 255, 255, 0.94);
@@ -158,6 +273,200 @@ body {
   animation: bar-grow 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
+/* ── Exercise replay storyboard ───────────────────────────────────
+   One board at a time, each replacing the last. Without JS the boards
+   read as a plain vertical list, so the whole story stays in the HTML
+   for crawlers and for anyone whose script never runs. */
+/* All boards occupy the same grid cell, so the stage sizes itself to the tallest
+   one at whatever the current width happens to be. No reserved height to guess
+   at, and no jump when boards swap. */
+.js .board-stage {
+  display: grid;
+}
+.js .board {
+  grid-area: 1 / 1;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px) scale(0.995);
+  transition:
+    opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+    visibility 0.65s;
+  pointer-events: none;
+}
+.js .board.is-active {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  pointer-events: auto;
+}
+/* The outgoing board leaves upward, so the sequence reads as time moving
+   forward rather than as a slideshow shuffling. */
+.js .board.is-leaving {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.995);
+}
+.board + .board {
+  margin-top: 1rem;
+}
+.js .board + .board {
+  margin-top: 0;
+}
+
+/* The panel itself warms as the situation deteriorates. */
+.stage-shell {
+  transition: box-shadow 0.8s ease;
+}
+.stage-shell[data-temp='calm'] {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.stage-shell[data-temp='watch'] {
+  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.35);
+}
+.stage-shell[data-temp='critical'] {
+  box-shadow:
+    inset 0 0 0 1px rgba(185, 28, 28, 0.55),
+    0 0 60px -20px rgba(185, 28, 28, 0.45);
+}
+.stage-shell[data-temp='recover'] {
+  box-shadow: inset 0 0 0 1px rgba(21, 128, 61, 0.4);
+}
+
+/* Board art. The tint keeps six separately generated illustrations sitting in
+   one palette, and deepens as the situation does. */
+.board-art {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.art-tint {
+  background: linear-gradient(160deg, rgba(14, 26, 43, 0.15), rgba(14, 26, 43, 0.55));
+  transition: background 0.8s ease;
+}
+[data-temp='watch'] .art-tint {
+  background: linear-gradient(160deg, rgba(217, 119, 6, 0.12), rgba(14, 26, 43, 0.5));
+}
+[data-temp='critical'] .art-tint {
+  background: linear-gradient(160deg, rgba(185, 28, 28, 0.22), rgba(14, 26, 43, 0.42));
+}
+[data-temp='recover'] .art-tint {
+  background: linear-gradient(160deg, rgba(21, 128, 61, 0.12), rgba(14, 26, 43, 0.5));
+}
+
+/* A slow push on whichever board is showing, so the image is never quite still.
+   Only the active board animates, so five idle images cost nothing. */
+@keyframes art-drift {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.06);
+  }
+}
+.js .board.is-active .board-art img {
+  animation: art-drift 9s ease-out forwards;
+}
+/* The peak gets a faster push and a red pulse over the top. */
+.js .board.is-active .board-art-critical img {
+  animation-duration: 5.5s;
+}
+@keyframes art-alarm {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+.board-art-critical::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 60%, rgba(185, 28, 28, 0.4), transparent 70%);
+  opacity: 0;
+  pointer-events: none;
+}
+.js .board.is-active .board-art-critical::after {
+  animation: art-alarm 2.2s ease-in-out infinite;
+}
+
+.pressure-fill {
+  transition:
+    width 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.9s ease;
+}
+.step-tick > span {
+  transition:
+    width 0.4s ease,
+    background-color 0.4s ease;
+}
+
+@keyframes alarm-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+.alarm-sweep::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  width: 33%;
+  background: linear-gradient(90deg, transparent, rgba(185, 28, 28, 0.16), transparent);
+  animation: alarm-sweep 2.6s linear infinite;
+}
+
+/* ── Reveal cards ─────────────────────────────────────────────────
+   The blurb sits in the flow and sets the card height. The artwork covers it
+   and slides up out of the way on hover, keyboard focus or tap, so the section
+   leads with four images and four titles instead of four paragraphs. */
+.rc-art {
+  transform: translateY(0);
+  transition:
+    transform 0.55s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.55s ease;
+}
+.rc-scrim {
+  background: linear-gradient(180deg, rgba(14, 26, 43, 0.25) 0%, rgba(14, 26, 43, 0.55) 45%, rgba(14, 26, 43, 0.92) 100%);
+}
+.rc-hint {
+  transition: color 0.3s ease;
+}
+.reveal-card:hover .rc-hint {
+  color: rgba(255, 255, 255, 0.9);
+}
+.rc-toggle {
+  /* A full-card hit area. Focus is shown on the card, not this transparent layer. */
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.rc-toggle:focus {
+  outline: none;
+}
+.reveal-card:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Slide away on hover only where hovering is real, so a phone tap is not
+   competing with a sticky hover state. */
+@media (hover: hover) and (pointer: fine) {
+  .reveal-card:hover .rc-art {
+    transform: translateY(-101%);
+  }
+}
+/* Keyboard and tap both go through the open state. */
+.reveal-card:focus-within .rc-art,
+.reveal-card.is-open .rc-art {
+  transform: translateY(-101%);
+}
+/* Once revealed there is nothing left to click, so drop the hit area away. */
+.reveal-card.is-open .rc-toggle {
+  pointer-events: none;
+}
+
 details > summary {
   list-style: none;
   cursor: pointer;
@@ -184,7 +493,32 @@ details[open] .faq-chevron {
   .live-dot,
   .inject-firing,
   .heat-fill,
-  .score-bar {
+  .score-bar,
+  .pulse-dot,
+  .viral-bar > span,
+  .evac-dot,
+  .cordon {
     animation: none !important;
+    opacity: 1 !important;
+  }
+  .alarm-sweep::after,
+  .js .board.is-active .board-art img,
+  .js .board.is-active .board-art-critical::after {
+    animation: none !important;
+  }
+  .surface-fan:hover .card-feed,
+  .surface-fan:hover .card-map,
+  .surface-fan:hover .card-mail {
+    transform: none;
+  }
+  /* Boards still swap, they just do it instantly rather than sliding. */
+  .js .board {
+    transition: none;
+  }
+  .pressure-fill,
+  .step-tick > span,
+  .stage-shell,
+  .rc-art {
+    transition: none;
   }
 }

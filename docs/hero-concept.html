@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hero concept — /simulations</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bg: '#FAF8F4',
+              surface: '#FFFFFF',
+              'surface-2': '#F4F1EA',
+              ink: '#172033',
+              muted: '#6B7280',
+              brand: { DEFAULT: '#1E3A5F', strong: '#18304E' },
+              accent: { DEFAULT: '#D97706', strong: '#B45309' },
+              border: { DEFAULT: '#E4DFD4', strong: '#D6CFC0' },
+              success: '#15803D',
+              warning: '#D97706',
+              danger: '#B91C1C',
+              deep: '#0E1A2B',
+              zblue: '#1D9BF0',
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            maxWidth: { content: '72rem' },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background: #faf8f4;
+        color: #172033;
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+      /* Texture laid over the background photograph: keeps a hint of the
+         tactical grid without losing the room behind it. */
+      .hero-texture {
+        background-image:
+          radial-gradient(ellipse 90% 70% at 18% -10%, rgba(217, 119, 6, 0.16), transparent 70%),
+          linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+        background-size:
+          100% 100%,
+          64px 64px,
+          64px 64px;
+      }
+
+      /* Monogram avatar, matching how the product renders an NPC with no image. */
+      .mono-avatar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        border-radius: 999px;
+        font-family: 'Inter', system-ui, sans-serif;
+        font-weight: 700;
+        color: #fff;
+        letter-spacing: -0.02em;
+      }
+
+      @keyframes pulse-soft {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.3;
+        }
+      }
+      .pulse-dot {
+        animation: pulse-soft 1.6s ease-in-out infinite;
+      }
+
+      @keyframes bar-grow {
+        from {
+          width: 0;
+        }
+      }
+      .viral-bar > span {
+        animation: bar-grow 1.6s cubic-bezier(0.22, 1, 0.36, 1);
+      }
+
+      /* ── Window chrome shared by the three surfaces ───────────── */
+      .surface-card {
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        box-shadow:
+          0 40px 80px -24px rgba(0, 0, 0, 0.75),
+          0 0 0 1px rgba(255, 255, 255, 0.05);
+        transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .surface-bar {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        padding: 8px 11px;
+      }
+      .surface-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 999px;
+      }
+
+      /* Lifting the stack on hover makes it read as inspectable rather than
+         decorative, without moving anything on load. */
+      .surface-fan:hover .card-feed {
+        transform: translateY(-6px) rotate(1deg);
+      }
+      .surface-fan:hover .card-map {
+        transform: translate(12px, -14px) rotate(-4.5deg);
+      }
+      .surface-fan:hover .card-mail {
+        transform: translate(24px, -22px) rotate(-9.5deg);
+      }
+
+      /* ── Field ops: evacuating crowd ──────────────────────────── */
+      @keyframes evac-drift {
+        0% {
+          transform: translate(0, 0);
+          opacity: 0;
+        }
+        12% {
+          opacity: 1;
+        }
+        88% {
+          opacity: 1;
+        }
+        100% {
+          transform: translate(var(--dx), var(--dy));
+          opacity: 0;
+        }
+      }
+      .evac-dot {
+        position: absolute;
+        width: 3px;
+        height: 3px;
+        border-radius: 999px;
+        background: #f0b45f;
+        animation: evac-drift var(--dur, 4.5s) linear infinite;
+      }
+
+      @keyframes cordon-pulse {
+        0%,
+        100% {
+          opacity: 0.55;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+      .cordon {
+        animation: cordon-pulse 3s ease-in-out infinite;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .evac-dot,
+        .cordon,
+        .pulse-dot,
+        .viral-bar > span {
+          animation: none !important;
+        }
+        .evac-dot {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+
+  <body class="antialiased">
+    <!-- ══════════════════════════════════════════════════════════
+         HEADER (with the nav fix applied)
+         ═════════════════════════════════════════════════════════ -->
+    <header class="absolute inset-x-0 top-0 z-50">
+      <div class="mx-auto max-w-content px-5 sm:px-8">
+        <div class="flex h-16 items-center justify-between gap-4 sm:h-20">
+          <a href="#" class="flex items-center gap-3">
+            <span
+              class="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-sm font-extrabold text-deep"
+              >BS</span
+            >
+            <span class="leading-tight">
+              <span class="block text-[15px] font-bold text-white">Black Swan</span>
+              <span class="block text-[10px] uppercase tracking-[0.14em] text-white/50">Simulations</span>
+            </span>
+          </a>
+          <nav class="hidden shrink-0 items-center gap-1 xl:flex">
+            <a href="#" class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white">What you get</a>
+            <a href="#" class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white">Evidence</a>
+            <a href="#" class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white">Sectors</a>
+            <a href="#" class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white">FAQ</a>
+            <a href="#" class="whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 hover:bg-white/10 hover:text-white">Try it</a>
+          </nav>
+          <div class="flex shrink-0 items-center gap-2 sm:gap-3">
+            <a href="#" class="hidden whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-white/85 hover:text-white md:block">For risk consultants</a>
+            <a href="#" class="whitespace-nowrap rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent-strong">Book a scoping call</a>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ══════════════════════════════════════════════════════════
+         HERO
+         ═════════════════════════════════════════════════════════ -->
+    <section class="relative isolate overflow-hidden bg-deep pt-28 pb-16 sm:pt-36 sm:pb-20">
+      <!-- A simulation session in progress, sitting behind everything. Eager and
+           high priority because it is above the fold and paints with the hero. -->
+      <img
+        src="crisis-multi-agency.webp"
+        alt=""
+        aria-hidden="true"
+        fetchpriority="high"
+        decoding="async"
+        class="absolute inset-0 -z-20 h-full w-full object-cover object-[65%_center]"
+      />
+      <!-- Darkest on the left so the copy always wins; the room stays readable
+           on the right where the cards sit. -->
+      <div class="absolute inset-0 -z-10 bg-gradient-to-r from-deep via-deep/93 to-deep/72"></div>
+      <div class="absolute inset-0 -z-10 bg-deep/25"></div>
+      <div class="hero-texture absolute inset-0 -z-10"></div>
+
+      <div class="mx-auto max-w-content px-5 sm:px-8">
+        <div class="grid items-center gap-14 lg:grid-cols-[1fr_1fr] lg:gap-10">
+          <!-- Copy -->
+          <div class="relative z-10">
+            <h1
+              class="text-4xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-[3.4rem]"
+            >
+              Your crisis plan will be tested.
+              <span class="block text-accent">The only question is where.</span>
+            </h1>
+
+            <p class="mt-6 max-w-lg text-lg leading-relaxed text-white/70">
+              We put your team inside a live, AI-scored crisis built from your own risk material.
+              They work a real operating picture, defend real statements, and every decision is timed
+              and graded.
+            </p>
+
+            <div class="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <a
+                href="#"
+                class="inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-xl bg-accent px-5 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-accent/25 transition hover:bg-accent-strong"
+              >
+                Book a scoping call
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg>
+              </a>
+              <a
+                href="#"
+                class="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-xl border border-white/25 px-5 py-3.5 text-[15px] font-semibold text-white transition hover:border-white/50 hover:bg-white/5"
+                >See how it works</a
+              >
+            </div>
+
+            <!-- Three even columns rather than a wrapping row, so the third stat
+                 never orphans onto a second line at an awkward width. -->
+            <dl class="mt-10 grid grid-cols-3 gap-5 border-t border-white/10 pt-7">
+              <div>
+                <dt class="font-mono text-xl font-bold leading-none text-white">4 hrs</dt>
+                <dd class="mt-1.5 text-[11px] leading-snug text-white/50">per live simulation</dd>
+              </div>
+              <div>
+                <dt class="font-mono text-xl font-bold leading-none text-white">8&ndash;30</dt>
+                <dd class="mt-1.5 text-[11px] leading-snug text-white/50">participants across your teams</dd>
+              </div>
+              <div>
+                <dt class="font-mono text-xl font-bold leading-none text-accent">Same day</dt>
+                <dd class="mt-1.5 text-[11px] leading-snug text-white/50">scored after-action review</dd>
+              </div>
+            </dl>
+          </div>
+
+          <!-- ── Fanned surfaces, cascading up and to the right so every card keeps
+               a band of its own. Bleeds past the right edge on purpose. ── -->
+          <div class="surface-fan relative h-[640px] sm:h-[620px] lg:h-[690px]">
+            <!-- BACK · inbox under pressure -->
+            <div
+              class="card-mail surface-card absolute top-[-42px] z-0 hidden w-[320px] rotate-[-8deg] bg-white lg:left-[215px] lg:block xl:left-[300px] xl:w-[340px]"
+              aria-hidden="true"
+            >
+              <div class="surface-bar bg-[#eae5da]">
+                <span class="surface-dot bg-[#ff5f57]"></span>
+                <span class="surface-dot bg-[#febc2e]"></span>
+                <span class="surface-dot bg-[#28c840]"></span>
+                <span class="ml-2 font-mono text-[9px] uppercase tracking-[0.14em] text-ink/40">Inbox</span>
+                <span
+                  id="mail-badge"
+                  class="ml-auto rounded-full bg-danger px-1.5 py-0.5 font-mono text-[9px] font-bold text-white"
+                  >17</span
+                >
+              </div>
+              <ul class="divide-y divide-border">
+                <li class="flex items-start gap-2 px-3 py-2">
+                  <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger"></span>
+                  <div class="min-w-0">
+                    <p class="truncate text-[11px] font-bold text-ink">Regulator — briefing required</p>
+                    <p class="truncate text-[10px] text-muted">Confirm attendance within the hour</p>
+                  </div>
+                </li>
+                <li class="flex items-start gap-2 px-3 py-2">
+                  <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-danger"></span>
+                  <div class="min-w-0">
+                    <p class="truncate text-[11px] font-bold text-ink">Press desk — filing 15:00</p>
+                    <p class="truncate text-[10px] text-muted">We are running the story regardless</p>
+                  </div>
+                </li>
+                <li class="flex items-start gap-2 px-3 py-2">
+                  <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-accent"></span>
+                  <div class="min-w-0">
+                    <p class="truncate text-[11px] font-semibold text-ink">Legal — hold that statement</p>
+                    <p class="truncate text-[10px] text-muted">Do not confirm cause yet</p>
+                  </div>
+                </li>
+                <li class="flex items-start gap-2 px-3 py-2 opacity-60">
+                  <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong"></span>
+                  <div class="min-w-0">
+                    <p class="truncate text-[11px] text-ink">Site manager — headcount update</p>
+                  </div>
+                </li>
+                <li class="flex items-start gap-2 px-3 py-2 opacity-40">
+                  <span class="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-border-strong"></span>
+                  <div class="min-w-0">
+                    <p class="truncate text-[11px] text-ink">Duty officer — shift handover</p>
+                  </div>
+                </li>
+              </ul>
+            </div>
+
+            <!-- FRONT · the public turning on your organisation. Three voices,
+                 climbing: bystander, ex-insider, then media with a filing time. -->
+            <div
+              class="card-feed surface-card absolute left-0 top-8 z-20 w-full max-w-[420px] rotate-[1.5deg] bg-white sm:max-w-[455px] lg:top-[104px]"
+            >
+              <div class="surface-bar bg-[#eae5da]">
+                <span class="surface-dot bg-[#ff5f57]"></span>
+                <span class="surface-dot bg-[#febc2e]"></span>
+                <span class="surface-dot bg-[#28c840]"></span>
+                <span class="ml-2 flex items-center gap-1.5">
+                  <span class="flex h-4 w-4 items-center justify-center rounded bg-ink font-mono text-[10px] font-bold leading-none text-white">Z</span>
+                  <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.12em] text-ink/45">Live feed</span>
+                </span>
+                <span class="ml-auto rounded bg-ink/10 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-ink/40">Exercise</span>
+              </div>
+
+              <!-- trending strip -->
+              <div class="flex items-center gap-2 border-b border-border bg-surface-2 px-3.5 py-1.5">
+                <span class="pulse-dot h-1.5 w-1.5 rounded-full bg-danger"></span>
+                <span class="font-mono text-[9px] font-semibold uppercase tracking-[0.1em] text-ink/50">Trending &mdash; #Eastport</span>
+                <span class="ml-auto font-mono text-[10px] font-bold tabular-nums text-danger" data-count="mentions">18,402</span>
+              </div>
+
+              <div class="divide-y divide-border">
+                <!-- bystander: ordinary words, which is what makes it frightening -->
+                <article class="flex gap-2.5 p-3">
+                  <span class="mono-avatar h-8 w-8 bg-[#7c6f9e] text-[11px]">PN</span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1 text-[11px] leading-tight">
+                      <span class="truncate font-bold text-ink">Priya Nathan</span>
+                      <span class="truncate text-muted">@priya_nathan</span>
+                      <span class="text-muted">&middot;</span>
+                      <span class="shrink-0 text-muted">2m</span>
+                    </div>
+                    <p class="mt-1 text-[12px] leading-snug text-ink">
+                      Three ambulances at the Eastport site and they are walking everyone out into the
+                      car park. My sister works in that building and she is not picking up.
+                    </p>
+                    <img
+                      src="post-site-photo.webp"
+                      alt=""
+                      aria-hidden="true"
+                      width="880"
+                      height="176"
+                      decoding="async"
+                      class="mt-2 h-20 w-full rounded-lg object-cover"
+                    />
+                    <div class="mt-1.5 flex items-center gap-4 text-muted">
+                      <span class="flex items-center gap-1 text-[10px]">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                        <span class="tabular-nums">214</span>
+                      </span>
+                      <span class="flex items-center gap-1 text-[10px]">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                        <span class="tabular-nums" data-count="by-rt">1,908</span>
+                      </span>
+                      <span class="flex items-center gap-1 text-[10px]">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                        <span class="tabular-nums" data-count="by-lk">6,733</span>
+                      </span>
+                      <span class="ml-auto flex items-center gap-1 text-[10px]">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                        <span class="tabular-nums">412K</span>
+                      </span>
+                    </div>
+                  </div>
+                </article>
+
+                <!-- ex-insider claiming documents: flagged, and outrunning everything -->
+                <article class="flex gap-2.5 bg-danger/[0.035] p-3">
+                  <span class="mono-avatar h-8 w-8 bg-[#B45309] text-[11px]">DK</span>
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-1 text-[11px] leading-tight">
+                      <span class="truncate font-bold text-ink">Dan Kowalski</span>
+                      <span class="shrink-0 text-accent" title="Influencer">&#9733;</span>
+                      <span class="truncate text-muted">@dk_reports</span>
+                      <span class="text-muted">&middot;</span>
+                      <span class="shrink-0 text-muted">7m</span>
+                    </div>
+                    <p class="mt-1 text-[12px] leading-snug text-ink">
+                      I worked Eastport six years. That line was flagged in an internal audit last
+                      March and nothing was done. The document exists. They knew. 1/7
+                    </p>
+                    <div class="mt-2 flex items-center gap-1.5">
+                      <span class="rounded bg-danger/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-danger">Misinformation</span>
+                      <span class="rounded bg-accent/15 px-1.5 py-0.5 font-mono text-[8px] font-bold uppercase tracking-wider text-accent-strong">Unverified</span>
+                    </div>
+                    <div class="mt-2 flex items-center gap-2">
+                      <span class="font-mono text-[8px] uppercase tracking-wider text-muted">Virality</span>
+                      <span class="viral-bar h-1 flex-1 overflow-hidden rounded-full bg-ink/10">
+                        <span class="block h-full rounded-full bg-danger" style="width: 94%"></span>
+                      </span>
+                      <span class="font-mono text-[10px] font-bold tabular-nums text-danger">94</span>
+                    </div>
+                    <div class="mt-1.5 flex items-center gap-4 text-muted">
+                      <span class="flex items-center gap-1 text-[10px]">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 11.5a8.4 8.4 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.4 8.4 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.4 8.4 0 0 1 3.8-.9h.5a8.5 8.5 0 0 1 8 8v.5z"/></svg>
+                        <span class="tabular-nums">3,104</span>
+                      </span>
+                      <span class="flex items-center gap-1 text-[10px] font-bold text-danger">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17 1l4 4-4 4"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><path d="M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                        <span class="tabular-nums" data-count="dk-rt">18,241</span>
+                      </span>
+                      <span class="flex items-center gap-1 text-[10px]">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.9 8.9-8.9a5.5 5.5 0 0 0 0-7.8z"/></svg>
+                        <span class="tabular-nums" data-count="dk-lk">42,806</span>
+                      </span>
+                      <span class="ml-auto flex items-center gap-1 text-[10px]">
+                        <svg class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 20V10M12 20V4M6 20v-6"/></svg>
+                        <span class="tabular-nums">2.4M</span>
+                      </span>
+                    </div>
+                  </div>
+                </article>
+
+                <!-- media with a filing time: the clock that turns a picture into pressure -->
+                <article class="p-3">
+                  <div class="mb-2 flex items-center gap-2 rounded-lg border border-accent/35 bg-accent/10 px-2.5 py-1.5">
+                    <svg class="h-3.5 w-3.5 shrink-0 text-accent-strong" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                    <span class="font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-accent-strong">Requires response</span>
+                    <span class="ml-auto font-mono text-[12px] font-bold tabular-nums text-accent-strong" data-clock>04:38</span>
+                  </div>
+                  <div class="flex gap-2.5">
+                    <span class="mono-avatar h-8 w-8 bg-[#1f2937] text-[9px]">MW</span>
+                    <div class="min-w-0 flex-1">
+                      <div class="flex items-center gap-1 text-[11px] leading-tight">
+                        <span class="truncate font-bold text-ink">Metro Wire</span>
+                        <svg class="h-3 w-3 shrink-0 text-zblue" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 1.8 3-.3 1 2.8 2.6 1.6-.9 2.9.9 2.9-2.6 1.6-1 2.8-3-.3L12 22l-2.4-1.8-3 .3-1-2.8L3 16.1l.9-2.9-.9-2.9 2.6-1.6 1-2.8 3 .3z"/><path d="M10.6 15.2l-2.8-2.8 1.2-1.2 1.6 1.6 4-4 1.2 1.2z" fill="#fff"/></svg>
+                        <span class="truncate text-muted">@metrowire</span>
+                        <span class="text-muted">&middot;</span>
+                        <span class="shrink-0 text-muted">now</span>
+                      </div>
+                      <p class="mt-1 text-[12px] leading-snug text-ink">
+                        We run the Eastport story at 15:00 with the audit claim in it. No statement by
+                        then and we report that the company declined to comment.
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              </div>
+
+              <div class="flex items-center gap-2 border-t border-border bg-surface-2 px-3.5 py-2.5">
+                <span class="font-mono text-[8px] uppercase tracking-[0.12em] text-muted">Your account</span>
+                <span class="font-mono text-[11px] font-bold text-ink">Silent 41 min</span>
+                <span class="ml-auto font-mono text-[8px] uppercase tracking-wider text-danger">Every minute is scored</span>
+              </div>
+            </div>
+
+            <!-- MIDDLE · field operations -->
+            <div
+              class="card-map surface-card absolute top-[6px] z-10 hidden w-[370px] rotate-[-3.5deg] bg-deep lg:left-[105px] lg:block xl:left-[150px] xl:w-[400px]"
+              aria-hidden="true"
+            >
+              <div class="surface-bar bg-[#16202c]">
+                <span class="surface-dot bg-[#ff5f57]"></span>
+                <span class="surface-dot bg-[#febc2e]"></span>
+                <span class="surface-dot bg-[#28c840]"></span>
+                <span class="ml-2 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Field operations</span>
+                <span class="ml-auto flex items-center gap-1.5">
+                  <span class="h-1.5 w-1.5 rounded-full bg-danger"></span>
+                  <span id="map-clock" class="font-mono text-[9px] tabular-nums text-accent">T+ 00:22:14</span>
+                </span>
+              </div>
+
+              <div class="relative h-40 overflow-hidden bg-[#0b1522]">
+                <!-- street grid -->
+                <div
+                  class="absolute inset-0 opacity-60"
+                  style="
+                    background-image:
+                      linear-gradient(rgba(255, 255, 255, 0.055) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255, 255, 255, 0.055) 1px, transparent 1px);
+                    background-size: 30px 30px;
+                  "
+                ></div>
+                <!-- a couple of arterial roads -->
+                <div class="absolute left-0 top-1/2 h-[3px] w-full -translate-y-1/2 bg-white/[0.09]"></div>
+                <div class="absolute left-[38%] top-0 h-full w-[3px] bg-white/[0.09]"></div>
+
+                <!-- venue footprint -->
+                <div class="absolute left-[30%] top-[30%] h-16 w-24 rounded-sm border border-white/15 bg-white/[0.05]"></div>
+
+                <!-- cordon -->
+                <div
+                  class="cordon absolute left-[26%] top-[22%] h-28 w-36 rounded-full border-2 border-dashed border-danger/70"
+                ></div>
+                <!-- incident -->
+                <div class="absolute left-[41%] top-[43%] h-2.5 w-2.5 rounded-full bg-danger shadow-[0_0_12px_4px_rgba(185,28,28,0.5)]"></div>
+
+                <!-- evacuating crowd, flowing to the north-east exit -->
+                <span class="evac-dot" style="left: 34%; top: 52%; --dx: 96px; --dy: -54px; --dur: 4.2s; animation-delay: 0s"></span>
+                <span class="evac-dot" style="left: 37%; top: 56%; --dx: 88px; --dy: -62px; --dur: 4.6s; animation-delay: 0.3s"></span>
+                <span class="evac-dot" style="left: 31%; top: 58%; --dx: 104px; --dy: -48px; --dur: 5s; animation-delay: 0.6s"></span>
+                <span class="evac-dot" style="left: 40%; top: 50%; --dx: 80px; --dy: -66px; --dur: 4.4s; animation-delay: 0.9s"></span>
+                <span class="evac-dot" style="left: 28%; top: 50%; --dx: 110px; --dy: -42px; --dur: 4.8s; animation-delay: 1.2s"></span>
+                <span class="evac-dot" style="left: 36%; top: 62%; --dx: 92px; --dy: -70px; --dur: 5.2s; animation-delay: 1.5s"></span>
+                <span class="evac-dot" style="left: 43%; top: 58%; --dx: 74px; --dy: -60px; --dur: 4.3s; animation-delay: 1.8s"></span>
+                <span class="evac-dot" style="left: 33%; top: 46%; --dx: 100px; --dy: -38px; --dur: 4.9s; animation-delay: 2.1s"></span>
+                <span class="evac-dot" style="left: 39%; top: 66%; --dx: 86px; --dy: -78px; --dur: 5.4s; animation-delay: 2.4s"></span>
+                <span class="evac-dot" style="left: 30%; top: 64%; --dx: 106px; --dy: -72px; --dur: 5.1s; animation-delay: 2.7s"></span>
+                <span class="evac-dot" style="left: 45%; top: 52%; --dx: 70px; --dy: -52px; --dur: 4.1s; animation-delay: 3s"></span>
+                <span class="evac-dot" style="left: 26%; top: 56%; --dx: 116px; --dy: -58px; --dur: 5.3s; animation-delay: 3.3s"></span>
+                <span class="evac-dot" style="left: 42%; top: 46%; --dx: 78px; --dy: -34px; --dur: 4.5s; animation-delay: 3.6s"></span>
+                <span class="evac-dot" style="left: 35%; top: 42%; --dx: 94px; --dy: -30px; --dur: 4.7s; animation-delay: 3.9s"></span>
+
+                <!-- units -->
+                <span class="absolute left-[58%] top-[26%] flex items-center gap-1">
+                  <span class="h-2 w-2 rounded-sm bg-[#4da3ff]"></span>
+                  <span class="font-mono text-[8px] uppercase tracking-wider text-white/55">cordon</span>
+                </span>
+                <span class="absolute left-[62%] top-[62%] flex items-center gap-1">
+                  <span class="h-2 w-2 rounded-sm bg-success"></span>
+                  <span class="font-mono text-[8px] uppercase tracking-wider text-white/55">triage</span>
+                </span>
+                <span class="absolute left-[18%] top-[74%] flex items-center gap-1">
+                  <span class="h-2 w-2 rounded-sm bg-accent"></span>
+                  <span class="font-mono text-[8px] uppercase tracking-wider text-white/55">evac</span>
+                </span>
+              </div>
+
+              <!-- readout -->
+              <div class="grid grid-cols-3 divide-x divide-white/8 border-t border-white/10 bg-[#0e1a2b]">
+                <div class="px-3 py-2">
+                  <p class="font-mono text-[8px] uppercase tracking-[0.14em] text-white/40">Evacuated</p>
+                  <p class="font-mono text-[13px] font-bold text-white"><span id="evac-count">312</span> / 1,480</p>
+                </div>
+                <div class="px-3 py-2">
+                  <p class="font-mono text-[8px] uppercase tracking-[0.14em] text-white/40">Cordon</p>
+                  <p class="font-mono text-[13px] font-bold text-accent">Partial</p>
+                </div>
+                <div class="px-3 py-2">
+                  <p class="font-mono text-[8px] uppercase tracking-[0.14em] text-white/40">Severity</p>
+                  <p class="font-mono text-[13px] font-bold text-danger">Escalating</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="mt-10 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-white/25 lg:text-right">
+          Illustrative interface views
+        </p>
+
+        <p class="mt-6 border-t border-white/10 pt-8 text-center text-sm leading-relaxed text-white/45">
+          Fictional, non-operational scenarios only &mdash; for government, defence, emergency
+          services, critical infrastructure, corporate crisis and communications teams.
+        </p>
+      </div>
+    </section>
+
+    <!-- ══════════════════════════════════════════════════════════
+         NOTES
+         ═════════════════════════════════════════════════════════ -->
+    <div class="mx-auto max-w-content px-5 py-14 sm:px-8">
+      <h2 class="text-2xl font-extrabold tracking-tight text-ink">What changed and why</h2>
+      <div class="mt-6 grid gap-6 lg:grid-cols-3">
+        <div class="rounded-2xl border border-border bg-surface p-6">
+          <p class="text-xs font-bold uppercase tracking-wider text-accent">Composition</p>
+          <p class="mt-2 text-sm leading-relaxed text-muted">
+            Three surfaces fanned and overlapping, bleeding past the right edge of the viewport so
+            the frame feels too small for what is going on. The copy column is narrower than the
+            visual, which is the opposite of the usual arrangement and is what stops it reading as a
+            template. Hover the stack and it separates.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-border bg-surface p-6">
+          <p class="text-xs font-bold uppercase tracking-wider text-accent">Built as interface, not art</p>
+          <p class="mt-2 text-sm leading-relaxed text-muted">
+            Each card is real markup: an evacuating crowd drifting toward an exit, a disputed post
+            climbing, an inbox filling with things that each want a different answer. It stays sharp
+            at any resolution, weighs about 3KB, and the frames accept real screenshots later without
+            redesigning anything.
+          </p>
+        </div>
+        <div class="rounded-2xl border border-border bg-surface p-6">
+          <p class="text-xs font-bold uppercase tracking-wider text-accent">The story it tells</p>
+          <p class="mt-2 text-sm leading-relaxed text-muted">
+            Three things happening at once, none of which can wait, is the actual product. One panel
+            could only ever show one. The counters move so a visitor who pauses sees the situation
+            getting worse while they read.
+          </p>
+        </div>
+      </div>
+      <p class="mt-6 max-w-3xl text-sm leading-relaxed text-muted">
+        On screens below 1024px the two back cards are hidden and the public feed card goes full width,
+        so mobile stays fast and legible rather than showing a squashed fan.
+      </p>
+    </div>
+
+    <script>
+      // Counters move slowly and independently, so a visitor who stops to read
+      // sees the situation deteriorate rather than a looping gimmick.
+      // Engagement drifts upward at different rates per post, so a visitor who
+      // stops to read watches the situation deteriorate rather than seeing a loop.
+      const drift = (key, min, max, every) => {
+        const el = document.querySelector(`[data-count="${key}"]`);
+        if (!el) return;
+        let value = Number(el.textContent.replace(/[^\d]/g, ''));
+        setInterval(() => {
+          value += Math.floor(Math.random() * (max - min)) + min;
+          el.textContent = value.toLocaleString();
+        }, every);
+      };
+
+      drift('mentions', 12, 60, 1300);
+      drift('by-rt', 3, 14, 1900);
+      drift('by-lk', 8, 30, 1500);
+      drift('dk-rt', 20, 90, 1200);
+      drift('dk-lk', 40, 160, 1100);
+
+      // The reporter's deadline runs down, because a still clock is not pressure.
+      const deadline = document.querySelector('[data-clock]');
+      if (deadline) {
+        let left = 4 * 60 + 38;
+        setInterval(() => {
+          if (left > 0) left -= 1;
+          const pad = (n) => String(n).padStart(2, '0');
+          deadline.textContent = `${pad(Math.floor(left / 60))}:${pad(left % 60)}`;
+        }, 1000);
+      }
+
+      const evac = document.getElementById('evac-count');
+      const badge = document.getElementById('mail-badge');
+      const clock = document.getElementById('map-clock');
+
+      let evacuated = 312;
+      let unread = 17;
+      let elapsed = 22 * 60 + 14;
+
+      setInterval(() => {
+        evacuated += Math.floor(Math.random() * 7) + 2;
+        if (evacuated > 1480) evacuated = 1480;
+        if (evac) evac.textContent = evacuated.toLocaleString();
+      }, 1800);
+
+      setInterval(() => {
+        unread += 1;
+        if (badge) badge.textContent = unread;
+      }, 6000);
+
+      setInterval(() => {
+        elapsed += 1;
+        const pad = (n) => String(n).padStart(2, '0');
+        if (clock)
+          clock.textContent = `T+ ${pad(Math.floor(elapsed / 3600))}:${pad(Math.floor((elapsed % 3600) / 60))}:${pad(elapsed % 60)}`;
+      }, 1000);
+    </script>
+  </body>
+</html>

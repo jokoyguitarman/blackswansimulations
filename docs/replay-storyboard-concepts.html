@@ -1,0 +1,787 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Replay storyboard — concepts</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com/3.4.16"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              bg: '#FAF8F4',
+              surface: '#FFFFFF',
+              'surface-2': '#F4F1EA',
+              ink: '#172033',
+              muted: '#6B7280',
+              brand: { DEFAULT: '#1E3A5F', strong: '#18304E' },
+              accent: { DEFAULT: '#D97706', strong: '#B45309' },
+              border: { DEFAULT: '#E4DFD4', strong: '#D6CFC0' },
+              success: '#15803D',
+              danger: '#B91C1C',
+              deep: '#0E1A2B',
+            },
+            fontFamily: {
+              sans: ['Inter', 'system-ui', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            maxWidth: { content: '72rem' },
+          },
+        },
+      };
+    </script>
+    <style>
+      body {
+        background: #faf8f4;
+        color: #172033;
+        font-family: 'Inter', system-ui, sans-serif;
+      }
+
+      /* ── Storyboard ────────────────────────────────────────────────
+         Without JS the boards read as a plain vertical list, so the whole
+         story stays in the HTML for crawlers and for anyone whose script
+         never runs. With JS they stack and cross-fade. */
+      .js .board-stage {
+        position: relative;
+      }
+      .js .board {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(10px) scale(0.995);
+        transition:
+          opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+          transform 0.65s cubic-bezier(0.16, 1, 0.3, 1),
+          visibility 0.65s;
+        pointer-events: none;
+      }
+      .js .board.is-active {
+        opacity: 1;
+        visibility: visible;
+        transform: none;
+        pointer-events: auto;
+      }
+      /* The board being replaced leaves upward, so the sequence reads as
+         time moving forward rather than as a slideshow shuffling. */
+      .js .board.is-leaving {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.995);
+      }
+      .no-js-list .board + .board {
+        margin-top: 1rem;
+      }
+
+      /* Temperature: the panel itself warms as the situation deteriorates. */
+      .stage-shell {
+        transition:
+          background-color 0.8s ease,
+          box-shadow 0.8s ease;
+      }
+      .stage-shell[data-temp='calm'] {
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+      }
+      .stage-shell[data-temp='watch'] {
+        box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.35);
+      }
+      .stage-shell[data-temp='critical'] {
+        box-shadow:
+          inset 0 0 0 1px rgba(185, 28, 28, 0.55),
+          0 0 60px -20px rgba(185, 28, 28, 0.45);
+      }
+      .stage-shell[data-temp='recover'] {
+        box-shadow: inset 0 0 0 1px rgba(21, 128, 61, 0.4);
+      }
+
+      .pressure-fill {
+        transition:
+          width 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+          background-color 0.9s ease;
+      }
+
+      .step-tick > span {
+        transition:
+          width 0.4s ease,
+          background-color 0.4s ease;
+      }
+
+      @keyframes alarm-sweep {
+        0% {
+          transform: translateX(-100%);
+        }
+        100% {
+          transform: translateX(300%);
+        }
+      }
+      .alarm-sweep::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        width: 33%;
+        background: linear-gradient(90deg, transparent, rgba(185, 28, 28, 0.16), transparent);
+        animation: alarm-sweep 2.6s linear infinite;
+      }
+
+      @keyframes live-pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+      .live-dot {
+        animation: live-pulse 1.8s ease-in-out infinite;
+      }
+
+      /* ── Concept 2: scroll-driven ─────────────────────────────────── */
+      .scroll-track {
+        position: relative;
+      }
+      .scroll-sticky {
+        position: sticky;
+        top: 5rem;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .js .board {
+          transition: none;
+        }
+        .alarm-sweep::after,
+        .live-dot {
+          animation: none;
+        }
+        .pressure-fill,
+        .stage-shell {
+          transition: none;
+        }
+      }
+    </style>
+  </head>
+
+  <body class="antialiased">
+    <div class="mx-auto max-w-content px-5 py-14 sm:px-8">
+      <p class="font-mono text-[11px] uppercase tracking-[0.2em] text-accent">Replay section — concepts</p>
+      <h1 class="mt-3 max-w-3xl text-3xl font-extrabold tracking-tight sm:text-4xl">
+        Turning the timeline into a storyboard that actually applies pressure
+      </h1>
+
+      <div class="mt-8 grid gap-6 rounded-2xl border border-border bg-surface p-6 lg:grid-cols-2">
+        <div>
+          <h2 class="font-mono text-[11px] uppercase tracking-[0.16em] text-danger">Why the current version is inert</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-muted">
+            <li><span class="font-semibold text-ink">All six events sit on screen at once.</span> The ending is readable in the same glance as the opening, so there is no suspense left to build.</li>
+            <li><span class="font-semibold text-ink">Every row is the same size.</span> The worst moment of the exercise is visually row four of six.</li>
+            <li><span class="font-semibold text-ink">Each row says what happened, never what it cost.</span> The reader is left to supply the consequence themselves, and mostly will not bother.</li>
+            <li><span class="font-semibold text-ink">The numbers never move.</span> Latency and coordination are fixed text; only their opacity pulses.</li>
+            <li><span class="font-semibold text-ink">The escalation meter is on its own timer.</span> It is not synchronised to the event that supposedly caused it.</li>
+            <li><span class="font-semibold text-ink">It looks like a server log.</span> Monospace timestamps in uniform rows is the aesthetic of monitoring, not of crisis.</li>
+          </ul>
+        </div>
+        <div>
+          <h2 class="font-mono text-[11px] uppercase tracking-[0.16em] text-success">What creates the tension instead</h2>
+          <ul class="mt-3 space-y-2 text-sm leading-relaxed text-muted">
+            <li><span class="font-semibold text-ink">One board at a time.</span> You cannot see what is coming, which is the entire feeling being sold.</li>
+            <li><span class="font-semibold text-ink">Every board names the cost.</span> Not &ldquo;footage circulating&rdquo; but &ldquo;the public is now ahead of your command group&rdquo;.</li>
+            <li><span class="font-semibold text-ink">Numbers move as the board lands.</span> Mentions count up, trust counts down, in front of the reader.</li>
+            <li><span class="font-semibold text-ink">The panel changes temperature.</span> Calm, then amber, then a red frame with a slow sweep, then recovery.</li>
+            <li><span class="font-semibold text-ink">It ends on the product.</span> The last board is what the report will say, which is the thing being bought.</li>
+            <li><span class="font-semibold text-ink">One board is inherently mobile.</span> A single panel needs no reflow, unlike a two-column dashboard.</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════
+           CONCEPT 1
+           ═════════════════════════════════════════════════════════════ -->
+      <div class="mt-16">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p class="font-mono text-[11px] uppercase tracking-[0.16em] text-accent">Concept 1 &mdash; recommended</p>
+            <h2 class="mt-1.5 text-2xl font-extrabold tracking-tight">Auto-advancing storyboard</h2>
+          </div>
+          <p class="max-w-md text-sm leading-relaxed text-muted">
+            Plays itself when it scrolls into view, one board replacing the last. The reader can take
+            over at any point using the rail, and it pauses while they hover or focus it.
+          </p>
+        </div>
+
+        <section id="c1" class="mt-6">
+          <div
+            class="stage-shell relative overflow-hidden rounded-2xl bg-deep p-4 shadow-2xl sm:p-6"
+            data-temp="calm"
+          >
+            <!-- transport -->
+            <div class="flex items-center gap-3 border-b border-white/10 pb-4 sm:gap-4">
+              <span class="flex shrink-0 items-center gap-2">
+                <span class="live-dot h-2 w-2 rounded-full bg-danger"></span>
+                <span class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/70 sm:text-[11px]">Replay</span>
+              </span>
+              <div class="flex flex-1 items-center gap-1">
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10" data-tick="0"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10" data-tick="1"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10" data-tick="2"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10" data-tick="3"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10" data-tick="4"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+                <span class="step-tick h-1 flex-1 overflow-hidden rounded-full bg-white/10" data-tick="5"><span class="block h-full w-0 rounded-full bg-accent"></span></span>
+              </div>
+              <span class="shrink-0 font-mono text-[10px] tabular-nums text-white/40 sm:text-[11px]"
+                ><span data-board-index>1</span>/6</span
+              >
+            </div>
+
+            <!-- Stage height is reserved for the tallest board at each breakpoint
+                 (measured: 290 / 206 / 178) plus slack for font-load variance,
+                 so cross-fading never makes the panel jump. -->
+            <div class="board-stage mt-5 min-h-[320px] sm:min-h-[235px] lg:min-h-[205px]">
+              <!-- 1 -->
+              <article
+                class="board"
+                data-board
+                data-temp="calm"
+                data-pressure="14"
+                data-mentions="0"
+                data-trust="82"
+                data-latency="&mdash;"
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:06</p>
+                  <span class="rounded-full border border-white/20 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-white/60">Contained</span>
+                </div>
+                <h3 class="mt-4 text-xl font-bold leading-snug text-white sm:text-2xl">
+                  The incident is confirmed at your primary site.
+                </h3>
+                <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">
+                  Operations know. Nobody outside that room does. This is the only moment in the next
+                  hour when your organisation is ahead of the story, and it lasts nine minutes.
+                </p>
+              </article>
+
+              <!-- 2 -->
+              <article
+                class="board"
+                data-board
+                data-temp="calm"
+                data-pressure="31"
+                data-mentions="2418"
+                data-trust="74"
+                data-latency="1m 40s"
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:15</p>
+                  <span class="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-accent">Spreading</span>
+                </div>
+                <h3 class="mt-4 text-xl font-bold leading-snug text-white sm:text-2xl">
+                  Footage is public before your first statement is drafted.
+                </h3>
+                <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">
+                  Someone in the car park filmed the evacuation. The public now knows more than your
+                  own communications team, and every minute from here is spent catching up rather
+                  than leading.
+                </p>
+              </article>
+
+              <!-- 3 -->
+              <article
+                class="board"
+                data-board
+                data-temp="watch"
+                data-pressure="58"
+                data-mentions="9140"
+                data-trust="61"
+                data-latency="3m 05s"
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:22</p>
+                  <span class="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-accent">Escalating</span>
+                </div>
+                <h3 class="mt-4 text-xl font-bold leading-snug text-white sm:text-2xl">
+                  The regulator wants a briefing within the hour.
+                </h3>
+                <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">
+                  Legal advises saying nothing until the cause is confirmed. Communications argues
+                  the silence is already the story. Both are partly right, and in the exercise nobody
+                  is certain whose call it actually is.
+                </p>
+              </article>
+
+              <!-- 4 · the peak -->
+              <article
+                class="board"
+                data-board
+                data-temp="critical"
+                data-pressure="94"
+                data-mentions="31806"
+                data-trust="38"
+                data-latency="6m 12s"
+                data-hold="5000"
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-danger sm:text-4xl">T+00:31</p>
+                  <span class="alarm-sweep relative overflow-hidden rounded-full border border-danger/50 bg-danger/15 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-danger">Out of control</span>
+                </div>
+                <h3 class="mt-4 text-2xl font-extrabold leading-snug text-white sm:text-3xl">
+                  Still no holding statement.
+                </h3>
+                <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/70">
+                  An ex-employee&rsquo;s claim that an internal audit flagged this months ago is now
+                  the most-shared version of events. It is unverified, and it is winning. The story
+                  has stopped being about the incident and started being about the silence.
+                </p>
+              </article>
+
+              <!-- 5 -->
+              <article
+                class="board"
+                data-board
+                data-temp="watch"
+                data-pressure="71"
+                data-mentions="44210"
+                data-trust="41"
+                data-latency="6m 12s"
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+00:47</p>
+                  <span class="rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-accent">Correcting</span>
+                </div>
+                <h3 class="mt-4 text-xl font-bold leading-snug text-white sm:text-2xl">
+                  Communications issues a corrected statement.
+                </h3>
+                <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">
+                  It is accurate, careful and signed off. It reaches a small fraction of the people
+                  who saw the claim it was written to answer, because corrections never travel as far
+                  as the thing they correct.
+                </p>
+              </article>
+
+              <!-- 6 · lands on the product -->
+              <article
+                class="board"
+                data-board
+                data-temp="recover"
+                data-pressure="28"
+                data-mentions="51330"
+                data-trust="52"
+                data-latency="6m 12s"
+              >
+                <div class="flex flex-wrap items-center gap-3">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white sm:text-4xl">T+01:04</p>
+                  <span class="rounded-full border border-success/40 bg-success/10 px-2.5 py-1 font-mono text-[9px] uppercase tracking-[0.14em] text-success">Contained</span>
+                </div>
+                <h3 class="mt-4 text-xl font-bold leading-snug text-white sm:text-2xl">
+                  Narrative stabilised. Situation contained.
+                </h3>
+                <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">
+                  The team recovered it. But the after-action review is not about the recovery, it is
+                  about the twenty-two minutes of silence that made the recovery necessary &mdash;
+                  timed to the second, attributed to a decision point, and sitting in a report you
+                  can hand to your board.
+                </p>
+              </article>
+            </div>
+
+            <!-- persistent readout -->
+            <div class="mt-6 border-t border-white/10 pt-4">
+              <div class="flex items-center gap-3">
+                <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Pressure</span>
+                <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <span class="pressure-fill block h-full w-[14%] rounded-full bg-success" data-pressure-fill></span>
+                </span>
+                <span class="w-8 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums text-white" data-pressure-value>14</span>
+              </div>
+
+              <dl class="mt-4 grid grid-cols-3 gap-3">
+                <div class="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+                  <dt class="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Mentions</dt>
+                  <dd class="mt-1 font-mono text-base font-bold tabular-nums text-white sm:text-lg" data-metric-mentions>0</dd>
+                </div>
+                <div class="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+                  <dt class="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Public trust</dt>
+                  <dd class="mt-1 font-mono text-base font-bold tabular-nums text-white sm:text-lg" data-metric-trust>82</dd>
+                </div>
+                <div class="rounded-lg border border-white/8 bg-white/[0.03] px-3 py-2.5">
+                  <dt class="font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Decision latency</dt>
+                  <dd class="mt-1 font-mono text-base font-bold tabular-nums text-white sm:text-lg" data-metric-latency>&mdash;</dd>
+                </div>
+              </dl>
+            </div>
+
+            <!-- controls -->
+            <div class="mt-4 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+              <button
+                type="button"
+                class="rounded-lg border border-white/20 px-3 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] text-white/70 transition hover:border-white/40 hover:text-white"
+                data-replay-toggle
+              >
+                Pause
+              </button>
+              <div class="flex items-center gap-2" role="tablist" aria-label="Replay moments">
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="0" aria-label="Moment 1"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="1" aria-label="Moment 2"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="2" aria-label="Moment 3"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="3" aria-label="Moment 4"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="4" aria-label="Moment 5"></button>
+                <button type="button" class="h-2.5 w-2.5 rounded-full bg-white/25 transition hover:bg-white/50" data-goto="5" aria-label="Moment 6"></button>
+              </div>
+              <span class="font-mono text-[10px] uppercase tracking-[0.12em] text-white/30">240&times;</span>
+            </div>
+          </div>
+
+          <p class="mt-4 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-muted">
+            Illustrative replay of a representative exercise
+          </p>
+        </section>
+
+        <div class="mt-6 grid gap-4 rounded-xl border border-border bg-surface-2 p-5 sm:grid-cols-3">
+          <div>
+            <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">Mobile behaviour</p>
+            <p class="mt-2 text-sm leading-relaxed text-muted">
+              Nothing reflows. One board is already one column, so the phone gets the same sequence
+              with a taller stage and a three-up metric strip that stays on one line.
+            </p>
+          </div>
+          <div>
+            <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">If the script fails</p>
+            <p class="mt-2 text-sm leading-relaxed text-muted">
+              All six boards are in the HTML and simply read as a vertical list, so the story is
+              still there for crawlers and for anyone the script never reaches.
+            </p>
+          </div>
+          <div>
+            <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-accent">Cost</p>
+            <p class="mt-2 text-sm leading-relaxed text-muted">
+              Around sixty lines of vanilla JS in the existing marketing bundle. No library, no
+              images, and it starts on view rather than on load.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- ══════════════════════════════════════════════════════════════
+           CONCEPT 2
+           ═════════════════════════════════════════════════════════════ -->
+      <div class="mt-20">
+        <div class="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <p class="font-mono text-[11px] uppercase tracking-[0.16em] text-brand">Concept 2</p>
+            <h2 class="mt-1.5 text-2xl font-extrabold tracking-tight">Scroll-driven storyboard</h2>
+          </div>
+          <p class="max-w-md text-sm leading-relaxed text-muted">
+            The same boards, but the reader&rsquo;s scroll is the clock. The panel holds still while
+            the crisis advances under it. Scroll down slowly to feel the difference.
+          </p>
+        </div>
+
+        <section id="c2" class="scroll-track mt-6">
+          <div class="scroll-sticky">
+            <div
+              class="stage-shell relative overflow-hidden rounded-2xl bg-deep p-4 shadow-2xl sm:p-6"
+              data-temp="calm"
+            >
+              <div class="flex items-center gap-3 border-b border-white/10 pb-4">
+                <span class="flex shrink-0 items-center gap-2">
+                  <span class="live-dot h-2 w-2 rounded-full bg-danger"></span>
+                  <span class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/70">Replay</span>
+                </span>
+                <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <span class="pressure-fill block h-full w-0 rounded-full bg-accent" data-scroll-progress></span>
+                </div>
+                <span class="shrink-0 font-mono text-[10px] tabular-nums text-white/40"
+                  ><span data-board-index>1</span>/6</span
+                >
+              </div>
+
+              <div class="board-stage mt-5 min-h-[250px] sm:min-h-[190px]">
+                <article class="board" data-board data-temp="calm" data-pressure="14">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white">T+00:06</p>
+                  <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">The incident is confirmed at your primary site.</h3>
+                  <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">Operations know. Nobody outside that room does. This is the only moment in the next hour when you are ahead of the story.</p>
+                </article>
+                <article class="board" data-board data-temp="calm" data-pressure="31">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white">T+00:15</p>
+                  <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">Footage is public before your first statement is drafted.</h3>
+                  <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">The public now knows more than your own communications team, and every minute from here is spent catching up.</p>
+                </article>
+                <article class="board" data-board data-temp="watch" data-pressure="58">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white">T+00:22</p>
+                  <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">The regulator wants a briefing within the hour.</h3>
+                  <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">Legal says hold. Communications says now. Nobody is certain whose call it actually is.</p>
+                </article>
+                <article class="board" data-board data-temp="critical" data-pressure="94">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-danger">T+00:31</p>
+                  <h3 class="mt-3 text-2xl font-extrabold leading-snug text-white sm:text-3xl">Still no holding statement.</h3>
+                  <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/70">An unverified claim is now the most-shared version of events. The story has stopped being the incident and started being the silence.</p>
+                </article>
+                <article class="board" data-board data-temp="watch" data-pressure="71">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white">T+00:47</p>
+                  <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">Communications issues a corrected statement.</h3>
+                  <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">Accurate, careful, signed off, and reaching a fraction of the people who saw the claim it answers.</p>
+                </article>
+                <article class="board" data-board data-temp="recover" data-pressure="28">
+                  <p class="font-mono text-3xl font-bold tabular-nums text-white">T+01:04</p>
+                  <h3 class="mt-3 text-xl font-bold leading-snug text-white sm:text-2xl">Narrative stabilised. Situation contained.</h3>
+                  <p class="mt-3 max-w-2xl text-[15px] leading-relaxed text-white/60">The review is not about the recovery. It is about the twenty-two minutes of silence that made it necessary.</p>
+                </article>
+              </div>
+
+              <div class="mt-6 flex items-center gap-3 border-t border-white/10 pt-4">
+                <span class="shrink-0 font-mono text-[9px] uppercase tracking-[0.14em] text-white/40">Pressure</span>
+                <span class="h-1.5 flex-1 overflow-hidden rounded-full bg-white/10">
+                  <span class="pressure-fill block h-full w-[14%] rounded-full bg-success" data-pressure-fill></span>
+                </span>
+                <span class="w-8 shrink-0 text-right font-mono text-[11px] font-bold tabular-nums text-white" data-pressure-value>14</span>
+              </div>
+            </div>
+          </div>
+          <!-- Scroll distance that drives the boards above. -->
+          <div class="h-[300vh]" data-scroll-spacer aria-hidden="true"></div>
+        </section>
+
+        <div class="rounded-xl border border-border bg-surface-2 p-5">
+          <p class="font-mono text-[10px] uppercase tracking-[0.14em] text-brand">Trade-off</p>
+          <p class="mt-2 max-w-3xl text-sm leading-relaxed text-muted">
+            Thematically this is the better fit &mdash; the reader&rsquo;s own scrolling becomes the
+            clock running out, which is exactly the feeling. The cost is that it consumes roughly
+            three screens of scroll depth, pushing the rest of the page down, and sticky positioning
+            is the first thing to misbehave on older mobile browsers. I would ship Concept 1 now and
+            keep this in reserve.
+          </p>
+        </div>
+      </div>
+
+      <div class="mt-16 rounded-2xl border border-border bg-surface p-7">
+        <h2 class="text-lg font-bold">Recommendation</h2>
+        <p class="mt-3 max-w-3xl text-sm leading-relaxed text-muted">
+          <span class="font-semibold text-ink">Concept 1.</span> It gives you the fade-to-replace
+          storyboard you described, it is genuinely better on a phone than the current two-column
+          dashboard, and it degrades to a readable list if the script never runs. The single change
+          doing most of the work is not the animation at all &mdash; it is that every board now names
+          the consequence, and the last one hands the reader the report they would be buying.
+        </p>
+      </div>
+    </div>
+
+    <script>
+      document.documentElement.classList.add('js');
+
+      /* ── Concept 1: auto-advancing storyboard ─────────────────────── */
+      (() => {
+        const root = document.getElementById('c1');
+        if (!root) return;
+
+        const shell = root.querySelector('.stage-shell');
+        const boards = [...root.querySelectorAll('[data-board]')];
+        const ticks = [...root.querySelectorAll('[data-tick] > span')];
+        const dots = [...root.querySelectorAll('[data-goto]')];
+        const indexLabel = root.querySelector('[data-board-index]');
+        const fill = root.querySelector('[data-pressure-fill]');
+        const pressureValue = root.querySelector('[data-pressure-value]');
+        const mentionsEl = root.querySelector('[data-metric-mentions]');
+        const trustEl = root.querySelector('[data-metric-trust]');
+        const latencyEl = root.querySelector('[data-metric-latency]');
+        const toggle = root.querySelector('[data-replay-toggle]');
+
+        // Five boards at 3.8s plus the peak at 5s comes to exactly the
+        // twenty-four seconds the section heading claims.
+        const HOLD = 3800;
+        const TEMP_COLOUR = {
+          calm: '#15803D',
+          watch: '#D97706',
+          critical: '#B91C1C',
+          recover: '#15803D',
+        };
+
+        let current = -1;
+        let timer;
+        let paused = false;
+        let started = false;
+
+        // Counting the numbers up rather than swapping them is what makes the
+        // deterioration feel like it is happening to the reader.
+        const tweens = new Map();
+        const tweenTo = (el, target, format) => {
+          if (!el) return;
+          cancelAnimationFrame(tweens.get(el));
+          const from = Number(String(el.textContent).replace(/[^\d]/g, '')) || 0;
+          if (!Number.isFinite(target)) {
+            el.textContent = '—';
+            return;
+          }
+          const start = performance.now();
+          const step = (now) => {
+            const t = Math.min(1, (now - start) / 700);
+            const eased = 1 - Math.pow(1 - t, 3);
+            el.textContent = format(Math.round(from + (target - from) * eased));
+            if (t < 1) tweens.set(el, requestAnimationFrame(step));
+          };
+          tweens.set(el, requestAnimationFrame(step));
+        };
+
+        const show = (next) => {
+          if (next === current) return;
+          const board = boards[next];
+
+          boards.forEach((b, i) => {
+            b.classList.toggle('is-active', i === next);
+            b.classList.toggle('is-leaving', i === current);
+            b.setAttribute('aria-hidden', i === next ? 'false' : 'true');
+          });
+
+          const temp = board.dataset.temp ?? 'calm';
+          shell.dataset.temp = temp;
+
+          const pressure = Number(board.dataset.pressure ?? 0);
+          fill.style.width = `${pressure}%`;
+          fill.style.backgroundColor = TEMP_COLOUR[temp];
+          tweenTo(pressureValue, pressure, (n) => String(n));
+
+          tweenTo(mentionsEl, Number(board.dataset.mentions), (n) => n.toLocaleString());
+          tweenTo(trustEl, Number(board.dataset.trust), (n) => String(n));
+          if (latencyEl) latencyEl.textContent = board.dataset.latency ?? '—';
+
+          ticks.forEach((t, i) => {
+            t.style.width = i <= next ? '100%' : '0%';
+            t.style.backgroundColor = i === next ? TEMP_COLOUR[temp] : 'rgba(255,255,255,0.45)';
+          });
+          dots.forEach((d, i) => {
+            d.classList.toggle('bg-white', i === next);
+            d.classList.toggle('bg-white/25', i !== next);
+          });
+          if (indexLabel) indexLabel.textContent = String(next + 1);
+
+          current = next;
+        };
+
+        // Each advance re-arms the next one, so the chain keeps running. The hold
+        // is per board, letting the peak sit long enough to actually be read.
+        const queue = () => {
+          clearTimeout(timer);
+          if (paused) return;
+          const wait = Number(boards[current]?.dataset.hold) || HOLD;
+          timer = setTimeout(() => {
+            show((current + 1) % boards.length);
+            queue();
+          }, wait);
+        };
+
+        const observerTarget = root.querySelector('.board-stage');
+
+        const goto = (i, { fromUser } = {}) => {
+          show(i);
+          if (fromUser) {
+            paused = false;
+            if (toggle) toggle.textContent = 'Pause';
+          }
+          queue();
+        };
+
+        dots.forEach((dot, i) =>
+          dot.addEventListener('click', () => goto(i, { fromUser: true })),
+        );
+
+        if (toggle) {
+          toggle.addEventListener('click', () => {
+            paused = !paused;
+            toggle.textContent = paused ? 'Play' : 'Pause';
+            if (paused) clearTimeout(timer);
+            else queue();
+          });
+        }
+
+        // Reading a board should not have it yanked away mid-sentence.
+        shell.addEventListener('mouseenter', () => clearTimeout(timer));
+        shell.addEventListener('mouseleave', () => queue());
+        shell.addEventListener('focusin', () => clearTimeout(timer));
+
+        // Start when it is seen, not on load, so the opening board is not
+        // already three moments old by the time the reader arrives.
+        if ('IntersectionObserver' in window && observerTarget) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              entries.forEach((entry) => {
+                if (entry.isIntersecting && !started) {
+                  started = true;
+                  goto(0);
+                  io.disconnect();
+                }
+              });
+            },
+            { threshold: 0.35 },
+          );
+          io.observe(observerTarget);
+        } else {
+          goto(0);
+        }
+      })();
+
+      /* ── Concept 2: scroll-driven storyboard ──────────────────────── */
+      (() => {
+        const root = document.getElementById('c2');
+        if (!root) return;
+
+        const shell = root.querySelector('.stage-shell');
+        const boards = [...root.querySelectorAll('[data-board]')];
+        const fill = root.querySelector('[data-pressure-fill]');
+        const pressureValue = root.querySelector('[data-pressure-value]');
+        const progress = root.querySelector('[data-scroll-progress]');
+        const indexLabel = root.querySelector('[data-board-index]');
+
+        const TEMP_COLOUR = {
+          calm: '#15803D',
+          watch: '#D97706',
+          critical: '#B91C1C',
+          recover: '#15803D',
+        };
+
+        let current = -1;
+        let raf;
+
+        const render = () => {
+          raf = 0;
+          const rect = root.getBoundingClientRect();
+          const total = rect.height - window.innerHeight;
+          if (total <= 0) return;
+
+          const ratio = Math.min(1, Math.max(0, -rect.top / total));
+          const next = Math.min(boards.length - 1, Math.floor(ratio * boards.length));
+
+          if (progress) progress.style.width = `${ratio * 100}%`;
+          if (next === current) return;
+
+          boards.forEach((b, i) => {
+            b.classList.toggle('is-active', i === next);
+            b.classList.toggle('is-leaving', i < next);
+            b.setAttribute('aria-hidden', i === next ? 'false' : 'true');
+          });
+
+          const board = boards[next];
+          const temp = board.dataset.temp ?? 'calm';
+          shell.dataset.temp = temp;
+          const pressure = Number(board.dataset.pressure ?? 0);
+          fill.style.width = `${pressure}%`;
+          fill.style.backgroundColor = TEMP_COLOUR[temp];
+          if (pressureValue) pressureValue.textContent = String(pressure);
+          if (indexLabel) indexLabel.textContent = String(next + 1);
+          current = next;
+        };
+
+        const onScroll = () => {
+          if (!raf) raf = requestAnimationFrame(render);
+        };
+
+        window.addEventListener('scroll', onScroll, { passive: true });
+        window.addEventListener('resize', onScroll);
+        render();
+      })();
+    </script>
+  </body>
+</html>
