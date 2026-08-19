@@ -20,6 +20,7 @@ export default defineConfig({
         // none of the application bundle ships with them.
         simulations: path.resolve(__dirname, 'simulations/index.html'),
         simulationsConsultants: path.resolve(__dirname, 'simulations/consultants.html'),
+        simulationsFounder: path.resolve(__dirname, 'simulations/founder.html'),
       },
     },
   },

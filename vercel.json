@@ -22,6 +22,14 @@
       "destination": "/simulations/consultants.html"
     },
     {
+      "source": "/simulations/founder",
+      "destination": "/simulations/founder.html"
+    },
+    {
+      "source": "/simulations/founder/",
+      "destination": "/simulations/founder.html"
+    },
+    {
       "source": "/presentation",
       "destination": "/presentation/index.html"
     },
