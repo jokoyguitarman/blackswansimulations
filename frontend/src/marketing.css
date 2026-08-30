@@ -467,6 +467,343 @@ body {
   pointer-events: none;
 }
 
+/* ── Clips ────────────────────────────────────────────────────────
+   Recorded footage of the product, framed as a window so it reads as somebody's
+   screen rather than as a video embed. Autoplay is handled in marketing.ts and
+   only for clips actually on screen, so a page of them costs one decode. */
+.clip-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: #0b1220;
+  box-shadow:
+    0 40px 80px -24px rgba(0, 0, 0, 0.75),
+    0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+.clip-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.clip-caption {
+  padding: 12px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Corporate Crisis storyboard ──────────────────────────────────
+   The `cc-` prefix scopes these to the Corporate Crisis page. The rail tracks
+   whichever act is on screen; without JS it is a plain contents list and the
+   acts read top to bottom, so the story survives with no script at all. */
+.cc-rail-item {
+  display: flex;
+  align-items: baseline;
+  gap: 0.7rem;
+  margin-left: -1px;
+  padding: 0.5rem 0 0.5rem 1rem;
+  border-left: 2px solid transparent;
+  transition:
+    border-color 0.35s ease,
+    color 0.35s ease;
+}
+.cc-rail-n {
+  flex: 0 0 1.6rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 0.35s ease;
+}
+.cc-rail-t {
+  font-size: 13.5px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.5);
+  transition: color 0.35s ease;
+}
+.cc-rail-item:hover .cc-rail-t,
+.cc-rail-item:focus-visible .cc-rail-t {
+  color: rgba(255, 255, 255, 0.85);
+}
+.cc-rail-item.is-active {
+  border-left-color: var(--accent);
+}
+.cc-rail-item.is-active .cc-rail-n {
+  color: var(--accent);
+}
+.cc-rail-item.is-active .cc-rail-t {
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* Metric bars. Colour is set from JS to match the act's temperature, so the
+   readout warms and cools with the situation rather than staying one hue. */
+.cc-track {
+  display: block;
+  margin-top: 0.4rem;
+  height: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.cc-fill {
+  display: block;
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--accent);
+  transition:
+    width 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.9s ease;
+}
+
+.cc-act {
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(3, 9, 18, 0.42);
+  padding: 1.5rem;
+  transition:
+    border-color 0.6s ease,
+    box-shadow 0.6s ease;
+}
+@media (min-width: 640px) {
+  .cc-act {
+    padding: 2rem 2.25rem;
+  }
+}
+/* The act being read is lifted out of the stack; the rest recede. */
+.cc-act.is-current {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 30px 70px -32px rgba(0, 0, 0, 0.8);
+}
+.cc-act-critical.is-current {
+  border-color: rgba(185, 28, 28, 0.5);
+  box-shadow: 0 0 60px -22px rgba(185, 28, 28, 0.5);
+}
+.cc-act-recover.is-current {
+  border-color: rgba(21, 128, 61, 0.45);
+  box-shadow: 0 0 60px -24px rgba(21, 128, 61, 0.4);
+}
+
+.cc-act-eyebrow {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--accent);
+}
+.cc-act-title {
+  margin-top: 0.6rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: #ffffff;
+}
+@media (min-width: 640px) {
+  .cc-act-title {
+    font-size: 1.75rem;
+  }
+}
+.cc-act-lede {
+  margin-top: 0.75rem;
+  max-width: 46rem;
+  font-size: 15.5px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.cc-act-body {
+  display: grid;
+  gap: 1.75rem;
+  margin-top: 1.75rem;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .cc-act-body {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2.25rem;
+  }
+  /* Act II leads with a single quoted post, which wants more room than half. */
+  .cc-act-body-wide {
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  }
+}
+
+/* Beats. Numbered because the order is the point. */
+.cc-beats {
+  counter-reset: beat;
+  display: grid;
+  gap: 1.1rem;
+}
+.cc-beats > li {
+  position: relative;
+  counter-increment: beat;
+  padding-left: 2.1rem;
+  font-size: 14px;
+  line-height: 1.65;
+  color: rgba(255, 255, 255, 0.62);
+}
+.cc-beats > li::before {
+  content: counter(beat, decimal-leading-zero);
+  position: absolute;
+  left: 0;
+  top: 0.1rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10.5px;
+  color: rgba(255, 255, 255, 0.3);
+}
+.cc-beat-k {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+/* Captured screens. Portrait phone captures are capped, because at their natural
+   width they would dominate an act that is mostly writing. */
+.cc-shot,
+.cc-clip {
+  overflow: hidden;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0b1220;
+}
+.cc-shot img,
+.cc-clip video {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.cc-shot figcaption,
+.cc-clip figcaption {
+  padding: 11px 13px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.5);
+}
+.cc-shot-phone,
+.cc-clip-phone {
+  max-width: 300px;
+  margin-inline: auto;
+}
+.cc-shot-inline {
+  max-width: 250px;
+  margin-top: 1.5rem;
+}
+.cc-stack {
+  display: grid;
+  gap: 1.25rem;
+}
+
+/* A quoted post, built in markup rather than captured: on the one beat where the
+   sentence matters more than the interface, the interface is a distraction. */
+.cc-post {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0b1220;
+  padding: 1.25rem;
+}
+.cc-post-head {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.cc-post-body {
+  margin-top: 1rem;
+  font-size: 1.15rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.75);
+}
+.cc-post-gloss {
+  margin-top: 0.65rem;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.42);
+}
+.cc-post-foot {
+  margin-top: 1.1rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* The breach chip. Deliberately the loudest element on the page: it is the
+   moment the product turns a disagreement into a finding. */
+.cc-breach {
+  margin-top: 1.75rem;
+  border-radius: 12px;
+  border: 1px solid rgba(185, 28, 28, 0.45);
+  background: rgba(185, 28, 28, 0.1);
+  padding: 1.1rem 1.25rem;
+}
+.cc-breach-k {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #fca5a5;
+}
+.cc-breach-t {
+  margin-top: 0.45rem;
+  font-size: 15px;
+  font-weight: 700;
+  color: #ffffff;
+}
+.cc-breach-b {
+  margin-top: 0.55rem;
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cc-quote {
+  margin-top: 1.75rem;
+  border-left: 2px solid var(--success);
+  padding-left: 1.15rem;
+}
+.cc-quote > p:first-child {
+  font-size: 1.05rem;
+  line-height: 1.55;
+  font-weight: 600;
+  color: #ffffff;
+}
+.cc-quote-gloss {
+  margin-top: 0.5rem;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.cc-scored {
+  margin-top: 1.9rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 13px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.58);
+}
+.cc-scored-k {
+  display: inline-block;
+  margin-right: 0.5rem;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--accent);
+}
+
 details > summary {
   list-style: none;
   cursor: pointer;
@@ -519,6 +856,16 @@ details[open] .faq-chevron {
   .step-tick > span,
   .stage-shell,
   .rc-art {
+    transition: none;
+  }
+  /* The storyboard still tracks the reader's position, it just stops sliding and
+     counting to get there. Clips are left paused with their poster showing;
+     marketing.ts checks the same query before it starts any of them. */
+  .cc-fill,
+  .cc-act,
+  .cc-rail-item,
+  .cc-rail-n,
+  .cc-rail-t {
     transition: none;
   }
 }

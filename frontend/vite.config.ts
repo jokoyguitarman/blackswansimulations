@@ -21,6 +21,7 @@ export default defineConfig({
         simulations: path.resolve(__dirname, 'simulations/index.html'),
         simulationsConsultants: path.resolve(__dirname, 'simulations/consultants.html'),
         simulationsFounder: path.resolve(__dirname, 'simulations/founder.html'),
+        simulationsCorporateCrisis: path.resolve(__dirname, 'simulations/corporate-crisis.html'),
       },
     },
   },

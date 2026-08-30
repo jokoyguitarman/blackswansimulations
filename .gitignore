@@ -68,3 +68,7 @@ loadtest/.token-cache.json
 # Local OSM source and generated cache artifacts
 server/data/*.osm.pbf
 server/data/generated/
+
+# Demo/marketing capture artifacts (raw video and PNG stills, tens of GB).
+# Only the encoded assets under frontend/public/marketing/ belong in the repo.
+demo-run/output/

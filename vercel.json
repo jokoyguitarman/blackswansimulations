@@ -30,6 +30,14 @@
       "destination": "/simulations/founder.html"
     },
     {
+      "source": "/simulations/corporate-crisis",
+      "destination": "/simulations/corporate-crisis.html"
+    },
+    {
+      "source": "/simulations/corporate-crisis/",
+      "destination": "/simulations/corporate-crisis.html"
+    },
+    {
       "source": "/presentation",
       "destination": "/presentation/index.html"
     },
