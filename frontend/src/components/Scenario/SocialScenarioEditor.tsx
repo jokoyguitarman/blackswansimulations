@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { api } from '../../lib/api';
+import { OrganisationsSection, StakeholdersSection } from './StakeholdersSection';
 
 /**
  * Post-compile editor for social crisis scenarios.
@@ -36,6 +37,9 @@ interface TeamRow {
   team_description: string;
   min_participants: number;
   max_participants: number;
+  // Contract §5.2 — organisation identity (null on single-org scenarios)
+  org_key?: string | null;
+  function_key?: string | null;
   charter?: {
     mission?: string;
     responsibilities?: string[];
@@ -312,6 +316,17 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
           )}
 
           <OverviewSection scen={scen} setScen={setScen} scenarioId={scenarioId} locked={locked} />
+          <OrganisationsSection initialState={initialState} teams={teamList} />
+          <StakeholdersSection
+            scenarioId={scenarioId}
+            locked={locked}
+            onInjectsChanged={() => {
+              api.scenarios
+                .getInjects(scenarioId)
+                .then((res) => setInjectList(res.data as unknown as InjectRow[]))
+                .catch(() => undefined);
+            }}
+          />
           <PersonasSection
             scenarioId={scenarioId}
             initialState={initialState}
@@ -1167,6 +1182,39 @@ const InjectCard = ({
             {inject.generation_source === 'trainer' && (
               <span className="text-[10px] px-1 py-0.5 bg-brand/10 text-brand rounded">Edited</span>
             )}
+            {/* Contract §4 scoping + authorship tags */}
+            {!!dc.country && (
+              <span
+                className="text-[10px] px-1 py-0.5 bg-surface-2 text-muted rounded border border-border"
+                title="Country whose feed / inboxes this belongs to"
+              >
+                {String(dc.country)}
+              </span>
+            )}
+            {!!dc.org_key && (
+              <span
+                className="text-[10px] px-1 py-0.5 bg-surface-2 text-muted rounded border border-border font-mono"
+                title="Organisation this inject is for"
+              >
+                {String(dc.org_key)}
+              </span>
+            )}
+            {!!dc.stakeholder_id && (
+              <span
+                className="text-[10px] px-1 py-0.5 bg-warning/10 text-warning rounded"
+                title="Authored by a stakeholder contact — edit the contact to rename"
+              >
+                stakeholder
+              </span>
+            )}
+            {!!dc.decision_key && (
+              <span
+                className="text-[10px] px-1 py-0.5 bg-danger/10 text-danger rounded"
+                title="Dormant: fires only after an executive decision"
+              >
+                on decision: {String(dc.decision_key)}
+              </span>
+            )}
           </div>
           <div className="text-xs text-muted font-medium">{inject.title}</div>
           <div className="text-xs text-muted mt-0.5 line-clamp-2">{inject.content}</div>
@@ -1758,227 +1806,245 @@ const TeamsSection = ({
 
   if (teamList.length === 0) return null;
 
+  // Multi-organisation scenarios: group rows by org_key (contract §5.2); public voice is per org.
+  const orgKeys = Array.from(new Set(teamList.map((t) => t.org_key ?? '__single')));
+  const multiOrg = orgKeys.length > 1 || (orgKeys.length === 1 && orgKeys[0] !== '__single');
+  const orgHeading = (key: string, sample: TeamRow) => {
+    if (key === '__single') return multiOrg ? 'Shared teams' : null;
+    const sep = sample.team_name.indexOf(' — ');
+    return sep >= 0 ? `${sample.team_name.slice(sep + 3)} (${key})` : key;
+  };
+
   return (
     <SectionCard
       title="Team Charters"
-      subtitle="Grading and scoring read these live. Team names are fixed; wording is yours. Custom teams can also edit their expected actions (detection types come from a fixed vocabulary); preset teams keep the catalog machinery."
+      subtitle={`Grading and scoring read these live. Team names are fixed; wording is yours. Custom teams can also edit their expected actions (detection types come from a fixed vocabulary); preset teams keep the catalog machinery.${multiOrg ? ' Each organisation keeps exactly one public voice.' : ''}`}
     >
       <div className="space-y-3">
-        {teamList.map((t) =>
-          editingId === t.id ? (
-            <div key={t.id} className="bg-surface border border-brand/40 rounded-lg p-3">
-              <div className="text-sm font-semibold text-ink mb-2">{t.team_name}</div>
-              <label className={labelCls}>Mission</label>
-              <textarea
-                value={mission}
-                rows={2}
-                onChange={(e) => setMission(e.target.value)}
-                className={`${inputCls} resize-y`}
-              />
-              <label className={`${labelCls} mt-2`}>Responsibilities</label>
-              <StringListEditor
-                items={responsibilities}
-                onChange={setResponsibilities}
-                disabled={false}
-                addLabel="Add responsibility"
-              />
-              <label className={`${labelCls} mt-2`}>Out of lane (what this team must NOT do)</label>
-              <StringListEditor
-                items={outOfLane}
-                onChange={setOutOfLane}
-                disabled={false}
-                addLabel="Add out-of-lane rule"
-              />
-              <label className={`${labelCls} mt-2`}>
-                Scoring rubric (how the AI grades this team's output)
-              </label>
-              <textarea
-                value={rubric}
-                rows={3}
-                onChange={(e) => setRubric(e.target.value)}
-                className={`${inputCls} resize-y`}
-              />
-              {t.charter?.is_custom && (
-                <>
-                  <label className={`${labelCls} mt-2`}>
-                    Expected actions (what task-completion scoring detects — detection types are a
-                    fixed vocabulary)
-                  </label>
-                  <div className="space-y-1.5">
-                    {expectedActions.map((a, ai) => (
-                      <div
-                        key={ai}
-                        className="flex flex-wrap gap-1.5 items-center bg-surface-2 border border-border rounded p-1.5"
-                      >
-                        <input
-                          value={a.description}
-                          onChange={(e) => {
-                            const next = [...expectedActions];
-                            next[ai] = { ...next[ai], description: e.target.value };
-                            setExpectedActions(next);
-                          }}
-                          placeholder="What should the player do?"
-                          className={`${inputCls} flex-1 min-w-[180px]`}
-                        />
-                        <select
-                          value={a.detection_action_type}
-                          onChange={(e) => {
-                            const next = [...expectedActions];
-                            next[ai] = { ...next[ai], detection_action_type: e.target.value };
-                            setExpectedActions(next);
-                          }}
-                          className="text-[10px] bg-surface border border-border rounded px-1 py-1.5 text-ink"
-                          title="Detected via this player action"
-                        >
-                          {DETECTION_ACTION_TYPES.map((d) => (
-                            <option key={d} value={d}>
-                              {d.replace(/_/g, ' ')}
-                            </option>
-                          ))}
-                        </select>
-                        <input
-                          type="number"
-                          min={1}
-                          max={240}
-                          value={a.timing_benchmark_minutes ?? ''}
-                          onChange={(e) => {
-                            const next = [...expectedActions];
-                            next[ai] = {
-                              ...next[ai],
-                              timing_benchmark_minutes:
-                                e.target.value === '' ? null : Number(e.target.value),
-                            };
-                            setExpectedActions(next);
-                          }}
-                          placeholder="min"
-                          title="Timing benchmark (minutes)"
-                          className="w-14 text-[10px] bg-surface border border-border rounded px-1 py-1.5 text-ink"
-                        />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpectedActions(expectedActions.filter((_, j) => j !== ai))
-                          }
-                          className="text-muted hover:text-danger text-sm px-1"
-                          title="Remove expected action"
-                        >
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      disabled={expectedActions.length >= 8}
-                      onClick={() =>
-                        setExpectedActions([
-                          ...expectedActions,
-                          {
-                            description: '',
-                            detection_action_type: 'email_sent',
-                            timing_benchmark_minutes: 25,
-                            weight: 20,
-                            tier: 2,
-                          },
-                        ])
-                      }
-                      className="text-xs text-brand hover:underline disabled:opacity-40"
-                    >
-                      + Add expected action
-                    </button>
-                  </div>
-                </>
-              )}
-              <div className="flex gap-2 mt-2 items-center">
-                <button
-                  onClick={() => save(t)}
-                  disabled={saving || !mission.trim()}
-                  className="text-xs px-3 py-1 bg-brand text-white rounded disabled:opacity-40"
-                >
-                  {saving ? 'Saving…' : 'Save charter'}
-                </button>
-                <button
-                  onClick={() => setEditingId(null)}
-                  disabled={saving}
-                  className="text-xs px-3 py-1 border border-border rounded text-muted"
-                >
-                  Cancel
-                </button>
-                <SaveStatus saving={false} msg={msg} error={error} />
-              </div>
-            </div>
-          ) : (
-            <div key={t.id} className="bg-surface border border-border rounded-lg p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="text-sm font-semibold text-ink truncate">{t.team_name}</div>
-                  {t.charter?.is_custom && (
-                    <span className="text-[10px] px-1.5 py-0.5 bg-accent/10 text-accent rounded shrink-0">
-                      Custom
-                    </span>
-                  )}
-                  {t.charter?.can_post_publicly && (
-                    <span className="text-[10px] px-1.5 py-0.5 bg-success/10 text-success rounded shrink-0">
-                      Public voice
-                    </span>
-                  )}
-                </div>
-                {!locked && (
-                  <div className="flex gap-2 shrink-0">
-                    {!t.charter?.can_post_publicly && (
-                      <button
-                        onClick={() => makePublicVoice(t)}
-                        disabled={saving}
-                        className="text-xs text-muted hover:text-ink disabled:opacity-40"
-                        title="Make this team the org's public voice (clears it on the current one)"
-                      >
-                        Make public voice
-                      </button>
-                    )}
-                    <button
-                      onClick={() => startEdit(t)}
-                      className="text-xs text-brand hover:underline"
-                    >
-                      Edit
-                    </button>
+        {[...teamList]
+          .sort((a, b) => (a.org_key ?? '').localeCompare(b.org_key ?? ''))
+          .map((t, idx, sorted) => {
+            const key = t.org_key ?? '__single';
+            const first = idx === 0 || (sorted[idx - 1].org_key ?? '__single') !== key;
+            const heading = first ? orgHeading(key, t) : null;
+            return (
+              <div key={`w-${t.id}`}>
+                {heading && (
+                  <div className="text-[11px] font-semibold text-brand uppercase mb-1.5 mt-1">
+                    {heading}
                   </div>
                 )}
+                {renderTeam(t)}
               </div>
-              <div className="text-xs text-muted mt-1">
-                {t.charter?.mission || t.team_description}
-              </div>
-              {(t.charter?.responsibilities?.length ?? 0) > 0 && (
-                <ul className="text-[11px] text-muted mt-1.5 list-disc pl-4 space-y-0.5">
-                  {t.charter!.responsibilities!.slice(0, 6).map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
-              )}
-              {(t.expected_actions?.length ?? 0) > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {t.expected_actions!.map((a, i) => (
-                    <span
-                      key={i}
-                      className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-muted rounded"
-                      title={
-                        t.charter?.is_custom
-                          ? 'Expected actions drive scoring detection — editable via Edit'
-                          : 'Preset expected actions are fixed — they drive scoring detection'
-                      }
-                    >
-                      {String(a.description || a.action_id)}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-          ),
-        )}
+            );
+          })}
       </div>
-      <div className="mt-2">
-        {editingId === null && <SaveStatus saving={saving} msg={msg} error={error} />}
-      </div>
+      <SaveStatus saving={saving} msg={editingId ? null : msg} error={error} />
     </SectionCard>
   );
+
+  function renderTeam(t: TeamRow) {
+    return editingId === t.id ? (
+      <div key={t.id} className="bg-surface border border-brand/40 rounded-lg p-3">
+        <div className="text-sm font-semibold text-ink mb-2">{t.team_name}</div>
+        <label className={labelCls}>Mission</label>
+        <textarea
+          value={mission}
+          rows={2}
+          onChange={(e) => setMission(e.target.value)}
+          className={`${inputCls} resize-y`}
+        />
+        <label className={`${labelCls} mt-2`}>Responsibilities</label>
+        <StringListEditor
+          items={responsibilities}
+          onChange={setResponsibilities}
+          disabled={false}
+          addLabel="Add responsibility"
+        />
+        <label className={`${labelCls} mt-2`}>Out of lane (what this team must NOT do)</label>
+        <StringListEditor
+          items={outOfLane}
+          onChange={setOutOfLane}
+          disabled={false}
+          addLabel="Add out-of-lane rule"
+        />
+        <label className={`${labelCls} mt-2`}>
+          Scoring rubric (how the AI grades this team's output)
+        </label>
+        <textarea
+          value={rubric}
+          rows={3}
+          onChange={(e) => setRubric(e.target.value)}
+          className={`${inputCls} resize-y`}
+        />
+        {t.charter?.is_custom && (
+          <>
+            <label className={`${labelCls} mt-2`}>
+              Expected actions (what task-completion scoring detects — detection types are a fixed
+              vocabulary)
+            </label>
+            <div className="space-y-1.5">
+              {expectedActions.map((a, ai) => (
+                <div
+                  key={ai}
+                  className="flex flex-wrap gap-1.5 items-center bg-surface-2 border border-border rounded p-1.5"
+                >
+                  <input
+                    value={a.description}
+                    onChange={(e) => {
+                      const next = [...expectedActions];
+                      next[ai] = { ...next[ai], description: e.target.value };
+                      setExpectedActions(next);
+                    }}
+                    placeholder="What should the player do?"
+                    className={`${inputCls} flex-1 min-w-[180px]`}
+                  />
+                  <select
+                    value={a.detection_action_type}
+                    onChange={(e) => {
+                      const next = [...expectedActions];
+                      next[ai] = { ...next[ai], detection_action_type: e.target.value };
+                      setExpectedActions(next);
+                    }}
+                    className="text-[10px] bg-surface border border-border rounded px-1 py-1.5 text-ink"
+                    title="Detected via this player action"
+                  >
+                    {DETECTION_ACTION_TYPES.map((d) => (
+                      <option key={d} value={d}>
+                        {d.replace(/_/g, ' ')}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min={1}
+                    max={240}
+                    value={a.timing_benchmark_minutes ?? ''}
+                    onChange={(e) => {
+                      const next = [...expectedActions];
+                      next[ai] = {
+                        ...next[ai],
+                        timing_benchmark_minutes:
+                          e.target.value === '' ? null : Number(e.target.value),
+                      };
+                      setExpectedActions(next);
+                    }}
+                    placeholder="min"
+                    title="Timing benchmark (minutes)"
+                    className="w-14 text-[10px] bg-surface border border-border rounded px-1 py-1.5 text-ink"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setExpectedActions(expectedActions.filter((_, j) => j !== ai))}
+                    className="text-muted hover:text-danger text-sm px-1"
+                    title="Remove expected action"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                disabled={expectedActions.length >= 8}
+                onClick={() =>
+                  setExpectedActions([
+                    ...expectedActions,
+                    {
+                      description: '',
+                      detection_action_type: 'email_sent',
+                      timing_benchmark_minutes: 25,
+                      weight: 20,
+                      tier: 2,
+                    },
+                  ])
+                }
+                className="text-xs text-brand hover:underline disabled:opacity-40"
+              >
+                + Add expected action
+              </button>
+            </div>
+          </>
+        )}
+        <div className="flex gap-2 mt-2 items-center">
+          <button
+            onClick={() => save(t)}
+            disabled={saving || !mission.trim()}
+            className="text-xs px-3 py-1 bg-brand text-white rounded disabled:opacity-40"
+          >
+            {saving ? 'Saving…' : 'Save charter'}
+          </button>
+          <button
+            onClick={() => setEditingId(null)}
+            disabled={saving}
+            className="text-xs px-3 py-1 border border-border rounded text-muted"
+          >
+            Cancel
+          </button>
+          <SaveStatus saving={false} msg={msg} error={error} />
+        </div>
+      </div>
+    ) : (
+      <div key={t.id} className="bg-surface border border-border rounded-lg p-3">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="text-sm font-semibold text-ink truncate">{t.team_name}</div>
+            {t.charter?.is_custom && (
+              <span className="text-[10px] px-1.5 py-0.5 bg-accent/10 text-accent rounded shrink-0">
+                Custom
+              </span>
+            )}
+            {t.charter?.can_post_publicly && (
+              <span className="text-[10px] px-1.5 py-0.5 bg-success/10 text-success rounded shrink-0">
+                Public voice
+              </span>
+            )}
+          </div>
+          {!locked && (
+            <div className="flex gap-2 shrink-0">
+              {!t.charter?.can_post_publicly && (
+                <button
+                  onClick={() => makePublicVoice(t)}
+                  disabled={saving}
+                  className="text-xs text-muted hover:text-ink disabled:opacity-40"
+                  title="Make this team the org's public voice (clears it on the current one)"
+                >
+                  Make public voice
+                </button>
+              )}
+              <button onClick={() => startEdit(t)} className="text-xs text-brand hover:underline">
+                Edit
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="text-xs text-muted mt-1">{t.charter?.mission || t.team_description}</div>
+        {(t.charter?.responsibilities?.length ?? 0) > 0 && (
+          <ul className="text-[11px] text-muted mt-1.5 list-disc pl-4 space-y-0.5">
+            {t.charter!.responsibilities!.slice(0, 6).map((r, i) => (
+              <li key={i}>{r}</li>
+            ))}
+          </ul>
+        )}
+        {(t.expected_actions?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {t.expected_actions!.map((a, i) => (
+              <span
+                key={i}
+                className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-muted rounded"
+                title={
+                  t.charter?.is_custom
+                    ? 'Expected actions drive scoring detection — editable via Edit'
+                    : 'Preset expected actions are fixed — they drive scoring detection'
+                }
+              >
+                {String(a.description || a.action_id)}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
 };
 
 // ─── Objectives ──────────────────────────────────────────────────────────────

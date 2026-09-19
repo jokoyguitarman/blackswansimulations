@@ -8,6 +8,100 @@ import { supabase } from './supabase';
 // Get API base URL from environment variable
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
+// ─── Stakeholder contacts (docs/stakeholder-contacts-contract.md) ───────────
+export interface ContactRow {
+  id: string;
+  name: string;
+  title: string;
+  organisation: string;
+  relationship: string;
+  owning_team: string;
+  org_key: string | null;
+  email: string;
+  phone: string | null;
+  handle: string;
+  note: string;
+  avatar_url?: string;
+  /** Trainer view only */
+  org_display?: string;
+}
+
+export interface ContactsWorkbook {
+  team: { team_name: string; function_key: string | null } | null;
+  org: { org_key: string; display_name: string; country: string | null } | null;
+  is_trainer: boolean;
+  multi_org: boolean;
+  sheets: Array<{ relationship: string; label: string; rows: ContactRow[] }>;
+  source: 'stakeholders' | 'fallback' | 'none';
+}
+
+export type ContactSearchResult =
+  | {
+      kind: 'player';
+      id: string;
+      name: string;
+      team_name: string | null;
+      function_key: string | null;
+    }
+  | { kind: 'stakeholder'; stakeholder: ContactRow };
+
+// ─── Decision layer (contract §7A) ──────────────────────────────────────────
+export interface DecisionObligationView {
+  id: string;
+  decision_id: string;
+  stakeholder_id: string;
+  stakeholder_name?: string;
+  by_function: string;
+  description: string;
+  due_at_minute: number;
+  status: 'open' | 'met' | 'lapsed';
+  met_by_user_id: string | null;
+  met_at: string | null;
+}
+
+export interface SessionDecisionView {
+  id: string;
+  session_id: string;
+  org_key: string;
+  decision_key: string;
+  title: string;
+  recorded_by: string;
+  team_name: string;
+  scope: string | null;
+  rationale: string | null;
+  effective_at: string;
+  recorded_at_minute: number;
+  recorded_by_trainer: boolean;
+  created_at: string;
+  obligations: DecisionObligationView[];
+}
+
+export interface DecisionOptionView {
+  decision_key: string;
+  title: string;
+  description: string;
+  decidable_by_org_keys: string[];
+  affected_org_keys: string[];
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  sop_obligations: Array<{
+    description: string;
+    owed_to_stakeholder_ids: string[];
+    by_function: string;
+    window_minutes: number;
+  }>;
+  eruption_inject_keys: string[];
+  spillover_inject_keys: string[];
+  recorded: SessionDecisionView | null;
+  decidable: boolean;
+}
+
+export interface DecisionSpaceView {
+  org_key: string | null;
+  is_trainer: boolean;
+  options: DecisionOptionView[];
+  chain_of_command: Array<{ org_key: string; from_function: string; to: string[] }>;
+}
+
 // Helper function to build API URLs
 const apiUrl = (path: string) => {
   // Remove leading slash if present, then add it back
@@ -374,6 +468,65 @@ export const api = {
           success_criteria: Record<string, unknown>;
         }>;
       }>(await fetch(apiUrl(`/api/scenarios/${id}/objectives`), { headers }));
+    },
+    /** Stakeholder characters (contract §3) with the org registry + team functions for the editor. */
+    getStakeholders: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<Record<string, unknown> & { id: string }>;
+        orgs: Array<{
+          org_key: string;
+          display_name: string;
+          country: string;
+          side: string;
+          is_primary?: boolean;
+        }>;
+        countries: Array<{ name: string; code?: string }>;
+        teams: Array<{
+          id: string;
+          team_name: string;
+          org_key: string | null;
+          function_key: string | null;
+        }>;
+        functions: string[];
+        injects_by_stakeholder: Record<string, number>;
+      }>(await fetch(apiUrl(`/api/scenarios/${id}/stakeholders`), { headers }));
+    },
+    createStakeholder: async (id: string, fields: Record<string, unknown>) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: Record<string, unknown> & { id: string } }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/stakeholders`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    updateStakeholder: async (
+      id: string,
+      stakeholderId: string,
+      fields: Record<string, unknown>,
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Record<string, unknown> & { id: string };
+        injects_updated: number;
+      }>(
+        await fetch(apiUrl(`/api/scenarios/${id}/stakeholders/${stakeholderId}`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify(fields),
+        }),
+      );
+    },
+    deleteStakeholder: async (id: string, stakeholderId: string, force = false) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ ok: boolean; injects_deleted: number }>(
+        await fetch(
+          apiUrl(`/api/scenarios/${id}/stakeholders/${stakeholderId}${force ? '?force=true' : ''}`),
+          { method: 'DELETE', headers },
+        ),
+      );
     },
     /** Edit one scenario objective row. */
     updateObjective: async (id: string, objectiveId: string, fields: Record<string, unknown>) => {
@@ -1223,19 +1376,79 @@ export const api = {
   channels: {
     list: async (sessionId: string) => {
       const headers = await getAuthHeaders();
-      return handleResponse<{ data: unknown[] }>(
-        await fetch(apiUrl(`/api/channels/session/${sessionId}`), { headers }),
-      );
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          session_id: string;
+          name: string;
+          type: string;
+          team_name: string | null;
+          function_key: string | null;
+          org_key: string | null;
+          member_count: number;
+          last_message: { content: string; created_at: string; sender_name: string } | null;
+          unread_count: number;
+        }>;
+      }>(await fetch(apiUrl(`/api/channels/session/${sessionId}`), { headers }));
     },
     getDMs: async (sessionId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{
         data: Array<{
           id: string;
-          recipient: { id: string; full_name: string; role: string } | null;
-          last_message: { content: string; created_at: string } | null;
+          type?: 'direct' | 'npc_direct';
+          recipient: { id: string; full_name: string; role: string; team_name?: string } | null;
+          stakeholder?: {
+            id: string;
+            name: string;
+            title: string;
+            organisation: string;
+            relationship: string;
+            handle: string;
+            avatar_url?: string;
+          } | null;
+          last_message: { content: string; created_at: string; sender_name?: string } | null;
+          unread_count?: number;
         }>;
       }>(await fetch(apiUrl(`/api/channels/session/${sessionId}/dms`), { headers }));
+    },
+    getMembers: async (channelId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: Array<{
+          id: string;
+          full_name: string;
+          role: string;
+          team_name: string | null;
+          function_key: string | null;
+          org_key: string | null;
+          is_trainer: boolean;
+        }>;
+      }>(await fetch(apiUrl(`/api/channels/${channelId}/members`), { headers }));
+    },
+    markRead: async (channelId: string) => {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/channels/${channelId}/read`), {
+        method: 'POST',
+        headers,
+      });
+      if (!res.ok && res.status !== 204) throw new Error('Failed to mark channel read');
+    },
+    createNpcDM: async (sessionId: string, stakeholderId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          id: string;
+          type: 'npc_direct';
+          stakeholder: { id: string; name: string; title: string; organisation: string };
+        };
+      }>(
+        await fetch(apiUrl(`/api/channels/session/${sessionId}/npc-dm`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ stakeholder_id: stakeholderId }),
+        }),
+      );
     },
     getParticipants: async (sessionId: string) => {
       const headers = await getAuthHeaders();
@@ -1287,6 +1500,29 @@ export const api = {
           headers,
           body: JSON.stringify({ content, message_type: messageType }),
         }),
+      );
+    },
+  },
+
+  // Stakeholder contacts (workbook + search) — docs/stakeholder-contacts-contract.md
+  contacts: {
+    workbook: async (sessionId: string, filters?: { team?: string; org_key?: string }) => {
+      const headers = await getAuthHeaders();
+      const qs = new URLSearchParams();
+      if (filters?.team) qs.set('team', filters.team);
+      if (filters?.org_key) qs.set('org_key', filters.org_key);
+      const suffix = qs.toString() ? `?${qs.toString()}` : '';
+      return handleResponse<{ data: ContactsWorkbook }>(
+        await fetch(apiUrl(`/api/social/contacts/session/${sessionId}${suffix}`), { headers }),
+      );
+    },
+    search: async (sessionId: string, q: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: ContactSearchResult[] }>(
+        await fetch(
+          apiUrl(`/api/social/contacts/session/${sessionId}/search?q=${encodeURIComponent(q)}`),
+          { headers },
+        ),
       );
     },
   },

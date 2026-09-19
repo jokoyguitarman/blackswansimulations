@@ -999,15 +999,39 @@ router.patch(
       const { id, teamId } = req.params;
       if (!(await guardScenarioEdit(id, req, res))) return;
 
-      const { data: existing, error: fetchErr } = await supabaseAdmin
-        .from('scenario_teams')
-        .select('id, team_name, charter')
-        .eq('id', teamId)
-        .eq('scenario_id', id)
-        .maybeSingle();
-      if (fetchErr) {
-        logger.error({ error: fetchErr, teamId }, 'Failed to load team for edit');
-        return res.status(500).json({ error: 'Failed to load team' });
+      // org_key (migration 197) may be absent on un-migrated databases; fall back gracefully.
+      type ExistingTeamRow = {
+        id: string;
+        team_name: string;
+        charter: unknown;
+        org_key?: string | null;
+      };
+      let existing: ExistingTeamRow | null = null;
+      {
+        const withOrg = await supabaseAdmin
+          .from('scenario_teams')
+          .select('id, team_name, charter, org_key')
+          .eq('id', teamId)
+          .eq('scenario_id', id)
+          .maybeSingle();
+        if (withOrg.error && /org_key/.test(withOrg.error.message)) {
+          const legacy = await supabaseAdmin
+            .from('scenario_teams')
+            .select('id, team_name, charter')
+            .eq('id', teamId)
+            .eq('scenario_id', id)
+            .maybeSingle();
+          if (legacy.error) {
+            logger.error({ error: legacy.error, teamId }, 'Failed to load team for edit');
+            return res.status(500).json({ error: 'Failed to load team' });
+          }
+          existing = legacy.data as ExistingTeamRow | null;
+        } else if (withOrg.error) {
+          logger.error({ error: withOrg.error, teamId }, 'Failed to load team for edit');
+          return res.status(500).json({ error: 'Failed to load team' });
+        } else {
+          existing = withOrg.data as ExistingTeamRow | null;
+        }
       }
       if (!existing) {
         return res.status(404).json({ error: 'Team not found' });
@@ -1058,14 +1082,17 @@ router.patch(
         return res.status(500).json({ error: `Failed to update team: ${error.message}` });
       }
 
-      // Exactly-one-public-voice rule: designating this team clears the flag
-      // on every sibling row.
+      // Exactly-one-public-voice rule PER ORGANISATION (contract §5.2): designating this
+      // team clears the flag on its sibling rows in the same org (all rows when single-org).
       if (req.body.can_post_publicly === true) {
-        const { data: siblings, error: sibErr } = await supabaseAdmin
+        const orgKey = existing.org_key ?? null;
+        let sibQuery = supabaseAdmin
           .from('scenario_teams')
           .select('id, charter')
           .eq('scenario_id', id)
           .neq('id', teamId);
+        if (orgKey !== null) sibQuery = sibQuery.eq('org_key', orgKey);
+        const { data: siblings, error: sibErr } = await sibQuery;
         if (sibErr) {
           logger.error({ error: sibErr, scenarioId: id }, 'Failed to load sibling teams');
           return res
