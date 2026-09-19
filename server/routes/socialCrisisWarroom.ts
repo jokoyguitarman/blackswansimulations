@@ -35,6 +35,32 @@ import {
 } from '../services/teamCharterService.js';
 import { RESPONSE_STANDARDS } from '../config/responseStandards.js';
 import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
+import {
+  organisationsSchema,
+  competitorsSchema,
+  teamCharterWireSchema,
+  resolveOrganisations,
+  crisisContextFrom,
+  runNpcsPipeline,
+  runStorylinePipeline,
+  runDecisionLayer,
+  runOrgPagePipeline,
+  buildCompileArtifacts,
+  chartersFromWire,
+  logCompileSummary,
+  type TeamCharterWire,
+} from '../services/multiOrgPipeline.js';
+import { MultiOrgValidationError } from '../services/scenarioValidationService.js';
+import {
+  EXECUTIVE_CHARTER,
+  type OrganisationInput,
+  type CompetitorInput,
+} from '../services/scenarioOrgModel.js';
+import type {
+  Stakeholder,
+  ExecutiveDecision,
+  ChainOfCommandEdge,
+} from '../services/stakeholderShapes.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { env } from '../env.js';
 import { extractBlueprint } from '../services/blueprint/blueprintExtractionService.js';
@@ -216,20 +242,19 @@ function charterWirePayload(c: TeamCharter) {
   };
 }
 
-// Preset team cards for the wizard's roster builder.
+// Preset team cards for the wizard's roster builder (runtime catalog + Executive Leadership, §7A).
 router.get('/team-catalog', requireAuth, (_req: AuthenticatedRequest, res) => {
+  const presets = [...FIXED_TEAM_NAMES.map((name) => TEAM_CATALOG[name]), EXECUTIVE_CHARTER];
   res.json({
-    data: FIXED_TEAM_NAMES.map((name) => {
-      const c = TEAM_CATALOG[name];
-      return {
-        team_name: c.team_name,
-        mission: c.mission,
-        responsibilities: c.responsibilities,
-        min_participants: c.min_participants,
-        max_participants: c.max_participants,
-        default_public_voice: !!c.can_post_publicly,
-      };
-    }),
+    data: presets.map((c) => ({
+      team_name: c.team_name,
+      mission: c.mission,
+      responsibilities: c.responsibilities,
+      min_participants: c.min_participants,
+      max_participants: c.max_participants,
+      default_public_voice: !!c.can_post_publicly,
+      is_executive: c.team_name === EXECUTIVE_CHARTER.team_name,
+    })),
   });
 });
 
@@ -267,11 +292,26 @@ router.post(
         location: z.string().default(''),
         org_name: z.string().optional(),
         blueprint: z.unknown().optional(),
+        organisations: organisationsSchema.optional(),
+        competitors: competitorsSchema.optional(),
       }),
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
     const { crisis_type, context, country, location, org_name, blueprint } = req.body;
+
+    // Multi-organisation path (contract §5): validate BEFORE starting the job.
+    const orgsResult = resolveOrganisations(
+      req.body.organisations as OrganisationInput[] | undefined,
+      req.body.competitors as CompetitorInput[] | undefined,
+    );
+    if (orgsResult && !orgsResult.ok) {
+      logger.warn({ code: orgsResult.code, details: orgsResult.details }, 'org_validation_failed');
+      return res
+        .status(400)
+        .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
+    }
+
     const jobId = `npc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
@@ -279,6 +319,26 @@ router.post(
 
     void (async () => {
       try {
+        if (orgsResult && orgsResult.ok) {
+          const r = await runNpcsPipeline(orgsResult, crisisContextFrom(req.body));
+          aiJobs.set(jobId, {
+            status: 'completed',
+            data: {
+              personas: r.personas,
+              factSheet: r.factSheet,
+              fact_sheet: r.factSheet,
+              communities: r.communities,
+              countries: r.countries,
+              per_country_counts: r.per_country_counts,
+            },
+            startedAt: Date.now(),
+          });
+          logger.info(
+            { jobId, per_country_counts: r.per_country_counts },
+            'NPC generation completed (multi-org)',
+          );
+          return;
+        }
         const result = await generateNPCsAndFactSheet(
           crisis_type,
           context,
@@ -374,6 +434,8 @@ router.post(
         }),
         blueprint: z.unknown().optional(),
         team_roster: teamRosterSchema.optional(),
+        organisations: organisationsSchema.optional(),
+        competitors: competitorsSchema.optional(),
       }),
     }),
   ),
@@ -381,6 +443,42 @@ router.post(
     try {
       const { crisis_type, country, context, duration, personas, fact_sheet, org_name, blueprint } =
         req.body;
+
+      // Multi-organisation path (contract §5): organisations[] replaces the flat roster.
+      const orgsResult = resolveOrganisations(
+        req.body.organisations as OrganisationInput[] | undefined,
+        req.body.competitors as CompetitorInput[] | undefined,
+      );
+      if (orgsResult && !orgsResult.ok) {
+        logger.warn(
+          { code: orgsResult.code, details: orgsResult.details },
+          'org_validation_failed',
+        );
+        return res
+          .status(400)
+          .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
+      }
+      if (orgsResult && orgsResult.ok) {
+        res.setHeader('Content-Type', 'application/x-ndjson');
+        res.setHeader('Transfer-Encoding', 'chunked');
+        const write = (msg: Record<string, unknown>) => res.write(JSON.stringify(msg) + '\n');
+        try {
+          const result = await runStorylinePipeline(
+            orgsResult,
+            crisisContextFrom(req.body),
+            personas as NPCPersona[],
+            fact_sheet as FactSheet,
+            env.enableDocumentBlueprint && blueprint ? coerceBlueprint(blueprint) : null,
+            write,
+          );
+          write({ type: 'complete', ...result });
+        } catch (err) {
+          logger.error({ err }, 'Multi-org storyline generation failed');
+          write({ type: 'error', message: 'Storyline generation failed' });
+        }
+        res.end();
+        return;
+      }
 
       // Roster: trainer-selected presets + custom teams. Absent = the four
       // presets (backward compatible). Validate BEFORE switching to NDJSON.
@@ -565,6 +663,11 @@ router.post(
           unconfirmed_claims: z.array(z.unknown()),
         }),
         blueprint: z.unknown().optional(),
+        // Multi-organisation (contract §5 / §7A): cross-org dependencies + decision layer.
+        organisations: organisationsSchema.optional(),
+        competitors: competitorsSchema.optional(),
+        team_charters: z.array(teamCharterWireSchema).optional(),
+        stakeholders: z.array(z.unknown()).optional(),
       }),
     }),
   ),
@@ -580,6 +683,18 @@ router.post(
       fact_sheet,
       blueprint,
     } = req.body;
+
+    const orgsResult = resolveOrganisations(
+      req.body.organisations as OrganisationInput[] | undefined,
+      req.body.competitors as CompetitorInput[] | undefined,
+    );
+    if (orgsResult && !orgsResult.ok) {
+      logger.warn({ code: orgsResult.code, details: orgsResult.details }, 'org_validation_failed');
+      return res
+        .status(400)
+        .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
+    }
+
     const jobId = `conv_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
     aiJobs.set(jobId, { status: 'generating', startedAt: Date.now() });
@@ -588,6 +703,23 @@ router.post(
     void (async () => {
       try {
         const crisisContext = { crisisType: crisis_type, location, country, context, duration };
+
+        // Explicit valid team names (never the wizard's synthetic "Shared" key) and the
+        // org grouping that lets dependencies cross agencies and borders.
+        const orgSummary =
+          orgsResult && orgsResult.ok && orgsResult.multiOrg
+            ? orgsResult.orgs.map((o) => ({
+                org_key: o.org_key,
+                display_name: o.display_name,
+                country: o.country,
+                team_names: o.teams.map((t) => t.team_name),
+              }))
+            : undefined;
+        const validTeamNames =
+          orgsResult && orgsResult.ok
+            ? orgsResult.orgs.flatMap((o) => o.teams.map((t) => t.team_name))
+            : Object.keys(team_storylines as Record<string, unknown>).filter((k) => k !== 'Shared');
+
         const [result, intelResult] = await Promise.all([
           generateConvergenceLayer(
             team_storylines as Record<string, SocialInject[]>,
@@ -601,17 +733,44 @@ router.post(
             personas as NPCPersona[],
             fact_sheet as FactSheet,
             crisisContext,
+            validTeamNames,
+            orgSummary,
           ).catch((err) => {
             logger.warn({ err, jobId }, 'Intel dependency generation failed (non-critical)');
             return { intelInjects: {}, intelGates: [] };
           }),
         ]);
+
+        // Decision layer (§7A) only when an Executive team exists; dormant templates otherwise none.
+        let decisionLayer = null;
+        if (orgsResult && orgsResult.ok) {
+          try {
+            const charters = chartersFromWire(
+              (req.body.team_charters as TeamCharterWire[]) || [],
+              orgsResult,
+            );
+            decisionLayer = await runDecisionLayer(
+              orgsResult,
+              charters,
+              ((req.body.stakeholders as Stakeholder[]) || []).filter(
+                (s) => s && typeof s === 'object',
+              ),
+              personas as NPCPersona[],
+              fact_sheet as FactSheet,
+              crisisContextFrom({ crisis_type, context, duration, org_name: req.body.org_name }),
+            );
+          } catch (err) {
+            logger.warn({ err, jobId }, 'Decision layer generation failed (non-critical)');
+          }
+        }
+
         // Paired intel gates ride the convergence-gate bucket; intel emails are
         // returned separately so the wizard can merge them into team storylines.
         const data = {
           ...result,
           convergenceGates: [...result.convergenceGates, ...intelResult.intelGates],
           intel_injects: intelResult.intelInjects,
+          ...(decisionLayer ? { decision_layer: decisionLayer } : {}),
         };
         aiJobs.set(jobId, { status: 'completed', data, startedAt: Date.now() });
         logger.info(
@@ -757,6 +916,14 @@ router.post(
         org_page: z.unknown().optional(),
         duration: z.number().default(60),
         blueprint: z.unknown().optional(),
+        // Multi-organisation (contract §3 / §5 / §7A). Server derives orgs[]/countries[] itself.
+        organisations: organisationsSchema.optional(),
+        competitors: competitorsSchema.optional(),
+        stakeholders: z.array(z.unknown()).optional(),
+        stakeholder_injects: z.array(z.unknown()).optional(),
+        decision_space: z.array(z.unknown()).optional(),
+        chain_of_command: z.array(z.unknown()).optional(),
+        sop_steps: z.array(z.unknown()).optional(),
       }),
     }),
   ),
@@ -766,13 +933,32 @@ router.post(
       return res.status(403).json({ error: 'Only trainers can compile scenarios' });
     }
 
+    // Multi-organisation path: validate the organisations BEFORE consuming the credit.
+    const compileOrgs = resolveOrganisations(
+      req.body.organisations as OrganisationInput[] | undefined,
+      req.body.competitors as CompetitorInput[] | undefined,
+    );
+    if (compileOrgs && !compileOrgs.ok) {
+      logger.warn(
+        { code: compileOrgs.code, details: compileOrgs.details },
+        'org_validation_failed',
+      );
+      return res
+        .status(400)
+        .json({
+          error: `Invalid organisations: ${compileOrgs.message}`,
+          code: compileOrgs.code,
+          details: compileOrgs.details,
+        });
+    }
+
     // Validate the team roster BEFORE consuming the credit so a bad roster
     // never costs the trainer anything. (No charters = legacy default four.)
     const compileClientCharters = (req.body.team_charters || []) as Array<
       Record<string, unknown> & { team_name: string; mission: string; responsibilities: string[] }
     >;
     let compileRoster: RosterEntry[] | null = null;
-    if (compileClientCharters.length > 0) {
+    if (!compileOrgs && compileClientCharters.length > 0) {
       const rosterCheck = validateRoster(
         compileClientCharters.map((c) => ({
           team_name: c.team_name,
@@ -818,7 +1004,28 @@ router.post(
         // a custom team can never be silently unscoreable. No charters sent =
         // legacy default: adapt the four presets.
         let teamCharters: TeamCharter[];
-        if (compileRoster) {
+        // Multi-organisation artefacts (charters, registry, stakeholders, templates, personas).
+        const multiArtifacts =
+          compileOrgs && compileOrgs.ok
+            ? buildCompileArtifacts(compileOrgs, {
+                team_charters: body.team_charters as TeamCharterWire[] | undefined,
+                stakeholders: body.stakeholders as Stakeholder[] | undefined,
+                stakeholder_injects: body.stakeholder_injects as SocialInject[] | undefined,
+                personas: body.personas as NPCPersona[],
+                org_page:
+                  (body.org_page as
+                    | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
+                    | undefined) || null,
+                decision_space: body.decision_space as ExecutiveDecision[] | undefined,
+                chain_of_command: body.chain_of_command as ChainOfCommandEdge[] | undefined,
+                sop_steps: body.sop_steps as
+                  | import('../services/socialCrisisGeneratorService.js').SOPStep[]
+                  | undefined,
+              })
+            : null;
+        if (multiArtifacts) {
+          teamCharters = multiArtifacts.charters;
+        } else if (compileRoster) {
           teamCharters = compileRoster.map((entry) => {
             const client = compileClientCharters.find(
               (c) => c.team_name.trim() === entry.team_name,
@@ -900,6 +1107,11 @@ router.post(
           logger.warn({ swErr }, 'Strategy windows generation failed (non-critical)');
         }
 
+        // §7A decision-triggered SOP steps ride the scenario SOP (dormant until runtime triggers ship).
+        if (multiArtifacts && multiArtifacts.sop_steps.length > 0) {
+          sop.steps = [...sop.steps, ...multiArtifacts.sop_steps];
+        }
+
         const payload = assemblePayload(
           body.narrative,
           fixedTeams,
@@ -909,7 +1121,7 @@ router.post(
             description: string;
             weight: number;
           }>,
-          body.personas as NPCPersona[],
+          (multiArtifacts ? multiArtifacts.personas : body.personas) as NPCPersona[],
           body.fact_sheet as FactSheet,
           body.communities,
           (body.team_storylines || {}) as Record<string, SocialInject[]>,
@@ -926,9 +1138,24 @@ router.post(
             | undefined) || null,
           body.org_name || undefined,
           env.enableDocumentBlueprint && body.blueprint ? coerceBlueprint(body.blueprint) : null,
+          multiArtifacts
+            ? {
+                orgs: multiArtifacts.registry,
+                countries: multiArtifacts.countries,
+                country: multiArtifacts.primaryCountry,
+                stakeholders: multiArtifacts.stakeholders,
+                extraInjects: multiArtifacts.extraInjects,
+                ...(multiArtifacts.decision_space?.length
+                  ? { decision_space: multiArtifacts.decision_space }
+                  : {}),
+                ...(multiArtifacts.chain_of_command?.length
+                  ? { chain_of_command: multiArtifacts.chain_of_command }
+                  : {}),
+              }
+            : undefined,
         );
 
-        if (body.country) {
+        if (body.country && !multiArtifacts) {
           (payload.scenario.initial_state as Record<string, unknown>).country = body.country;
         }
 
@@ -937,7 +1164,18 @@ router.post(
         (payload.scenario.initial_state as Record<string, unknown>).strategic_benchmarks =
           benchmarksFromCharters(teamCharters);
 
+        // Persistence runs the contract §9 checklist first and throws MultiOrgValidationError
+        // before writing anything; the trainer sees the failing rule (handled below).
         const scenarioId = await persistSocialCrisisScenario(payload, user.id, teamCharters);
+        if (multiArtifacts) {
+          logCompileSummary(
+            scenarioId,
+            multiArtifacts,
+            payload.time_injects.length +
+              payload.condition_injects.length +
+              payload.decision_injects.length,
+          );
+        }
 
         // Backfill the scenario id onto the credit spend row for auditing.
         if (creditLedgerId) {
@@ -948,7 +1186,7 @@ router.post(
         }
 
         // Pre-generate images in background (doesn't block compile result)
-        const personas = body.personas as NPCPersona[];
+        const personas = (multiArtifacts ? multiArtifacts.personas : body.personas) as NPCPersona[];
         void (async () => {
           try {
             const allPrompts: Array<{ handle: string; prompt: string; style: string }> = [];
@@ -1017,7 +1255,12 @@ router.post(
         if (creditLedgerId) {
           await refundCredit(user.id, 'scenario', creditInvoiceId);
         }
-        aiJobs.set(jobId, { status: 'failed', error: 'Compilation failed', startedAt: Date.now() });
+        // Contract §9 violations surface their rule so the trainer/editor can act on them.
+        const error =
+          err instanceof MultiOrgValidationError
+            ? `Compilation failed validation — ${err.code}: ${err.message.replace(/^MO-[A-Z]+-\d+:\s*/, '')}`
+            : 'Compilation failed';
+        aiJobs.set(jobId, { status: 'failed', error, startedAt: Date.now() });
       }
     })();
   },
@@ -1131,11 +1374,29 @@ router.post(
           )
           .optional(),
         auto_antagonist: z.boolean().optional(),
+        organisations: organisationsSchema.optional(),
+        competitors_with_country: competitorsSchema.optional(),
       }),
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
     try {
+      // Multi-organisation path: every protagonist gets its own page in its own country;
+      // competitors carry theirs; the registry is returned alongside.
+      const orgsResult = resolveOrganisations(
+        req.body.organisations as OrganisationInput[] | undefined,
+        req.body.competitors_with_country as CompetitorInput[] | undefined,
+      );
+      if (orgsResult && !orgsResult.ok) {
+        logger.warn(
+          { code: orgsResult.code, details: orgsResult.details },
+          'org_validation_failed',
+        );
+        return res
+          .status(400)
+          .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
+      }
+
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
 
@@ -1148,6 +1409,26 @@ router.post(
         competitors,
         auto_antagonist,
       } = req.body;
+
+      if (orgsResult && orgsResult.ok) {
+        const r = await runOrgPagePipeline(
+          orgsResult,
+          crisis_description,
+          logo_url,
+          auto_antagonist !== false,
+          (msg: string) => res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n'),
+        );
+        res.write(
+          JSON.stringify({
+            type: 'complete',
+            org_page: r.orgPage,
+            orgs: r.orgs,
+            countries: r.countries,
+          }) + '\n',
+        );
+        res.end();
+        return;
+      }
 
       const orgPage = await generateOrgPageConfig(
         crisis_description,

@@ -108,6 +108,12 @@ export async function persistWarroomScenario(
           max_participants: t.max_participants ?? 10,
           ...(t.counter_definitions?.length ? { counter_definitions: t.counter_definitions } : {}),
           is_investigative: t.is_investigative ?? false,
+          // Contract §5.2: field-ops scenarios are single-org; function_key only when the
+          // team is literally a catalog function (lets resolveTeamFunction pick icons/AAR).
+          org_key: null,
+          function_key: ['Communications', 'Procurement', 'Sales', 'Legal'].includes(t.team_name)
+            ? t.team_name
+            : null,
         })),
       );
       if (teamsError) throw new Error(`scenario_teams: ${teamsError.message}`);

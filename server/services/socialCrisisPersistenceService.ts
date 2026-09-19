@@ -2,6 +2,8 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import type { SocialCrisisPayload } from './socialCrisisGeneratorService.js';
 import type { TeamCharter } from './teamCharterService.js';
+import { functionKeyForTeamRow } from './scenarioOrgModel.js';
+import { validateScenarioPayload } from './scenarioValidationService.js';
 
 const VALID_INJECT_SCOPES = ['universal', 'role_specific', 'team_specific'];
 const VALID_SEVERITIES = ['low', 'medium', 'high', 'critical'];
@@ -48,13 +50,24 @@ export function sanitizeTeamTargeting(
   return { inject_scope: 'team_specific', target_teams: known };
 }
 
+/** Charter as produced by the generator: runtime shape plus optional organisation identity (contract §5.2). */
+export type PersistableTeamCharter = TeamCharter & {
+  org_key?: string | null;
+  function_key?: string | null;
+};
+
+export { functionKeyForTeamRow };
+
 export async function persistSocialCrisisScenario(
   payload: SocialCrisisPayload,
   createdBy: string,
-  teamCharters?: TeamCharter[],
+  teamCharters?: PersistableTeamCharter[],
 ): Promise<string> {
   const { scenario, teams, objectives, sop, time_injects, condition_injects, decision_injects } =
     payload;
+
+  // Contract §9 acceptance checklist: fail loudly BEFORE any row is written.
+  validateScenarioPayload(payload, teamCharters ?? []);
 
   const { data: scenarioRow, error: scenarioErr } = await supabaseAdmin
     .from('scenarios')
@@ -84,7 +97,7 @@ export async function persistSocialCrisisScenario(
 
   try {
     if (teams.length > 0) {
-      const charterByName = new Map<string, TeamCharter>(
+      const charterByName = new Map<string, PersistableTeamCharter>(
         (teamCharters || []).map((c) => [c.team_name, c]),
       );
       const { error: teamsErr } = await supabaseAdmin.from('scenario_teams').insert(
@@ -97,6 +110,9 @@ export async function persistSocialCrisisScenario(
             required_roles: [],
             min_participants: t.min_participants,
             max_participants: t.max_participants,
+            // Contract §5.2 — organisation identity (null = single-org / spans all).
+            org_key: charter?.org_key ?? null,
+            function_key: functionKeyForTeamRow(t.team_name, charter),
             charter: charter
               ? {
                   mission: charter.mission,
