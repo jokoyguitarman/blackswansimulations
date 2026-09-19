@@ -2,6 +2,20 @@ import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
+import {
+  RosterBuilder,
+  OrganisationCard,
+  CountrySelect,
+  organisationsErrorFor,
+  newOrganisationDraft,
+  DEFAULT_TEAM_ROSTER,
+  ORG_KIND_LABELS,
+  type RosterEntry,
+  type PresetTeamCard,
+  type OrganisationDraft,
+  type CompetitorDraft,
+  type OrgKind,
+} from '../components/Scenario/OrganisationRosterBuilder';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -14,6 +28,47 @@ interface NPCPersona {
   follower_count: number;
   tier?: 'key' | 'background';
   normal_interests?: string[];
+  /** Contract §5.3: which country's public sphere this persona belongs to. */
+  country?: string;
+}
+
+/** Contract §3 stakeholder (player-visible + hidden fields; the wizard only displays the visible ones). */
+interface StakeholderWire {
+  id: string;
+  name: string;
+  title: string;
+  organisation: string;
+  relationship: string;
+  owning_team: string;
+  org_key: string | null;
+  email: string;
+  phone: string | null;
+  handle: string;
+  note: string;
+  grievance: string;
+  [key: string]: unknown;
+}
+
+interface OrgRegistryWire {
+  org_key: string;
+  display_name: string;
+  short_name?: string;
+  country: string;
+  city?: string;
+  kind?: string;
+  side: 'protagonist' | 'antagonist';
+  is_primary?: boolean;
+}
+
+interface ExecutiveDecisionWire {
+  decision_key: string;
+  label: string;
+  description: string;
+  severity: string;
+  decidable_by_org_keys: string[];
+  affected_org_keys: string[];
+  sop_obligations: Array<{ description: string; owed_by_function: string; window_minutes: number }>;
+  [key: string]: unknown;
 }
 
 interface FactSheetEntry {
@@ -63,31 +118,12 @@ interface TeamCharterWire {
   is_custom?: boolean;
   can_post_publicly?: boolean;
   sentiment_dimension?: string;
+  // Contract §5.2 — organisation identity (multi-organisation scenarios)
+  org_key?: string | null;
+  function_key?: string;
+  country?: string;
+  short_name?: string;
 }
-
-/** A team the trainer picked for this scenario: preset or their own division. */
-interface RosterEntry {
-  team_name: string;
-  description: string;
-  is_custom: boolean;
-  is_public_voice: boolean;
-}
-
-interface PresetTeamCard {
-  team_name: string;
-  mission: string;
-  responsibilities: string[];
-  default_public_voice: boolean;
-}
-
-const PRESET_TEAM_NAMES = ['Communications', 'Procurement', 'Sales', 'Legal'];
-
-const DEFAULT_TEAM_ROSTER: RosterEntry[] = PRESET_TEAM_NAMES.map((n) => ({
-  team_name: n,
-  description: '',
-  is_custom: false,
-  is_public_voice: n === 'Communications',
-}));
 
 /* ─── Constants ─────────────────────────────────────────────────────── */
 
@@ -204,6 +240,12 @@ export const SocialCrisisWizard = () => {
   const [brandLogoUrl, setBrandLogoUrl] = useState('');
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [country, setCountry] = useState('Singapore');
+  // Primary organisation extras (contract §5.1): where it sits and what it is.
+  const [primaryCity, setPrimaryCity] = useState('');
+  const [primaryKind, setPrimaryKind] = useState<OrgKind>('company');
+  const [primaryShortName, setPrimaryShortName] = useState('');
+  // Additional protagonist organisations — each with its own country and team roster.
+  const [extraOrganisations, setExtraOrganisations] = useState<OrganisationDraft[]>([]);
   const [context, setContext] = useState('');
   const [uploadedDocText, setUploadedDocText] = useState('');
   const [uploadedDocName, setUploadedDocName] = useState('');
@@ -260,50 +302,87 @@ export const SocialCrisisWizard = () => {
     loadCatalog();
   }, []);
 
-  /** Roster validity mirrors server-side validateRoster (server still enforces). */
-  const rosterError = useMemo((): string | null => {
-    if (teamRoster.length < 2) return 'Pick at least 2 teams';
-    if (teamRoster.length > 6) return 'Maximum 6 teams';
-    const names = teamRoster.map((t) => t.team_name.trim().toLowerCase());
-    if (names.some((n) => !n)) return 'Every custom team needs a name';
-    if (new Set(names).size !== names.length) return 'Team names must be unique';
-    const bad = teamRoster.find((t) => t.is_custom && t.description.trim().length < 10);
-    if (bad)
-      return `Describe what "${bad.team_name || 'your custom team'}" does (min 10 characters)`;
-    if (teamRoster.filter((t) => t.is_public_voice).length !== 1)
-      return 'Tick exactly one team as the public voice';
-    return null;
-  }, [teamRoster]);
+  // Roster of antagonist competitor brands defined in Setup (each in its own country).
+  const [competitorEntries, setCompetitorEntries] = useState<CompetitorDraft[]>([]);
+  const [autoAntagonist, setAutoAntagonist] = useState(true);
 
-  const setPublicVoice = useCallback((teamName: string) => {
-    setTeamRoster((prev) => prev.map((t) => ({ ...t, is_public_voice: t.team_name === teamName })));
-  }, []);
+  /** Organisation validity mirrors server-side validateOrganisations (server still enforces). */
+  const rosterError = useMemo(
+    (): string | null =>
+      organisationsErrorFor(
+        { display_name: orgName, country, team_roster: teamRoster },
+        extraOrganisations,
+        competitorEntries,
+      ),
+    [orgName, country, teamRoster, extraOrganisations, competitorEntries],
+  );
 
-  const togglePreset = useCallback((preset: PresetTeamCard) => {
-    setTeamRoster((prev) => {
-      const exists = prev.some((t) => !t.is_custom && t.team_name === preset.team_name);
-      let next: RosterEntry[];
-      if (exists) {
-        next = prev.filter((t) => t.is_custom || t.team_name !== preset.team_name);
-      } else {
-        next = [
-          ...prev,
-          {
-            team_name: preset.team_name,
-            description: '',
-            is_custom: false,
-            is_public_voice: false,
-          },
-        ];
-      }
-      // Keep exactly one public voice whenever possible.
-      if (next.length > 0 && !next.some((t) => t.is_public_voice)) {
-        const comms = next.find((t) => t.team_name === 'Communications');
-        (comms ?? next[0]).is_public_voice = true;
-      }
-      return next;
-    });
-  }, []);
+  /** Wire shape for every generation endpoint (contract §5): primary + additional organisations. */
+  const organisationsPayload = useMemo(
+    () => [
+      {
+        display_name: orgName.trim() || 'Organisation',
+        short_name: primaryShortName.trim() || undefined,
+        country,
+        city: primaryCity.trim() || undefined,
+        kind: primaryKind,
+        logo_url: brandLogoUrl || undefined,
+        is_primary: true,
+        team_roster: teamRoster.map((t) => ({
+          team_name: t.team_name.trim(),
+          description: t.description.trim() || undefined,
+          is_custom: t.is_custom,
+          is_public_voice: t.is_public_voice,
+        })),
+      },
+      ...extraOrganisations.map((o) => ({
+        display_name: o.display_name.trim(),
+        short_name: o.short_name.trim() || undefined,
+        country: o.country,
+        city: o.city.trim() || undefined,
+        kind: o.kind,
+        facebook_handle: o.facebook_handle.trim() || undefined,
+        x_handle: o.x_handle.trim() || undefined,
+        is_primary: false,
+        team_roster: o.team_roster.map((t) => ({
+          team_name: t.team_name.trim(),
+          description: t.description.trim() || undefined,
+          is_custom: t.is_custom,
+          is_public_voice: t.is_public_voice,
+        })),
+      })),
+    ],
+    [
+      orgName,
+      primaryShortName,
+      country,
+      primaryCity,
+      primaryKind,
+      brandLogoUrl,
+      teamRoster,
+      extraOrganisations,
+    ],
+  );
+
+  const competitorsPayload = useMemo(
+    () =>
+      competitorEntries.map((c) => ({
+        name: c.name.trim(),
+        country: c.country,
+        facebook_handle: c.facebook_handle || undefined,
+        x_handle: c.x_handle || undefined,
+      })),
+    [competitorEntries],
+  );
+
+  /* Stakeholder characters, registry and decision layer (contract §3 / §5.1 / §7A) */
+  const [stakeholders, setStakeholders] = useState<StakeholderWire[]>([]);
+  const [stakeholderInjects, setStakeholderInjects] = useState<SocialInject[]>([]);
+  const [orgRegistry, setOrgRegistry] = useState<OrgRegistryWire[]>([]);
+  const [perCountryCounts, setPerCountryCounts] = useState<Record<string, number>>({});
+  const [decisionSpace, setDecisionSpace] = useState<ExecutiveDecisionWire[]>([]);
+  const [chainOfCommand, setChainOfCommand] = useState<unknown[]>([]);
+  const [sopSteps, setSopSteps] = useState<unknown[]>([]);
 
   /* Step 4 — Convergence + Shared Chaos */
   const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
@@ -321,39 +400,27 @@ export const SocialCrisisWizard = () => {
   const [newPageName, setNewPageName] = useState('');
   const [newPageFbHandle, setNewPageFbHandle] = useState('');
   const [newPageXHandle, setNewPageXHandle] = useState('');
+  const [newPageCountry, setNewPageCountry] = useState('');
 
-  // Roster of additional brand pages defined in Setup. Sent to the org-page
-  // generator during the Build step. Allies = player-assignable protagonists;
-  // competitors = trainer/AI-driven antagonists.
-  const [allyEntries, setAllyEntries] = useState<
-    Array<{ name: string; facebook_handle?: string; x_handle?: string }>
-  >([]);
-  const [competitorEntries, setCompetitorEntries] = useState<
-    Array<{ name: string; facebook_handle?: string; x_handle?: string }>
-  >([]);
-  const [autoAntagonist, setAutoAntagonist] = useState(true);
-
-  const addRosterEntry = useCallback(
-    (role: 'protagonist' | 'antagonist') => {
-      const name = newPageName.trim();
-      if (!name) return;
-      const entry = {
+  const addCompetitor = useCallback(() => {
+    const name = newPageName.trim();
+    if (!name) return;
+    setCompetitorEntries((prev) => [
+      ...prev,
+      {
         name,
+        country: newPageCountry || country,
         facebook_handle: newPageFbHandle.trim() || undefined,
         x_handle: newPageXHandle.trim() || undefined,
-      };
-      if (role === 'antagonist') setCompetitorEntries((prev) => [...prev, entry]);
-      else setAllyEntries((prev) => [...prev, entry]);
-      setNewPageName('');
-      setNewPageFbHandle('');
-      setNewPageXHandle('');
-    },
-    [newPageName, newPageFbHandle, newPageXHandle],
-  );
+      },
+    ]);
+    setNewPageName('');
+    setNewPageFbHandle('');
+    setNewPageXHandle('');
+  }, [newPageName, newPageFbHandle, newPageXHandle, newPageCountry, country]);
 
-  const removeRosterEntry = useCallback((role: 'protagonist' | 'antagonist', idx: number) => {
-    if (role === 'antagonist') setCompetitorEntries((prev) => prev.filter((_, i) => i !== idx));
-    else setAllyEntries((prev) => prev.filter((_, i) => i !== idx));
+  const removeCompetitor = useCallback((idx: number) => {
+    setCompetitorEntries((prev) => prev.filter((_, i) => i !== idx));
   }, []);
 
   /* Step 2 — Building (combined generation) progress */
@@ -395,9 +462,20 @@ export const SocialCrisisWizard = () => {
       objectives,
       dimension_labels: dimensionLabels,
       org_page: orgPage,
-      ally_entries: allyEntries,
       competitor_entries: competitorEntries,
       auto_antagonist: autoAntagonist,
+      // Multi-organisation (contract §3 / §5 / §7A)
+      primary_city: primaryCity,
+      primary_kind: primaryKind,
+      primary_short_name: primaryShortName,
+      extra_organisations: extraOrganisations,
+      stakeholders,
+      stakeholder_injects: stakeholderInjects,
+      org_registry: orgRegistry,
+      per_country_counts: perCountryCounts,
+      decision_space: decisionSpace,
+      chain_of_command: chainOfCommand,
+      sop_steps: sopSteps,
     }),
     [
       crisisDescription,
@@ -419,9 +497,19 @@ export const SocialCrisisWizard = () => {
       objectives,
       dimensionLabels,
       orgPage,
-      allyEntries,
       competitorEntries,
       autoAntagonist,
+      primaryCity,
+      primaryKind,
+      primaryShortName,
+      extraOrganisations,
+      stakeholders,
+      stakeholderInjects,
+      orgRegistry,
+      perCountryCounts,
+      decisionSpace,
+      chainOfCommand,
+      sopSteps,
     ],
   );
 
@@ -510,23 +598,55 @@ export const SocialCrisisWizard = () => {
           setDimensionLabels(input.dimension_labels as Record<string, string>);
         if (input.org_page && typeof input.org_page === 'object')
           setOrgPage(input.org_page as Record<string, unknown>);
-        if (Array.isArray(input.ally_entries))
-          setAllyEntries(
-            input.ally_entries as Array<{
-              name: string;
-              facebook_handle?: string;
-              x_handle?: string;
-            }>,
-          );
+        const savedCountry = input.country ? String(input.country) : 'Singapore';
+        // Legacy drafts: "allied pages" become additional organisations in the primary's
+        // country with the default roster; competitors gain the primary's country.
+        const extras: OrganisationDraft[] = Array.isArray(input.extra_organisations)
+          ? (input.extra_organisations as OrganisationDraft[])
+          : [];
+        if (extras.length === 0 && Array.isArray(input.ally_entries)) {
+          for (const a of input.ally_entries as Array<{
+            name: string;
+            facebook_handle?: string;
+            x_handle?: string;
+          }>) {
+            extras.push({
+              ...newOrganisationDraft(savedCountry),
+              display_name: a.name,
+              facebook_handle: a.facebook_handle || '',
+              x_handle: a.x_handle || '',
+            });
+          }
+        }
+        if (extras.length > 0) setExtraOrganisations(extras);
         if (Array.isArray(input.competitor_entries))
           setCompetitorEntries(
-            input.competitor_entries as Array<{
-              name: string;
-              facebook_handle?: string;
-              x_handle?: string;
-            }>,
+            (
+              input.competitor_entries as Array<{
+                name: string;
+                country?: string;
+                facebook_handle?: string;
+                x_handle?: string;
+              }>
+            ).map((c) => ({ ...c, country: c.country || savedCountry })),
           );
         if (typeof input.auto_antagonist === 'boolean') setAutoAntagonist(input.auto_antagonist);
+        if (input.primary_city) setPrimaryCity(String(input.primary_city));
+        if (input.primary_kind && typeof input.primary_kind === 'string')
+          setPrimaryKind(input.primary_kind as OrgKind);
+        if (input.primary_short_name) setPrimaryShortName(String(input.primary_short_name));
+        if (Array.isArray(input.stakeholders))
+          setStakeholders(input.stakeholders as StakeholderWire[]);
+        if (Array.isArray(input.stakeholder_injects))
+          setStakeholderInjects(input.stakeholder_injects as SocialInject[]);
+        if (Array.isArray(input.org_registry))
+          setOrgRegistry(input.org_registry as OrgRegistryWire[]);
+        if (input.per_country_counts && typeof input.per_country_counts === 'object')
+          setPerCountryCounts(input.per_country_counts as Record<string, number>);
+        if (Array.isArray(input.decision_space))
+          setDecisionSpace(input.decision_space as ExecutiveDecisionWire[]);
+        if (Array.isArray(input.chain_of_command)) setChainOfCommand(input.chain_of_command);
+        if (Array.isArray(input.sop_steps)) setSopSteps(input.sop_steps);
 
         setStep(validStep);
       } catch (err) {
@@ -697,8 +817,16 @@ export const SocialCrisisWizard = () => {
       setPersonas(p);
       setFactSheet(fs);
       setCommunities(comms);
+      if (d.per_country_counts && typeof d.per_country_counts === 'object')
+        setPerCountryCounts(d.per_country_counts as Record<string, number>);
       return { personas: p, factSheet: fs, communities: comms };
     };
+    // A fresh build resets everything downstream that hangs off the crowd.
+    setStakeholders([]);
+    setStakeholderInjects([]);
+    setDecisionSpace([]);
+    setChainOfCommand([]);
+    setSopSteps([]);
     try {
       const headers = await authHeaders();
       const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-npcs'), {
@@ -710,6 +838,8 @@ export const SocialCrisisWizard = () => {
           context: crisisDescription,
           org_name: orgName || undefined,
           blueprint: blueprint ?? undefined,
+          organisations: organisationsPayload,
+          competitors: competitorsPayload,
         }),
       });
       if (!res.ok) {
@@ -761,7 +891,7 @@ export const SocialCrisisWizard = () => {
     }
     setStep2Loading(false);
     return null;
-  }, [crisisDescription, country, orgName, blueprint]);
+  }, [crisisDescription, country, orgName, blueprint, organisationsPayload, competitorsPayload]);
 
   const generateStoryline = useCallback(
     async (
@@ -770,6 +900,9 @@ export const SocialCrisisWizard = () => {
     ): Promise<{
       injects: SocialInject[];
       teamStorylines: Record<string, SocialInject[]>;
+      personas: NPCPersona[];
+      teamCharters: TeamCharterWire[];
+      stakeholders: StakeholderWire[];
     } | null> => {
       if (!crisisDescription) return null;
       const personasIn = personasArg ?? personas;
@@ -780,9 +913,14 @@ export const SocialCrisisWizard = () => {
       setStorylineInjects([]);
       setTeamStorylines({});
       setTeamCharters([]);
+      setStakeholders([]);
+      setStakeholderInjects([]);
       let result: {
         injects: SocialInject[];
         teamStorylines: Record<string, SocialInject[]>;
+        personas: NPCPersona[];
+        teamCharters: TeamCharterWire[];
+        stakeholders: StakeholderWire[];
       } | null = null;
 
       try {
@@ -805,6 +943,8 @@ export const SocialCrisisWizard = () => {
               is_custom: t.is_custom,
               is_public_voice: t.is_public_voice,
             })),
+            organisations: organisationsPayload,
+            competitors: competitorsPayload,
           }),
         });
 
@@ -826,6 +966,11 @@ export const SocialCrisisWizard = () => {
                 const msg = JSON.parse(line);
                 if (msg.type === 'progress') {
                   setStep3Progress((prev) => [...prev, String(msg.message)]);
+                } else if (msg.type === 'org_progress') {
+                  setStep3Progress((prev) => [
+                    ...prev,
+                    `[${String(msg.org_key)}] ${String(msg.stage)} ready${msg.detail ? ` — ${String(msg.detail)}` : ''}`,
+                  ]);
                 } else if (msg.type === 'team_complete') {
                   setStep3Progress((prev) => [
                     ...prev,
@@ -834,12 +979,41 @@ export const SocialCrisisWizard = () => {
                 } else if (msg.type === 'complete' && msg.injects) {
                   const injects = msg.injects as SocialInject[];
                   const teamMap = (msg.team_storylines || {}) as Record<string, SocialInject[]>;
-                  result = { injects, teamStorylines: teamMap };
+                  const charters = Array.isArray(msg.team_charters)
+                    ? (msg.team_charters as TeamCharterWire[])
+                    : [];
+                  const stks = Array.isArray(msg.stakeholders)
+                    ? (msg.stakeholders as StakeholderWire[])
+                    : [];
+                  // Stakeholder persona twins join the crowd so their posts have an author.
+                  const twins = Array.isArray(msg.persona_twins)
+                    ? (msg.persona_twins as NPCPersona[])
+                    : [];
+                  const known = new Set(personasIn.map((p) => p.handle));
+                  const mergedPersonas = [
+                    ...personasIn,
+                    ...twins.filter((t) => !known.has(t.handle)),
+                  ];
+                  result = {
+                    injects,
+                    teamStorylines: teamMap,
+                    personas: mergedPersonas,
+                    teamCharters: charters,
+                    stakeholders: stks,
+                  };
                   setStorylineInjects(injects);
                   setTeamStorylines(teamMap);
-                  if (Array.isArray(msg.team_charters)) {
-                    setTeamCharters(msg.team_charters as TeamCharterWire[]);
-                  }
+                  setTeamCharters(charters);
+                  setStakeholders(stks);
+                  if (Array.isArray(msg.stakeholder_injects))
+                    setStakeholderInjects(msg.stakeholder_injects as SocialInject[]);
+                  if (twins.length > 0) setPersonas(mergedPersonas);
+                  if (Array.isArray(msg.orgs)) setOrgRegistry(msg.orgs as OrgRegistryWire[]);
+                  if (stks.length > 0)
+                    setStep3Progress((prev) => [
+                      ...prev,
+                      `${stks.length} stakeholder contacts created (${stks.filter((s) => s.grievance).length} with a live concern)`,
+                    ]);
                 } else if (msg.type === 'error') {
                   setStep3Error(String(msg.message || 'Storyline generation failed'));
                 }
@@ -857,7 +1031,17 @@ export const SocialCrisisWizard = () => {
       setStep3Loading(false);
       return result;
     },
-    [crisisDescription, country, orgName, personas, factSheet, blueprint, teamRoster],
+    [
+      crisisDescription,
+      country,
+      orgName,
+      personas,
+      factSheet,
+      blueprint,
+      teamRoster,
+      organisationsPayload,
+      competitorsPayload,
+    ],
   );
 
   const generateConvergence = useCallback(
@@ -866,16 +1050,50 @@ export const SocialCrisisWizard = () => {
       factSheetArg?: FactSheet | null,
       storylineArg?: SocialInject[],
       teamStorylinesArg?: Record<string, SocialInject[]>,
+      chartersArg?: TeamCharterWire[],
+      stakeholdersArg?: StakeholderWire[],
     ): Promise<boolean> => {
       if (!crisisDescription) return false;
       const personasIn = personasArg ?? personas;
       const factSheetIn = factSheetArg ?? factSheet;
       const storylineIn = storylineArg ?? storylineInjects;
       const teamStorylinesIn = teamStorylinesArg ?? teamStorylines;
+      const chartersIn = chartersArg ?? teamCharters;
+      const stakeholdersIn = stakeholdersArg ?? stakeholders;
       setStep4Loading(true);
       setStep4Error(null);
 
       const apply = (d: Record<string, unknown>) => {
+        // Decision layer (§7A): decisions, stakeholders with latent grievances, dormant templates.
+        const decisionLayer = d.decision_layer as
+          | {
+              decision_space?: ExecutiveDecisionWire[];
+              stakeholders?: StakeholderWire[];
+              templates?: SocialInject[];
+              chain_of_command?: unknown[];
+              sop_steps?: unknown[];
+            }
+          | undefined;
+        if (decisionLayer && typeof decisionLayer === 'object') {
+          if (Array.isArray(decisionLayer.decision_space))
+            setDecisionSpace(decisionLayer.decision_space);
+          if (Array.isArray(decisionLayer.stakeholders) && decisionLayer.stakeholders.length > 0)
+            setStakeholders(decisionLayer.stakeholders);
+          const templates = decisionLayer.templates;
+          if (Array.isArray(templates) && templates.length > 0)
+            setStakeholderInjects((prev) => [
+              ...prev.filter(
+                (i) =>
+                  !(
+                    i.delivery_config && (i.delivery_config as Record<string, unknown>).decision_key
+                  ),
+              ),
+              ...templates,
+            ]);
+          if (Array.isArray(decisionLayer.chain_of_command))
+            setChainOfCommand(decisionLayer.chain_of_command);
+          if (Array.isArray(decisionLayer.sop_steps)) setSopSteps(decisionLayer.sop_steps);
+        }
         const si = (d.sharedInjects || d.shared_injects) as SocialInject[] | undefined;
         if (Array.isArray(si)) setSharedInjects(si);
         const cg = (d.convergenceGates || d.convergence_gates) as SocialInject[] | undefined;
@@ -925,6 +1143,10 @@ export const SocialCrisisWizard = () => {
               ...(storylineIn.length > 0 ? { Shared: storylineIn } : {}),
             },
             blueprint: blueprint ?? undefined,
+            organisations: organisationsPayload,
+            competitors: competitorsPayload,
+            team_charters: chartersIn.length > 0 ? chartersIn : undefined,
+            stakeholders: stakeholdersIn.length > 0 ? stakeholdersIn : undefined,
           }),
         });
 
@@ -988,7 +1210,11 @@ export const SocialCrisisWizard = () => {
       factSheet,
       storylineInjects,
       teamStorylines,
+      teamCharters,
+      stakeholders,
       blueprint,
+      organisationsPayload,
+      competitorsPayload,
     ],
   );
 
@@ -1004,8 +1230,16 @@ export const SocialCrisisWizard = () => {
           country,
           org_name: orgName || undefined,
           logo_url: brandLogoUrl || undefined,
-          allies: allyEntries,
-          competitors: competitorEntries,
+          // Legacy fields kept for the single-org server path; organisations[] drives the
+          // multi-organisation path (every protagonist page in its own country).
+          allies: [],
+          competitors: competitorEntries.map((c) => ({
+            name: c.name,
+            facebook_handle: c.facebook_handle,
+            x_handle: c.x_handle,
+          })),
+          organisations: organisationsPayload,
+          competitors_with_country: competitorsPayload,
           // If no competitors are named, the War Room invents one hostile rival.
           auto_antagonist: autoAntagonist,
         }),
@@ -1029,6 +1263,7 @@ export const SocialCrisisWizard = () => {
               const msg = JSON.parse(line);
               if (msg.type === 'complete' && msg.org_page) {
                 setOrgPage(msg.org_page);
+                if (Array.isArray(msg.orgs)) setOrgRegistry(msg.orgs as OrgRegistryWire[]);
               }
             } catch {
               /* skip */
@@ -1047,9 +1282,10 @@ export const SocialCrisisWizard = () => {
     country,
     orgName,
     brandLogoUrl,
-    allyEntries,
     competitorEntries,
     autoAntagonist,
+    organisationsPayload,
+    competitorsPayload,
   ]);
 
   /**
@@ -1076,10 +1312,12 @@ export const SocialCrisisWizard = () => {
 
     setBuildStage('convergence');
     const convOk = await generateConvergence(
-      npc.personas,
+      story.personas,
       npc.factSheet,
       story.injects,
       story.teamStorylines,
+      story.teamCharters,
+      story.stakeholders,
     );
     if (!convOk) {
       setBuildError('convergence');
@@ -1125,6 +1363,14 @@ export const SocialCrisisWizard = () => {
           org_page: orgPage,
           duration: 60,
           blueprint: blueprint ?? undefined,
+          // Multi-organisation (contract §3 / §5 / §7A) — the server derives orgs[]/countries[].
+          organisations: organisationsPayload,
+          competitors: competitorsPayload,
+          stakeholders: stakeholders.length > 0 ? stakeholders : undefined,
+          stakeholder_injects: stakeholderInjects.length > 0 ? stakeholderInjects : undefined,
+          decision_space: decisionSpace.length > 0 ? decisionSpace : undefined,
+          chain_of_command: chainOfCommand.length > 0 ? chainOfCommand : undefined,
+          sop_steps: sopSteps.length > 0 ? sopSteps : undefined,
         }),
       });
 
@@ -1205,6 +1451,13 @@ export const SocialCrisisWizard = () => {
     dimensionLabels,
     orgPage,
     blueprint,
+    organisationsPayload,
+    competitorsPayload,
+    stakeholders,
+    stakeholderInjects,
+    decisionSpace,
+    chainOfCommand,
+    sopSteps,
   ]);
 
   /* ─── Step transition ────────────────────────────────────────────── */
@@ -1399,19 +1652,7 @@ export const SocialCrisisWizard = () => {
 
       <div className="mb-4">
         <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-          Country
-        </label>
-        <input
-          type="text"
-          value={country}
-          onChange={(e) => setCountry(e.target.value)}
-          className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
-        />
-      </div>
-
-      <div className="mb-4">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-          Organization Name (optional)
+          Organization Name {extraOrganisations.length === 0 ? '(optional)' : ''}
         </label>
         <input
           type="text"
@@ -1422,8 +1663,47 @@ export const SocialCrisisWizard = () => {
         />
         <div className="mt-1">
           <span className="text-[9px] terminal-text text-muted">
-            Leave blank to let the AI generate a company name
+            {extraOrganisations.length === 0
+              ? 'Leave blank to let the AI generate a company name'
+              : 'Required when several organisations take part — it names the primary one'}
           </span>
+        </div>
+      </div>
+
+      <div className="mb-4 grid grid-cols-1 sm:grid-cols-4 gap-3">
+        <div className="sm:col-span-2">
+          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
+            Country (headquarters)
+          </label>
+          <CountrySelect value={country} onChange={setCountry} />
+        </div>
+        <div>
+          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
+            City (optional)
+          </label>
+          <input
+            type="text"
+            value={primaryCity}
+            onChange={(e) => setPrimaryCity(e.target.value)}
+            placeholder="e.g. Singapore"
+            className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
+            Type
+          </label>
+          <select
+            value={primaryKind}
+            onChange={(e) => setPrimaryKind(e.target.value as OrgKind)}
+            className="w-full bg-surface border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
+          >
+            {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
+              <option key={k} value={k}>
+                {ORG_KIND_LABELS[k]}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -1488,156 +1768,89 @@ export const SocialCrisisWizard = () => {
         </div>
       </div>
 
-      {/* Response teams: presets + the trainer's own divisions */}
+      {/* Response teams at the primary organisation: presets + the trainer's own divisions */}
       <div className="mb-4 p-3 border border-border rounded bg-surface-2">
         <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
-          Response Teams ({teamRoster.length}/6)
+          Response Teams
+          {extraOrganisations.length > 0 ? ` — ${orgName.trim() || 'primary organisation'}` : ''} (
+          {teamRoster.length}/6)
         </label>
         <p className="text-[10px] terminal-text text-muted mb-3">
           Every company divides differently — pick from the preset teams and/or add your own
           divisions. Each team&apos;s name and description shape its storyline pressure, injects,
-          and scoring. Mark exactly one team as the <b>public voice</b>: it publishes official
-          statements and is graded to the official-statement standard.
+          stakeholder contacts, and scoring. Mark exactly one team as the <b>public voice</b>: it
+          publishes official statements and is graded to the official-statement standard. Add{' '}
+          <b>Executive</b> when real leadership joins as players: their decisions trigger SOP
+          obligations and stakeholder reactions.
         </p>
+        <RosterBuilder roster={teamRoster} onChange={setTeamRoster} presetCatalog={presetCatalog} />
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-          {(presetCatalog.length > 0
-            ? presetCatalog
-            : PRESET_TEAM_NAMES.map((n) => ({
-                team_name: n,
-                mission: '',
-                responsibilities: [],
-                default_public_voice: n === 'Communications',
-              }))
-          ).map((preset) => {
-            const entry = teamRoster.find((t) => !t.is_custom && t.team_name === preset.team_name);
-            const selected = !!entry;
-            return (
-              <div
-                key={preset.team_name}
-                className={`border rounded p-2.5 cursor-pointer transition-colors ${selected ? 'border-accent bg-accent/10' : 'border-border hover:border-accent/50'}`}
-                onClick={() => togglePreset(preset)}
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs terminal-text text-ink font-bold">
-                    {selected ? '☑' : '☐'} {preset.team_name}
-                  </span>
-                  {selected && (
-                    <label
-                      className={`text-[9px] terminal-text cursor-pointer px-1.5 py-0.5 rounded border ${entry!.is_public_voice ? 'border-accent text-accent' : 'border-border text-muted hover:text-ink'}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPublicVoice(preset.team_name);
-                      }}
-                    >
-                      {entry!.is_public_voice ? '◉ Public voice' : '○ Public voice'}
-                    </label>
-                  )}
-                </div>
-                {preset.mission && (
-                  <div className="text-[10px] terminal-text text-muted mt-1 leading-relaxed line-clamp-2">
-                    {preset.mission}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Custom teams */}
-        {teamRoster.filter((t) => t.is_custom).length > 0 && (
-          <div className="space-y-2 mb-3">
-            {teamRoster.map((t, idx) =>
-              t.is_custom ? (
-                <div key={idx} className="border border-border rounded p-2.5">
-                  <div className="flex items-center gap-2 mb-1.5">
-                    <input
-                      value={t.team_name}
-                      onChange={(e) =>
-                        setTeamRoster((prev) =>
-                          prev.map((x, i) => (i === idx ? { ...x, team_name: e.target.value } : x)),
-                        )
-                      }
-                      placeholder="Team name (e.g. Franchise Relations)"
-                      className="flex-1 bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
-                    />
-                    <label
-                      className={`text-[9px] terminal-text cursor-pointer px-1.5 py-0.5 rounded border whitespace-nowrap ${t.is_public_voice ? 'border-accent text-accent' : 'border-border text-muted hover:text-ink'}`}
-                      onClick={() => setPublicVoice(t.team_name)}
-                    >
-                      {t.is_public_voice ? '◉ Public voice' : '○ Public voice'}
-                    </label>
-                    <button
-                      onClick={() =>
-                        setTeamRoster((prev) => {
-                          const next = prev.filter((_, i) => i !== idx);
-                          if (next.length > 0 && !next.some((x) => x.is_public_voice)) {
-                            const comms = next.find((x) => x.team_name === 'Communications');
-                            (comms ?? next[0]).is_public_voice = true;
-                          }
-                          return next;
-                        })
-                      }
-                      className="text-[10px] terminal-text text-danger hover:opacity-80 border border-danger/30 px-2 py-0.5 rounded"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                  <textarea
-                    value={t.description}
-                    onChange={(e) =>
-                      setTeamRoster((prev) =>
-                        prev.map((x, i) => (i === idx ? { ...x, description: e.target.value } : x)),
-                      )
-                    }
-                    rows={2}
-                    placeholder="What does this team do? (feeds the AI: their injects, pressure, duties, and scoring are built from this)"
-                    className="w-full bg-surface border border-border text-ink terminal-text text-[11px] px-2 py-1 rounded resize-y"
-                  />
-                </div>
-              ) : null,
-            )}
+      {/* Additional organisations: each in its own country with its own team roster */}
+      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
+          Additional Organisations ({extraOrganisations.length + 1}/6)
+        </label>
+        <p className="text-[10px] terminal-text text-muted mb-3">
+          A crisis rarely stays inside one building. Add every organisation that responds on your
+          side — a regional office in another country, a partner agency, a subsidiary. Each gets its
+          own page, teams, stakeholder contacts, and a feed set in its own country; the War Room
+          writes the dependencies between them (what one office learns that another needs).
+        </p>
+        {extraOrganisations.length > 0 && (
+          <div className="space-y-3 mb-3">
+            {extraOrganisations.map((org, i) => (
+              <OrganisationCard
+                key={org.id}
+                org={org}
+                index={i}
+                presetCatalog={presetCatalog}
+                onChange={(next) =>
+                  setExtraOrganisations((prev) => prev.map((o) => (o.id === org.id ? next : o)))
+                }
+                onRemove={() =>
+                  setExtraOrganisations((prev) => prev.filter((o) => o.id !== org.id))
+                }
+              />
+            ))}
           </div>
         )}
-
         <button
           onClick={() =>
-            setTeamRoster((prev) =>
-              prev.length >= 6
-                ? prev
-                : [
-                    ...prev,
-                    { team_name: '', description: '', is_custom: true, is_public_voice: false },
-                  ],
-            )
+            extraOrganisations.length + 1 < 6 &&
+            setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)])
           }
-          disabled={teamRoster.length >= 6}
+          disabled={extraOrganisations.length + 1 >= 6}
           className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded disabled:opacity-40"
         >
-          + Add your own team
+          + Add an organisation
         </button>
-
         {rosterError && (
           <div className="mt-2 text-[10px] terminal-text text-warning">{rosterError}</div>
         )}
       </div>
 
-      {/* Brand pages: protagonist allies + antagonist competitors */}
+      {/* Competitor brand pages (antagonists, AI-driven) */}
       <div className="mb-4 p-3 border border-border rounded bg-surface-2">
         <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
-          Brand Pages (optional)
+          Competitor Pages (optional)
         </label>
         <p className="text-[10px] terminal-text text-muted mb-3">
-          Your crisis page is generated automatically. Add allied pages players can control, and
-          rival competitor pages the AI drives against you.
+          Your organisations&apos; pages are generated automatically. Add rival competitor pages the
+          AI drives against you, each in its own country.
         </p>
 
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <input
             value={newPageName}
             onChange={(e) => setNewPageName(e.target.value)}
-            placeholder="Page name"
+            placeholder="Competitor name"
             className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
+          />
+          <CountrySelect
+            value={newPageCountry || country}
+            onChange={setNewPageCountry}
+            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full"
           />
           <input
             value={newPageFbHandle}
@@ -1654,49 +1867,12 @@ export const SocialCrisisWizard = () => {
         </div>
         <div className="flex gap-2 mt-2">
           <button
-            onClick={() => addRosterEntry('protagonist')}
-            disabled={!newPageName.trim()}
-            className="military-button px-4 py-1.5 text-xs disabled:opacity-50"
-          >
-            Add ally
-          </button>
-          <button
-            onClick={() => addRosterEntry('antagonist')}
+            onClick={addCompetitor}
             disabled={!newPageName.trim()}
             className="px-4 py-1.5 text-xs terminal-text border border-danger/50 text-danger hover:bg-danger/10 rounded disabled:opacity-50"
           >
             Add competitor
           </button>
-        </div>
-
-        <div className="mt-4">
-          <div className="text-[10px] terminal-text text-accent uppercase mb-1">
-            Your side &mdash; allied pages (assignable to players)
-          </div>
-          {allyEntries.length === 0 ? (
-            <div className="text-[10px] terminal-text text-muted">
-              The crisis page is the required protagonist page. Add optional allies.
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {allyEntries.map((e, i) => (
-                <div
-                  key={`ally-${i}`}
-                  className="flex items-center justify-between border-b border-border py-1"
-                >
-                  <span className="text-xs terminal-text">
-                    {e.name} <span className="text-muted">{e.facebook_handle || ''}</span>
-                  </span>
-                  <button
-                    onClick={() => removeRosterEntry('protagonist', i)}
-                    className="text-[10px] terminal-text text-accent hover:underline"
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="mt-4">
@@ -1717,10 +1893,11 @@ export const SocialCrisisWizard = () => {
                   className="flex items-center justify-between border-b border-danger/10 py-1"
                 >
                   <span className="text-xs terminal-text text-danger">
-                    {e.name} <span className="text-danger/60">{e.facebook_handle || ''}</span>
+                    {e.name} <span className="text-danger/60">{e.facebook_handle || ''}</span>{' '}
+                    <span className="text-muted">· {e.country}</span>
                   </span>
                   <button
-                    onClick={() => removeRosterEntry('antagonist', i)}
+                    onClick={() => removeCompetitor(i)}
                     className="text-[10px] terminal-text text-accent hover:underline"
                   >
                     Remove
@@ -2103,8 +2280,16 @@ export const SocialCrisisWizard = () => {
                 <div className="text-ink text-xs mt-1 line-clamp-2">{crisisLabel}</div>
               </div>
               <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">Country</div>
-                <div className="text-ink font-bold">{country}</div>
+                <div className="text-[10px] text-muted uppercase">
+                  {extraOrganisations.length > 0 ? 'Countries' : 'Country'}
+                </div>
+                <div className="text-ink font-bold">
+                  {extraOrganisations.length > 0
+                    ? Array.from(
+                        new Set([country, ...extraOrganisations.map((o) => o.country)]),
+                      ).join(', ')
+                    : country}
+                </div>
               </div>
               <div className="border border-border rounded p-3 text-center">
                 <div className="text-[10px] text-muted uppercase">Storyline Injects</div>
@@ -2113,7 +2298,35 @@ export const SocialCrisisWizard = () => {
               <div className="border border-border rounded p-3 text-center">
                 <div className="text-[10px] text-muted uppercase">NPC Count</div>
                 <div className="text-ink font-bold text-lg">{personas.length}</div>
+                {Object.keys(perCountryCounts).length > 1 && (
+                  <div className="text-[9px] text-muted mt-0.5">
+                    {Object.entries(perCountryCounts)
+                      .map(([c, n]) => `${c}: ${n}`)
+                      .join(' · ')}
+                  </div>
+                )}
               </div>
+              <div className="border border-border rounded p-3 text-center">
+                <div className="text-[10px] text-muted uppercase">Stakeholders</div>
+                <div className="text-ink font-bold text-lg">{stakeholders.length}</div>
+                {stakeholders.length > 0 && (
+                  <div className="text-[9px] text-muted mt-0.5">
+                    {stakeholders.filter((s) => s.grievance).length} with a live concern ·{' '}
+                    {stakeholderInjects.filter((i) => i.trigger_time_minutes != null).length}{' '}
+                    scheduled
+                  </div>
+                )}
+              </div>
+              {decisionSpace.length > 0 && (
+                <div className="border border-border rounded p-3 text-center">
+                  <div className="text-[10px] text-muted uppercase">Executive decisions</div>
+                  <div className="text-ink font-bold text-lg">{decisionSpace.length}</div>
+                  <div className="text-[9px] text-muted mt-0.5">
+                    {stakeholderInjects.filter((i) => i.trigger_time_minutes == null).length}{' '}
+                    dormant consequences
+                  </div>
+                </div>
+              )}
               <div className="border border-border rounded p-3 text-center">
                 <div className="text-[10px] text-muted uppercase">Team Injects</div>
                 <div className="text-ink font-bold text-lg">{totalTeamInjects}</div>
@@ -2129,13 +2342,31 @@ export const SocialCrisisWizard = () => {
             </div>
           </div>
 
-          {teamCharters.length > 0 && (
-            <div className="border border-border rounded p-4 mb-4">
-              <h3 className="text-xs terminal-text text-muted uppercase mb-3">
-                Response teams ({teamCharters.length})
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {teamCharters.map((team) => (
+          {teamCharters.length > 0 &&
+            (() => {
+              // Group teams by organisation (single-org scenarios: one unnamed group).
+              const groups = new Map<string, TeamCharterWire[]>();
+              for (const t of teamCharters) {
+                const k = t.org_key ?? '__single';
+                if (!groups.has(k)) groups.set(k, []);
+                groups.get(k)!.push(t);
+              }
+              const registryByKey = new Map(orgRegistry.map((o) => [o.org_key, o]));
+              const orgLabel = (k: string, sample: TeamCharterWire) => {
+                if (k === '__single') return null;
+                const reg = registryByKey.get(k);
+                const name = reg?.display_name || sample.short_name || k;
+                const place = reg?.country || sample.country;
+                return `${name}${place ? ` · ${place}` : ''}`;
+              };
+              const teamCard = (team: TeamCharterWire) => {
+                const contacts = stakeholders.filter(
+                  (s) =>
+                    (s.owning_team === (team.function_key || team.team_name) ||
+                      s.owning_team === team.team_name) &&
+                    (s.org_key === null || team.org_key == null || s.org_key === team.org_key),
+                );
+                return (
                   <div key={team.team_name} className="border border-border rounded p-3">
                     <div className="flex items-center justify-between mb-1 gap-2">
                       <span className="text-xs terminal-text text-ink font-bold truncate">
@@ -2143,12 +2374,18 @@ export const SocialCrisisWizard = () => {
                       </span>
                       <span className="text-[10px] terminal-text text-accent whitespace-nowrap">
                         {(teamStorylines[team.team_name] || []).length} injects
+                        {contacts.length > 0 ? ` · ${contacts.length} contacts` : ''}
                       </span>
                     </div>
                     <div className="flex gap-1.5 mb-1">
                       {team.is_custom && (
                         <span className="text-[9px] terminal-text px-1.5 py-0.5 rounded border border-accent/40 text-accent">
                           Custom
+                        </span>
+                      )}
+                      {team.function_key === 'Executive' && (
+                        <span className="text-[9px] terminal-text px-1.5 py-0.5 rounded border border-warning/40 text-warning">
+                          Leadership
                         </span>
                       )}
                       {team.can_post_publicly && (
@@ -2161,13 +2398,83 @@ export const SocialCrisisWizard = () => {
                       {team.mission}
                     </div>
                   </div>
+                );
+              };
+              return (
+                <div className="border border-border rounded p-4 mb-4">
+                  <h3 className="text-xs terminal-text text-muted uppercase mb-3">
+                    Response teams ({teamCharters.length}
+                    {groups.size > 1 ? ` across ${groups.size} organisations` : ''})
+                  </h3>
+                  {Array.from(groups.entries()).map(([k, teams]) => {
+                    const label = orgLabel(k, teams[0]);
+                    return (
+                      <div key={k} className={groups.size > 1 ? 'mb-4' : ''}>
+                        {label && (
+                          <div className="text-[10px] terminal-text text-accent uppercase mb-2">
+                            {label}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {teams.map(teamCard)}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[9px] terminal-text text-muted mt-3">
+                    Players are assigned to these teams in the session lobby. Each team has its own
+                    storyline pressure, stakeholder contacts, tasks, and scoring rubric — all
+                    editable after compile from the scenario&apos;s detail page.
+                  </p>
+                </div>
+              );
+            })()}
+
+          {decisionSpace.length > 0 && (
+            <div className="border border-border rounded p-4 mb-4">
+              <h3 className="text-xs terminal-text text-muted uppercase mb-3">
+                Executive decision space ({decisionSpace.length})
+              </h3>
+              <p className="text-[10px] terminal-text text-muted mb-3">
+                Nothing here is scripted. These are the decisions leadership could take during the
+                exercise; each carries the SOP obligations that follow and the stakeholders who
+                react if leadership skips them.
+              </p>
+              <div className="space-y-2">
+                {decisionSpace.map((d) => (
+                  <div key={d.decision_key} className="border border-border rounded p-2.5">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-[11px] terminal-text text-ink font-bold">
+                        {d.label}
+                      </span>
+                      <span
+                        className={`text-[9px] terminal-text px-1.5 py-0.5 rounded border ${
+                          d.severity === 'high'
+                            ? 'border-danger/40 text-danger'
+                            : d.severity === 'medium'
+                              ? 'border-warning/40 text-warning'
+                              : 'border-border text-muted'
+                        }`}
+                      >
+                        {d.severity}
+                      </span>
+                      <span className="text-[9px] terminal-text text-muted">
+                        affects {d.affected_org_keys.join(', ')}
+                      </span>
+                    </div>
+                    <div className="text-[10px] terminal-text text-muted">{d.description}</div>
+                    {d.sop_obligations.length > 0 && (
+                      <ul className="mt-1 space-y-0.5">
+                        {d.sop_obligations.map((ob, i) => (
+                          <li key={i} className="text-[10px] terminal-text text-muted">
+                            · {ob.owed_by_function} within {ob.window_minutes} min: {ob.description}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 ))}
               </div>
-              <p className="text-[9px] terminal-text text-muted mt-3">
-                Players are assigned to these teams in the session lobby. Each team has its own
-                storyline pressure, tasks, and scoring rubric — all editable after compile from the
-                scenario&apos;s detail page.
-              </p>
             </div>
           )}
 
@@ -2264,6 +2571,36 @@ export const SocialCrisisWizard = () => {
                     )}
                   </div>
                 </details>
+
+                {stakeholders.length > 0 && (
+                  <details className={detailsCls}>
+                    <summary className={summaryCls}>
+                      Stakeholder contacts ({stakeholders.length})
+                    </summary>
+                    <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {stakeholders.map((s) => (
+                        <div key={s.id} className="border border-border rounded p-2.5">
+                          <div className="text-[11px] terminal-text text-ink font-bold">
+                            {s.name}{' '}
+                            <span className="text-muted font-normal">
+                              — {s.title}, {s.organisation}
+                            </span>
+                          </div>
+                          <div className="text-[10px] terminal-text text-muted mt-0.5">
+                            {s.relationship} · owned by {s.owning_team}
+                            {s.org_key ? ` @ ${s.org_key}` : ' (all organisations)'} · {s.email}
+                          </div>
+                          <div className="text-[10px] terminal-text text-muted mt-1">{s.note}</div>
+                          {s.grievance && (
+                            <div className="text-[10px] terminal-text text-warning mt-1">
+                              hidden concern: {s.grievance}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
 
                 <details className={detailsCls}>
                   <summary className={summaryCls}>NPC personas ({personas.length})</summary>
