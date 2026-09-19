@@ -58,6 +58,38 @@ export type PersistableTeamCharter = TeamCharter & {
 
 export { functionKeyForTeamRow };
 
+const MISSING_ORG_COLUMN = /column .*(org_key|function_key).* does not exist/i;
+
+/**
+ * Insert scenario_teams rows carrying org_key/function_key (migration 197). If the
+ * database has not been migrated yet, retry without the two columns and log loudly:
+ * a lagging migration must never take compiles down, but multi-org scenarios DO need
+ * the columns, so the retry refuses when any row actually has an org_key.
+ */
+export async function insertTeamRowsWithOrgColumns(
+  rows: Array<Record<string, unknown> & { org_key: string | null; function_key: string | null }>,
+  scenarioId: string,
+): Promise<string | null> {
+  const { error } = await supabaseAdmin.from('scenario_teams').insert(rows);
+  if (!error) return null;
+  if (!MISSING_ORG_COLUMN.test(error.message)) return error.message;
+  if (rows.some((r) => r.org_key !== null)) {
+    return `${error.message} — migration 197 (scenario_teams.org_key/function_key) must be applied before multi-organisation scenarios can be compiled`;
+  }
+  logger.error(
+    { scenarioId },
+    'MIGRATION 197 NOT APPLIED: scenario_teams.org_key/function_key missing — inserting teams without organisation identity. Apply migrations/197_scenario_teams_org_function.sql.',
+  );
+  const stripped = rows.map((row) => {
+    const rest: Record<string, unknown> = { ...row };
+    delete rest.org_key;
+    delete rest.function_key;
+    return rest;
+  });
+  const retry = await supabaseAdmin.from('scenario_teams').insert(stripped);
+  return retry.error ? retry.error.message : null;
+}
+
 export async function persistSocialCrisisScenario(
   payload: SocialCrisisPayload,
   createdBy: string,
@@ -100,35 +132,34 @@ export async function persistSocialCrisisScenario(
       const charterByName = new Map<string, PersistableTeamCharter>(
         (teamCharters || []).map((c) => [c.team_name, c]),
       );
-      const { error: teamsErr } = await supabaseAdmin.from('scenario_teams').insert(
-        teams.map((t) => {
-          const charter = charterByName.get(t.team_name);
-          return {
-            scenario_id: scenarioId,
-            team_name: t.team_name,
-            team_description: t.team_description,
-            required_roles: [],
-            min_participants: t.min_participants,
-            max_participants: t.max_participants,
-            // Contract §5.2 — organisation identity (null = single-org / spans all).
-            org_key: charter?.org_key ?? null,
-            function_key: functionKeyForTeamRow(t.team_name, charter),
-            charter: charter
-              ? {
-                  mission: charter.mission,
-                  responsibilities: charter.responsibilities,
-                  out_of_lane: charter.out_of_lane,
-                  is_custom: !!charter.is_custom,
-                  can_post_publicly: !!charter.can_post_publicly,
-                  sentiment_dimension: charter.sentiment_dimension || 'public_trust',
-                }
-              : null,
-            expected_actions: charter ? charter.expected_actions : null,
-            scoring_rubric: charter ? charter.scoring_rubric : null,
-          };
-        }),
-      );
-      if (teamsErr) throw new Error(`scenario_teams: ${teamsErr.message}`);
+      const teamRows = teams.map((t) => {
+        const charter = charterByName.get(t.team_name);
+        return {
+          scenario_id: scenarioId,
+          team_name: t.team_name,
+          team_description: t.team_description,
+          required_roles: [],
+          min_participants: t.min_participants,
+          max_participants: t.max_participants,
+          // Contract §5.2 — organisation identity (null = single-org / spans all).
+          org_key: charter?.org_key ?? null,
+          function_key: functionKeyForTeamRow(t.team_name, charter),
+          charter: charter
+            ? {
+                mission: charter.mission,
+                responsibilities: charter.responsibilities,
+                out_of_lane: charter.out_of_lane,
+                is_custom: !!charter.is_custom,
+                can_post_publicly: !!charter.can_post_publicly,
+                sentiment_dimension: charter.sentiment_dimension || 'public_trust',
+              }
+            : null,
+          expected_actions: charter ? charter.expected_actions : null,
+          scoring_rubric: charter ? charter.scoring_rubric : null,
+        };
+      });
+      const teamsErr = await insertTeamRowsWithOrgColumns(teamRows, scenarioId);
+      if (teamsErr) throw new Error(`scenario_teams: ${teamsErr}`);
     }
 
     if (objectives.length > 0) {

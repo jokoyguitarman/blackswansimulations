@@ -5,6 +5,7 @@
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { insertTeamRowsWithOrgColumns } from './socialCrisisPersistenceService.js';
 import { refreshOsmVicinityForScenario } from './osmVicinityService.js';
 import type { WarroomScenarioPayload } from './warroomAiService.js';
 import { haversineM, circleToPolygon, pointInPolygon } from './geoUtils.js';
@@ -98,7 +99,7 @@ export async function persistWarroomScenario(
 
   try {
     if (teams.length > 0) {
-      const { error: teamsError } = await supabaseAdmin.from('scenario_teams').insert(
+      const teamsError = await insertTeamRowsWithOrgColumns(
         teams.map((t) => ({
           scenario_id: scenarioId,
           team_name: t.team_name,
@@ -115,8 +116,9 @@ export async function persistWarroomScenario(
             ? t.team_name
             : null,
         })),
+        scenarioId,
       );
-      if (teamsError) throw new Error(`scenario_teams: ${teamsError.message}`);
+      if (teamsError) throw new Error(`scenario_teams: ${teamsError}`);
     }
 
     const timeUsedTitles = new Set<string>();
