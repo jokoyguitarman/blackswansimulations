@@ -100,7 +100,9 @@ export async function generateStakeholdersForOrg(
   const orgCharters = charters.filter(
     (c) => (c.org_key ?? 'primary') === org.org_key || (!multiOrg && c.org_key == null),
   );
-  const groups = chunk(orgCharters, 4);
+  // Two teams per call keeps each response well inside the token budget (each stakeholder
+  // carries nested inject content); a truncated response would otherwise parse to nothing.
+  const groups = chunk(orgCharters, 2);
   const results = await Promise.all(
     groups.map((group) =>
       generateForTeams(org, group, charters, personasInCountry, factSheet, crisis, taken, multiOrg),
@@ -224,9 +226,7 @@ async function generateForTeams(
       return `- FUNCTION "${c.function_key}" (team "${c.team_name}"): ${c.mission}\n  relationship types to cover: ${rels.join(', ')}`;
     })
     .join('\n');
-  const perTeam = charters.length >= 4 ? '6-8' : '7-10';
-
-  const raw = await callSocialCrisisAI(
+  const prompt = (perTeam: string) =>
     `You are creating the STAKEHOLDER CONTACTS for ONE organisation in a crisis simulation: the named clients, suppliers, regulators, partners, journalists, internal colleagues, community figures that each of its teams deals with. These become the team's contacts sheet and, for some, scheduled events in the exercise.
 
 ORGANISATION: ${org.display_name} (${org.kind}, ${org.city ? `${org.city}, ` : ''}${org.country})
@@ -236,11 +236,19 @@ ${teamsBlock}
 ${STAKEHOLDER_FIELD_SPEC}
 ${org.kind === 'agency' ? 'Public-sector mapping: liaison agencies -> partner; oversight bodies/ministries -> regulator; press corps -> media; barangay/community leaders -> community; informants and field units -> other/internal.' : ''}
 
-Return ONLY valid JSON: { "stakeholders": [ { ...fields..., "owning_function": "...", "scheduled_injects": [ ... ] } ] }`,
-    `Crisis: ${crisis.crisisType}${crisis.orgName ? `\nOrganisation under crisis: ${crisis.orgName}` : ''}\nCountry: ${org.country}\nContext: ${crisis.context}\n${factsBlock(factSheet)}\n${personaBlock(personasInCountry.filter((p) => p.tier === 'key'))}`,
-    9000,
-    0.8,
-  );
+Return ONLY valid JSON: { "stakeholders": [ { ...fields..., "owning_function": "...", "scheduled_injects": [ ... ] } ] }`;
+  const userPrompt = `Crisis: ${crisis.crisisType}${crisis.orgName ? `\nOrganisation under crisis: ${crisis.orgName}` : ''}\nCountry: ${org.country}\nContext: ${crisis.context}\n${factsBlock(factSheet)}\n${personaBlock(personasInCountry.filter((p) => p.tier === 'key'))}`;
+
+  // First attempt asks for the full contact book; if the model fails (typically a
+  // truncated JSON body), retry once with a smaller ask rather than shipping fillers.
+  let raw = await callSocialCrisisAI(prompt('6-8'), userPrompt, 12000, 0.8);
+  if (!raw || !Array.isArray(raw.stakeholders) || (raw.stakeholders as unknown[]).length === 0) {
+    logger.warn(
+      { orgKey: org.org_key, teams: charters.map((c) => c.team_name) },
+      'stakeholder_call_retry',
+    );
+    raw = await callSocialCrisisAI(prompt('4-5'), userPrompt, 12000, 0.7);
+  }
 
   const out: StakeholderGenerationResult = { stakeholders: [], injects: [], personaTwins: [] };
   const functions = new Map(charters.map((c) => [c.function_key.toLowerCase(), c]));

@@ -282,7 +282,9 @@ Return ONLY valid JSON: { "latent": [ ... ], "spillover": [ ... ] }`,
     );
     const eruptionOrgKey = s.org_key ?? decision.affected_org_keys[0];
     const eruptionCountry = countryByOrg.get(eruptionOrgKey);
-    const channel = String(l.eruption?.channel || 'social_post');
+    // News eruptions only from media stakeholders; anyone else erupts on the feed or by email.
+    let channel = String(l.eruption?.channel || 'social_post');
+    if (channel === 'news' && s.relationship !== 'media') channel = 'social_post';
     const title = String(l.eruption?.title || `${s.name} reacts to ${decision.label}`).slice(
       0,
       200,

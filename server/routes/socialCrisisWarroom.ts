@@ -885,23 +885,7 @@ router.post(
         }),
         communities: z.array(z.string()),
         team_storylines: z.record(z.string(), z.unknown()).optional().default({}),
-        team_charters: z
-          .array(
-            z.object({
-              team_name: z.string(),
-              mission: z.string(),
-              responsibilities: z.array(z.string()),
-              out_of_lane: z.array(z.string()).optional(),
-              scoring_rubric: z.string().optional(),
-              expected_actions: z.array(z.unknown()).optional(),
-              min_participants: z.number().optional(),
-              max_participants: z.number().optional(),
-              is_custom: z.boolean().optional(),
-              can_post_publicly: z.boolean().optional(),
-              sentiment_dimension: z.string().optional(),
-            }),
-          )
-          .optional(),
+        team_charters: z.array(teamCharterWireSchema).optional(),
         storyline_injects: z.array(z.unknown()).optional(),
         shared_injects: z.array(z.unknown()),
         convergence_gates: z.array(z.unknown()),
@@ -943,13 +927,11 @@ router.post(
         { code: compileOrgs.code, details: compileOrgs.details },
         'org_validation_failed',
       );
-      return res
-        .status(400)
-        .json({
-          error: `Invalid organisations: ${compileOrgs.message}`,
-          code: compileOrgs.code,
-          details: compileOrgs.details,
-        });
+      return res.status(400).json({
+        error: `Invalid organisations: ${compileOrgs.message}`,
+        code: compileOrgs.code,
+        details: compileOrgs.details,
+      });
     }
 
     // Validate the team roster BEFORE consuming the credit so a bad roster

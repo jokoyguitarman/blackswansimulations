@@ -293,7 +293,18 @@ export function validateScenarioPayload(
           `Inject "${inj.title}": stakeholder_id ${dc.stakeholder_id} not found`,
         );
       } else {
-        injectsByStakeholder.set(s.id, (injectsByStakeholder.get(s.id) || 0) + 1);
+        // §7A templates are authored from a LATENT grievance; only scheduled injects need the base one.
+        if (dc.decision_key) {
+          if (!s.latent_grievances?.[String(dc.decision_key)] && s.grievance === '') {
+            fail(
+              'MO-DEC-004',
+              path,
+              `Template "${inj.title}": stakeholder ${s.id} has no latent grievance for decision ${dc.decision_key}`,
+            );
+          }
+        } else {
+          injectsByStakeholder.set(s.id, (injectsByStakeholder.get(s.id) || 0) + 1);
+        }
         // Author fields per §4.2
         if (dc.app === 'email' && dc.from_address !== s.email)
           fail(
