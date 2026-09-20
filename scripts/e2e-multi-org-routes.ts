@@ -461,17 +461,45 @@ async function main() {
           rs.ok && Array.isArray(sj.data) && sj.data.length > 0 && sj.orgs.length >= 2,
           `${sj.data?.length} stakeholders`,
         );
-        const first = sj.data[0];
-        const rp = await apiFetch(
-          `/api/scenarios/${final.data.scenario_id}/stakeholders/${first.id}`,
-          { method: 'PATCH', body: JSON.stringify({ name: `${first.name} Jr` }) },
+        // Edit lock (server-enforced): no session credits => 423. Prove it, then unlock and edit.
+        await setBalance(trainerId, 'session', 0);
+        const target =
+          (sj.data as Array<{ id: string; name: string; grievance: string }>).find(
+            (s) => s.grievance,
+          ) ?? sj.data[0];
+        const url = `/api/scenarios/${final.data.scenario_id}/stakeholders/${target.id}`;
+        const body = JSON.stringify({ name: `${target.name} Jr` });
+        const locked = await apiFetch(url, { method: 'PATCH', body });
+        check(
+          'PATCH stakeholder is locked without session credits (423)',
+          locked.status === 423,
+          `${locked.status}`,
         );
+        await setBalance(trainerId, 'session', 1);
+        const rp = await apiFetch(url, { method: 'PATCH', body });
         const pj = await rp.json();
         check(
           'PATCH stakeholder renames + propagates to authored injects',
-          rp.ok && pj.data.name === `${first.name} Jr`,
+          rp.ok && pj.data.name === `${target.name} Jr` && (pj.injects_updated ?? 0) >= 1,
           `${rp.status} injects_updated=${pj.injects_updated}`,
         );
+        const { data: renamed } = await admin
+          .from('scenario_injects')
+          .select('delivery_config')
+          .eq('scenario_id', final.data.scenario_id);
+        const authored = (renamed || []).filter(
+          (r) => (r.delivery_config as Record<string, unknown>)?.stakeholder_id === target.id,
+        );
+        check(
+          'authored injects now carry the new name',
+          authored.length > 0 &&
+            authored.every((r) => {
+              const dc = r.delivery_config as Record<string, unknown>;
+              return (dc.from_name ?? dc.author_display_name) === `${target.name} Jr`;
+            }),
+          `${authored.length} inject(s)`,
+        );
+        await setBalance(trainerId, 'session', 0);
         await admin.from('scenarios').delete().eq('id', final.data.scenario_id);
         console.log('  cleaned up test scenario');
         check('credit consumed exactly once', (await balance(trainerId, 'scenario')) === 0);
