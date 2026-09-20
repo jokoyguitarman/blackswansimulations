@@ -72,9 +72,9 @@
   .reason{display:flex;gap:8px;font-size:11.5px;color:var(--f-ai);background:color-mix(in srgb,var(--f-ai) 8%,#fff);border-radius:9px;padding:7px 9px;margin-bottom:8px}
   .node .wants{margin-top:8px;font-size:12px;border-left:3px solid var(--g);padding-left:10px}
   .node .reg{font-size:10.5px;font-weight:800;color:var(--g);text-transform:uppercase;letter-spacing:.08em}
-  .add{border:1.5px dashed var(--border-strong);border-radius:16px;display:grid;place-items:center;min-height:150px;color:var(--g);font-weight:700;background:rgba(255,255,255,.75);text-align:center;padding:14px;cursor:pointer;transition:border-color .15s,background .15s}
-  .add:hover{border-color:var(--g);background:#fff}
-  .add small{display:block;color:var(--muted);font-weight:500;margin-top:4px;font-size:11px}
+  div.add{border:1.5px dashed var(--border-strong);border-radius:16px;display:grid;place-items:center;min-height:150px;color:var(--g);font-weight:700;background:rgba(255,255,255,.75);text-align:center;padding:14px;cursor:pointer;transition:border-color .15s,background .15s}
+  div.add:hover{border-color:var(--g);background:#fff}
+  div.add small{display:block;color:var(--muted);font-weight:500;margin-top:4px;font-size:11px}
   .toolbar{display:flex;flex-wrap:wrap;gap:6px}
 
   .ctabar{margin-top:18px;display:flex;align-items:center;gap:18px;background:var(--deep);color:#fff;border-radius:18px;padding:14px 18px;box-shadow:var(--shadow-lg)}
@@ -108,6 +108,32 @@
   .poster .ft{margin-top:auto;display:flex;align-items:center;gap:6px;padding:12px 18px;border-top:1px solid var(--border);background:var(--surface-2)}
   .lock{font-size:11px;font-weight:700;color:var(--success);flex:1;display:inline-flex;align-items:center;gap:6px}
   .lock.locked{color:var(--accent-strong)}.lock.draft{color:var(--muted)}
+
+  /* expanded-in-place card: spans the grid, band on the left, three peek panels on the right */
+  .poster.expanded{grid-column:1/-1;display:grid;grid-template-columns:340px 1fr;box-shadow:var(--shadow-lg);border-color:color-mix(in srgb,var(--g) 45%,#fff)}
+  .poster.expanded .band{min-height:100%;justify-content:flex-start;padding-top:22px}
+  .poster.expanded .band .desc{-webkit-line-clamp:5}
+  .poster.expanded .bandfoot{margin-top:auto;padding-top:16px;display:flex;flex-direction:column;gap:10px;position:relative}
+  .poster.expanded .bandfoot .btn{justify-content:center}
+  .poster.expanded .bandfoot .btn.ghost{color:rgba(255,255,255,.75);border-color:rgba(255,255,255,.25)}
+  .poster.expanded .bandfoot .btn.ghost:hover{background:rgba(255,255,255,.08);color:#fff}
+  .peek{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0}
+  .peek>section{padding:16px 18px;border-left:1px solid var(--border);min-width:0}
+  .peek>section:first-child{border-left:0}
+  .peek h5{margin:0 0 10px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:8px}
+  .peek h5 .n{margin-left:auto;font-size:11px;font-weight:800;color:var(--g);background:color-mix(in srgb,var(--g) 10%,#fff);padding:1px 7px;border-radius:999px}
+  .peek .row{display:grid;grid-template-columns:28px 1fr;gap:9px;align-items:center;padding:6px 0;border-top:1px solid var(--border);font-size:12.5px}
+  .peek .row:first-of-type{border-top:0}
+  .peek .row>.mono{width:28px;height:28px;font-size:10px;border-radius:8px;display:grid}
+  .peek .row>div{min-width:0}
+  .peek .row b{display:block;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .peek .row div>span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
+  .peek .t{font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:700;color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,#fff);border-radius:6px;padding:4px 0;text-align:center;width:44px}
+  .peek .row.inj{grid-template-columns:44px 1fr}
+  .peek .more{display:block;margin-top:8px;font-size:12px;font-weight:700;color:var(--brand)}
+  .peek .grp{margin-top:10px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .peek .grp:first-of-type{margin-top:0}
+  @media (max-width:1100px){.poster.expanded{grid-template-columns:1fr}.peek{grid-template-columns:1fr}.peek>section{border-left:0;border-top:1px solid var(--border)}}
 
   @media (max-width:1100px){
     .hero .grid{grid-template-columns:1fr}
@@ -161,7 +187,7 @@
 <div class="note"><b>DESIGN STUDY C</b> Situation Map — the site's hero treatment (illustration behind a deep gradient) carries the brief and the radar; the cast sits in three illustrated lanes. Remove this strip before build.</div>
 
 <header class="hero artband">
-  <img class="art" src="art/crisis-reputational-sm.webp" alt="" />
+  <img class="art" src="../../../frontend/public/marketing/library/03-press-conference-sm.webp" alt="" />
   <div class="top">
     <div class="brandmark"><span class="mono"><img src="art/black-swan-logo.png" alt="" style="width:22px;height:22px;object-fit:contain;filter:invert(1) brightness(2)" /></span> War Room <span class="sub">· Corporate crisis</span></div>
     <div class="steps"><span class="on"><i>1</i> Setup</span><span><i>2</i> Build</span><span><i>3</i> Review &amp; compile</span></div>
@@ -198,7 +224,7 @@
   <div class="map">
     <div class="lane" style="--g:var(--f-org)">
       <div class="lanehead reveal" style="--i:2">
-        <div class="vignette"><img src="art/crisis-comms-response-sm.webp" alt="" /><div class="cap">Your side</div></div>
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/01-war-room-sm.webp" alt="" /><div class="cap">Your side</div></div>
         <div class="inner">
           <h2><svg class="ic ic-16"><use href="#i-building"/></svg> Organisations</h2>
           <p>HQ and every office or partner agency responding with you.</p>
@@ -234,7 +260,7 @@
 
     <div class="lane" style="--g:var(--f-pressure)">
       <div class="lanehead reveal" style="--i:3">
-        <div class="vignette"><img src="art/principle-4-interdependency.webp" alt="" /><div class="cap">Pressure</div></div>
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/16-protest-lobby-sm.webp" alt="" /><div class="cap">Pressure</div></div>
         <div class="inner">
         <h2><svg class="ic ic-16"><use href="#i-fist"/></svg> Pressure groups</h2>
         <p>Regulators, unions, NGOs, communities, politicians. One spokesperson each — engage them and they stand down.</p>
@@ -267,7 +293,7 @@
 
     <div class="lane" style="--g:var(--f-rival)">
       <div class="lanehead reveal" style="--i:4">
-        <div class="vignette"><img src="art/principle-2-asymmetry.webp" alt="" /><div class="cap">Rivals</div></div>
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/31-headline-storm-sm.webp" alt="" /><div class="cap">Rivals</div></div>
         <div class="inner">
           <h2><svg class="ic ic-16"><use href="#i-swords"/></svg> Rival pages</h2>
           <p>Competitor pages the AI drives against you. Leave empty and one is invented.</p>
@@ -294,10 +320,64 @@
 
   <section class="library">
     <h3>Scenario card — poster</h3>
-    <p class="sub">A gradient band by type carries the title and status; the body shows the cast, the numbers and the lock state.</p>
+    <p class="sub">An art band by type carries the title and status; the body shows the cast, the numbers and the lock state. Clicking a card expands it in place (below) — the full view is one more click.</p>
     <div class="posters">
+      <!-- EXPANDED IN PLACE -->
+      <article class="poster expanded reveal" style="--g:var(--accent);--i:0">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/11-border-bridge-sm.webp" alt="" />
+          <div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div>
+          <h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4>
+          <p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis across Singapore and Malaysia — two ministries asking questions, a hospital waiting on a shipment.</p>
+          <div class="bandfoot">
+            <div class="cast" style="gap:5px"><span class="o" style="border-color:rgba(255,255,255,.3);color:#fff"><span class="cc" style="background:rgba(255,255,255,.2)">SG</span> Sigma Logistics · HQ</span><span class="o" style="border-color:rgba(20,184,166,.7);color:#fff"><span class="cc" style="background:rgba(255,255,255,.2)">MY</span> Sigma Malaysia · AI</span><span class="o" style="border-color:rgba(245,158,11,.7);color:#fff">MOHR · TWUM</span><span class="o" style="border-color:rgba(239,68,68,.7);color:#fff">Swift Freight</span></div>
+            <div class="kpis" style="grid-template-columns:repeat(4,1fr)"><div style="background:rgba(255,255,255,.08)"><b style="color:#fff">7</b><span style="color:rgba(255,255,255,.6)">teams</span></div><div style="background:rgba(255,255,255,.08)"><b style="color:#fff">85</b><span style="color:rgba(255,255,255,.6)">contacts</span></div><div style="background:rgba(255,255,255,.08)"><b style="color:#fff">217</b><span style="color:rgba(255,255,255,.6)">injects</span></div><div style="background:rgba(255,255,255,.08)"><b style="color:#fff">60</b><span style="color:rgba(255,255,255,.6)">min</span></div></div>
+            <a class="btn accent" href="scenario-detail.html">Open full scenario <svg class="ic ic-14"><use href="#i-arrow"/></svg></a>
+            <div style="display:flex;gap:8px"><button class="btn ghost" style="flex:1"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn ghost" style="flex:1"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
+          </div>
+        </div>
+        <div class="peek">
+          <section>
+            <h5><svg class="ic ic-14"><use href="#i-users"/></svg> Cast <span class="n">85</span></h5>
+            <div class="grp">Sigma Logistics · 38</div>
+            <div class="row"><span class="mono">AK</span><div><b>Adrian Koh</b><span>Site Operations Manager · pure contact</span></div></div>
+            <div class="row"><span class="mono">FN</span><div><b>Felicia Ng</b><span>HR Business Partner · pure contact</span></div></div>
+            <div class="row"><span class="mono" style="background:linear-gradient(150deg,#7C6AF0,#4F46E5)">PN</span><div><b>Dr Priya Nair</b><span>Head of Pharmacy, Mount Elizabeth · live concern</span></div></div>
+            <div class="row"><span class="mono">JT</span><div><b>Jolene Tan Wei Ling</b><span>Executive Assistant to the CEO</span></div></div>
+            <div class="grp">Sigma Logistics Malaysia · 41</div>
+            <div class="row"><span class="mono ai">HZ</span><div><b>Hafiz Zulkifli</b><span>Depot Manager (Johor) · pure contact</span></div></div>
+            <div class="row"><span class="mono ai">NR</span><div><b>Nadia Rahman</b><span>HR Business Partner (Johor)</span></div></div>
+            <div class="row"><span class="mono pr">MF</span><div><b>Mohd Firdaus Ismail</b><span>Branch Secretary, TWUM · speaks for the union page</span></div></div>
+            <div class="row"><span class="mono pr">LK</span><div><b>Lim Chee Kiong</b><span>Director of Enforcement, MOHR · speaks for MOHR</span></div></div>
+            <a class="more" href="scenario-detail.html#cast">All 85 contacts, grouped by organisation →</a>
+          </section>
+          <section>
+            <h5><svg class="ic ic-14"><use href="#i-layers"/></svg> Injects <span class="n">217</span></h5>
+            <div class="row inj"><span class="t">T+02</span><div><b>“He just went down.” — clip reposted</b><span>crowd · Malaysia · unscoped</span></div></div>
+            <div class="row inj"><span class="t">T+06</span><div><b>Mount Elizabeth: is tomorrow's run affected?</b><span>Dr Priya Nair → Fleet Operations</span></div></div>
+            <div class="row inj"><span class="t">T+09</span><div><b>Depot manager calls: drivers refusing the 22:00 run</b><span>Hafiz Zulkifli → Driver Relations</span></div></div>
+            <div class="row inj"><span class="t">T+12</span><div><b>The Star: driver collapses after 19-hour shift</b><span>news · Suresh Menon</span></div></div>
+            <div class="row inj"><span class="t">T+15</span><div><b>Pay slips posted by night-shift drivers</b><span>crowd · key personas</span></div></div>
+            <div class="row inj"><span class="t">T+20</span><div><b>MOHR: statement on the Johor depot</b><span>page statement · statutory</span></div></div>
+            <div class="row inj"><span class="t">T+24</span><div><b>MOM requests cross-border scheduling records</b><span>email · Legal — SL</span></div></div>
+            <div class="row inj"><span class="t">T+30</span><div><b>Tenaganita calls for a boycott</b><span>crowd · Malaysia · unscoped</span></div></div>
+            <a class="more" href="scenario-detail.html#injects">All 217 by phase →</a>
+          </section>
+          <section>
+            <h5><svg class="ic ic-14"><use href="#i-building"/></svg> Pages &amp; teams <span class="n">5 · 7</span></h5>
+            <div class="row"><span class="mono">SL</span><div><b>@SigmaLogistics · @sigma_sg</b><span>protagonist · players · 4 teams</span></div></div>
+            <div class="row"><span class="mono ai">MY</span><div><b>@SigmaMY · @sigma_my</b><span>protagonist · AI-operated · aligned · 3 teams</span></div></div>
+            <div class="row"><span class="mono pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg></span><div><b>Ministry of Human Resources</b><span>pressure · statutory · 2 statements</span></div></div>
+            <div class="row"><span class="mono pr"><svg class="ic ic-12"><use href="#i-fist"/></svg></span><div><b>Transport Workers Union</b><span>pressure · advocacy · 2 statements</span></div></div>
+            <div class="row"><span class="mono rv">SF</span><div><b>Swift Freight</b><span>rival · AI · “the safe choice for cold chain”</span></div></div>
+            <div class="grp" style="margin-top:12px">Teams</div>
+            <div class="row"><span class="mono plain"><svg class="ic ic-12"><use href="#i-megaphone"/></svg></span><div><b>Communications — SL · voice</b><span>15 injects · 7 contacts · 6 expected actions</span></div></div>
+            <div class="row"><span class="mono plain"><svg class="ic ic-12"><use href="#i-tie"/></svg></span><div><b>Executive — SL</b><span>decides by communicating · 10 contacts</span></div></div>
+            <a class="more" href="scenario-detail.html#teams">All teams &amp; charters →</a>
+          </section>
+        </div>
+      </article>
       <article class="poster lift reveal" style="--g:var(--accent);--i:1">
-        <div class="band artband center"><img class="art" src="art/crisis-social-feed-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4><p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis.</p></div>
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/10-pile-on-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4><p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis.</p></div>
         <div class="body">
           <div class="cast"><span class="o hq"><span class="cc">SG</span> Sigma Logistics · HQ</span><span class="o ai"><span class="cc">MY</span> Sigma Logistics MY · AI</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> MOHR</span><span class="o pr"><svg class="ic ic-12"><use href="#i-fist"/></svg> TWUM</span><span class="o rv"><svg class="ic ic-12"><use href="#i-swords"/></svg> Swift Freight</span></div>
           <div class="kpis"><div><b>7</b><span>teams</span></div><div><b>85</b><span>contacts</span></div><div><b>217</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
@@ -306,7 +386,7 @@
         <div class="ft"><span class="lock"><svg class="ic ic-14"><use href="#i-unlock"/></svg> Editable</span><button class="btn ghost sm"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn primary sm"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
       </article>
       <article class="poster lift reveal" style="--g:var(--accent);--i:2">
-        <div class="band artband center"><img class="art" src="art/crisis-reputational-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status live"><span class="livedot"></span> Live · T+23</span></div><h4>VacuumGate SEA — Dyson Singapore</h4><p class="desc">Allegations of forced overtime at a Johor contract manufacturer land on Dyson's Singapore HQ while a ministry opens an inspection.</p></div>
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/03-press-conference-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status live"><span class="livedot"></span> Live · T+23</span></div><h4>VacuumGate SEA — Dyson Singapore</h4><p class="desc">Allegations of forced overtime at a Johor contract manufacturer land on Dyson's Singapore HQ while a ministry opens an inspection.</p></div>
         <div class="body">
           <div class="cast"><span class="o hq"><span class="cc">SG</span> Dyson · HQ</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> MOHR</span><span class="o pr"><svg class="ic ic-12"><use href="#i-leaf"/></svg> Tenaganita</span></div>
           <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>47</b><span>contacts</span></div><div><b>146</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
@@ -315,7 +395,7 @@
         <div class="ft"><span class="lock locked"><svg class="ic ic-14"><use href="#i-lock"/></svg> Locked — session live</span><button class="btn ghost sm"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn primary sm">Open session <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
       </article>
       <article class="poster lift reveal" style="--g:var(--brand);--i:3">
-        <div class="band artband center"><img class="art" src="art/crisis-site-response-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-map"/></svg> Field operations</span><span class="status">Draft</span></div><h4>Marina Bay Sands — IED at Convention Hall B</h4><p class="desc">Improvised device discovered during a trade expo; evacuation, triage and cordon management across three response teams.</p></div>
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/48-searchlight-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-map"/></svg> Field operations</span><span class="status">Draft</span></div><h4>Marina Bay Sands — IED at Convention Hall B</h4><p class="desc">Improvised device discovered during a trade expo; evacuation, triage and cordon management across three response teams.</p></div>
         <div class="body">
           <div class="cast"><span class="o hq"><span class="cc">SG</span> SCDF · SPF · SMRT</span></div>
           <div class="kpis"><div><b>3</b><span>teams</span></div><div><b>12</b><span>hazards</span></div><div><b>38</b><span>injects</span></div><div><b>90</b><span>min</span></div></div>

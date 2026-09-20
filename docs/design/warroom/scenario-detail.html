@@ -7,7 +7,6 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="shared.css" />
 <style>
-  /* action bar */
   .bar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:14px;padding:10px 28px;background:rgba(14,26,43,.92);backdrop-filter:blur(8px);color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
   .bar .back{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.7);font-size:12.5px;font-weight:600}
   .bar .back:hover{color:#fff}
@@ -17,9 +16,7 @@
   .bar .btn:hover{background:rgba(255,255,255,.08)}
   .bar .btn.accent{border-color:var(--accent-strong)}
   .bar .lock{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#86EFAC}
-  .bar .lock.locked{color:#FCD34D}
 
-  /* header band */
   .head{padding:34px 28px 30px}
   .head .in{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1.3fr .9fr;gap:28px;align-items:end}
   .head h1{margin:6px 0 8px;font-size:30px;line-height:1.1;font-weight:800;color:#fff;letter-spacing:-.015em}
@@ -35,7 +32,6 @@
   .head .meta{margin-top:12px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:rgba(255,255,255,.6)}
   .head .meta span{display:inline-flex;align-items:center;gap:6px}
 
-  /* body */
   .wrap{max-width:1380px;margin:22px auto 60px;padding:0 28px;display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;align-items:start}
   .toc{position:sticky;top:64px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:12px;box-shadow:var(--shadow-sm)}
   .toc h4{margin:4px 6px 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
@@ -46,7 +42,6 @@
   .toc .all{display:flex;gap:6px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border)}
   .toc .all .btn{flex:1}
 
-  /* collapsible section */
   details.sec{background:var(--surface);border:1px solid var(--border);border-radius:18px;margin-bottom:14px;box-shadow:var(--shadow-sm);overflow:hidden}
   details.sec>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:44px 1fr auto auto;gap:14px;align-items:center;padding:14px 18px;user-select:none}
   details.sec>summary::-webkit-details-marker{display:none}
@@ -60,9 +55,7 @@
   details.sec[open]>summary .chev{transform:rotate(90deg)}
   details.sec[open]>summary{border-bottom:1px solid var(--border)}
   details.sec .body{padding:16px 18px 18px}
-  .sec .edit{margin-left:6px}
 
-  /* nested groups */
   details.grp{border:1px solid var(--border);border-radius:14px;margin-bottom:10px;background:#fff}
   details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 14px;font-weight:800;font-size:13.5px}
   details.grp>summary::-webkit-details-marker{display:none}
@@ -81,7 +74,12 @@
   details.sub[open]>summary .chev{transform:rotate(90deg)}
   details.sub>summary .hint{font-size:11px;color:var(--muted);font-weight:500}
 
-  /* cast rows */
+  .tm{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:700;padding:4px 10px 4px 4px;border-radius:999px;border:1px solid var(--border-strong);background:#fff}
+  .tm .av{width:24px;height:24px;border-radius:999px;display:grid;place-items:center;background:var(--surface-2);color:var(--brand)}
+  .tm.voice{border-color:color-mix(in srgb,var(--accent) 60%,#fff);background:color-mix(in srgb,var(--accent) 7%,#fff)}
+  .tm.voice .av{background:var(--accent);color:#fff}
+  .tm.custom{border-style:dashed}
+  .tm .tag{font-size:9.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-strong);background:color-mix(in srgb,var(--accent) 14%,#fff);padding:2px 6px;border-radius:5px}
   .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
   .search{flex:1;min-width:220px;position:relative}
   .search input{padding-left:34px}
@@ -95,13 +93,14 @@
   .row .nm{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
   .row .ti{font-size:12px;color:var(--muted)}
   .row .pills{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
-  .p{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff}
+  .p{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff;white-space:nowrap}
   .p.rel{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 30%,#fff)}
   .p.live{color:var(--accent-strong);border-color:color-mix(in srgb,var(--accent) 45%,#fff);background:color-mix(in srgb,var(--accent) 8%,#fff)}
   .p.pure{color:var(--success);border-color:color-mix(in srgb,var(--success) 35%,#fff)}
   .p.roster{color:var(--muted);border-style:dashed}
   .p.group{color:var(--f-ai);border-color:color-mix(in srgb,var(--f-ai) 45%,#fff)}
   .p.speaks{color:var(--f-pressure);border-color:color-mix(in srgb,var(--f-pressure) 45%,#fff)}
+  .p.key{color:#4F46E5;border-color:rgba(79,70,229,.4)}
   details.person{border-radius:10px}
   details.person>summary{list-style:none;cursor:pointer}
   details.person>summary::-webkit-details-marker{display:none}
@@ -110,7 +109,6 @@
   details.person .char .full{grid-column:1/-1}
   .hidden-note{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;margin-left:8px}
 
-  /* org cards */
   .orgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
   .orgcard{border:1px solid var(--border);border-radius:14px;padding:14px;background:#fff;position:relative}
   .orgcard.hq{border:2px solid var(--f-org)}
@@ -122,10 +120,8 @@
   .orgcard .nm{font-weight:800}
   .orgcard .mt{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px}
   .orgcard .foot{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
-  .roster{display:flex;flex-wrap:wrap;gap:6px}
   .pagehandles{font-size:11.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
 
-  /* injects */
   .inj{display:grid;grid-template-columns:64px 28px 1fr auto;gap:10px;align-items:center;padding:7px 8px;border-radius:10px;font-size:12.5px}
   .inj:hover{background:var(--surface-2)}
   .inj .t{font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:700;color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,#fff);border-radius:6px;padding:3px 6px;text-align:center}
@@ -136,8 +132,8 @@
   .inj .tags{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap}
   .phase{display:flex;gap:4px;height:6px;border-radius:3px;overflow:hidden;background:var(--surface-2);margin:0 0 12px}
   .phase span{display:block;height:100%}
+  .more{display:block;padding:6px 8px;font-size:12px;color:var(--brand);font-weight:700;cursor:pointer}
 
-  /* fact sheet / sop / objectives */
   .facts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
   .facts .col h5{margin:0 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
   .facts li{font-size:12.5px;margin:0 0 6px;padding-left:18px;position:relative}
@@ -150,6 +146,10 @@
   .step .ds{font-size:12px;color:var(--muted)}
   .obj{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px}
   .obj .w{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--brand)}
+  .persona{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:7px 8px;border-radius:10px}
+  .persona:hover{background:var(--surface-2)}
+  .persona .h{font-weight:700;font-size:13px}
+  .persona .d{font-size:11.5px;color:var(--muted)}
 
   @media (max-width:1100px){.wrap{grid-template-columns:1fr}.toc{position:static;display:flex;flex-wrap:wrap;gap:4px}.toc h4{width:100%}.toc .all{width:100%;border:0;padding:0;margin:0}.head .in{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,1fr)}.facts{grid-template-columns:1fr}}
 </style>
@@ -167,23 +167,17 @@
   <symbol id="i-fist" viewBox="0 0 24 24"><path d="M7 12V8a2 2 0 1 1 4 0v3"/><path d="M11 11V6a2 2 0 1 1 4 0v5"/><path d="M15 11V8a2 2 0 1 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-2a2 2 0 1 1 4 0"/></symbol>
   <symbol id="i-swords" viewBox="0 0 24 24"><path d="M3 3l8 8M14 14l3 3M3 21l6-6M21 3l-8 8M10 14l-3 3M21 21l-6-6"/><path d="M6 15l3 3M15 6l3 3"/></symbol>
   <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/><path d="M12 12l6-6"/></symbol>
-  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
   <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
   <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></symbol>
-  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17h.01"/></symbol>
-  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
   <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
-  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
   <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
   <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M13 7l4 4"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
-  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6a3 3 0 0 0 4.2 4.2M9.9 5.2A10.4 10.4 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C4 8.4 2 12 2 12s4 7 10 7c1.4 0 2.7-.3 3.9-.8"/></symbol>
-  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></symbol>
   <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
   <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
@@ -197,12 +191,13 @@
   <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
   <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
   <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5h16v11H9l-5 4z"/></symbol>
 </svg>
 
-<div class="note"><b>DESIGN STUDY · SCENARIO DETAIL</b> The view behind a card. Every section folds; the cast is grouped by organisation and relationship with the roster collapsed by default; search narrows the list. Remove this strip before build.</div>
+<div class="note"><b>DESIGN STUDY · SCENARIO DETAIL</b> The view behind a card. Every section folds; the cast is grouped by organisation and relationship with the roster folded; injects fold by phase; search narrows the cast. Rows are rendered from data at the real volume. Remove this strip before build.</div>
 
 <div class="bar">
-  <a class="back" href="#"><svg class="ic ic-14"><use href="#i-arrow-l"/></svg> Scenarios</a>
+  <a class="back" href="variation-c-situation-map.html"><svg class="ic ic-14"><use href="#i-arrow-l"/></svg> Scenarios</a>
   <span class="t">19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</span>
   <span class="lock"><svg class="ic ic-14"><use href="#i-unlock"/></svg> Editable</span>
   <span class="grow"></span>
@@ -212,7 +207,7 @@
 </div>
 
 <header class="head artband">
-  <img class="art" src="art/crisis-multi-agency-sm.webp" alt="" />
+  <img class="art" src="../../../frontend/public/marketing/library/01-war-room.webp" alt="" />
   <div class="in">
     <div>
       <div class="eyebrow"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis · compiled today 12:46 · 60 minutes</div>
@@ -256,7 +251,6 @@
   </nav>
 
   <main>
-    <!-- OVERVIEW -->
     <details class="sec" id="overview" open style="--g:var(--f-crisis)">
       <summary><div class="tile"><svg class="ic"><use href="#i-bolt"/></svg></div><div><h2>Overview</h2><p>Narrative, participant briefing and how the scenario was built.</p></div><div class="peek"></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body">
@@ -267,163 +261,49 @@
       </div>
     </details>
 
-    <!-- ORGANISATIONS -->
-    <details class="sec" id="orgs" open style="--g:var(--f-org)">
+    <details class="sec" id="orgs" style="--g:var(--f-org)">
       <summary><div class="tile"><svg class="ic"><use href="#i-building"/></svg></div><div><h2>Organisations &amp; pages <span class="n">5</span></h2><p>Two on your side, two applying pressure, one rival — each with a page in the sim.</p></div><div class="peek"><span class="p rel">2 protagonist</span><span class="p speaks">2 pressure</span><span class="p" style="color:var(--f-rival)">1 rival</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body">
         <div class="orgs">
-          <div class="orgcard hq" style="--g:var(--f-org)">
-            <div class="kicker"><svg class="ic ic-12"><use href="#i-building"/></svg> Headquarters · players</div>
-            <div class="id"><div class="mono">SL</div><div><div class="nm">Sigma Logistics</div><div class="mt"><span class="cc">SG</span> Singapore · Company</div></div></div>
-            <div class="pagehandles"><span>Fakebook @SigmaLogistics · 128k</span><span>X @sigma_sg · 64k</span></div>
-            <div class="foot"><span>4 teams</span><span>38 contacts</span><span>94 crowd</span></div>
-          </div>
-          <div class="orgcard ai" style="--g:var(--f-ai)">
-            <div class="kicker"><svg class="ic ic-12"><use href="#i-sparkle"/></svg> Office · AI-operated · aligned</div>
-            <div class="id"><div class="mono ai">MY</div><div><div class="nm">Sigma Logistics Malaysia</div><div class="mt"><span class="cc">MY</span> Johor Bahru · Office</div></div></div>
-            <div class="pagehandles"><span>Fakebook @SigmaMY · 41k</span><span>X @sigma_my · 22k</span></div>
-            <div class="foot"><span>3 teams · unstaffed</span><span>41 contacts</span><span>94 crowd · unscoped</span></div>
-          </div>
-          <div class="orgcard" style="--g:var(--f-pressure)">
-            <div class="kicker"><svg class="ic ic-12"><use href="#i-landmark"/></svg> Regulator · statutory</div>
-            <div class="id"><div class="tile"><svg class="ic"><use href="#i-landmark"/></svg></div><div><div class="nm">Ministry of Human Resources Malaysia</div><div class="mt"><span class="cc light">MY</span> Putrajaya · spokesperson Lim Chee Kiong</div></div></div>
-            <div class="foot"><span>2 statements scheduled</span><span>ladder: statement → records request → inspection notice</span></div>
-          </div>
-          <div class="orgcard" style="--g:var(--f-pressure)">
-            <div class="kicker"><svg class="ic ic-12"><use href="#i-fist"/></svg> Union · advocacy</div>
-            <div class="id"><div class="tile"><svg class="ic"><use href="#i-fist"/></svg></div><div><div class="nm">Transport Workers Union of Malaysia</div><div class="mt"><span class="cc light">MY</span> Johor Bahru · spokesperson Mohd Firdaus Ismail</div></div></div>
-            <div class="foot"><span>2 statements scheduled</span><span>wants consultation + overtime paid</span></div>
-          </div>
-          <div class="orgcard" style="--g:var(--f-rival)">
-            <div class="kicker"><svg class="ic ic-12"><use href="#i-swords"/></svg> Competitor · AI</div>
-            <div class="id"><div class="mono rv">SF</div><div><div class="nm">Swift Freight</div><div class="mt"><span class="cc light">MY</span> Malaysia</div></div></div>
-            <div class="foot"><span>stance: “the safe choice for cold chain”</span></div>
-          </div>
+          <div class="orgcard hq" style="--g:var(--f-org)"><div class="kicker"><svg class="ic ic-12"><use href="#i-building"/></svg> Headquarters · players</div><div class="id"><div class="mono">SL</div><div><div class="nm">Sigma Logistics</div><div class="mt"><span class="cc">SG</span> Singapore · Company</div></div></div><div class="pagehandles"><span>Fakebook @SigmaLogistics · 128k</span><span>X @sigma_sg · 64k</span></div><div class="foot"><span>4 teams</span><span>38 contacts</span><span>94 crowd</span></div></div>
+          <div class="orgcard ai" style="--g:var(--f-ai)"><div class="kicker"><svg class="ic ic-12"><use href="#i-sparkle"/></svg> Office · AI-operated · aligned</div><div class="id"><div class="mono ai">MY</div><div><div class="nm">Sigma Logistics Malaysia</div><div class="mt"><span class="cc">MY</span> Johor Bahru · Office</div></div></div><div class="pagehandles"><span>Fakebook @SigmaMY · 41k</span><span>X @sigma_my · 22k</span></div><div class="foot"><span>3 teams · unstaffed</span><span>41 contacts</span><span>94 crowd · unscoped</span></div></div>
+          <div class="orgcard" style="--g:var(--f-pressure)"><div class="kicker"><svg class="ic ic-12"><use href="#i-landmark"/></svg> Regulator · statutory</div><div class="id"><div class="tile"><svg class="ic"><use href="#i-landmark"/></svg></div><div><div class="nm">Ministry of Human Resources Malaysia</div><div class="mt"><span class="cc light">MY</span> Putrajaya · spokesperson Lim Chee Kiong</div></div></div><div class="foot"><span>2 statements scheduled</span><span>ladder: statement → records request → inspection notice</span></div></div>
+          <div class="orgcard" style="--g:var(--f-pressure)"><div class="kicker"><svg class="ic ic-12"><use href="#i-fist"/></svg> Union · advocacy</div><div class="id"><div class="tile"><svg class="ic"><use href="#i-fist"/></svg></div><div><div class="nm">Transport Workers Union of Malaysia</div><div class="mt"><span class="cc light">MY</span> Johor Bahru · spokesperson Mohd Firdaus Ismail</div></div></div><div class="foot"><span>2 statements scheduled</span><span>wants consultation + overtime paid</span></div></div>
+          <div class="orgcard" style="--g:var(--f-rival)"><div class="kicker"><svg class="ic ic-12"><use href="#i-swords"/></svg> Competitor · AI</div><div class="id"><div class="mono rv">SF</div><div><div class="nm">Swift Freight</div><div class="mt"><span class="cc light">MY</span> Malaysia</div></div></div><div class="foot"><span>stance: “the safe choice for cold chain”</span></div></div>
         </div>
       </div>
     </details>
 
-    <!-- TEAMS -->
     <details class="sec" id="teams" style="--g:var(--f-org)">
       <summary><div class="tile"><svg class="ic"><use href="#i-users"/></svg></div><div><h2>Teams &amp; charters <span class="n">7</span></h2><p>Mission, responsibilities and the expected actions each team is scored on.</p></div><div class="peek"><span class="p rel">4 · Sigma Logistics</span><span class="p group">3 · SLM (AI)</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
-      <div class="body">
-        <details class="grp" open><summary><span class="cc">SG</span> Sigma Logistics <span class="n">4 teams</span><span class="sub">players</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-          <div class="g">
-            <details class="sub" open><summary><span class="tm voice"><span class="av"><svg class="ic ic-12"><use href="#i-megaphone"/></svg></span> Communications — SL <span class="tag">voice</span></span><span class="hint">15 injects · 7 contacts · 6 expected actions</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-              <div style="padding:8px 8px 12px;font-size:12.5px;color:var(--muted)"><b style="color:var(--ink)">Mission.</b> Own the public line across both platforms; verify before publishing; keep the hospital customer informed. <b style="color:var(--ink)">Scored on:</b> official statement within 20 min, fact-check before post, reply to hostile threads, brief Legal before publishing figures.</div>
-            </details>
-            <details class="sub"><summary><span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-scale"/></svg></span> Legal — SL</span><span class="hint">14 injects · 9 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary><span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-tie"/></svg></span> Executive — SL</span><span class="hint">15 injects · 10 contacts · decides by communicating</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary><span class="tm custom"><span class="av"><svg class="ic ic-12"><use href="#i-truck"/></svg></span> Fleet Operations — SL</span><span class="hint">15 injects · 22 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-          </div>
-        </details>
-        <details class="grp"><summary><span class="cc">MY</span> Sigma Logistics Malaysia <span class="n">3 teams</span><span class="sub">AI-operated · unscored</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-          <div class="g">
-            <details class="sub"><summary><span class="tm voice"><span class="av"><svg class="ic ic-12"><use href="#i-megaphone"/></svg></span> Communications — SLM</span><span class="hint">15 injects · 8 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary><span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-handshake"/></svg></span> Stakeholder Engagement — SLM</span><span class="hint">14 injects · 8 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary><span class="tm custom"><span class="av"><svg class="ic ic-12"><use href="#i-users"/></svg></span> Driver Relations — SLM</span><span class="hint">15 injects · 22 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-          </div>
-        </details>
-      </div>
+      <div class="body" id="teamsRoot"></div>
     </details>
 
-    <!-- CAST -->
-    <details class="sec" id="cast" style="--g:var(--f-intel)">
+    <details class="sec" id="cast" open style="--g:var(--f-intel)">
       <summary><div class="tile"><svg class="ic"><use href="#i-target"/></svg></div><div><h2>Cast · contacts <span class="n">85</span></h2><p>Every person your teams can email, message or call. Grouped by organisation; the roster is folded so the principals stay in view.</p></div><div class="peek"><span class="p live">38 with a live concern</span><span class="p pure">47 pure contacts</span><span class="p roster">20 roster</span><span class="p group">2 lists</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body">
         <div class="toolbar">
-          <label class="search"><svg class="ic ic-14"><use href="#i-search"/></svg><input class="field" id="castSearch" placeholder="Search name, title, organisation…" oninput="filterCast(this.value)" /></label>
-          <div class="seg"><button class="on">All</button><button>Principals</button><button>Roster</button><button>Lists</button><button>Spokespersons</button></div>
+          <label class="search"><svg class="ic ic-14"><use href="#i-search"/></svg><input class="field" placeholder="Search name, title, organisation…" oninput="filterCast(this.value)" /></label>
+          <div class="seg" id="castSeg"><button class="on" data-f="all">All</button><button data-f="principal">Principals</button><button data-f="live">Live concern</button><button data-f="roster">Roster</button><button data-f="group">Lists</button><button data-f="speaks">Spokespersons</button></div>
           <span class="hidden-note"><svg class="ic ic-12"><use href="#i-eye-off"/></svg> Hidden character shown to trainers only</span>
         </div>
-
-        <details class="grp" open data-org><summary><span class="cc">SG</span> Sigma Logistics <span class="n">38</span><span class="sub">HQ · Singapore</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-          <div class="g">
-            <details class="sub" open><summary>Internal <span class="n">12</span><span class="hint">site leader, HR, EA, coordinators</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-              <details class="person"><summary><div class="row" data-cast="adrian koh site operations manager sigma logistics"><div class="mono av">AK</div><div><div class="nm">Adrian Koh <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">Site Operations Manager · Sigma Logistics · owned by Executive</div></div><div class="pills"><span class="p">adrian.koh@sigmalogistics.sim</span></div></div></summary>
-                <div class="char"><div><b>Personality</b>Measured, protective of his crews; answers in short paragraphs.</div><div><b>Stance</b>Waiting for HQ to say something before the depot does.</div><div><b>Knows</b>Night-run rosters since June; the collapsed driver's shift record.</div><div><b>Won't disclose</b>Individual pay slips; the driver's medical status.</div><div class="full"><b>Reacts to</b>Any change to depot operations or headcount; being told after outsiders.</div></div>
-              </details>
-              <details class="person"><summary><div class="row" data-cast="felicia ng hr business partner"><div class="mono av">FN</div><div><div class="nm">Felicia Ng <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">HR Business Partner · Sigma Logistics · owned by Communications</div></div><div class="pills"><span class="p">felicia.ng@sigmalogistics.sim</span></div></div></summary></details>
-              <details class="person"><summary><div class="row" data-cast="jolene tan executive assistant"><div class="mono av">JT</div><div><div class="nm">Jolene Tan Wei Ling <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">Executive Assistant to the CEO · owned by Executive</div></div><div class="pills"><span class="p">jolene.tan@sigmalogistics.sim</span></div></div></summary></details>
-              <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 9 more internal contacts</div>
-            </details>
-            <details class="sub"><summary>Clients &amp; partners <span class="n">6</span><span class="hint">hospital, pharma distributor, 3PL</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-              <details class="person"><summary><div class="row" data-cast="dr priya nair mount elizabeth pharmacy"><div class="mono av" style="background:linear-gradient(150deg,#7C6AF0,#4F46E5)">PN</div><div><div class="nm">Dr Priya Nair <span class="p rel">client</span><span class="p live">live concern · T+35 email</span></div><div class="ti">Head of Pharmacy · Mount Elizabeth Hospital · owned by Fleet Operations</div></div><div class="pills"><span class="p">persuadability medium</span></div></div></summary>
-                <div class="char"><div class="full"><b>Grievance</b>A cold-chain shipment arrived spoiled and nobody has told her whether tomorrow's is safe.</div><div class="full"><b>Would stand down if</b>1 · told whether the current route is affected · 2 · given a named contact · 3 · offered an alternative delivery window.</div></div>
-              </details>
-            </details>
-            <details class="sub"><summary>Media <span class="n">5</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary>Regulators <span class="n">2</span><span class="hint">MOM Singapore</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary>Investors &amp; board <span class="n">2</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary>Workforce roster <span class="n">10</span><span class="hint">reachable via the all-staff list · never author injects</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-              <div class="row" data-cast="wei ming tan line operator"><div class="mono plain av">WT</div><div><div class="nm">Wei Ming Tan <span class="p roster">roster</span></div><div class="ti">Line Operator (day shift, 6 yrs) · Singapore depot</div></div><div class="pills"></div></div>
-              <div class="row" data-cast="hui ling lim shift supervisor"><div class="mono plain av">HL</div><div><div class="nm">Hui Ling Lim <span class="p roster">roster</span></div><div class="ti">Shift Supervisor (night shift, 11 yrs)</div></div><div class="pills"></div></div>
-              <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 8 more</div>
-            </details>
-            <details class="sub"><summary>Distribution list <span class="n">1</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-              <div class="row" data-cast="all staff singapore distribution list"><div class="mono ai av"><svg class="ic ic-14"><use href="#i-mail"/></svg></div><div><div class="nm">Sigma Logistics — Singapore · all staff <span class="p group">list · 10 members</span></div><div class="ti">all-staff.singapore@sigmalogistics.sim · one email reaches every roster member</div></div><div class="pills"></div></div>
-            </details>
-          </div>
-        </details>
-
-        <details class="grp" data-org><summary><span class="cc">MY</span> Sigma Logistics Malaysia <span class="n">41</span><span class="sub">AI-operated office · Johor Bahru</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-          <div class="g">
-            <details class="sub" open><summary>Internal <span class="n">14</span><span class="hint">depot manager, HR, supervisors</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-              <details class="person"><summary><div class="row" data-cast="hafiz zulkifli depot manager johor"><div class="mono ai av">HZ</div><div><div class="nm">Hafiz Zulkifli <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">Depot Manager (Johor) · owned by Driver Relations</div></div><div class="pills"><span class="p">hafiz.zulkifli@slm.sim</span></div></div></summary></details>
-              <details class="person"><summary><div class="row" data-cast="nadia rahman hr business partner johor"><div class="mono ai av">NR</div><div><div class="nm">Nadia Rahman <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">HR Business Partner (Johor) · owned by Driver Relations</div></div><div class="pills"><span class="p">nadia.rahman@slm.sim</span></div></div></summary></details>
-              <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 12 more</div>
-            </details>
-            <details class="sub"><summary>Union <span class="n">1</span><span class="hint">speaks for the union page</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-              <details class="person"><summary><div class="row" data-cast="mohd firdaus ismail branch secretary transport workers union"><div class="mono pr av">MF</div><div><div class="nm">Mohd Firdaus Ismail <span class="p rel">union</span><span class="p live">live concern</span><span class="p speaks">speaks for TWUM</span></div><div class="ti">Branch Secretary · Transport Workers Union of Malaysia · owned by Driver Relations</div></div><div class="pills"><span class="p">persuadability low</span></div></div></summary></details>
-            </details>
-            <details class="sub"><summary>Media <span class="n">4</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary>Regulators <span class="n">2</span><span class="hint">MOHR · DOSH</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary>Suppliers <span class="n">3</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary>Workforce roster <span class="n">10</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-            <details class="sub"><summary>Distribution list <span class="n">1</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-          </div>
-        </details>
-
-        <details class="grp" data-org><summary><svg class="ic ic-14" style="color:var(--muted)"><use href="#i-target"/></svg> Common to every organisation <span class="n">6</span><span class="sub">regional media, industry body, insurer</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+        <div id="castRoot"></div>
       </div>
     </details>
 
-    <!-- CROWD -->
     <details class="sec" id="crowd" style="--g:var(--f-intel)">
-      <summary><div class="tile"><svg class="ic"><use href="#i-feed"/></svg></div><div><h2>Crowd personas <span class="n">188</span></h2><p>The public that posts, replies and reacts. Key personas drive the storyline; background personas fill the feed.</p></div><div class="peek"><span class="p"><span class="cc light">SG</span> 94 · scoped</span><span class="p"><span class="cc light">MY</span> 94 · unscoped</span><span class="p live">31 key</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
-      <div class="body">
-        <details class="grp"><summary><span class="cc">SG</span> Singapore <span class="n">94</span><span class="sub">15 key · 79 background · visible to Singapore players</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-        <details class="grp"><summary><span class="cc">MY</span> Malaysia <span class="n">94</span><span class="sub">15 key · 79 background · unscoped (nobody plays in Malaysia)</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-      </div>
+      <summary><div class="tile"><svg class="ic"><use href="#i-feed"/></svg></div><div><h2>Crowd personas <span class="n">188</span></h2><p>The public that posts, replies and reacts. Key personas drive the storyline; background personas fill the feed.</p></div><div class="peek"><span class="p"><span class="cc light">SG</span> 94 · scoped</span><span class="p"><span class="cc light">MY</span> 94 · unscoped</span><span class="p key">31 key</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body" id="crowdRoot"></div>
     </details>
 
-    <!-- INJECTS -->
-    <details class="sec" id="injects" style="--g:var(--brand)">
+    <details class="sec" id="injects" open style="--g:var(--brand)">
       <summary><div class="tile"><svg class="ic"><use href="#i-layers"/></svg></div><div><h2>Injects <span class="n">217</span></h2><p>Timed and conditional content, by phase. Stakeholder-authored items pass the reconsideration judge before firing.</p></div><div class="peek"><span class="p">202 timed</span><span class="p" style="color:var(--f-intel)">15 conditional</span><span class="p live">41 stakeholder</span><span class="p speaks">4 page statements</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body">
         <div class="phase" title="volume by phase"><span style="width:19%;background:var(--brand)"></span><span style="width:24%;background:color-mix(in srgb,var(--brand) 80%,#fff)"></span><span style="width:28%;background:color-mix(in srgb,var(--brand) 60%,#fff)"></span><span style="width:22%;background:color-mix(in srgb,var(--brand) 40%,#fff)"></span><span style="width:7%;background:var(--f-intel)"></span></div>
-        <details class="grp" open><summary>T+0 – 15 · opening <span class="n">41</span><span class="sub">the clip spreads; first calls; nothing official yet</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-          <div class="g">
-            <div class="inj"><span class="t">T+02</span><svg class="ic ic-16 app"><use href="#i-feed"/></svg><div><div class="ttl">“He just went down.” — clip reposted by @johor_nightshift</div><div class="by">crowd · Malaysia · unscoped</div></div><div class="tags"><span class="p">social</span></div></div>
-            <div class="inj"><span class="t">T+06</span><svg class="ic ic-16 app"><use href="#i-mail"/></svg><div><div class="ttl">Mount Elizabeth: is tomorrow's cold-chain run affected?</div><div class="by">Dr Priya Nair → Fleet Operations — SL</div></div><div class="tags"><span class="p live">stakeholder</span><span class="cc light">SG</span></div></div>
-            <div class="inj"><span class="t">T+09</span><svg class="ic ic-16 app"><use href="#i-call"/></svg><div><div class="ttl">Depot manager calls: drivers are refusing the 22:00 run</div><div class="by">Hafiz Zulkifli → Driver Relations — SLM</div></div><div class="tags"><span class="p live">stakeholder</span><span class="cc light">MY</span></div></div>
-            <div class="inj"><span class="t">T+12</span><svg class="ic ic-16 app"><use href="#i-news"/></svg><div><div class="ttl">The Star: “Driver collapses after 19-hour shift at Johor logistics depot”</div><div class="by">Suresh Menon · The Star</div></div><div class="tags"><span class="p">news</span></div></div>
-            <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 37 more in this phase</div>
-          </div>
-        </details>
-        <details class="grp"><summary>T+15 – 30 · escalation <span class="n">52</span><span class="sub">pay slips, boycott call, MOHR statement</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
-          <div class="g">
-            <div class="inj"><span class="t">T+20</span><svg class="ic ic-16 app"><use href="#i-feed"/></svg><div><div class="ttl">Ministry of Human Resources: statement on the Johor depot</div><div class="by">page statement · spokesperson Lim Chee Kiong</div></div><div class="tags"><span class="p speaks">page</span><span class="cc light">MY</span></div></div>
-            <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 51 more</div>
-          </div>
-        </details>
-        <details class="grp"><summary>T+30 – 45 · turning point <span class="n">60</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-        <details class="grp"><summary>T+45 – 60 · resolution <span class="n">49</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
-        <details class="grp"><summary><span class="t cond" style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:2px 6px;border-radius:6px;color:var(--f-intel);background:color-mix(in srgb,var(--f-intel) 8%,#fff)">IF</span> Conditional <span class="n">15</span><span class="sub">convergence gates and intel dependencies between the two offices</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+        <div id="injRoot"></div>
       </div>
     </details>
 
-    <!-- PRESSURE -->
     <details class="sec" id="pressure" style="--g:var(--f-pressure)">
       <summary><div class="tile"><svg class="ic"><use href="#i-fist"/></svg></div><div><h2>Pressure groups <span class="n">2</span></h2><p>Posture, escalation ladder and what makes each one stand down.</p></div><div class="peek"><span class="p speaks">statutory</span><span class="p speaks">advocacy</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body">
@@ -433,20 +313,23 @@
             <div class="col"><h5>Escalation ladder</h5><ul style="margin:0;padding:0;list-style:none"><li>Public statement noting the report</li><li>Formal request for records with a deadline</li><li>Notice of inspection</li></ul><h5 style="margin-top:10px">Stands down when</h5><ul style="margin:0;padding:0;list-style:none"><li>Records are provided in full</li><li>A named contact responds within the deadline</li></ul></div>
           </div>
         </details>
-        <details class="grp"><summary><svg class="ic ic-14" style="color:var(--f-pressure)"><use href="#i-fist"/></svg> Transport Workers Union of Malaysia <span class="n">advocacy</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+        <details class="grp"><summary><svg class="ic ic-14" style="color:var(--f-pressure)"><use href="#i-fist"/></svg> Transport Workers Union of Malaysia <span class="n">advocacy</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g facts" style="padding:12px 14px">
+            <div class="col"><h5>Mandate</h5><p style="margin:0 0 10px;font-size:12.5px">Protect the jobs, pay and safety of transport workers in Johor.</p><h5>Demands</h5><ul style="margin:0;padding:0;list-style:none" class="unv"><li>Consultation before any roster change</li><li>Payment of all outstanding overtime</li><li>Suspension of 19-hour rosters</li></ul></div>
+            <div class="col"><h5>Escalation ladder</h5><ul style="margin:0;padding:0;list-style:none"><li>Public statement demanding consultation</li><li>Notice of picket with a 48-hour deadline</li><li>Notice of industrial action</li></ul><h5 style="margin-top:10px">Stands down when</h5><ul style="margin:0;padding:0;list-style:none"><li>Direct engagement from a senior representative</li><li>Written commitments with dates</li></ul></div>
+          </div>
+        </details>
       </div>
     </details>
 
-    <!-- FACT SHEET -->
     <details class="sec" id="facts" style="--g:var(--success)">
       <summary><div class="tile"><svg class="ic"><use href="#i-shield"/></svg></div><div><h2>Fact sheet <span class="n">17</span></h2><p>Ground truth. The fact-check tool, the watchdog and every NPC engine verify against it live.</p></div><div class="peek"><span class="p pure">10 confirmed</span><span class="p live">7 claims</span><span class="p">cluster: preventable</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body facts">
-        <div class="col"><h5>Confirmed</h5><ul style="margin:0;padding:0;list-style:none"><li>The driver worked 19 hours across two consecutive rosters on 16 Sep</li><li>Overtime for the Johor night runs has been paid at the flat rate since June</li><li>One cold-chain shipment breached temperature for 3 h 40 m on 17 Sep</li><li>MOHR issued an inspection notice at 09:10 on 18 Sep</li></ul><div style="margin-top:8px;font-size:12px;color:var(--muted)">+ 6 more</div></div>
-        <div class="col unv"><h5>Unconfirmed claims (and the truth)</h5><ul style="margin:0;padding:0;list-style:none"><li>“Three drivers have collapsed this month” — <b>false</b>: one incident</li><li>“Sigma falsifies tachograph logs” — <b>false</b>: logs are intact; rosters are the problem</li><li>“The hospital shipment was insulin” — <b>true</b>, but it was quarantined</li></ul><div style="margin-top:8px;font-size:12px;color:var(--muted)">+ 4 more</div></div>
+        <div class="col"><h5>Confirmed</h5><ul style="margin:0;padding:0;list-style:none"><li>The driver worked 19 hours across two consecutive rosters on 16 Sep</li><li>Overtime for the Johor night runs has been paid at the flat rate since June</li><li>One cold-chain shipment breached temperature for 3 h 40 m on 17 Sep</li><li>MOHR issued an inspection notice at 09:10 on 18 Sep</li><li>The depot employs 212 drivers, 61 on the night roster</li><li>Sigma's Singapore fleet is unaffected by the Johor roster</li><li>The collapsed driver is in stable condition at Hospital Sultanah Aminah</li><li>MOM's request covers the last 90 days of cross-border schedules</li><li>Mount Elizabeth quarantined the affected shipment; no patient received it</li><li>Sigma has no collective agreement with TWUM</li></ul></div>
+        <div class="col unv"><h5>Unconfirmed claims (and the truth)</h5><ul style="margin:0;padding:0;list-style:none"><li>“Three drivers have collapsed this month” — <b>false</b>: one incident</li><li>“Sigma falsifies tachograph logs” — <b>false</b>: logs are intact; rosters are the problem</li><li>“The hospital shipment was insulin” — <b>true</b>, but it was quarantined</li><li>“Drivers are paid below minimum wage” — <b>false</b>: base pay is compliant; overtime is the dispute</li><li>“MOHR has already fined Sigma” — <b>false</b>: an inspection notice, not a fine</li><li>“Swift Freight has taken over the hospital contract” — <b>false</b></li><li>“The driver has died” — <b>false</b></li></ul></div>
       </div>
     </details>
 
-    <!-- SOP -->
     <details class="sec" id="sop" style="--g:var(--f-pressure)">
       <summary><div class="tile"><svg class="ic"><use href="#i-list"/></svg></div><div><h2>Notification SOP <span class="n">4</span></h2><p>What the people-facing teams are graded on when leadership decides something. The clock starts at the first detected decision.</p></div><div class="peek"><span class="p">owner: Driver Relations</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body steps">
@@ -457,7 +340,6 @@
       </div>
     </details>
 
-    <!-- OBJECTIVES -->
     <details class="sec" id="objectives" style="--g:var(--brand)">
       <summary><div class="tile"><svg class="ic"><use href="#i-target"/></svg></div><div><h2>Objectives &amp; benchmarks <span class="n">4</span></h2><p>What the exercise is trying to teach, weighted; benchmarks derive from the team charters.</p></div><div class="peek"></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body">
@@ -471,13 +353,253 @@
 </div>
 
 <script>
-  function setAll(open){document.querySelectorAll('details.sec, details.grp, details.sub').forEach(d=>{d.open=open});}
-  function filterCast(q){
-    q=(q||'').trim().toLowerCase();
-    const rows=document.querySelectorAll('#cast .row[data-cast]');
-    rows.forEach(r=>{const hit=!q||r.dataset.cast.includes(q);const holder=r.closest('details.person')||r;holder.style.display=hit?'':'none';});
-    if(q){document.querySelectorAll('#cast details.grp, #cast details.sub').forEach(d=>d.open=true);}
-  }
+/* ───────────────────────────── data (mock, at real volume) ───────────────────────────── */
+const ICON = { megaphone:'#i-megaphone', scale:'#i-scale', tie:'#i-tie', truck:'#i-truck', handshake:'#i-handshake', users:'#i-users' };
+const TEAMS = [
+  { org:'Sigma Logistics', cc:'SG', mode:'players', teams:[
+    { name:'Communications — SL', fn:'Communications', icon:'megaphone', voice:true, injects:15, contacts:7, actions:6, mission:'Own the public line across both platforms; verify before publishing; keep the hospital customer informed.', scored:'official statement within 20 min · fact-check before post · reply to hostile threads · brief Legal before publishing figures' },
+    { name:'Legal — SL', fn:'Legal', icon:'scale', injects:14, contacts:9, actions:5, mission:'Protect the organisation legally while enabling honest communication; own the regulator relationship.', scored:'respond to MOM within its deadline · review every public statement · preserve records · advise on the union letter' },
+    { name:'Executive — SL', fn:'Executive', icon:'tie', injects:15, contacts:10, actions:5, mission:'Set the organisation’s position and direct the response. You decide by communicating; the simulation detects your decisions and lets the consequences travel.', scored:'decision communicated to the affected office before outsiders · rationale given · departments briefed · reversal handled openly' },
+    { name:'Fleet Operations — SL', fn:'Fleet Operations', icon:'truck', custom:true, injects:15, contacts:22, actions:6, mission:'Run the fleet, drivers, depots and cold-chain routes; keep hospital deliveries moving safely.', scored:'alternative delivery path for Mount Elizabeth · roster change proposal · driver welfare check · cold-chain incident report' },
+  ]},
+  { org:'Sigma Logistics Malaysia', cc:'MY', mode:'AI-operated · unscored', teams:[
+    { name:'Communications — SLM', fn:'Communications', icon:'megaphone', voice:true, injects:15, contacts:8, actions:6, mission:'Local voice of the Johor office; follows HQ’s line; answers Malaysian media.', scored:'—' },
+    { name:'Stakeholder Engagement — SLM', fn:'Stakeholder Engagement', icon:'handshake', injects:14, contacts:8, actions:5, mission:'Regulator, community and customer relationships in Malaysia.', scored:'—' },
+    { name:'Driver Relations — SLM', fn:'Driver Relations', icon:'users', custom:true, injects:15, contacts:22, actions:6, mission:'Driver welfare, rosters, union liaison and depot staff issues in Johor.', scored:'—' },
+  ]},
+];
+
+const P = (id, name, title, org, rel, owner, o = {}) => ({ id, name, title, org, rel, owner, tier:'principal', ...o });
+const roster = (org, ownerFn, cc, names) => names.map((n, i) => ({ id:`r_${cc}_${i}`, name:n[0], title:`${n[1]} (${['day shift','night shift','rotating shift'][i%3]}, ${1+((i*5)%17)} yrs)`, org, rel:'internal', owner:ownerFn, tier:'roster', live:false }));
+const CAST = [
+  { org:'Sigma Logistics', cc:'SG', sub:'HQ · Singapore', open:true, groups:[
+    { rel:'Internal', hint:'site leader, HR, EA, coordinators', open:true, people:[
+      P('sl1','Adrian Koh','Site Operations Manager','Sigma Logistics','internal','Executive',{ live:false, char:{ personality:'Measured, protective of his crews; answers in short paragraphs.', stance:'Waiting for HQ to say something before the depot does.', knows:'Night-run rosters since June; the collapsed driver’s shift record.', wont:'Individual pay slips; the driver’s medical status.', reacts:'Any change to depot operations or headcount; being told after outsiders.' }}),
+      P('sl2','Felicia Ng','HR Business Partner','Sigma Logistics','internal','Communications',{ live:false, char:{ personality:'Warm, procedural, insists on doing things in order.', stance:'Wants representatives told before staff.', knows:'Overtime policy; who is on the night roster.', wont:'Disciplinary history of any driver.', reacts:'Anything affecting employees, notice periods or consultation.' }}),
+      P('sl3','Jolene Tan Wei Ling','Executive Assistant to the CEO','Sigma Logistics','internal','Executive',{ live:false }),
+      P('sl4','Marcus Lim','Operations Coordinator, Cross-Border','Sigma Logistics','internal','Fleet Operations',{ live:true, when:'T+18 call', griev:'Dispatch is being blamed for rosters it did not set.' }),
+      P('sl5','Devi Rajaratnam','Cold-Chain Compliance Lead','Sigma Logistics','internal','Fleet Operations',{ live:false }),
+      P('sl6','Kenneth Goh','Night Dispatch Supervisor','Sigma Logistics','internal','Fleet Operations',{ live:true, when:'T+27 chat', griev:'Nobody has asked the dispatch team what actually happened.' }),
+      P('sl7','Aisyah Binte Rahmat','Payroll Officer','Sigma Logistics','internal','Legal',{ live:false }),
+      P('sl8','Brandon Chua','IT Systems Administrator','Sigma Logistics','internal','Legal',{ live:false }),
+      P('sl9','Grace Ho','Customer Service Team Lead','Sigma Logistics','internal','Fleet Operations',{ live:true, when:'T+22 email', griev:'The service desk has no approved line for customers.' }),
+      P('sl10','Ravi Pillai','Safety Officer','Sigma Logistics','internal','Fleet Operations',{ live:false }),
+      P('sl11','Chloe Ong','Internal Communications Executive','Sigma Logistics','internal','Communications',{ live:false }),
+      P('sl12','Zul Hakim','Depot Coordinator, Tuas','Sigma Logistics','internal','Fleet Operations',{ live:false }),
+    ]},
+    { rel:'Clients & partners', hint:'hospital, pharma distributor, 3PL', people:[
+      P('sc1','Dr Priya Nair','Head of Pharmacy','Mount Elizabeth Hospital','client','Fleet Operations',{ live:true, when:'T+35 email', griev:'A cold-chain shipment arrived spoiled and nobody has told her whether tomorrow’s is safe.', criteria:['Told whether the current route is affected','Given a named contact','Offered an alternative delivery window'] }),
+      P('sc2','Jason Teo','Supply Chain Director','Zuellig Pharma SG','client','Fleet Operations',{ live:true, when:'T+40 email', griev:'No written confirmation of the temperature excursion.' }),
+      P('sc3','Serene Wong','Procurement Manager','Raffles Medical','client','Fleet Operations',{ live:false }),
+      P('sc4','Michael Tan','Regional Logistics Head','FairPrice Group','client','Fleet Operations',{ live:false }),
+      P('sc5','Nur Farah','Account Manager','DHL Supply Chain (partner)','partner','Fleet Operations',{ live:false }),
+      P('sc6','Samuel Koh','Contracts Lead','PSA Cold Store','partner','Legal',{ live:false }),
+    ]},
+    { rel:'Media', hint:'Straits Times, CNA, Mothership, trade press', people:[
+      P('sm1','Clara Lim','Transport Correspondent','The Straits Times','media','Communications',{ live:true, when:'T+16 email', griev:'Two unanswered requests for comment.' }),
+      P('sm2','Daniel Foo','Senior Producer','CNA','media','Communications',{ live:true, when:'T+45 news', griev:'Wants Sigma on camera by the evening bulletin.' }),
+      P('sm3','Wan Ting','Writer','Mothership','media','Communications',{ live:false }),
+      P('sm4','Arjun Mehta','Editor','Supply Chain Asia','media','Communications',{ live:false }),
+      P('sm5','Hui Min','Freelance journalist','Independent','media','Communications',{ live:true, when:'T+50 social', griev:'Has the driver’s roster and is deciding whether to publish it.' }),
+    ]},
+    { rel:'Regulators', hint:'MOM Singapore', people:[
+      P('sr1','Ms Tan Hui Ling','Assistant Director, Employment Standards','Ministry of Manpower','regulator','Legal',{ live:true, when:'T+24 email', griev:'Cross-border scheduling records not yet received.', persuad:'none' }),
+      P('sr2','Mr Lee Boon Keng','Inspector, Workplace Safety','Ministry of Manpower','regulator','Legal',{ live:false, persuad:'low' }),
+    ]},
+    { rel:'Investors & board', hint:'board chair, lead investor', people:[
+      P('si1','Dato’ Rosalind Yeo','Non-Executive Director','Sigma Logistics Board','investor','Executive',{ live:false }),
+      P('si2','Henrik Olsen','Partner','Northstar Capital','investor','Executive',{ live:true, when:'T+55 email', griev:'Heard about the crisis from the press, not from management.' }),
+    ]},
+    { rel:'Workforce roster', hint:'reachable via the all-staff list · never author injects', roster:true, people: roster('Sigma Logistics','Fleet Operations','sg',[['Wei Ming Tan','Line Operator'],['Hui Ling Lim','Shift Supervisor'],['Jason Lee','Machine Technician'],['Priya Kumar','Quality Inspector'],['Muhammad Rahman','Warehouse Assistant'],['Serene Chua','Forklift Operator'],['Kok Wai Ong','Team Leader'],['Nur Ismail','Maintenance Fitter'],['Ravi Pillai','Packing Operator'],['Grace Ho','Logistics Clerk']]) },
+    { rel:'Distribution list', hint:'one email reaches every roster member', people:[ P('sg_list','Sigma Logistics — Singapore · all staff','Distribution list','Sigma Logistics','internal','Fleet Operations',{ group:true, members:10, live:false }) ] },
+  ]},
+  { org:'Sigma Logistics Malaysia', cc:'MY', sub:'AI-operated office · Johor Bahru', groups:[
+    { rel:'Internal', hint:'depot manager, HR, supervisors', open:true, people:[
+      P('my1','Hafiz Zulkifli','Depot Manager (Johor)','Sigma Logistics Malaysia','internal','Driver Relations',{ live:false, char:{ personality:'Blunt, loyal to his drivers, tired.', stance:'The rosters came from HQ; the depot did what it was told.', knows:'Who was on the 16 Sep roster; the driver’s condition.', wont:'Names of drivers who spoke to the press.', reacts:'Any change to the Johor depot, its shifts or its drivers.' }}),
+      P('my2','Nadia Rahman','HR Business Partner (Johor)','Sigma Logistics Malaysia','internal','Driver Relations',{ live:false }),
+      P('my3','Azman Yusof','Night Run Supervisor','Sigma Logistics Malaysia','internal','Driver Relations',{ live:true, when:'T+14 chat', griev:'Being asked to run tonight’s route with no answer on rest breaks.' }),
+      P('my4','Siti Nurhaliza','Payroll & Benefits Executive','Sigma Logistics Malaysia','internal','Driver Relations',{ live:false }),
+      P('my5','Chong Wei Jie','Fleet Maintenance Lead','Sigma Logistics Malaysia','internal','Driver Relations',{ live:false }),
+      P('my6','Kavitha Muniandy','Depot Administrator','Sigma Logistics Malaysia','internal','Stakeholder Engagement',{ live:false }),
+      P('my7','Farid Abdullah','Driver Trainer','Sigma Logistics Malaysia','internal','Driver Relations',{ live:true, when:'T+33 email', griev:'Fatigue policy he wrote was never adopted.' }),
+      P('my8','Aiman Hassan','Customs Liaison','Sigma Logistics Malaysia','internal','Stakeholder Engagement',{ live:false }),
+      P('my9','Mei Ling Wong','Communications Executive (Johor)','Sigma Logistics Malaysia','internal','Communications',{ live:false }),
+      P('my10','Arun Krishnan','Warehouse Shift Lead','Sigma Logistics Malaysia','internal','Driver Relations',{ live:false }),
+      P('my11','Zulkifli Ismail','Security Supervisor','Sigma Logistics Malaysia','internal','Stakeholder Engagement',{ live:false }),
+      P('my12','Nadia Chong','Office Manager','Sigma Logistics Malaysia','internal','Communications',{ live:false }),
+      P('my13','Hafizah Lee','Cold-Chain Technician','Sigma Logistics Malaysia','internal','Driver Relations',{ live:false }),
+      P('my14','Wei Jie Tan','Dispatcher','Sigma Logistics Malaysia','internal','Driver Relations',{ live:true, when:'T+29 chat', griev:'Blamed on the group chat for the 19-hour roster.' }),
+    ]},
+    { rel:'Union', hint:'speaks for the union page', people:[
+      P('mu1','Mohd Firdaus Ismail','Branch Secretary','Transport Workers Union of Malaysia','union','Driver Relations',{ live:true, when:'T+25 page', griev:'No consultation before roster changes; overtime unpaid since June.', speaks:'TWUM', persuad:'low', criteria:['Direct engagement from a senior representative','Written commitment on overtime with a date','Consultation before the next roster change'] }),
+    ]},
+    { rel:'Media', hint:'The Star, Berita Harian, Malay Mail, regional TV', people:[
+      P('mm1','Suresh Menon','Labour Reporter','The Star','media','Communications',{ live:true, when:'T+12 news', griev:'Sigma Malaysia has not returned his calls.' }),
+      P('mm2','Nurul Ain','Correspondent','Berita Harian','media','Communications',{ live:false }),
+      P('mm3','Vincent Tan','Reporter','Malay Mail','media','Communications',{ live:true, when:'T+38 social', griev:'Has pay slips from three drivers.' }),
+      P('mm4','Aina Abdullah','Producer','Astro Awani','media','Communications',{ live:false }),
+    ]},
+    { rel:'Regulators', hint:'MOHR · DOSH', people:[
+      P('mr1','Lim Chee Kiong','Director of Enforcement','Ministry of Human Resources Malaysia','regulator','Legal',{ live:true, when:'T+20 page', griev:'Scheduling records and rest-period evidence not yet produced.', speaks:'MOHR', persuad:'none', criteria:['Records requested are provided in full','A named compliance contact responds within the deadline'] }),
+      P('mr2','Encik Roslan Hamid','Senior Inspector','Department of Occupational Safety and Health','regulator','Legal',{ live:false, persuad:'low' }),
+    ]},
+    { rel:'Clients', hint:'Malaysian hospital pharmacy, pharma distributor, port', people:[
+      P('mk1','Dr Aminah Yusuf','Chief Pharmacist','Hospital Sultanah Aminah','client','Stakeholder Engagement',{ live:true, when:'T+36 email', griev:'Her weekly cold-chain delivery is now uncertain and no one has called.' }),
+      P('mk2','Ganesh Pillai','Distribution Manager','Pharmaniaga Logistics','client','Stakeholder Engagement',{ live:false }),
+      P('mk3','Kapt. Roslan Ahmad','Operations Director','Johor Port Berhad','partner','Stakeholder Engagement',{ live:false }),
+    ]},
+    { rel:'Suppliers & partners', hint:'fuel, tyres, subcontracted riders', people:[
+      P('ms1','Tan Boon Huat','Owner','BH Tyre & Auto (Johor)','supplier','Stakeholder Engagement',{ live:false }),
+      P('ms2','Rizal Kamaruddin','Fleet Manager','Petronas Dagangan (fuel account)','supplier','Stakeholder Engagement',{ live:false }),
+      P('ms3','Joyce Lim','Operations Head','Lalamove Malaysia (last-mile partner)','partner','Stakeholder Engagement',{ live:true, when:'T+48 email', griev:'Riders being lumped in with Sigma drivers in coverage.' }),
+    ]},
+    { rel:'Community', hint:'Tenaganita, residents, mosque committee', people:[
+      P('mc1','Glorene Das','Executive Director','Tenaganita','community','Stakeholder Engagement',{ live:true, when:'T+30 social', griev:'Pattern of overtime abuse; wants an independent audit.' }),
+      P('mc2','Hj Ismail Bakar','Chairman','Taman Perindustrian Residents Association','community','Stakeholder Engagement',{ live:false }),
+      P('mc3','Puan Rohana','Coordinator','Johor Migrant Workers Network','community','Stakeholder Engagement',{ live:true, when:'T+52 email', griev:'Subcontracted riders excluded from any statement so far.' }),
+    ]},
+    { rel:'Workforce roster', hint:'reachable via the all-staff list · never author injects', roster:true, people: roster('Sigma Logistics Malaysia','Driver Relations','my',[['Aiman Rahman','Driver'],['Nurul Ismail','Shift Supervisor'],['Farid Abdullah','Driver'],['Siti Tan','Logistics Clerk'],['Hafiz Lim','Driver'],['Aisyah Wong','Packing Operator'],['Wei Jie Muniandy','Forklift Operator'],['Mei Ling Krishnan','Quality Inspector'],['Arun Yusof','Driver'],['Kavitha Hassan','Security Officer']]) },
+    { rel:'Distribution list', hint:'one email reaches every roster member', people:[ P('my_list','Sigma Logistics Malaysia — Johor Bahru · all staff','Distribution list','Sigma Logistics Malaysia','internal','Driver Relations',{ group:true, members:10, live:false }) ] },
+  ]},
+  { org:'Common to every organisation', cc:null, sub:'regional media, industry body, insurer', groups:[
+    { rel:'Regional', hint:'', open:true, people:[
+      P('c1','Elaine Ng','Southeast Asia Correspondent','Reuters','media','Communications',{ live:true, when:'T+42 news', griev:'Seeking a regional statement covering both countries.' }),
+      P('c2','Tomás Ferreira','Analyst','Bloomberg Intelligence','media','Communications',{ live:false }),
+      P('c3','Dr Lee Kian Meng','Secretary-General','ASEAN Logistics Federation','partner','Executive',{ live:false }),
+      P('c4','Sarah Whitfield','Claims Director','Marsh (insurer)','partner','Legal',{ live:true, when:'T+58 email', griev:'Needs incident notification within 24 hours.' }),
+      P('c5','Ahmad Faizal','Regional HR Director','Sigma Logistics Group','internal','Executive',{ live:false }),
+      P('c6','Ong Li Wen','Group General Counsel','Sigma Logistics Group','internal','Legal',{ live:false }),
+    ]},
+  ]},
+];
+
+const INJ = [
+  { phase:'T+0 – 15 · opening', total:41, sub:'the clip spreads; first calls; nothing official yet', open:true, rows:[
+    ['T+02','feed','“He just went down.” — clip reposted by @johor_nightshift','crowd · Malaysia · unscoped',['social']],
+    ['T+03','feed','Screenshot of the depot roster posted by a driver’s cousin','crowd · Malaysia',['social']],
+    ['T+05','chat','Executive group chat: “Who has seen this?”','team chat · Executive — SL',['team']],
+    ['T+06','mail','Mount Elizabeth: is tomorrow’s cold-chain run affected?','Dr Priya Nair → Fleet Operations — SL',['stakeholder','SG']],
+    ['T+07','feed','Regional logistics forum thread: “Sigma night runs are notorious”','crowd · Singapore',['social']],
+    ['T+08','mail','Straits Times request for comment — deadline 10:30','Clara Lim → Communications — SL',['stakeholder','SG']],
+    ['T+09','call','Depot manager calls: drivers are refusing the 22:00 run','Hafiz Zulkifli → Driver Relations — SLM',['stakeholder','MY']],
+    ['T+10','feed','Swift Freight: “Our drivers rest. Every run, every night.”','rival page · Swift Freight',['rival']],
+    ['T+11','mail','Board chair: “Please brief me before I read it in the press.”','Dato’ Rosalind Yeo → Executive — SL',['stakeholder']],
+    ['T+12','news','The Star: “Driver collapses after 19-hour shift at Johor logistics depot”','Suresh Menon · The Star',['news']],
+    ['T+13','chat','Night Run Supervisor: “Do we run tonight or not?”','Azman Yusof → Driver Relations — SLM',['stakeholder','MY']],
+    ['T+14','feed','Video reaches 1.2M views; #SigmaShift trending in Malaysia','crowd · unscoped',['social']],
+    ['T+15','feed','Pay slips posted by three night-shift drivers','crowd · key personas · Malaysia',['social']],
+  ]},
+  { phase:'T+15 – 30 · escalation', total:52, sub:'pay slips, boycott call, MOHR statement, MOM request', rows:[
+    ['T+16','mail','CNA wants Sigma on camera for the evening bulletin','Daniel Foo → Communications — SL',['stakeholder','SG']],
+    ['T+18','call','Dispatch: “We are being blamed for rosters we did not set.”','Marcus Lim → Fleet Operations — SL',['stakeholder']],
+    ['T+20','feed','Ministry of Human Resources: statement on the Johor depot','page statement · spokesperson Lim Chee Kiong',['page','MY']],
+    ['T+22','mail','Customer service has no approved line — 40 calls waiting','Grace Ho → Fleet Operations — SL',['stakeholder']],
+    ['T+24','mail','MOM requests cross-border scheduling records (90 days)','Ms Tan Hui Ling → Legal — SL',['stakeholder','SG']],
+    ['T+25','feed','Transport Workers Union: statement demanding consultation','page statement · spokesperson Mohd Firdaus Ismail',['page','MY']],
+    ['T+26','news','CNA: “Singapore hospital confirms spoiled shipment from Johor route”','CNA',['news']],
+    ['T+27','chat','Night dispatch: “Nobody has asked us what happened.”','Kenneth Goh → Fleet Operations — SL',['stakeholder']],
+    ['T+29','chat','Dispatcher blamed on the group chat for the 19-hour roster','Wei Jie Tan → Driver Relations — SLM',['stakeholder','MY']],
+    ['T+30','feed','Tenaganita calls for a boycott of Sigma until an independent audit','Glorene Das · community · unscoped',['stakeholder','MY']],
+  ]},
+  { phase:'T+30 – 45 · turning point', total:60, sub:'the hospital goes public; the union sets a deadline', rows:[
+    ['T+33','mail','Fatigue policy “written and never adopted”','Farid Abdullah → Driver Relations — SLM',['stakeholder','MY']],
+    ['T+35','mail','Mount Elizabeth: no answer on the current route — escalating to the CEO','Dr Priya Nair → Fleet Operations — SL',['stakeholder','SG']],
+    ['T+38','feed','Malay Mail reporter posts three pay slips','Vincent Tan · media',['stakeholder','MY']],
+    ['T+40','mail','Zuellig demands written confirmation of the excursion','Jason Teo → Fleet Operations — SL',['stakeholder','SG']],
+    ['T+40','feed','MOHR: formal request for records with a 48-hour deadline','page statement',['page','MY']],
+    ['T+42','news','Reuters: “Cross-border logistics firm faces twin regulatory probes”','Elaine Ng · Reuters',['news']],
+    ['T+45','feed','TWUM: notice of picket unless consultation begins within 48 hours','page statement',['page','MY']],
+  ]},
+  { phase:'T+45 – 60 · resolution', total:49, sub:'investors, insurer, second-wave coverage', rows:[
+    ['T+48','mail','Riders being lumped in with Sigma drivers','Joyce Lim → Stakeholder Engagement — SLM',['stakeholder','MY']],
+    ['T+50','feed','Freelancer decides whether to publish the driver’s roster','Hui Min · media',['stakeholder','SG']],
+    ['T+52','mail','Subcontracted riders excluded from every statement','Puan Rohana → Stakeholder Engagement — SLM',['stakeholder','MY']],
+    ['T+55','mail','Lead investor: “I heard about this from the press.”','Henrik Olsen → Executive — SL',['stakeholder']],
+    ['T+58','mail','Insurer: incident notification due within 24 hours','Sarah Whitfield → Legal — SL',['stakeholder']],
+  ]},
+  { phase:'Conditional', total:15, cond:true, sub:'convergence gates and intel dependencies between the two offices', rows:[
+    ['IF','mail','Johor roster export — needed by Legal — SL for the MOM response','Sigma Malaysia holds · gate: intel shared',['intel','MY→SG']],
+    ['IF','mail','Mount Elizabeth quarantine memo — needed by Communications — SLM','Sigma HQ holds · gate: intel shared',['intel','SG→MY']],
+    ['IF','feed','Regional desk picks up the story (fires after the Star article)','inject_published:post_star',['chained']],
+    ['IF','news','“Sigma backtracks” — fires only if a public statement contradicts the fact sheet','watchdog gate',['gate']],
+  ]},
+];
+
+const CROWD = {
+  'Singapore · 94 · 15 key · scoped to Singapore players': [
+    ['@sgnurse_kel','Kelly Ang','key','ICU nurse; posts about hospital supply reliability'],['@tuasdriver88','Rizwan Ali','key','ex-Sigma driver; angry, specific'],['@moneymatters_sg','Terence Yap','key','finance influencer; frames it as a governance failure'],['@auntie_pat','Patricia Lim','background','retiree; shares everything with “must read”'],['@techbro_zh','Zhi Hao','background','sarcastic; memes'],['@logistics_insider','Anon','key','claims insider knowledge; sometimes wrong']
+  ],
+  'Malaysia · 94 · 15 key · unscoped (nobody plays in Malaysia)': [
+    ['@johor_nightshift','Anon driver','key','posted the clip; documents the depot'],['@kak_ros','Rosnah Ahmad','key','driver’s aunt; emotional, credible'],['@jbcommuter','Amir Hakim','background','commutes the causeway; hates the queue'],['@buruh_bersatu','Workers Collective','key','organises; amplifies the union'],['@cikgu_lina','Lina Mohd','background','teacher; fact-checks claims'],['@astro_stringer','Farhan','key','stringer feeding regional TV']
+  ],
+};
+
+/* ───────────────────────────── rendering ───────────────────────────── */
+const svg = (id, cls='ic ic-14') => `<svg class="${cls}"><use href="${id}"/></svg>`;
+const chev = `<svg class="ic ic-14 chev"><use href="#i-chevron"/></svg>`;
+const initials = (n) => n.replace(/[^A-Za-z ]/g,'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || '·';
+const monoClass = (p) => p.speaks ? 'mono pr' : p.rel==='client'||p.rel==='partner'||p.rel==='supplier' ? 'mono' : p.org.includes('Malaysia') ? 'mono ai' : p.rel==='media'||p.rel==='community'||p.rel==='investor'||p.rel==='regulator' ? 'mono plain' : 'mono';
+const APP_ICON = { feed:'#i-feed', mail:'#i-mail', call:'#i-call', news:'#i-news', chat:'#i-chat' };
+
+function personRow(p){
+  const tags = [
+    `<span class="p rel">${p.rel}</span>`,
+    p.tier==='roster' ? `<span class="p roster">roster</span>` : '',
+    p.group ? `<span class="p group">list · ${p.members} members</span>` : '',
+    p.live ? `<span class="p live">live concern${p.when?` · ${p.when}`:''}</span>` : (p.tier!=='roster' && !p.group ? `<span class="p pure">pure contact</span>` : ''),
+    p.speaks ? `<span class="p speaks">speaks for ${p.speaks}</span>` : '',
+  ].join('');
+  const right = p.persuad ? `<span class="p">persuadability ${p.persuad}</span>` : (p.tier!=='roster' && !p.group ? `<span class="p">${p.name.toLowerCase().replace(/[^a-z ]/g,'').trim().replace(/\s+/g,'.')}@${p.org.toLowerCase().replace(/[^a-z]/g,'').slice(0,14)}.sim</span>` : '');
+  const key = `${p.name} ${p.title} ${p.org} ${p.rel}`.toLowerCase();
+  const flags = `${p.tier==='roster'?'roster':'principal'} ${p.live?'live':''} ${p.group?'group':''} ${p.speaks?'speaks':''}`;
+  const row = `<div class="row" data-cast="${key}" data-flags="${flags}"><div class="${monoClass(p)} av">${p.group?svg('#i-mail'):initials(p.name)}</div><div><div class="nm">${p.name} ${tags}</div><div class="ti">${p.title} · ${p.org} · owned by ${p.owner}</div></div><div class="pills">${right}</div></div>`;
+  if (!p.char && !p.griev) return row;
+  const c = p.char || {};
+  const body = p.char
+    ? `<div><b>Personality</b>${c.personality}</div><div><b>Stance</b>${c.stance}</div><div><b>Knows</b>${c.knows}</div><div><b>Won't disclose</b>${c.wont}</div><div class="full"><b>Reacts to</b>${c.reacts}</div>`
+    : `<div class="full"><b>Grievance</b>${p.griev}</div>${p.criteria?`<div class="full"><b>Would stand down if</b>${p.criteria.map((x,i)=>`${i+1} · ${x}`).join(' &nbsp;·&nbsp; ')}</div>`:''}`;
+  return `<details class="person"><summary>${row}</summary><div class="char">${body}</div></details>`;
+}
+function renderCast(){
+  const root = document.getElementById('castRoot');
+  root.innerHTML = CAST.map(org => {
+    const n = org.groups.reduce((a,g)=>a+g.people.length,0);
+    const head = org.cc ? `<span class="cc">${org.cc}</span>` : svg('#i-target','ic ic-14');
+    return `<details class="grp" ${org.open?'open':''}><summary>${head} ${org.org} <span class="n">${n}</span><span class="sub">${org.sub}</span>${chev}</summary><div class="g">${
+      org.groups.map(g => `<details class="sub" ${g.open?'open':''}><summary>${g.rel} <span class="n">${g.people.length}</span>${g.hint?`<span class="hint">${g.hint}</span>`:''}${chev}</summary>${g.people.map(personRow).join('')}</details>`).join('')
+    }</div></details>`;
+  }).join('');
+}
+function renderTeams(){
+  document.getElementById('teamsRoot').innerHTML = TEAMS.map((o,i)=>`<details class="grp" ${i===0?'open':''}><summary><span class="cc">${o.cc}</span> ${o.org} <span class="n">${o.teams.length} teams</span><span class="sub">${o.mode}</span>${chev}</summary><div class="g">${
+    o.teams.map((t,j)=>`<details class="sub" ${i===0&&j===0?'open':''}><summary><span class="tm ${t.voice?'voice':''} ${t.custom?'custom':''}"><span class="av">${svg(ICON[t.icon],'ic ic-12')}</span> ${t.name}${t.voice?' <span class="tag">voice</span>':''}</span><span class="hint">${t.injects} injects · ${t.contacts} contacts${t.actions?` · ${t.actions} expected actions`:''}</span>${chev}</summary><div style="padding:8px 8px 12px;font-size:12.5px;color:var(--muted)"><b style="color:var(--ink)">Mission.</b> ${t.mission} <b style="color:var(--ink)">Scored on:</b> ${t.scored}</div></details>`).join('')
+  }</div></details>`).join('');
+}
+function renderInjects(){
+  document.getElementById('injRoot').innerHTML = INJ.map(ph => `<details class="grp" ${ph.open?'open':''}><summary>${ph.cond?`<span class="t cond" style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:2px 6px;border-radius:6px;color:var(--f-intel);background:color-mix(in srgb,var(--f-intel) 8%,#fff)">IF</span> `:''}${ph.phase} <span class="n">${ph.total}</span><span class="sub">${ph.sub}</span>${chev}</summary><div class="g">${
+    ph.rows.map(r=>`<div class="inj"><span class="t ${ph.cond?'cond':''}">${r[0]}</span>${svg(APP_ICON[r[1]],'ic ic-16 app')}<div><div class="ttl">${r[2]}</div><div class="by">${r[3]}</div></div><div class="tags">${r[4].map(t=>/^(SG|MY)$/.test(t)?`<span class="cc light">${t}</span>`:`<span class="p ${t==='stakeholder'?'live':t==='page'?'speaks':t==='rival'?'':''}" ${t==='rival'?'style="color:var(--f-rival)"':''}>${t}</span>`).join('')}</div></div>`).join('')
+  }${ph.total>ph.rows.length?`<span class="more">Show ${ph.total-ph.rows.length} more in this phase</span>`:''}</div></details>`).join('');
+}
+function renderCrowd(){
+  document.getElementById('crowdRoot').innerHTML = Object.entries(CROWD).map(([k,rows],i)=>{
+    const [cc] = k.split(' ');
+    return `<details class="grp" ${i===0?'open':''}><summary><span class="cc">${cc==='Singapore'?'SG':'MY'}</span> ${k}${chev}</summary><div class="g">${rows.map(r=>`<div class="persona"><div class="mono ${cc==='Malaysia'?'ai':''} av" style="width:36px;height:36px;font-size:11px">${initials(r[1])}</div><div><div class="h">${r[1]} <span style="color:var(--muted);font-weight:500">${r[0]}</span></div><div class="d">${r[3]}</div></div><span class="p ${r[2]==='key'?'key':''}">${r[2]}</span></div>`).join('')}<span class="more">Show all 94 personas</span></div></details>`;
+  }).join('');
+}
+function setAll(open){document.querySelectorAll('details.sec, details.grp, details.sub').forEach(d=>{d.open=open});}
+let castFilter='all';
+document.getElementById('castSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;castFilter=b.dataset.f;[...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));applyCast();});
+let castQuery='';
+function filterCast(q){castQuery=(q||'').trim().toLowerCase();applyCast();}
+function applyCast(){
+  document.querySelectorAll('#cast .row[data-cast]').forEach(r=>{
+    const hitQ=!castQuery||r.dataset.cast.includes(castQuery);
+    const hitF=castFilter==='all'||r.dataset.flags.split(' ').includes(castFilter);
+    const holder=r.closest('details.person')||r; holder.style.display=(hitQ&&hitF)?'':'none';
+  });
+  if(castQuery||castFilter!=='all'){document.querySelectorAll('#cast details.grp, #cast details.sub').forEach(d=>d.open=true);}
+}
+renderCast(); renderTeams(); renderInjects(); renderCrowd();
 </script>
 </body>
 </html>
