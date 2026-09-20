@@ -63,6 +63,10 @@ export const env = {
     (nodeEnv === 'production' && process.env.ENABLE_AUTO_INJECTS !== 'false'),
   // Interval in milliseconds for checking if injects should be published (default: 30 seconds)
   injectSchedulerIntervalMs: Number(process.env.INJECT_SCHEDULER_INTERVAL_MS) || 30000,
+  // Stakeholder engine (in-character replies + inject reconsideration from stakeholder records,
+  // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
+  // fall back to the legacy NPC reply paths and skip verdict calls.
+  enableStakeholderEngine: process.env.ENABLE_STAKEHOLDER_ENGINE !== 'false',
   // AAR report format: legacy (single summary + insights) or sections (per-section data + AI analysis). Default legacy for safe revert.
   aarReportFormat:
     process.env.AAR_REPORT_FORMAT === 'sections' ? 'sections' : ('legacy' as 'legacy' | 'sections'),

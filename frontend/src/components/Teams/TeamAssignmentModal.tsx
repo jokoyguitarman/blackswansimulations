@@ -29,6 +29,9 @@ interface ScenarioTeam {
   team_description?: string | null;
   min_participants?: number | null;
   max_participants?: number | null;
+  /** Contract §5.2 — organisation / function identity (multi-org scenarios). */
+  org_key?: string | null;
+  function_key?: string | null;
 }
 
 interface PendingChange {
@@ -95,7 +98,28 @@ export const TeamAssignmentModal = ({
     }
   };
 
-  const availableTeams = useMemo(() => scenarioTeams.map((t) => t.team_name), [scenarioTeams]);
+  // Multi-org scenarios: columns grouped by organisation (org_key), then by name.
+  const sortedTeams = useMemo(
+    () =>
+      [...scenarioTeams].sort(
+        (a, b) =>
+          (a.org_key ?? '').localeCompare(b.org_key ?? '') ||
+          a.team_name.localeCompare(b.team_name),
+      ),
+    [scenarioTeams],
+  );
+  const availableTeams = useMemo(() => sortedTeams.map((t) => t.team_name), [sortedTeams]);
+  const orgGroups = useMemo(() => {
+    const groups: Array<{ org_key: string | null; count: number }> = [];
+    for (const t of sortedTeams) {
+      const key = t.org_key ?? null;
+      const last = groups[groups.length - 1];
+      if (last && last.org_key === key) last.count += 1;
+      else groups.push({ org_key: key, count: 1 });
+    }
+    return groups;
+  }, [sortedTeams]);
+  const isMultiOrg = orgGroups.filter((g) => g.org_key !== null).length > 1;
 
   const teamByName = useMemo(() => {
     const map = new Map<string, ScenarioTeam>();
@@ -329,9 +353,28 @@ export const TeamAssignmentModal = ({
         )}
 
         <div className="flex-1 overflow-y-auto min-h-0 space-y-1 pr-1 mt-2">
+          {/* Organisation group row (multi-org scenarios only) */}
+          {isMultiOrg && (
+            <div
+              className="grid gap-2 items-end sticky top-0 bg-surface z-20 pt-1"
+              style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
+            >
+              <div />
+              {orgGroups.map((g, i) => (
+                <div
+                  key={`${g.org_key ?? 'all'}-${i}`}
+                  className="text-[10px] terminal-text text-accent uppercase text-center border-b border-accent/40 pb-0.5 truncate"
+                  style={{ gridColumn: `span ${g.count}` }}
+                  title={g.org_key ?? 'All organisations'}
+                >
+                  {g.org_key ?? 'All organisations'}
+                </div>
+              ))}
+            </div>
+          )}
           {/* Header row */}
           <div
-            className="grid gap-2 items-center sticky top-0 bg-surface z-10 py-2 border-b border-border"
+            className={`grid gap-2 items-center sticky bg-surface z-10 py-2 border-b border-border ${isMultiOrg ? 'top-5' : 'top-0'}`}
             style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
           >
             <div className="text-xs terminal-text text-muted uppercase">Participant</div>

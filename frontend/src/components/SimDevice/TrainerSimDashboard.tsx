@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useCountUp, useMetricHistory } from '../../hooks/useCountUp';
 import { supabase } from '../../lib/supabase';
+import { api, type SessionDecisionView } from '../../lib/api';
 import { AdversaryConsole } from './AdversaryConsole';
+import { MetricSparkline } from './MetricSparkline';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -101,6 +104,26 @@ interface ConsequenceEvent {
     trigger_id: string;
     is_positive: boolean;
     post_content?: string;
+  };
+  created_at: string;
+}
+
+/** Stakeholder reconsideration outcomes (docs/stakeholder-runtime-plan.md §3.6). */
+interface StakeholderEvent {
+  id: string;
+  event_type: 'inject_cancelled' | 'inject_modified' | 'inject_delayed' | 'stakeholder_verdict';
+  description: string;
+  metadata: {
+    inject_id?: string;
+    stakeholder_id?: string;
+    stakeholder_name?: string;
+    verdict?: string;
+    reason?: string;
+    credited_team?: string | null;
+    contributing_teams?: string[];
+    criteria_met?: number[];
+    delay_minutes?: number;
+    source?: string;
   };
   created_at: string;
 }
@@ -444,14 +467,18 @@ function Card({
 
 function Gauge({ label, value, invert }: { label: string; value: number; invert?: boolean }) {
   const color = invert ? riskColor(value) : gaugeColor(value);
+  // The bar already slides; ease the figure too, so the number and the bar are
+  // telling the same story instead of one gliding while the other jumps.
+  const shown = useCountUp(value);
+  const history = useMetricHistory(value);
   return (
     <div className="mb-3 last:mb-0">
       <div className="flex justify-between items-center mb-1">
         <span className="text-xs" style={{ color: '#6B7280' }}>
           {label}
         </span>
-        <span className="text-xs font-bold" style={{ color }}>
-          {Math.round(value)}
+        <span className="text-xs font-bold tabular-nums" style={{ color }}>
+          {Math.round(shown)}
         </span>
       </div>
       <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#E4DFD4' }}>
@@ -460,7 +487,36 @@ function Gauge({ label, value, invert }: { label: string; value: number; invert?
           style={{ width: `${Math.min(100, Math.max(0, value))}%`, backgroundColor: color }}
         />
       </div>
+      {history.length > 1 && (
+        <div className="mt-1.5">
+          <MetricSparkline history={history} color={color} width={240} height={26} />
+        </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * The headline figure, with its own trend line.
+ *
+ * This is the number a trainer keeps half an eye on while doing something else,
+ * so it is the one that most needs to show direction rather than just level.
+ */
+function OverallSentiment({ value }: { value: number }) {
+  const shown = useCountUp(value);
+  const history = useMetricHistory(value);
+  const color = gaugeColor(value);
+  return (
+    <>
+      <div className="text-4xl font-black tabular-nums" style={{ color }}>
+        {Math.round(shown)}
+      </div>
+      {history.length > 1 && (
+        <div className="mt-1 flex justify-center">
+          <MetricSparkline history={history} color={color} width={150} height={34} />
+        </div>
+      )}
+    </>
   );
 }
 
@@ -733,6 +789,8 @@ export default function TrainerSimDashboard() {
   const [socialState, setSocialState] = useState<SocialState | null>(null);
   const [gradedReplies, setGradedReplies] = useState<GradedReply[]>([]);
   const [consequences, setConsequences] = useState<ConsequenceEvent[]>([]);
+  const [stakeholderEvents, setStakeholderEvents] = useState<StakeholderEvent[]>([]);
+  const [decisions, setDecisions] = useState<SessionDecisionView[]>([]);
   const [showExplainer, setShowExplainer] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [orchestration, setOrchestration] = useState<OrchestrationInject[]>([]);
@@ -764,17 +822,39 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  // Multi-country scenarios: trainer can scope the feed views to one country (contract §4.1).
+  const [countryOptions, setCountryOptions] = useState<string[]>([]);
+  const [countryScope, setCountryScope] = useState<string>('');
+  useEffect(() => {
+    if (!sessionId) return;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/sessions/${sessionId}/orgs`), { headers });
+        if (!res.ok) return;
+        const json = await res.json();
+        const names = ((json.data?.countries ?? []) as Array<{ name: string }>).map((c) => c.name);
+        setCountryOptions(json.data?.multi_org && names.length > 1 ? names : []);
+      } catch {
+        /* single-country */
+      }
+    })();
+  }, [sessionId]);
+
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(apiUrl(`/api/social/posts/session/${sessionId}`), { headers });
+      const scope = countryScope ? `?country=${encodeURIComponent(countryScope)}` : '';
+      const res = await fetch(apiUrl(`/api/social/posts/session/${sessionId}${scope}`), {
+        headers,
+      });
       const json = await res.json();
       if (json.data) setPosts(json.data);
     } catch {
       /* retry on next poll */
     }
-  }, [sessionId]);
+  }, [sessionId, countryScope]);
 
   const loadGradedReplies = useCallback(async () => {
     if (!sessionId) return;
@@ -829,6 +909,45 @@ export default function TrainerSimDashboard() {
       }
     } catch {
       /* retry */
+    }
+  }, [sessionId]);
+
+  const loadStakeholderEvents = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(
+        apiUrl(
+          `/api/sessions/${sessionId}/events?event_type=inject_cancelled,inject_modified,inject_delayed,stakeholder_verdict&limit=200`,
+        ),
+        { headers },
+      );
+      const json = await res.json();
+      if (Array.isArray(json.data)) {
+        setStakeholderEvents(
+          (json.data as Array<Record<string, unknown>>)
+            .filter((e) => ((e.metadata as Record<string, unknown>) ?? {}).source === 'stakeholder')
+            .map((e) => ({
+              id: String(e.id ?? ''),
+              event_type: String(e.event_type) as StakeholderEvent['event_type'],
+              description: String(e.description ?? ''),
+              metadata: (e.metadata ?? {}) as StakeholderEvent['metadata'],
+              created_at: String(e.created_at ?? ''),
+            })),
+        );
+      }
+    } catch {
+      /* retry */
+    }
+  }, [sessionId]);
+
+  const loadDecisions = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const res = await api.sessions.listDecisions(sessionId);
+      setDecisions(res.data || []);
+    } catch {
+      /* decision layer absent or retry */
     }
   }, [sessionId]);
 
@@ -931,6 +1050,8 @@ export default function TrainerSimDashboard() {
     loadLedger();
     loadTeamScores();
     loadIntelStatus();
+    loadStakeholderEvents();
+    loadDecisions();
   }, [
     loadSocialState,
     loadPosts,
@@ -942,6 +1063,8 @@ export default function TrainerSimDashboard() {
     loadLedger,
     loadTeamScores,
     loadIntelStatus,
+    loadStakeholderEvents,
+    loadDecisions,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -1239,12 +1362,7 @@ export default function TrainerSimDashboard() {
               <>
                 <div className="flex items-center justify-center mb-4">
                   <div className="text-center">
-                    <div
-                      className="text-4xl font-black"
-                      style={{ color: gaugeColor(socialState.sentiment_score) }}
-                    >
-                      {Math.round(socialState.sentiment_score)}
-                    </div>
+                    <OverallSentiment value={socialState.sentiment_score} />
                     <div className="text-[10px] mt-0.5" style={{ color: '#64748b' }}>
                       Overall Sentiment
                     </div>
@@ -1627,6 +1745,136 @@ export default function TrainerSimDashboard() {
           </Card>
         </div>
 
+        {/* ============ EXECUTIVE DECISIONS ROW (decision-layer scenarios only) ============ */}
+        {decisions.length > 0 && (
+          <Card title={`Executive Decisions (${decisions.length})`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {decisions.map((d) => {
+                const open = d.obligations.filter((o) => o.status === 'open').length;
+                const met = d.obligations.filter((o) => o.status === 'met').length;
+                const lapsed = d.obligations.filter((o) => o.status === 'lapsed').length;
+                return (
+                  <div
+                    key={d.id}
+                    className="rounded-lg p-2.5 border-l-2"
+                    style={{ backgroundColor: '#FFFFFF', borderColor: '#5E5CE6' }}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="text-xs font-semibold" style={{ color: '#111827' }}>
+                        {d.title}
+                      </span>
+                      <span className="text-[10px]" style={{ color: '#64748b' }}>
+                        T+{d.recorded_at_minute} · {d.team_name}
+                        {d.recorded_by_trainer ? ' (trainer)' : ''}
+                      </span>
+                    </div>
+                    {(d.scope || d.rationale) && (
+                      <p className="text-[11px] leading-snug mb-1" style={{ color: '#4B5563' }}>
+                        {d.scope ? `Scope: ${d.scope}. ` : ''}
+                        {d.rationale ? `Rationale: ${truncate(d.rationale, 160)}` : ''}
+                      </p>
+                    )}
+                    {d.obligations.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {d.obligations.map((o) => (
+                          <span
+                            key={o.id}
+                            className="text-[10px] px-1.5 py-0.5 rounded-full"
+                            title={`${o.description} — due T+${o.due_at_minute}`}
+                            style={{
+                              color: '#fff',
+                              backgroundColor:
+                                o.status === 'met'
+                                  ? '#15803D'
+                                  : o.status === 'lapsed'
+                                    ? '#B91C1C'
+                                    : '#B45309',
+                            }}
+                          >
+                            {o.by_function} → {o.stakeholder_name || o.stakeholder_id} · {o.status}
+                          </span>
+                        ))}
+                        <span className="text-[10px] self-center" style={{ color: '#64748b' }}>
+                          {met} met · {open} open · {lapsed} lapsed
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-[10px]" style={{ color: '#64748b' }}>
+                        No obligations created
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        )}
+
+        {/* ============ STAKEHOLDER OUTCOMES ROW: full width ============ */}
+        <Card title={`Stakeholder Outcomes (${stakeholderEvents.length})`}>
+          {stakeholderEvents.length === 0 ? (
+            <p className="text-xs text-center py-6" style={{ color: '#64748b' }}>
+              No stakeholder has reconsidered a planned action yet. Outcomes appear here when a
+              player&apos;s contact with a stakeholder changes what that stakeholder does.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {stakeholderEvents.map((e) => {
+                const verdict =
+                  e.event_type === 'inject_cancelled'
+                    ? e.metadata.reason === 'modified'
+                      ? null
+                      : 'WITHDRAWN'
+                    : e.event_type === 'inject_modified'
+                      ? 'REVISED'
+                      : e.event_type === 'inject_delayed'
+                        ? 'HOLDING'
+                        : (e.metadata.verdict || 'verdict').toUpperCase();
+                if (!verdict) return null; // the "cancelled because modified" twin of a REVISED row
+                const tone =
+                  verdict === 'WITHDRAWN'
+                    ? '#15803D'
+                    : verdict === 'REVISED'
+                      ? '#0369A1'
+                      : verdict === 'HOLDING'
+                        ? '#B45309'
+                        : '#64748b';
+                return (
+                  <div
+                    key={e.id}
+                    className="rounded-lg p-2.5 border-l-2"
+                    style={{ backgroundColor: '#FFFFFF', borderColor: tone }}
+                  >
+                    <div className="flex items-center justify-between mb-1 gap-2">
+                      <span
+                        className="text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded"
+                        style={{ color: tone, backgroundColor: `${tone}14` }}
+                      >
+                        {verdict}
+                      </span>
+                      <span className="text-[10px]" style={{ color: '#64748b' }}>
+                        {timeLabel(e.created_at)}
+                        {e.metadata.credited_team ? ` · ${e.metadata.credited_team}` : ''}
+                      </span>
+                    </div>
+                    <p className="text-xs leading-relaxed" style={{ color: '#111827' }}>
+                      {e.metadata.stakeholder_name ? (
+                        <strong>{e.metadata.stakeholder_name}: </strong>
+                      ) : null}
+                      {e.description}
+                    </p>
+                    {(e.metadata.criteria_met?.length ?? 0) > 0 && (
+                      <p className="text-[10px] mt-1" style={{ color: '#64748b' }}>
+                        Criteria met: {e.metadata.criteria_met!.join(', ')}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
         {/* ============ ORCHESTRATION ROW: full width ============ */}
         <Card
           title={`Strategy Window Orchestration (${orchestration.filter((i) => i.status === 'published').length}/${orchestration.length})`}
@@ -1705,7 +1953,30 @@ export default function TrainerSimDashboard() {
         {/* ============ BOTTOM ROW: 2 columns (3fr + 2fr) ============ */}
         <div className="grid gap-4" style={{ gridTemplateColumns: '3fr 2fr', minHeight: 220 }}>
           {/* Panel 6 — Live Feed */}
-          <Card title={`Live Feed (${posts.length} posts)`}>
+          <Card
+            title={`Live Feed (${posts.length} posts)${countryScope ? ` · ${countryScope}` : ''}`}
+          >
+            {countryOptions.length > 1 && (
+              <div className="flex items-center gap-2 mb-2">
+                <label className="text-[10px] uppercase tracking-wide" style={{ color: '#64748b' }}>
+                  Country
+                </label>
+                <select
+                  value={countryScope}
+                  onChange={(e) => setCountryScope(e.target.value)}
+                  className="text-xs rounded border px-2 py-1"
+                  style={{ borderColor: '#E5E7EB', color: '#111827', backgroundColor: '#FFFFFF' }}
+                  aria-label="Scope feed by country"
+                >
+                  <option value="">All countries</option>
+                  {countryOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {recentFeed.length === 0 ? (
               <p className="text-xs text-center py-8" style={{ color: '#64748b' }}>
                 No posts yet

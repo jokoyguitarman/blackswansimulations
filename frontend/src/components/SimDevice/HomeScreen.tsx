@@ -128,6 +128,10 @@ const DEFAULT_RACE_OPTIONS = [
 
 interface TeamBriefing {
   team_name: string;
+  /** Team function independent of naming ("Communications — PNP" → "Communications"). */
+  function_key?: string | null;
+  org_key?: string | null;
+  country?: string | null;
   mission: string | null;
   responsibilities: string[];
   out_of_lane: string[];
@@ -139,7 +143,12 @@ const TEAM_ICON: Record<string, string> = {
   Procurement: '📦',
   Sales: '🤝',
   Legal: '⚖️',
+  Executive: '🏛️',
 };
+
+function teamIcon(team: Pick<TeamBriefing, 'team_name' | 'function_key'>): string {
+  return TEAM_ICON[team.function_key ?? team.team_name] || '🎯';
+}
 
 export default function HomeScreen() {
   const { sessionId } = useParams<{ sessionId: string }>();
@@ -161,6 +170,25 @@ export default function HomeScreen() {
 
   const [teamBriefing, setTeamBriefing] = useState<TeamBriefing | null>(null);
   const [showBriefing, setShowBriefing] = useState(false);
+  // Decision layer (contract §7A): the Decisions tile exists only for Executive players / trainers
+  // in scenarios that carry a decision space.
+  const [hasDecisions, setHasDecisions] = useState(false);
+  useEffect(() => {
+    if (!sessionId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(apiUrl(`/api/sessions/${sessionId}/decision-space`), { headers });
+        if (!cancelled) setHasDecisions(res.ok);
+      } catch {
+        if (!cancelled) setHasDecisions(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId]);
 
   const raceOptions = RACE_BY_COUNTRY[scenarioCountry.toLowerCase()] || DEFAULT_RACE_OPTIONS;
   const effectiveReligion = religion === 'other' ? customReligion.trim() : religion;
@@ -361,6 +389,17 @@ export default function HomeScreen() {
       badge: badges.news,
     },
     { id: 'drafts', label: 'Docs', icon: '/icons/icon-docs.svg', path: 'drafts' },
+    { id: 'contacts', label: 'Contacts', icon: '/icons/icon-sheets.svg', path: 'contacts' },
+    ...(hasDecisions
+      ? [
+          {
+            id: 'decisions',
+            label: 'Decisions',
+            icon: '/icons/icon-decisions.svg',
+            path: 'decisions',
+          },
+        ]
+      : []),
   ];
 
   const dockApps = apps.filter((a) => a.inDock);
@@ -588,7 +627,7 @@ export default function HomeScreen() {
             }}
           >
             <div className="flex items-center gap-3">
-              <span className="text-[24px]">{TEAM_ICON[teamBriefing.team_name] || '🎯'}</span>
+              <span className="text-[24px]">{teamIcon(teamBriefing)}</span>
               <div className="flex-1 min-w-0">
                 <div
                   className="text-white text-[13px] font-semibold"
@@ -621,7 +660,7 @@ export default function HomeScreen() {
             style={{ backgroundColor: '#1C1C1E', maxWidth: 340, width: '100%', maxHeight: '80%' }}
           >
             <div className="px-5 pt-5 pb-3 text-center">
-              <div className="text-[32px] mb-2">{TEAM_ICON[teamBriefing.team_name] || '🎯'}</div>
+              <div className="text-[32px] mb-2">{teamIcon(teamBriefing)}</div>
               <h2
                 className="text-white text-[17px] font-semibold mb-1"
                 style={{ fontFamily: '-apple-system, BlinkMacSystemFont, sans-serif' }}

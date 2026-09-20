@@ -10,9 +10,89 @@ import {
   createNotification,
   createNotificationsForUsers,
 } from '../services/notificationService.js';
-import { createDefaultChannels } from '../services/channelService.js';
+import { createDefaultChannels, ensureTeamChannels } from '../services/channelService.js';
 import { assertSessionAccess } from '../lib/access.js';
+import {
+  assertChannelAccess,
+  listAccessibleChannels,
+  getChannelMemberIds,
+  toChannelRow,
+  type ChannelRow,
+} from '../lib/channelAccess.js';
 import { io } from '../index.js';
+
+/**
+ * Chat overview enrichment shared by the channel list and the DM list: last message preview and
+ * unread count per channel, computed from one batch of recent messages + the caller's read
+ * cursors (runtime plan §2.4).
+ */
+async function buildChannelOverview(
+  sessionId: string,
+  userId: string,
+  channelIds: string[],
+): Promise<
+  Map<
+    string,
+    {
+      last_message: { content: string; created_at: string; sender_name: string } | null;
+      unread_count: number;
+    }
+  >
+> {
+  const overview = new Map<
+    string,
+    {
+      last_message: { content: string; created_at: string; sender_name: string } | null;
+      unread_count: number;
+    }
+  >();
+  for (const id of channelIds) overview.set(id, { last_message: null, unread_count: 0 });
+  if (channelIds.length === 0) return overview;
+
+  const [{ data: messages }, { data: reads }] = await Promise.all([
+    supabaseAdmin
+      .from('chat_messages')
+      // '*' so sender_stakeholder_id / sender_display_name (migration 199) are optional.
+      .select('*, sender:user_profiles!chat_messages_sender_id_fkey(full_name)')
+      .eq('session_id', sessionId)
+      .in('channel_id', channelIds)
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabaseAdmin
+      .from('chat_channel_reads')
+      .select('channel_id, last_read_at')
+      .eq('user_id', userId)
+      .in('channel_id', channelIds),
+  ]);
+
+  const lastReadByChannel = new Map<string, number>();
+  for (const r of reads ?? []) {
+    const row = r as { channel_id: string; last_read_at: string };
+    lastReadByChannel.set(row.channel_id, new Date(row.last_read_at).getTime());
+  }
+
+  for (const m of messages ?? []) {
+    const row = m as Record<string, unknown>;
+    const channelId = String(row.channel_id);
+    const entry = overview.get(channelId);
+    if (!entry) continue;
+    const createdAt = String(row.created_at);
+    if (!entry.last_message) {
+      const sender = row.sender as { full_name?: string } | null;
+      entry.last_message = {
+        content: String(row.content ?? ''),
+        created_at: createdAt,
+        sender_name: String(row.sender_display_name || sender?.full_name || 'Unknown'),
+      };
+    }
+    const isOwn = row.sender_id === userId;
+    const lastRead = lastReadByChannel.get(channelId) ?? 0;
+    if (!isOwn && new Date(createdAt).getTime() > lastRead && entry.unread_count < 99) {
+      entry.unread_count += 1;
+    }
+  }
+  return overview;
+}
 
 const router = Router();
 
@@ -83,35 +163,65 @@ router.get('/session/:sessionId', requireAuth, async (req: AuthenticatedRequest,
       }
     }
 
-    // Get all channels except direct messages
-    const result = await supabaseAdmin
+    // Self-heal: default channels if none exist, and one `team` channel per assigned team.
+    const { count: channelCount } = await supabaseAdmin
       .from('chat_channels')
-      .select('*')
+      .select('id', { count: 'exact', head: true })
       .eq('session_id', sessionId)
-      .neq('type', 'direct')
-      .order('created_at', { ascending: true });
-
-    if (result.error) {
-      logger.error({ error: result.error, sessionId }, 'Failed to fetch channels');
-      return res.status(500).json({ error: 'Failed to fetch channels' });
-    }
-
-    let channels = result.data;
-
-    // Self-heal: auto-create default channels if none exist for this session
-    if (!channels || channels.length === 0) {
+      .not('type', 'in', '("direct","npc_direct","team")');
+    if (!channelCount) {
       logger.info({ sessionId }, 'No channels found — auto-creating defaults');
       await createDefaultChannels(sessionId, session.trainer_id ?? user.id);
-      const refetch = await supabaseAdmin
-        .from('chat_channels')
-        .select('*')
-        .eq('session_id', sessionId)
-        .neq('type', 'direct')
-        .order('created_at', { ascending: true });
-      channels = refetch.data ?? [];
     }
+    await ensureTeamChannels(sessionId, session.trainer_id ?? null);
 
-    res.json({ data: channels });
+    // Only channels the caller may read (team channels for members / trainer; Trainer Channel
+    // for trainers only).
+    const { channels } = await listAccessibleChannels(sessionId, {
+      id: user.id,
+      role: user.role,
+    });
+
+    const [overview, teamIdentity] = await Promise.all([
+      buildChannelOverview(
+        sessionId,
+        user.id,
+        channels.map((c) => c.id),
+      ),
+      (async () => {
+        try {
+          const { getSessionTeams } = await import('../services/orgRegistryService.js');
+          return new Map((await getSessionTeams(sessionId)).map((t) => [t.team_name, t]));
+        } catch {
+          return new Map<string, { function_key: string | null; org_key: string | null }>();
+        }
+      })(),
+    ]);
+
+    const memberCounts = await Promise.all(
+      channels.map(async (c) => (await getChannelMemberIds(c)).length),
+    );
+
+    const data = channels.map((c, i) => {
+      const identity = c.team_name ? teamIdentity.get(c.team_name) : undefined;
+      const ov = overview.get(c.id)!;
+      return {
+        id: c.id,
+        session_id: c.session_id,
+        name: c.name,
+        type: c.type,
+        role_filter: c.role_filter,
+        created_at: c.created_at,
+        team_name: c.team_name,
+        function_key: identity?.function_key ?? null,
+        org_key: identity?.org_key ?? null,
+        member_count: memberCounts[i],
+        last_message: ov.last_message,
+        unread_count: ov.unread_count,
+      };
+    });
+
+    res.json({ data });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /channels/session/:sessionId');
     res.status(500).json({ error: 'Internal server error' });
@@ -182,12 +292,12 @@ router.get('/session/:sessionId/dms', requireAuth, async (req: AuthenticatedRequ
       }
     }
 
-    // Get all direct message channels for the session (filter members in JavaScript)
+    // Get all direct message channels (human + NPC) for the session; members filtered in JS.
     const { data: allDmChannels, error: channelsError } = await supabaseAdmin
       .from('chat_channels')
       .select('*')
       .eq('session_id', sessionId)
-      .eq('type', 'direct')
+      .in('type', ['direct', 'npc_direct'])
       .order('created_at', { ascending: false });
 
     if (channelsError) {
@@ -214,15 +324,49 @@ router.get('/session/:sessionId/dms', requireAuth, async (req: AuthenticatedRequ
       return Array.isArray(members) && members.includes(user.id);
     });
 
+    const overview = await buildChannelOverview(
+      sessionId,
+      user.id,
+      dmChannels.map((c) => String((c as Record<string, unknown>).id)),
+    );
+
+    // NPC DMs (type npc_direct) are enriched with the stakeholder's player-visible record.
+    let stakeholderById = new Map<string, unknown>();
+    if (dmChannels.some((c) => (c as Record<string, unknown>).type === 'npc_direct')) {
+      try {
+        const { getVisibleStakeholders } = await import('../services/stakeholderService.js');
+        const { toPlayerVisible } = await import('../lib/stakeholderContract.js');
+        const visible = await getVisibleStakeholders(sessionId, user.id, {
+          asTrainer: session.trainer_id === user.id || user.role === 'admin',
+        });
+        stakeholderById = new Map(visible.map((s) => [s.id, toPlayerVisible(s)]));
+      } catch {
+        /* stakeholder service unavailable → recipient stays null */
+      }
+    }
+
     // Enrich with recipient info (resilient - one failure doesn't break all)
     const enrichedChannels = await Promise.all(
       dmChannels.map(async (channel: Record<string, unknown>) => {
         try {
+          const ov = overview.get(String(channel.id)) ?? { last_message: null, unread_count: 0 };
+
+          if (channel.type === 'npc_direct') {
+            const stakeholder = stakeholderById.get(String(channel.stakeholder_id ?? '')) ?? null;
+            return {
+              ...channel,
+              recipient: null,
+              stakeholder,
+              last_message: ov.last_message,
+              unread_count: ov.unread_count,
+            };
+          }
+
           const members = (channel.members as string[]) || [];
           const recipientId = members.find((id: string) => id !== user.id);
 
           if (!recipientId) {
-            return { ...channel, recipient: null, last_message: null };
+            return { ...channel, recipient: null, last_message: null, unread_count: 0 };
           }
 
           const { data: recipient, error: recipientError } = await supabaseAdmin
@@ -243,30 +387,11 @@ router.get('/session/:sessionId/dms', requireAuth, async (req: AuthenticatedRequ
             );
           }
 
-          // Get last message for preview
-          const { data: lastMessage, error: messageError } = await supabaseAdmin
-            .from('chat_messages')
-            .select('content, created_at')
-            .eq('channel_id', channel.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          if (messageError) {
-            logger.warn(
-              {
-                error: messageError,
-                channelId: channel.id,
-                userId: user.id,
-              },
-              'Failed to fetch last message for DM channel',
-            );
-          }
-
           return {
             ...channel,
             recipient: recipient || null,
-            last_message: lastMessage || null,
+            last_message: ov.last_message,
+            unread_count: ov.unread_count,
           };
         } catch (enrichError) {
           logger.error(
@@ -388,9 +513,31 @@ router.get(
           const r = row as { user_id: string; team_name: string };
           if (!userTeamMap.has(r.user_id)) userTeamMap.set(r.user_id, r.team_name);
         }
+        // Contract §5.2: expose function / org identity next to the team name.
+        let identityByTeam = new Map<
+          string,
+          { function_key: string | null; org_key: string | null }
+        >();
+        try {
+          const { getSessionTeams } = await import('../services/orgRegistryService.js');
+          identityByTeam = new Map(
+            (await getSessionTeams(sessionId)).map((t) => [
+              t.team_name,
+              { function_key: t.function_key, org_key: t.org_key },
+            ]),
+          );
+        } catch {
+          /* identity enrichment is best-effort */
+        }
         for (const p of allSessionParticipants) {
           const teamName = userTeamMap.get(p.id as string);
-          if (teamName) (p as Record<string, unknown>).team_name = teamName;
+          if (teamName) {
+            const rec = p as Record<string, unknown>;
+            rec.team_name = teamName;
+            const identity = identityByTeam.get(teamName);
+            rec.function_key = identity?.function_key ?? null;
+            rec.org_key = identity?.org_key ?? null;
+          }
         }
       }
 
@@ -556,45 +703,12 @@ router.get(
       const offset = (Number(page) - 1) * Number(limit);
       const user = req.user!;
 
-      // Verify user has access to channel
-      const { data: channel, error: channelError } = await supabaseAdmin
-        .from('chat_channels')
-        .select('session_id, type, members')
-        .eq('id', channelId)
-        .maybeSingle();
-
-      if (channelError) {
-        logger.error(
-          {
-            error: channelError,
-            errorCode: channelError.code,
-            errorMessage: channelError.message,
-            channelId,
-          },
-          'Failed to fetch channel',
-        );
-        return res
-          .status(500)
-          .json({ error: 'Failed to fetch channel', details: channelError.message });
+      // One rule for every channel type (team membership, DM membership, trainer channel…).
+      const channelAccess = await assertChannelAccess(channelId, user);
+      if (!channelAccess.ok) {
+        return res.status(channelAccess.status).json({ error: channelAccess.error });
       }
-
-      if (!channel) {
-        return res.status(404).json({ error: 'Channel not found' });
-      }
-
-      // Caller must belong to the channel's session (trainer/admin/participant).
-      const access = await assertSessionAccess(channel.session_id as string, user);
-      if (!access.ok) {
-        return res.status(access.status).json({ error: access.error });
-      }
-
-      // For direct messages, additionally verify the caller is one of the two members.
-      if (channel.type === 'direct') {
-        const members = (channel.members as string[]) || [];
-        if (!Array.isArray(members) || !members.includes(user.id)) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-      }
+      const channel = channelAccess.channel;
 
       const { data, error, count } = await supabaseAdmin
         .from('chat_messages')
@@ -650,6 +764,18 @@ router.get(
         }
       }
 
+      // NPC-authored rows (migration 199) carry no user sender; synthesise one from the stakeholder.
+      for (const msg of messagesArr) {
+        const m = msg as Record<string, unknown>;
+        if (!m.sender && m.sender_stakeholder_id) {
+          m.sender = {
+            id: `stk:${m.sender_stakeholder_id}`,
+            full_name: String(m.sender_display_name || 'Contact'),
+            role: 'npc',
+          };
+        }
+      }
+
       res.json({
         data: messagesArr,
         count,
@@ -668,6 +794,182 @@ router.get(
         },
         'Error in GET /channels/:channelId/messages',
       );
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Members of a channel (names, roles, team identity) — runtime plan §2.4
+router.get('/:channelId/members', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { channelId } = req.params;
+    const user = req.user!;
+    const access = await assertChannelAccess(channelId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+    const channel = access.channel;
+
+    const memberIds = await getChannelMemberIds(channel);
+    if (memberIds.length === 0) return res.json({ data: [] });
+
+    const [{ data: profiles }, { data: session }, { data: teamRows }] = await Promise.all([
+      supabaseAdmin.from('user_profiles').select('id, full_name, role').in('id', memberIds),
+      supabaseAdmin
+        .from('sessions')
+        .select('trainer_id')
+        .eq('id', channel.session_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('session_teams')
+        .select('user_id, team_name')
+        .eq('session_id', channel.session_id)
+        .in('user_id', memberIds),
+    ]);
+
+    let identityByTeam = new Map<string, { function_key: string | null; org_key: string | null }>();
+    try {
+      const { getSessionTeams } = await import('../services/orgRegistryService.js');
+      identityByTeam = new Map(
+        (await getSessionTeams(channel.session_id)).map((t) => [
+          t.team_name,
+          { function_key: t.function_key, org_key: t.org_key },
+        ]),
+      );
+    } catch {
+      /* best-effort */
+    }
+
+    const teamByUser = new Map<string, string>();
+    for (const r of teamRows ?? []) {
+      const row = r as { user_id: string; team_name: string };
+      if (!teamByUser.has(row.user_id)) teamByUser.set(row.user_id, row.team_name);
+    }
+    const trainerId = (session?.trainer_id as string | null) ?? null;
+
+    const data = (profiles ?? [])
+      .map((p) => {
+        const row = p as { id: string; full_name: string; role: string };
+        const teamName = teamByUser.get(row.id) ?? null;
+        const identity = teamName ? identityByTeam.get(teamName) : undefined;
+        return {
+          id: row.id,
+          full_name: row.full_name,
+          role: row.role,
+          team_name: teamName,
+          function_key: identity?.function_key ?? null,
+          org_key: identity?.org_key ?? null,
+          is_trainer: row.id === trainerId,
+        };
+      })
+      .sort(
+        (a, b) =>
+          Number(b.is_trainer) - Number(a.is_trainer) || a.full_name.localeCompare(b.full_name),
+      );
+
+    res.json({ data });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /channels/:channelId/members');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Read cursor (unread badges) — runtime plan §2.4
+router.post('/:channelId/read', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { channelId } = req.params;
+    const user = req.user!;
+    const access = await assertChannelAccess(channelId, user);
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+    const { error } = await supabaseAdmin
+      .from('chat_channel_reads')
+      .upsert(
+        { channel_id: channelId, user_id: user.id, last_read_at: new Date().toISOString() },
+        { onConflict: 'channel_id,user_id' },
+      );
+    if (error) {
+      logger.warn({ error, channelId, userId: user.id }, 'Failed to update read cursor');
+      return res.status(500).json({ error: 'Failed to update read cursor' });
+    }
+    res.status(204).end();
+  } catch (err) {
+    logger.error({ error: err }, 'Error in POST /channels/:channelId/read');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Create or get an NPC (stakeholder) DM channel — runtime plan §3.3
+router.post(
+  '/session/:sessionId/npc-dm',
+  requireAuth,
+  validate(
+    z.object({
+      params: z.object({ sessionId: z.string().uuid() }),
+      body: z.object({ stakeholder_id: z.string().min(1).max(120) }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+      const user = req.user!;
+      const { stakeholder_id } = req.body as { stakeholder_id: string };
+
+      const access = await assertSessionAccess(sessionId, user);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      const isTrainer = access.session?.trainer_id === user.id || user.role === 'admin';
+
+      const { canUserSeeStakeholder } = await import('../services/stakeholderService.js');
+      const { toPlayerVisible } = await import('../lib/stakeholderContract.js');
+      const stakeholder = await canUserSeeStakeholder(sessionId, user.id, stakeholder_id, {
+        asTrainer: isTrainer,
+      });
+      // Never reveal that a stakeholder exists to someone who may not see them.
+      if (!stakeholder) return res.status(404).json({ error: 'Contact not found' });
+
+      const { data: existingRows } = await supabaseAdmin
+        .from('chat_channels')
+        .select('*')
+        .eq('session_id', sessionId)
+        .eq('type', 'npc_direct')
+        .eq('stakeholder_id', stakeholder_id);
+      const existing = (existingRows ?? []).find((c) =>
+        ((c as { members?: string[] }).members ?? []).includes(user.id),
+      );
+      if (existing) {
+        return res.json({
+          data: {
+            ...toChannelRow(existing as Record<string, unknown>),
+            stakeholder: toPlayerVisible(stakeholder),
+          },
+        });
+      }
+
+      const { data: created, error } = await supabaseAdmin
+        .from('chat_channels')
+        .insert({
+          session_id: sessionId,
+          name: stakeholder.name,
+          type: 'npc_direct',
+          stakeholder_id: stakeholder.id,
+          members: [user.id],
+          created_by: user.id,
+        })
+        .select('*')
+        .single();
+      if (error || !created) {
+        logger.error(
+          { error, sessionId, stakeholderId: stakeholder_id },
+          'Failed to create NPC DM',
+        );
+        return res.status(500).json({ error: 'Failed to create conversation' });
+      }
+      res.status(201).json({
+        data: {
+          ...toChannelRow(created as Record<string, unknown>),
+          stakeholder: toPlayerVisible(stakeholder),
+        },
+      });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /channels/session/:sessionId/npc-dm');
       res.status(500).json({ error: 'Internal server error' });
     }
   },
@@ -723,30 +1025,12 @@ router.post(
       const user = req.user!;
       const { content, message_type } = req.body;
 
-      // Verify channel access
-      const { data: channel } = await supabaseAdmin
-        .from('chat_channels')
-        .select('session_id, type, members, name')
-        .eq('id', channelId)
-        .single();
-
-      if (!channel) {
-        return res.status(404).json({ error: 'Channel not found' });
+      // One rule for every channel type (team membership, DM membership, trainer channel…).
+      const channelAccess = await assertChannelAccess(channelId, user);
+      if (!channelAccess.ok) {
+        return res.status(channelAccess.status).json({ error: channelAccess.error });
       }
-
-      // Caller must belong to the channel's session (trainer/admin/participant).
-      const access = await assertSessionAccess(channel.session_id as string, user);
-      if (!access.ok) {
-        return res.status(access.status).json({ error: access.error });
-      }
-
-      // For direct messages, additionally verify the caller is one of the two members.
-      if (channel.type === 'direct') {
-        const members = (channel.members as string[]) || [];
-        if (!members.includes(user.id)) {
-          return res.status(403).json({ error: 'Access denied' });
-        }
-      }
+      const channel: ChannelRow = channelAccess.channel;
 
       // Insert message first
       const { data: insertedMessage, error: insertError } = await supabaseAdmin
@@ -849,12 +1133,30 @@ router.post(
         );
       }
 
+      // NPC DM: hand the message to the stakeholder engine (in-character reply + reconsideration).
+      if (channel.type === 'npc_direct' && channel.stakeholder_id) {
+        void (async () => {
+          try {
+            const { onTeamChatMessage } = await import('../services/stakeholderReplyService.js');
+            await onTeamChatMessage({
+              sessionId: channel.session_id,
+              channelId,
+              stakeholderId: channel.stakeholder_id!,
+              userId: user.id,
+              content,
+              messageId: messageData.id as string,
+            });
+          } catch (err) {
+            logger.warn({ err, channelId }, 'Stakeholder chat reply failed');
+          }
+        })();
+      }
+
       // Create notifications for message recipients
       try {
         if (channel.type === 'direct') {
           // For direct messages, notify the other participant
-          const members = (channel.members as string[]) || [];
-          const recipientId = members.find((id) => id !== user.id);
+          const recipientId = channel.members.find((id) => id !== user.id);
 
           if (recipientId) {
             await createNotification({
@@ -866,25 +1168,16 @@ router.post(
               priority: 'low',
               metadata: {
                 channel_id: channelId,
+                channel_type: channel.type,
                 message_id: messageData.id,
               },
               actionUrl: `/sessions/${channel.session_id}#chat`,
             });
           }
-        } else {
-          // For channel messages, notify all session participants except the sender
-          const { data: participants } = await supabaseAdmin
-            .from('session_participants')
-            .select('user_id')
-            .eq('session_id', channel.session_id);
-
-          const memberIds = [
-            ...new Set(
-              (participants || [])
-                .map((p) => p.user_id)
-                .filter((id): id is string => !!id && id !== user.id),
-            ),
-          ];
+        } else if (channel.type !== 'npc_direct') {
+          // Channel messages notify the channel's members (team channels → that team only;
+          // trainer channel → trainer; org-wide channels → every participant), never the sender.
+          const memberIds = (await getChannelMemberIds(channel)).filter((id) => id !== user.id);
 
           // Single bulk insert + per-user socket emit. The previous per-member
           // createNotification loop cost one sequential DB round-trip per
@@ -898,6 +1191,8 @@ router.post(
             priority: 'low',
             metadata: {
               channel_id: channelId,
+              channel_type: channel.type,
+              team_name: channel.team_name,
               message_id: messageData.id,
             },
             actionUrl: `/sessions/${channel.session_id}#chat`,

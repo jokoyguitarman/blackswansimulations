@@ -60,6 +60,13 @@ interface ChatInterfaceProps {
   variant?: 'terminal' | 'whatsapp';
   /** Called after the user gets an Insider reply (so the map can refetch and show newly revealed POI pins). */
   onInsiderAsked?: () => void;
+  /**
+   * Pin the conversation to one channel and hide the internal tab/channel chrome. Used by the
+   * TeamChat list → conversation screens, which render their own header. `fixedChannelKind`
+   * says whether the id is a group channel or a DM (human or NPC).
+   */
+  fixedChannelId?: string;
+  fixedChannelKind?: 'channel' | 'dm';
 }
 
 const INSIDER_DM_ID = '__insider__';
@@ -119,8 +126,11 @@ export const ChatInterface = ({
   sessionId,
   variant = 'terminal',
   onInsiderAsked,
+  fixedChannelId,
+  fixedChannelKind = 'channel',
 }: ChatInterfaceProps) => {
   const isWA = variant === 'whatsapp';
+  const hideChrome = !!fixedChannelId;
 
   const s = {
     container: isWA
@@ -219,15 +229,27 @@ export const ChatInterface = ({
     // This prevents "Unknown" labels when messages arrive before participants are loaded
     const initialize = async () => {
       await loadParticipants();
+      if (fixedChannelId) {
+        // Pinned conversation: no channel auto-selection, no chrome.
+        if (fixedChannelKind === 'dm') {
+          setSelectedChannel(null);
+          setSelectedDM(fixedChannelId);
+        } else {
+          setSelectedDM(null);
+          setSelectedChannel(fixedChannelId);
+        }
+        setLoading(false);
+        return;
+      }
       loadChannels();
       if (!isWA) loadDMs();
     };
     initialize();
-  }, [sessionId]);
+  }, [sessionId, fixedChannelId, fixedChannelKind]);
 
   // Load hospitals when in DM view (for hospital capacity DMs)
   useEffect(() => {
-    if (!sessionId || viewMode !== 'dms') return;
+    if (!sessionId || viewMode !== 'dms' || hideChrome) return;
     api.sessions
       .hospitalList(sessionId)
       .then((res) => setHospitals(res.data ?? []))
@@ -311,11 +333,46 @@ export const ChatInterface = ({
       id: string;
       channel_id: string;
       session_id: string;
-      sender_id: string;
+      sender_id: string | null;
       content: string;
       type: string;
       created_at: string;
+      sender_stakeholder_id?: string | null;
+      sender_display_name?: string | null;
     }) => {
+      // NPC contact (stakeholder) reply: no user sender; synthesise one and add directly.
+      if (!payload.sender_id && payload.sender_stakeholder_id) {
+        if (payload.session_id !== sessionId) return;
+        const npcMessage: Message = {
+          id: payload.id,
+          content: payload.content,
+          message_type: payload.type,
+          created_at: payload.created_at,
+          channel_id: payload.channel_id,
+          sender_id: undefined,
+          sender: {
+            id: `stk:${payload.sender_stakeholder_id}`,
+            full_name: payload.sender_display_name || 'Contact',
+            role: 'npc',
+          },
+        };
+        const current = selectedChannel || selectedDM;
+        if (current && payload.channel_id === current) {
+          setMessages((prev) =>
+            prev.some((m) => m.id === npcMessage.id) ? prev : [...prev, npcMessage],
+          );
+        } else {
+          setQueuedMessages((prev) => {
+            const next = new Map(prev);
+            const q = next.get(payload.channel_id) || [];
+            if (!q.some((m) => m.id === npcMessage.id))
+              next.set(payload.channel_id, [...q, npcMessage]);
+            return next;
+          });
+        }
+        return;
+      }
+
       // If the message is from the current user, skip it entirely.
       // The optimistic insert already shows our own messages -- realtime only adds OTHER users' messages.
       // This eliminates all dedup race conditions for self-sent messages.
@@ -415,7 +472,7 @@ export const ChatInterface = ({
           content: payload.content,
           message_type: payload.type,
           created_at: payload.created_at,
-          sender_id: payload.sender_id,
+          sender_id: payload.sender_id ?? undefined,
           sender: senderInfo,
         };
 
@@ -636,7 +693,7 @@ export const ChatInterface = ({
           content: payload.content,
           message_type: payload.type,
           created_at: payload.created_at,
-          sender_id: payload.sender_id, // Store sender_id for side placement
+          sender_id: payload.sender_id ?? undefined, // Store sender_id for side placement
           sender: senderInfo,
         };
       };
@@ -898,10 +955,12 @@ export const ChatInterface = ({
     id: string;
     channel_id: string;
     session_id: string;
-    sender_id: string;
+    sender_id: string | null;
     content: string;
     type: string;
     created_at: string;
+    sender_stakeholder_id?: string | null;
+    sender_display_name?: string | null;
   }>({
     table: 'chat_messages',
     // Remove filter - Realtime respects RLS, so it will only send events for rows user can SELECT
@@ -1507,8 +1566,8 @@ export const ChatInterface = ({
 
   return (
     <div className={s.container}>
-      {/* Tabs and Channels/DMs Sidebar */}
-      {isWA ? (
+      {/* Tabs and Channels/DMs Sidebar (hidden when pinned to one conversation) */}
+      {hideChrome ? null : isWA ? (
         <div
           className="flex items-center justify-end px-3 py-2"
           style={{ borderBottom: '1px solid rgba(134,150,160,0.1)' }}
@@ -1668,6 +1727,7 @@ export const ChatInterface = ({
 
       {/* Messages (hidden in voice mode) */}
       <div
+        data-testid="chat-messages"
         className={`flex-1 overflow-y-auto mb-4 space-y-2 ${isWA ? 'wa-scrollbar' : ''} ${viewMode === 'voice' ? 'hidden' : ''}`}
       >
         {currentChannelId ? (
@@ -1693,17 +1753,20 @@ export const ChatInterface = ({
                 </p>
               </div>
             )}
-            {currentDM && selectedDM !== INSIDER_DM_ID && !isHospitalDM(selectedDM) && (
-              <div
-                className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-success/30'}`}
-              >
-                <p className={s.dmHeader}>
-                  {isWA
-                    ? currentDM.recipient?.full_name || 'Unknown'
-                    : `Direct message with: ${currentDM.recipient?.full_name || 'Unknown'} (${currentDM.recipient?.team_name || currentDM.recipient?.role || 'Unknown'})`}
-                </p>
-              </div>
-            )}
+            {!hideChrome &&
+              currentDM &&
+              selectedDM !== INSIDER_DM_ID &&
+              !isHospitalDM(selectedDM) && (
+                <div
+                  className={`mb-3 pb-3 border-b ${isWA ? 'border-wa-border' : 'border-success/30'}`}
+                >
+                  <p className={s.dmHeader}>
+                    {isWA
+                      ? currentDM.recipient?.full_name || 'Unknown'
+                      : `Direct message with: ${currentDM.recipient?.full_name || 'Unknown'} (${currentDM.recipient?.team_name || currentDM.recipient?.role || 'Unknown'})`}
+                  </p>
+                </div>
+              )}
             {selectedDM === INSIDER_DM_ID ? (
               <>
                 {insiderMessages.map((msg) => (

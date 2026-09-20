@@ -137,6 +137,12 @@ router.post(
         );
       }
 
+      // Department chat channels for the demo teams (runtime plan §2.3).
+      {
+        const { ensureTeamChannels } = await import('../services/channelService.js');
+        await ensureTeamChannels(sessionId, trainerId);
+      }
+
       // 6. Start the session
       const startTime = new Date().toISOString();
       const { error: startErr } = await supabaseAdmin

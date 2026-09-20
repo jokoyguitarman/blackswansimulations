@@ -5,7 +5,10 @@ import EmailApp from './EmailApp';
 import NewsApp from './NewsApp';
 import GroupChatApp from './GroupChatApp';
 import { WordAppDesktop } from './WordApp/WordApp';
+import { SheetsAppDesktop } from './SheetsApp/SheetsApp';
+import { DecisionsAppDesktop } from './DecisionsApp/DecisionsApp';
 import ZDesktopLayout from './ZDesktopLayout';
+import { DESKTOP_OPEN_APP_EVENT } from '../../lib/appIntents';
 
 interface WindowState {
   id: string;
@@ -18,6 +21,8 @@ interface WindowState {
   zIndex: number;
   minimized: boolean;
   maximized: boolean;
+  /** Bumped when another app hands this window an intent, so its content remounts and consumes it. */
+  intentNonce?: number;
 }
 
 const MIN_WIDTH = 320;
@@ -85,6 +90,22 @@ const APP_REGISTRY: Record<
     component: WordAppDesktop,
     defaultWidth: 1000,
     defaultHeight: 680,
+  },
+  contacts: {
+    title: 'Contacts',
+    icon: 'X',
+    iconImg: '/icons/icon-sheets.svg',
+    component: SheetsAppDesktop,
+    defaultWidth: 980,
+    defaultHeight: 620,
+  },
+  decisions: {
+    title: 'Decisions',
+    icon: '🏛️',
+    iconImg: '/icons/icon-decisions.svg',
+    component: DecisionsAppDesktop,
+    defaultWidth: 520,
+    defaultHeight: 640,
   },
 };
 
@@ -178,6 +199,27 @@ export default function DesktopShell() {
     setWindows((prev) => [...prev, newWindow]);
     setNextZ((z) => z + 1);
   }
+
+  // Cross-app intents (e.g. Contacts → Mail compose, Contacts → TeamChat DM). See lib/appIntents.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const appId = (e as CustomEvent<{ appId: string }>).detail?.appId;
+      if (!appId || !APP_REGISTRY[appId]) return;
+      setWindows((prev) => {
+        const existing = prev.find((w) => w.app === appId);
+        if (!existing) return prev;
+        return prev.map((w) =>
+          w.id === existing.id
+            ? { ...w, minimized: false, zIndex: nextZ, intentNonce: (w.intentNonce ?? 0) + 1 }
+            : w,
+        );
+      });
+      setNextZ((z) => z + 1);
+      if (!windows.some((w) => w.app === appId)) openApp(appId);
+    };
+    window.addEventListener(DESKTOP_OPEN_APP_EVENT, handler);
+    return () => window.removeEventListener(DESKTOP_OPEN_APP_EVENT, handler);
+  }, [windows, nextZ]);
 
   function closeWindow(windowId: string) {
     setWindows((prev) => prev.filter((w) => w.id !== windowId));
@@ -379,6 +421,7 @@ export default function DesktopShell() {
           {Object.entries(APP_REGISTRY).map(([id, app]) => (
             <button
               key={id}
+              data-testid={`desktop-icon-${id}`}
               onDoubleClick={() => openApp(id)}
               className="flex flex-col items-center gap-1.5 w-20 p-2 rounded-xl hover:bg-white/15 transition-colors group"
             >
@@ -416,6 +459,7 @@ export default function DesktopShell() {
             return (
               <div
                 key={win.id}
+                data-testid={`window-${win.app}`}
                 style={
                   win.maximized
                     ? {
@@ -482,6 +526,7 @@ export default function DesktopShell() {
                           </svg>
                         </button>
                         <button
+                          data-testid={`window-minimize-${win.app}`}
                           title="Minimize"
                           onClick={() => minimizeWindow(win.id)}
                           className="w-3 h-3 rounded-full hover:brightness-110 transition flex items-center justify-center"
@@ -554,6 +599,7 @@ export default function DesktopShell() {
                         onDoubleClick={(e) => e.stopPropagation()}
                       >
                         <button
+                          data-testid={`window-minimize-${win.app}`}
                           title="Minimize"
                           onClick={() => minimizeWindow(win.id)}
                           className="w-11 h-full flex items-center justify-center text-gray-300 hover:bg-white/10 hover:text-white transition-colors"
@@ -611,9 +657,9 @@ export default function DesktopShell() {
                   )}
                 </div>
 
-                {/* Window Content */}
+                {/* Window Content (remounts when another app hands it an intent) */}
                 <div className="flex-1 overflow-hidden">
-                  <WindowContent appId={win.app} />
+                  <WindowContent key={`${win.app}:${win.intentNonce ?? 0}`} appId={win.app} />
                 </div>
 
                 {/* Resize handles (all edges + corners) */}
@@ -671,6 +717,7 @@ export default function DesktopShell() {
           return (
             <button
               key={id}
+              data-testid={`taskbar-${id}`}
               onClick={() => handleTaskbarClick(id)}
               className={`px-2.5 py-1.5 text-[11px] rounded-lg transition-colors flex items-center gap-1.5 font-medium ${
                 isOpen ? 'text-white' : 'text-gray-400 hover:text-white hover:bg-white/10'

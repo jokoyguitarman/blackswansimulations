@@ -209,11 +209,18 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
     if (shared_post_id) {
       const { data: sharedPost } = await supabaseAdmin
         .from('social_posts')
-        .select('id, author_handle, author_display_name, content, platform')
+        .select('id, author_handle, author_display_name, content, platform, media_urls')
         .eq('id', shared_post_id)
         .single();
 
       if (sharedPost) {
+        // Carry the post's own image through to the card. A shared post that
+        // had a photograph read as a wall of grey text once forwarded, which
+        // is both duller than the real thing and loses the evidence the sender
+        // was usually pointing at.
+        const postMedia = Array.isArray(sharedPost.media_urls) ? sharedPost.media_urls : [];
+        const thumb = postMedia.find((m): m is string => typeof m === 'string');
+
         mediaUrls = [
           {
             type: 'shared_post',
@@ -222,6 +229,7 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
             author_display_name: sharedPost.author_display_name,
             content_preview: String(sharedPost.content || '').substring(0, 200),
             platform: sharedPost.platform,
+            ...(thumb ? { media_url: thumb } : {}),
           },
         ];
       }
@@ -275,11 +283,16 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
             .single();
           const personas = ((sc?.initial_state as Record<string, unknown>)?.npc_personas ||
             []) as Array<{ handle: string }>;
-          const isNPC = personas.some((p) => p.handle === recipient_handle);
+          let isNPC = personas.some((p) => p.handle === recipient_handle);
+          if (!isNPC) {
+            // Stakeholder contacts (contract §3) may be reachable by handle without a persona.
+            const { findByHandle } = await import('../services/stakeholderService.js');
+            isNPC = !!(await findByHandle(scenario.scenario_id, recipient_handle));
+          }
           if (isNPC) {
             const delay = 3000 + Math.floor(Math.random() * 7000);
             setTimeout(() => {
-              void triggerNPCDMReply(session_id, threadId, recipient_handle, content);
+              void triggerNPCDMReply(session_id, threadId, recipient_handle, content, user.id);
             }, delay);
           }
         }

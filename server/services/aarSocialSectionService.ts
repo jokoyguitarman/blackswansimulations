@@ -4,6 +4,7 @@ import { buildSocialMediaAARData } from './aarSocialMediaService.js';
 import { buildPlayerLedger } from './playerLedgerService.js';
 import { getIntelStatus, type IntelStatusEntry } from './intelSharingService.js';
 import type { SectionEntry } from './aarSectionService.js';
+import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -62,7 +63,7 @@ const TEAM_SECTION_BY_NAME: Record<string, SocialAARSectionKey> = {
 
 const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
   social_executive:
-    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. End with a one-sentence overall verdict.',
+    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If leadership_decisions is non-empty, add a short "Leadership decisions" paragraph: for each decision say who took it and when, whether the functions in should_inform were looped in, which obligations were met or lapsed (with T+ minutes), and what erupted as a result. End with a one-sentence overall verdict.',
   social_timeline:
     'Reconstruct the session chronologically in phases (opening, escalation, turning point, resolution). Pair each pressure beat (inject, watchdog challenge, consequence) with the team response that followed — or note the silence. Cite T+ minutes throughout. Identify the single most consequential moment.',
   social_public_comms:
@@ -261,6 +262,11 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       teams: teamComposites,
       strategic_scorecard: social.strategic_scorecard,
       impression_dominance: social.impression_dominance,
+      // Planned stakeholder actions withdrawn / revised / held because players engaged first.
+      stakeholder_preemption: social.stakeholder_preemption ?? [],
+      // Executive decisions (decision-layer scenarios): who decided, who should have been told,
+      // which obligations were met or lapsed, what erupted.
+      leadership_decisions: social.leadership_decisions ?? [],
       headline_counts: {
         graded_player_posts: social.content_quality.posts_created,
         emails_sent: social.coordination_metrics.total_emails_sent,
@@ -401,9 +407,22 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     analysis: null,
   };
 
-  // 4-7. Per-team deep dives
+  // 4-7. Per-team deep dives. Sections are keyed by team FUNCTION (contract §5.2): a team named
+  // "Communications — PNP" with function_key "Communications" lands in the Communications
+  // section, and several teams sharing a function are grouped into that one section.
+  let functionByTeamName = new Map<string, string>();
+  try {
+    const { getSessionTeams } = await import('./orgRegistryService.js');
+    functionByTeamName = new Map(
+      (await getSessionTeams(sessionId)).map((t) => [t.team_name, resolveTeamFunction(t)]),
+    );
+  } catch {
+    /* fall back to exact names */
+  }
+  const teamBlocksBySection = new Map<SocialAARSectionKey, Array<Record<string, unknown>>>();
   for (const team of social.team_performance) {
-    const key = TEAM_SECTION_BY_NAME[team.team_name];
+    const teamFunction = functionByTeamName.get(team.team_name) ?? team.team_name;
+    const key = TEAM_SECTION_BY_NAME[teamFunction] ?? TEAM_SECTION_BY_NAME[team.team_name];
     if (!key) continue;
     const unstaffed = team.member_count === 0;
     const members = ledger.players.filter((p) => p.team_name === team.team_name);
@@ -448,28 +467,47 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
         deadline_minutes: i.deadline_minutes,
         deadline_missed: i.deadline_missed,
       }));
-    sections[key] = {
-      data: {
-        team_name: team.team_name,
-        unstaffed,
-        mission: team.mission,
-        scores: {
-          composite: team.composite_score,
-          content_quality: team.content_quality,
-          task_completion: team.task_completion,
-          role_fit: team.role_fit,
-          collaboration: team.collaboration,
-        },
-        task_outcomes: team.task_outcomes,
-        members: memberDetails,
-        member_summaries: team.members,
-        intel: teamIntel,
-        out_of_lane: outOfLane.slice(0, 8),
-        best_artifact: team.best_artifact,
-        worst_artifact: team.worst_artifact,
+    const block: Record<string, unknown> = {
+      team_name: team.team_name,
+      function_key: teamFunction,
+      unstaffed,
+      mission: team.mission,
+      scores: {
+        composite: team.composite_score,
+        content_quality: team.content_quality,
+        task_completion: team.task_completion,
+        role_fit: team.role_fit,
+        collaboration: team.collaboration,
       },
-      analysis: null,
+      task_outcomes: team.task_outcomes,
+      members: memberDetails,
+      member_summaries: team.members,
+      intel: teamIntel,
+      out_of_lane: outOfLane.slice(0, 8),
+      best_artifact: team.best_artifact,
+      worst_artifact: team.worst_artifact,
+      stakeholder_preemption: (social.stakeholder_preemption ?? []).filter(
+        (p) => p.team === team.team_name || p.contributing_teams.includes(team.team_name),
+      ),
     };
+    if (!teamBlocksBySection.has(key)) teamBlocksBySection.set(key, []);
+    teamBlocksBySection.get(key)!.push(block);
+  }
+  for (const [key, blocks] of teamBlocksBySection) {
+    if (blocks.length === 1) {
+      sections[key] = { data: blocks[0], analysis: null };
+    } else {
+      // Multi-org: one section per function, one block per organisation's team.
+      sections[key] = {
+        data: {
+          team_name: `${blocks[0].function_key} (${blocks.map((b) => b.team_name).join(', ')})`,
+          function_key: blocks[0].function_key,
+          multi_org: true,
+          teams: blocks,
+        },
+        analysis: null,
+      };
+    }
   }
 
   // 8. Cross-team information flow

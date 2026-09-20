@@ -1,11 +1,26 @@
-import type { NotificationItem } from './NotificationBanner';
+import { useSwipeUp } from '../../hooks/useSwipeUp';
+
+export interface NotificationItem {
+  id: string;
+  dbId: string | null;
+  appId: string;
+  appIcon: string;
+  appName: string;
+  title: string;
+  body: string;
+  timestamp: string;
+  route: string;
+  isPageNotification?: boolean;
+}
+
+export type NotificationDismissReason = 'close' | 'clear' | 'swipe' | 'item';
 
 interface NotificationCenterProps {
   notifications: NotificationItem[];
   expanded: boolean;
-  onToggle: () => void;
+  onExpand: () => void;
+  onDismiss: (reason: NotificationDismissReason) => void;
   onTap: (notification: NotificationItem) => void;
-  onClear: () => void;
 }
 
 function timeAgo(timestamp: string): string {
@@ -16,13 +31,22 @@ function timeAgo(timestamp: string): string {
   return `${Math.floor(diff / 86400000)}d ago`;
 }
 
+/**
+ * The only notification surface on the phone: a small translucent pill while collapsed
+ * (count of arrivals since the last dismissal), an expandable preview list when tapped.
+ * Any way of closing it — backdrop, Clear All, swipe-up, tapping an item — dismisses
+ * everything and resets the count.
+ */
 export function NotificationCenter({
   notifications,
   expanded,
-  onToggle,
+  onExpand,
+  onDismiss,
   onTap,
-  onClear,
 }: NotificationCenterProps) {
+  const pillSwipe = useSwipeUp({ onTrigger: () => onDismiss('swipe') });
+  const panelSwipe = useSwipeUp({ onTrigger: () => onDismiss('swipe') });
+
   if (notifications.length === 0 && !expanded) return null;
 
   if (!expanded) {
@@ -32,15 +56,21 @@ export function NotificationCenter({
         style={{ top: 56, zIndex: 8000, pointerEvents: 'none' }}
       >
         <button
-          onClick={onToggle}
-          className="mt-1 px-3 py-1 rounded-full text-[11px] font-medium"
+          onClick={() => {
+            if (!pillSwipe.dragging && !pillSwipe.leaving) onExpand();
+          }}
+          {...pillSwipe.handlers}
+          className="mt-1 px-3 py-1 rounded-full text-[11px] font-medium select-none"
           style={{
+            ...pillSwipe.style,
+            ...pillSwipe.handleStyle,
             pointerEvents: 'auto',
             background: 'rgba(50,50,50,0.75)',
             backdropFilter: 'blur(10px)',
             WebkitBackdropFilter: 'blur(10px)',
             color: '#E0E0E0',
           }}
+          aria-label={`${notifications.length} notifications. Tap to expand, swipe up to dismiss.`}
         >
           {notifications.length} notification{notifications.length !== 1 ? 's' : ''}
         </button>
@@ -57,13 +87,14 @@ export function NotificationCenter({
       <div
         className="absolute inset-0"
         style={{ pointerEvents: 'auto', background: 'rgba(0,0,0,0.3)' }}
-        onClick={onToggle}
+        onClick={() => onDismiss('close')}
       />
 
-      {/* Panel */}
+      {/* Panel — follows the finger while the header is dragged */}
       <div
         className="relative notification-center-overlay rounded-b-2xl overflow-hidden flex flex-col"
         style={{
+          ...panelSwipe.style,
           pointerEvents: 'auto',
           maxHeight: '60%',
           background: 'rgba(30,30,30,0.92)',
@@ -71,21 +102,32 @@ export function NotificationCenter({
           WebkitBackdropFilter: 'saturate(180%) blur(20px)',
         }}
       >
-        {/* Header */}
+        {/* Header = swipe handle (the list below keeps native scrolling) */}
         <div
-          className="flex items-center justify-between px-4 py-3 flex-shrink-0"
-          style={{ borderBottom: '0.5px solid rgba(255,255,255,0.1)' }}
+          className="flex items-center justify-between px-4 py-3 flex-shrink-0 select-none"
+          style={{ ...panelSwipe.handleStyle, borderBottom: '0.5px solid rgba(255,255,255,0.1)' }}
+          {...panelSwipe.handlers}
         >
           <span className="text-[15px] font-semibold text-white">
             Notifications ({notifications.length})
           </span>
           <button
-            onClick={onClear}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDismiss('clear');
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
             className="text-[13px] font-medium"
             style={{ color: '#007AFF' }}
           >
             Clear All
           </button>
+        </div>
+        <div className="flex justify-center py-1 flex-shrink-0" aria-hidden>
+          <div
+            className="rounded-full"
+            style={{ width: 36, height: 4, background: 'rgba(255,255,255,0.25)' }}
+          />
         </div>
 
         {/* List */}

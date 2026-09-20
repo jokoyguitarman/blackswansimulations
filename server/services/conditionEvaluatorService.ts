@@ -43,6 +43,13 @@ export interface EvaluationContext {
   scenarioConditionKeyDefs?: Array<{ key: string; state_path?: string; negate?: boolean }>;
   /** Number of placed assets in the session (used by placed_asset_exists condition). */
   placedAssetsCount?: number;
+  // ─── Decision layer primitives (contract §7A) ─────────────────────────────
+  /** decision_key values recorded in this session (any org). */
+  recordedDecisionKeys?: string[];
+  /** Cancelled scenario inject ids (for inject_cancelled:<inject_key>). */
+  cancelledScenarioInjectIds?: string[];
+  /** delivery_config.inject_key → inject ids carrying that key (template + runtime copies). */
+  injectIdsByKey?: Record<string, string[]>;
 }
 
 export type EvaluatorResult =
@@ -612,6 +619,24 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
       const resolved = value === true || value === 'true';
       return def.negate ? !resolved : resolved;
     }
+  }
+
+  // Decision layer primitives (contract §7A). Absent context → false (dormant).
+  const prefixDecision = 'decision_recorded:';
+  if (key.startsWith(prefixDecision)) {
+    return (context.recordedDecisionKeys ?? []).includes(key.slice(prefixDecision.length));
+  }
+  const prefixInjectPublished = 'inject_published:';
+  if (key.startsWith(prefixInjectPublished)) {
+    const ids = context.injectIdsByKey?.[key.slice(prefixInjectPublished.length)] ?? [];
+    const published = new Set(context.publishedScenarioInjectIds);
+    return ids.some((id) => published.has(id));
+  }
+  const prefixInjectCancelled = 'inject_cancelled:';
+  if (key.startsWith(prefixInjectCancelled)) {
+    const ids = context.injectIdsByKey?.[key.slice(prefixInjectCancelled.length)] ?? [];
+    const cancelled = new Set(context.cancelledScenarioInjectIds ?? []);
+    return ids.some((id) => cancelled.has(id));
   }
 
   const fn = conditionRegistry[key];

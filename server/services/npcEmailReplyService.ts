@@ -221,6 +221,117 @@ export async function triggerNPCEmailReply(
     let respondentHandle = '';
     let useAiFallback = false;
 
+    // Step 0: stakeholder record (contract §3). Non-media stakeholders are answered entirely from
+    // the record (one call → reply + inject verdicts) and we return. Media stakeholders keep the
+    // legacy path below because it owns article publication; their record still seeds the
+    // respondent and the exchange is logged/judged for verdicts.
+    let mediaStakeholder: import('../lib/stakeholderContract.js').Stakeholder | null = null;
+    if (env.enableStakeholderEngine) {
+      const { findByEmail } = await import('./stakeholderService.js');
+      const stakeholder = await findByEmail(session.scenario_id, toAddress);
+      if (stakeholder) {
+        const { handlePlayerMessage, recordNpcReply } =
+          await import('./stakeholderReplyService.js');
+        const planPromise = handlePlayerMessage({
+          sessionId,
+          stakeholder,
+          channel: 'email',
+          userId: playerEmail.sender_user_id ?? '',
+          content: playerEmail.body_text,
+          subject: playerEmail.subject,
+          refTable: 'sim_emails',
+          refId: playerEmail.id,
+        });
+
+        if (stakeholder.relationship === 'media') {
+          mediaStakeholder = stakeholder;
+          respondentName = stakeholder.name;
+          respondentAddress = stakeholder.email;
+          respondentPersonality = stakeholder.personality;
+          respondentRole = [stakeholder.title, stakeholder.organisation].filter(Boolean).join(', ');
+          respondentType = 'npc_media';
+          respondentHandle = stakeholder.handle;
+          void planPromise; // verdicts + log only; the legacy call below writes the reply
+        } else {
+          const plan = await planPromise;
+          if (!plan.should_reply) {
+            logger.debug(
+              { sessionId, stakeholderId: stakeholder.id },
+              'Stakeholder chose not to reply by email',
+            );
+            return;
+          }
+          const delayMs = Math.max(10, Math.min(90, plan.delay_seconds)) * 1000;
+          const subject =
+            plan.subject ||
+            (playerEmail.subject.startsWith('RE:')
+              ? playerEmail.subject
+              : `RE: ${playerEmail.subject}`);
+          setTimeout(async () => {
+            try {
+              const replyThreadId =
+                playerEmail.thread_id || playerEmail.replied_to_id || playerEmail.id;
+              const { data: inserted, error } = await supabaseAdmin
+                .from('sim_emails')
+                .insert({
+                  session_id: sessionId,
+                  direction: 'inbound',
+                  from_address: stakeholder.email,
+                  from_name: stakeholder.name,
+                  to_addresses: [playerEmail.from_address],
+                  subject,
+                  body_html: `<p>${plan.text.replace(/\n/g, '</p><p>')}</p>`,
+                  body_text: plan.text,
+                  priority: 'normal',
+                  email_category: sanitizeEmailCategory(
+                    stakeholder.relationship === 'internal' ? 'verified_facts' : 'general',
+                  ),
+                  replied_to_id: playerEmail.id,
+                  thread_id: replyThreadId,
+                  inject_id: null,
+                  sent_by_player_id: null,
+                  ...(playerEmail.sender_user_id
+                    ? { recipient_user_ids: [playerEmail.sender_user_id] }
+                    : {}),
+                })
+                .select()
+                .single();
+              if (error || !inserted) {
+                logger.error(
+                  { error, sessionId, playerEmailId: playerEmail.id },
+                  'Failed to insert stakeholder email reply',
+                );
+                return;
+              }
+              getWebSocketService().broadcastToSession(sessionId, {
+                type: 'sim_email.received',
+                data: { email: inserted },
+                timestamp: new Date().toISOString(),
+              });
+              await recordNpcReply({
+                sessionId,
+                stakeholderId: stakeholder.id,
+                channel: 'email',
+                content: `Subject: ${subject}\n${plan.text}`,
+                refTable: 'sim_emails',
+                refId: String(inserted.id),
+              });
+              logger.info(
+                { sessionId, stakeholderId: stakeholder.id, replyId: inserted.id },
+                'Stakeholder email reply delivered',
+              );
+            } catch (err) {
+              logger.warn(
+                { err, sessionId, playerEmailId: playerEmail.id },
+                'Stakeholder email reply delivery failed',
+              );
+            }
+          }, delayMs);
+          return;
+        }
+      }
+    }
+
     // Step 1: exact match against sender registry
     const exactMatch = findExactSenderMatch(toAddress, senderRegistry);
     if (exactMatch) {
@@ -485,6 +596,23 @@ Return ONLY valid JSON:
           },
           'NPC email reply delivered',
         );
+
+        // Media stakeholders: keep the cross-channel memory consistent (contract §7 item 7).
+        if (mediaStakeholder) {
+          try {
+            const { recordNpcReply } = await import('./stakeholderReplyService.js');
+            await recordNpcReply({
+              sessionId,
+              stakeholderId: mediaStakeholder.id,
+              channel: 'email',
+              content: `Subject: ${replySubject}\n${replyBody}`,
+              refTable: 'sim_emails',
+              refId: String(inserted.id),
+            });
+          } catch {
+            /* non-critical */
+          }
+        }
 
         // Media publication: if the journalist decided to publish, create article + social post
         if (isMediaNPC && parsed.should_publish && parsed.article) {

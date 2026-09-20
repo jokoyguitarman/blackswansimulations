@@ -43,8 +43,23 @@ export async function triggerNPCReactions(
     if (!scenario) return;
 
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
-    const personas = (initialState.npc_personas || []) as NPCPersona[];
-    if (personas.length === 0) return;
+    const allPersonas = (initialState.npc_personas || []) as Array<
+      NPCPersona & { country?: string | null }
+    >;
+    if (allPersonas.length === 0) return;
+    // Contract §5.3: reactions come from personas in the post's country (the player's org
+    // country for top-level posts; the row's own country when already stamped).
+    const postCountry =
+      (typeof playerPost.country === 'string' && playerPost.country) ||
+      (await import('./orgRegistryService.js')
+        .then((m) =>
+          playerPost.user_id
+            ? m.getUserCountry(sessionId, String(playerPost.user_id))
+            : Promise.resolve(null),
+        )
+        .catch(() => null));
+    const { selectPersonaPool } = await import('./orgRegistryService.js');
+    const personas: NPCPersona[] = selectPersonaPool(allPersonas, postCountry);
     const orgName = String(initialState.org_name || '');
 
     const postFormat = String(playerPost.post_format || 'text');

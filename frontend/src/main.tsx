@@ -31,6 +31,8 @@ import GroupChatApp from './components/SimDevice/GroupChatApp';
 import EmailApp from './components/SimDevice/EmailApp';
 import NewsApp from './components/SimDevice/NewsApp';
 import { WordAppMobile } from './components/SimDevice/WordApp/WordApp';
+import { SheetsAppMobile } from './components/SimDevice/SheetsApp/SheetsApp';
+import { DecisionsAppMobile } from './components/SimDevice/DecisionsApp/DecisionsApp';
 import TrainerSimDashboard from './components/SimDevice/TrainerSimDashboard';
 import DesktopShell from './components/SimDevice/DesktopShell';
 import './style.css';
@@ -224,6 +226,8 @@ const App = () => {
               <Route path="email" element={<EmailApp />} />
               <Route path="news" element={<NewsApp />} />
               <Route path="drafts" element={<WordAppMobile />} />
+              <Route path="contacts" element={<SheetsAppMobile />} />
+              <Route path="decisions" element={<DecisionsAppMobile />} />
             </Route>
             <Route
               path="/sim/:sessionId/desktop"

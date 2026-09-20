@@ -31,6 +31,13 @@ export interface DeliveryConfig {
   // Chat-specific
   sender_name?: string;
   channel_type?: string;
+  // Stakeholder contacts contract (docs/stakeholder-contacts-contract.md §4)
+  /** Character this inject is issued by (initial_state.stakeholders[].id). */
+  stakeholder_id?: string;
+  /** Organisation the inject is FOR — scopes private delivery to that org's members. */
+  org_key?: string;
+  /** Country whose feed / news this content belongs in (social_feed / news only). */
+  country?: string;
 }
 
 export interface TeamTargeting {
@@ -52,10 +59,33 @@ async function resolveInjectTargeting(
   sessionId: string,
   injectScope: string | undefined,
   targetTeams: string[] | undefined,
+  orgKey?: string | null,
 ): Promise<TeamTargeting | null> {
-  if (injectScope !== 'team_specific' || !targetTeams || targetTeams.length === 0) return null;
-  const playerIds = await resolveTeamMembers(sessionId, targetTeams);
-  return { playerIds, teamNames: targetTeams };
+  const teamScoped = injectScope === 'team_specific' && !!targetTeams && targetTeams.length > 0;
+  if (!teamScoped && !orgKey) return null;
+
+  let playerIds: string[] | null = teamScoped
+    ? await resolveTeamMembers(sessionId, targetTeams!, { orgKey })
+    : null;
+
+  // Contract §4.1: `delivery_config.org_key` restricts delivery to that organisation's members.
+  if (orgKey) {
+    try {
+      const { getOrgMemberUserIds } = await import('./orgRegistryService.js');
+      const orgMembers = new Set(await getOrgMemberUserIds(sessionId, orgKey));
+      playerIds = playerIds ? playerIds.filter((id) => orgMembers.has(id)) : Array.from(orgMembers);
+    } catch (err) {
+      logger.warn(
+        { err, sessionId, orgKey },
+        'org_key targeting failed; falling back to team targeting',
+      );
+    }
+  }
+
+  return {
+    playerIds: playerIds ?? [],
+    teamNames: teamScoped ? targetTeams! : [orgKey ? `org:${orgKey}` : 'all'],
+  };
 }
 
 async function reportUndeliverableInject(
@@ -142,10 +172,15 @@ export async function routeInjectToApp(
   if (!config) return;
 
   try {
+    // org_key only scopes private delivery (email / phone / group chat). Public content
+    // (social_feed / news) is public; its visibility is governed by `country` (contract §4.1).
+    const privateApp =
+      config.app === 'email' || config.app === 'phone_call' || config.app === 'group_chat';
     const targeting = await resolveInjectTargeting(
       sessionId,
       inject.inject_scope,
       inject.target_teams,
+      privateApp ? (config.org_key ?? null) : null,
     );
 
     if (targeting && targeting.playerIds && targeting.playerIds.length === 0) {
@@ -164,7 +199,7 @@ export async function routeInjectToApp(
         await routeToNews(sessionId, injectId, inject, config);
         break;
       case 'group_chat':
-        await routeToGroupChat(sessionId, injectId, inject, config);
+        await routeToGroupChat(sessionId, injectId, inject, config, targeting);
         break;
       case 'phone_call':
         await routeToPhoneCall(sessionId, injectId, inject, config, targeting);
@@ -246,6 +281,8 @@ async function routeToSocialFeed(
       ...(targeting?.playerIds
         ? { target_player_ids: targeting.playerIds, is_surfaced_to_session: false }
         : {}),
+      // Contract §4.1: country-scoped feed visibility (column from migration 202).
+      ...(config.country ? { country: config.country } : {}),
     })
     .select()
     .single();
@@ -502,6 +539,8 @@ async function routeToNews(
       headline: config.headline || inject.title,
       body: inject.content,
       category: config.category || 'breaking',
+      // Contract §4.1: country-scoped News visibility (column from migration 202).
+      ...(config.country ? { country: config.country } : {}),
     })
     .select()
     .single();
@@ -565,6 +604,7 @@ async function routeToNews(
         sentiment: 'neutral',
         hashtags: ['#BreakingNews'],
         virality_score: 60 + Math.floor(Math.random() * 30),
+        ...(config.country ? { country: config.country } : {}),
       })
       .select()
       .single();
@@ -586,48 +626,78 @@ async function routeToGroupChat(
   injectId: string,
   inject: { content: string },
   config: DeliveryConfig,
+  targeting: TeamTargeting | null = null,
 ): Promise<void> {
-  const channelType = config.channel_type || 'public';
-  const { data: channel } = await supabaseAdmin
-    .from('chat_channels')
-    .select('id')
-    .eq('session_id', sessionId)
-    .eq('type', channelType)
-    .limit(1)
-    .single();
-
-  if (!channel) {
-    logger.warn({ sessionId, channelType }, 'No channel found for group chat inject');
-    return;
-  }
-
   const { data: trainer } = await supabaseAdmin
     .from('sessions')
     .select('trainer_id')
     .eq('id', sessionId)
     .single();
-
   if (!trainer) return;
 
-  const { data: message, error } = await supabaseAdmin
-    .from('chat_messages')
-    .insert({
-      channel_id: channel.id,
-      session_id: sessionId,
-      sender_id: trainer.trainer_id,
-      content: `[${config.sender_name || 'NPC'}] ${inject.content}`,
-      type: 'text',
-    })
-    .select()
-    .single();
-
-  if (error) {
-    logger.error({ error, sessionId, injectId }, 'Failed to create chat message from inject');
-    return;
+  // Target channels. Team-scoped or org-scoped injects land in the `team` channels of the
+  // targeted players (there is no org-wide channel); otherwise the session channel by type.
+  let channelIds: string[] = [];
+  if (targeting?.playerIds && targeting.playerIds.length > 0) {
+    const { data: teamRows } = await supabaseAdmin
+      .from('session_teams')
+      .select('team_name')
+      .eq('session_id', sessionId)
+      .in('user_id', targeting.playerIds);
+    const teamNames = Array.from(
+      new Set((teamRows ?? []).map((r) => String((r as { team_name: string }).team_name))),
+    );
+    if (teamNames.length > 0) {
+      const { ensureTeamChannels } = await import('./channelService.js');
+      await ensureTeamChannels(sessionId, trainer.trainer_id as string | null);
+      const { data: teamChannels } = await supabaseAdmin
+        .from('chat_channels')
+        .select('id')
+        .eq('session_id', sessionId)
+        .eq('type', 'team')
+        .in('team_name', teamNames);
+      channelIds = (teamChannels ?? []).map((c) => String((c as { id: string }).id));
+    }
+  }
+  if (channelIds.length === 0) {
+    const channelType = config.channel_type || 'public';
+    const { data: channel } = await supabaseAdmin
+      .from('chat_channels')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('type', channelType)
+      .limit(1)
+      .maybeSingle();
+    if (!channel) {
+      logger.warn({ sessionId, channelType }, 'No channel found for group chat inject');
+      return;
+    }
+    channelIds = [String(channel.id)];
   }
 
-  getWebSocketService().messageSent(channel.id, message as Record<string, unknown>);
-  logger.info({ sessionId, injectId, messageId: message.id }, 'Inject routed to group chat');
+  for (const channelId of channelIds) {
+    const { data: message, error } = await supabaseAdmin
+      .from('chat_messages')
+      .insert({
+        channel_id: channelId,
+        session_id: sessionId,
+        sender_id: trainer.trainer_id,
+        content: `[${config.sender_name || 'NPC'}] ${inject.content}`,
+        type: 'text',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      logger.error(
+        { error, sessionId, injectId, channelId },
+        'Failed to create chat message from inject',
+      );
+      continue;
+    }
+    getWebSocketService().messageSent(channelId, message as Record<string, unknown>);
+  }
+  logger.info({ sessionId, injectId, channels: channelIds.length }, 'Inject routed to group chat');
 }
 
 async function routeToPhoneCall(

@@ -242,6 +242,15 @@ Return ONLY valid JSON:
         : 'negative';
   const hashtags = (content.match(/#\w+/g) || []) as string[];
 
+  // Contract §4.1: page-originated posts carry the page organisation's country.
+  let pageCountry: string | null = null;
+  try {
+    const { orgCountryForPage } = await import('./orgRegistryService.js');
+    pageCountry = await orgCountryForPage(sessionRow.scenario_id, chosen.org_key);
+  } catch {
+    /* single-country scenarios have none */
+  }
+
   const { data: post, error } = await supabaseAdmin
     .from('social_posts')
     .insert({
@@ -256,6 +265,7 @@ Return ONLY valid JSON:
       content_flags: flags,
       virality_score: 50 + Math.floor(Math.random() * 30),
       posted_by_display_name: 'Antagonist AI',
+      ...(pageCountry ? { country: pageCountry } : {}),
     })
     .select()
     .single();

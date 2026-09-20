@@ -35,6 +35,32 @@ import { recordIntelShareFromForward, getIntelStatus } from '../services/intelSh
 const router = Router();
 
 /**
+ * Country scope for public content (contract §4.1). Players: their organisation's country (null
+ * in single-country scenarios → no filter). Trainers/admins: only when ?country= is supplied.
+ * Values are validated against the scenario's country list so they can be embedded in a filter.
+ */
+async function resolveCountryScope(
+  sessionId: string,
+  user: { id: string; role?: string },
+  requested: unknown,
+): Promise<string | null> {
+  try {
+    const { getUserCountry, getCountries } = await import('../services/orgRegistryService.js');
+    const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
+    const isStaff = user.role === 'trainer' || user.role === 'admin';
+    if (isStaff) {
+      if (typeof requested !== 'string' || !requested) return null;
+      const scenarioId = await getSessionScenarioId(sessionId);
+      const known = scenarioId ? await getCountries(scenarioId) : [];
+      return known.some((c) => c.name === requested) ? requested : null;
+    }
+    return await getUserCountry(sessionId, user.id);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Surface a targeted post (echo-chamber / NPC-bubble) to the entire session.
  *
  * When a player engages (react / flag / comment / repost) with a post that was only
@@ -105,6 +131,13 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
 
     if (platformFilter) {
       postsQuery = postsQuery.eq('platform', platformFilter);
+    }
+
+    // Country scoping (contract §4.1): players see their own country's content plus global
+    // content; trainers see everything, optionally narrowed with ?country=.
+    const countryScope = await resolveCountryScope(sessionId, user, req.query.country);
+    if (countryScope) {
+      postsQuery = postsQuery.or(`country.is.null,country.eq.${countryScope}`);
     }
 
     if (authorTypeFilter) {
@@ -316,6 +349,9 @@ router.post(
       let authorType = 'player';
       let postedByUserId: string | null = null;
       let postedByDisplayName: string | null = null;
+      // Contract §4.1: top-level posts carry the author's country (page org for page posts, the
+      // player's org otherwise). Replies inherit the parent's country via the DB trigger.
+      let postCountry: string | null = null;
 
       if (post_as_page) {
         const orgPage = await getControlledOrgPage(session_id, user.id, platform);
@@ -329,6 +365,21 @@ router.post(
         authorType = 'official_account';
         postedByUserId = user.id;
         postedByDisplayName = personalDisplayName;
+      }
+
+      if (!reply_to_post_id) {
+        try {
+          const { getUserCountry, orgCountryForPage } =
+            await import('../services/orgRegistryService.js');
+          const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
+          const scenarioId = await getSessionScenarioId(session_id);
+          postCountry =
+            post_as_page && scenarioId
+              ? await orgCountryForPage(scenarioId, authorHandle)
+              : await getUserCountry(session_id, user.id);
+        } catch {
+          postCountry = null;
+        }
       }
 
       const initialViralityScore = reply_to_post_id
@@ -366,6 +417,7 @@ router.post(
           ...(postedByUserId
             ? { posted_by_user_id: postedByUserId, posted_by_display_name: postedByDisplayName }
             : {}),
+          ...(postCountry ? { country: postCountry } : {}),
         })
         .select()
         .single();
@@ -1335,6 +1387,166 @@ router.post(
   },
 );
 
+// ─── Stakeholder contacts: workbook + search (runtime plan §3.1) ─────────────
+
+/**
+ * Contacts workbook for the caller's team at the caller's org — one sheet per relationship
+ * (contract §6). Trainers see everything, optionally filtered by ?team=&org_key=.
+ */
+router.get('/contacts/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const { sessionId } = req.params;
+    const user = req.user!;
+    const { assertSessionAccess } = await import('../lib/access.js');
+    const access = await assertSessionAccess(sessionId, user, 'id, trainer_id, scenario_id');
+    if (!access.ok) return res.status(access.status).json({ error: access.error });
+    const isTrainer = access.session?.trainer_id === user.id || user.role === 'admin';
+    const scenarioId = (access.session?.scenario_id as string | null) ?? null;
+
+    const [
+      { hasStakeholderBlock, getVisibleStakeholders, getFallbackContacts },
+      { toPlayerVisible, RELATIONSHIP_SHEETS },
+      { getTeamIdentity, getOrgRegistry, isMultiOrg },
+    ] = await Promise.all([
+      import('../services/stakeholderService.js'),
+      import('../lib/stakeholderContract.js'),
+      import('../services/orgRegistryService.js'),
+    ]);
+
+    const identity = isTrainer ? null : await getTeamIdentity(sessionId, user.id);
+    const registry = scenarioId ? await getOrgRegistry(scenarioId) : [];
+    const multiOrg = scenarioId ? await isMultiOrg(scenarioId) : false;
+    const teamFilter = typeof req.query.team === 'string' ? req.query.team : null;
+    const orgFilter = typeof req.query.org_key === 'string' ? req.query.org_key : null;
+
+    type Row = ReturnType<typeof toPlayerVisible> & { org_display?: string };
+    let rows: Row[] = [];
+    let source: 'stakeholders' | 'fallback' | 'none' = 'none';
+
+    if (scenarioId && (await hasStakeholderBlock(scenarioId))) {
+      source = 'stakeholders';
+      let visible = await getVisibleStakeholders(sessionId, user.id, { asTrainer: isTrainer });
+      if (isTrainer) {
+        if (teamFilter) visible = visible.filter((s) => s.owning_team === teamFilter);
+        if (orgFilter)
+          visible = visible.filter((s) => s.org_key === null || s.org_key === orgFilter);
+      }
+      rows = visible.map((s) => ({
+        ...toPlayerVisible(s),
+        ...(isTrainer
+          ? {
+              org_display: s.org_key
+                ? (registry.find((o) => o.org_key === s.org_key)?.display_name ?? s.org_key)
+                : 'All organisations',
+            }
+          : {}),
+      }));
+    } else {
+      const fallback = await getFallbackContacts(sessionId, user.id, { asTrainer: isTrainer });
+      if (fallback.length > 0) {
+        source = 'fallback';
+        rows = fallback;
+      }
+    }
+
+    const sheets = RELATIONSHIP_SHEETS.map(([relationship, label]) => ({
+      relationship,
+      label,
+      rows: rows
+        .filter((r) => r.relationship === relationship)
+        .sort(
+          (a, b) => a.organisation.localeCompare(b.organisation) || a.name.localeCompare(b.name),
+        ),
+    })).filter((sheet) => sheet.rows.length > 0);
+
+    const org = identity?.org_key
+      ? (() => {
+          const o = registry.find((entry) => entry.org_key === identity.org_key);
+          return o
+            ? { org_key: o.org_key, display_name: o.display_name, country: o.country ?? null }
+            : null;
+        })()
+      : null;
+
+    res.json({
+      data: {
+        team: identity
+          ? { team_name: identity.team_name, function_key: identity.function_key }
+          : null,
+        org,
+        is_trainer: isTrainer,
+        multi_org: multiOrg,
+        sheets,
+        source,
+      },
+    });
+  } catch (err) {
+    logger.error({ error: err }, 'Error in GET /social/contacts/session/:sessionId');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/** Players + visible stakeholders matching ?q= (TeamChat search). */
+router.get(
+  '/contacts/session/:sessionId/search',
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { sessionId } = req.params;
+      const user = req.user!;
+      const q = String(req.query.q ?? '')
+        .trim()
+        .toLowerCase();
+      if (q.length < 2) return res.json({ data: [] });
+
+      const { assertSessionAccess } = await import('../lib/access.js');
+      const access = await assertSessionAccess(sessionId, user, 'id, trainer_id, scenario_id');
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      const isTrainer = access.session?.trainer_id === user.id || user.role === 'admin';
+
+      const [{ getVisibleStakeholders }, { toPlayerVisible }, { getSessionTeams }] =
+        await Promise.all([
+          import('../services/stakeholderService.js'),
+          import('../lib/stakeholderContract.js'),
+          import('../services/orgRegistryService.js'),
+        ]);
+
+      const results: Array<Record<string, unknown>> = [];
+
+      // Players (excluding the caller), with team identity.
+      const directory = await getSessionPlayerDirectory(sessionId);
+      const identityByTeam = new Map(
+        (await getSessionTeams(sessionId)).map((t) => [t.team_name, t.function_key]),
+      );
+      for (const p of directory) {
+        if (p.user_id === user.id) continue;
+        const hay = `${p.full_name} ${p.team_name ?? ''}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+        results.push({
+          kind: 'player',
+          id: p.user_id,
+          name: p.full_name,
+          team_name: p.team_name,
+          function_key: p.team_name ? (identityByTeam.get(p.team_name) ?? null) : null,
+        });
+      }
+
+      // Stakeholders the caller may see.
+      const visible = await getVisibleStakeholders(sessionId, user.id, { asTrainer: isTrainer });
+      for (const s of visible) {
+        const hay = `${s.name} ${s.organisation} ${s.title} ${s.handle} ${s.email}`.toLowerCase();
+        if (!hay.includes(q)) continue;
+        results.push({ kind: 'stakeholder', stakeholder: toPlayerVisible(s) });
+      }
+
+      res.json({ data: results.slice(0, 25) });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /social/contacts/session/:sessionId/search');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 // ─── Email Contacts ──────────────────────────────────────────────────────────
 
 router.get(
@@ -1389,14 +1601,42 @@ router.get(
         }
       }
 
-      // 3. Get key NPC personas and derive email addresses
+      // 3. Stakeholder contacts visible to the caller (contract §6) when the scenario has a
+      //    stakeholders block; otherwise the legacy "key NPC personas" source.
       const { data: session } = await supabaseAdmin
         .from('sessions')
-        .select('scenario_id')
+        .select('scenario_id, trainer_id')
         .eq('id', sessionId)
         .single();
 
+      let usedStakeholders = false;
       if (session?.scenario_id) {
+        try {
+          const { hasStakeholderBlock, getVisibleStakeholders } =
+            await import('../services/stakeholderService.js');
+          if (await hasStakeholderBlock(session.scenario_id)) {
+            usedStakeholders = true;
+            const visible = await getVisibleStakeholders(sessionId, user.id, {
+              asTrainer: session.trainer_id === user.id || user.role === 'admin',
+            });
+            for (const s of visible) {
+              const addr = s.email.toLowerCase();
+              if (seenAddresses.has(addr)) continue;
+              seenAddresses.add(addr);
+              contacts.push({
+                address: s.email,
+                name: s.name,
+                source: 'stakeholder',
+                team_name: s.owning_team,
+              });
+            }
+          }
+        } catch (err) {
+          logger.warn({ err, sessionId }, 'Stakeholder contacts unavailable for mail autocomplete');
+        }
+      }
+
+      if (session?.scenario_id && !usedStakeholders) {
         const { data: scenario } = await supabaseAdmin
           .from('scenarios')
           .select('initial_state')
@@ -1448,12 +1688,19 @@ router.get(
 router.get('/news/session/:sessionId', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { sessionId } = req.params;
+    const user = req.user!;
 
-    const { data, error } = await supabaseAdmin
+    let newsQuery = supabaseAdmin
       .from('sim_news_articles')
       .select('*')
       .eq('session_id', sessionId)
       .order('published_at', { ascending: false });
+
+    // Country scoping (contract §4.1), same rule as the feed.
+    const countryScope = await resolveCountryScope(sessionId, user, req.query.country);
+    if (countryScope) newsQuery = newsQuery.or(`country.is.null,country.eq.${countryScope}`);
+
+    const { data, error } = await newsQuery;
 
     if (error) return res.status(500).json({ error: 'Failed to fetch news' });
     res.json({ data });
@@ -1702,9 +1949,27 @@ router.get('/my-team/session/:sessionId', requireAuth, async (req: Authenticated
       return res.json({ data: null });
     }
 
+    // Contract §5.2: function / org / country identity alongside the charter.
+    let country: string | null = null;
+    try {
+      const { orgCountry } = await import('../services/orgRegistryService.js');
+      const { data: sessionRow } = await supabaseAdmin
+        .from('sessions')
+        .select('scenario_id')
+        .eq('id', sessionId)
+        .maybeSingle();
+      if (sessionRow?.scenario_id)
+        country = await orgCountry(sessionRow.scenario_id, teamCtx.org_key);
+    } catch {
+      /* identity enrichment is best-effort */
+    }
+
     return res.json({
       data: {
         team_name: teamCtx.team_name,
+        function_key: teamCtx.function_key,
+        org_key: teamCtx.org_key,
+        country,
         mission: teamCtx.charter?.mission || null,
         responsibilities: teamCtx.charter?.responsibilities || [],
         out_of_lane: teamCtx.charter?.out_of_lane || [],

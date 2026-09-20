@@ -4,8 +4,11 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuth } from '../../contexts/AuthContext';
 import { PageModeProvider } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
-import { NotificationBanner, type NotificationItem } from './NotificationBanner';
-import { NotificationCenter } from './NotificationCenter';
+import {
+  NotificationCenter,
+  type NotificationItem,
+  type NotificationDismissReason,
+} from './NotificationCenter';
 import '../../styles/device-sim.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -50,24 +53,34 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
     const platform = String(notif.platform || topMetadata.platform || '');
     const isPageNotification = !!topMetadata.is_page_notification;
 
-    // Only surface social interactions (on the player's / their page's posts) and team chat.
-    // Scenario-content (inject_published), decisions, incidents, and system alerts do not push.
+    // Only surface social interactions (on the player's / their page's posts), team chat, and
+    // executive decisions addressed to the player's organisation. Scenario-content
+    // (inject_published), incidents and other system alerts do not push.
     const isSocialInteraction =
       notifType === 'social_reply' ||
       notifType === 'social_like' ||
       notifType === 'social_mention' ||
       notifType === 'social_repost';
+    const isDecisionAlert = notifType === 'system_alert' && !!topMetadata.decision_id;
 
     let appId: string;
     let appName: string;
     let appIcon: string;
     let route: string;
 
-    if (notifType === 'chat_message') {
+    if (isDecisionAlert) {
+      appId = 'decisions';
+      appName = 'Decisions';
+      appIcon = '/icons/icon-decisions.svg';
+      route = `/sim/${sessionId}/device/decisions`;
+    } else if (notifType === 'chat_message') {
       appId = 'chat';
       appName = 'TeamChat';
       appIcon = '/icons/icon-chat.png';
-      route = `/sim/${sessionId}/device/chat`;
+      const channelId = String(topMetadata.channel_id || '');
+      route = channelId
+        ? `/sim/${sessionId}/device/chat?channel=${encodeURIComponent(channelId)}`
+        : `/sim/${sessionId}/device/chat`;
     } else if (isSocialInteraction) {
       const metadata = (notif.metadata || {}) as Record<string, unknown>;
       const postId = String(metadata.post_id || metadata.highlight_post_id || '');
@@ -154,9 +167,8 @@ function DeviceShellInner() {
   const { user } = useAuth();
   const [time, setTime] = useState(new Date());
 
+  // Arrivals since the last dismissal. The pill shows the count; expanding shows the previews.
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [bannerQueue, setBannerQueue] = useState<NotificationItem[]>([]);
-  const [activeBanner, setActiveBanner] = useState<NotificationItem | null>(null);
   const [centerExpanded, setCenterExpanded] = useState(false);
   const [myTeamName, setMyTeamName] = useState<string | null>(null);
   const processedIdsRef = useRef<Set<string>>(new Set());
@@ -257,59 +269,40 @@ function DeviceShellInner() {
         const item = mapEventToNotification(event, sessionId);
         if (!item) return;
 
-        // Don't show banner if user is already on the target app
+        // Notifications from the app the player is already in don't count.
         const currentPath = window.location.pathname;
         if (item.route && currentPath.endsWith(item.appId)) return;
 
-        setBannerQueue((prev) => [...prev, item]);
+        setNotifications((prev) => (prev.some((n) => n.id === item.id) ? prev : [item, ...prev]));
       },
       [sessionId, user?.id],
     ),
     enabled: !!sessionId,
   });
 
-  // Process banner queue: show next banner when none is active
-  useEffect(() => {
-    if (activeBanner || bannerQueue.length === 0) return;
-    const [next, ...rest] = bannerQueue;
-    setActiveBanner(next);
-    setBannerQueue(rest);
-  }, [activeBanner, bannerQueue]);
-
-  const handleBannerDismiss = useCallback(() => {
-    if (activeBanner) {
-      // Move to notification center if it has a dbId (persisted)
-      if (activeBanner.dbId) {
-        setNotifications((prev) => {
-          if (prev.some((n) => n.id === activeBanner.id)) return prev;
-          return [activeBanner, ...prev];
+  /**
+   * One exit for the notification surface: close, Clear All, swipe-up or tapping an item all
+   * clear the list, reset the count, and mark persisted items read so a refresh doesn't
+   * resurrect them. Email / Messenger arrivals are not persisted as notifications and are
+   * local-only by nature.
+   */
+  const dismissAll: (reason: NotificationDismissReason) => Promise<void> = useCallback(async () => {
+    const hadPersisted = notifications.some((n) => n.dbId);
+    setCenterExpanded(false);
+    setNotifications([]);
+    if (hadPersisted && sessionId) {
+      try {
+        const headers = await getAuthHeaders();
+        await fetch(apiUrl('/api/notifications/read-all'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ session_id: sessionId }),
         });
+      } catch {
+        /* ignore */
       }
     }
-    setActiveBanner(null);
-  }, [activeBanner]);
-
-  const handleBannerTap = useCallback(
-    async (notification: NotificationItem) => {
-      // Mark as read server-side
-      if (notification.dbId) {
-        try {
-          const headers = await getAuthHeaders();
-          await fetch(apiUrl(`/api/notifications/${notification.dbId}/read`), {
-            method: 'POST',
-            headers,
-          });
-        } catch {
-          /* ignore */
-        }
-      }
-
-      setActiveBanner(null);
-      setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
-      navigate(notification.route);
-    },
-    [navigate],
-  );
+  }, [notifications, sessionId]);
 
   const handleCenterTap = useCallback(
     async (notification: NotificationItem) => {
@@ -324,30 +317,11 @@ function DeviceShellInner() {
           /* ignore */
         }
       }
-
-      setNotifications((prev) => prev.filter((n) => n.id !== notification.id));
-      setCenterExpanded(false);
       navigate(notification.route);
+      void dismissAll('item');
     },
-    [navigate],
+    [navigate, dismissAll],
   );
-
-  const handleClearAll = useCallback(async () => {
-    if (sessionId) {
-      try {
-        const headers = await getAuthHeaders();
-        await fetch(apiUrl('/api/notifications/read-all'), {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-      } catch {
-        /* ignore */
-      }
-    }
-    setNotifications([]);
-    setCenterExpanded(false);
-  }, [sessionId]);
 
   const hours = time.getHours();
   const minutes = time.getMinutes().toString().padStart(2, '0');
@@ -485,23 +459,14 @@ function DeviceShellInner() {
             <Outlet />
           </div>
 
-          {/* Notification Banner (overlays everything) */}
-          <NotificationBanner
-            notification={activeBanner}
-            onDismiss={handleBannerDismiss}
-            onTap={handleBannerTap}
+          {/* Notification pill + expandable preview list (the only notification surface) */}
+          <NotificationCenter
+            notifications={notifications}
+            expanded={centerExpanded}
+            onExpand={() => setCenterExpanded(true)}
+            onDismiss={dismissAll}
+            onTap={handleCenterTap}
           />
-
-          {/* Notification Center (pill + expandable list) */}
-          {!activeBanner && (
-            <NotificationCenter
-              notifications={notifications}
-              expanded={centerExpanded}
-              onToggle={() => setCenterExpanded((e) => !e)}
-              onTap={handleCenterTap}
-              onClear={handleClearAll}
-            />
-          )}
 
           {/* Home Indicator */}
           <div

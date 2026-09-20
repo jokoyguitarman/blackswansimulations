@@ -254,6 +254,13 @@ router.post(
           'Failed to assign team via join link',
         );
         // Non-fatal: participant is added but team assignment may need manual fix
+      } else {
+        // Department chat channel exists as soon as the team has a member (runtime plan §2.3).
+        const { ensureTeamChannels } = await import('../services/channelService.js');
+        void ensureTeamChannels(
+          session.id,
+          (session as { trainer_id?: string | null }).trainer_id ?? null,
+        );
       }
 
       logger.info(

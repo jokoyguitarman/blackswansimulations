@@ -208,6 +208,10 @@ router.post(
         return res.status(500).json({ error: 'Failed to assign team' });
       }
 
+      // Department chat channel exists as soon as the team has a member (runtime plan §2.3).
+      const { ensureTeamChannels } = await import('../services/channelService.js');
+      void ensureTeamChannels(id, session.trainer_id ?? user.id);
+
       logger.info(
         { sessionId: id, userId: user_id, teamName: team_name, assignedBy: user.id },
         'Team assignment created',

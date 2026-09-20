@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 
 /**
  * Fixed team catalog for the social media crisis module.
@@ -53,6 +54,9 @@ export const ALLOWED_DETECTION_ACTION_TYPES = [
   'dispute_filed',
   'dispute_upheld',
   'dispute_rejected',
+  'intel_shared',
+  // Decision layer (contract §7A, migration 203)
+  'decision_recorded',
 ] as const;
 
 export const SENTIMENT_DIMENSIONS = [
@@ -510,6 +514,10 @@ export function benchmarksFromCharters(charters: TeamCharter[]): Array<{
 
 export interface TeamContext {
   team_name: string;
+  /** Contract §5.2 — catalog name or slug; null for custom teams without one. */
+  function_key: string | null;
+  /** Contract §5.2 — organisation the team belongs to; null in single-org scenarios. */
+  org_key: string | null;
   /** Null when the team has no charter (legacy/unknown team) — callers fall back to generic behaviour. */
   charter: {
     mission: string;
@@ -560,25 +568,33 @@ export async function getPlayerTeamContext(
       .eq('id', sessionId)
       .single();
 
-    if (!session?.scenario_id) return { team_name: teamName, charter: null };
+    if (!session?.scenario_id) {
+      return { team_name: teamName, function_key: null, org_key: null, charter: null };
+    }
 
-    const { data: teamRow } = await supabaseAdmin
+    // '*' so the 197 columns (function_key / org_key) read as undefined → null before they exist.
+    const { data: teamRowRaw } = await supabaseAdmin
       .from('scenario_teams')
-      .select('team_name, team_description, charter, expected_actions, scoring_rubric')
+      .select('*')
       .eq('scenario_id', session.scenario_id)
       .eq('team_name', teamName)
       .maybeSingle();
 
-    if (!teamRow) {
+    if (!teamRowRaw) {
       logger.warn(
         { sessionId, userId, teamName },
         'Assigned team not found in scenario_teams; falling back to generic behaviour',
       );
-      return { team_name: teamName, charter: null };
+      return { team_name: teamName, function_key: null, org_key: null, charter: null };
     }
 
+    const teamRow = teamRowRaw as Record<string, unknown>;
+    const functionKey = (teamRow.function_key as string | null | undefined) ?? null;
+    const orgKey = (teamRow.org_key as string | null | undefined) ?? null;
+    const teamFunction = resolveTeamFunction({ team_name: teamName, function_key: functionKey });
+
     const charterJson = (teamRow.charter || {}) as Record<string, unknown>;
-    const catalogFallback = getCatalogCharter(teamName);
+    const catalogFallback = getCatalogCharter(teamFunction);
 
     const mission =
       (charterJson.mission as string) ||
@@ -589,11 +605,13 @@ export async function getPlayerTeamContext(
       (teamRow.scoring_rubric as string) || catalogFallback?.scoring_rubric || '';
 
     if (!mission && !scoringRubric) {
-      return { team_name: teamName, charter: null };
+      return { team_name: teamName, function_key: functionKey, org_key: orgKey, charter: null };
     }
 
     return {
       team_name: teamName,
+      function_key: functionKey,
+      org_key: orgKey,
       charter: {
         mission,
         responsibilities:
@@ -607,7 +625,7 @@ export async function getPlayerTeamContext(
         can_post_publicly:
           typeof charterJson.can_post_publicly === 'boolean'
             ? charterJson.can_post_publicly
-            : (catalogFallback?.can_post_publicly ?? teamName === 'Communications'),
+            : (catalogFallback?.can_post_publicly ?? teamFunction === 'Communications'),
       },
     };
   } catch (err) {
@@ -653,19 +671,38 @@ export function invalidatePlayerTeamCache(sessionId: string, userId: string): vo
   teamNameCache.delete(`${sessionId}:${userId}`);
 }
 
-/** Resolve the user ids of all members of the given teams in a session. */
+/**
+ * Resolve the user ids of all members of the given teams in a session.
+ *
+ * Exact `team_name` match first. Names that match nothing are then treated as team FUNCTIONS
+ * (contract §7 item 9): every team whose `function_key ?? team_name` equals the name — restricted
+ * to `opts.orgKey` when given — contributes its members. This is what lets a function name in
+ * `stakeholder_team` / `target_teams` route correctly when teams carry composed per-org names.
+ */
 export async function resolveTeamMembers(
   sessionId: string,
   teamNames: string[],
+  opts: { orgKey?: string | null } = {},
 ): Promise<string[]> {
   if (!teamNames || teamNames.length === 0) return [];
   try {
     const { data: rows } = await supabaseAdmin
       .from('session_teams')
-      .select('user_id')
+      .select('user_id, team_name')
       .eq('session_id', sessionId)
       .in('team_name', teamNames);
-    return Array.from(new Set((rows || []).map((r) => r.user_id as string)));
+    const ids = new Set((rows || []).map((r) => r.user_id as string));
+    const matched = new Set((rows || []).map((r) => r.team_name as string));
+
+    const unmatched = teamNames.filter((n) => !matched.has(n));
+    if (unmatched.length > 0) {
+      const { getTeamsByFunction } = await import('./orgRegistryService.js');
+      for (const fn of unmatched) {
+        const teams = await getTeamsByFunction(sessionId, fn, opts.orgKey ?? null);
+        for (const t of teams) for (const u of t.member_user_ids) ids.add(u);
+      }
+    }
+    return Array.from(ids);
   } catch (err) {
     logger.error({ err, sessionId, teamNames }, 'resolveTeamMembers failed');
     return [];

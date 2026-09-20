@@ -121,6 +121,43 @@ export interface SocialMediaAARData {
     best_artifact: { content: string; overall: number } | null;
     worst_artifact: { content: string; overall: number } | null;
   }>;
+  /**
+   * Stakeholder pre-emption (docs/stakeholder-runtime-plan.md §3.6): planned stakeholder actions
+   * that were withdrawn, revised or held because players engaged the stakeholder first.
+   */
+  stakeholder_preemption: Array<{
+    team: string | null;
+    contributing_teams: string[];
+    stakeholder_name: string;
+    inject_title: string;
+    verdict: 'cancel' | 'modify' | 'delay';
+    at_minute: number | null;
+    reason: string;
+    criteria_met: number[];
+  }>;
+  /**
+   * Decision layer (contract §7A): executive decisions recorded in the session, who was meant
+   * to be informed (chain of command), and how their SOP obligations fared.
+   */
+  leadership_decisions: Array<{
+    title: string;
+    decision_key: string;
+    org_key: string;
+    team_name: string;
+    recorded_at_minute: number;
+    recorded_by_trainer: boolean;
+    scope: string | null;
+    rationale: string | null;
+    should_inform: string[];
+    obligations: Array<{
+      by_function: string;
+      stakeholder_id: string;
+      description: string;
+      due_at_minute: number;
+      status: 'open' | 'met' | 'lapsed';
+    }>;
+    eruptions: Array<{ title: string; outcome: 'fired' | 'cancelled' | 'modified' | 'pending' }>;
+  }>;
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -527,5 +564,134 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
             : 0,
     },
     team_performance: teamPerformance,
+    stakeholder_preemption: await buildStakeholderPreemption(sessionId),
+    leadership_decisions: await buildLeadershipDecisions(sessionId),
   };
+}
+
+async function buildLeadershipDecisions(
+  sessionId: string,
+): Promise<SocialMediaAARData['leadership_decisions']> {
+  try {
+    const { isDecisionLayerEnabled, listDecisions, getChainOfCommand } =
+      await import('./decisionEngineService.js');
+    if (!(await isDecisionLayerEnabled(sessionId))) return [];
+    const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
+    const scenarioId = await getSessionScenarioId(sessionId);
+    const chain = scenarioId ? await getChainOfCommand(scenarioId) : [];
+    const decisions = await listDecisions(sessionId, { orgKey: null, all: true });
+    if (decisions.length === 0) return [];
+
+    // Eruption outcomes: runtime injects armed by each decision, resolved via session events.
+    const { data: armed } = await supabaseAdmin
+      .from('scenario_injects')
+      .select('id, title, delivery_config')
+      .eq('session_id', sessionId)
+      .eq('generation_source', 'decision_eruption');
+    const { data: events } = await supabaseAdmin
+      .from('session_events')
+      .select('event_type, metadata')
+      .eq('session_id', sessionId)
+      .in('event_type', ['inject', 'inject_cancelled', 'inject_modified']);
+    const published = new Set<string>();
+    const cancelled = new Set<string>();
+    const modified = new Set<string>();
+    for (const e of events ?? []) {
+      const id = ((e.metadata as Record<string, unknown>) ?? {}).inject_id as string | undefined;
+      const orig = ((e.metadata as Record<string, unknown>) ?? {}).original_inject_id as
+        | string
+        | undefined;
+      if (!id) continue;
+      if (e.event_type === 'inject') published.add(id);
+      else if (e.event_type === 'inject_modified' && orig) modified.add(orig);
+      else if (e.event_type === 'inject_cancelled') cancelled.add(id);
+    }
+
+    return decisions.map((d) => ({
+      title: d.title,
+      decision_key: d.decision_key,
+      org_key: d.org_key,
+      team_name: d.team_name,
+      recorded_at_minute: d.recorded_at_minute,
+      recorded_by_trainer: d.recorded_by_trainer,
+      scope: d.scope,
+      rationale: d.rationale,
+      should_inform: chain
+        .filter((c) => c.org_key === d.org_key && c.from_function === 'Executive')
+        .flatMap((c) => c.to),
+      obligations: d.obligations.map((o) => ({
+        by_function: o.by_function,
+        stakeholder_id: o.stakeholder_id,
+        description: o.description,
+        due_at_minute: o.due_at_minute,
+        status: o.status,
+      })),
+      eruptions: (armed ?? [])
+        .filter(
+          (a) =>
+            ((a.delivery_config as Record<string, unknown>) ?? {}).armed_by_decision_id === d.id,
+        )
+        .map((a) => ({
+          title: String(a.title ?? ''),
+          outcome: modified.has(String(a.id))
+            ? ('modified' as const)
+            : cancelled.has(String(a.id))
+              ? ('cancelled' as const)
+              : published.has(String(a.id))
+                ? ('fired' as const)
+                : ('pending' as const),
+        })),
+    }));
+  } catch {
+    return [];
+  }
+}
+
+async function buildStakeholderPreemption(
+  sessionId: string,
+): Promise<SocialMediaAARData['stakeholder_preemption']> {
+  try {
+    const [{ data: events }, { data: session }] = await Promise.all([
+      supabaseAdmin
+        .from('session_events')
+        .select('event_type, description, metadata, created_at')
+        .eq('session_id', sessionId)
+        .in('event_type', ['inject_cancelled', 'inject_modified', 'inject_delayed'])
+        .order('created_at', { ascending: true }),
+      supabaseAdmin.from('sessions').select('start_time').eq('id', sessionId).maybeSingle(),
+    ]);
+    const startMs = session?.start_time ? new Date(session.start_time as string).getTime() : null;
+    const out: SocialMediaAARData['stakeholder_preemption'] = [];
+    for (const e of events ?? []) {
+      const meta = (e.metadata as Record<string, unknown>) ?? {};
+      if (meta.source !== 'stakeholder') continue;
+      if (e.event_type === 'inject_cancelled' && meta.reason === 'modified') continue; // twin of inject_modified
+      const verdict =
+        e.event_type === 'inject_cancelled'
+          ? 'cancel'
+          : e.event_type === 'inject_modified'
+            ? 'modify'
+            : 'delay';
+      const title = String(e.description ?? '')
+        .replace(/^Inject withdrawn by [^:]+:\s*/, '')
+        .replace(/^[^"]*"([^"]+)".*$/, '$1')
+        .split(' — ')[0];
+      out.push({
+        team: (meta.credited_team as string | null) ?? null,
+        contributing_teams: (meta.contributing_teams as string[]) ?? [],
+        stakeholder_name: String(meta.stakeholder_name ?? meta.stakeholder_id ?? 'Stakeholder'),
+        inject_title: title,
+        verdict,
+        at_minute:
+          startMs != null
+            ? Math.round((new Date(e.created_at as string).getTime() - startMs) / 60000)
+            : null,
+        reason: String(meta.reason ?? ''),
+        criteria_met: (meta.criteria_met as number[]) ?? [],
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }

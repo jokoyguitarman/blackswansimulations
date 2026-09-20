@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
+import { readAppIntent, isDesktopPath } from '../../lib/appIntents';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -117,6 +118,23 @@ export default function EmailApp() {
       setCurrentUserId(session?.user?.id || null);
     });
   }, []);
+
+  // Compose intent from another app (Contacts workbook → Mail): ?compose_to=… on the phone,
+  // a parked intent on the desktop. Consumed once, then stripped from the URL.
+  const location = useLocation();
+  useEffect(() => {
+    const intent = readAppIntent('email', location.search);
+    const to = intent?.compose_to?.trim();
+    if (!to) return;
+    setComposing(true);
+    setReplying(false);
+    setSelectedEmail(null);
+    setToChips(dedupeAddresses([to]));
+    setReplyData({ to: '', subject: intent?.subject ?? '', body: '' });
+    if (!isDesktopPath(location.pathname) && location.search) {
+      navigate(location.pathname, { replace: true });
+    }
+  }, [location.search]);
 
   // Load drafts from localStorage on mount
   useEffect(() => {
@@ -730,7 +748,7 @@ export default function EmailApp() {
           </button>
           <div className="flex items-center gap-5" style={{ color: '#007AFF' }}>
             {replying ? (
-              <button onClick={sendEmail} className="ios-btn-bounce">
+              <button data-testid="mail-send" onClick={sendEmail} className="ios-btn-bounce">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF">
                   <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                 </svg>
@@ -753,7 +771,7 @@ export default function EmailApp() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto">
+        <div data-testid="mail-thread" className="flex-1 overflow-y-auto">
           {/* Category banner (trainer only) */}
           {isTrainer && detailCategoryBadge && (
             <div
@@ -877,6 +895,7 @@ export default function EmailApp() {
             }}
           >
             <button
+              data-testid="mail-reply"
               onClick={startReply}
               className="flex items-center gap-2 ios-btn-bounce"
               style={{ color: '#007AFF' }}
@@ -1026,7 +1045,7 @@ export default function EmailApp() {
       </div>
 
       {/* Email List */}
-      <div className="flex-1 overflow-y-auto">
+      <div data-testid="mail-list" className="flex-1 overflow-y-auto">
         {folder === 'drafts' ? (
           drafts.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-48 gap-2">

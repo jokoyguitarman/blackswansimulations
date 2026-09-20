@@ -13,6 +13,7 @@ import {
 } from '../services/teamCharterService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 import { gradePlayerContent } from '../services/contentGraderService.js';
+import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 
 const router = Router();
 
@@ -524,12 +525,22 @@ router.post(
       if (draft.team_name) {
         const { data: teamRow } = await supabaseAdmin
           .from('scenario_teams')
-          .select('team_description, charter, scoring_rubric')
+          // '*' so function_key (migration 197) is available once it exists.
+          .select('*')
           .eq('scenario_id', session.scenario_id)
           .eq('team_name', draft.team_name)
           .maybeSingle();
         const charterJson = (teamRow?.charter || {}) as Record<string, unknown>;
-        const catalog = getCatalogCharter(draft.team_name);
+        const catalog = getCatalogCharter(
+          resolveTeamFunction({
+            team_name: draft.team_name,
+            function_key:
+              ((teamRow as Record<string, unknown> | null)?.function_key as
+                | string
+                | null
+                | undefined) ?? null,
+          }),
+        );
         const mission =
           (charterJson.mission as string) || teamRow?.team_description || catalog?.mission || '';
         const scoringRubric = teamRow?.scoring_rubric || catalog?.scoring_rubric || '';

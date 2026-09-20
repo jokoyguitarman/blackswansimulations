@@ -120,19 +120,25 @@ export const setupWebSocket = (httpServer: Server): SocketServer => {
     // Join channel room
     socket.on('join_channel', async (channelId: string) => {
       try {
-        const { data: channel } = await supabaseAdmin
-          .from('chat_channels')
-          .select('session_id, type, role_filter')
-          .eq('id', channelId)
-          .single();
-
-        if (!channel) {
-          socket.emit('error', { message: 'Channel not found' });
+        // Same rule as REST (server/lib/channelAccess.ts) and RLS (migration 198): team channels
+        // for members, DMs for members, trainer channel for trainers.
+        const { assertChannelAccess } = await import('../lib/channelAccess.js');
+        const access = await assertChannelAccess(channelId, {
+          id: socket.userId as string,
+          role: socket.userRole as string | undefined,
+        });
+        if (!access.ok) {
+          socket.emit('error', { message: access.error });
           return;
         }
+        const channel = access.channel;
 
-        // Access control based on channel type
-        if (channel.type === 'role_specific' && channel.role_filter !== socket.userRole) {
+        // Legacy role filter still honoured for role_specific channels.
+        if (
+          channel.type === 'role_specific' &&
+          channel.role_filter &&
+          channel.role_filter !== socket.userRole
+        ) {
           socket.emit('error', { message: 'Access denied' });
           return;
         }

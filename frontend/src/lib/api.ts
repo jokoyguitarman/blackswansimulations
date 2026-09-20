@@ -833,6 +833,56 @@ export const api = {
         await fetch(apiUrl(`/api/sessions?page=${page}&limit=${limit}`), { headers }),
       );
     },
+    // Decision layer (contract §7A). 404 `decision_layer_not_enabled` when the scenario has none.
+    decisionSpace: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: DecisionSpaceView }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/decision-space`), { headers }),
+      );
+    },
+    recordDecision: async (
+      sessionId: string,
+      body: {
+        decision_key: string;
+        scope?: string;
+        rationale?: string;
+        effective_at?: string;
+        as_org_key?: string;
+      },
+    ) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: SessionDecisionView }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/decisions`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+    listDecisions: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: SessionDecisionView[] }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/decisions`), { headers }),
+      );
+    },
+    orgs: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{
+        data: {
+          orgs: Array<{
+            org_key: string;
+            display_name: string;
+            short_name?: string;
+            country: string | null;
+            side: 'protagonist' | 'antagonist';
+            is_primary?: boolean;
+            teams: Array<{ team_name: string; function_key: string | null; member_count: number }>;
+          }>;
+          countries: Array<{ name: string; code?: string }>;
+          multi_org: boolean;
+        };
+      }>(await fetch(apiUrl(`/api/sessions/${sessionId}/orgs`), { headers }));
+    },
     get: async (id: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown }>(

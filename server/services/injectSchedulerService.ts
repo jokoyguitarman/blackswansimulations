@@ -36,7 +36,11 @@ import { runEngagementTick } from './engagementAlgorithmService.js';
 import { runAntagonistEngine, runAntagonistThreadReplies } from './antagonistEngineService.js';
 import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.js';
 import { runScenarioDirector } from './blueprint/scenarioDirectorService.js';
+import { isDecisionLayerCondition } from '../lib/stakeholderContract.js';
 import type { Server as SocketServer } from 'socket.io';
+
+/** Sessions for which the decision-layer dormancy notice has been logged (once per process). */
+const decisionLayerInertLogged = new Set<string>();
 /**
  * Shared AI cancellation gate for any inject about to be published.
  * Returns true if the inject was cancelled (caller should skip publishing).
@@ -330,6 +334,77 @@ export class InjectSchedulerService {
   }
 
   /**
+   * Stakeholder gate (runtime plan §3.5). For injects carrying `delivery_config.stakeholder_id`
+   * the stakeholder's own verdict decides and replaces the generic cancellation gates:
+   *   'none'          → not a stakeholder inject; run the generic gates as before
+   *   'publish_as_is' → keep (or never contacted): publish, skip the generic gates
+   *   'handled'       → skipped (cancelled / delayed) or a modified copy was published
+   */
+  private async applyStakeholderGate(
+    session: { id: string; scenario_id: string; trainer_id: string; start_time?: string | null },
+    inject: {
+      id: string;
+      trigger_time_minutes: number | null;
+      title: string | null;
+      content?: string;
+      type?: string | null;
+      severity?: string | null;
+      target_teams?: string[] | null;
+      inject_scope?: string | null;
+      delivery_config?: Record<string, unknown> | null;
+    },
+    elapsedMinutes: number,
+    publishedInjectIds: Set<string>,
+    cancelledInjectIds: Set<string>,
+  ): Promise<'none' | 'publish_as_is' | 'handled'> {
+    const stakeholderId = inject.delivery_config?.stakeholder_id;
+    if (typeof stakeholderId !== 'string' || !stakeholderId) return 'none';
+
+    try {
+      const { decideAtFireTime } = await import('./stakeholderReconsiderationService.js');
+      const decision = await decideAtFireTime(
+        session,
+        {
+          id: inject.id,
+          title: inject.title ?? '',
+          content: inject.content ?? '',
+          type: inject.type ?? 'social_post',
+          trigger_time_minutes: inject.trigger_time_minutes,
+          delivery_config: inject.delivery_config ?? {},
+          severity: inject.severity ?? null,
+          inject_scope: inject.inject_scope ?? null,
+          target_teams: inject.target_teams ?? null,
+        },
+        elapsedMinutes,
+      );
+
+      if (decision.action === 'skip') {
+        if (decision.reason === 'cancelled') cancelledInjectIds.add(inject.id);
+        return 'handled';
+      }
+      if (decision.action === 'publish_modified') {
+        if (!this.io) {
+          const { io } = await import('../index.js');
+          this.io = io;
+        }
+        if (this.io) {
+          await publishInjectToSession(decision.injectId, session.id, session.trainer_id, this.io);
+          publishedInjectIds.add(decision.injectId);
+        }
+        cancelledInjectIds.add(inject.id);
+        return 'handled';
+      }
+      return 'publish_as_is';
+    } catch (err) {
+      logger.warn(
+        { err, sessionId: session.id, injectId: inject.id },
+        'Stakeholder gate failed; using generic gates',
+      );
+      return 'none';
+    }
+  }
+
+  /**
    * Process a single session to check for injects that should be published (time-based and condition-based).
    */
   private async processSession(session: {
@@ -542,7 +617,7 @@ export class InjectSchedulerService {
     const { data: injectsRaw, error: injectsError } = await supabaseAdmin
       .from('scenario_injects')
       .select(
-        'id, trigger_time_minutes, title, content, required_gate_id, required_gate_not_met_id, target_teams, inject_scope',
+        'id, trigger_time_minutes, title, content, type, severity, required_gate_id, required_gate_not_met_id, target_teams, inject_scope, delivery_config',
       )
       .eq('scenario_id', session.scenario_id)
       .or(`session_id.is.null,session_id.eq.${session.id}`)
@@ -563,11 +638,13 @@ export class InjectSchedulerService {
       trigger_time_minutes: number | null;
       title: string | null;
       content?: string;
+      type?: string | null;
       severity?: string | null;
       required_gate_id?: string | null;
       required_gate_not_met_id?: string | null;
       target_teams?: string[] | null;
       inject_scope?: string | null;
+      delivery_config?: Record<string, unknown> | null;
     };
     const injects = (injectsRaw ?? []).filter((inj: InjectRow) => {
       if (inj.required_gate_id != null) {
@@ -670,8 +747,21 @@ export class InjectSchedulerService {
             this.io = io;
           }
 
+          // Stakeholder-authored injects (contract §4): the stakeholder's own verdict decides —
+          // keep / cancel / delay / modify — and replaces the generic cancellation gates.
+          const stakeholderGate = await this.applyStakeholderGate(
+            session,
+            inject as InjectRow,
+            elapsedMinutes,
+            publishedInjectIds,
+            cancelledInjectIds,
+          );
+          if (stakeholderGate === 'handled') continue;
+
           let cancelled = false;
-          if (session.sim_mode === 'social_media') {
+          if (stakeholderGate === 'publish_as_is') {
+            cancelled = false;
+          } else if (session.sim_mode === 'social_media') {
             const { data: playerActions } = await supabaseAdmin
               .from('player_actions')
               .select('action_type, content, created_at, metadata')
@@ -780,7 +870,7 @@ export class InjectSchedulerService {
       const { data: condInjectsRaw } = await supabaseAdmin
         .from('scenario_injects')
         .select(
-          'id, title, content, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect',
+          'id, title, content, type, severity, target_teams, inject_scope, conditions_to_appear, conditions_to_cancel, eligible_after_minutes, state_effect, delivery_config',
         )
         .eq('scenario_id', session.scenario_id)
         .or(`session_id.is.null,session_id.eq.${session.id}`)
@@ -793,6 +883,31 @@ export class InjectSchedulerService {
           !cancelledInjectIds.has(inj.id) &&
           (inj.eligible_after_minutes == null || inj.eligible_after_minutes <= elapsedMinutes),
       );
+
+      // Dormancy diagnostic (contract §7 item 11): templates use decision-layer primitives but the
+      // scenario has no decision_space, so nothing can ever record a decision → they stay dormant.
+      if (!decisionLayerInertLogged.has(session.id)) {
+        const usesDecisionLayer = (condInjectsRaw ?? []).some((inj) => {
+          const conds = inj.conditions_to_appear as
+            | { conditions?: string[]; all?: string[] }
+            | string[]
+            | null;
+          const keys = Array.isArray(conds)
+            ? conds
+            : [...(conds?.conditions ?? []), ...(conds?.all ?? [])];
+          return keys.some((k) => isDecisionLayerCondition(String(k)));
+        });
+        if (usesDecisionLayer) {
+          decisionLayerInertLogged.add(session.id);
+          const { isDecisionLayerEnabled } = await import('./decisionEngineService.js');
+          if (!(await isDecisionLayerEnabled(session.id))) {
+            logger.info(
+              { sessionId: session.id, event: 'decision_layer_inert' },
+              'Scenario carries decision-layer templates but no decision_space; they stay dormant',
+            );
+          }
+        }
+      }
 
       if (condInjects.length > 0) {
         const gateStatusByGateId: Record<string, 'pending' | 'met' | 'not_met'> = {};
@@ -816,6 +931,35 @@ export class InjectSchedulerService {
           .select('id', { count: 'exact', head: true })
           .eq('session_id', session.id);
 
+        // Decision layer primitives (contract §7A): recorded decision keys and the
+        // inject_key → ids index, so decision_recorded:* / inject_published:* / inject_cancelled:*
+        // resolve. Cheap no-ops for scenarios without a decision space.
+        let recordedDecisionKeys: string[] = [];
+        let injectIdsByKey: Record<string, string[]> = {};
+        try {
+          const { isDecisionLayerEnabled, recordedDecisionKeys: loadKeys } =
+            await import('./decisionEngineService.js');
+          if (await isDecisionLayerEnabled(session.id)) {
+            recordedDecisionKeys = Array.from(await loadKeys(session.id));
+            const { data: keyed } = await supabaseAdmin
+              .from('scenario_injects')
+              .select('id, delivery_config')
+              .eq('scenario_id', session.scenario_id)
+              .or(`session_id.is.null,session_id.eq.${session.id}`)
+              .not('delivery_config->>inject_key', 'is', null);
+            for (const row of keyed ?? []) {
+              const k = String(
+                ((row.delivery_config as Record<string, unknown>) ?? {}).inject_key ?? '',
+              );
+              if (!k) continue;
+              (injectIdsByKey[k] ??= []).push(String(row.id));
+            }
+          }
+        } catch (dlErr) {
+          logger.debug({ err: dlErr, sessionId: session.id }, 'Decision layer context unavailable');
+          injectIdsByKey = {};
+        }
+
         const evalContext: EvaluationContext = {
           sessionId: session.id,
           scenarioId: session.scenario_id,
@@ -831,6 +975,9 @@ export class InjectSchedulerService {
           publishedInjectKeysOrTags: publishedKeysOrTags,
           gateStatusByGateId,
           placedAssetsCount: placedAssetsCount ?? 0,
+          recordedDecisionKeys,
+          cancelledScenarioInjectIds: [...cancelledInjectIds],
+          injectIdsByKey,
         };
 
         for (const condInject of condInjects) {
@@ -860,20 +1007,48 @@ export class InjectSchedulerService {
               this.io = io;
             }
 
-            const cancelled = await runAiCancellationGate(
+            const stakeholderGate = await this.applyStakeholderGate(
+              session,
               {
                 id: condInject.id,
+                trigger_time_minutes: null,
                 title: condInject.title ?? null,
                 content: condInject.content as string | undefined,
-                target_teams: condInject.target_teams as string[] | null,
+                type: (condInject as { type?: string | null }).type ?? null,
                 severity: condInject.severity as string | null,
+                target_teams: condInject.target_teams as string[] | null,
                 inject_scope: condInject.inject_scope as string | null,
+                delivery_config:
+                  (condInject as { delivery_config?: Record<string, unknown> | null })
+                    .delivery_config ?? null,
               },
-              { id: session.id, scenario_id: session.scenario_id, trainer_id: session.trainer_id },
-              allDecisionsForAi,
-              userIdToTeam,
-              this.io,
+              elapsedMinutes,
+              publishedInjectIds,
+              cancelledInjectIds,
             );
+            if (stakeholderGate === 'handled') continue;
+
+            const cancelled =
+              stakeholderGate === 'publish_as_is'
+                ? false
+                : await runAiCancellationGate(
+                    {
+                      id: condInject.id,
+                      title: condInject.title ?? null,
+                      content: condInject.content as string | undefined,
+                      target_teams: condInject.target_teams as string[] | null,
+                      severity: condInject.severity as string | null,
+                      inject_scope: condInject.inject_scope as string | null,
+                    },
+                    {
+                      id: session.id,
+                      scenario_id: session.scenario_id,
+                      trainer_id: session.trainer_id,
+                    },
+                    allDecisionsForAi,
+                    userIdToTeam,
+                    this.io,
+                  );
             if (cancelled) continue;
 
             logger.info(
@@ -896,6 +1071,16 @@ export class InjectSchedulerService {
         { err: condErr, sessionId: session.id },
         'Condition-based inject evaluation error',
       );
+    }
+
+    // --- Decision layer: lapse SOP obligations past their window (runtime plan §5.5) ---
+    try {
+      const { isDecisionLayerEnabled, lapseObligations } =
+        await import('./decisionEngineService.js');
+      if (await isDecisionLayerEnabled(session.id))
+        await lapseObligations(session.id, elapsedMinutes);
+    } catch (obErr) {
+      logger.debug({ err: obErr, sessionId: session.id }, 'Obligation lapse check skipped');
     }
 
     // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---

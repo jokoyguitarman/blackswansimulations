@@ -783,6 +783,243 @@ router.get(
   },
 );
 
+// Session events by type (trainer timeline). ?event_type=a,b,c (comma-separated) &limit=
+router.get(
+  '/:id/events',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+
+      const access = await assertSessionAccess(sessionId, user);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+      const types = String(req.query.event_type ?? '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter((t) => /^[a-z_]+$/.test(t));
+      const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
+
+      let query = supabaseAdmin
+        .from('session_events')
+        .select('id, event_type, description, actor_id, metadata, created_at')
+        .eq('session_id', sessionId)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (types.length === 1) query = query.eq('event_type', types[0]);
+      else if (types.length > 1) query = query.in('event_type', types);
+
+      const { data, error } = await query;
+      if (error) {
+        logger.error({ error, sessionId }, 'Failed to fetch session events');
+        return res.status(500).json({ error: 'Failed to fetch session events' });
+      }
+      return res.json({ data: data ?? [] });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/events');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// Organisation registry + teams per org (contract §5; runtime plan §4.4)
+router.get(
+  '/:id/orgs',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+      const access = await assertSessionAccess(sessionId, user, 'id, trainer_id, scenario_id');
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      const scenarioId = (access.session?.scenario_id as string | null) ?? null;
+      if (!scenarioId) return res.json({ data: { orgs: [], countries: [], multi_org: false } });
+
+      const { getOrgRegistry, getCountries, getSessionTeams, isMultiOrg } =
+        await import('../services/orgRegistryService.js');
+      const [registry, countries, teams, multiOrg] = await Promise.all([
+        getOrgRegistry(scenarioId),
+        getCountries(scenarioId),
+        getSessionTeams(sessionId),
+        isMultiOrg(scenarioId),
+      ]);
+
+      const orgs = registry.map((o) => ({
+        ...o,
+        teams: teams
+          .filter((t) => t.org_key === o.org_key || (t.org_key === null && o.is_primary))
+          .map((t) => ({
+            team_name: t.team_name,
+            function_key: t.function_key,
+            member_count: t.member_user_ids.length,
+          })),
+      }));
+      const unscoped = teams
+        .filter((t) => t.org_key === null)
+        .map((t) => ({
+          team_name: t.team_name,
+          function_key: t.function_key,
+          member_count: t.member_user_ids.length,
+        }));
+
+      return res.json({ data: { orgs, countries, multi_org: multiOrg, teams_all_orgs: unscoped } });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/orgs');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+// ─── Decision layer (contract §7A, runtime plan §5.3) ────────────────────────
+
+/** Options an Executive player (or trainer) can see; `decidable` marks what THEY may record. */
+router.get(
+  '/:id/decision-space',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+      const access = await assertSessionAccess(sessionId, user, 'id, trainer_id, scenario_id');
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      const scenarioId = (access.session?.scenario_id as string | null) ?? null;
+      const isStaff = access.session?.trainer_id === user.id || user.role === 'admin';
+
+      const { getDecisionSpace, getChainOfCommand, listDecisions, EXECUTIVE_FUNCTION } =
+        await import('../services/decisionEngineService.js');
+      const { getTeamIdentity, getProtagonistOrgs } =
+        await import('../services/orgRegistryService.js');
+      const { resolveTeamFunction } = await import('../lib/stakeholderContract.js');
+
+      const options = scenarioId ? await getDecisionSpace(scenarioId) : [];
+      if (options.length === 0) {
+        return res.status(404).json({ error: 'decision_layer_not_enabled' });
+      }
+
+      const identity = await getTeamIdentity(sessionId, user.id);
+      const isExecutive = !!identity && resolveTeamFunction(identity) === EXECUTIVE_FUNCTION;
+      if (!isStaff && !isExecutive) {
+        return res
+          .status(403)
+          .json({ error: 'Only Executive team members can view the decision space' });
+      }
+
+      let orgKey = identity?.org_key ?? null;
+      if (!orgKey && scenarioId) {
+        const orgs = await getProtagonistOrgs(scenarioId);
+        orgKey = orgs.find((o) => o.is_primary)?.org_key ?? orgs[0]?.org_key ?? null;
+      }
+      const recorded = await listDecisions(sessionId, { orgKey, all: isStaff });
+      const recordedByKey = new Map(recorded.map((d) => [`${d.org_key}:${d.decision_key}`, d]));
+
+      return res.json({
+        data: {
+          org_key: orgKey,
+          is_trainer: isStaff,
+          options: options.map((o) => ({
+            ...o,
+            recorded: orgKey ? (recordedByKey.get(`${orgKey}:${o.decision_key}`) ?? null) : null,
+            decidable:
+              !isStaff &&
+              isExecutive &&
+              !!orgKey &&
+              (o.decidable_by_org_keys.length === 0 || o.decidable_by_org_keys.includes(orgKey)) &&
+              !recordedByKey.has(`${orgKey}:${o.decision_key}`),
+          })),
+          chain_of_command: scenarioId ? await getChainOfCommand(scenarioId) : [],
+        },
+      });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/decision-space');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+router.post(
+  '/:id/decisions',
+  requireAuth,
+  validate(
+    z.object({
+      params: z.object({ id: z.string().uuid() }),
+      body: z.object({
+        decision_key: z.string().min(1).max(120),
+        scope: z.string().max(2000).optional(),
+        rationale: z.string().max(4000).optional(),
+        effective_at: z.string().datetime().optional(),
+        as_org_key: z.string().max(120).optional(),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+      const access = await assertSessionAccess(sessionId, user);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+
+      const { isDecisionLayerEnabled, recordDecision } =
+        await import('../services/decisionEngineService.js');
+      if (!(await isDecisionLayerEnabled(sessionId))) {
+        return res.status(404).json({ error: 'decision_layer_not_enabled' });
+      }
+      const body = req.body as {
+        decision_key: string;
+        scope?: string;
+        rationale?: string;
+        effective_at?: string;
+        as_org_key?: string;
+      };
+      const result = await recordDecision(sessionId, user, {
+        decision_key: body.decision_key,
+        scope: body.scope,
+        rationale: body.rationale,
+        effective_at: body.effective_at,
+        as_org_key: body.as_org_key ?? null,
+      });
+      if (!result.ok) return res.status(result.status).json({ error: result.error });
+      return res.status(201).json({ data: result.decision });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in POST /sessions/:id/decisions');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/:id/decisions',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const { id: sessionId } = req.params;
+      const user = req.user!;
+      const access = await assertSessionAccess(sessionId, user, 'id, trainer_id, scenario_id');
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      const isStaff = access.session?.trainer_id === user.id || user.role === 'admin';
+
+      const { isDecisionLayerEnabled, listDecisions } =
+        await import('../services/decisionEngineService.js');
+      if (!(await isDecisionLayerEnabled(sessionId))) return res.json({ data: [] });
+
+      const { getTeamIdentity } = await import('../services/orgRegistryService.js');
+      const identity = await getTeamIdentity(sessionId, user.id);
+      const data = await listDecisions(sessionId, {
+        orgKey: identity?.org_key ?? null,
+        all: isStaff || !identity?.org_key,
+      });
+      return res.json({ data });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/decisions');
+      return res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
 // Get escalation data for a session (factors + pathways, trainer only)
 router.get(
   '/:id/escalation',

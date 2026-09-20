@@ -324,6 +324,7 @@ export async function triggerNPCDMReply(
   threadId: string,
   recipientHandle: string,
   playerMessage: string,
+  playerUserId?: string,
 ): Promise<void> {
   if (!env.openAiApiKey) return;
 
@@ -346,17 +347,93 @@ export async function triggerNPCDMReply(
 
     const initialState = (scenario.initial_state || {}) as Record<string, unknown>;
     const personas = (initialState.npc_personas || []) as NPCPersona[];
+
+    const { data: threadMessages } = await supabaseAdmin
+      .from('sim_direct_messages')
+      .select('sender_handle, recipient_handle, content, recipient_user_id')
+      .eq('thread_id', threadId)
+      .order('created_at', { ascending: true })
+      .limit(10);
+
+    // Stakeholder record (contract §3): in-character reply from the record + inject verdicts.
+    if (env.enableStakeholderEngine) {
+      const { findByHandle } = await import('./stakeholderService.js');
+      const stakeholder = await findByHandle(session.scenario_id, recipientHandle);
+      if (stakeholder) {
+        const playerHandle =
+          (threadMessages || []).find((m) => m.sender_handle !== stakeholder.handle)
+            ?.sender_handle ||
+          (threadMessages || [])[0]?.recipient_handle ||
+          '';
+        const userId =
+          playerUserId ||
+          ((threadMessages || []).find((m) => m.recipient_user_id)?.recipient_user_id as
+            | string
+            | undefined) ||
+          (await resolveRecipientUserId(sessionId, playerHandle));
+        if (!userId) return;
+
+        const { handlePlayerMessage, recordNpcReply } =
+          await import('./stakeholderReplyService.js');
+        const plan = await handlePlayerMessage({
+          sessionId,
+          stakeholder,
+          channel: 'messenger',
+          userId,
+          content: playerMessage,
+          refTable: 'sim_direct_messages',
+          refId: null,
+        });
+        if (!plan.should_reply) return;
+
+        const senderType =
+          stakeholder.relationship === 'media'
+            ? 'npc_media'
+            : stakeholder.relationship === 'regulator'
+              ? 'npc_politician'
+              : 'npc_public';
+        const { data: inserted, error } = await supabaseAdmin
+          .from('sim_direct_messages')
+          .insert({
+            session_id: sessionId,
+            thread_id: threadId,
+            sender_handle: stakeholder.handle,
+            sender_display_name: stakeholder.name,
+            sender_type: senderType,
+            recipient_handle: playerHandle,
+            recipient_user_id: userId,
+            content: plan.text,
+            platform: 'facebook',
+          })
+          .select()
+          .single();
+        if (!error && inserted) {
+          getWebSocketService().broadcastToSession(sessionId, {
+            type: 'messenger.received',
+            data: { user_id: userId, message: inserted },
+            timestamp: new Date().toISOString(),
+          });
+          await recordNpcReply({
+            sessionId,
+            stakeholderId: stakeholder.id,
+            channel: 'messenger',
+            content: plan.text,
+            refTable: 'sim_direct_messages',
+            refId: String(inserted.id),
+          });
+          logger.info(
+            { sessionId, stakeholderId: stakeholder.id, threadId },
+            'Stakeholder DM reply sent',
+          );
+        }
+        return;
+      }
+    }
+
     const npc = personas.find((p) => p.handle === recipientHandle);
     if (!npc) return;
 
     const orgName = String(initialState.org_name || '');
-
-    const { data: threadMessages } = await supabaseAdmin
-      .from('sim_direct_messages')
-      .select('sender_handle, recipient_handle, content')
-      .eq('thread_id', threadId)
-      .order('created_at', { ascending: true })
-      .limit(10);
 
     const replyToHandle =
       (threadMessages || []).find((m) => m.sender_handle !== npc.handle)?.sender_handle ||

@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
 import { getCatalogCharter, type TeamExpectedAction } from './teamCharterService.js';
+import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 import { getIntelManifest } from './intelSharingService.js';
 
 /**
@@ -97,7 +98,8 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     await Promise.all([
       supabaseAdmin
         .from('scenario_teams')
-        .select('team_name, team_description, charter, expected_actions')
+        // '*' so function_key / org_key (migration 197) are available once they exist.
+        .select('*')
         .eq('scenario_id', session.scenario_id)
         .order('team_name', { ascending: true }),
       supabaseAdmin
@@ -222,7 +224,13 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
     const memberIds = membersByTeam.get(teamName) || [];
     const memberSet = new Set(memberIds);
     const charterJson = (teamRow.charter || {}) as Record<string, unknown>;
-    const catalogFallback = getCatalogCharter(teamName);
+    const catalogFallback = getCatalogCharter(
+      resolveTeamFunction({
+        team_name: teamName,
+        function_key:
+          ((teamRow as Record<string, unknown>).function_key as string | null | undefined) ?? null,
+      }),
+    );
     const mission =
       (charterJson.mission as string) ||
       String(teamRow.team_description || '') ||

@@ -11,6 +11,7 @@ import {
 import { triggerNPCMessages } from './npcMessengerService.js';
 import { normalizeOrgPages } from './socialCrisisGeneratorService.js';
 import { hiveRosterFor } from './extremistDoctrine.js';
+import { selectPersonaPool } from './orgRegistryService.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 
 interface RegisteredNPC {
@@ -20,6 +21,8 @@ interface RegisteredNPC {
   bias: string;
   tier?: 'key' | 'background';
   normal_interests?: string[];
+  /** Contract §5.3 — persona's country; null/undefined = global. */
+  country?: string | null;
 }
 
 const sessionNPCRegistry = new Map<string, Map<string, RegisteredNPC>>();
@@ -32,7 +35,18 @@ function getRegistry(sessionId: string): Map<string, RegisteredNPC> {
 }
 
 function registerNPC(sessionId: string, npc: RegisteredNPC): void {
-  getRegistry(sessionId).set(npc.handle, npc);
+  const existing = getRegistry(sessionId).get(npc.handle);
+  // Never let a later, thinner registration (e.g. from an AI-invented reply author) erase a
+  // designed persona's country tag.
+  getRegistry(sessionId).set(npc.handle, {
+    ...npc,
+    country: npc.country ?? existing?.country ?? null,
+  });
+}
+
+/** Country a registered persona belongs to (null = global / unknown). */
+function personaCountry(sessionId: string, handle: string): string | null {
+  return getRegistry(sessionId).get(handle)?.country ?? null;
 }
 
 function getRegisteredNPCs(sessionId: string): RegisteredNPC[] {
@@ -59,6 +73,7 @@ function loadDesignedPersonas(initialState: Record<string, unknown>, sessionId: 
       normal_interests: Array.isArray(p.normal_interests)
         ? (p.normal_interests as string[]).map(String)
         : [],
+      country: typeof p.country === 'string' && p.country ? p.country : null,
     });
   }
 
@@ -550,6 +565,12 @@ async function insertPost(
 
   const imagePrompt = String(post.image_prompt || '');
   const existingMedia = (post.media_urls as string[]) || [];
+  // Contract §5.3: persona-originated top-level posts carry the persona's country. Replies
+  // inherit the parent's country through the DB trigger (migration 202).
+  const country = !replyToId
+    ? ((typeof post.country === 'string' && post.country ? post.country : null) ??
+      personaCountry(sessionId, handle))
+    : null;
 
   const { data: inserted, error } = await supabaseAdmin
     .from('social_posts')
@@ -570,6 +591,7 @@ async function insertPost(
       repost_count: 0,
       reply_count: 0,
       view_count: 0,
+      ...(country ? { country } : {}),
       ...(targetPlayerIds && targetPlayerIds.length > 0
         ? { target_player_ids: targetPlayerIds }
         : {}),
@@ -1178,7 +1200,10 @@ async function simulateThreadActivity(
     })
     .join('\n');
 
-  const knownNPCs = getRegisteredNPCs(sessionId)
+  // Contract §5.3: newcomers to a thread come from the same country as the thread's author
+  // (untagged personas are global; tiny pools fall back to everyone).
+  const threadCountry = personaCountry(sessionId, String(targetPost.author_handle));
+  const knownNPCs = selectPersonaPool(getRegisteredNPCs(sessionId), threadCountry)
     .filter((n) => !threadParticipants.has(n.handle))
     .map((n) => `${n.handle} (${n.display_name}): ${n.personality}`)
     .join('\n');
