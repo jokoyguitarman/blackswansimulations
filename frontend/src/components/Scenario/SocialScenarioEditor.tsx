@@ -879,6 +879,16 @@ interface PlatformPage {
   [k: string]: unknown;
 }
 
+/** Voice + goals of an AI-run page (pressure orgs; `aligned` for AI-operated offices). */
+interface PagePosture {
+  register: string;
+  mandate: string;
+  demands: string[];
+  escalation_ladder: string[];
+  targets_org_keys: string[];
+  stand_down_signals: string[];
+}
+
 const OrgPagesSection = ({
   initialState,
   saveInitialState,
@@ -973,10 +983,20 @@ const OrgPagesSection = ({
                   placeholder="Organisation name"
                 />
                 <span
-                  className={`text-[10px] px-1.5 py-0.5 rounded ${org.role === 'antagonist' ? 'bg-danger/10 text-danger' : 'bg-success/10 text-success'}`}
+                  className={`text-[10px] px-1.5 py-0.5 rounded ${
+                    org.role === 'antagonist'
+                      ? 'bg-danger/10 text-danger'
+                      : org.role === 'pressure'
+                        ? 'bg-warning/10 text-warning'
+                        : 'bg-success/10 text-success'
+                  }`}
                 >
                   {String(org.role || 'protagonist')}
                   {org.is_primary ? ' · primary' : ''}
+                  {org.operation === 'ai' ? ' · AI-operated' : ''}
+                  {org.role === 'pressure' && org.kind
+                    ? ` · ${String(org.kind).replace('_', ' ')}`
+                    : ''}
                 </span>
               </div>
               <div className="flex flex-wrap gap-3">
@@ -1006,6 +1026,58 @@ const OrgPagesSection = ({
                     className={`${inputCls} resize-y`}
                   />
                 </>
+              )}
+              {(org.role === 'pressure' || org.operation === 'ai') && !!org.posture && (
+                <div className="mt-2 space-y-1.5">
+                  <label className={labelCls}>
+                    Posture · {String((org.posture as PagePosture).register)} register (steers its
+                    AI)
+                  </label>
+                  <textarea
+                    value={String((org.posture as PagePosture).mandate || '')}
+                    disabled={locked}
+                    rows={2}
+                    onChange={(e) => {
+                      const next = [...draftOrgs];
+                      next[i] = {
+                        ...next[i],
+                        posture: { ...(next[i].posture as PagePosture), mandate: e.target.value },
+                      };
+                      setDraft({ ...draft, orgs: next });
+                    }}
+                    className={`${inputCls} resize-y`}
+                    placeholder="Mandate"
+                  />
+                  {(['demands', 'escalation_ladder', 'stand_down_signals'] as const).map((k) => (
+                    <textarea
+                      key={k}
+                      value={((org.posture as PagePosture)[k] || []).join('\n')}
+                      disabled={locked}
+                      rows={3}
+                      onChange={(e) => {
+                        const next = [...draftOrgs];
+                        next[i] = {
+                          ...next[i],
+                          posture: {
+                            ...(next[i].posture as PagePosture),
+                            [k]: e.target.value
+                              .split('\n')
+                              .map((s) => s.trim())
+                              .filter(Boolean),
+                          },
+                        };
+                        setDraft({ ...draft, orgs: next });
+                      }}
+                      className={`${inputCls} resize-y`}
+                      placeholder={`${k.replace(/_/g, ' ')} (one per line)`}
+                    />
+                  ))}
+                  {!!org.spokesperson_stakeholder_id && (
+                    <div className="text-[10px] text-muted">
+                      Spokesperson: {String(org.spokesperson_stakeholder_id)} (edit in Stakeholders)
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ))}

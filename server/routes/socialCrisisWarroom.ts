@@ -41,6 +41,7 @@ import {
 import {
   organisationsSchema,
   competitorsSchema,
+  pressureOrganisationsSchema,
   teamCharterWireSchema,
   resolveOrganisations,
   crisisContextFrom,
@@ -56,7 +57,9 @@ import {
   EXECUTIVE_CHARTER,
   type OrganisationInput,
   type CompetitorInput,
+  type PressureOrgInput,
 } from '../services/scenarioOrgModel.js';
+import { inferCrisisFootprint } from '../services/crisisFootprintService.js';
 import type { Stakeholder } from '../lib/stakeholderContract.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { env } from '../env.js';
@@ -275,6 +278,49 @@ setInterval(
   5 * 60 * 1000,
 );
 
+// Step 1b: Crisis footprint (pressure plan §11) — proposals only, nothing persisted, no credit.
+// The wizard calls it from Setup so a lazy trainer gets the implied offices, countries and
+// pressure groups pre-ticked before the build starts.
+router.post(
+  '/footprint',
+  requireAuth,
+  validate(
+    z.object({
+      body: z.object({
+        crisis_type: z.string().default(''),
+        context: z.string().default(''),
+        organisations: organisationsSchema.optional(),
+        competitors: competitorsSchema.optional(),
+      }),
+    }),
+  ),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const orgsResult = resolveOrganisations(
+        req.body.organisations as OrganisationInput[] | undefined,
+        req.body.competitors as CompetitorInput[] | undefined,
+      );
+      if (orgsResult && !orgsResult.ok) {
+        return res
+          .status(400)
+          .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
+      }
+      const text = `${req.body.crisis_type}. ${req.body.context}`.trim();
+      if (text.replace(/\W/g, '').length < 20) {
+        return res.status(400).json({ error: 'Describe the crisis first (a sentence or two).' });
+      }
+      const footprint = await inferCrisisFootprint(
+        text,
+        orgsResult && orgsResult.ok ? orgsResult.orgs : [],
+      );
+      res.json({ data: footprint });
+    } catch (err) {
+      logger.error({ err }, 'crisis_footprint_route_failed');
+      res.status(500).json({ error: 'Footprint inference failed' });
+    }
+  },
+);
+
 // Step 2: Generate NPCs + Fact Sheet + Communities (async)
 router.post(
   '/generate-npcs',
@@ -291,6 +337,7 @@ router.post(
         blueprint: z.unknown().optional(),
         organisations: organisationsSchema.optional(),
         competitors: competitorsSchema.optional(),
+        pressure_organisations: pressureOrganisationsSchema.optional(),
       }),
     }),
   ),
@@ -301,6 +348,7 @@ router.post(
     const orgsResult = resolveOrganisations(
       req.body.organisations as OrganisationInput[] | undefined,
       req.body.competitors as CompetitorInput[] | undefined,
+      req.body.pressure_organisations as PressureOrgInput[] | undefined,
     );
     if (orgsResult && !orgsResult.ok) {
       logger.warn({ code: orgsResult.code, details: orgsResult.details }, 'org_validation_failed');
@@ -327,6 +375,7 @@ router.post(
               communities: r.communities,
               countries: r.countries,
               per_country_counts: r.per_country_counts,
+              footprint: r.footprint,
             },
             startedAt: Date.now(),
           });
@@ -433,6 +482,7 @@ router.post(
         team_roster: teamRosterSchema.optional(),
         organisations: organisationsSchema.optional(),
         competitors: competitorsSchema.optional(),
+        pressure_organisations: pressureOrganisationsSchema.optional(),
       }),
     }),
   ),
@@ -445,6 +495,7 @@ router.post(
       const orgsResult = resolveOrganisations(
         req.body.organisations as OrganisationInput[] | undefined,
         req.body.competitors as CompetitorInput[] | undefined,
+        req.body.pressure_organisations as PressureOrgInput[] | undefined,
       );
       if (orgsResult && !orgsResult.ok) {
         logger.warn(
@@ -663,6 +714,7 @@ router.post(
         // Multi-organisation (contract §5 / §7A): cross-org dependencies + decision layer.
         organisations: organisationsSchema.optional(),
         competitors: competitorsSchema.optional(),
+        pressure_organisations: pressureOrganisationsSchema.optional(),
         team_charters: z.array(teamCharterWireSchema).optional(),
         stakeholders: z.array(z.unknown()).optional(),
       }),
@@ -684,6 +736,7 @@ router.post(
     const orgsResult = resolveOrganisations(
       req.body.organisations as OrganisationInput[] | undefined,
       req.body.competitors as CompetitorInput[] | undefined,
+      req.body.pressure_organisations as PressureOrgInput[] | undefined,
     );
     if (orgsResult && !orgsResult.ok) {
       logger.warn({ code: orgsResult.code, details: orgsResult.details }, 'org_validation_failed');
@@ -876,6 +929,7 @@ router.post(
         // Multi-organisation (contract §3 / §5). Server derives orgs[]/countries[] itself.
         organisations: organisationsSchema.optional(),
         competitors: competitorsSchema.optional(),
+        pressure_organisations: pressureOrganisationsSchema.optional(),
         stakeholders: z.array(z.unknown()).optional(),
         stakeholder_injects: z.array(z.unknown()).optional(),
         // Cast-generated notification SOP steps + planner hints (organic-decisions plan §4.1).
@@ -894,6 +948,7 @@ router.post(
     const compileOrgs = resolveOrganisations(
       req.body.organisations as OrganisationInput[] | undefined,
       req.body.competitors as CompetitorInput[] | undefined,
+      req.body.pressure_organisations as PressureOrgInput[] | undefined,
     );
     if (compileOrgs && !compileOrgs.ok) {
       logger.warn(
@@ -1333,16 +1388,22 @@ router.post(
         auto_antagonist: z.boolean().optional(),
         organisations: organisationsSchema.optional(),
         competitors_with_country: competitorsSchema.optional(),
+        pressure_organisations: pressureOrganisationsSchema.optional(),
+        // For pressure-page statements (page identity + spokesperson) and posture grounding.
+        stakeholders: z.array(z.unknown()).optional(),
+        fact_sheet: z.unknown().optional(),
+        crisis_type: z.string().optional(),
       }),
     }),
   ),
   async (req: AuthenticatedRequest, res) => {
     try {
       // Multi-organisation path: every protagonist gets its own page in its own country;
-      // competitors carry theirs; the registry is returned alongside.
+      // competitors carry theirs; pressure orgs get AI-run pages; the registry is returned alongside.
       const orgsResult = resolveOrganisations(
         req.body.organisations as OrganisationInput[] | undefined,
         req.body.competitors_with_country as CompetitorInput[] | undefined,
+        req.body.pressure_organisations as PressureOrgInput[] | undefined,
       );
       if (orgsResult && !orgsResult.ok) {
         logger.warn(
@@ -1374,6 +1435,18 @@ router.post(
           logo_url,
           auto_antagonist !== false,
           (msg: string) => res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n'),
+          {
+            stakeholders: ((req.body.stakeholders as Stakeholder[]) || []).filter(
+              (s) => s && typeof s === 'object',
+            ),
+            factSheet: (req.body.fact_sheet as FactSheet | undefined) ?? null,
+            crisis: crisisContextFrom({
+              crisis_type: (req.body.crisis_type as string) || crisis_description.slice(0, 80),
+              context: crisis_description,
+              duration: 60,
+              org_name,
+            }),
+          },
         );
         res.write(
           JSON.stringify({
@@ -1381,6 +1454,8 @@ router.post(
             org_page: r.orgPage,
             orgs: r.orgs,
             countries: r.countries,
+            pressure_injects: r.pressure_injects,
+            persona_twins: r.persona_twins,
           }) + '\n',
         );
         res.end();

@@ -46,6 +46,8 @@ export interface OrganisationInput {
   logo_url?: string;
   is_primary: boolean;
   team_roster: RosterEntryInput[];
+  /** 'ai' = nobody plays this office; its page and carriers are simulated (pressure plan §12). */
+  operation?: 'players' | 'ai';
 }
 
 export interface CompetitorInput {
@@ -53,6 +55,56 @@ export interface CompetitorInput {
   country: string;
   facebook_handle?: string;
   x_handle?: string;
+}
+
+/** Pressure organisation as entered / accepted in the wizard (pressure plan §5.1). */
+export type PressureKind = 'union' | 'regulator' | 'ngo' | 'community_group' | 'political';
+export type PressureRegister = 'statutory' | 'advocacy' | 'grassroots' | 'political';
+
+export interface PressureOrgInput {
+  org_key?: string;
+  display_name: string;
+  kind: PressureKind;
+  country: string;
+  city?: string;
+  register?: PressureRegister;
+  /** Free text from the trainer: what this body wants. */
+  wants?: string;
+  facebook_handle?: string;
+  x_handle?: string;
+  /** Filled by the storyline stage; round-tripped to org-page + compile. */
+  spokesperson_stakeholder_id?: string;
+  /** Protagonist org_keys it presses; defaults to the protagonists in its country, else all. */
+  targets_org_keys?: string[];
+}
+
+export interface NormalisedPressureOrg {
+  org_key: string;
+  display_name: string;
+  short_name: string;
+  kind: PressureKind;
+  country: string;
+  city?: string;
+  register: PressureRegister;
+  wants?: string;
+  facebook_handle?: string;
+  x_handle?: string;
+  spokesperson_stakeholder_id?: string;
+  targets_org_keys: string[];
+}
+
+export function defaultRegisterFor(kind: PressureKind): PressureRegister {
+  switch (kind) {
+    case 'regulator':
+      return 'statutory';
+    case 'union':
+    case 'ngo':
+      return 'advocacy';
+    case 'community_group':
+      return 'grassroots';
+    case 'political':
+      return 'political';
+  }
 }
 
 // ─── Normalised organisation (what generation runs on) ───────────────────────
@@ -79,6 +131,7 @@ export interface NormalisedOrg {
   logo_url?: string;
   is_primary: boolean;
   teams: NormalisedTeam[];
+  operation: 'players' | 'ai';
 }
 
 export interface NormalisedCompetitor {
@@ -104,7 +157,13 @@ export interface ValidationDetail {
 }
 
 export type OrganisationsValidation =
-  | { ok: true; orgs: NormalisedOrg[]; competitors: NormalisedCompetitor[]; multiOrg: boolean }
+  | {
+      ok: true;
+      orgs: NormalisedOrg[];
+      competitors: NormalisedCompetitor[];
+      pressureOrgs: NormalisedPressureOrg[];
+      multiOrg: boolean;
+    }
   | { ok: false; code: string; message: string; details: ValidationDetail[] };
 
 // ─── Presets ─────────────────────────────────────────────────────────────────
@@ -308,6 +367,7 @@ const MAX_TEAMS = 6;
 export function validateOrganisations(
   input: OrganisationInput[],
   competitorsInput: CompetitorInput[] = [],
+  pressureInput: PressureOrgInput[] = [],
 ): OrganisationsValidation {
   const details: ValidationDetail[] = [];
   const fail = (code: string, path: string, message: string) =>
@@ -447,7 +507,13 @@ export function validateOrganisations(
       logo_url: raw.logo_url?.trim() || undefined,
       is_primary: !!raw.is_primary,
       teams,
+      operation: raw.operation === 'ai' ? 'ai' : 'players',
     });
+  }
+  // MO-ORG-007: the primary organisation is where the human players are.
+  const primaryOrg = orgs.find((o) => o.is_primary);
+  if (primaryOrg && primaryOrg.operation === 'ai') {
+    fail('MO-ORG-007', 'organisations', 'The primary organisation cannot be AI-operated');
   }
 
   // Composed names unique scenario-wide and within VARCHAR(100).
@@ -486,10 +552,113 @@ export function validateOrganisations(
     });
   });
 
+  const pressureOrgs = normalisePressureOrgs(pressureInput || [], orgs, takenKeys, seenNames, fail);
+
   if (details.length > 0) {
     return { ok: false, code: details[0].code, message: details[0].message, details };
   }
-  return { ok: true, orgs, competitors, multiOrg };
+  return { ok: true, orgs, competitors, pressureOrgs, multiOrg };
+}
+
+const MAX_PRESSURE_ORGS = 6;
+const PRESSURE_KIND_SET: readonly string[] = [
+  'union',
+  'regulator',
+  'ngo',
+  'community_group',
+  'political',
+];
+const PRESSURE_REGISTER_SET: readonly string[] = [
+  'statutory',
+  'advocacy',
+  'grassroots',
+  'political',
+];
+
+/** Pressure org key: org_pressure_<slug>_<cc> (never collides with antagonist keys). */
+export function makePressureOrgKey(name: string, country: string, taken: Set<string>): string {
+  const slug = countrySlug(name).replace(/_+/g, '_') || 'pressure';
+  const base = `org_pressure_${slug}_${countryCode(country)}`.slice(0, 60);
+  let candidate = base;
+  let n = 2;
+  while (taken.has(candidate)) candidate = `${base}_${n++}`;
+  taken.add(candidate);
+  return candidate;
+}
+
+function normalisePressureOrgs(
+  input: PressureOrgInput[],
+  orgs: NormalisedOrg[],
+  takenKeys: Set<string>,
+  seenNames: Set<string>,
+  fail: (code: string, path: string, message: string) => void,
+): NormalisedPressureOrg[] {
+  const out: NormalisedPressureOrg[] = [];
+  if (input.length > MAX_PRESSURE_ORGS) {
+    fail(
+      'MO-PRS-001',
+      'pressure_organisations',
+      `At most ${MAX_PRESSURE_ORGS} pressure organisations`,
+    );
+    return out;
+  }
+  const takenShort = new Set<string>();
+  input.forEach((raw, i) => {
+    const name = String(raw.display_name || '').trim();
+    const path = `pressure_organisations.${name || i}`;
+    if (name.length < 2 || name.length > 120) {
+      fail('MO-PRS-001', path, 'Pressure organisation name must be 2-120 characters');
+      return;
+    }
+    if (seenNames.has(name.toLowerCase())) {
+      fail('MO-PRS-001', path, `Organisation names must be unique across every side: "${name}"`);
+      return;
+    }
+    seenNames.add(name.toLowerCase());
+    const country = String(raw.country || '').trim();
+    if (!isKnownCountry(country)) {
+      fail('MO-PRS-002', path, `Unknown country "${country}" for ${name}`);
+      return;
+    }
+    const kind = String(raw.kind || '') as PressureKind;
+    if (!PRESSURE_KIND_SET.includes(kind)) {
+      fail('MO-PRS-002', path, `"${raw.kind}" is not a pressure organisation kind`);
+      return;
+    }
+    const register = (
+      PRESSURE_REGISTER_SET.includes(String(raw.register || ''))
+        ? raw.register
+        : defaultRegisterFor(kind)
+    ) as PressureRegister;
+    const protagonistKeys = new Set(orgs.map((o) => o.org_key));
+    let targets = (raw.targets_org_keys || []).filter((k) => protagonistKeys.has(k));
+    if (targets.length === 0) {
+      const sameCountry = orgs.filter((o) => o.country === country).map((o) => o.org_key);
+      targets = sameCountry.length > 0 ? sameCountry : orgs.map((o) => o.org_key);
+    }
+    if (targets.length === 0) {
+      fail('MO-PRS-003', path, `${name} has no protagonist organisation to press`);
+      return;
+    }
+    out.push({
+      org_key:
+        raw.org_key && /^org_pressure_[a-z0-9_]+$/.test(raw.org_key) && !takenKeys.has(raw.org_key)
+          ? (takenKeys.add(raw.org_key), raw.org_key)
+          : makePressureOrgKey(name, country, takenKeys),
+      display_name: name,
+      short_name: deriveShortName(name, takenShort, country),
+      kind,
+      country,
+      city: raw.city?.trim() || undefined,
+      register,
+      wants: raw.wants?.trim() || undefined,
+      facebook_handle: raw.facebook_handle?.trim() || undefined,
+      x_handle: raw.x_handle?.trim() || undefined,
+      spokesperson_stakeholder_id: raw.spokesperson_stakeholder_id?.trim() || undefined,
+      targets_org_keys: targets,
+    });
+  });
+  return out;
 }
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -498,6 +667,7 @@ export function buildOrgRegistry(
   orgs: NormalisedOrg[],
   competitors: NormalisedCompetitor[],
   autoRival?: { org_key: string; display_name: string; country: string } | null,
+  pressureOrgs: NormalisedPressureOrg[] = [],
 ): OrgRegistryEntry[] {
   const entries: OrgRegistryEntry[] = orgs.map((o) => ({
     org_key: o.org_key,
@@ -508,7 +678,34 @@ export function buildOrgRegistry(
     kind: o.kind,
     side: 'protagonist' as const,
     ...(o.is_primary ? { is_primary: true } : {}),
+    operation: o.operation,
+    sites: [
+      {
+        site_key:
+          `${o.org_key === 'primary' ? 'hq' : countrySlug(o.short_name || o.display_name)}_${countrySlug(o.city || o.country || o.display_name) || 'site'}`.slice(
+            0,
+            40,
+          ),
+        name: `${o.display_name} — ${o.city || o.country}`,
+        country: o.country,
+        ...(o.city ? { city: o.city } : {}),
+      },
+    ],
   }));
+  for (const p of pressureOrgs) {
+    entries.push({
+      org_key: p.org_key,
+      display_name: p.display_name,
+      short_name: p.short_name,
+      country: p.country,
+      ...(p.city ? { city: p.city } : {}),
+      kind: p.kind,
+      side: 'pressure',
+      ...(p.spokesperson_stakeholder_id
+        ? { spokesperson_stakeholder_id: p.spokesperson_stakeholder_id }
+        : {}),
+    });
+  }
   for (const c of competitors) {
     entries.push({
       org_key: c.org_key,

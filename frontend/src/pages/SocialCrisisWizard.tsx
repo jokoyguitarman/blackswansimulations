@@ -11,14 +11,84 @@ import {
   migrateLegacyRoster,
   DEFAULT_TEAM_ROSTER,
   ORG_KIND_LABELS,
+  PRESET_TEAM_NAMES,
+  PressureOrgCard,
+  newPressureOrgDraft,
+  validatePressureOrg,
   type RosterEntry,
   type PresetTeamCard,
   type OrganisationDraft,
   type CompetitorDraft,
   type OrgKind,
+  type PressureOrgDraft,
+  type PressureKind,
+  type PressureRegister,
 } from '../components/Scenario/OrganisationRosterBuilder';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
+
+/** Crisis footprint proposals (pressure plan §11) — nothing persisted server-side. */
+interface FootprintWire {
+  countries: Array<{ name: string; role: string; reason: string }>;
+  implied_organisations: Array<{
+    display_name: string;
+    kind: OrgKind;
+    country: string;
+    city?: string;
+    reason: string;
+    suggested_roster: string[];
+  }>;
+  pressure_organisations: Array<{
+    display_name: string;
+    kind: PressureKind;
+    country: string;
+    city?: string;
+    register: PressureRegister;
+    reason: string;
+    wants?: string;
+  }>;
+  labour_signal: boolean;
+  product_safety_signal: boolean;
+}
+
+/** Map a suggested roster (names) onto presets / custom teams; always ≥ 2 teams, one public voice. */
+function rosterFromSuggestion(names: string[], catalog: PresetTeamCard[]): RosterEntry[] {
+  const out: RosterEntry[] = [];
+  const seen = new Set<string>();
+  for (const raw of names) {
+    const name = raw.trim().slice(0, 60);
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    const preset = PRESET_TEAM_NAMES.find((p) => p.toLowerCase() === name.toLowerCase());
+    const card = catalog.find((c) => c.team_name === (preset || name));
+    out.push({
+      team_name: preset || name,
+      description: preset ? '' : `${name} team of this office.`,
+      is_custom: !preset,
+      is_public_voice: false,
+    });
+    if (card?.default_public_voice) out[out.length - 1].is_public_voice = true;
+    if (out.length >= 4) break;
+  }
+  if (!out.some((t) => t.team_name === 'Communications')) {
+    out.unshift({
+      team_name: 'Communications',
+      description: '',
+      is_custom: false,
+      is_public_voice: false,
+    });
+  }
+  if (out.length < 2) {
+    out.push({
+      team_name: 'Operations',
+      description: 'Runs the site day to day; first to know what is happening on the ground.',
+      is_custom: true,
+      is_public_voice: false,
+    });
+  }
+  if (!out.some((t) => t.is_public_voice)) out[0].is_public_voice = true;
+  return out.slice(0, 6);
+}
 
 interface NPCPersona {
   handle: string;
@@ -343,6 +413,7 @@ export const SocialCrisisWizard = () => {
         facebook_handle: o.facebook_handle.trim() || undefined,
         x_handle: o.x_handle.trim() || undefined,
         is_primary: false,
+        operation: o.operation === 'ai' ? ('ai' as const) : ('players' as const),
         team_roster: o.team_roster.map((t) => ({
           team_name: t.team_name.trim(),
           description: t.description.trim() || undefined,
@@ -372,6 +443,124 @@ export const SocialCrisisWizard = () => {
         x_handle: c.x_handle || undefined,
       })),
     [competitorEntries],
+  );
+
+  /* Pressure organisations (pressure plan §5.1 / §11) + crisis footprint proposals */
+  const [pressureOrgs, setPressureOrgs] = useState<PressureOrgDraft[]>([]);
+  const [footprint, setFootprint] = useState<FootprintWire | null>(null);
+  const [footprintLoading, setFootprintLoading] = useState(false);
+  const [footprintNotice, setFootprintNotice] = useState<string | null>(null);
+  const footprintRanFor = useRef<string>('');
+
+  const pressureOrganisationsPayload = useMemo(
+    () =>
+      pressureOrgs
+        .filter((p) => p.display_name.trim().length >= 2)
+        .map((p) => ({
+          org_key: p.org_key,
+          display_name: p.display_name.trim(),
+          kind: p.kind,
+          country: p.country,
+          city: p.city.trim() || undefined,
+          register: p.register,
+          wants: p.wants.trim() || undefined,
+          facebook_handle: p.facebook_handle.trim() || undefined,
+          x_handle: p.x_handle.trim() || undefined,
+          spokesperson_stakeholder_id: p.spokesperson_stakeholder_id,
+        })),
+    [pressureOrgs],
+  );
+
+  /**
+   * Crisis footprint (pressure plan §11): one cheap call that proposes implied offices,
+   * countries and pressure groups from the description. Proposals are pre-ticked: implied
+   * offices become AI-operated organisations, pressure groups become pressure-org drafts.
+   */
+  const detectFootprint = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      const text = `${crisisDescription} ${context}`.trim();
+      if (text.replace(/\W/g, '').length < 20) {
+        if (!opts.silent) setFootprintNotice('Describe the crisis first (a sentence or two).');
+        return;
+      }
+      setFootprintLoading(true);
+      setFootprintNotice(null);
+      try {
+        const headers = await authHeaders();
+        const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/footprint'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            crisis_type: crisisDescription,
+            context,
+            organisations: organisationsPayload,
+            competitors: competitorsPayload,
+          }),
+        });
+        const json = (await res.json()) as { data?: FootprintWire; error?: string };
+        if (!res.ok || !json.data) throw new Error(json.error || 'Footprint inference failed');
+        const fp = json.data;
+        setFootprint(fp);
+        footprintRanFor.current = text;
+        const existingOrgNames = new Set(
+          [orgName, ...extraOrganisations.map((o) => o.display_name)].map((n) =>
+            n.trim().toLowerCase(),
+          ),
+        );
+        const addedOrgs: OrganisationDraft[] = fp.implied_organisations
+          .filter((o) => !existingOrgNames.has(o.display_name.toLowerCase()))
+          .map((o) => ({
+            ...newOrganisationDraft(o.country),
+            display_name: o.display_name,
+            city: o.city || '',
+            kind: (['company', 'office', 'agency', 'ngo', 'other'] as const).includes(o.kind)
+              ? o.kind
+              : 'office',
+            operation: 'ai' as const,
+            proposed_reason: o.reason,
+            team_roster: rosterFromSuggestion(o.suggested_roster, presetCatalog),
+          }));
+        const existingPressure = new Set(
+          pressureOrgs.map((p) => p.display_name.trim().toLowerCase()),
+        );
+        const addedPressure: PressureOrgDraft[] = fp.pressure_organisations
+          .filter((p) => !existingPressure.has(p.display_name.toLowerCase()))
+          .map((p) => ({
+            ...newPressureOrgDraft(p.country, p.kind),
+            display_name: p.display_name,
+            city: p.city || '',
+            register: p.register,
+            wants: p.wants || '',
+            proposed_reason: p.reason,
+          }));
+        if (addedOrgs.length > 0)
+          setExtraOrganisations((prev) => [...prev, ...addedOrgs].slice(0, 5));
+        if (addedPressure.length > 0)
+          setPressureOrgs((prev) => [...prev, ...addedPressure].slice(0, 6));
+        const countries = fp.countries
+          .map((c) => `${c.name} (${c.role.replace('_', ' ')})`)
+          .join(', ');
+        setFootprintNotice(
+          `${countries || 'No extra countries'}. Added ${addedOrgs.length} AI-operated organisation(s) and ${addedPressure.length} pressure organisation(s) — untick or remove anything that does not belong.`,
+        );
+      } catch (err) {
+        setFootprintNotice(
+          err instanceof Error ? err.message : 'Could not infer the crisis footprint',
+        );
+      } finally {
+        setFootprintLoading(false);
+      }
+    },
+    [
+      crisisDescription,
+      context,
+      organisationsPayload,
+      competitorsPayload,
+      orgName,
+      extraOrganisations,
+      pressureOrgs,
+      presetCatalog,
+    ],
   );
 
   /* Stakeholder characters, registry and cast-generated SOP steps (contract §3 / §5.1) */
@@ -467,6 +656,8 @@ export const SocialCrisisWizard = () => {
       primary_kind: primaryKind,
       primary_short_name: primaryShortName,
       extra_organisations: extraOrganisations,
+      pressure_organisations: pressureOrgs,
+      footprint,
       stakeholders,
       stakeholder_injects: stakeholderInjects,
       org_registry: orgRegistry,
@@ -500,6 +691,8 @@ export const SocialCrisisWizard = () => {
       primaryKind,
       primaryShortName,
       extraOrganisations,
+      pressureOrgs,
+      footprint,
       stakeholders,
       stakeholderInjects,
       orgRegistry,
@@ -618,6 +811,13 @@ export const SocialCrisisWizard = () => {
           }
         }
         if (extras.length > 0) setExtraOrganisations(extras);
+        if (Array.isArray(input.pressure_organisations))
+          setPressureOrgs(input.pressure_organisations as PressureOrgDraft[]);
+        if (input.footprint && typeof input.footprint === 'object') {
+          setFootprint(input.footprint as FootprintWire);
+          footprintRanFor.current =
+            `${String(input.crisis_description || '')} ${String(input.context || '')}`.trim();
+        }
         if (Array.isArray(input.competitor_entries))
           setCompetitorEntries(
             (
@@ -837,6 +1037,7 @@ export const SocialCrisisWizard = () => {
           blueprint: blueprint ?? undefined,
           organisations: organisationsPayload,
           competitors: competitorsPayload,
+          pressure_organisations: pressureOrganisationsPayload,
         }),
       });
       if (!res.ok) {
@@ -900,6 +1101,7 @@ export const SocialCrisisWizard = () => {
       personas: NPCPersona[];
       teamCharters: TeamCharterWire[];
       stakeholders: StakeholderWire[];
+      pressureOrganisations: PressureOrgDraft[];
     } | null> => {
       if (!crisisDescription) return null;
       const personasIn = personasArg ?? personas;
@@ -918,6 +1120,7 @@ export const SocialCrisisWizard = () => {
         personas: NPCPersona[];
         teamCharters: TeamCharterWire[];
         stakeholders: StakeholderWire[];
+        pressureOrganisations: PressureOrgDraft[];
       } | null = null;
 
       try {
@@ -942,6 +1145,7 @@ export const SocialCrisisWizard = () => {
             })),
             organisations: organisationsPayload,
             competitors: competitorsPayload,
+            pressure_organisations: pressureOrganisationsPayload,
           }),
         });
 
@@ -991,12 +1195,32 @@ export const SocialCrisisWizard = () => {
                     ...personasIn,
                     ...twins.filter((t) => !known.has(t.handle)),
                   ];
+                  const pressureWire = Array.isArray(msg.pressure_organisations)
+                    ? (msg.pressure_organisations as Array<{
+                        org_key: string;
+                        display_name: string;
+                        spokesperson_stakeholder_id?: string;
+                      }>)
+                    : [];
+                  const mergedPressure = pressureOrgs.map((p) => {
+                    const m = pressureWire.find(
+                      (w) => w.display_name.toLowerCase() === p.display_name.trim().toLowerCase(),
+                    );
+                    return m
+                      ? {
+                          ...p,
+                          org_key: m.org_key,
+                          spokesperson_stakeholder_id: m.spokesperson_stakeholder_id,
+                        }
+                      : p;
+                  });
                   result = {
                     injects,
                     teamStorylines: teamMap,
                     personas: mergedPersonas,
                     teamCharters: charters,
                     stakeholders: stks,
+                    pressureOrganisations: mergedPressure,
                   };
                   setStorylineInjects(injects);
                   setTeamStorylines(teamMap);
@@ -1009,6 +1233,8 @@ export const SocialCrisisWizard = () => {
                   if (Array.isArray(msg.sop_steps)) setSopSteps(msg.sop_steps as SopStepWire[]);
                   if (msg.decision_context && typeof msg.decision_context === 'object')
                     setDecisionContext(msg.decision_context as Record<string, unknown>);
+                  // Pressure orgs come back normalised with their spokesperson ids.
+                  if (pressureWire.length > 0) setPressureOrgs(mergedPressure);
                   if (stks.length > 0)
                     setStep3Progress((prev) => [
                       ...prev,
@@ -1115,6 +1341,7 @@ export const SocialCrisisWizard = () => {
             blueprint: blueprint ?? undefined,
             organisations: organisationsPayload,
             competitors: competitorsPayload,
+            pressure_organisations: pressureOrganisationsPayload,
             team_charters: chartersIn.length > 0 ? chartersIn : undefined,
             stakeholders: stakeholdersIn.length > 0 ? stakeholdersIn : undefined,
           }),
@@ -1188,75 +1415,124 @@ export const SocialCrisisWizard = () => {
     ],
   );
 
-  const generateOrgPage = useCallback(async (): Promise<boolean> => {
-    if (!crisisDescription) return false;
-    try {
-      const headers = await authHeaders();
-      const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-org-page'), {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          crisis_description: crisisDescription,
-          country,
-          org_name: orgName || undefined,
-          logo_url: brandLogoUrl || undefined,
-          // Legacy fields kept for the single-org server path; organisations[] drives the
-          // multi-organisation path (every protagonist page in its own country).
-          allies: [],
-          competitors: competitorEntries.map((c) => ({
-            name: c.name,
-            facebook_handle: c.facebook_handle,
-            x_handle: c.x_handle,
-          })),
-          organisations: organisationsPayload,
-          competitors_with_country: competitorsPayload,
-          // If no competitors are named, the War Room invents one hostile rival.
-          auto_antagonist: autoAntagonist,
-        }),
-      });
+  const generateOrgPage = useCallback(
+    async (
+      stakeholdersArg?: StakeholderWire[],
+      factSheetArg?: FactSheet | null,
+      pressureArg?: PressureOrgDraft[],
+    ): Promise<boolean> => {
+      if (!crisisDescription) return false;
+      const stakeholdersIn = stakeholdersArg ?? stakeholders;
+      const factSheetIn = factSheetArg ?? factSheet;
+      const pressureIn = pressureArg ?? pressureOrgs;
+      try {
+        const headers = await authHeaders();
+        const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-org-page'), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            crisis_description: crisisDescription,
+            country,
+            org_name: orgName || undefined,
+            logo_url: brandLogoUrl || undefined,
+            // Legacy fields kept for the single-org server path; organisations[] drives the
+            // multi-organisation path (every protagonist page in its own country).
+            allies: [],
+            competitors: competitorEntries.map((c) => ({
+              name: c.name,
+              facebook_handle: c.facebook_handle,
+              x_handle: c.x_handle,
+            })),
+            organisations: organisationsPayload,
+            competitors_with_country: competitorsPayload,
+            pressure_organisations: pressureIn
+              .filter((p) => p.display_name.trim().length >= 2)
+              .map((p) => ({
+                org_key: p.org_key,
+                display_name: p.display_name.trim(),
+                kind: p.kind,
+                country: p.country,
+                city: p.city.trim() || undefined,
+                register: p.register,
+                wants: p.wants.trim() || undefined,
+                facebook_handle: p.facebook_handle.trim() || undefined,
+                x_handle: p.x_handle.trim() || undefined,
+                spokesperson_stakeholder_id: p.spokesperson_stakeholder_id,
+              })),
+            stakeholders: stakeholdersIn.length > 0 ? stakeholdersIn : undefined,
+            fact_sheet: factSheetIn ?? undefined,
+            crisis_type: crisisDescription,
+            // If no competitors are named, the War Room invents one hostile rival.
+            auto_antagonist: autoAntagonist,
+          }),
+        });
 
-      if (res.ok && res.body) {
-        const reader = res.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
+        if (res.ok && res.body) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          const lines = buffer.split('\n');
-          buffer = lines.pop() || '';
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
 
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const msg = JSON.parse(line);
-              if (msg.type === 'complete' && msg.org_page) {
-                setOrgPage(msg.org_page);
-                if (Array.isArray(msg.orgs)) setOrgRegistry(msg.orgs as OrgRegistryWire[]);
+            for (const line of lines) {
+              if (!line.trim()) continue;
+              try {
+                const msg = JSON.parse(line);
+                if (msg.type === 'complete' && msg.org_page) {
+                  setOrgPage(msg.org_page);
+                  if (Array.isArray(msg.orgs)) setOrgRegistry(msg.orgs as OrgRegistryWire[]);
+                  // Pressure-page statements ride with the stakeholder injects; spokesperson
+                  // twins join the crowd (contract v3.2 §4.4).
+                  if (Array.isArray(msg.pressure_injects) && msg.pressure_injects.length > 0) {
+                    const fresh = msg.pressure_injects as SocialInject[];
+                    setStakeholderInjects((prev) => [
+                      ...prev.filter(
+                        (i) =>
+                          !(i.delivery_config as Record<string, unknown> | undefined)?.page_org_key,
+                      ),
+                      ...fresh,
+                    ]);
+                  }
+                  if (Array.isArray(msg.persona_twins) && msg.persona_twins.length > 0) {
+                    const twins = msg.persona_twins as NPCPersona[];
+                    setPersonas((prev) => {
+                      const known = new Set(prev.map((p) => p.handle));
+                      return [...prev, ...twins.filter((t) => !known.has(t.handle))];
+                    });
+                  }
+                }
+              } catch {
+                /* skip */
               }
-            } catch {
-              /* skip */
             }
           }
+          return true;
         }
-        return true;
+        return false;
+      } catch {
+        /* non-critical -- org page is optional */
+        return false;
       }
-      return false;
-    } catch {
-      /* non-critical -- org page is optional */
-      return false;
-    }
-  }, [
-    crisisDescription,
-    country,
-    orgName,
-    brandLogoUrl,
-    competitorEntries,
-    autoAntagonist,
-    organisationsPayload,
-    competitorsPayload,
-  ]);
+    },
+    [
+      crisisDescription,
+      country,
+      orgName,
+      brandLogoUrl,
+      competitorEntries,
+      autoAntagonist,
+      organisationsPayload,
+      competitorsPayload,
+      stakeholders,
+      factSheet,
+      pressureOrgs,
+    ],
+  );
 
   /**
    * Combined Build step: chains Characters -> Storyline -> Convergence -> Org Pages
@@ -1295,7 +1571,7 @@ export const SocialCrisisWizard = () => {
     }
 
     setBuildStage('pages');
-    await generateOrgPage();
+    await generateOrgPage(story.stakeholders, npc.factSheet, story.pressureOrganisations);
 
     setBuildStage('done');
     await saveDraftState(7);
@@ -1336,6 +1612,7 @@ export const SocialCrisisWizard = () => {
           // Multi-organisation (contract §3 / §5) — the server derives orgs[]/countries[].
           organisations: organisationsPayload,
           competitors: competitorsPayload,
+          pressure_organisations: pressureOrganisationsPayload,
           stakeholders: stakeholders.length > 0 ? stakeholders : undefined,
           stakeholder_injects: stakeholderInjects.length > 0 ? stakeholderInjects : undefined,
           sop_steps: sopSteps.length > 0 ? sopSteps : undefined,
@@ -1444,6 +1721,15 @@ export const SocialCrisisWizard = () => {
   };
 
   const goNext = async () => {
+    // Footprint runs once automatically when leaving Setup (pressure plan §11): the trainer
+    // sees the proposals and continues with a second click.
+    if (step === 1 && !footprintLoading) {
+      const text = `${crisisDescription} ${context}`.trim();
+      if (text.replace(/\W/g, '').length >= 20 && footprintRanFor.current !== text) {
+        await detectFootprint({ silent: true });
+        if (footprintRanFor.current === text) return; // stay on Setup to review proposals
+      }
+    }
     // With the feature on and a document uploaded, route through Blueprint Review.
     if (step === 1 && DOC_BLUEPRINT_ENABLED && uploadedDocText.trim()) {
       await saveDraftState(3);
@@ -1795,6 +2081,84 @@ export const SocialCrisisWizard = () => {
         </button>
         {rosterError && (
           <div className="mt-2 text-[10px] terminal-text text-warning">{rosterError}</div>
+        )}
+      </div>
+
+      {/* Crisis footprint (pressure plan §11): implied offices, countries, pressure groups */}
+      <div className="mb-4 p-3 border border-accent/30 rounded bg-surface-2">
+        <div className="flex items-center justify-between gap-3 mb-1">
+          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider block">
+            Crisis footprint
+          </label>
+          <button
+            type="button"
+            onClick={() => void detectFootprint()}
+            disabled={footprintLoading}
+            className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded disabled:opacity-40"
+          >
+            {footprintLoading
+              ? 'Reading your description…'
+              : footprint
+                ? 'Re-detect from description'
+                : 'Detect countries, offices & pressure groups'}
+          </button>
+        </div>
+        <p className="text-[10px] terminal-text text-muted">
+          The War Room reads your description for the countries involved, offices the story implies
+          (a factory&apos;s operating company, a regional hub) and the bodies that will apply
+          pressure — regulators, unions, NGOs, community groups. Proposals are added pre-ticked;
+          remove what does not belong. It also runs once automatically when you continue.
+        </p>
+        {footprintNotice && (
+          <div className="mt-2 text-[10px] terminal-text text-accent">{footprintNotice}</div>
+        )}
+      </div>
+
+      {/* Pressure organisations (AI-run pages with a spokesperson) */}
+      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
+        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
+          Pressure organisations (optional)
+        </label>
+        <p className="text-[10px] terminal-text text-muted mb-3">
+          Regulators, unions, NGOs, community groups and political actors. Each gets an AI-run page
+          in its own register and a contactable spokesperson your teams can engage; engage them well
+          and they stand down, ignore them and they escalate.
+        </p>
+        {pressureOrgs.length > 0 && (
+          <div className="space-y-2 mb-2">
+            {pressureOrgs.map((p) => (
+              <PressureOrgCard
+                key={p.id}
+                org={p}
+                onChange={(next) =>
+                  setPressureOrgs((prev) => prev.map((x) => (x.id === p.id ? next : x)))
+                }
+                onRemove={() => setPressureOrgs((prev) => prev.filter((x) => x.id !== p.id))}
+              />
+            ))}
+          </div>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {(['regulator', 'union', 'ngo', 'community_group', 'political'] as PressureKind[]).map(
+            (k) => (
+              <button
+                key={k}
+                type="button"
+                disabled={pressureOrgs.length >= 6}
+                onClick={() =>
+                  setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, k)])
+                }
+                className="text-[10px] terminal-text text-warning hover:opacity-80 border border-warning/30 px-2 py-1 rounded disabled:opacity-40"
+              >
+                + {k === 'ngo' ? 'NGO' : k.replace('_', ' ')}
+              </button>
+            ),
+          )}
+        </div>
+        {pressureOrgs.map(validatePressureOrg).find(Boolean) && (
+          <div className="mt-2 text-[10px] terminal-text text-warning">
+            {pressureOrgs.map(validatePressureOrg).find(Boolean)}
+          </div>
         )}
       </div>
 
@@ -2308,6 +2672,45 @@ export const SocialCrisisWizard = () => {
               </div>
             </div>
           </div>
+
+          {(pressureOrgs.length > 0 || extraOrganisations.some((o) => o.operation === 'ai')) && (
+            <div className="border border-warning/30 rounded p-4 mb-4">
+              <h3 className="text-xs terminal-text text-muted uppercase mb-2">
+                Pressure &amp; AI-operated organisations
+              </h3>
+              <div className="space-y-1.5">
+                {extraOrganisations
+                  .filter((o) => o.operation === 'ai')
+                  .map((o) => (
+                    <div key={o.id} className="text-[10px] terminal-text text-muted">
+                      <span className="text-ink font-bold">{o.display_name}</span> · {o.country} ·{' '}
+                      <span className="text-accent">operated by AI</span> — its page follows
+                      headquarters&apos; line; its site leader, HR counterpart and staff answer your
+                      teams as characters.
+                    </div>
+                  ))}
+                {pressureOrgs.map((p) => {
+                  const sp = p.spokesperson_stakeholder_id
+                    ? stakeholders.find((s) => s.id === p.spokesperson_stakeholder_id)
+                    : undefined;
+                  const statements = stakeholderInjects.filter(
+                    (i) =>
+                      (i.delivery_config as Record<string, unknown> | undefined)?.page_org_key ===
+                      p.org_key,
+                  ).length;
+                  return (
+                    <div key={p.id} className="text-[10px] terminal-text text-muted">
+                      <span className="text-ink font-bold">{p.display_name}</span> · {p.country} ·{' '}
+                      <span className="text-warning">{p.kind.replace('_', ' ')}</span> ·{' '}
+                      {p.register} register
+                      {sp ? ` · spokesperson ${sp.name} (${sp.title})` : ''}
+                      {statements > 0 ? ` · ${statements} scheduled statements` : ''}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {teamCharters.length > 0 &&
             (() => {

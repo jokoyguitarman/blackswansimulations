@@ -31,6 +31,10 @@ export interface OrganisationDraft {
   facebook_handle: string;
   x_handle: string;
   team_roster: RosterEntry[];
+  /** 'ai' = nobody plays this office; page + carriers are simulated (pressure plan §12). */
+  operation?: 'players' | 'ai';
+  /** Set when the footprint inference proposed this organisation. */
+  proposed_reason?: string;
 }
 
 export interface CompetitorDraft {
@@ -38,6 +42,167 @@ export interface CompetitorDraft {
   country: string;
   facebook_handle?: string;
   x_handle?: string;
+}
+
+/* ─── Pressure organisations (pressure plan §5.1 / §11) ──────────────────── */
+
+export type PressureKind = 'union' | 'regulator' | 'ngo' | 'community_group' | 'political';
+export type PressureRegister = 'statutory' | 'advocacy' | 'grassroots' | 'political';
+
+export interface PressureOrgDraft {
+  id: string;
+  org_key?: string;
+  display_name: string;
+  kind: PressureKind;
+  country: string;
+  city: string;
+  register: PressureRegister;
+  wants: string;
+  facebook_handle: string;
+  x_handle: string;
+  spokesperson_stakeholder_id?: string;
+  proposed_reason?: string;
+}
+
+export const PRESSURE_KIND_LABELS: Record<PressureKind, string> = {
+  regulator: 'Regulator / ministry',
+  union: 'Union / labour body',
+  ngo: 'NGO / advocacy group',
+  community_group: 'Community group',
+  political: 'Political actor',
+};
+
+export const PRESSURE_REGISTER_LABELS: Record<PressureRegister, string> = {
+  statutory: 'Statutory (formal, procedural)',
+  advocacy: 'Advocacy (members / victims first)',
+  grassroots: 'Grassroots (local, organising)',
+  political: 'Political (accountability, inquiries)',
+};
+
+export function defaultRegisterFor(kind: PressureKind): PressureRegister {
+  return kind === 'regulator'
+    ? 'statutory'
+    : kind === 'community_group'
+      ? 'grassroots'
+      : kind === 'political'
+        ? 'political'
+        : 'advocacy';
+}
+
+export function newPressureOrgDraft(
+  country: string,
+  kind: PressureKind = 'regulator',
+): PressureOrgDraft {
+  return {
+    id: `prs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+    display_name: '',
+    kind,
+    country,
+    city: '',
+    register: defaultRegisterFor(kind),
+    wants: '',
+    facebook_handle: '',
+    x_handle: '',
+  };
+}
+
+export function PressureOrgCard({
+  org,
+  onChange,
+  onRemove,
+}: {
+  org: PressureOrgDraft;
+  onChange: (next: PressureOrgDraft) => void;
+  onRemove: () => void;
+}) {
+  const field =
+    'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
+  return (
+    <div className="border border-warning/30 rounded p-3 bg-surface">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[10px] terminal-text text-warning uppercase tracking-wider">
+          Pressure organisation · {PRESSURE_KIND_LABELS[org.kind]}
+          {org.spokesperson_stakeholder_id && (
+            <span className="ml-2 text-muted normal-case">spokesperson linked</span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onRemove}
+          className="text-[10px] terminal-text text-danger hover:opacity-80 border border-danger/30 px-2 py-0.5 rounded"
+        >
+          Remove
+        </button>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
+        <input
+          value={org.display_name}
+          onChange={(e) => onChange({ ...org, display_name: e.target.value })}
+          placeholder="Full official name (e.g. Ministry of Human Resources)"
+          className={`${field} sm:col-span-2`}
+        />
+        <select
+          value={org.kind}
+          onChange={(e) => {
+            const kind = e.target.value as PressureKind;
+            onChange({ ...org, kind, register: defaultRegisterFor(kind) });
+          }}
+          className={field}
+        >
+          {(Object.keys(PRESSURE_KIND_LABELS) as PressureKind[]).map((k) => (
+            <option key={k} value={k}>
+              {PRESSURE_KIND_LABELS[k]}
+            </option>
+          ))}
+        </select>
+        <select
+          value={org.country}
+          onChange={(e) => onChange({ ...org, country: e.target.value })}
+          className={field}
+        >
+          {COUNTRIES.map((c) => (
+            <option key={c.name} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+        <input
+          value={org.city}
+          onChange={(e) => onChange({ ...org, city: e.target.value })}
+          placeholder="City (optional)"
+          className={field}
+        />
+        <select
+          value={org.register}
+          onChange={(e) => onChange({ ...org, register: e.target.value as PressureRegister })}
+          className={field}
+        >
+          {(Object.keys(PRESSURE_REGISTER_LABELS) as PressureRegister[]).map((r) => (
+            <option key={r} value={r}>
+              {PRESSURE_REGISTER_LABELS[r]}
+            </option>
+          ))}
+        </select>
+      </div>
+      <input
+        value={org.wants}
+        onChange={(e) => onChange({ ...org, wants: e.target.value })}
+        placeholder="What they demand (one sentence, optional — the War Room infers it otherwise)"
+        className={`${field} mb-1`}
+      />
+      {org.proposed_reason && (
+        <div className="text-[10px] terminal-text text-accent">
+          Suggested from your description: {org.proposed_reason}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function validatePressureOrg(org: PressureOrgDraft): string | null {
+  if (org.display_name.trim().length < 2) return 'Pressure organisation needs a name';
+  if (!isKnownCountry(org.country)) return `Unknown country "${org.country}"`;
+  return null;
 }
 
 export const PRESET_TEAM_NAMES = [
@@ -449,6 +614,24 @@ export function OrganisationCard({
           className={field}
         />
       </div>
+      <label className="flex items-start gap-2 mb-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={org.operation === 'ai'}
+          onChange={(e) => onChange({ ...org, operation: e.target.checked ? 'ai' : 'players' })}
+          className="mt-0.5"
+        />
+        <span className="text-[10px] terminal-text text-muted">
+          <span className="text-ink">Operated by AI</span> — nobody will play this organisation. Its
+          page posts a local line in step with headquarters, and its site leader, HR counterpart and
+          staff answer your teams as characters. Teams below still shape who those characters are.
+        </span>
+      </label>
+      {org.proposed_reason && (
+        <div className="text-[10px] terminal-text text-accent mb-2">
+          Suggested from your description: {org.proposed_reason}
+        </div>
+      )}
       <div className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1">
         Teams at this organisation
       </div>

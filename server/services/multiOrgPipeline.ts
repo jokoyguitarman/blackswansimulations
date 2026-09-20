@@ -22,11 +22,20 @@ import {
   GENERATOR_PRESET_FUNCTIONS,
   type OrganisationInput,
   type CompetitorInput,
+  type PressureOrgInput,
   type NormalisedOrg,
   type NormalisedCompetitor,
+  type NormalisedPressureOrg,
   type OrgTeamCharter,
   type OrganisationsValidation,
 } from './scenarioOrgModel.js';
+import { inferCrisisFootprint, type CrisisFootprint } from './crisisFootprintService.js';
+import {
+  alignedPostureFor,
+  buildPressureStatements,
+  ensureSpokespersons,
+  generatePressureOrgPages,
+} from './pressureOrgGenerationService.js';
 import {
   generateFactSheetAndCommunities,
   generatePersonasForCountry,
@@ -88,9 +97,28 @@ export const organisationInputSchema = z.object({
       }),
     )
     .max(6),
+  operation: z.enum(['players', 'ai']).optional(),
 });
 
 export const organisationsSchema = z.array(organisationInputSchema).min(1).max(6);
+
+export const pressureOrganisationsSchema = z
+  .array(
+    z.object({
+      org_key: z.string().optional(),
+      display_name: z.string().min(1).max(120),
+      kind: z.enum(['union', 'regulator', 'ngo', 'community_group', 'political']),
+      country: z.string().min(1).max(80),
+      city: z.string().max(80).optional(),
+      register: z.enum(['statutory', 'advocacy', 'grassroots', 'political']).optional(),
+      wants: z.string().max(300).optional(),
+      facebook_handle: z.string().max(60).optional(),
+      x_handle: z.string().max(60).optional(),
+      spokesperson_stakeholder_id: z.string().max(80).optional(),
+      targets_org_keys: z.array(z.string()).max(6).optional(),
+    }),
+  )
+  .max(6);
 
 export const competitorsSchema = z.array(
   z.object({
@@ -123,9 +151,10 @@ export type TeamCharterWire = z.infer<typeof teamCharterWireSchema>;
 export function resolveOrganisations(
   organisations: OrganisationInput[] | undefined,
   competitors: CompetitorInput[] | undefined,
+  pressureOrganisations?: PressureOrgInput[] | undefined,
 ): OrganisationsValidation | null {
   if (!organisations || organisations.length === 0) return null;
-  return validateOrganisations(organisations, competitors || []);
+  return validateOrganisations(organisations, competitors || [], pressureOrganisations || []);
 }
 
 export function crisisContextFrom(body: {
@@ -182,41 +211,98 @@ export interface NpcsPipelineResult {
   communities: string[];
   countries: CountryEntry[];
   per_country_counts: Record<string, number>;
+  /** Pressure plan §11: proposals for the wizard (nothing persisted). */
+  footprint: CrisisFootprint;
 }
+
+/** Spillover crowd size for a footprint country that hosts no protagonist organisation. */
+const SPILLOVER_PERSONAS = 40;
+const MAX_SPILLOVER_COUNTRIES = 2;
 
 export async function runNpcsPipeline(
   orgsResult: Extract<OrganisationsValidation, { ok: true }>,
   crisis: CrisisContext,
+  opts: { footprint?: CrisisFootprint | null } = {},
 ): Promise<NpcsPipelineResult> {
-  const { orgs, competitors } = orgsResult;
-  const { factSheet, communities } = await generateFactSheetAndCommunities(crisis, orgs);
+  const { orgs, competitors, pressureOrgs } = orgsResult;
+  const crisisText = `${crisis.crisisType}. ${crisis.context}`;
+  const [{ factSheet, communities }, footprint] = await Promise.all([
+    generateFactSheetAndCommunities(crisis, orgs),
+    opts.footprint
+      ? Promise.resolve(opts.footprint)
+      : inferCrisisFootprint(crisisText, orgs).catch((err) => {
+          logger.warn({ err }, 'crisis_footprint_failed');
+          return null;
+        }),
+  ]);
   const taken = newTakenIdentifiers();
   const target = personasPerCountryTarget();
   const countries = countriesOf(orgs);
 
-  const perCountry = await Promise.all(
-    countries.map((country) =>
-      generatePersonasForCountry(
-        crisis,
-        country,
-        orgs.filter((o) => o.country === country),
-        factSheet,
-        taken,
-        target,
+  // Footprint countries without a protagonist org (incident / regulatory) still get a crowd —
+  // emitted UNSCOPED (no persona.country) so the players present see it as regional spillover.
+  const spilloverCountries = (footprint?.countries || [])
+    .filter(
+      (c) =>
+        (c.role === 'incident_location' || c.role === 'regulatory') &&
+        !countries.includes(c.name) &&
+        !pressureOrgs.some((p) => p.country === c.name && countries.includes(p.country)),
+    )
+    .map((c) => c.name)
+    .slice(0, MAX_SPILLOVER_COUNTRIES);
+
+  const [perCountry, spillover] = await Promise.all([
+    Promise.all(
+      countries.map((country) =>
+        generatePersonasForCountry(
+          crisis,
+          country,
+          orgs.filter((o) => o.country === country),
+          factSheet,
+          taken,
+          target,
+        ),
       ),
     ),
-  );
-  const personas = perCountry.flat();
+    Promise.all(
+      spilloverCountries.map((country) =>
+        generatePersonasForCountry(crisis, country, [], factSheet, taken, SPILLOVER_PERSONAS).then(
+          (list) =>
+            list.map((p) => {
+              const copy = { ...p } as NPCPersona & { country?: string };
+              delete copy.country; // unscoped: visible in every country's feed
+              copy.backstory = `${copy.backstory || ''} (Based in ${country}.)`.trim();
+              return copy as NPCPersona;
+            }),
+        ),
+      ),
+    ),
+  ]);
+  const personas = [...perCountry.flat(), ...spillover.flat()];
   const per_country_counts: Record<string, number> = {};
   countries.forEach((c, i) => (per_country_counts[c] = perCountry[i].length));
+  spilloverCountries.forEach(
+    (c, i) => (per_country_counts[`${c} (spillover)`] = spillover[i].length),
+  );
 
-  const registry = buildOrgRegistry(orgs, competitors);
+  const registry = buildOrgRegistry(orgs, competitors, null, pressureOrgs);
   return {
     personas,
     factSheet,
     communities,
     countries: buildCountries(registry),
     per_country_counts,
+    footprint: footprint ?? {
+      countries: countries.map((name) => ({
+        name,
+        role: 'decision_centre' as const,
+        reason: 'Organisation entered by the trainer',
+      })),
+      implied_organisations: [],
+      pressure_organisations: [],
+      labour_signal: detectLabourSignal(crisisText),
+      product_safety_signal: detectProductSafetySignal(crisisText),
+    },
   };
 }
 
@@ -237,6 +323,8 @@ export interface StorylinePipelineResult {
   sop_steps: SOPStep[];
   /** Private planner hints (persisted as initial_state.decision_context). */
   decision_context: DecisionContext;
+  /** Pressure organisations with their spokesperson ids filled (round-trip to org-page + compile). */
+  pressure_organisations: NormalisedPressureOrg[];
 }
 
 export async function runStorylinePipeline(
@@ -247,7 +335,7 @@ export async function runStorylinePipeline(
   blueprint: ScenarioBlueprint | null,
   write: StreamWriter,
 ): Promise<StorylinePipelineResult> {
-  const { orgs, competitors, multiOrg } = orgsResult;
+  const { orgs, competitors, pressureOrgs, multiOrg } = orgsResult;
   const taken: TakenIdentifiers = newTakenIdentifiers();
   for (const p of personas) taken.handles.add(p.handle);
 
@@ -349,6 +437,25 @@ export async function runStorylinePipeline(
       detail: `${r.added.length} carriers added (${r.gaps.flatMap((g) => g.missing).join(', ') || 'complete'})`,
     });
   }
+
+  // 3c. Pressure organisations: one spokesperson each (reuse a matching contact or generate).
+  if (pressureOrgs.length > 0) {
+    write({
+      type: 'progress',
+      message: `Anchoring ${pressureOrgs.length} pressure organisation(s) to spokespersons...`,
+    });
+    const spokespersons = await ensureSpokespersons(
+      pressureOrgs,
+      stakeholders,
+      orgs,
+      allCharters,
+      crisis,
+      taken,
+      multiOrg,
+    );
+    stakeholders.push(...spokespersons);
+  }
+
   const hrFunction =
     ownerFunctionFor('hr_counterpart', allCharters) ??
     allCharters[0]?.function_key ??
@@ -401,7 +508,7 @@ export async function runStorylinePipeline(
     }
   }
 
-  const registry = buildOrgRegistry(orgs, competitors);
+  const registry = buildOrgRegistry(orgs, competitors, null, pressureOrgs);
   return {
     injects,
     team_storylines: teamStorylines,
@@ -413,6 +520,7 @@ export async function runStorylinePipeline(
     countries: buildCountries(registry),
     sop_steps: sopSteps,
     decision_context: decisionContext,
+    pressure_organisations: pressureOrgs,
   };
 }
 
@@ -479,14 +587,29 @@ export function chartersFromWire(
 
 // ─── generate-org-page ───────────────────────────────────────────────────────
 
+export interface OrgPagePipelineResult {
+  orgPage: OrgPageConfig;
+  orgs: OrgRegistryEntry[];
+  countries: CountryEntry[];
+  /** Page-authored statements from pressure pages (append to stakeholder_injects). */
+  pressure_injects: SocialInject[];
+  /** Persona twins for pressure spokespersons (merge into personas). */
+  persona_twins: NPCPersona[];
+}
+
 export async function runOrgPagePipeline(
   orgsResult: Extract<OrganisationsValidation, { ok: true }>,
   crisisDescription: string,
   logoUrl: string | undefined,
   autoAntagonist: boolean,
   onProgress?: (msg: string) => void,
-): Promise<{ orgPage: OrgPageConfig; orgs: OrgRegistryEntry[]; countries: CountryEntry[] }> {
-  const { orgs, competitors } = orgsResult;
+  extras: {
+    stakeholders?: Stakeholder[];
+    factSheet?: FactSheet | null;
+    crisis?: CrisisContext | null;
+  } = {},
+): Promise<OrgPagePipelineResult> {
+  const { orgs, competitors, pressureOrgs } = orgsResult;
   const primary = orgs.find((o) => o.is_primary) ?? orgs[0];
   const allies = orgs
     .filter((o) => o.org_key !== primary.org_key)
@@ -517,6 +640,41 @@ export async function runOrgPagePipeline(
     { country: primary.country, city: primary.city },
   );
 
+  // AI-operated offices (pressure plan §12): their page is AI-run in the `aligned` register.
+  for (const cfg of orgPage.orgs || []) {
+    const org = orgs.find((o) => o.org_key === cfg.org_key);
+    if (org && org.operation === 'ai' && cfg.role === 'protagonist') {
+      cfg.control_mode = 'ai';
+      cfg.operation = 'ai';
+      cfg.posture = alignedPostureFor(org, primary);
+    }
+  }
+
+  // Pressure organisations: pages with posture + page-authored statements.
+  let pressureInjects: SocialInject[] = [];
+  let personaTwins: NPCPersona[] = [];
+  if (pressureOrgs.length > 0) {
+    const crisis =
+      extras.crisis ??
+      crisisContextFrom({
+        crisis_type: crisisDescription.slice(0, 80),
+        context: crisisDescription,
+        duration: 60,
+        org_name: primary.display_name,
+      });
+    const factSheet: FactSheet = extras.factSheet ?? {
+      confirmed_facts: [],
+      unconfirmed_claims: [],
+    };
+    const pages = await generatePressureOrgPages(pressureOrgs, orgs, crisis, factSheet, onProgress);
+    orgPage.orgs = [...(orgPage.orgs || []), ...pages];
+    if (extras.stakeholders && extras.stakeholders.length > 0) {
+      const r = buildPressureStatements(pages, extras.stakeholders, orgs);
+      pressureInjects = r.injects;
+      personaTwins = r.personaTwins;
+    }
+  }
+
   const autoRival = normalizeOrgPages(orgPage).find(
     (o) => o.role === 'antagonist' && o.auto_generated,
   );
@@ -530,8 +688,15 @@ export async function runOrgPagePipeline(
           country: autoRival.country || primary.country,
         }
       : null,
+    pressureOrgs,
   );
-  return { orgPage, orgs: registry, countries: buildCountries(registry) };
+  return {
+    orgPage,
+    orgs: registry,
+    countries: buildCountries(registry),
+    pressure_injects: pressureInjects,
+    persona_twins: personaTwins,
+  };
 }
 
 // ─── compile ─────────────────────────────────────────────────────────────────
@@ -575,6 +740,18 @@ export function buildCompileArtifacts(
     ? normalizeOrgPages(body.org_page).find((o) => o.role === 'antagonist' && o.auto_generated)
     : undefined;
   const primary = orgs.find((o) => o.is_primary) ?? orgs[0];
+  // Pressure orgs: spokesperson ids come back from the wizard (filled by the storyline stage);
+  // if a page config carries one and the input does not, take the page's.
+  const pagesByKey = new Map(
+    (body.org_page ? normalizeOrgPages(body.org_page) : []).map((p) => [p.org_key, p]),
+  );
+  for (const p of orgsResult.pressureOrgs) {
+    if (!p.spokesperson_stakeholder_id) {
+      const page = pagesByKey.get(p.org_key);
+      if (page?.spokesperson_stakeholder_id)
+        p.spokesperson_stakeholder_id = page.spokesperson_stakeholder_id;
+    }
+  }
   const registry = buildOrgRegistry(
     orgs,
     competitors as NormalisedCompetitor[],
@@ -585,6 +762,7 @@ export function buildCompileArtifacts(
           country: autoRival.country || primary.country,
         }
       : null,
+    orgsResult.pressureOrgs,
   );
   const countries = buildCountries(registry);
 
