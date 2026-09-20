@@ -481,6 +481,10 @@ textarea.wr-field {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
 }
 .wr-glass {
   background: rgba(255, 255, 255, 0.06);
@@ -970,6 +974,9 @@ textarea.wr-field {
 }
 .wr-node.hq {
   border: 2px solid var(--f-org);
+}
+.wr-cards > .wr-node.hq {
+  grid-column: 1 / -1;
 }
 .wr-node.ai {
   border-color: var(--f-ai);

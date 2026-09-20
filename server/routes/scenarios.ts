@@ -156,6 +156,45 @@ const updateScenarioSchema = z.object({
   }),
 });
 
+/**
+ * Template-inject counts per scenario for the library summary. A grouped `IN` select would be
+ * capped at PostgREST's 1000-row limit (97 scenarios × ~150 injects), so count per scenario
+ * with HEAD requests in parallel batches and cache the result briefly.
+ */
+const injectCountCache = new Map<string, { at: number; n: number }>();
+const INJECT_COUNT_TTL_MS = 60_000;
+async function injectCountsFor(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const now = Date.now();
+  const stale = ids.filter((id) => {
+    const hit = injectCountCache.get(id);
+    if (hit && now - hit.at < INJECT_COUNT_TTL_MS) {
+      out.set(id, hit.n);
+      return false;
+    }
+    return true;
+  });
+  const BATCH = 12;
+  for (let i = 0; i < stale.length; i += BATCH) {
+    const chunk = stale.slice(i, i + BATCH);
+    const results = await Promise.all(
+      chunk.map((id) =>
+        supabaseAdmin
+          .from('scenario_injects')
+          .select('id', { count: 'exact', head: true })
+          .eq('scenario_id', id)
+          .is('session_id', null),
+      ),
+    );
+    results.forEach((r, j) => {
+      const n = r.count ?? 0;
+      out.set(chunk[j], n);
+      injectCountCache.set(chunk[j], { at: now, n });
+    });
+  }
+  return out;
+}
+
 // Get all scenarios (active only for non-trainers)
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
@@ -189,13 +228,19 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       try {
         const rows = data as Array<Record<string, unknown>>;
         const ids = rows.map((r) => r.id as string);
-        const [teamsRes, injectsRes, sessionsRes] = await Promise.all([
-          supabaseAdmin.from('scenario_teams').select('scenario_id').in('scenario_id', ids),
-          supabaseAdmin.from('scenario_injects').select('scenario_id').in('scenario_id', ids),
+        const [teamsRes, sessionsRes, injectCounts] = await Promise.all([
+          supabaseAdmin
+            .from('scenario_teams')
+            .select('scenario_id')
+            .in('scenario_id', ids)
+            .limit(5000),
           supabaseAdmin
             .from('sessions')
             .select('id, scenario_id, status, start_time, created_at')
-            .in('scenario_id', ids),
+            .in('scenario_id', ids)
+            .order('created_at', { ascending: false })
+            .limit(5000),
+          injectCountsFor(ids),
         ]);
         const countBy = (list: Array<{ scenario_id: string }> | null) => {
           const m = new Map<string, number>();
@@ -203,7 +248,6 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           return m;
         };
         const teamCounts = countBy(teamsRes.data as Array<{ scenario_id: string }> | null);
-        const injectCounts = countBy(injectsRes.data as Array<{ scenario_id: string }> | null);
         const sessionsByScenario = new Map<
           string,
           Array<{ id: string; status: string; start_time: string | null; created_at: string }>
@@ -881,6 +925,7 @@ router.post(
         { injectId: data.id, scenarioId: id, userId: req.user!.id },
         'Inject created by trainer',
       );
+      injectCountCache.delete(id);
       res.status(201).json({ data });
     } catch (err) {
       logger.error({ error: err }, 'Error in POST /scenarios/:id/injects');
@@ -913,6 +958,7 @@ router.delete('/:id/injects/:injectId', requireAuth, async (req: AuthenticatedRe
     }
 
     logger.info({ injectId, scenarioId: id, userId: req.user!.id }, 'Inject deleted by trainer');
+    injectCountCache.delete(id);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ error: err }, 'Error in DELETE /scenarios/:id/injects/:injectId');

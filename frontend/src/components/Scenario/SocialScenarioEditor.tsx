@@ -1,6 +1,12 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type CSSProperties } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { OrganisationsSection, StakeholdersSection } from './StakeholdersSection';
+import { WrSection, WrFold, useSectionIndex, countryCode } from '../UI/Collapsible';
+import { WrIcon, type WrIconName } from '../UI/WarRoomIcon';
+import { OriginBadge, originOf, ORIGINS, type Origin } from '../UI/OriginBadge';
+import { artFor } from '../../lib/scenarioArt';
+import { cloneScenario } from '../../lib/scenarioLibraryApi';
 
 /**
  * Post-compile editor for social crisis scenarios.
@@ -130,21 +136,40 @@ const SaveStatus = ({
   return <span className={`text-xs ml-2 ${error ? 'text-danger' : 'text-success'}`}>{msg}</span>;
 };
 
+/** Folding section (Situation Map detail view, spec §6.1). */
 const SectionCard = ({
+  id,
   title,
   subtitle,
+  count,
+  icon = 'layers',
+  family = 'var(--brand)',
+  defaultOpen = false,
+  peek,
   children,
 }: {
+  id: string;
   title: string;
   subtitle?: string;
+  count?: number | string;
+  icon?: WrIconName;
+  family?: string;
+  defaultOpen?: boolean;
+  peek?: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <div className="bg-surface-2 border border-border rounded-lg p-4 mb-5">
-    <h3 className="text-sm font-bold text-ink">{title}</h3>
-    {subtitle && <p className="text-[11px] text-muted mt-0.5 mb-3">{subtitle}</p>}
-    {!subtitle && <div className="mb-3" />}
+  <WrSection
+    id={id}
+    title={title}
+    subtitle={subtitle}
+    count={count}
+    icon={icon}
+    family={family}
+    defaultOpen={defaultOpen}
+    peek={peek}
+  >
     {children}
-  </div>
+  </WrSection>
 );
 
 const StringListEditor = ({
@@ -246,135 +271,377 @@ export const SocialScenarioEditor = ({ scenarioId, scenario, injects, teams, onC
     [scen.initial_state, scenarioId],
   );
 
+  /* ── Situation Map detail frame (docs/design/warroom/scenario-detail.html, spec §6.1) ── */
+  const navigate = useNavigate();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [cloning, setCloning] = useState(false);
+  const { expandAll, collapseAll, openSection } = useSectionIndex(rootRef);
+
+  const orgsRegistry = (Array.isArray(initialState.orgs) ? initialState.orgs : []) as Array<{
+    org_key: string;
+    display_name?: string;
+    name?: string;
+    country?: string | null;
+    side?: string;
+    operation?: string;
+    is_primary?: boolean;
+    kind?: string;
+  }>;
+  const stakeholderCount = Array.isArray(initialState.stakeholders)
+    ? (initialState.stakeholders as unknown[]).length
+    : 0;
+  const crowdCount = Array.isArray(initialState.npc_personas)
+    ? (initialState.npc_personas as unknown[]).length
+    : 0;
+  const countryCount = new Set(
+    [
+      ...orgsRegistry.map((o) => o.country).filter(Boolean),
+      (initialState.country as string | undefined) ?? null,
+    ].filter(Boolean),
+  ).size;
+  const hasExecutive = teamList.some(
+    (t) => t.function_key === 'Executive' || /^Executive\b/.test(t.team_name),
+  );
+  const validation = (initialState.validation ?? null) as { ok?: boolean } | null;
+  const factCount = (() => {
+    const fs = initialState.fact_sheet as Record<string, unknown> | undefined;
+    if (!fs) return 0;
+    const c = Array.isArray(fs.confirmed_facts) ? fs.confirmed_facts.length : 0;
+    const u = Array.isArray(fs.unconfirmed_claims) ? fs.unconfirmed_claims.length : 0;
+    return c + u;
+  })();
+  const sopCount = Array.isArray(initialState.sop_definitions)
+    ? (initialState.sop_definitions as unknown[]).length
+    : 0;
+  const pressureCount = orgsRegistry.filter((o) => o.side === 'pressure').length;
+
+  const index: Array<{
+    id: string;
+    label: string;
+    count?: number;
+    family: string;
+    show?: boolean;
+  }> = [
+    { id: 'overview', label: 'Overview', family: 'var(--f-crisis)' },
+    {
+      id: 'orgs',
+      label: 'Organisations & pages',
+      count: orgsRegistry.length,
+      family: 'var(--f-org)',
+      show: orgsRegistry.length > 0,
+    },
+    {
+      id: 'cast',
+      label: 'Cast · contacts',
+      count: stakeholderCount,
+      family: 'var(--f-intel)',
+      show: stakeholderCount > 0 || orgsRegistry.length > 0,
+    },
+    { id: 'crowd', label: 'Crowd personas', count: crowdCount, family: 'var(--f-intel)' },
+    { id: 'facts', label: 'Fact sheet', count: factCount || undefined, family: 'var(--success)' },
+    { id: 'pages', label: 'Pages', family: 'var(--f-org)' },
+    { id: 'injects', label: 'Injects', count: injectList.length, family: 'var(--brand)' },
+    { id: 'teams', label: 'Teams & charters', count: teamList.length, family: 'var(--f-org)' },
+    { id: 'objectives', label: 'Objectives', count: objectiveList.length, family: 'var(--brand)' },
+    { id: 'research', label: 'Research guidelines', family: 'var(--f-intel)' },
+  ];
+
+  const lockPill =
+    editability === null ? (
+      <span className="lockpill muted">
+        <WrIcon name="clock" /> Checking permissions…
+      </span>
+    ) : locked ? (
+      <span className="lockpill locked">
+        <WrIcon name="lock" />{' '}
+        {editability.reason === 'live_session'
+          ? 'Locked — session live'
+          : editability.reason === 'no_session_credits'
+            ? 'Locked — no session credits'
+            : 'Locked'}
+      </span>
+    ) : (
+      <span className="lockpill">
+        <WrIcon name="unlock" /> Editable
+      </span>
+    );
+
   return (
-    <div className="fixed inset-0 bg-ink/40 backdrop-blur-md z-50 flex items-start justify-center p-4 sm:p-6">
-      <div className="max-w-4xl w-full my-2 bg-surface border border-border rounded-2xl shadow-lg flex flex-col max-h-[94vh] overflow-hidden">
-        {/* Sticky header */}
-        <div className="flex-shrink-0 flex items-center justify-between px-6 sm:px-8 pt-5 pb-4 border-b border-border bg-gradient-to-b from-white to-[#FDFBF7]">
-          <div className="flex items-center gap-3">
-            <span
-              className="w-11 h-11 rounded-xl bg-accent text-white grid place-items-center text-xl flex-shrink-0"
-              aria-hidden
-            >
-              📱
-            </span>
-            <div>
-              <h1 className="text-lg font-extrabold text-brand leading-snug">{scen.title}</h1>
-              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-accent/10 text-accent">
-                  Social Crisis
-                </span>
-                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
-                  {scen.duration_minutes} min
-                </span>
-                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
-                  {teamList.length} teams
-                </span>
-                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
-                  {injectList.length} injects
-                </span>
-              </div>
-            </div>
-          </div>
+    <div
+      className="wr-sheet"
+      ref={rootRef}
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="wr-detail">
+        <div className="wr-bar">
+          <button type="button" className="back" onClick={onClose}>
+            <WrIcon name="arrow-l" /> Scenarios
+          </button>
+          <span className="t">{scen.title}</span>
+          {lockPill}
+          <span className="grow" />
           <button
+            type="button"
+            className="wr-btn sm onDark"
+            disabled={cloning}
+            onClick={async () => {
+              if (
+                !window.confirm(
+                  `Clone "${scen.title}"? The copy appears in the library as a new scenario.`,
+                )
+              )
+                return;
+              setCloning(true);
+              try {
+                await cloneScenario(scenarioId);
+                onClose();
+              } catch (err) {
+                alert(err instanceof Error ? err.message : 'Clone failed');
+              } finally {
+                setCloning(false);
+              }
+            }}
+          >
+            <WrIcon name="copy" /> {cloning ? 'Cloning…' : 'Clone'}
+          </button>
+          {editability?.live_session_id ? (
+            <button
+              type="button"
+              className="wr-btn sm accent"
+              onClick={() => navigate(`/sessions/${editability.live_session_id}`)}
+            >
+              Open session <WrIcon name="arrow" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="wr-btn sm accent"
+              onClick={() => navigate(`/sessions?create=${scenarioId}`)}
+            >
+              <WrIcon name="play" /> Launch session
+            </button>
+          )}
+          <button
+            type="button"
+            className="wr-btn sm onDark icon"
             onClick={onClose}
             aria-label="Close"
-            className="w-9 h-9 rounded-lg border border-border bg-surface text-muted hover:text-ink hover:border-border-strong text-base flex-shrink-0"
           >
-            ✕
+            <WrIcon name="x" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-5">
-          {/* Edit lock banner */}
-          {editability === null ? (
-            <div className="text-xs text-muted mb-4 animate-pulse">Checking edit permissions…</div>
-          ) : locked ? (
-            <div className="bg-warning/10 border border-warning/40 rounded-lg p-3 mb-5 flex items-start gap-2">
-              <span className="text-warning text-base">🔒</span>
+        <header className="wr-artband wr-detail-hero">
+          <img
+            className="wr-art"
+            src={artFor(
+              {
+                id: scenarioId,
+                category: 'social_media_crisis',
+                title: scen.title,
+                description: scen.description,
+              },
+              'full',
+            )}
+            alt=""
+          />
+          <div className="in">
+            <div>
+              <div className="wr-eyebrow">
+                <WrIcon name="phone" size={12} /> Corporate crisis · compiled{' '}
+                {new Date(scen.created_at).toLocaleDateString(undefined, {
+                  day: 'numeric',
+                  month: 'short',
+                })}{' '}
+                · {scen.duration_minutes} minutes
+              </div>
+              <h1>{scen.title}</h1>
+              <p className="desc">{scen.description}</p>
+              {orgsRegistry.length > 0 && (
+                <div className="wr-cast onDark">
+                  {orgsRegistry.slice(0, 6).map((o) => (
+                    <span key={o.org_key} className="o">
+                      {o.side === 'pressure' ? (
+                        <WrIcon name={o.kind === 'union' ? 'fist' : 'landmark'} size={12} />
+                      ) : o.side === 'antagonist' ? (
+                        <WrIcon name="swords" size={12} />
+                      ) : (
+                        <span className="wr-cc dark">{countryCode(o.country)}</span>
+                      )}
+                      {o.display_name ?? o.name ?? o.org_key}
+                      {o.is_primary ? ' · HQ' : ''}
+                      {o.operation === 'ai' && o.side === 'protagonist' ? ' · AI-operated' : ''}
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="meta">
+                {validation?.ok && (
+                  <span>
+                    <WrIcon name="check" size={12} /> Contract validation passed
+                  </span>
+                )}
+                {hasExecutive && (
+                  <span>
+                    <WrIcon name="sparkle" size={12} /> Executive decisions: organic
+                  </span>
+                )}
+                {editability && (
+                  <span>
+                    <WrIcon name="play" size={12} /> {editability.session_credits} session credit
+                    {editability.session_credits === 1 ? '' : 's'} remaining
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="wr-kpis">
               <div>
-                <div className="text-xs font-bold text-ink">Editing locked</div>
-                <div className="text-xs text-muted mt-0.5">
-                  {editabilityError
-                    ? `Could not verify edit permissions: ${editabilityError}`
-                    : editability.reason === 'live_session'
-                      ? 'A session on this scenario is currently live. Editing resumes when it ends.'
-                      : 'No session launch credits remaining. Editing reopens when credits are topped up.'}
+                <b>{teamList.length}</b>
+                <span>teams</span>
+              </div>
+              <div>
+                <b>{stakeholderCount}</b>
+                <span>contacts</span>
+              </div>
+              <div>
+                <b>{crowdCount}</b>
+                <span>crowd</span>
+              </div>
+              <div>
+                <b>{injectList.length}</b>
+                <span>injects</span>
+              </div>
+              <div>
+                <b>{countryCount || 1}</b>
+                <span>countr{(countryCount || 1) === 1 ? 'y' : 'ies'}</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="wr-detail-body">
+          <nav className="wr-toc" aria-label="Sections">
+            <h4>Sections</h4>
+            {index
+              .filter((s) => s.show !== false)
+              .map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  className="link"
+                  style={{ '--g': s.family } as CSSProperties}
+                  onClick={() => openSection(s.id)}
+                >
+                  <span className="d" /> {s.label}
+                  {s.count !== undefined && <span className="n">{s.count}</span>}
+                </button>
+              ))}
+            <div className="all">
+              <button type="button" className="wr-btn sm" onClick={expandAll}>
+                <WrIcon name="expand" /> Expand all
+              </button>
+              <button type="button" className="wr-btn sm" onClick={collapseAll}>
+                <WrIcon name="collapse" /> Collapse all
+              </button>
+            </div>
+          </nav>
+
+          <main className="min-w-0">
+            {editability !== null && locked && (
+              <div className="wr-lockstrip locked">
+                <WrIcon name="lock" size={16} className="mt-0.5 text-accent-strong" />
+                <div>
+                  <div className="font-bold">Editing locked</div>
+                  <div className="text-muted">
+                    {editabilityError
+                      ? `Could not verify edit permissions: ${editabilityError}`
+                      : editability.reason === 'live_session'
+                        ? 'A session on this scenario is currently live. Editing resumes when it ends.'
+                        : 'No session launch credits remaining. Editing reopens when credits are topped up.'}
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            <div className="bg-brand/5 border border-brand/20 rounded-lg p-3 mb-5">
-              <div className="text-xs text-muted">
-                Everything below is editable — changes apply to all sessions launched after saving.
-                <span className="text-muted">
-                  {' '}
-                  Session credits remaining: {editability.session_credits}
-                </span>
+            )}
+            {editability !== null && !locked && (
+              <div className="wr-lockstrip open">
+                <WrIcon name="unlock" size={16} className="mt-0.5 text-brand" />
+                <div>
+                  Everything below is editable — changes apply to all sessions launched after
+                  saving.
+                  {sopCount > 0 &&
+                    ` ${sopCount} notification SOP step${sopCount === 1 ? '' : 's'} attached.`}
+                  {pressureCount > 0 &&
+                    ` ${pressureCount} pressure organisation${pressureCount === 1 ? '' : 's'} run by the AI.`}
+                </div>
               </div>
+            )}
+
+            <OverviewSection
+              scen={scen}
+              setScen={setScen}
+              scenarioId={scenarioId}
+              locked={locked}
+            />
+            <OrganisationsSection initialState={initialState} teams={teamList} />
+            <StakeholdersSection
+              scenarioId={scenarioId}
+              locked={locked}
+              onInjectsChanged={() => {
+                api.scenarios
+                  .getInjects(scenarioId)
+                  .then((res) => setInjectList(res.data as unknown as InjectRow[]))
+                  .catch(() => undefined);
+              }}
+            />
+            <PersonasSection
+              scenarioId={scenarioId}
+              initialState={initialState}
+              saveInitialState={saveInitialState}
+              injectList={injectList}
+              setInjectList={setInjectList}
+              locked={locked}
+            />
+            <FactSheetSection
+              initialState={initialState}
+              saveInitialState={saveInitialState}
+              locked={locked}
+            />
+            <OrgPagesSection
+              initialState={initialState}
+              saveInitialState={saveInitialState}
+              locked={locked}
+            />
+            <InjectsSection
+              scenarioId={scenarioId}
+              injectList={injectList}
+              setInjectList={setInjectList}
+              teamList={teamList}
+              initialState={initialState}
+              locked={locked}
+            />
+            <TeamsSection
+              scenarioId={scenarioId}
+              teamList={teamList}
+              setTeamList={setTeamList}
+              locked={locked}
+            />
+            <ObjectivesSection
+              scenarioId={scenarioId}
+              objectiveList={objectiveList}
+              setObjectiveList={setObjectiveList}
+              locked={locked}
+            />
+            <ResearchGuidelinesSection
+              initialState={initialState}
+              saveInitialState={saveInitialState}
+              locked={locked}
+            />
+
+            <div className="text-xs text-muted mt-6">
+              Created {new Date(scen.created_at).toLocaleDateString()} · {objectiveList.length}{' '}
+              objectives · {injectList.length} injects
             </div>
-          )}
-
-          <OverviewSection scen={scen} setScen={setScen} scenarioId={scenarioId} locked={locked} />
-          <OrganisationsSection initialState={initialState} teams={teamList} />
-          <StakeholdersSection
-            scenarioId={scenarioId}
-            locked={locked}
-            onInjectsChanged={() => {
-              api.scenarios
-                .getInjects(scenarioId)
-                .then((res) => setInjectList(res.data as unknown as InjectRow[]))
-                .catch(() => undefined);
-            }}
-          />
-          <PersonasSection
-            scenarioId={scenarioId}
-            initialState={initialState}
-            saveInitialState={saveInitialState}
-            injectList={injectList}
-            setInjectList={setInjectList}
-            locked={locked}
-          />
-          <FactSheetSection
-            initialState={initialState}
-            saveInitialState={saveInitialState}
-            locked={locked}
-          />
-          <OrgPagesSection
-            initialState={initialState}
-            saveInitialState={saveInitialState}
-            locked={locked}
-          />
-          <InjectsSection
-            scenarioId={scenarioId}
-            injectList={injectList}
-            setInjectList={setInjectList}
-            teamList={teamList}
-            initialState={initialState}
-            locked={locked}
-          />
-          <TeamsSection
-            scenarioId={scenarioId}
-            teamList={teamList}
-            setTeamList={setTeamList}
-            locked={locked}
-          />
-          <ObjectivesSection
-            scenarioId={scenarioId}
-            objectiveList={objectiveList}
-            setObjectiveList={setObjectiveList}
-            locked={locked}
-          />
-          <ResearchGuidelinesSection
-            initialState={initialState}
-            saveInitialState={saveInitialState}
-            locked={locked}
-          />
-
-          <div className="text-xs text-muted mt-6">
-            Created {new Date(scen.created_at).toLocaleDateString()} | {objectiveList.length}{' '}
-            objectives | {injectList.length} injects
-          </div>
+          </main>
         </div>
       </div>
     </div>
@@ -421,7 +688,14 @@ const OverviewSection = ({
   };
 
   return (
-    <SectionCard title="Overview" subtitle="Title, description, and participant briefing.">
+    <SectionCard
+      id="overview"
+      title="Overview"
+      icon="bolt"
+      family="var(--f-crisis)"
+      defaultOpen
+      subtitle="Title, description, and participant briefing."
+    >
       <label className={labelCls}>Title</label>
       <input
         value={title}
@@ -581,8 +855,12 @@ const PersonasSection = ({
 
   return (
     <SectionCard
-      title={`NPC Personas (${personas.length})`}
-      subtitle="The AI engines read these live: personality and bias steer every post, reply, and reaction the NPC makes."
+      id="crowd"
+      title="Crowd personas"
+      count={personas.length}
+      icon="feed"
+      family="var(--f-intel)"
+      subtitle="The public that posts, replies and reacts. The AI engines read these live: personality and bias steer every post, reply, and reaction the NPC makes."
     >
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {personas.map((npc, i) =>
@@ -789,7 +1067,10 @@ const FactSheetSection = ({
 
   return (
     <SectionCard
-      title="Fact Sheet"
+      id="facts"
+      title="Fact sheet"
+      icon="shield"
+      family="var(--success)"
       subtitle="Ground truth for the sim: the fact-check tool, statement watchdog, dispute system, and NPC engines all verify against this live."
     >
       <h4 className="text-xs font-bold text-success mb-1.5">Confirmed facts</h4>
@@ -963,8 +1244,11 @@ const OrgPagesSection = ({
 
   return (
     <SectionCard
-      title="Organisation Pages"
-      subtitle="Participant-facing pages. Re-seeded from these values when a session starts, so edits reach the sim."
+      id="pages"
+      title="Pages"
+      icon="phone"
+      family="var(--f-org)"
+      subtitle="Participant-facing Fakebook and Z pages. Re-seeded from these values when a session starts, so edits reach the sim."
     >
       {multiOrgs && draftOrgs ? (
         <div className="space-y-4">
@@ -1130,12 +1414,81 @@ const InjectsSection = ({
   const personas = (initialState.npc_personas || []) as PersonaShape[];
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
+  const [originFilter, setOriginFilter] = useState<Origin | 'all'>('all');
 
   const sorted = [...injectList].sort((a, b) => {
     const at = a.trigger_time_minutes ?? Number.MAX_SAFE_INTEGER;
     const bt = b.trigger_time_minutes ?? Number.MAX_SAFE_INTEGER;
     return at - bt;
   });
+
+  // Phase grouping (spec §6.1): 15-minute bands of timed injects, then conditional ones.
+  const PHASE_NAMES = ['opening', 'escalation', 'turning point', 'resolution', 'late'];
+  const originCounts = useMemo(() => {
+    const m = new Map<Origin, number>();
+    for (const inj of injectList) m.set(originOf(inj), (m.get(originOf(inj)) ?? 0) + 1);
+    return m;
+  }, [injectList]);
+  const filtered =
+    originFilter === 'all' ? sorted : sorted.filter((i) => originOf(i) === originFilter);
+  const phases = useMemo(() => {
+    const out: Array<{
+      key: string;
+      label: string;
+      sub: string;
+      cond: boolean;
+      rows: InjectRow[];
+    }> = [];
+    const byBand = new Map<number, InjectRow[]>();
+    const cond: InjectRow[] = [];
+    for (const inj of filtered) {
+      if (inj.trigger_time_minutes == null || inj.trigger_condition) {
+        cond.push(inj);
+        continue;
+      }
+      const band = Math.floor(inj.trigger_time_minutes / 15) * 15;
+      byBand.set(band, [...(byBand.get(band) ?? []), inj]);
+    }
+    [...byBand.keys()]
+      .sort((a, b) => a - b)
+      .forEach((band, i) => {
+        const rows = byBand.get(band)!;
+        const stakeholderN = rows.filter(
+          (r) => !!(r.delivery_config as Record<string, unknown> | null)?.stakeholder_id,
+        ).length;
+        out.push({
+          key: `t${band}`,
+          label: `T+${band} – ${band + 15}`,
+          sub: `${PHASE_NAMES[Math.min(i, PHASE_NAMES.length - 1)]}${stakeholderN ? ` · ${stakeholderN} from stakeholders` : ''}`,
+          cond: false,
+          rows,
+        });
+      });
+    if (cond.length > 0)
+      out.push({
+        key: 'cond',
+        label: 'Conditional',
+        sub: 'fires on a condition or a decision, not a clock',
+        cond: true,
+        rows: cond,
+      });
+    return out;
+  }, [filtered]);
+  const timedTotal = injectList.filter(
+    (i) => i.trigger_time_minutes != null && !i.trigger_condition,
+  ).length;
+  const stakeholderTotal = injectList.filter(
+    (i) => !!(i.delivery_config as Record<string, unknown> | null)?.stakeholder_id,
+  ).length;
+  const injectPeek = (
+    <>
+      <span className="wr-p">{timedTotal} timed</span>
+      {injectList.length - timedTotal > 0 && (
+        <span className="wr-p intel">{injectList.length - timedTotal} conditional</span>
+      )}
+      {stakeholderTotal > 0 && <span className="wr-p live">{stakeholderTotal} stakeholder</span>}
+    </>
+  );
 
   const onSaved = (updated: InjectRow) => {
     setInjectList((list) => list.map((x) => (x.id === updated.id ? updated : x)));
@@ -1154,30 +1507,109 @@ const InjectsSection = ({
 
   return (
     <SectionCard
-      title={`Injects (${injectList.length})`}
-      subtitle="The scheduler reads these live at fire time — edits to timing, content, author, and targeting apply to every session started after saving."
+      id="injects"
+      title="Injects"
+      count={injectList.length}
+      icon="layers"
+      family="var(--brand)"
+      defaultOpen
+      peek={injectPeek}
+      subtitle="Timed and conditional content, by phase. The scheduler reads these live at fire time — edits to timing, content, author, and targeting apply to every session started after saving."
     >
-      <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-        {sorted.map((inj) =>
-          expandedId === inj.id ? (
-            <InjectForm
-              key={inj.id}
-              scenarioId={scenarioId}
-              inject={inj}
-              personas={personas}
-              teamList={teamList}
-              onSaved={onSaved}
-              onDeleted={onDeleted}
-              onCancel={() => setExpandedId(null)}
+      {/* volume by phase */}
+      {phases.length > 1 && (
+        <div className="wr-phase" title="volume by phase">
+          {phases.map((p, i) => (
+            <span
+              key={p.key}
+              style={{
+                width: `${Math.max(3, (p.rows.length / Math.max(1, filtered.length)) * 100)}%`,
+                background: p.cond
+                  ? 'var(--f-intel)'
+                  : `color-mix(in srgb, var(--brand) ${Math.max(35, 100 - i * 20)}%, #fff)`,
+              }}
             />
-          ) : (
-            <InjectCard
-              key={inj.id}
-              inject={inj}
-              locked={locked}
-              onEdit={() => setExpandedId(inj.id)}
-            />
-          ),
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <span className="wr-lbl m-0">Origin</span>
+        <div className="wr-seg sm" role="group" aria-label="Origin">
+          <button
+            type="button"
+            className={originFilter === 'all' ? 'on' : ''}
+            onClick={() => setOriginFilter('all')}
+          >
+            All
+          </button>
+          {ORIGINS.filter((o) => (originCounts.get(o) ?? 0) > 0).map((o) => (
+            <button
+              key={o}
+              type="button"
+              className={originFilter === o ? 'on' : ''}
+              onClick={() => setOriginFilter(o)}
+            >
+              <OriginBadge origin={o} size="sm" /> {originCounts.get(o)}
+            </button>
+          ))}
+        </div>
+        {!locked && !adding && (
+          <button
+            onClick={() => {
+              setAdding(true);
+              setExpandedId(null);
+            }}
+            className="wr-btn sm ml-auto"
+          >
+            <WrIcon name="plus" /> Add inject
+          </button>
+        )}
+      </div>
+      <div className="space-y-2">
+        {phases.map((p, pi) => (
+          <WrFold
+            key={p.key}
+            title={p.label}
+            count={p.rows.length}
+            sub={p.sub}
+            lead={
+              p.cond ? (
+                <span className="wr-p intel" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+                  IF
+                </span>
+              ) : undefined
+            }
+            defaultOpen={pi === 0 || originFilter !== 'all' || phases.length <= 2}
+          >
+            <div className="space-y-1">
+              {p.rows.map((inj) =>
+                expandedId === inj.id ? (
+                  <InjectForm
+                    key={inj.id}
+                    scenarioId={scenarioId}
+                    inject={inj}
+                    personas={personas}
+                    teamList={teamList}
+                    onSaved={onSaved}
+                    onDeleted={onDeleted}
+                    onCancel={() => setExpandedId(null)}
+                  />
+                ) : (
+                  <InjectCard
+                    key={inj.id}
+                    inject={inj}
+                    locked={locked}
+                    onEdit={() => setExpandedId(inj.id)}
+                  />
+                ),
+              )}
+            </div>
+          </WrFold>
+        ))}
+        {phases.length === 0 && (
+          <div className="text-xs text-muted py-3">
+            {injectList.length === 0 ? 'No injects yet.' : 'No injects from this origin.'}
+          </div>
         )}
         {adding && (
           <InjectForm
@@ -1189,19 +1621,6 @@ const InjectsSection = ({
             onDeleted={() => undefined}
             onCancel={() => setAdding(false)}
           />
-        )}
-      </div>
-      <div className="mt-2">
-        {!locked && !adding && (
-          <button
-            onClick={() => {
-              setAdding(true);
-              setExpandedId(null);
-            }}
-            className="text-xs text-brand hover:underline"
-          >
-            + Add inject
-          </button>
         )}
       </div>
     </SectionCard>
@@ -1218,99 +1637,95 @@ const InjectCard = ({
   onEdit: () => void;
 }) => {
   const dc = (inject.delivery_config || {}) as Record<string, unknown>;
-  const app = dc.app ? String(dc.app) : inject.type;
-  const isFacebook = app === 'social_feed' && String(dc.platform ?? 'x_twitter') === 'facebook';
   const mediaUrls = (dc.media_urls || []) as string[];
+  const isCond = inject.trigger_time_minutes == null || !!inject.trigger_condition;
 
   return (
-    <div className="bg-surface border border-border rounded-lg p-3">
-      <div className="flex items-start gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1 flex-wrap">
-            <span className="text-xs text-accent font-mono">
-              {inject.trigger_time_minutes != null
-                ? `T+${inject.trigger_time_minutes}m`
-                : inject.trigger_condition
-                  ? 'decision'
-                  : 'conditional'}
-            </span>
-            <span
-              className={`text-[10px] px-1.5 py-0.5 rounded ${app === 'social_feed' ? (isFacebook ? 'bg-blue-700 text-white border border-blue-500' : 'bg-black text-white border border-border') : app === 'email' ? 'bg-blue-600 text-white' : app === 'news' ? 'bg-danger text-white' : app === 'group_chat' ? 'bg-success text-white' : 'bg-surface-2 text-ink'}`}
-            >
-              {app === 'social_feed'
-                ? isFacebook
-                  ? 'Fakebook'
-                  : 'X Post'
-                : app.replace(/_/g, ' ')}
-            </span>
-            {!!dc.author_handle && (
-              <span className="text-[10px] text-muted">{String(dc.author_handle)}</span>
-            )}
-            {inject.severity === 'critical' && (
-              <span className="text-[10px] px-1 py-0.5 bg-danger/10 text-danger rounded">
-                Critical
-              </span>
-            )}
-            {inject.generation_source === 'trainer' && (
-              <span className="text-[10px] px-1 py-0.5 bg-brand/10 text-brand rounded">Edited</span>
-            )}
-            {/* Contract §4 scoping + authorship tags */}
-            {!!dc.country && (
-              <span
-                className="text-[10px] px-1 py-0.5 bg-surface-2 text-muted rounded border border-border"
-                title="Country whose feed / inboxes this belongs to"
-              >
-                {String(dc.country)}
-              </span>
-            )}
-            {!!dc.org_key && (
-              <span
-                className="text-[10px] px-1 py-0.5 bg-surface-2 text-muted rounded border border-border font-mono"
-                title="Organisation this inject is for"
-              >
-                {String(dc.org_key)}
-              </span>
-            )}
-            {!!dc.stakeholder_id && (
-              <span
-                className="text-[10px] px-1 py-0.5 bg-warning/10 text-warning rounded"
-                title="Authored by a stakeholder contact — edit the contact to rename"
-              >
-                stakeholder
-              </span>
-            )}
-            {!!dc.decision_key && (
-              <span
-                className="text-[10px] px-1 py-0.5 bg-danger/10 text-danger rounded"
-                title="Dormant: fires only after an executive decision"
-              >
-                on decision: {String(dc.decision_key)}
-              </span>
-            )}
-          </div>
-          <div className="text-xs text-muted font-medium">{inject.title}</div>
-          <div className="text-xs text-muted mt-0.5 line-clamp-2">{inject.content}</div>
-          {inject.target_teams && inject.target_teams.length > 0 && (
-            <div className="flex gap-1 mt-1 flex-wrap">
-              {inject.target_teams.map((team, ti) => (
-                <span key={ti} className="text-[10px] px-1 py-0.5 bg-surface-2 text-muted rounded">
-                  {team}
-                </span>
-              ))}
-            </div>
-          )}
+    <div
+      className={`wr-inj ${!locked ? 'clickable' : ''}`}
+      style={{ gridTemplateColumns: '64px auto 1fr auto' }}
+      onClick={!locked ? onEdit : undefined}
+      role={!locked ? 'button' : undefined}
+      tabIndex={!locked ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!locked && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onEdit();
+        }
+      }}
+    >
+      <span className={`t ${isCond ? 'cond' : ''}`}>
+        {inject.trigger_time_minutes != null && !inject.trigger_condition
+          ? `T+${String(inject.trigger_time_minutes).padStart(2, '0')}`
+          : inject.trigger_condition
+            ? 'IF'
+            : 'COND'}
+      </span>
+      <OriginBadge inject={inject} />
+      <div className="min-w-0">
+        <div className="ttl truncate">{inject.title}</div>
+        <div className="by truncate">
+          {String(dc.author_display_name ?? dc.author_handle ?? '')}
+          {(dc.author_display_name || dc.author_handle) && inject.target_teams?.length ? ' → ' : ''}
+          {inject.target_teams && inject.target_teams.length > 0
+            ? inject.target_teams.join(', ')
+            : ''}
+          {!dc.author_display_name && !dc.author_handle && !inject.target_teams?.length
+            ? inject.content.slice(0, 120)
+            : ''}
         </div>
+      </div>
+      <div className="tags">
         {mediaUrls.length > 0 && (
           <img
             src={mediaUrls[0]}
-            alt="Inject media"
-            className="w-14 h-14 object-cover rounded border border-border shrink-0"
+            alt=""
+            className="w-8 h-8 object-cover rounded-md border border-border"
           />
         )}
+        {inject.severity === 'critical' && <span className="wr-p rival">critical</span>}
+        {inject.generation_source === 'trainer' && <span className="wr-p rel">edited</span>}
+        {/* Contract §4 scoping + authorship tags */}
+        {!!dc.stakeholder_id && (
+          <span
+            className="wr-p live"
+            title="Authored by a stakeholder contact — edit the contact to rename"
+          >
+            stakeholder
+          </span>
+        )}
+        {!!dc.page_org_key && (
+          <span className="wr-p speaks" title="Statement published by an organisation page">
+            page statement
+          </span>
+        )}
+        {!!dc.decision_id && (
+          <span className="wr-p intel" title="Generated as a consequence of an executive decision">
+            decision
+          </span>
+        )}
+        {!!dc.decision_key && (
+          <span className="wr-p rival" title="Dormant: fires only after an executive decision">
+            on decision
+          </span>
+        )}
+        {!!dc.country && (
+          <span
+            className="wr-cc light"
+            title={`Country whose feed / inboxes this belongs to: ${String(dc.country)}`}
+          >
+            {countryCode(String(dc.country))}
+          </span>
+        )}
+        {!!dc.org_key && (
+          <span className="wr-p font-mono" title="Organisation this inject is for">
+            {String(dc.org_key)}
+          </span>
+        )}
         {!locked && (
-          <button onClick={onEdit} className="text-xs text-brand hover:underline shrink-0">
-            Edit
-          </button>
+          <span className="wr-btn sm ghost icon" aria-hidden>
+            <WrIcon name="edit" />
+          </span>
         )}
       </div>
     </div>
@@ -1889,7 +2304,11 @@ const TeamsSection = ({
 
   return (
     <SectionCard
-      title="Team Charters"
+      id="teams"
+      title="Teams & charters"
+      count={teamList.length}
+      icon="users"
+      family="var(--f-org)"
       subtitle={`Grading and scoring read these live. Team names are fixed; wording is yours. Custom teams can also edit their expected actions (detection types come from a fixed vocabulary); preset teams keep the catalog machinery.${multiOrg ? ' Each organisation keeps exactly one public voice.' : ''}`}
     >
       <div className="space-y-3">
@@ -2170,7 +2589,11 @@ const ObjectivesSection = ({
 
   return (
     <SectionCard
-      title={`Objectives (${objectiveList.length})`}
+      id="objectives"
+      title="Objectives & benchmarks"
+      count={objectiveList.length}
+      icon="target"
+      family="var(--brand)"
       subtitle="Materialised into session scoring when a session starts — edit before launch."
     >
       <div className="space-y-2">
@@ -2301,7 +2724,10 @@ const ResearchGuidelinesSection = ({
 
   return (
     <SectionCard
-      title="Research Guidelines"
+      id="research"
+      title="Research guidelines"
+      icon="doc"
+      family="var(--f-intel)"
       subtitle="The content grader scores participant posts against these best practices."
     >
       {perTeam.map((team, ti) => {

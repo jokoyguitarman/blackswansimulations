@@ -77,6 +77,21 @@ export async function getSessionCredits(): Promise<number | null> {
   }
 }
 
+/** POST /api/scenarios/:id/clone — copies the scenario with its template injects. */
+export async function cloneScenario(id: string, title?: string): Promise<{ id: string } | null> {
+  const res = await fetch(url(`/api/scenarios/${id}/clone`), {
+    method: 'POST',
+    headers: await headers(),
+    body: JSON.stringify(title ? { title } : {}),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
+  const json = (await res.json()) as { data?: { id?: string } };
+  return json.data?.id ? { id: json.data.id } : null;
+}
+
 export interface PeekInject {
   id: string;
   title: string;

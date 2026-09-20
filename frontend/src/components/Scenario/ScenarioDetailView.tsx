@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import {
   MapContainer,
   TileLayer,
@@ -10,6 +10,9 @@ import {
 } from 'react-leaflet';
 import { DivIcon } from 'leaflet';
 import { api } from '../../lib/api';
+import { WrIcon, type WrIconName } from '../UI/WarRoomIcon';
+import { OriginBadge } from '../UI/OriginBadge';
+import { artFor } from '../../lib/scenarioArt';
 import { ScenarioLocationMarker, type ScenarioLocationPin } from '../COP/ScenarioLocationMarker';
 import { FloorSelector, type FloorPlan } from '../COP/FloorSelector';
 import { FloorPlanOverlay } from '../COP/FloorPlanOverlay';
@@ -428,1089 +431,1171 @@ export const ScenarioDetailView = ({ scenarioId, onClose }: Props) => {
     : null;
   const flatStandards = typeof ik?.sector_standards === 'string' ? ik.sector_standards : null;
 
+  const TAB_META: Record<Tab, { icon: WrIconName; family: string; count?: number }> = {
+    Overview: { icon: 'bolt', family: 'var(--f-crisis)' },
+    Teams: { icon: 'users', family: 'var(--f-org)', count: teams.length },
+    Injects: { icon: 'layers', family: 'var(--brand)', count: injects.length },
+    'Map Pins': {
+      icon: 'pin',
+      family: 'var(--f-rival)',
+      count: locations.length + hazardPins.length + casualtyPins.length,
+    },
+    'Env Truths': { icon: 'shield', family: 'var(--success)' },
+    Routes: { icon: 'map', family: 'var(--f-ai)' },
+    Standards: { icon: 'doc', family: 'var(--f-intel)' },
+    Research: { icon: 'search', family: 'var(--f-intel)' },
+  };
+
   return (
-    <div className="fixed inset-0 bg-ink/40 backdrop-blur-md flex items-start justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-2xl shadow-lg w-full max-w-5xl my-2 flex flex-col max-h-[94vh] overflow-hidden">
-        {/* Sticky header */}
-        <div className="flex-shrink-0 border-b border-border px-6 pt-5 pb-4 flex justify-between items-start bg-gradient-to-b from-white to-[#FDFBF7]">
-          <div className="flex-1 pr-4 flex items-start gap-3">
-            <span
-              className="w-11 h-11 rounded-xl bg-brand text-white grid place-items-center text-xl flex-shrink-0"
-              aria-hidden
-            >
-              🗺️
-            </span>
-            <div>
-              <h1 className="text-lg font-extrabold text-brand leading-snug">{scenario.title}</h1>
-              <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                <span
-                  className={`text-[10px] font-bold uppercase tracking-wide px-2.5 py-0.5 rounded-full ${
-                    scenario.is_active
-                      ? 'bg-success/10 text-success'
-                      : 'bg-surface-2 text-muted border border-border'
-                  }`}
-                >
-                  {scenario.is_active ? 'Active' : 'Draft'}
-                </span>
-                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-brand/10 text-brand capitalize">
-                  {scenario.category.replace(/_/g, ' ')}
-                </span>
-                <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-accent/10 text-accent capitalize">
-                  {scenario.difficulty}
-                </span>
-                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
-                  {scenario.duration_minutes} min
-                </span>
-                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
-                  {teams.length} teams
-                </span>
-                <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-full bg-surface-2 text-muted border border-border">
-                  {injects.length} injects
-                </span>
-              </div>
-            </div>
-          </div>
+    <div className="wr-sheet" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="wr-detail">
+        <div className="wr-bar">
+          <button type="button" className="back" onClick={onClose}>
+            <WrIcon name="arrow-l" /> Scenarios
+          </button>
+          <span className="t">{scenario.title}</span>
+          <span className={`lockpill ${scenario.is_active ? '' : 'muted'}`}>
+            <WrIcon name={scenario.is_active ? 'check' : 'clock'} />{' '}
+            {scenario.is_active ? 'Active' : 'Draft'}
+          </span>
+          <span className="grow" />
+          <a className="wr-btn sm accent" href={`/sessions?create=${scenarioId}`}>
+            <WrIcon name="play" /> Launch session
+          </a>
           <button
+            type="button"
+            className="wr-btn sm onDark icon"
             onClick={onClose}
             aria-label="Close"
-            className="w-9 h-9 rounded-lg border border-border bg-surface text-muted hover:text-ink hover:border-border-strong text-base flex-shrink-0"
           >
-            ✕
+            <WrIcon name="x" />
           </button>
         </div>
 
-        {/* Sticky tabs */}
-        <div className="flex-shrink-0 border-b border-border flex overflow-x-auto bg-surface shadow-[0_3px_8px_rgba(23,32,51,0.04)]">
-          {tabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-5 py-3 text-xs font-semibold whitespace-nowrap transition-all border-b-2 ${
-                activeTab === tab
-                  ? 'border-accent text-brand'
-                  : 'border-transparent text-muted hover:text-brand'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-
-        {/* Scrollable tab content */}
-        <div className="p-6 flex-1 overflow-y-auto">
-          {/* ─── OVERVIEW ─── */}
-          {activeTab === 'Overview' && (
+        <header className="wr-artband wr-detail-hero">
+          <img
+            className="wr-art"
+            src={artFor(
+              {
+                id: scenarioId,
+                category: scenario.category,
+                title: scenario.title,
+                description: scenario.description,
+              },
+              'full',
+            )}
+            alt=""
+          />
+          <div className="in">
             <div>
-              <Section title="Description">
-                <p className="text-sm terminal-text leading-relaxed">{scenario.description}</p>
-              </Section>
-
-              {scenario.briefing && (
-                <Section title="Operational Briefing">
-                  <div className="bg-gradient-to-br from-brand/5 to-brand/10 border border-brand/20 border-l-4 border-l-brand rounded-lg px-4 py-3.5">
-                    <p className="text-sm terminal-text leading-relaxed whitespace-pre-wrap">
-                      {scenario.briefing}
-                    </p>
-                  </div>
-                </Section>
-              )}
-
-              <Section title="Objectives">
-                <ul className="space-y-2">
-                  {scenario.objectives.map((obj, i) => (
-                    <li
-                      key={i}
-                      className="text-sm terminal-text flex items-start gap-3 bg-surface-2 border border-border rounded-lg px-3.5 py-2.5"
-                    >
-                      <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-extrabold grid place-items-center flex-shrink-0">
-                        {i + 1}
-                      </span>
-                      <span className="pt-0.5">{obj}</span>
-                    </li>
-                  ))}
-                </ul>
-              </Section>
-
-              {scenario.role_specific_briefs &&
-                Object.keys(scenario.role_specific_briefs).length > 0 && (
-                  <Section title="Role-specific briefs">
-                    <div className="space-y-3">
-                      {Object.entries(scenario.role_specific_briefs).map(([role, brief]) => (
-                        <div key={role}>
-                          <div className="text-xs terminal-text text-muted uppercase mb-1">
-                            {role}
-                          </div>
-                          <p className="text-sm terminal-text">{brief}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </Section>
-                )}
-
-              <Section title="Intelligence / Custom Facts">
-                {(!ik?.custom_facts || ik.custom_facts.length === 0) && (
-                  <div className="flex items-center gap-3 mb-3">
-                    <p className="text-sm terminal-text text-muted">
-                      No custom facts yet. Generate research-oriented facility/area facts for this
-                      scenario.
-                    </p>
-                    <button
-                      onClick={async () => {
-                        setCustomFactsLoading(true);
-                        setCustomFactsMsg(null);
-                        try {
-                          const res = await api.scenarios.retryCustomFacts(scenarioId);
-                          setCustomFactsMsg(
-                            res.message ||
-                              (res.ok
-                                ? `Generated ${res.facts_count ?? 0} custom facts`
-                                : res.error) ||
-                              'Done',
-                          );
-                          const scenRes = await api.scenarios.get(scenarioId);
-                          setScenario(scenRes.data as ScenarioFull);
-                        } catch (err) {
-                          setCustomFactsMsg(
-                            err instanceof Error ? err.message : 'Failed to generate custom facts',
-                          );
-                        } finally {
-                          setCustomFactsLoading(false);
-                        }
-                      }}
-                      disabled={customFactsLoading}
-                      className="ml-auto px-4 py-1.5 text-xs terminal-text bg-brand hover:bg-brand-strong text-white rounded border border-brand disabled:opacity-50"
-                    >
-                      {customFactsLoading ? 'Generating…' : 'Generate custom facts'}
-                    </button>
-                  </div>
-                )}
-                {customFactsMsg && (
-                  <div className="text-xs terminal-text text-success p-1 mb-2">
-                    {customFactsMsg}
-                  </div>
-                )}
-                {ik?.custom_facts && ik.custom_facts.length > 0 ? (
-                  <div className="space-y-3">
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setCustomFactsLoading(true);
-                          setCustomFactsMsg(null);
-                          try {
-                            const res = await api.scenarios.retryCustomFacts(scenarioId, {
-                              force: true,
-                            });
-                            setCustomFactsMsg(
-                              res.message ||
-                                (res.ok
-                                  ? `Regenerated ${res.facts_count ?? 0} custom facts`
-                                  : res.error) ||
-                                'Done',
-                            );
-                            const scenRes = await api.scenarios.get(scenarioId);
-                            setScenario(scenRes.data as ScenarioFull);
-                          } catch (err) {
-                            setCustomFactsMsg(
-                              err instanceof Error
-                                ? err.message
-                                : 'Failed to regenerate custom facts',
-                            );
-                          } finally {
-                            setCustomFactsLoading(false);
-                          }
-                        }}
-                        disabled={customFactsLoading}
-                        className="px-3 py-1 text-xs terminal-text bg-accent/10 hover:bg-accent/20 text-ink rounded border border-accent/40 disabled:opacity-50"
-                      >
-                        {customFactsLoading ? 'Regenerating…' : 'Regenerate custom facts'}
-                      </button>
-                    </div>
-                    {ik.custom_facts.map((fact, i) => (
-                      <div
-                        key={i}
-                        className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3"
-                      >
-                        <div className="text-[11px] font-extrabold text-accent uppercase tracking-wide mb-1">
-                          {fact.topic}
-                        </div>
-                        <p className="text-sm terminal-text">{fact.summary}</p>
-                        {fact.detail && (
-                          <p className="text-xs terminal-text text-muted mt-1 whitespace-pre-wrap">
-                            {fact.detail}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </Section>
-
-              {ik?.baseline_escalation_factors && ik.baseline_escalation_factors.length > 0 && (
-                <Section title="Baseline Escalation Factors">
-                  <div className="space-y-2">
-                    {ik.baseline_escalation_factors.map((f, i) => (
-                      <div
-                        key={i}
-                        className="flex gap-3 items-start bg-surface border border-border rounded-lg px-3.5 py-2.5"
-                      >
-                        <span
-                          className={`text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-md border shrink-0 mt-0.5 ${SEVERITY_COLORS[f.severity] ?? 'text-warning border-warning'}`}
-                        >
-                          {f.severity.toUpperCase()}
-                        </span>
-                        <div>
-                          <div className="text-sm terminal-text text-ink font-semibold">
-                            {f.name}
-                          </div>
-                          <p className="text-xs terminal-text text-muted">{f.description}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              )}
-            </div>
-          )}
-
-          {/* ─── TEAMS ─── */}
-          {activeTab === 'Teams' && (
-            <div>
-              {teams.length === 0 ? (
-                <p className="text-sm terminal-text text-muted">No teams defined</p>
-              ) : (
-                <div className="space-y-4">
-                  {teams.map((team) => (
-                    <div key={team.id} className="military-border p-4">
-                      <div className="text-sm terminal-text text-ink font-medium mb-1 flex items-center gap-2">
-                        {team.team_name}
-                        {team.is_investigative && (
-                          <span className="px-2 py-0.5 text-[9px] font-bold rounded border border-brand/60 bg-brand/10 text-brand">
-                            Investigative
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs terminal-text text-muted mb-2">
-                        {team.team_description}
-                      </p>
-                      <div className="text-xs terminal-text text-muted mb-3">
-                        {team.min_participants}–{team.max_participants} participants
-                      </div>
-                      {team.counter_definitions && team.counter_definitions.length > 0 && (
-                        <div className="border-t border-border pt-3 mt-2">
-                          <div className="text-xs terminal-text text-muted uppercase mb-2 tracking-wider">
-                            Counters ({team.counter_definitions.length})
-                          </div>
-                          <div className="space-y-2">
-                            {team.counter_definitions.map((cd) => (
-                              <div
-                                key={cd.key}
-                                className="bg-surface-2 border border-border rounded px-3 py-2"
-                              >
-                                <div className="flex items-center justify-between mb-1">
-                                  <span className="text-xs terminal-text text-ink font-medium">
-                                    {cd.label}
-                                  </span>
-                                  <span className="text-[10px] terminal-text text-muted uppercase">
-                                    {cd.type}
-                                    {cd.behavior ? ` · ${cd.behavior.replace(/_/g, ' ')}` : ''}
-                                  </span>
-                                </div>
-                                <div className="text-[10px] terminal-text text-muted font-mono">
-                                  key: {cd.key}
-                                  {cd.initial_value !== undefined &&
-                                    ` · initial: ${String(cd.initial_value)}`}
-                                  {cd.visible_to === 'trainer_only' && ' · trainer only'}
-                                </div>
-                                {cd.config?.keywords && cd.config.keywords.length > 0 && (
-                                  <div className="text-[10px] terminal-text text-muted mt-1">
-                                    triggers: {cd.config.keywords.join(', ')}
-                                  </div>
-                                )}
-                                {cd.config?.base_rate_per_min != null && (
-                                  <div className="text-[10px] terminal-text text-muted mt-1">
-                                    rate: {cd.config.base_rate_per_min}/min
-                                  </div>
-                                )}
-                                {cd.config?.values && cd.config.values.length > 0 && (
-                                  <div className="text-[10px] terminal-text text-muted mt-1">
-                                    values: {cd.config.values.join(' | ')}
-                                  </div>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ─── INJECTS ─── */}
-          {activeTab === 'Injects' && (
-            <div className="space-y-6">
-              {/* Time-based */}
-              <div>
-                <div className="text-xs terminal-text text-muted uppercase mb-3">
-                  Time-based injects ({timeInjects.length})
-                </div>
-                <div className="space-y-2">
-                  {timeInjects
-                    .sort((a, b) => (a.trigger_time_minutes ?? 0) - (b.trigger_time_minutes ?? 0))
-                    .map((inj) => (
-                      <InjectRow
-                        key={inj.id}
-                        inject={inj}
-                        expanded={expandedInject === inj.id}
-                        onToggle={() =>
-                          setExpandedInject(expandedInject === inj.id ? null : inj.id)
-                        }
-                      />
-                    ))}
-                </div>
+              <div className="wr-eyebrow">
+                <WrIcon name="map" size={12} /> Field operations ·{' '}
+                {scenario.category.replace(/_/g, ' ')} · {scenario.difficulty} ·{' '}
+                {scenario.duration_minutes} minutes
               </div>
-
-              {/* Decision-triggered */}
-              {decisionInjects.length > 0 && (
-                <div>
-                  <div className="text-xs terminal-text text-muted uppercase mb-3">
-                    Decision-triggered injects ({decisionInjects.length})
-                  </div>
-                  <div className="space-y-2">
-                    {decisionInjects.map((inj) => (
-                      <InjectRow
-                        key={inj.id}
-                        inject={inj}
-                        expanded={expandedInject === inj.id}
-                        onToggle={() =>
-                          setExpandedInject(expandedInject === inj.id ? null : inj.id)
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Condition-driven */}
-              {conditionInjects.length > 0 && (
-                <div>
-                  <div className="text-xs terminal-text text-muted uppercase mb-3">
-                    Condition-driven injects ({conditionInjects.length})
-                  </div>
-                  <div className="space-y-2">
-                    {conditionInjects.map((inj) => (
-                      <InjectRow
-                        key={inj.id}
-                        inject={inj}
-                        expanded={expandedInject === inj.id}
-                        onToggle={() =>
-                          setExpandedInject(expandedInject === inj.id ? null : inj.id)
-                        }
-                      />
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ─── MAP PINS ─── */}
-          {activeTab === 'Map Pins' && (
-            <MapPinsTab
-              scenarioId={scenarioId}
-              locations={locations}
-              hazards={hazardPins}
-              casualties={casualtyPins}
-              equipment={equipmentItems}
-              floorPlans={floorPlans}
-            />
-          )}
-
-          {/* ─── ENV TRUTHS ─── */}
-          {activeTab === 'Env Truths' && (
-            <EnvTruthsTab locations={locations} siteRequirements={ik?.site_requirements} />
-          )}
-
-          {/* ─── ROUTES ─── */}
-          {activeTab === 'Routes' && (
-            <div>
-              {(() => {
-                const routePins = locations.filter((l) => l.location_type === 'route');
-                const hasRoutes = routePins.length > 0;
-                return (
-                  <>
-                    {!hasRoutes && (
-                      <p className="text-sm terminal-text text-muted mb-3">No route data</p>
-                    )}
-                    <div className="flex items-center gap-3 mb-3">
-                      <button
-                        onClick={async () => {
-                          setRetryingRoutes(true);
-                          setRetryRoutesMsg(null);
-                          try {
-                            const res = await api.scenarios.retryRoutes(scenarioId);
-                            if (res.routes_count) {
-                              setRetryRoutesMsg(`${res.routes_count} routes generated`);
-                              const locRes = await api.scenarios.getScenarioLocations(scenarioId);
-                              setLocations((locRes.data ?? []) as LocationPin[]);
-                            } else {
-                              setRetryRoutesMsg(res.message || res.error || 'No routes generated');
-                            }
-                          } catch (err) {
-                            setRetryRoutesMsg(
-                              err instanceof Error ? err.message : 'Failed to fetch routes',
-                            );
-                          } finally {
-                            setRetryingRoutes(false);
-                          }
-                        }}
-                        disabled={retryingRoutes || hasRoutes}
-                        className="px-4 py-1.5 text-xs terminal-text bg-brand hover:bg-brand-strong text-white rounded border border-brand disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        {retryingRoutes
-                          ? 'Fetching routes…'
-                          : hasRoutes
-                            ? 'Routes available'
-                            : 'Retry route fetch'}
-                      </button>
-                      {retryRoutesMsg && (
-                        <span className="text-xs terminal-text text-success">{retryRoutesMsg}</span>
-                      )}
-                    </div>
-                    {hasRoutes && (
-                      <div className="space-y-2">
-                        <p className="text-xs terminal-text text-muted mb-3">
-                          Enriched route conditions — used by transport outcome service and
-                          environmental condition management.
-                        </p>
-                        {routePins.map((r, i) => {
-                          const c = (r.conditions ?? {}) as Record<string, unknown>;
-                          return (
-                            <div key={r.id ?? i} className="military-border p-3">
-                              <div className="text-sm terminal-text text-ink font-medium">
-                                {r.label}
-                              </div>
-                              <div className="text-xs terminal-text mt-1 space-y-0.5">
-                                <div>
-                                  {c.problem ? (
-                                    <span className="text-warning">{String(c.problem)}</span>
-                                  ) : (
-                                    <span className="text-success">Clear</span>
-                                  )}
-                                  {' — '}
-                                  {c.managed ? 'managed' : 'unmanaged'}
-                                </div>
-                                <div>
-                                  {c.highway_type ? `${String(c.highway_type)} ` : null}
-                                  {c.one_way ? 'one-way ' : ''}
-                                  {c.distance_m != null ? `${c.distance_m}m ` : null}
-                                  {c.travel_time_minutes != null
-                                    ? `~${c.travel_time_minutes} min`
-                                    : null}
-                                </div>
-                                {Array.isArray(c.connects_to) &&
-                                  (c.connects_to as string[]).length > 0 && (
-                                    <div className="text-muted">
-                                      Connects to: {(c.connects_to as string[]).join(', ')}
-                                    </div>
-                                  )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </>
-                );
-              })()}
-            </div>
-          )}
-
-          {/* ─── STANDARDS / DOCTRINE ─── */}
-          {activeTab === 'Standards' && (
-            <div>
-              {/* Team doctrine mapping */}
-              {ik?.team_doctrines && Object.keys(ik.team_doctrines).length > 0 && (
-                <Section title="Doctrine by team">
-                  <div className="space-y-3 mb-6">
-                    {Object.entries(ik.team_doctrines).map(([teamName, findings]) => (
-                      <div key={teamName} className="military-border p-3">
-                        <div className="text-sm terminal-text text-ink font-medium uppercase mb-2">
-                          {teamName}
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {(findings as StandardsFinding[]).map((f, i) => (
-                            <span
-                              key={i}
-                              className="text-xs terminal-text bg-accent/10 border border-border px-2 py-1"
-                            >
-                              {f.source}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </Section>
-              )}
-
-              {/* Editable standards list */}
-              {structuredStandards && structuredStandards.length > 0 ? (
-                <div className="space-y-4">
-                  {structuredStandards.map((finding, i) => {
-                    const isEditing = editingStandard === i;
-                    const keyPoints = Array.isArray(finding.key_points)
-                      ? finding.key_points
-                      : finding.key_points && typeof finding.key_points === 'object'
-                        ? Object.entries(finding.key_points).map(
-                            ([k, v]) => `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`,
-                          )
-                        : [];
-                    const source =
-                      typeof finding.source === 'string'
-                        ? finding.source
-                        : JSON.stringify(finding.source ?? '');
-                    const domain =
-                      typeof finding.domain === 'string'
-                        ? finding.domain
-                        : JSON.stringify(finding.domain ?? '');
-
-                    if (isEditing && editDraft) {
-                      return (
-                        <div key={i} className="military-border p-4 border-accent">
-                          <div className="space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                              <div>
-                                <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                                  Source
-                                </label>
-                                <input
-                                  className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
-                                  value={editDraft.source}
-                                  onChange={(e) =>
-                                    setEditDraft({ ...editDraft, source: e.target.value })
-                                  }
-                                />
-                              </div>
-                              <div>
-                                <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                                  Domain
-                                </label>
-                                <input
-                                  className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
-                                  value={editDraft.domain}
-                                  onChange={(e) =>
-                                    setEditDraft({ ...editDraft, domain: e.target.value })
-                                  }
-                                />
-                              </div>
-                            </div>
-                            <div>
-                              <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                                Key Points
-                              </label>
-                              {editDraft.key_points.map((pt, j) => (
-                                <div key={j} className="flex gap-2 mb-1">
-                                  <input
-                                    className="flex-1 bg-surface-2 border border-border text-xs terminal-text p-2"
-                                    value={pt}
-                                    onChange={(e) => {
-                                      const pts = [...editDraft.key_points];
-                                      pts[j] = e.target.value;
-                                      setEditDraft({ ...editDraft, key_points: pts });
-                                    }}
-                                  />
-                                  <button
-                                    className="text-danger text-xs px-2"
-                                    onClick={() => {
-                                      const pts = editDraft.key_points.filter((_, k) => k !== j);
-                                      setEditDraft({
-                                        ...editDraft,
-                                        key_points: pts.length > 0 ? pts : [''],
-                                      });
-                                    }}
-                                  >
-                                    ×
-                                  </button>
-                                </div>
-                              ))}
-                              <button
-                                className="text-xs terminal-text text-muted mt-1"
-                                onClick={() =>
-                                  setEditDraft({
-                                    ...editDraft,
-                                    key_points: [...editDraft.key_points, ''],
-                                  })
-                                }
-                              >
-                                + Add point
-                              </button>
-                            </div>
-                            <div>
-                              <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                                Decision Thresholds
-                              </label>
-                              <textarea
-                                className="w-full bg-surface-2 border border-border text-xs terminal-text p-2 h-16"
-                                value={editDraft.decision_thresholds ?? ''}
-                                onChange={(e) =>
-                                  setEditDraft({
-                                    ...editDraft,
-                                    decision_thresholds: e.target.value || undefined,
-                                  })
-                                }
-                              />
-                            </div>
-                            <div className="flex gap-2">
-                              <button
-                                className="military-button px-3 py-1 text-xs"
-                                disabled={savingDoctrine}
-                                onClick={() => {
-                                  const updated = [...structuredStandards];
-                                  updated[i] = {
-                                    ...editDraft,
-                                    key_points: editDraft.key_points.filter((p) => p.trim()),
-                                  };
-                                  setEditingStandard(null);
-                                  setEditDraft(null);
-                                  saveDoctrine(updated);
-                                }}
-                              >
-                                Save
-                              </button>
-                              <button
-                                className="text-xs terminal-text text-muted px-3 py-1"
-                                onClick={() => {
-                                  setEditingStandard(null);
-                                  setEditDraft(null);
-                                }}
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <div key={i} className="military-border p-4">
-                        <div className="flex gap-3 items-start mb-3 justify-between">
-                          <div>
-                            <div className="text-sm terminal-text text-ink font-medium">
-                              {source}
-                            </div>
-                            <div className="text-xs terminal-text text-muted uppercase">
-                              {domain}
-                            </div>
-                          </div>
-                          <div className="flex gap-2 shrink-0">
-                            <button
-                              className="text-xs terminal-text text-muted hover:text-ink"
-                              onClick={() => {
-                                setEditingStandard(i);
-                                setEditDraft({ ...finding, key_points: [...keyPoints] });
-                              }}
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="text-xs terminal-text text-danger/60 hover:text-danger"
-                              disabled={savingDoctrine}
-                              onClick={() => {
-                                const updated = structuredStandards.filter((_, k) => k !== i);
-                                saveDoctrine(updated);
-                              }}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                        <ul className="space-y-1 mb-2">
-                          {keyPoints.map((pt, j) => (
-                            <li key={j} className="text-xs terminal-text flex gap-2">
-                              <span className="text-muted shrink-0">▸</span>
-                              {typeof pt === 'string' ? pt : JSON.stringify(pt)}
-                            </li>
-                          ))}
-                        </ul>
-                        {finding.decision_thresholds && (
-                          <div className="mt-2 border-t border-border pt-2">
-                            <span className="text-xs terminal-text text-muted uppercase">
-                              Decision thresholds:{' '}
-                            </span>
-                            <span className="text-xs terminal-text">
-                              {typeof finding.decision_thresholds === 'string'
-                                ? finding.decision_thresholds
-                                : JSON.stringify(finding.decision_thresholds, null, 2)}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    );
+              <h1>{scenario.title}</h1>
+              <p className="desc">{scenario.description}</p>
+              <div className="meta">
+                <span>
+                  <WrIcon name="users" size={12} /> {teams.length} team
+                  {teams.length === 1 ? '' : 's'}
+                </span>
+                <span>
+                  <WrIcon name="target" size={12} /> {scenario.objectives?.length ?? 0} objectives
+                </span>
+                <span>
+                  <WrIcon name="clock" size={12} /> Compiled{' '}
+                  {new Date(scenario.created_at).toLocaleDateString(undefined, {
+                    day: 'numeric',
+                    month: 'short',
                   })}
+                </span>
+              </div>
+            </div>
+            <div className="wr-kpis">
+              <div>
+                <b>{teams.length}</b>
+                <span>teams</span>
+              </div>
+              <div>
+                <b>{injects.length}</b>
+                <span>injects</span>
+              </div>
+              <div>
+                <b>{hazardPins.length}</b>
+                <span>hazards</span>
+              </div>
+              <div>
+                <b>{casualtyPins.length}</b>
+                <span>casualties</span>
+              </div>
+              <div>
+                <b>{scenario.duration_minutes}</b>
+                <span>min</span>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        <div className="wr-detail-body">
+          <nav className="wr-toc" aria-label="Sections">
+            <h4>Sections</h4>
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                className={`link ${activeTab === tab ? 'on' : ''}`}
+                style={{ '--g': TAB_META[tab].family } as CSSProperties}
+                onClick={() => setActiveTab(tab)}
+              >
+                <span className="d" /> {tab}
+                {TAB_META[tab].count !== undefined && (
+                  <span className="n">{TAB_META[tab].count}</span>
+                )}
+              </button>
+            ))}
+          </nav>
+
+          <main className="min-w-0">
+            <div className={`wr-map ${activeTab === 'Map Pins' ? 'flush' : ''}`}>
+              {/* ─── OVERVIEW ─── */}
+              {activeTab === 'Overview' && (
+                <div>
+                  <Section title="Description">
+                    <p className="text-sm terminal-text leading-relaxed">{scenario.description}</p>
+                  </Section>
+
+                  {scenario.briefing && (
+                    <Section title="Operational Briefing">
+                      <div className="bg-gradient-to-br from-brand/5 to-brand/10 border border-brand/20 border-l-4 border-l-brand rounded-lg px-4 py-3.5">
+                        <p className="text-sm terminal-text leading-relaxed whitespace-pre-wrap">
+                          {scenario.briefing}
+                        </p>
+                      </div>
+                    </Section>
+                  )}
+
+                  <Section title="Objectives">
+                    <ul className="space-y-2">
+                      {scenario.objectives.map((obj, i) => (
+                        <li
+                          key={i}
+                          className="text-sm terminal-text flex items-start gap-3 bg-surface-2 border border-border rounded-lg px-3.5 py-2.5"
+                        >
+                          <span className="w-6 h-6 rounded-full bg-accent text-white text-xs font-extrabold grid place-items-center flex-shrink-0">
+                            {i + 1}
+                          </span>
+                          <span className="pt-0.5">{obj}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </Section>
+
+                  {scenario.role_specific_briefs &&
+                    Object.keys(scenario.role_specific_briefs).length > 0 && (
+                      <Section title="Role-specific briefs">
+                        <div className="space-y-3">
+                          {Object.entries(scenario.role_specific_briefs).map(([role, brief]) => (
+                            <div key={role}>
+                              <div className="text-xs terminal-text text-muted uppercase mb-1">
+                                {role}
+                              </div>
+                              <p className="text-sm terminal-text">{brief}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </Section>
+                    )}
+
+                  <Section title="Intelligence / Custom Facts">
+                    {(!ik?.custom_facts || ik.custom_facts.length === 0) && (
+                      <div className="flex items-center gap-3 mb-3">
+                        <p className="text-sm terminal-text text-muted">
+                          No custom facts yet. Generate research-oriented facility/area facts for
+                          this scenario.
+                        </p>
+                        <button
+                          onClick={async () => {
+                            setCustomFactsLoading(true);
+                            setCustomFactsMsg(null);
+                            try {
+                              const res = await api.scenarios.retryCustomFacts(scenarioId);
+                              setCustomFactsMsg(
+                                res.message ||
+                                  (res.ok
+                                    ? `Generated ${res.facts_count ?? 0} custom facts`
+                                    : res.error) ||
+                                  'Done',
+                              );
+                              const scenRes = await api.scenarios.get(scenarioId);
+                              setScenario(scenRes.data as ScenarioFull);
+                            } catch (err) {
+                              setCustomFactsMsg(
+                                err instanceof Error
+                                  ? err.message
+                                  : 'Failed to generate custom facts',
+                              );
+                            } finally {
+                              setCustomFactsLoading(false);
+                            }
+                          }}
+                          disabled={customFactsLoading}
+                          className="ml-auto px-4 py-1.5 text-xs terminal-text bg-brand hover:bg-brand-strong text-white rounded border border-brand disabled:opacity-50"
+                        >
+                          {customFactsLoading ? 'Generating…' : 'Generate custom facts'}
+                        </button>
+                      </div>
+                    )}
+                    {customFactsMsg && (
+                      <div className="text-xs terminal-text text-success p-1 mb-2">
+                        {customFactsMsg}
+                      </div>
+                    )}
+                    {ik?.custom_facts && ik.custom_facts.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex justify-end">
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              setCustomFactsLoading(true);
+                              setCustomFactsMsg(null);
+                              try {
+                                const res = await api.scenarios.retryCustomFacts(scenarioId, {
+                                  force: true,
+                                });
+                                setCustomFactsMsg(
+                                  res.message ||
+                                    (res.ok
+                                      ? `Regenerated ${res.facts_count ?? 0} custom facts`
+                                      : res.error) ||
+                                    'Done',
+                                );
+                                const scenRes = await api.scenarios.get(scenarioId);
+                                setScenario(scenRes.data as ScenarioFull);
+                              } catch (err) {
+                                setCustomFactsMsg(
+                                  err instanceof Error
+                                    ? err.message
+                                    : 'Failed to regenerate custom facts',
+                                );
+                              } finally {
+                                setCustomFactsLoading(false);
+                              }
+                            }}
+                            disabled={customFactsLoading}
+                            className="px-3 py-1 text-xs terminal-text bg-accent/10 hover:bg-accent/20 text-ink rounded border border-accent/40 disabled:opacity-50"
+                          >
+                            {customFactsLoading ? 'Regenerating…' : 'Regenerate custom facts'}
+                          </button>
+                        </div>
+                        {ik.custom_facts.map((fact, i) => (
+                          <div
+                            key={i}
+                            className="bg-accent/5 border border-accent/20 rounded-lg px-4 py-3"
+                          >
+                            <div className="text-[11px] font-extrabold text-accent uppercase tracking-wide mb-1">
+                              {fact.topic}
+                            </div>
+                            <p className="text-sm terminal-text">{fact.summary}</p>
+                            {fact.detail && (
+                              <p className="text-xs terminal-text text-muted mt-1 whitespace-pre-wrap">
+                                {fact.detail}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </Section>
+
+                  {ik?.baseline_escalation_factors && ik.baseline_escalation_factors.length > 0 && (
+                    <Section title="Baseline Escalation Factors">
+                      <div className="space-y-2">
+                        {ik.baseline_escalation_factors.map((f, i) => (
+                          <div
+                            key={i}
+                            className="flex gap-3 items-start bg-surface border border-border rounded-lg px-3.5 py-2.5"
+                          >
+                            <span
+                              className={`text-[10px] font-extrabold uppercase tracking-wide px-2 py-0.5 rounded-md border shrink-0 mt-0.5 ${SEVERITY_COLORS[f.severity] ?? 'text-warning border-warning'}`}
+                            >
+                              {f.severity.toUpperCase()}
+                            </span>
+                            <div>
+                              <div className="text-sm terminal-text text-ink font-semibold">
+                                {f.name}
+                              </div>
+                              <p className="text-xs terminal-text text-muted">{f.description}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Section>
+                  )}
                 </div>
-              ) : flatStandards ? (
-                <Section title="Sector standards">
-                  <p className="text-xs terminal-text whitespace-pre-wrap break-words">
-                    {flatStandards}
-                  </p>
-                </Section>
-              ) : ik?.sector_standards != null && typeof ik.sector_standards !== 'string' ? (
-                <Section title="Sector standards">
-                  <pre className="text-xs terminal-text whitespace-pre-wrap break-words font-mono">
-                    {JSON.stringify(ik.sector_standards, null, 2)}
-                  </pre>
-                </Section>
-              ) : (
-                <p className="text-sm terminal-text text-muted">
-                  No standards data — standards are researched during scenario generation.
-                </p>
               )}
 
-              {/* Add new standard */}
-              {addingStandard ? (
-                <div className="military-border p-4 mt-4 border-accent">
-                  <div className="text-sm terminal-text text-ink mb-3">Add doctrine / standard</div>
-                  <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                          Source
-                        </label>
-                        <input
-                          className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
-                          placeholder="e.g. AIIMS, START Triage Protocol"
-                          value={newStandard.source}
-                          onChange={(e) =>
-                            setNewStandard({ ...newStandard, source: e.target.value })
-                          }
-                        />
-                      </div>
-                      <div>
-                        <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                          Domain
-                        </label>
-                        <input
-                          className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
-                          placeholder="e.g. Incident Command, Medical Triage"
-                          value={newStandard.domain}
-                          onChange={(e) =>
-                            setNewStandard({ ...newStandard, domain: e.target.value })
-                          }
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                        Key Points
-                      </label>
-                      {newStandard.key_points.map((pt, j) => (
-                        <div key={j} className="flex gap-2 mb-1">
-                          <input
-                            className="flex-1 bg-surface-2 border border-border text-xs terminal-text p-2"
-                            placeholder="Protocol point or procedure"
-                            value={pt}
-                            onChange={(e) => {
-                              const pts = [...newStandard.key_points];
-                              pts[j] = e.target.value;
-                              setNewStandard({ ...newStandard, key_points: pts });
-                            }}
-                          />
-                          {newStandard.key_points.length > 1 && (
-                            <button
-                              className="text-danger text-xs px-2"
-                              onClick={() =>
-                                setNewStandard({
-                                  ...newStandard,
-                                  key_points: newStandard.key_points.filter((_, k) => k !== j),
-                                })
-                              }
-                            >
-                              ×
-                            </button>
+              {/* ─── TEAMS ─── */}
+              {activeTab === 'Teams' && (
+                <div>
+                  {teams.length === 0 ? (
+                    <p className="text-sm terminal-text text-muted">No teams defined</p>
+                  ) : (
+                    <div className="space-y-4">
+                      {teams.map((team) => (
+                        <div key={team.id} className="military-border p-4">
+                          <div className="text-sm terminal-text text-ink font-medium mb-1 flex items-center gap-2">
+                            {team.team_name}
+                            {team.is_investigative && (
+                              <span className="px-2 py-0.5 text-[9px] font-bold rounded border border-brand/60 bg-brand/10 text-brand">
+                                Investigative
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs terminal-text text-muted mb-2">
+                            {team.team_description}
+                          </p>
+                          <div className="text-xs terminal-text text-muted mb-3">
+                            {team.min_participants}–{team.max_participants} participants
+                          </div>
+                          {team.counter_definitions && team.counter_definitions.length > 0 && (
+                            <div className="border-t border-border pt-3 mt-2">
+                              <div className="text-xs terminal-text text-muted uppercase mb-2 tracking-wider">
+                                Counters ({team.counter_definitions.length})
+                              </div>
+                              <div className="space-y-2">
+                                {team.counter_definitions.map((cd) => (
+                                  <div
+                                    key={cd.key}
+                                    className="bg-surface-2 border border-border rounded px-3 py-2"
+                                  >
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-xs terminal-text text-ink font-medium">
+                                        {cd.label}
+                                      </span>
+                                      <span className="text-[10px] terminal-text text-muted uppercase">
+                                        {cd.type}
+                                        {cd.behavior ? ` · ${cd.behavior.replace(/_/g, ' ')}` : ''}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] terminal-text text-muted font-mono">
+                                      key: {cd.key}
+                                      {cd.initial_value !== undefined &&
+                                        ` · initial: ${String(cd.initial_value)}`}
+                                      {cd.visible_to === 'trainer_only' && ' · trainer only'}
+                                    </div>
+                                    {cd.config?.keywords && cd.config.keywords.length > 0 && (
+                                      <div className="text-[10px] terminal-text text-muted mt-1">
+                                        triggers: {cd.config.keywords.join(', ')}
+                                      </div>
+                                    )}
+                                    {cd.config?.base_rate_per_min != null && (
+                                      <div className="text-[10px] terminal-text text-muted mt-1">
+                                        rate: {cd.config.base_rate_per_min}/min
+                                      </div>
+                                    )}
+                                    {cd.config?.values && cd.config.values.length > 0 && (
+                                      <div className="text-[10px] terminal-text text-muted mt-1">
+                                        values: {cd.config.values.join(' | ')}
+                                      </div>
+                                    )}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           )}
                         </div>
                       ))}
-                      <button
-                        className="text-xs terminal-text text-muted mt-1"
-                        onClick={() =>
-                          setNewStandard({
-                            ...newStandard,
-                            key_points: [...newStandard.key_points, ''],
-                          })
-                        }
-                      >
-                        + Add point
-                      </button>
                     </div>
-                    <div>
-                      <label className="text-xs terminal-text text-muted uppercase block mb-1">
-                        Decision Thresholds (optional)
-                      </label>
-                      <textarea
-                        className="w-full bg-surface-2 border border-border text-xs terminal-text p-2 h-16"
-                        placeholder="e.g. Category 1: immediate treatment, Category 2: within 10 minutes"
-                        value={newStandard.decision_thresholds ?? ''}
-                        onChange={(e) =>
-                          setNewStandard({
-                            ...newStandard,
-                            decision_thresholds: e.target.value || undefined,
-                          })
-                        }
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        className="military-button px-3 py-1 text-xs"
-                        disabled={
-                          savingDoctrine || !newStandard.source.trim() || !newStandard.domain.trim()
-                        }
-                        onClick={() => {
-                          const cleaned = {
-                            ...newStandard,
-                            key_points: newStandard.key_points.filter((p) => p.trim()),
-                          };
-                          if (cleaned.key_points.length === 0)
-                            cleaned.key_points = [newStandard.key_points[0] || ''];
-                          const updated = [...(structuredStandards ?? []), cleaned];
-                          saveDoctrine(updated);
-                          setAddingStandard(false);
-                          setNewStandard({ domain: '', source: '', key_points: [''] });
-                        }}
-                      >
-                        Add standard
-                      </button>
-                      <button
-                        className="text-xs terminal-text text-muted px-3 py-1"
-                        onClick={() => {
-                          setAddingStandard(false);
-                          setNewStandard({ domain: '', source: '', key_points: [''] });
-                        }}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              ) : (
-                <button
-                  className="military-button px-4 py-2 text-xs mt-4"
-                  onClick={() => setAddingStandard(true)}
-                >
-                  + Add doctrine / standard
-                </button>
               )}
 
-              {savingDoctrine && (
-                <div className="text-xs terminal-text text-muted mt-2 animate-pulse">Saving…</div>
-              )}
-            </div>
-          )}
-
-          {activeTab === 'Research' && (
-            <div className="space-y-4">
-              {researchCases.length === 0 ? (
-                <p className="text-sm terminal-text text-muted">
-                  No research data — research cases are gathered during scenario generation.
-                </p>
-              ) : (
-                researchCases.map((rc) => (
-                  <div
-                    key={rc.id}
-                    className="military-border p-4 border-border bg-surface-2 space-y-3"
-                  >
-                    {/* Header */}
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-sm terminal-text text-ink font-bold">{rc.name}</h3>
-                      {rc.relevance_score != null && (
-                        <span
-                          className={`shrink-0 px-2 py-0.5 text-[10px] terminal-text uppercase border ${
-                            rc.relevance_score >= 8
-                              ? 'text-success border-success/50 bg-success/10'
-                              : rc.relevance_score >= 5
-                                ? 'text-accent border-accent/50 bg-accent/10'
-                                : 'text-muted border-border bg-accent/5'
-                          }`}
-                        >
-                          {rc.relevance_score}/10 match
-                        </span>
-                      )}
+              {/* ─── INJECTS ─── */}
+              {activeTab === 'Injects' && (
+                <div className="space-y-6">
+                  {/* Time-based */}
+                  <div>
+                    <div className="text-xs terminal-text text-muted uppercase mb-3">
+                      Time-based injects ({timeInjects.length})
                     </div>
-
-                    {/* Summary */}
-                    <p className="text-xs terminal-text text-ink leading-relaxed">{rc.summary}</p>
-
-                    {/* Stats chips */}
-                    <div className="flex flex-wrap gap-2">
-                      {rc.casualties_killed != null && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-danger/10 border border-danger/30 text-danger">
-                          {rc.casualties_killed} killed
-                        </span>
-                      )}
-                      {rc.casualties_injured != null && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-accent/10 border border-accent/30 text-accent">
-                          {rc.casualties_injured} injured
-                        </span>
-                      )}
-                      {rc.num_attackers != null && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-ink/10 border border-ink/30 text-ink">
-                          {rc.num_attackers} attacker{rc.num_attackers !== 1 ? 's' : ''}
-                        </span>
-                      )}
-                      {rc.response_time_minutes != null && rc.response_time_minutes > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-brand/10 border border-brand/30 text-brand">
-                          Response: {rc.response_time_minutes} min
-                        </span>
-                      )}
-                      {rc.containment_time_minutes != null && rc.containment_time_minutes > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-accent/10 border border-accent/30 text-accent">
-                          Contained: {rc.containment_time_minutes} min
-                        </span>
-                      )}
-                      {rc.damage_radius_m != null && rc.damage_radius_m > 0 && (
-                        <span className="px-2 py-0.5 text-[10px] terminal-text bg-warning/10 border border-warning/30 text-warning">
-                          Radius: {Math.round(rc.damage_radius_m * 3.28084)} ft
-                        </span>
-                      )}
+                    <div className="space-y-2">
+                      {timeInjects
+                        .sort(
+                          (a, b) => (a.trigger_time_minutes ?? 0) - (b.trigger_time_minutes ?? 0),
+                        )
+                        .map((inj) => (
+                          <InjectRow
+                            key={inj.id}
+                            inject={inj}
+                            expanded={expandedInject === inj.id}
+                            onToggle={() =>
+                              setExpandedInject(expandedInject === inj.id ? null : inj.id)
+                            }
+                          />
+                        ))}
                     </div>
-
-                    {/* Weapon section */}
-                    {(rc.weapon_description || rc.weapon_forensics) && (
-                      <div className="border-l-2 border-accent/40 pl-3">
-                        <div className="text-[10px] terminal-text text-accent uppercase mb-1">
-                          WEAPON PROFILE
-                        </div>
-                        {rc.weapon_description && (
-                          <p className="text-xs terminal-text text-muted">
-                            {rc.weapon_description}
-                          </p>
-                        )}
-                        {rc.weapon_forensics && (
-                          <p className="text-xs terminal-text text-muted mt-1">
-                            Forensics: {rc.weapon_forensics}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Injury breakdown */}
-                    {rc.injury_breakdown && (
-                      <div className="border-l-2 border-red-500/40 pl-3">
-                        <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
-                          INJURY BREAKDOWN
-                        </div>
-                        <p className="text-xs terminal-text text-muted">{rc.injury_breakdown}</p>
-                      </div>
-                    )}
-
-                    {/* Hazards triggered */}
-                    {rc.hazards_triggered && rc.hazards_triggered.length > 0 && (
-                      <div className="border-l-2 border-yellow-500/40 pl-3">
-                        <div className="text-[10px] terminal-text text-yellow-400/70 uppercase mb-1">
-                          HAZARDS TRIGGERED
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {rc.hazards_triggered.map((h, i) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 text-[10px] terminal-text bg-warning/10 border border-warning/30 text-warning"
-                            >
-                              {h.replace(/_/g, ' ')}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Crowd response */}
-                    {rc.crowd_response && (
-                      <div className="border-l-2 border-brand/40 pl-3">
-                        <div className="text-[10px] terminal-text text-brand/70 uppercase mb-1">
-                          CROWD BEHAVIOR
-                        </div>
-                        <p className="text-xs terminal-text text-muted">{rc.crowd_response}</p>
-                      </div>
-                    )}
-
-                    {/* Secondary effects */}
-                    {rc.secondary_effects && rc.secondary_effects.length > 0 && (
-                      <div className="border-l-2 border-cyan-500/40 pl-3">
-                        <div className="text-[10px] terminal-text text-cyan-400/70 uppercase mb-1">
-                          SECONDARY EFFECTS
-                        </div>
-                        <ul className="space-y-0.5">
-                          {rc.secondary_effects.map((e, i) => (
-                            <li key={i} className="text-xs terminal-text text-muted">
-                              ▸ {e.replace(/_/g, ' ')}
-                            </li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-
-                    {/* Timeline */}
-                    {rc.timeline && (
-                      <div className="border-l-2 border-border pl-3">
-                        <div className="text-[10px] terminal-text text-muted uppercase mb-1">
-                          TIMELINE
-                        </div>
-                        <p className="text-xs terminal-text text-muted leading-relaxed">
-                          {rc.timeline}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Adversary behavior */}
-                    {rc.adversary_behavior && (
-                      <div className="border-l-2 border-red-600/30 pl-3">
-                        <div className="text-[10px] terminal-text text-red-400/50 uppercase mb-1">
-                          ADVERSARY BEHAVIOR
-                        </div>
-                        <p className="text-xs terminal-text text-muted leading-relaxed">
-                          {rc.adversary_behavior}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Environment factors */}
-                    {rc.environment_factors && rc.environment_factors.length > 0 && (
-                      <div className="border-l-2 border-green-500/30 pl-3">
-                        <div className="text-[10px] terminal-text text-green-400/50 uppercase mb-1">
-                          ENVIRONMENT FACTORS
-                        </div>
-                        <div className="flex flex-wrap gap-1.5">
-                          {rc.environment_factors.map((f, i) => (
-                            <span
-                              key={i}
-                              className="px-2 py-0.5 text-[10px] terminal-text bg-success/10 border border-success/30 text-success"
-                            >
-                              {f.replace(/_/g, ' ')}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Outcome */}
-                    {rc.outcome && (
-                      <div className="border-l-2 border-border pl-3">
-                        <div className="text-[10px] terminal-text text-muted uppercase mb-1">
-                          OUTCOME
-                        </div>
-                        <p className="text-xs terminal-text text-muted leading-relaxed">
-                          {rc.outcome}
-                        </p>
-                      </div>
-                    )}
                   </div>
-                ))
+
+                  {/* Decision-triggered */}
+                  {decisionInjects.length > 0 && (
+                    <div>
+                      <div className="text-xs terminal-text text-muted uppercase mb-3">
+                        Decision-triggered injects ({decisionInjects.length})
+                      </div>
+                      <div className="space-y-2">
+                        {decisionInjects.map((inj) => (
+                          <InjectRow
+                            key={inj.id}
+                            inject={inj}
+                            expanded={expandedInject === inj.id}
+                            onToggle={() =>
+                              setExpandedInject(expandedInject === inj.id ? null : inj.id)
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Condition-driven */}
+                  {conditionInjects.length > 0 && (
+                    <div>
+                      <div className="text-xs terminal-text text-muted uppercase mb-3">
+                        Condition-driven injects ({conditionInjects.length})
+                      </div>
+                      <div className="space-y-2">
+                        {conditionInjects.map((inj) => (
+                          <InjectRow
+                            key={inj.id}
+                            inject={inj}
+                            expanded={expandedInject === inj.id}
+                            onToggle={() =>
+                              setExpandedInject(expandedInject === inj.id ? null : inj.id)
+                            }
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* ─── MAP PINS ─── */}
+              {activeTab === 'Map Pins' && (
+                <MapPinsTab
+                  scenarioId={scenarioId}
+                  locations={locations}
+                  hazards={hazardPins}
+                  casualties={casualtyPins}
+                  equipment={equipmentItems}
+                  floorPlans={floorPlans}
+                />
+              )}
+
+              {/* ─── ENV TRUTHS ─── */}
+              {activeTab === 'Env Truths' && (
+                <EnvTruthsTab locations={locations} siteRequirements={ik?.site_requirements} />
+              )}
+
+              {/* ─── ROUTES ─── */}
+              {activeTab === 'Routes' && (
+                <div>
+                  {(() => {
+                    const routePins = locations.filter((l) => l.location_type === 'route');
+                    const hasRoutes = routePins.length > 0;
+                    return (
+                      <>
+                        {!hasRoutes && (
+                          <p className="text-sm terminal-text text-muted mb-3">No route data</p>
+                        )}
+                        <div className="flex items-center gap-3 mb-3">
+                          <button
+                            onClick={async () => {
+                              setRetryingRoutes(true);
+                              setRetryRoutesMsg(null);
+                              try {
+                                const res = await api.scenarios.retryRoutes(scenarioId);
+                                if (res.routes_count) {
+                                  setRetryRoutesMsg(`${res.routes_count} routes generated`);
+                                  const locRes =
+                                    await api.scenarios.getScenarioLocations(scenarioId);
+                                  setLocations((locRes.data ?? []) as LocationPin[]);
+                                } else {
+                                  setRetryRoutesMsg(
+                                    res.message || res.error || 'No routes generated',
+                                  );
+                                }
+                              } catch (err) {
+                                setRetryRoutesMsg(
+                                  err instanceof Error ? err.message : 'Failed to fetch routes',
+                                );
+                              } finally {
+                                setRetryingRoutes(false);
+                              }
+                            }}
+                            disabled={retryingRoutes || hasRoutes}
+                            className="px-4 py-1.5 text-xs terminal-text bg-brand hover:bg-brand-strong text-white rounded border border-brand disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            {retryingRoutes
+                              ? 'Fetching routes…'
+                              : hasRoutes
+                                ? 'Routes available'
+                                : 'Retry route fetch'}
+                          </button>
+                          {retryRoutesMsg && (
+                            <span className="text-xs terminal-text text-success">
+                              {retryRoutesMsg}
+                            </span>
+                          )}
+                        </div>
+                        {hasRoutes && (
+                          <div className="space-y-2">
+                            <p className="text-xs terminal-text text-muted mb-3">
+                              Enriched route conditions — used by transport outcome service and
+                              environmental condition management.
+                            </p>
+                            {routePins.map((r, i) => {
+                              const c = (r.conditions ?? {}) as Record<string, unknown>;
+                              return (
+                                <div key={r.id ?? i} className="military-border p-3">
+                                  <div className="text-sm terminal-text text-ink font-medium">
+                                    {r.label}
+                                  </div>
+                                  <div className="text-xs terminal-text mt-1 space-y-0.5">
+                                    <div>
+                                      {c.problem ? (
+                                        <span className="text-warning">{String(c.problem)}</span>
+                                      ) : (
+                                        <span className="text-success">Clear</span>
+                                      )}
+                                      {' — '}
+                                      {c.managed ? 'managed' : 'unmanaged'}
+                                    </div>
+                                    <div>
+                                      {c.highway_type ? `${String(c.highway_type)} ` : null}
+                                      {c.one_way ? 'one-way ' : ''}
+                                      {c.distance_m != null ? `${c.distance_m}m ` : null}
+                                      {c.travel_time_minutes != null
+                                        ? `~${c.travel_time_minutes} min`
+                                        : null}
+                                    </div>
+                                    {Array.isArray(c.connects_to) &&
+                                      (c.connects_to as string[]).length > 0 && (
+                                        <div className="text-muted">
+                                          Connects to: {(c.connects_to as string[]).join(', ')}
+                                        </div>
+                                      )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* ─── STANDARDS / DOCTRINE ─── */}
+              {activeTab === 'Standards' && (
+                <div>
+                  {/* Team doctrine mapping */}
+                  {ik?.team_doctrines && Object.keys(ik.team_doctrines).length > 0 && (
+                    <Section title="Doctrine by team">
+                      <div className="space-y-3 mb-6">
+                        {Object.entries(ik.team_doctrines).map(([teamName, findings]) => (
+                          <div key={teamName} className="military-border p-3">
+                            <div className="text-sm terminal-text text-ink font-medium uppercase mb-2">
+                              {teamName}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {(findings as StandardsFinding[]).map((f, i) => (
+                                <span
+                                  key={i}
+                                  className="text-xs terminal-text bg-accent/10 border border-border px-2 py-1"
+                                >
+                                  {f.source}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </Section>
+                  )}
+
+                  {/* Editable standards list */}
+                  {structuredStandards && structuredStandards.length > 0 ? (
+                    <div className="space-y-4">
+                      {structuredStandards.map((finding, i) => {
+                        const isEditing = editingStandard === i;
+                        const keyPoints = Array.isArray(finding.key_points)
+                          ? finding.key_points
+                          : finding.key_points && typeof finding.key_points === 'object'
+                            ? Object.entries(finding.key_points).map(
+                                ([k, v]) =>
+                                  `${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`,
+                              )
+                            : [];
+                        const source =
+                          typeof finding.source === 'string'
+                            ? finding.source
+                            : JSON.stringify(finding.source ?? '');
+                        const domain =
+                          typeof finding.domain === 'string'
+                            ? finding.domain
+                            : JSON.stringify(finding.domain ?? '');
+
+                        if (isEditing && editDraft) {
+                          return (
+                            <div key={i} className="military-border p-4 border-accent">
+                              <div className="space-y-3">
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                                      Source
+                                    </label>
+                                    <input
+                                      className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
+                                      value={editDraft.source}
+                                      onChange={(e) =>
+                                        setEditDraft({ ...editDraft, source: e.target.value })
+                                      }
+                                    />
+                                  </div>
+                                  <div>
+                                    <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                                      Domain
+                                    </label>
+                                    <input
+                                      className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
+                                      value={editDraft.domain}
+                                      onChange={(e) =>
+                                        setEditDraft({ ...editDraft, domain: e.target.value })
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                                <div>
+                                  <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                                    Key Points
+                                  </label>
+                                  {editDraft.key_points.map((pt, j) => (
+                                    <div key={j} className="flex gap-2 mb-1">
+                                      <input
+                                        className="flex-1 bg-surface-2 border border-border text-xs terminal-text p-2"
+                                        value={pt}
+                                        onChange={(e) => {
+                                          const pts = [...editDraft.key_points];
+                                          pts[j] = e.target.value;
+                                          setEditDraft({ ...editDraft, key_points: pts });
+                                        }}
+                                      />
+                                      <button
+                                        className="text-danger text-xs px-2"
+                                        onClick={() => {
+                                          const pts = editDraft.key_points.filter(
+                                            (_, k) => k !== j,
+                                          );
+                                          setEditDraft({
+                                            ...editDraft,
+                                            key_points: pts.length > 0 ? pts : [''],
+                                          });
+                                        }}
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <button
+                                    className="text-xs terminal-text text-muted mt-1"
+                                    onClick={() =>
+                                      setEditDraft({
+                                        ...editDraft,
+                                        key_points: [...editDraft.key_points, ''],
+                                      })
+                                    }
+                                  >
+                                    + Add point
+                                  </button>
+                                </div>
+                                <div>
+                                  <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                                    Decision Thresholds
+                                  </label>
+                                  <textarea
+                                    className="w-full bg-surface-2 border border-border text-xs terminal-text p-2 h-16"
+                                    value={editDraft.decision_thresholds ?? ''}
+                                    onChange={(e) =>
+                                      setEditDraft({
+                                        ...editDraft,
+                                        decision_thresholds: e.target.value || undefined,
+                                      })
+                                    }
+                                  />
+                                </div>
+                                <div className="flex gap-2">
+                                  <button
+                                    className="military-button px-3 py-1 text-xs"
+                                    disabled={savingDoctrine}
+                                    onClick={() => {
+                                      const updated = [...structuredStandards];
+                                      updated[i] = {
+                                        ...editDraft,
+                                        key_points: editDraft.key_points.filter((p) => p.trim()),
+                                      };
+                                      setEditingStandard(null);
+                                      setEditDraft(null);
+                                      saveDoctrine(updated);
+                                    }}
+                                  >
+                                    Save
+                                  </button>
+                                  <button
+                                    className="text-xs terminal-text text-muted px-3 py-1"
+                                    onClick={() => {
+                                      setEditingStandard(null);
+                                      setEditDraft(null);
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        return (
+                          <div key={i} className="military-border p-4">
+                            <div className="flex gap-3 items-start mb-3 justify-between">
+                              <div>
+                                <div className="text-sm terminal-text text-ink font-medium">
+                                  {source}
+                                </div>
+                                <div className="text-xs terminal-text text-muted uppercase">
+                                  {domain}
+                                </div>
+                              </div>
+                              <div className="flex gap-2 shrink-0">
+                                <button
+                                  className="text-xs terminal-text text-muted hover:text-ink"
+                                  onClick={() => {
+                                    setEditingStandard(i);
+                                    setEditDraft({ ...finding, key_points: [...keyPoints] });
+                                  }}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="text-xs terminal-text text-danger/60 hover:text-danger"
+                                  disabled={savingDoctrine}
+                                  onClick={() => {
+                                    const updated = structuredStandards.filter((_, k) => k !== i);
+                                    saveDoctrine(updated);
+                                  }}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </div>
+                            <ul className="space-y-1 mb-2">
+                              {keyPoints.map((pt, j) => (
+                                <li key={j} className="text-xs terminal-text flex gap-2">
+                                  <span className="text-muted shrink-0">▸</span>
+                                  {typeof pt === 'string' ? pt : JSON.stringify(pt)}
+                                </li>
+                              ))}
+                            </ul>
+                            {finding.decision_thresholds && (
+                              <div className="mt-2 border-t border-border pt-2">
+                                <span className="text-xs terminal-text text-muted uppercase">
+                                  Decision thresholds:{' '}
+                                </span>
+                                <span className="text-xs terminal-text">
+                                  {typeof finding.decision_thresholds === 'string'
+                                    ? finding.decision_thresholds
+                                    : JSON.stringify(finding.decision_thresholds, null, 2)}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : flatStandards ? (
+                    <Section title="Sector standards">
+                      <p className="text-xs terminal-text whitespace-pre-wrap break-words">
+                        {flatStandards}
+                      </p>
+                    </Section>
+                  ) : ik?.sector_standards != null && typeof ik.sector_standards !== 'string' ? (
+                    <Section title="Sector standards">
+                      <pre className="text-xs terminal-text whitespace-pre-wrap break-words font-mono">
+                        {JSON.stringify(ik.sector_standards, null, 2)}
+                      </pre>
+                    </Section>
+                  ) : (
+                    <p className="text-sm terminal-text text-muted">
+                      No standards data — standards are researched during scenario generation.
+                    </p>
+                  )}
+
+                  {/* Add new standard */}
+                  {addingStandard ? (
+                    <div className="military-border p-4 mt-4 border-accent">
+                      <div className="text-sm terminal-text text-ink mb-3">
+                        Add doctrine / standard
+                      </div>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                              Source
+                            </label>
+                            <input
+                              className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
+                              placeholder="e.g. AIIMS, START Triage Protocol"
+                              value={newStandard.source}
+                              onChange={(e) =>
+                                setNewStandard({ ...newStandard, source: e.target.value })
+                              }
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                              Domain
+                            </label>
+                            <input
+                              className="w-full bg-surface-2 border border-border text-xs terminal-text p-2"
+                              placeholder="e.g. Incident Command, Medical Triage"
+                              value={newStandard.domain}
+                              onChange={(e) =>
+                                setNewStandard({ ...newStandard, domain: e.target.value })
+                              }
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                            Key Points
+                          </label>
+                          {newStandard.key_points.map((pt, j) => (
+                            <div key={j} className="flex gap-2 mb-1">
+                              <input
+                                className="flex-1 bg-surface-2 border border-border text-xs terminal-text p-2"
+                                placeholder="Protocol point or procedure"
+                                value={pt}
+                                onChange={(e) => {
+                                  const pts = [...newStandard.key_points];
+                                  pts[j] = e.target.value;
+                                  setNewStandard({ ...newStandard, key_points: pts });
+                                }}
+                              />
+                              {newStandard.key_points.length > 1 && (
+                                <button
+                                  className="text-danger text-xs px-2"
+                                  onClick={() =>
+                                    setNewStandard({
+                                      ...newStandard,
+                                      key_points: newStandard.key_points.filter((_, k) => k !== j),
+                                    })
+                                  }
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          <button
+                            className="text-xs terminal-text text-muted mt-1"
+                            onClick={() =>
+                              setNewStandard({
+                                ...newStandard,
+                                key_points: [...newStandard.key_points, ''],
+                              })
+                            }
+                          >
+                            + Add point
+                          </button>
+                        </div>
+                        <div>
+                          <label className="text-xs terminal-text text-muted uppercase block mb-1">
+                            Decision Thresholds (optional)
+                          </label>
+                          <textarea
+                            className="w-full bg-surface-2 border border-border text-xs terminal-text p-2 h-16"
+                            placeholder="e.g. Category 1: immediate treatment, Category 2: within 10 minutes"
+                            value={newStandard.decision_thresholds ?? ''}
+                            onChange={(e) =>
+                              setNewStandard({
+                                ...newStandard,
+                                decision_thresholds: e.target.value || undefined,
+                              })
+                            }
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            className="military-button px-3 py-1 text-xs"
+                            disabled={
+                              savingDoctrine ||
+                              !newStandard.source.trim() ||
+                              !newStandard.domain.trim()
+                            }
+                            onClick={() => {
+                              const cleaned = {
+                                ...newStandard,
+                                key_points: newStandard.key_points.filter((p) => p.trim()),
+                              };
+                              if (cleaned.key_points.length === 0)
+                                cleaned.key_points = [newStandard.key_points[0] || ''];
+                              const updated = [...(structuredStandards ?? []), cleaned];
+                              saveDoctrine(updated);
+                              setAddingStandard(false);
+                              setNewStandard({ domain: '', source: '', key_points: [''] });
+                            }}
+                          >
+                            Add standard
+                          </button>
+                          <button
+                            className="text-xs terminal-text text-muted px-3 py-1"
+                            onClick={() => {
+                              setAddingStandard(false);
+                              setNewStandard({ domain: '', source: '', key_points: [''] });
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      className="military-button px-4 py-2 text-xs mt-4"
+                      onClick={() => setAddingStandard(true)}
+                    >
+                      + Add doctrine / standard
+                    </button>
+                  )}
+
+                  {savingDoctrine && (
+                    <div className="text-xs terminal-text text-muted mt-2 animate-pulse">
+                      Saving…
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {activeTab === 'Research' && (
+                <div className="space-y-4">
+                  {researchCases.length === 0 ? (
+                    <p className="text-sm terminal-text text-muted">
+                      No research data — research cases are gathered during scenario generation.
+                    </p>
+                  ) : (
+                    researchCases.map((rc) => (
+                      <div
+                        key={rc.id}
+                        className="military-border p-4 border-border bg-surface-2 space-y-3"
+                      >
+                        {/* Header */}
+                        <div className="flex items-start justify-between gap-3">
+                          <h3 className="text-sm terminal-text text-ink font-bold">{rc.name}</h3>
+                          {rc.relevance_score != null && (
+                            <span
+                              className={`shrink-0 px-2 py-0.5 text-[10px] terminal-text uppercase border ${
+                                rc.relevance_score >= 8
+                                  ? 'text-success border-success/50 bg-success/10'
+                                  : rc.relevance_score >= 5
+                                    ? 'text-accent border-accent/50 bg-accent/10'
+                                    : 'text-muted border-border bg-accent/5'
+                              }`}
+                            >
+                              {rc.relevance_score}/10 match
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Summary */}
+                        <p className="text-xs terminal-text text-ink leading-relaxed">
+                          {rc.summary}
+                        </p>
+
+                        {/* Stats chips */}
+                        <div className="flex flex-wrap gap-2">
+                          {rc.casualties_killed != null && (
+                            <span className="px-2 py-0.5 text-[10px] terminal-text bg-danger/10 border border-danger/30 text-danger">
+                              {rc.casualties_killed} killed
+                            </span>
+                          )}
+                          {rc.casualties_injured != null && (
+                            <span className="px-2 py-0.5 text-[10px] terminal-text bg-accent/10 border border-accent/30 text-accent">
+                              {rc.casualties_injured} injured
+                            </span>
+                          )}
+                          {rc.num_attackers != null && (
+                            <span className="px-2 py-0.5 text-[10px] terminal-text bg-ink/10 border border-ink/30 text-ink">
+                              {rc.num_attackers} attacker{rc.num_attackers !== 1 ? 's' : ''}
+                            </span>
+                          )}
+                          {rc.response_time_minutes != null && rc.response_time_minutes > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] terminal-text bg-brand/10 border border-brand/30 text-brand">
+                              Response: {rc.response_time_minutes} min
+                            </span>
+                          )}
+                          {rc.containment_time_minutes != null &&
+                            rc.containment_time_minutes > 0 && (
+                              <span className="px-2 py-0.5 text-[10px] terminal-text bg-accent/10 border border-accent/30 text-accent">
+                                Contained: {rc.containment_time_minutes} min
+                              </span>
+                            )}
+                          {rc.damage_radius_m != null && rc.damage_radius_m > 0 && (
+                            <span className="px-2 py-0.5 text-[10px] terminal-text bg-warning/10 border border-warning/30 text-warning">
+                              Radius: {Math.round(rc.damage_radius_m * 3.28084)} ft
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Weapon section */}
+                        {(rc.weapon_description || rc.weapon_forensics) && (
+                          <div className="border-l-2 border-accent/40 pl-3">
+                            <div className="text-[10px] terminal-text text-accent uppercase mb-1">
+                              WEAPON PROFILE
+                            </div>
+                            {rc.weapon_description && (
+                              <p className="text-xs terminal-text text-muted">
+                                {rc.weapon_description}
+                              </p>
+                            )}
+                            {rc.weapon_forensics && (
+                              <p className="text-xs terminal-text text-muted mt-1">
+                                Forensics: {rc.weapon_forensics}
+                              </p>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Injury breakdown */}
+                        {rc.injury_breakdown && (
+                          <div className="border-l-2 border-red-500/40 pl-3">
+                            <div className="text-[10px] terminal-text text-red-400/70 uppercase mb-1">
+                              INJURY BREAKDOWN
+                            </div>
+                            <p className="text-xs terminal-text text-muted">
+                              {rc.injury_breakdown}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Hazards triggered */}
+                        {rc.hazards_triggered && rc.hazards_triggered.length > 0 && (
+                          <div className="border-l-2 border-yellow-500/40 pl-3">
+                            <div className="text-[10px] terminal-text text-yellow-400/70 uppercase mb-1">
+                              HAZARDS TRIGGERED
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {rc.hazards_triggered.map((h, i) => (
+                                <span
+                                  key={i}
+                                  className="px-2 py-0.5 text-[10px] terminal-text bg-warning/10 border border-warning/30 text-warning"
+                                >
+                                  {h.replace(/_/g, ' ')}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Crowd response */}
+                        {rc.crowd_response && (
+                          <div className="border-l-2 border-brand/40 pl-3">
+                            <div className="text-[10px] terminal-text text-brand/70 uppercase mb-1">
+                              CROWD BEHAVIOR
+                            </div>
+                            <p className="text-xs terminal-text text-muted">{rc.crowd_response}</p>
+                          </div>
+                        )}
+
+                        {/* Secondary effects */}
+                        {rc.secondary_effects && rc.secondary_effects.length > 0 && (
+                          <div className="border-l-2 border-cyan-500/40 pl-3">
+                            <div className="text-[10px] terminal-text text-cyan-400/70 uppercase mb-1">
+                              SECONDARY EFFECTS
+                            </div>
+                            <ul className="space-y-0.5">
+                              {rc.secondary_effects.map((e, i) => (
+                                <li key={i} className="text-xs terminal-text text-muted">
+                                  ▸ {e.replace(/_/g, ' ')}
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {/* Timeline */}
+                        {rc.timeline && (
+                          <div className="border-l-2 border-border pl-3">
+                            <div className="text-[10px] terminal-text text-muted uppercase mb-1">
+                              TIMELINE
+                            </div>
+                            <p className="text-xs terminal-text text-muted leading-relaxed">
+                              {rc.timeline}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Adversary behavior */}
+                        {rc.adversary_behavior && (
+                          <div className="border-l-2 border-red-600/30 pl-3">
+                            <div className="text-[10px] terminal-text text-red-400/50 uppercase mb-1">
+                              ADVERSARY BEHAVIOR
+                            </div>
+                            <p className="text-xs terminal-text text-muted leading-relaxed">
+                              {rc.adversary_behavior}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Environment factors */}
+                        {rc.environment_factors && rc.environment_factors.length > 0 && (
+                          <div className="border-l-2 border-green-500/30 pl-3">
+                            <div className="text-[10px] terminal-text text-green-400/50 uppercase mb-1">
+                              ENVIRONMENT FACTORS
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {rc.environment_factors.map((f, i) => (
+                                <span
+                                  key={i}
+                                  className="px-2 py-0.5 text-[10px] terminal-text bg-success/10 border border-success/30 text-success"
+                                >
+                                  {f.replace(/_/g, ' ')}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Outcome */}
+                        {rc.outcome && (
+                          <div className="border-l-2 border-border pl-3">
+                            <div className="text-[10px] terminal-text text-muted uppercase mb-1">
+                              OUTCOME
+                            </div>
+                            <p className="text-xs terminal-text text-muted leading-relaxed">
+                              {rc.outcome}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               )}
             </div>
-          )}
+          </main>
         </div>
       </div>
     </div>
@@ -4122,9 +4207,22 @@ const InjectRow = ({
             >
               {inject.severity.toUpperCase()}
             </span>
-            <span className="text-xs terminal-text text-muted">
-              {inject.type.replace(/_/g, ' ')}
-            </span>
+            {(inject as unknown as { delivery_config?: Record<string, unknown> | null })
+              .delivery_config?.app ? (
+              <OriginBadge
+                inject={
+                  inject as unknown as {
+                    type: string;
+                    delivery_config?: Record<string, unknown> | null;
+                  }
+                }
+                size="sm"
+              />
+            ) : (
+              <span className="text-xs terminal-text text-muted">
+                {inject.type.replace(/_/g, ' ')}
+              </span>
+            )}
             <span className="text-xs terminal-text text-muted">{inject.inject_scope}</span>
             {inject.target_teams && inject.target_teams.length > 0 && (
               <span className="text-xs terminal-text text-muted">

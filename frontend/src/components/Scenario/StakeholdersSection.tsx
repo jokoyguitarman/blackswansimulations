@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties } from 'react';
 import { api } from '../../lib/api';
+import { WrSection, WrFold, WrSub, initialsOf, countryCode } from '../UI/Collapsible';
+import { WrIcon, type WrIconName } from '../UI/WarRoomIcon';
 
 /**
  * Post-compile editor sections for multi-organisation scenarios (contract §3 / §5):
@@ -64,21 +66,40 @@ const inputCls =
   'w-full text-xs bg-surface border border-border rounded px-2 py-1.5 text-ink disabled:opacity-60';
 const labelCls = 'text-[11px] text-muted font-medium block mb-0.5';
 
+/** Folding section (Situation Map detail view, spec §6.1). */
 const Card = ({
+  id,
   title,
   subtitle,
+  count,
+  icon = 'layers',
+  family = 'var(--brand)',
+  defaultOpen = false,
+  peek,
   children,
 }: {
+  id: string;
   title: string;
   subtitle?: string;
+  count?: number | string;
+  icon?: WrIconName;
+  family?: string;
+  defaultOpen?: boolean;
+  peek?: React.ReactNode;
   children: React.ReactNode;
 }) => (
-  <div className="bg-surface-2 border border-border rounded-lg p-4 mb-5">
-    <h3 className="text-sm font-bold text-ink">{title}</h3>
-    {subtitle && <p className="text-[11px] text-muted mt-0.5 mb-3">{subtitle}</p>}
-    {!subtitle && <div className="mb-3" />}
+  <WrSection
+    id={id}
+    title={title}
+    subtitle={subtitle}
+    count={count}
+    icon={icon}
+    family={family}
+    defaultOpen={defaultOpen}
+    peek={peek}
+  >
     {children}
-  </div>
+  </WrSection>
 );
 
 const ListEditor = ({
@@ -141,38 +162,62 @@ export const OrganisationsSection = ({
   }>;
   if (orgs.length === 0) return null;
   const protagonists = orgs.filter((o) => o.side === 'protagonist');
-  const antagonists = orgs.filter((o) => o.side !== 'protagonist');
+  const pressure = orgs.filter((o) => o.side === 'pressure');
+  const antagonists = orgs.filter((o) => o.side !== 'protagonist' && o.side !== 'pressure');
+  const orgExtra = (o: OrgEntry) => o as OrgEntry & { operation?: string; kind?: string };
   return (
     <Card
-      title={`Organisations (${protagonists.length}) · Countries (${countries.length || 1})`}
-      subtitle="The registry every scoped element points at: teams, contacts, feeds and emails belong to one of these organisations. Names and countries are fixed after compile; everything they contain is editable below."
+      id="orgs"
+      title="Organisations & pages"
+      count={orgs.length}
+      icon="building"
+      family="var(--f-org)"
+      subtitle={`The registry every scoped element points at: teams, contacts, feeds and emails belong to one of these organisations. ${countries.length || 1} countr${(countries.length || 1) === 1 ? 'y' : 'ies'}. Names and countries are fixed after compile; everything they contain is editable below.`}
+      peek={
+        <>
+          <span className="wr-p rel">{protagonists.length} protagonist</span>
+          {pressure.length > 0 && <span className="wr-p speaks">{pressure.length} pressure</span>}
+          {antagonists.length > 0 && <span className="wr-p rival">{antagonists.length} rival</span>}
+        </>
+      }
     >
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {protagonists.map((o) => {
           const teamNames = teams
             .filter(
               (t) => (t.org_key ?? null) === o.org_key || (protagonists.length === 1 && !t.org_key),
             )
             .map((t) => t.team_name);
+          const ai = orgExtra(o).operation === 'ai';
           return (
-            <div key={o.org_key} className="bg-surface border border-border rounded-lg p-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-ink">{o.display_name}</span>
-                {o.is_primary && (
-                  <span className="text-[10px] px-1.5 py-0.5 bg-brand/10 text-brand rounded">
-                    Primary
-                  </span>
-                )}
-                <span className="text-[10px] text-muted ml-auto">{o.country}</span>
+            <div
+              key={o.org_key}
+              className={`wr-node ${o.is_primary ? 'hq' : ai ? 'ai' : ''}`}
+              style={{ '--g': ai ? 'var(--f-ai)' : 'var(--f-org)' } as CSSProperties}
+            >
+              <div className="kicker">
+                <WrIcon name={o.is_primary ? 'building' : ai ? 'sparkle' : 'office'} size={12} />
+                {o.is_primary ? 'Headquarters' : 'Office'} · {ai ? 'AI-operated' : 'players'}
               </div>
-              <div className="text-[10px] text-muted mt-0.5 font-mono">{o.org_key}</div>
+              <div className="flex items-center gap-2.5">
+                <div
+                  className={`wr-mono ${ai ? 'ai' : ''}`}
+                  style={{ width: 40, height: 40, fontSize: 13 }}
+                >
+                  {initialsOf(o.display_name)}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-extrabold text-ink truncate">{o.display_name}</div>
+                  <div className="text-xs text-muted flex items-center gap-1.5">
+                    <span className="wr-cc">{countryCode(o.country)}</span> {o.country}
+                    <span className="font-mono text-[10px]">· {o.org_key}</span>
+                  </div>
+                </div>
+              </div>
               {teamNames.length > 0 && (
-                <div className="flex flex-wrap gap-1 mt-2">
+                <div className="flex flex-wrap gap-1.5 mt-3">
                   {teamNames.map((n) => (
-                    <span
-                      key={n}
-                      className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-muted rounded"
-                    >
+                    <span key={n} className="wr-tm">
                       {n}
                     </span>
                   ))}
@@ -181,12 +226,64 @@ export const OrganisationsSection = ({
             </div>
           );
         })}
+        {pressure.map((o) => {
+          const kind = orgExtra(o).kind;
+          const icon: WrIconName =
+            kind === 'union'
+              ? 'fist'
+              : kind === 'ngo'
+                ? 'leaf'
+                : kind === 'community_group'
+                  ? 'community'
+                  : kind === 'political'
+                    ? 'podium'
+                    : 'landmark';
+          return (
+            <div
+              key={o.org_key}
+              className="wr-node"
+              style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
+            >
+              <div className="kicker">
+                <WrIcon name={icon} size={12} /> Pressure · {kind?.replace(/_/g, ' ') ?? 'group'}
+              </div>
+              <div className="flex items-center gap-2.5">
+                <div className="wr-tile" style={{ width: 40, height: 40 }}>
+                  <WrIcon name={icon} size={18} />
+                </div>
+                <div className="min-w-0">
+                  <div className="font-extrabold text-ink truncate">{o.display_name}</div>
+                  <div className="text-xs text-muted flex items-center gap-1.5">
+                    <span className="wr-cc light">{countryCode(o.country)}</span> {o.country}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {antagonists.map((o) => (
+          <div
+            key={o.org_key}
+            className="wr-node"
+            style={{ '--g': 'var(--f-rival)' } as CSSProperties}
+          >
+            <div className="kicker">
+              <WrIcon name="swords" size={12} /> Competitor · AI
+            </div>
+            <div className="flex items-center gap-2.5">
+              <div className="wr-mono rv" style={{ width: 40, height: 40, fontSize: 13 }}>
+                {initialsOf(o.display_name)}
+              </div>
+              <div className="min-w-0">
+                <div className="font-extrabold text-ink truncate">{o.display_name}</div>
+                <div className="text-xs text-muted flex items-center gap-1.5">
+                  <span className="wr-cc light">{countryCode(o.country)}</span> {o.country}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
       </div>
-      {antagonists.length > 0 && (
-        <div className="text-[11px] text-muted mt-3">
-          Rivals: {antagonists.map((a) => `${a.display_name} (${a.country})`).join(', ')}
-        </div>
-      )}
     </Card>
   );
 };
@@ -240,6 +337,10 @@ export const StakeholdersSection = ({
   const [msg, setMsg] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [filterOrg, setFilterOrg] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [stateFilter, setStateFilter] = useState<
+    'all' | 'principal' | 'live' | 'roster' | 'group' | 'speaks'
+  >('all');
 
   const load = useCallback(async () => {
     try {
@@ -263,7 +364,7 @@ export const StakeholdersSection = ({
   if (!loaded) return null;
   if (loadError) {
     return (
-      <Card title="Stakeholder contacts">
+      <Card id="cast" title="Cast · contacts" icon="target" family="var(--f-intel)" defaultOpen>
         <div className="text-xs text-danger">Could not load stakeholders: {loadError}</div>
       </Card>
     );
@@ -290,21 +391,75 @@ export const StakeholdersSection = ({
     return fns.size > 0 ? Array.from(fns) : functions;
   };
 
-  const visible = list.filter((s) =>
-    filterOrg === 'all'
-      ? true
-      : filterOrg === 'common'
-        ? s.org_key === null
-        : s.org_key === filterOrg,
-  );
+  const q = search.trim().toLowerCase();
+  const visible = list.filter((s) => {
+    if (
+      filterOrg === 'common' ? s.org_key !== null : filterOrg !== 'all' && s.org_key !== filterOrg
+    )
+      return false;
+    if (stateFilter === 'principal' && (s.tier === 'roster' || s.kind === 'group')) return false;
+    if (stateFilter === 'live' && !s.grievance) return false;
+    if (stateFilter === 'roster' && s.tier !== 'roster') return false;
+    if (stateFilter === 'group' && s.kind !== 'group') return false;
+    if (stateFilter === 'speaks' && !s.page_org_key) return false;
+    if (!q) return true;
+    return `${s.name} ${s.title} ${s.organisation} ${s.relationship} ${s.owning_team} ${s.email}`
+      .toLowerCase()
+      .includes(q);
+  });
+  const filtering = !!q || stateFilter !== 'all' || filterOrg !== 'all';
 
-  // Group visible stakeholders by org, then by owning function.
-  const groups = new Map<string, StakeholderRecord[]>();
+  // Group visible stakeholders by org → relationship (roster and lists as their own groups).
+  const REL_LABEL: Record<string, string> = {
+    internal: 'Internal',
+    client: 'Clients',
+    partner: 'Partners',
+    supplier: 'Suppliers',
+    media: 'Media',
+    regulator: 'Regulators',
+    union: 'Union',
+    community: 'Community',
+    investor: 'Investors & board',
+    other: 'Other',
+  };
+  const REL_ORDER = [
+    'internal',
+    'client',
+    'partner',
+    'supplier',
+    'media',
+    'regulator',
+    'union',
+    'community',
+    'investor',
+    'other',
+    '__roster',
+    '__list',
+  ];
+  const groups = new Map<string, Map<string, StakeholderRecord[]>>();
   for (const s of visible) {
     const k = s.org_key ?? '__common';
-    if (!groups.has(k)) groups.set(k, []);
-    groups.get(k)!.push(s);
+    const rel =
+      s.kind === 'group' ? '__list' : s.tier === 'roster' ? '__roster' : s.relationship || 'other';
+    if (!groups.has(k)) groups.set(k, new Map());
+    const byRel = groups.get(k)!;
+    if (!byRel.has(rel)) byRel.set(rel, []);
+    byRel.get(rel)!.push(s);
   }
+  const orgOrder = [
+    ...protagonists.map((o) => o.org_key),
+    ...orgs.filter((o) => o.side !== 'protagonist').map((o) => o.org_key),
+    '__common',
+  ];
+  const orderedGroups = [...groups.entries()].sort(
+    (a, b) => orgOrder.indexOf(a[0]) - orgOrder.indexOf(b[0]),
+  );
+  const orgCountry = (key: string) => orgs.find((o) => o.org_key === key)?.country ?? null;
+  const orgSide = (key: string) => orgs.find((o) => o.org_key === key)?.side ?? 'protagonist';
+  const liveCount = list.filter((s) => !!s.grievance).length;
+  const rosterCount = list.filter((s) => s.tier === 'roster').length;
+  const listCount = list.filter((s) => s.kind === 'group').length;
+  const pureCount = list.length - liveCount - rosterCount - listCount;
 
   const startEdit = (s: StakeholderRecord) => {
     setEditing(s.id);
@@ -646,124 +801,244 @@ export const StakeholdersSection = ({
 
   return (
     <Card
-      title={`Stakeholder contacts (${list.length})`}
-      subtitle="The named people each team deals with. Players see the identity block in their contacts sheet; the hidden character drives how the person replies to emails, DMs and calls, and whether a scheduled inject can still be talked down. Renaming a contact updates every inject they author."
+      id="cast"
+      title="Cast · contacts"
+      count={list.length}
+      icon="target"
+      family="var(--f-intel)"
+      defaultOpen
+      subtitle="Every person your teams can email, message or call. Players see the identity block in their contacts sheet; the hidden character drives how the person replies and whether a scheduled inject can still be talked down. Grouped by organisation; the roster is folded so the principals stay in view."
+      peek={
+        <>
+          {liveCount > 0 && <span className="wr-p live">{liveCount} with a live concern</span>}
+          {pureCount > 0 && <span className="wr-p pure">{pureCount} pure contacts</span>}
+          {rosterCount > 0 && <span className="wr-p roster">{rosterCount} roster</span>}
+          {listCount > 0 && <span className="wr-p group">{listCount} lists</span>}
+        </>
+      }
     >
-      {multiOrg && (
-        <div className="flex flex-wrap gap-1.5 mb-3">
-          {[
-            { key: 'all', label: 'All' },
-            ...protagonists.map((o) => ({ key: o.org_key, label: o.display_name })),
-            { key: 'common', label: 'Common' },
-          ].map((f) => (
+      <div className="flex flex-wrap items-center gap-2 mb-3">
+        <label className="wr-search" style={{ flex: '1 1 220px' }}>
+          <WrIcon name="search" />
+          <input
+            className="wr-field"
+            style={{ padding: '8px 10px 8px 34px', fontSize: 12.5 }}
+            placeholder="Search name, title, organisation…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </label>
+        <div className="wr-seg sm" role="group" aria-label="Contact type">
+          {(
+            [
+              ['all', 'All'],
+              ['principal', 'Principals'],
+              ['live', 'Live concern'],
+              ['roster', 'Roster'],
+              ['group', 'Lists'],
+              ['speaks', 'Spokespersons'],
+            ] as Array<[typeof stateFilter, string]>
+          ).map(([k, label]) => (
             <button
-              key={f.key}
-              onClick={() => setFilterOrg(f.key)}
-              className={`text-[11px] px-2 py-0.5 rounded border ${filterOrg === f.key ? 'border-brand text-brand bg-brand/5' : 'border-border text-muted hover:text-ink'}`}
+              key={k}
+              type="button"
+              className={stateFilter === k ? 'on' : ''}
+              onClick={() => setStateFilter(k)}
             >
-              {f.label}
+              {label}
             </button>
           ))}
         </div>
-      )}
+        {multiOrg && (
+          <div className="wr-seg sm" role="group" aria-label="Organisation">
+            {[
+              { key: 'all', label: 'All orgs' },
+              ...protagonists.map((o) => ({ key: o.org_key, label: o.display_name })),
+              { key: 'common', label: 'Common' },
+            ].map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setFilterOrg(f.key)}
+                className={filterOrg === f.key ? 'on' : ''}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {!locked && !editing && (
+          <button onClick={startNew} className="wr-btn sm ml-auto">
+            <WrIcon name="plus" /> Add contact
+          </button>
+        )}
+      </div>
 
       {editing && form}
 
-      {Array.from(groups.entries()).map(([k, items]) => (
-        <div key={k} className="mb-3">
-          {multiOrg && (
-            <div className="text-[11px] font-semibold text-brand uppercase mb-1.5">
-              {k === '__common'
-                ? 'Common — visible to the owning function in every organisation'
-                : orgLabel(k)}
-            </div>
-          )}
-          <div className="space-y-2">
-            {items.map((s) =>
-              editing === s.id ? null : (
-                <div key={s.id} className="bg-surface border border-border rounded-lg p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-ink">{s.name}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-muted rounded">
-                          {s.relationship}
-                        </span>
-                        <span className="text-[10px] px-1.5 py-0.5 bg-accent/10 text-accent rounded">
-                          {s.owning_team}
-                        </span>
-                        {s.grievance ? (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-warning/10 text-warning rounded">
-                            concern · {s.persuadability}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-success/10 text-success rounded">
-                            pure contact
-                          </span>
-                        )}
-                        {(injectCounts[s.id] || 0) > 0 && (
-                          <span className="text-[10px] text-muted">
-                            {injectCounts[s.id]} inject(s)
-                          </span>
-                        )}
-                        {s.kind === 'group' && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-brand/10 text-brand rounded">
-                            distribution list · {(s.members || []).length} members
-                          </span>
-                        )}
-                        {s.tier === 'roster' && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-muted rounded">
-                            roster
-                          </span>
-                        )}
-                        {s.page_org_key && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-warning/10 text-warning rounded">
-                            speaks for {s.page_org_key}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs text-muted mt-0.5">
-                        {s.title}, {s.organisation} · {s.email} · {s.handle}
-                      </div>
-                      <div className="text-xs text-muted mt-1">{s.note}</div>
-                      {s.grievance && (
-                        <div className="text-[11px] text-warning mt-1">
-                          Hidden concern: {s.grievance}
-                        </div>
-                      )}
-                    </div>
-                    {!locked && (
-                      <div className="flex gap-2 shrink-0">
-                        <button
-                          onClick={() => startEdit(s)}
-                          className="text-xs text-brand hover:underline"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => remove(s)}
-                          disabled={saving}
-                          className="text-xs text-muted hover:text-danger disabled:opacity-40"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ),
-            )}
-          </div>
-        </div>
-      ))}
-
-      {!locked && !editing && (
-        <button onClick={startNew} className="text-xs text-brand hover:underline">
-          + Add a stakeholder contact
-        </button>
+      {orderedGroups.length === 0 && (
+        <div className="text-xs text-muted py-3">No contacts match.</div>
       )}
+
+      {orderedGroups.map(([k, byRel], gi) => {
+        const total = [...byRel.values()].reduce((n, arr) => n + arr.length, 0);
+        const side = k === '__common' ? 'common' : orgSide(k);
+        const country = k === '__common' ? null : orgCountry(k);
+        return (
+          <WrFold
+            key={k}
+            title={
+              k === '__common'
+                ? multiOrg
+                  ? 'Common to every organisation'
+                  : orgLabel(protagonists[0]?.org_key ?? null) || 'Contacts'
+                : orgLabel(k)
+            }
+            count={total}
+            sub={
+              k === '__common'
+                ? 'visible to the owning function everywhere'
+                : side === 'pressure'
+                  ? 'pressure organisation'
+                  : side === 'antagonist'
+                    ? 'rival'
+                    : country
+                      ? country
+                      : undefined
+            }
+            lead={
+              country ? (
+                <span className="wr-cc">{countryCode(country)}</span>
+              ) : (
+                <WrIcon name="target" size={14} className="text-muted" />
+              )
+            }
+            defaultOpen={gi === 0 || filtering || !multiOrg}
+          >
+            {[...byRel.entries()]
+              .sort((a, b) => REL_ORDER.indexOf(a[0]) - REL_ORDER.indexOf(b[0]))
+              .map(([rel, items], ri) => (
+                <WrSub
+                  key={rel}
+                  title={
+                    rel === '__roster'
+                      ? 'Workforce roster'
+                      : rel === '__list'
+                        ? 'Distribution lists'
+                        : (REL_LABEL[rel] ?? rel)
+                  }
+                  count={items.length}
+                  hint={
+                    rel === '__roster'
+                      ? 'reachable via the distribution list · never author injects'
+                      : rel === '__list'
+                        ? 'one email reaches every member'
+                        : undefined
+                  }
+                  defaultOpen={filtering || (rel !== '__roster' && rel !== '__list' && ri < 4)}
+                >
+                  {items.map((s) =>
+                    editing === s.id ? null : (
+                      <div key={s.id} className="wr-row">
+                        <div
+                          className={`wr-mono av ${
+                            s.page_org_key
+                              ? 'pr'
+                              : s.kind === 'group'
+                                ? 'plain'
+                                : s.tier === 'roster'
+                                  ? 'plain'
+                                  : ''
+                          }`}
+                        >
+                          {s.kind === 'group' ? (
+                            <WrIcon name="mail" size={14} />
+                          ) : (
+                            initialsOf(s.name)
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="nm">
+                            <span className="truncate">{s.name}</span>
+                            {rel !== '__roster' && rel !== '__list' && (
+                              <span className="wr-p rel">{s.relationship}</span>
+                            )}
+                            {s.kind === 'group' ? (
+                              <span className="wr-p group">
+                                list · {(s.members || []).length} members
+                              </span>
+                            ) : s.tier === 'roster' ? (
+                              <span className="wr-p roster">roster</span>
+                            ) : s.grievance ? (
+                              <span className="wr-p live">
+                                live concern
+                                {(injectCounts[s.id] || 0) > 0
+                                  ? ` · ${injectCounts[s.id]} inject${injectCounts[s.id] === 1 ? '' : 's'}`
+                                  : ''}
+                              </span>
+                            ) : (
+                              <span className="wr-p pure">pure contact</span>
+                            )}
+                            {s.page_org_key && (
+                              <span className="wr-p speaks">
+                                speaks for {orgLabel(s.page_org_key)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="ti truncate">
+                            {s.title}
+                            {s.organisation ? ` · ${s.organisation}` : ''} · owned by{' '}
+                            {s.owning_team}
+                            {s.kind !== 'group' && s.tier !== 'roster' && s.persuadability
+                              ? ` · persuadability ${s.persuadability}`
+                              : ''}
+                          </div>
+                          {s.grievance && (
+                            <div className="text-[11.5px] text-accent-strong mt-0.5">
+                              Hidden concern: {s.grievance}
+                            </div>
+                          )}
+                          {s.note && rel !== '__roster' && (
+                            <div className="text-[11.5px] text-muted mt-0.5 line-clamp-2">
+                              {s.note}
+                            </div>
+                          )}
+                        </div>
+                        <div className="pills">
+                          {s.email && <span className="wr-p font-mono">{s.email}</span>}
+                          {!locked && (
+                            <>
+                              <button
+                                onClick={() => startEdit(s)}
+                                className="wr-btn sm ghost icon"
+                                aria-label={`Edit ${s.name}`}
+                                title="Edit"
+                              >
+                                <WrIcon name="edit" />
+                              </button>
+                              <button
+                                onClick={() => remove(s)}
+                                disabled={saving}
+                                className="wr-btn sm ghost icon"
+                                aria-label={`Delete ${s.name}`}
+                                title="Delete"
+                              >
+                                <WrIcon name="trash" />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ),
+                  )}
+                </WrSub>
+              ))}
+          </WrFold>
+        );
+      })}
+
       {msg && !editing && (
-        <span className={`text-xs ml-3 ${error ? 'text-danger' : 'text-success'}`}>{msg}</span>
+        <span className={`text-xs ml-1 ${error ? 'text-danger' : 'text-success'}`}>{msg}</span>
       )}
     </Card>
   );
