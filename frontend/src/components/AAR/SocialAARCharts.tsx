@@ -14,8 +14,11 @@ const TEAM_COLOR: Record<string, string> = {
   Procurement: '#D97706',
   Sales: '#15803D',
   Legal: '#1E3A5F',
+  Executive: '#5E5CE6',
 };
-const teamColor = (name: unknown): string => TEAM_COLOR[String(name)] || '#64748b';
+/** Colour by team function when known (composed names like "Communications — PNP" resolve via function_key). */
+const teamColor = (nameOrFunction: unknown, functionKey?: unknown): string =>
+  TEAM_COLOR[String(functionKey ?? '')] || TEAM_COLOR[String(nameOrFunction)] || '#64748b';
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const arr = (v: unknown): Dict[] => (Array.isArray(v) ? (v as Dict[]) : []);
@@ -212,7 +215,7 @@ function TeamScoreBars({ teams }: { teams: Dict[] }) {
     <div className="space-y-3">
       {scored.map((t) => {
         const composite = num(t.composite) ?? 0;
-        const color = teamColor(t.team_name);
+        const color = teamColor(t.team_name, t.function_key);
         const parts: Array<[string, number | null]> = [
           ['QUALITY', num(t.content_quality)],
           ['TASKS', num(t.task_completion)],
@@ -222,7 +225,11 @@ function TeamScoreBars({ teams }: { teams: Dict[] }) {
         return (
           <div key={String(t.team_name)}>
             <div className="grid grid-cols-[96px_1fr_36px] items-center gap-2">
-              <div className="text-[10px] font-extrabold" style={{ color }}>
+              <div
+                className="text-[10px] font-extrabold truncate"
+                style={{ color }}
+                title={`${String(t.team_name)}${t.org_display ? ` · ${String(t.org_display)}` : ''}`}
+              >
                 {String(t.team_name)}
               </div>
               <div className="h-2.5 rounded-full overflow-hidden bg-surface-2">
@@ -242,6 +249,71 @@ function TeamScoreBars({ teams }: { teams: Dict[] }) {
                   </span>
                 ))}
             </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Multi-org roll-up: one row per organisation with its average team composite. */
+function OrganisationComparison({ organisations }: { organisations: Dict[] }) {
+  const rows = [...organisations].sort(
+    (a, b) => (num(b.avg_composite) ?? -1) - (num(a.avg_composite) ?? -1),
+  );
+  return (
+    <div className="space-y-2.5">
+      {rows.map((o) => {
+        const avg = num(o.avg_composite);
+        const color = avg == null ? '#64748b' : scoreColor(avg);
+        const teams = arr(o.teams);
+        return (
+          <div key={String(o.org_key)}>
+            <div className="grid grid-cols-[1fr_36px] items-center gap-2">
+              <div className="min-w-0">
+                <div className="text-[11px] font-extrabold text-brand truncate">
+                  {String(o.display_name)}
+                  {o.is_primary === true && (
+                    <span className="ml-1.5 text-[8px] font-bold uppercase text-muted">
+                      primary
+                    </span>
+                  )}
+                </div>
+                <div className="text-[9px] text-muted">
+                  {o.country ? `${String(o.country)} · ` : ''}
+                  {String(o.staffed_team_count ?? o.team_count ?? 0)}/{String(o.team_count ?? 0)}{' '}
+                  teams staffed
+                </div>
+              </div>
+              <div className="text-[13px] font-black text-right" style={{ color }}>
+                {avg ?? '—'}
+              </div>
+            </div>
+            <div className="h-2 rounded-full overflow-hidden bg-surface-2 mt-1">
+              <div
+                className="h-full rounded-full"
+                style={{ width: `${avg ?? 0}%`, backgroundColor: color }}
+              />
+            </div>
+            {teams.length > 0 && (
+              <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5 text-[9px] font-bold text-muted">
+                {teams.map((t) => (
+                  <span key={String(t.team_name)} title={String(t.team_name)}>
+                    {String(t.function_key || t.team_name)}{' '}
+                    <span
+                      style={{
+                        color:
+                          num(t.composite) != null
+                            ? scoreColor(num(t.composite) as number)
+                            : undefined,
+                      }}
+                    >
+                      {num(t.composite) ?? '—'}
+                    </span>
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}
@@ -500,6 +572,12 @@ export function SocialGlanceBoard({ sections }: { sections: SectionsMap }) {
           <SentimentLineChart trajectory={trajectory} consequences={consequences} />
         </div>
         <div className="space-y-4">
+          {arr(exec.organisations).length > 1 && (
+            <div className="military-border p-4 bg-surface">
+              <div className="text-xs font-extrabold text-brand mb-2">Organisations</div>
+              <OrganisationComparison organisations={arr(exec.organisations)} />
+            </div>
+          )}
           <div className="military-border p-4 bg-surface">
             <div className="text-xs font-extrabold text-brand mb-2">Team composite scores</div>
             <TeamScoreBars teams={teams} />
@@ -592,14 +670,77 @@ export function SocialInformationFlowSectionData({ data }: { data: Dict }) {
   );
 }
 
+/**
+ * Team deep-dive panel. The server emits either one team block or a grouped section
+ * (`teams[]`: several organisations sharing a function, or several custom teams); grouped
+ * sections render as tabs, one per team, each showing the full single-team block.
+ */
 export function SocialTeamSectionData({ data }: { data: Dict }) {
-  const color = teamColor(data.team_name);
+  const blocks = arr(data.teams);
+  if (blocks.length > 0) return <GroupedTeamSection data={data} blocks={blocks} />;
+  return <SingleTeamBlock data={data} />;
+}
+
+function GroupedTeamSection({ data, blocks }: { data: Dict; blocks: Dict[] }) {
+  const [active, setActive] = React.useState(0);
+  const multiOrg = data.multi_org === true;
+  const current = blocks[Math.min(active, blocks.length - 1)];
+  const tabLabel = (b: Dict): string =>
+    multiOrg && b.org_display ? String(b.org_display) : String(b.team_name || 'Team');
+  return (
+    <div className="space-y-3">
+      <div className="text-[10px] text-muted">
+        {multiOrg
+          ? `${blocks.length} organisations ran a ${String(data.function_key || '')} team. Each is judged on its own storyline and contacts.`
+          : `${blocks.length} teams in this section, each judged against its own charter.`}
+      </div>
+      <div className="flex flex-wrap gap-1 border-b border-border" role="tablist">
+        {blocks.map((b, i) => {
+          const color = teamColor(b.team_name, b.function_key);
+          const isActive = i === active;
+          const composite = num(((b.scores || {}) as Dict).composite);
+          return (
+            <button
+              key={String(b.team_name) + i}
+              role="tab"
+              aria-selected={isActive}
+              type="button"
+              onClick={() => setActive(i)}
+              className={`px-3 py-1.5 text-[11px] font-bold rounded-t-md border-b-2 -mb-px ${
+                isActive ? 'text-brand bg-surface-2' : 'text-muted hover:text-brand'
+              }`}
+              style={{ borderBottomColor: isActive ? color : 'transparent' }}
+              title={String(b.team_name)}
+            >
+              {tabLabel(b)}
+              {b.country ? (
+                <span className="text-muted font-normal"> · {String(b.country)}</span>
+              ) : null}
+              {composite != null && (
+                <span className="ml-1.5" style={{ color: scoreColor(composite) }}>
+                  {composite}
+                </span>
+              )}
+              {b.unstaffed === true && <span className="ml-1.5 text-warning">unstaffed</span>}
+            </button>
+          );
+        })}
+      </div>
+      {current && <SingleTeamBlock key={String(current.team_name)} data={current} />}
+    </div>
+  );
+}
+
+function SingleTeamBlock({ data }: { data: Dict }) {
+  const color = teamColor(data.team_name, data.function_key);
   if (data.unstaffed === true) {
     return (
       <p className="text-xs terminal-text text-muted">This team was unstaffed for the session.</p>
     );
   }
   const scores = (data.scores || {}) as Dict;
+  const preemption = arr(data.stakeholder_preemption);
+  const decisions = arr(data.leadership_decisions);
   const tasks = arr(data.task_outcomes);
   const members = arr(data.members);
   const memberSummaries = arr(data.member_summaries);
@@ -622,7 +763,12 @@ export function SocialTeamSectionData({ data }: { data: Dict }) {
         style={{ backgroundColor: color }}
       >
         <div className="min-w-0">
-          <div className="text-white font-extrabold text-sm">{String(data.team_name)}</div>
+          <div className="text-white font-extrabold text-sm">
+            {String(data.team_name)}
+            {data.org_display ? (
+              <span className="text-white/70 font-semibold"> · {String(data.org_display)}</span>
+            ) : null}
+          </div>
           <div className="text-white/75 text-[10px] max-w-xl">{String(data.mission || '')}</div>
         </div>
         <div className="flex gap-4">
@@ -736,6 +882,99 @@ export function SocialTeamSectionData({ data }: { data: Dict }) {
               </div>
             </blockquote>
           )}
+        </div>
+      )}
+
+      {decisions.length > 0 && (
+        <div>
+          <div className="text-[10px] font-extrabold uppercase text-muted mb-1.5">
+            Leadership decisions
+          </div>
+          <div className="space-y-2">
+            {decisions.map((d, i) => {
+              const obligations = arr(d.obligations);
+              const eruptions = arr(d.eruptions);
+              return (
+                <div key={i} className="border border-border rounded-lg p-2.5 bg-surface-2">
+                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                    <span className="text-xs font-bold text-ink">
+                      {String(d.title || d.decision_key)}
+                    </span>
+                    <span className="text-[10px] text-muted">
+                      T+{String(d.recorded_at_minute ?? '?')}m · {String(d.team_name || '')}
+                      {d.recorded_by_trainer === true ? ' (trainer)' : ''}
+                    </span>
+                  </div>
+                  {(!!d.scope || !!d.rationale) && (
+                    <p className="text-[11px] text-ink mt-1">
+                      {d.scope ? <>Scope: {String(d.scope)}. </> : null}
+                      {d.rationale ? <>Rationale: {String(d.rationale)}</> : null}
+                    </p>
+                  )}
+                  {arr(d.should_inform).length > 0 && (
+                    <p className="text-[10px] text-muted mt-1">
+                      Should inform: {arr(d.should_inform).map(String).join(', ')}
+                    </p>
+                  )}
+                  {obligations.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-1.5">
+                      {obligations.map((o, j) => {
+                        const status = String(o.status || 'open');
+                        const tone =
+                          status === 'met'
+                            ? '#15803D'
+                            : status === 'lapsed'
+                              ? '#B91C1C'
+                              : '#D97706';
+                        return (
+                          <span
+                            key={j}
+                            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white"
+                            style={{ backgroundColor: tone }}
+                            title={`${String(o.description || '')} — due T+${String(o.due_at_minute ?? '?')}`}
+                          >
+                            {String(o.by_function)} → {String(o.stakeholder_id)} · {status}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {eruptions.length > 0 && (
+                    <p className="text-[10px] text-muted mt-1">
+                      Eruptions:{' '}
+                      {eruptions.map((e) => `${String(e.title)} (${String(e.outcome)})`).join('; ')}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {preemption.length > 0 && (
+        <div>
+          <div className="text-[10px] font-extrabold uppercase text-muted mb-1.5">
+            Stakeholder pre-emption
+          </div>
+          <div className="space-y-1">
+            {preemption.map((p, i) => {
+              const verdict = String(p.verdict || '');
+              const tone =
+                verdict === 'cancel' ? '#15803D' : verdict === 'modify' ? '#0369A1' : '#B45309';
+              return (
+                <div key={i} className="text-xs text-ink">
+                  <span className="text-brand font-bold">T+{String(p.at_minute ?? '?')}m</span>{' '}
+                  <span className="font-semibold">{String(p.stakeholder_name || '')}</span>:{' '}
+                  <span style={{ color: tone, fontWeight: 700 }}>
+                    {verdict === 'cancel' ? 'withdrew' : verdict === 'modify' ? 'revised' : 'held'}
+                  </span>{' '}
+                  “{String(p.inject_title || '')}”
+                  {p.reason ? <span className="text-muted"> — {String(p.reason)}</span> : null}
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
 

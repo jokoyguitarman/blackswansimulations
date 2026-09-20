@@ -22,10 +22,12 @@ export const SOCIAL_AAR_SECTION_KEYS = [
   'social_executive',
   'social_timeline',
   'social_public_comms',
+  'social_team_executive',
   'social_team_communications',
   'social_team_procurement',
   'social_team_sales',
   'social_team_legal',
+  'social_team_other',
   'social_information_flow',
   'social_misinformation',
   'social_sentiment',
@@ -42,10 +44,12 @@ export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_executive: 'Executive summary',
   social_timeline: 'Crisis timeline reconstruction',
   social_public_comms: 'Public communications review',
+  social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
   social_team_procurement: 'Team deep-dive: Procurement',
   social_team_sales: 'Team deep-dive: Sales',
   social_team_legal: 'Team deep-dive: Legal',
+  social_team_other: 'Team deep-dive: other teams',
   social_information_flow: 'Cross-team information flow',
   social_misinformation: 'Misinformation and moderation',
   social_sentiment: 'Sentiment journey and turning points',
@@ -54,20 +58,32 @@ export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_recommendations: 'Key takeaways and recommendations',
 };
 
-const TEAM_SECTION_BY_NAME: Record<string, SocialAARSectionKey> = {
+/**
+ * Team deep-dive sections are keyed by team FUNCTION (contract §5.2). The four catalog functions
+ * and Executive get their own section; every other function lands in `social_team_other`.
+ * Several teams sharing a section (multi-org, or several custom teams) become one block each.
+ */
+const TEAM_SECTION_BY_FUNCTION: Record<string, SocialAARSectionKey> = {
+  Executive: 'social_team_executive',
   Communications: 'social_team_communications',
   Procurement: 'social_team_procurement',
   Sales: 'social_team_sales',
   Legal: 'social_team_legal',
 };
 
+function teamSectionFor(teamFunction: string): SocialAARSectionKey {
+  return TEAM_SECTION_BY_FUNCTION[teamFunction] ?? 'social_team_other';
+}
+
 const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
   social_executive:
-    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If leadership_decisions is non-empty, add a short "Leadership decisions" paragraph: for each decision say who took it and when, whether the functions in should_inform were looped in, which obligations were met or lapsed (with T+ minutes), and what erupted as a result. End with a one-sentence overall verdict.',
+    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If leadership_decisions is non-empty, add a short "Leadership decisions" paragraph: for each decision say who took it and when, whether the functions in should_inform were looped in, which obligations were met or lapsed (with T+ minutes), and what erupted as a result. If organisations is non-empty (several organisations took part), compare them briefly by avg_composite and name the strongest and weakest organisation with the team that drove each. End with a one-sentence overall verdict.',
   social_timeline:
     'Reconstruct the session chronologically in phases (opening, escalation, turning point, resolution). Pair each pressure beat (inject, watchdog challenge, consequence) with the team response that followed — or note the silence. Cite T+ minutes throughout. Identify the single most consequential moment.',
   social_public_comms:
     'Assess every published statement and reply: quality (use the stored grade dimensions), timing, consistency across platforms, and reach versus hostile content (impression dominance). Quote the strongest and weakest artifacts with their scores. Judge whether format choices (statement, thread reply, creative) matched the moment.',
+  social_team_executive:
+    "This is the dedicated review of the EXECUTIVE team (leadership). Using their recorded decisions (leadership_decisions: what was decided, when, scope and rationale), the chain of command (should_inform), the obligations each decision created and whether they were met or lapsed, the eruptions that followed, and any artifacts or messages they produced: state clearly (1) whether decisions were timely, scoped and explained, (2) whether the right functions were looped in and the obligations honoured, (3) what they should have done differently, and (4) one note per member. If several organisations are present (teams[]), assess each organisation's executive team separately and then compare. Cite T+ times.",
   social_team_communications:
     'This is the dedicated review of the COMMUNICATIONS team. Using their complete task record, artifacts with grades, member ledger, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Quote specific artifacts with T+ times and scores. Coaching tone, specific and fair.',
   social_team_procurement:
@@ -76,6 +92,8 @@ const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
     'This is the dedicated review of the SALES team. Using their complete task record, customer-facing artifacts with grades, member ledger, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Assess empathy, honesty of expectations, escalation discipline, and consistency with the official line. Cite T+ times.',
   social_team_legal:
     'This is the dedicated review of the LEGAL team. Using their complete task record, regulator/dispute artifacts with grades, member ledger, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Assess review timeliness, dispute quality, and risk flagging. Cite T+ times.',
+  social_team_other:
+    'This is the dedicated review of the teams outside the four preset functions (teams[] — one block per team, e.g. Fleet Operations, Driver Relations, Investigations). For EACH team, using its mission, complete task record, artifacts with grades, member ledger and role-fit signals: state clearly (1) what it did well, (2) what it should have done differently, and (3) one member-level note per member. Judge each team against its own charter, not against the preset functions. Cite T+ times.',
   social_information_flow:
     'Assess how information moved (or failed to move) across teams: every intel dependency with its holder, deadline, share time and consequence; email/chat coordination volume; escalations. Connect withheld or late intel to the public consequences it caused. Name the strongest and weakest handoff.',
   social_misinformation:
@@ -220,8 +238,54 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     },
   ];
 
+  // Team identity (contract §5.2): function and organisation per team, plus the org registry, so
+  // composed names ("Communications — PNP") resolve to their function and their organisation.
+  type TeamIdentityLite = {
+    function_key: string | null;
+    org_key: string | null;
+    org_display: string | null;
+    country: string | null;
+  };
+  const identityByTeamName = new Map<string, TeamIdentityLite>();
+  let orgRegistry: Array<{
+    org_key: string;
+    display_name: string;
+    country: string | null;
+    side: string;
+    is_primary?: boolean;
+  }> = [];
+  try {
+    const { getSessionTeams, getOrgRegistry } = await import('./orgRegistryService.js');
+    const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
+    const scenarioId = await getSessionScenarioId(sessionId);
+    orgRegistry = scenarioId ? await getOrgRegistry(scenarioId) : [];
+    for (const t of await getSessionTeams(sessionId)) {
+      const org = t.org_key ? orgRegistry.find((o) => o.org_key === t.org_key) : undefined;
+      identityByTeamName.set(t.team_name, {
+        function_key: t.function_key,
+        org_key: t.org_key,
+        org_display: org?.display_name ?? null,
+        country: t.country,
+      });
+    }
+  } catch {
+    /* single-org / legacy: everything resolves by exact team name */
+  }
+  const identityOf = (teamName: string): TeamIdentityLite =>
+    identityByTeamName.get(teamName) ?? {
+      function_key: null,
+      org_key: null,
+      org_display: null,
+      country: null,
+    };
+  const functionOf = (teamName: string): string =>
+    resolveTeamFunction({ team_name: teamName, function_key: identityOf(teamName).function_key });
+
   const teamComposites = social.team_performance.map((t) => ({
     team_name: t.team_name,
+    function_key: functionOf(t.team_name),
+    org_key: identityOf(t.team_name).org_key,
+    org_display: identityOf(t.team_name).org_display,
     composite: t.composite_score,
     content_quality: t.content_quality,
     task_completion: t.task_completion,
@@ -238,6 +302,33 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     compositeValues.length > 0
       ? Math.round(compositeValues.reduce((s, v) => s + v, 0) / compositeValues.length)
       : null;
+
+  // Per-organisation roll-up (multi-org scenarios only): average composite over that org's
+  // scored teams, so "HQ vs Johor office" is a first-class comparison in the executive summary.
+  const protagonistOrgs = orgRegistry.filter((o) => o.side === 'protagonist');
+  const organisations =
+    protagonistOrgs.length > 1
+      ? protagonistOrgs.map((o) => {
+          const teams = teamComposites.filter((t) => t.org_key === o.org_key);
+          const scored = teams.map((t) => t.composite).filter((v): v is number => v != null);
+          return {
+            org_key: o.org_key,
+            display_name: o.display_name,
+            country: o.country ?? null,
+            is_primary: !!o.is_primary,
+            team_count: teams.length,
+            staffed_team_count: teams.filter((t) => t.member_count > 0).length,
+            avg_composite: scored.length
+              ? Math.round(scored.reduce((s, v) => s + v, 0) / scored.length)
+              : null,
+            teams: teams.map((t) => ({
+              team_name: t.team_name,
+              function_key: t.function_key,
+              composite: t.composite,
+            })),
+          };
+        })
+      : [];
 
   const consequences = ledger.consequences.map((c) => ({
     t_plus_min: tPlus(c.created_at),
@@ -260,6 +351,8 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       final_overall_sentiment: dims.final_overall,
       final_dimensions: finalDimensions,
       teams: teamComposites,
+      // Multi-org only (empty otherwise): per-organisation averages for side-by-side comparison.
+      organisations,
       strategic_scorecard: social.strategic_scorecard,
       impression_dominance: social.impression_dominance,
       // Planned stakeholder actions withdrawn / revised / held because players engaged first.
@@ -409,21 +502,13 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
 
   // 4-7. Per-team deep dives. Sections are keyed by team FUNCTION (contract §5.2): a team named
   // "Communications — PNP" with function_key "Communications" lands in the Communications
-  // section, and several teams sharing a function are grouped into that one section.
-  let functionByTeamName = new Map<string, string>();
-  try {
-    const { getSessionTeams } = await import('./orgRegistryService.js');
-    functionByTeamName = new Map(
-      (await getSessionTeams(sessionId)).map((t) => [t.team_name, resolveTeamFunction(t)]),
-    );
-  } catch {
-    /* fall back to exact names */
-  }
+  // section; Executive teams get their own section; every other function lands in
+  // `social_team_other`. Several teams sharing a section become one block each.
   const teamBlocksBySection = new Map<SocialAARSectionKey, Array<Record<string, unknown>>>();
   for (const team of social.team_performance) {
-    const teamFunction = functionByTeamName.get(team.team_name) ?? team.team_name;
-    const key = TEAM_SECTION_BY_NAME[teamFunction] ?? TEAM_SECTION_BY_NAME[team.team_name];
-    if (!key) continue;
+    const teamFunction = functionOf(team.team_name);
+    const key = teamSectionFor(teamFunction);
+    const identity = identityOf(team.team_name);
     const unstaffed = team.member_count === 0;
     const members = ledger.players.filter((p) => p.team_name === team.team_name);
     const memberDetails = members.map((p) => {
@@ -470,6 +555,9 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     const block: Record<string, unknown> = {
       team_name: team.team_name,
       function_key: teamFunction,
+      org_key: identity.org_key,
+      org_display: identity.org_display,
+      country: identity.country,
       unstaffed,
       mission: team.mission,
       scores: {
@@ -489,20 +577,33 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       stakeholder_preemption: (social.stakeholder_preemption ?? []).filter(
         (p) => p.team === team.team_name || p.contributing_teams.includes(team.team_name),
       ),
+      // Executive teams: the decisions their organisation recorded (decision layer, §5).
+      ...(teamFunction === 'Executive'
+        ? {
+            leadership_decisions: (social.leadership_decisions ?? []).filter(
+              (d) => identity.org_key === null || d.org_key === identity.org_key,
+            ),
+          }
+        : {}),
     };
     if (!teamBlocksBySection.has(key)) teamBlocksBySection.set(key, []);
     teamBlocksBySection.get(key)!.push(block);
   }
   for (const [key, blocks] of teamBlocksBySection) {
-    if (blocks.length === 1) {
+    // Custom functions always render as a grouped section (one block per team) so the section
+    // title stays stable; preset functions group only when several organisations share them.
+    if (blocks.length === 1 && key !== 'social_team_other') {
       sections[key] = { data: blocks[0], analysis: null };
     } else {
-      // Multi-org: one section per function, one block per organisation's team.
+      const distinctOrgs = new Set(blocks.map((b) => b.org_key ?? null));
       sections[key] = {
         data: {
-          team_name: `${blocks[0].function_key} (${blocks.map((b) => b.team_name).join(', ')})`,
-          function_key: blocks[0].function_key,
-          multi_org: true,
+          team_name:
+            key === 'social_team_other'
+              ? `Other teams (${blocks.map((b) => b.team_name).join(', ')})`
+              : `${blocks[0].function_key} (${blocks.map((b) => b.team_name).join(', ')})`,
+          function_key: key === 'social_team_other' ? 'other' : blocks[0].function_key,
+          multi_org: distinctOrgs.size > 1,
           teams: blocks,
         },
         analysis: null,

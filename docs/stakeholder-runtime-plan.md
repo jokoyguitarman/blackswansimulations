@@ -1071,6 +1071,14 @@ Deviations from the spec above, all deliberate:
 - **Desktop cross-app intents** (Contacts → Mail compose, Contacts → TeamChat DM) use a small
   parked-intent store (`frontend/src/lib/appIntents.ts`) plus a DOM event that makes the desktop
   shell open/remount the target window; on the phone the same intents travel as query params.
+- **AAR in multi-org scenarios** (follow-up after the generator agent's audit): team deep-dive
+  sections are keyed by function; when several organisations share a function the section carries
+  `teams[]` and the frontend renders one tab per organisation's team. Two new sections cover teams
+  that previously had no review: `social_team_executive` (leadership decisions, obligations,
+  chain of command) and `social_team_other` (custom functions, one tab per team). The executive
+  summary gains an `organisations[]` roll-up (average composite per protagonist org) rendered as an
+  "Organisations" comparison beside the team bars. Scoring itself is unchanged: it was already per
+  team row, hence per organisation.
 
 ## Deferred (agreed, not built now)
 
