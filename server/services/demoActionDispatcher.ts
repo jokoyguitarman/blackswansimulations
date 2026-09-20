@@ -277,7 +277,7 @@ export class DemoActionDispatcher {
       logger.error({ error: err, decisionId }, 'Demo: state update error');
     }
 
-    if (!env.openAiApiKey) {
+    if (!env.aiEnabled) {
       try {
         await supabaseAdmin
           .from('decisions')
@@ -297,7 +297,7 @@ export class DemoActionDispatcher {
     // Phase 2: AI classification
     let aiClassification: Awaited<ReturnType<typeof classifyDecision>> | null = null;
     try {
-      aiClassification = await classifyDecision({ title, description }, env.openAiApiKey);
+      aiClassification = await classifyDecision({ title, description }, env.openAiApiKey ?? '');
 
       await supabaseAdmin
         .from('decisions')
@@ -381,7 +381,7 @@ export class DemoActionDispatcher {
           `${title} ${description}`,
         ));
 
-    if (botNeedsEditorial && env.openAiApiKey && sessionScenarioId) {
+    if (botNeedsEditorial && env.aiEnabled && sessionScenarioId) {
       try {
         const { data: casRows } = await supabaseAdmin
           .from('scenario_casualties')
@@ -479,7 +479,7 @@ export class DemoActionDispatcher {
         orchestrateDecisionEvaluation(
           sessionId,
           decisionForEval,
-          env.openAiApiKey,
+          env.openAiApiKey ?? '',
           null,
           teamName ?? undefined,
           qualityFailureCount,
@@ -607,7 +607,7 @@ export class DemoActionDispatcher {
     ) {
       try {
         // Check if prior decisions already addressed this concern
-        if (env.openAiApiKey && failureType !== 'rejected') {
+        if (env.aiEnabled && failureType !== 'rejected') {
           const { data: allDecisionRows } = await supabaseAdmin
             .from('decisions')
             .select('title, description, type')
@@ -628,7 +628,7 @@ export class DemoActionDispatcher {
               const cancelCheck = await shouldCancelScheduledInject(
                 { title: failureContent.slice(0, 200), content: failureContent },
                 allDecisions,
-                env.openAiApiKey,
+                env.openAiApiKey ?? '',
               );
               if (cancelCheck.cancel) {
                 logger.info(
@@ -806,7 +806,7 @@ export class DemoActionDispatcher {
       evaluateEnvironmentalManagementIntentAndUpdateState(
         sessionId,
         { id: decisionId, title, description, type: (decision.type as string) ?? null },
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       ).catch((err) =>
         logger.error({ error: err, decisionId }, 'Demo: env condition management failed'),
       ),
@@ -817,7 +817,7 @@ export class DemoActionDispatcher {
       evaluateStateEffectManagementAndUpdateState(
         sessionId,
         { id: decisionId, title, description },
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         botUserId,
       ).catch((err) =>
         logger.error({ error: err, decisionId }, 'Demo: state effect management failed'),
@@ -910,7 +910,7 @@ export class DemoActionDispatcher {
           sessionId,
           { id: decisionId, title, description, type: (decision.type as string) ?? null },
           authorTeamNames[0],
-          env.openAiApiKey,
+          env.openAiApiKey ?? '',
           io,
         ).catch((err) =>
           logger.error({ error: err, decisionId }, 'Demo: transport outcome failed'),

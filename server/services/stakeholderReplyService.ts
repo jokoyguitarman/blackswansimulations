@@ -380,7 +380,7 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
 
   const none: ReplyPlan = { should_reply: false, text: '', delay_seconds: 30 };
   if (ctx.stakeholder.kind === 'group') return none;
-  if (!env.enableStakeholderEngine || !env.openAiApiKey) return none;
+  if (!env.enableStakeholderEngine || !env.aiEnabled) return none;
   if (!(await underSessionCap(ctx.sessionId, ctx.userId))) {
     logger.debug(
       { sessionId: ctx.sessionId, userId: ctx.userId },

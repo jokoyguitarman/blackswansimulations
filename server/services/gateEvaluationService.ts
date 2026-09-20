@@ -48,7 +48,7 @@ export function decisionSatisfiesGateContent(
 }
 
 /**
- * Async gate content check: uses AI when openAiApiKey is set; falls back to substring match on failure.
+ * Async gate content check: uses AI when a provider is configured; falls back to substring match on failure.
  */
 export async function decisionSatisfiesGateContentAsync(
   description: string,
@@ -60,7 +60,7 @@ export async function decisionSatisfiesGateContentAsync(
   if (!Array.isArray(hints) || hints.length === 0 || minHints <= 0) {
     return true;
   }
-  if (openAiApiKey) {
+  if (env.aiEnabled) {
     const result = await evaluateGateContentSatisfaction(
       {
         decisionDescription: description,
@@ -68,7 +68,7 @@ export async function decisionSatisfiesGateContentAsync(
         minHints,
         gateDescription: undefined,
       },
-      openAiApiKey,
+      openAiApiKey ?? '',
     );
     if (result !== null) return result.satisfies;
   }
@@ -251,7 +251,7 @@ export async function isDecisionVagueForNotMetGateAsync(
     const hints = cond.content_hints;
     const minHints = cond.min_hints ?? 0;
     let satisfies: boolean;
-    if (openAiApiKey && Array.isArray(hints) && hints.length > 0 && minHints > 0) {
+    if (env.aiEnabled && Array.isArray(hints) && hints.length > 0 && minHints > 0) {
       const result = await evaluateGateContentSatisfaction(
         {
           decisionDescription: decision.description,
@@ -455,7 +455,7 @@ export async function evaluateGate(
   const allContentCandidates = [...inScopeCandidates, ...proactiveCandidates];
 
   // Content check: first decision that passes satisfies the gate
-  const apiKey = openAiApiKey ?? env.openAiApiKey;
+  const apiKey = openAiApiKey ?? env.openAiApiKey ?? '';
   let satisfying: { id: string } | undefined;
   for (const candidate of allContentCandidates) {
     const passes = await decisionSatisfiesGateContentAsync(

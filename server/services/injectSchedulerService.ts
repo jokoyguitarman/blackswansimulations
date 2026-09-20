@@ -63,7 +63,7 @@ async function runAiCancellationGate(
   userIdToTeam: Map<string, string>,
   io: SocketServer | null,
 ): Promise<boolean> {
-  if (!env.openAiApiKey) return false;
+  if (!env.aiEnabled) return false;
 
   try {
     const targetTeams = inject.target_teams ?? null;
@@ -86,7 +86,7 @@ async function runAiCancellationGate(
     const result = await shouldCancelScheduledInject(
       { title: inject.title ?? '', content: inject.content ?? '' },
       relevantDecisions,
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     await supabaseAdmin.from('session_events').insert({

@@ -618,15 +618,15 @@ export async function generateAndPublishInjectFromDecision(
     };
 
     // Generate inject using AI
-    if (!env.openAiApiKey) {
-      logger.warn('OpenAI API key not configured, skipping inject generation');
+    if (!env.aiEnabled) {
+      logger.warn('AI provider not configured, skipping inject generation');
       return;
     }
 
     const generatedInject = await generateInjectFromDecision(
       decision,
       enhancedContext,
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     if (!generatedInject) {

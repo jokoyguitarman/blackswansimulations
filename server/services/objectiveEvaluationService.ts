@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import { evaluateObjectiveCompletion, type ObjectiveCompletionEvaluation } from './aiService.js';
 import { updateObjectiveProgress } from './objectiveTrackingService.js';
 
@@ -130,12 +131,9 @@ export async function evaluateAllObjectivesForSession(
   openAiApiKey: string | undefined,
 ): Promise<void> {
   try {
-    // Skip if OpenAI API key is not configured
-    if (!openAiApiKey) {
-      logger.debug(
-        { sessionId },
-        'Skipping AI objective evaluation - OpenAI API key not configured',
-      );
+    // Skip if no AI provider is configured
+    if (!env.aiEnabled) {
+      logger.debug({ sessionId }, 'Skipping AI objective evaluation - AI provider not configured');
       return;
     }
 
@@ -231,7 +229,7 @@ export async function evaluateAllObjectivesForSession(
           },
           decisions,
           sessionStartTime,
-          openAiApiKey,
+          openAiApiKey ?? '',
         );
 
         if (!evaluation) {
