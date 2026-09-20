@@ -1,5 +1,6 @@
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import type { ScenarioBlueprint } from './blueprint/blueprintTypes.js';
 import { BLUEPRINT_HONOR_THRESHOLD } from './blueprint/blueprintConfig.js';
 import {
@@ -405,40 +406,18 @@ async function callAI(
   maxTokens = 8000,
   temperature = 0.7,
 ): Promise<Record<string, unknown> | null> {
-  if (!env.openAiApiKey) return null;
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      // A hung socket must fail the call (callers retry or fall back) rather than stall a
-      // whole generation stage; long JSON bodies at 12k tokens finish well inside this.
-      signal: AbortSignal.timeout(240_000),
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature,
-        max_completion_tokens: maxTokens,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'Social crisis AI call returned non-OK');
-      return null;
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    return JSON.parse(content);
-  } catch (err) {
-    logger.error({ err }, 'Social crisis AI call failed');
-    return null;
-  }
+  if (!env.aiEnabled) return null;
+  return chatJson<Record<string, unknown>>({
+    tier: 'standard',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    maxTokens,
+    temperature,
+    // A hung socket must fail the call (callers retry or fall back) rather than stall a
+    // whole generation stage; long JSON bodies at 12k tokens finish well inside this.
+    timeoutMs: 240_000,
+    label: 'socialCrisisGenerator',
+  });
 }
 
 function orgNameLine(orgName?: string): string {

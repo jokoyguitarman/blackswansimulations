@@ -297,7 +297,7 @@ export async function decide(input: BrainInput): Promise<BotAction> {
   if (shortlist.length === 0) return { kind: 'idle', reason: 'nothing to do', source: 'triage' };
 
   // No model: deterministic top item with template copy.
-  if (!env.openAiApiKey) return fallback(input, shortlist[0], 'no OPENAI_API_KEY');
+  if (!env.aiEnabled) return fallback(input, shortlist[0], 'ai disabled');
 
   brainStats.calls++;
   const tier: 'fast' | 'strong' =

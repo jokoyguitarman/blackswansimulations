@@ -7,7 +7,13 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import type { ThreatProfile } from './warroomPromptParser.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
+
+// Kept as an export for historical importers (warroomResearchService uses it via dynamic
+// import); the implementation now lives in the shared client core.
+export { repairTruncatedJson } from './ai/chatCore.js';
 
 // ---------------------------------------------------------------------------
 // Inject Pressure Types — 35 granular thematic lenses for inject generation
@@ -1823,130 +1829,38 @@ Return ONLY valid JSON: { "team_name": "operational" | "non_operational" } for e
   return fallback;
 }
 
-export function repairTruncatedJson(raw: string): string {
-  let s = raw.trim();
-  // Strip trailing commas before we close brackets
-  s = s.replace(/,\s*$/, '');
-
-  const stack: string[] = [];
-  let inString = false;
-  let escape = false;
-  for (const ch of s) {
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === '\\') {
-      escape = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === '{' || ch === '[') stack.push(ch);
-    if (ch === '}' || ch === ']') stack.pop();
-  }
-  if (inString) s += '"';
-  // Close any remaining open brackets/braces in reverse order
-  while (stack.length > 0) {
-    const opener = stack.pop();
-    // Strip trailing commas before closing
-    s = s.replace(/,\s*$/, '');
-    s += opener === '{' ? '}' : ']';
-  }
-  return s;
-}
-
+/**
+ * War Room generation call: standard tier (gpt-5.1 while AI_PROVIDER=openai), JSON mode,
+ * throws on failure so a generation phase fails loudly. The shared client retries 5xx,
+ * repairs truncated JSON and grows the budget once (1.6x) when a cut-off reply does not
+ * repair -- the behaviour this helper used to implement locally.
+ *
+ * `_openAiApiKey` is kept in the signature so the 29 phase call sites are untouched; the
+ * client reads the active provider's key from env.
+ */
 async function callOpenAi<T>(
   systemPrompt: string,
   userPrompt: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
   maxTokens = 10000,
   temperature = 0.7,
-  _retryCount = 0,
 ): Promise<T> {
-  const fetchOAI = async () =>
-    fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.1',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature,
-        max_completion_tokens: maxTokens,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-  let response = await fetchOAI();
-
-  // Retry on 5xx server errors (OpenAI outages)
-  if (response.status >= 500 && response.status < 600) {
-    logger.warn({ status: response.status }, 'OpenAI 5xx error, retrying after 3s...');
-    await new Promise((r) => setTimeout(r, 3000));
-    response = await fetchOAI();
-  }
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    const msg =
-      (err as { error?: { message?: string } }).error?.message ||
-      `OpenAI API error: ${response.status}`;
-    logger.error({ status: response.status, msg }, 'Warroom AI call failed');
-    throw new Error(msg);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error('No content from OpenAI');
-  }
-
-  const finishReason = data.choices?.[0]?.finish_reason as string | undefined;
-  const wasTruncated = finishReason === 'length';
-
-  // Try normal parse first
-  try {
-    return JSON.parse(content) as T;
-  } catch {
-    // Always attempt JSON repair (handles both truncation and minor malformation)
-    logger.warn(
-      { finishReason, wasTruncated, contentLength: content.length, maxTokens },
-      'JSON parse failed; attempting repair',
-    );
-    try {
-      const repaired = repairTruncatedJson(content);
-      return JSON.parse(repaired) as T;
-    } catch {
-      // Repair failed — retry with higher budget if we haven't already
-      if (_retryCount < 1) {
-        const newBudget = Math.round(maxTokens * 1.6);
-        logger.info(
-          { oldBudget: maxTokens, newBudget, retryCount: _retryCount + 1 },
-          'Retrying callOpenAi with higher token budget after JSON repair failure',
-        );
-        return callOpenAi<T>(
-          systemPrompt,
-          userPrompt,
-          openAiApiKey,
-          newBudget,
-          temperature,
-          _retryCount + 1,
-        );
-      }
-    }
-    throw new Error(
-      `JSON parse failed (finish_reason=${finishReason}, length=${content.length}, maxTokens=${maxTokens})`,
-    );
-  }
+  const parsed = await chatJson<T>({
+    tier: 'standard',
+    openaiModel: 'gpt-5.1',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    maxTokens,
+    temperature,
+    timeoutMs: 300_000,
+    retry: { attempts: 2, baseDelayMs: 3000 },
+    growOnTruncation: true,
+    throwOnError: true,
+    label: 'warroom.callOpenAi',
+  });
+  // throwOnError guarantees a non-null result here; the guard keeps the type narrow.
+  if (parsed == null) throw new Error('No content from AI provider');
+  return parsed;
 }
 
 function getRequiredTeamsFromTemplate(
@@ -4482,7 +4396,7 @@ async function placeVictimsOnMap(
   openAiApiKey?: string,
   studGrids?: StudGrid[],
 ): Promise<WarroomScenarioPayload['casualties']> {
-  if (!openAiApiKey) return undefined;
+  if (!env.aiEnabled) return undefined;
 
   const incidentSites =
     locations?.filter(
@@ -4606,7 +4520,7 @@ RULES:
       const parsed = await callOpenAi<{ placements?: Placement[] }>(
         batchPrompt,
         batchUserPrompt,
-        openAiApiKey,
+        openAiApiKey ?? '',
         Math.max(2000, batch.length * 80),
       );
       return parsed.placements ?? [];

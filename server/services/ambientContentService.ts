@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { computeSessionSentiment } from './sentimentSimService.js';
 import {
@@ -563,34 +564,15 @@ async function callAI(
   maxTokens = 2000,
   temperature = 0.85,
 ): Promise<Record<string, unknown> | null> {
-  if (!env.openAiApiKey) return null;
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature,
-        max_completion_tokens: maxTokens,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    return JSON.parse(content);
-  } catch (err) {
-    logger.warn({ err }, 'Ambient AI call failed');
-    return null;
-  }
+  if (!env.aiEnabled) return null;
+  return chatJson<Record<string, unknown>>({
+    tier: 'standard',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    maxTokens,
+    temperature,
+    label: 'ambientContent',
+  });
 }
 
 async function insertPost(
@@ -716,7 +698,7 @@ async function insertPost(
 // ─── Main entry point (called from inject scheduler) ────────────────────────
 
 export async function generateAmbientPosts(sessionId: string): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     const { data: session } = await supabaseAdmin
@@ -902,7 +884,7 @@ async function generateFacebookAmbientPosts(
   knownNPCs: RegisteredNPC[],
   socialState: Record<string, unknown> | undefined,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     const npcList = knownNPCs
@@ -974,7 +956,7 @@ async function generateEchoChamberPosts(
   crisisDescription: string,
   elapsedMinutes: number,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     const { data: participants } = await supabaseAdmin
@@ -1075,7 +1057,7 @@ async function generatePlayerBubblePosts(
   sentiment: { overall: number },
   socialState: Record<string, unknown> | undefined,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   const sessionBubbles = playerBubbles.get(sessionId);
   if (!sessionBubbles || sessionBubbles.size === 0) return;
@@ -1348,42 +1330,27 @@ export async function generateConsequenceInject(
   sentiment: string,
   isPositive: boolean,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
   if (isOnCooldown(sessionId, triggerId)) return;
 
   setCooldown(sessionId, triggerId);
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          {
-            role: 'system',
-            content: `Generate a single realistic social media post that serves as an organic consequence in a crisis simulation. The post should feel natural -- like a real person reacting to the situation. Keep it 1-3 sentences. Do NOT mention that this is a simulation.
+    const post = await chatJson<Record<string, unknown>>({
+      tier: 'standard',
+      messages: systemUser(
+        `Generate a single realistic social media post that serves as an organic consequence in a crisis simulation. The post should feel natural -- like a real person reacting to the situation. Keep it 1-3 sentences. Do NOT mention that this is a simulation.
 
 Return ONLY valid JSON: { "author_handle": "@handle", "author_display_name": "Name", "content": "post text", "author_type": "npc_public|npc_media" }`,
-          },
-          { role: 'user', content: description },
-        ],
-        temperature: 0.8,
-        max_completion_tokens: 500,
-        response_format: { type: 'json_object' },
-      }),
+        description,
+      ),
+      json: true,
+      temperature: 0.8,
+      maxTokens: 500,
+      label: 'ambientContent.consequence',
     });
 
-    if (!response.ok) return;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    const post = JSON.parse(content);
+    if (!post) return;
 
     await new Promise((r) => setTimeout(r, 2000 + Math.floor(Math.random() * 4000)));
 
@@ -1447,7 +1414,7 @@ async function generateGroupActivity(
   knownNPCs: RegisteredNPC[],
   socialState: Record<string, unknown> | undefined,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   const { data: groups } = await supabaseAdmin
     .from('sim_groups')
@@ -1536,7 +1503,7 @@ Return ONLY valid JSON:
 }
 
 async function initializeGroups(sessionId: string, crisisDescription: string): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   const result = await callAI(
     `Create 3-4 Facebook groups that would exist in a community experiencing this crisis:
@@ -1578,7 +1545,7 @@ async function generateEventIfNeeded(
   crisisDescription: string,
   socialState: Record<string, unknown> | undefined,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   const { data: existingEvents } = await supabaseAdmin
     .from('sim_events')
