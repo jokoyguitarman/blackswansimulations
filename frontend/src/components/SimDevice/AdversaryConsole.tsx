@@ -24,13 +24,62 @@ interface OrgPage {
   display_name: string;
   role?: string;
   control_mode?: string;
+  kind?: string;
+  register?: string;
+  operation?: string;
   facebook?: { page_handle?: string } | null;
   x_twitter?: { page_handle?: string } | null;
 }
 
+type PageGroup = 'antagonist' | 'pressure' | 'ai_office';
+
+function groupOf(p: OrgPage): PageGroup | null {
+  const role = p.role ?? 'protagonist';
+  if (role === 'antagonist') return 'antagonist';
+  if (role === 'pressure') return 'pressure';
+  if (
+    role === 'protagonist' &&
+    (p.operation === 'ai' || p.control_mode === 'ai' || p.control_mode === 'trainer') &&
+    !isPrimaryLike(p)
+  )
+    return 'ai_office';
+  return null;
+}
+function isPrimaryLike(p: OrgPage): boolean {
+  return p.org_key === 'primary';
+}
+
+const GROUP_META: Record<
+  PageGroup,
+  { title: string; badge: string; color: string; bg: string; empty: string }
+> = {
+  antagonist: {
+    title: 'Adversary Console',
+    badge: 'rivals',
+    color: '#B91C1C',
+    bg: 'rgba(185,28,28,0.12)',
+    empty: 'No antagonist pages in this scenario.',
+  },
+  pressure: {
+    title: 'Pressure Organisations',
+    badge: 'unions · regulators · NGOs',
+    color: '#B45309',
+    bg: 'rgba(180,83,9,0.12)',
+    empty: 'No pressure organisations in this scenario.',
+  },
+  ai_office: {
+    title: 'AI-operated Offices',
+    badge: 'aligned',
+    color: '#1E3A5F',
+    bg: 'rgba(30,58,95,0.10)',
+    empty: 'Every office has players.',
+  },
+};
+
 /**
- * Trainer-only console for the antagonist (rival) brand pages. Lists each AI/seized
- * rival, lets the trainer seize/release control, and post hostile content as the page.
+ * Trainer-only console for the AI-run pages: antagonists (rivals), pressure organisations
+ * (unions / regulators / NGOs / community / political) and AI-operated offices. Lists each
+ * AI/seized page, lets the trainer seize/release control, and post as the page.
  */
 export function AdversaryConsole({ sessionId }: { sessionId: string }) {
   const [pages, setPages] = useState<OrgPage[]>([]);
@@ -45,7 +94,7 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
       const res = await fetch(apiUrl(`/api/social/pages/session/${sessionId}`), { headers });
       const json = await res.json();
       const all = (json.data || []) as OrgPage[];
-      setPages(all.filter((p) => (p.role ?? 'protagonist') === 'antagonist'));
+      setPages(all.filter((p) => groupOf(p) !== null));
     } catch {
       /* ignore */
     }
@@ -99,118 +148,138 @@ export function AdversaryConsole({ sessionId }: { sessionId: string }) {
     [sessionId, draft, platform],
   );
 
-  return (
-    <div
-      className="rounded-xl border overflow-hidden flex flex-col"
-      style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
-    >
-      <div
-        className="px-4 py-2.5 border-b text-xs font-semibold tracking-wider uppercase flex items-center justify-between"
-        style={{ borderColor: '#E4DFD4', color: '#6B7280' }}
-      >
-        <span>Adversary Console ({pages.length})</span>
-        <span
-          className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-          style={{ backgroundColor: 'rgba(185,28,28,0.12)', color: '#B91C1C' }}
-        >
-          rivals
-        </span>
-      </div>
-      <div className="flex-1 p-4 overflow-y-auto space-y-3">
-        {pages.length === 0 && (
-          <div className="text-[12px]" style={{ color: '#6B7280' }}>
-            No antagonist pages in this scenario.
-          </div>
-        )}
-        {pages.map((p) => {
-          const mode = p.control_mode === 'trainer' ? 'trainer' : 'ai';
-          const handle = p.x_twitter?.page_handle || p.facebook?.page_handle || '';
-          return (
-            <div
-              key={p.org_key}
-              className="rounded-lg p-3"
-              style={{
-                backgroundColor: '#FAF8F4',
-                border: '1px solid #E4DFD4',
-                borderLeft: '3px solid #B91C1C',
-              }}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div>
-                  <span className="text-[13px] font-semibold" style={{ color: '#172033' }}>
-                    {p.display_name}
-                  </span>{' '}
-                  <span className="text-[11px]" style={{ color: '#6B7280' }}>
-                    {handle}
-                  </span>
-                </div>
-                <button
-                  onClick={() => seize(p.org_key, mode === 'trainer' ? 'ai' : 'trainer')}
-                  disabled={busy === p.org_key}
-                  className="text-[10px] font-bold uppercase px-2.5 py-1 rounded border disabled:opacity-50"
-                  style={
-                    mode === 'trainer'
-                      ? {
-                          color: '#D97706',
-                          borderColor: 'rgba(217,119,6,0.4)',
-                          backgroundColor: 'rgba(217,119,6,0.1)',
-                        }
-                      : {
-                          color: '#1E3A5F',
-                          borderColor: 'rgba(30,58,95,0.35)',
-                          backgroundColor: 'rgba(30,58,95,0.07)',
-                        }
-                  }
-                >
-                  {mode === 'trainer' ? 'Seized · release to AI' : 'AI · seize'}
-                </button>
-              </div>
+  const groups: PageGroup[] = ['antagonist', 'pressure', 'ai_office'];
+  const visibleGroups = groups.filter(
+    (g) => g === 'antagonist' || pages.some((p) => groupOf(p) === g),
+  );
 
-              {mode === 'trainer' && (
-                <div
-                  className="mt-2 rounded-lg p-2"
-                  style={{ backgroundColor: '#FFFFFF', border: '1px solid #E4DFD4' }}
-                >
-                  <div className="flex gap-1 mb-1">
-                    {(['x_twitter', 'facebook'] as const).map((pf) => (
-                      <button
-                        key={pf}
-                        onClick={() => setPlatform((s) => ({ ...s, [p.org_key]: pf }))}
-                        className="text-[10px] px-2 py-0.5 rounded"
-                        style={
-                          (platform[p.org_key] || 'x_twitter') === pf
-                            ? { backgroundColor: '#1E3A5F', color: '#FFFFFF' }
-                            : { color: '#6B7280' }
-                        }
-                      >
-                        {pf === 'x_twitter' ? 'X' : 'Facebook'}
-                      </button>
-                    ))}
-                  </div>
-                  <textarea
-                    rows={2}
-                    value={draft[p.org_key] || ''}
-                    onChange={(e) => setDraft((d) => ({ ...d, [p.org_key]: e.target.value }))}
-                    placeholder={`Post as ${p.display_name}...`}
-                    className="w-full bg-transparent text-[12px] outline-none resize-none"
-                    style={{ color: '#172033' }}
-                  />
-                  <div className="text-right">
-                    <button
-                      onClick={() => postAs(p.org_key)}
-                      disabled={busy === p.org_key || !(draft[p.org_key] || '').trim()}
-                      className="text-[11px] font-bold px-3 py-1 rounded disabled:opacity-50"
-                      style={{ backgroundColor: '#B91C1C', color: '#fff' }}
-                    >
-                      Post as page
-                    </button>
-                  </div>
+  return (
+    <div className="space-y-3">
+      {visibleGroups.map((g) => {
+        const meta = GROUP_META[g];
+        const groupPages = pages.filter((p) => groupOf(p) === g);
+        return (
+          <div
+            key={g}
+            className="rounded-xl border overflow-hidden flex flex-col"
+            style={{ backgroundColor: '#FFFFFF', borderColor: '#E4DFD4' }}
+          >
+            <div
+              className="px-4 py-2.5 border-b text-xs font-semibold tracking-wider uppercase flex items-center justify-between"
+              style={{ borderColor: '#E4DFD4', color: '#6B7280' }}
+            >
+              <span>
+                {meta.title} ({groupPages.length})
+              </span>
+              <span
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                style={{ backgroundColor: meta.bg, color: meta.color }}
+              >
+                {meta.badge}
+              </span>
+            </div>
+            <div className="flex-1 p-4 overflow-y-auto space-y-3">
+              {groupPages.length === 0 && (
+                <div className="text-[12px]" style={{ color: '#6B7280' }}>
+                  {meta.empty}
                 </div>
               )}
+              {groupPages.map((p) => {
+                const mode = p.control_mode === 'trainer' ? 'trainer' : 'ai';
+                const handle = p.x_twitter?.page_handle || p.facebook?.page_handle || '';
+                return (
+                  <div
+                    key={p.org_key}
+                    className="rounded-lg p-3"
+                    style={{
+                      backgroundColor: '#FAF8F4',
+                      border: '1px solid #E4DFD4',
+                      borderLeft: `3px solid ${meta.color}`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[13px] font-semibold" style={{ color: '#172033' }}>
+                          {p.display_name}
+                        </span>{' '}
+                        <span className="text-[11px]" style={{ color: '#6B7280' }}>
+                          {handle}
+                          {g === 'pressure' && (p.kind || p.register)
+                            ? ` · ${[p.kind?.replace('_', ' '), p.register].filter(Boolean).join(' · ')}`
+                            : ''}
+                          {g === 'ai_office' ? ' · no players — speaks in step with HQ' : ''}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => seize(p.org_key, mode === 'trainer' ? 'ai' : 'trainer')}
+                        disabled={busy === p.org_key}
+                        className="text-[10px] font-bold uppercase px-2.5 py-1 rounded border disabled:opacity-50"
+                        style={
+                          mode === 'trainer'
+                            ? {
+                                color: '#D97706',
+                                borderColor: 'rgba(217,119,6,0.4)',
+                                backgroundColor: 'rgba(217,119,6,0.1)',
+                              }
+                            : {
+                                color: '#1E3A5F',
+                                borderColor: 'rgba(30,58,95,0.35)',
+                                backgroundColor: 'rgba(30,58,95,0.07)',
+                              }
+                        }
+                      >
+                        {mode === 'trainer' ? 'Seized · release to AI' : 'AI · seize'}
+                      </button>
+                    </div>
+
+                    {mode === 'trainer' && (
+                      <div
+                        className="mt-2 rounded-lg p-2"
+                        style={{ backgroundColor: '#FFFFFF', border: '1px solid #E4DFD4' }}
+                      >
+                        <div className="flex gap-1 mb-1">
+                          {(['x_twitter', 'facebook'] as const).map((pf) => (
+                            <button
+                              key={pf}
+                              onClick={() => setPlatform((s) => ({ ...s, [p.org_key]: pf }))}
+                              className="text-[10px] px-2 py-0.5 rounded"
+                              style={
+                                (platform[p.org_key] || 'x_twitter') === pf
+                                  ? { backgroundColor: '#1E3A5F', color: '#FFFFFF' }
+                                  : { color: '#6B7280' }
+                              }
+                            >
+                              {pf === 'x_twitter' ? 'X' : 'Facebook'}
+                            </button>
+                          ))}
+                        </div>
+                        <textarea
+                          rows={2}
+                          value={draft[p.org_key] || ''}
+                          onChange={(e) => setDraft((d) => ({ ...d, [p.org_key]: e.target.value }))}
+                          placeholder={`Post as ${p.display_name}...`}
+                          className="w-full bg-transparent text-[12px] outline-none resize-none"
+                          style={{ color: '#172033' }}
+                        />
+                        <div className="text-right">
+                          <button
+                            onClick={() => postAs(p.org_key)}
+                            disabled={busy === p.org_key || !(draft[p.org_key] || '').trim()}
+                            className="text-[11px] font-bold px-3 py-1 rounded disabled:opacity-50"
+                            style={{ backgroundColor: meta.color, color: '#fff' }}
+                          >
+                            Post as page
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
-      </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

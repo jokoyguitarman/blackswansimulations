@@ -61,10 +61,13 @@ export const PageAssignmentModal = ({
       const headers = await getAuthHeaders();
       const res = await fetch(apiUrl(`/api/social/pages/session/${sessionId}`), { headers });
       const json = await res.json();
-      // Players may only be assigned protagonist pages; antagonist (rival) pages
-      // are trainer/AI-driven and excluded from the assignment pool.
+      // Players may only be assigned protagonist pages run by players; antagonist (rival)
+      // and pressure (union / regulator / NGO) pages are trainer/AI-driven, and AI-operated
+      // offices have nobody to assign — all excluded from the assignment pool.
       const loadedPages = ((json.data || []) as OrgPage[]).filter(
-        (pg) => (pg.role ?? 'protagonist') !== 'antagonist',
+        (pg) =>
+          (pg.role ?? 'protagonist') === 'protagonist' &&
+          (pg as OrgPage & { operation?: string }).operation !== 'ai',
       );
       setPages(loadedPages);
 

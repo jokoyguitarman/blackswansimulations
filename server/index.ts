@@ -52,6 +52,7 @@ import { initializeInjectScheduler } from './services/injectSchedulerService.js'
 import { initializeAIInjectScheduler } from './services/aiInjectSchedulerService.js';
 import { initializeChatSurveillance } from './services/chatSurveillanceService.js';
 import { initializeStatementWatchdog } from './services/statementWatchdogService.js';
+import { startGeneratorEngines } from './services/engineTicker.js';
 import jwt from 'jsonwebtoken';
 
 const app = express();
@@ -80,6 +81,10 @@ chatSurveillance.start();
 // Initialize and start statement watchdog (adversarial fact-checker for player public statements)
 const statementWatchdog = initializeStatementWatchdog();
 statementWatchdog.start();
+
+// Generator-owned engines: pressure organisations + organic executive decisions
+// (docs/executive-decisions-organic-plan.md). Own interval; touch point per handover §3.
+startGeneratorEngines();
 
 // Security: Helmet for security headers
 app.use(

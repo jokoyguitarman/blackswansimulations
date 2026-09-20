@@ -67,6 +67,10 @@ export const env = {
   // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
   // fall back to the legacy NPC reply paths and skip verdict calls.
   enableStakeholderEngine: process.env.ENABLE_STAKEHOLDER_ENGINE !== 'false',
+  // Organic executive decisions + pressure organisations engines
+  // (docs/executive-decisions-organic-plan.md §9). ON by default; ENABLE_EXECUTIVE_DECISIONS=false
+  // disables detection hooks, the cascade planner and the pressure engine ticker.
+  enableExecutiveDecisions: process.env.ENABLE_EXECUTIVE_DECISIONS !== 'false',
   // AAR report format: legacy (single summary + insights) or sections (per-section data + AI analysis). Default legacy for safe revert.
   aarReportFormat:
     process.env.AAR_REPORT_FORMAT === 'sections' ? 'sections' : ('legacy' as 'legacy' | 'sections'),

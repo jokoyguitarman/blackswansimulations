@@ -2687,6 +2687,12 @@ function groupOrgPages(rows: Array<Record<string, unknown>>) {
     if (row.is_primary) entry.is_primary = true;
     if (row.role) entry.role = String(row.role);
     if (row.control_mode) entry.control_mode = String(row.control_mode);
+    // Contract v3.2 (migration 205): pressure pages / AI-operated offices (touch point, generator agent).
+    if (row.kind) entry.kind = String(row.kind);
+    if (row.register) entry.register = String(row.register);
+    if (row.operation) entry.operation = String(row.operation);
+    if (row.spokesperson_stakeholder_id)
+      entry.spokesperson_stakeholder_id = String(row.spokesperson_stakeholder_id);
   }
   return Array.from(map.values());
 }

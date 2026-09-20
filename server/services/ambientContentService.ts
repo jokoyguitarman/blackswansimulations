@@ -262,44 +262,93 @@ export async function seedOrgPages(
 
   const orgs = normalizeOrgPages(orgPage);
   for (const org of orgs) {
+    // Contract v3.2 (migration 205): pressure pages + AI-operated offices carry a register,
+    // kind, spokesperson and operation. Written when the columns exist; otherwise the base
+    // row is written and — for role 'pressure', which the pre-205 CHECK rejects — the page is
+    // skipped with a loud log so the pressure engine simply stays idle until 205 is applied.
+    const extras: Record<string, unknown> = {
+      ...(org.spokesperson_stakeholder_id
+        ? { spokesperson_stakeholder_id: org.spokesperson_stakeholder_id }
+        : {}),
+      ...(org.posture?.register ? { register: org.posture.register } : {}),
+      ...(org.kind ? { kind: org.kind } : {}),
+      ...(org.operation ? { operation: org.operation } : {}),
+    };
+    const base = {
+      session_id: sessionId,
+      org_key: org.org_key,
+      is_primary: org.is_primary,
+      role: org.role || 'protagonist',
+      control_mode: org.control_mode || 'player',
+      verified: true,
+    };
     if (org.facebook) {
-      await supabaseAdmin.from('sim_org_pages').upsert(
+      await upsertOrgPageRow(
         {
-          session_id: sessionId,
-          org_key: org.org_key,
-          is_primary: org.is_primary,
-          role: org.role || 'protagonist',
-          control_mode: org.control_mode || 'player',
+          ...base,
           platform: 'facebook',
           page_name: String(org.facebook.page_name || 'Organization'),
           page_handle: String(org.facebook.page_handle || '@Organization'),
           page_bio: String(org.facebook.page_bio || ''),
           follower_count: Number(org.facebook.follower_count) || 50000,
           page_logo_url: String(org.facebook.page_logo_url || ''),
-          verified: true,
         },
-        { onConflict: 'session_id,platform,org_key' },
+        extras,
       );
     }
 
     if (org.x_twitter) {
-      await supabaseAdmin.from('sim_org_pages').upsert(
+      await upsertOrgPageRow(
         {
-          session_id: sessionId,
-          org_key: org.org_key,
-          is_primary: org.is_primary,
-          role: org.role || 'protagonist',
-          control_mode: org.control_mode || 'player',
+          ...base,
           platform: 'x_twitter',
           page_name: String(org.x_twitter.page_name || 'Organization'),
           page_handle: String(org.x_twitter.page_handle || '@Org'),
           page_bio: String(org.x_twitter.page_bio || ''),
           follower_count: Number(org.x_twitter.follower_count) || 30000,
           page_logo_url: String(org.x_twitter.page_logo_url || ''),
-          verified: true,
         },
-        { onConflict: 'session_id,platform,org_key' },
+        extras,
       );
+    }
+  }
+}
+
+let orgPageExtrasSupported: boolean | null = null;
+
+async function upsertOrgPageRow(
+  row: Record<string, unknown>,
+  extras: Record<string, unknown>,
+): Promise<void> {
+  const conflict = { onConflict: 'session_id,platform,org_key' };
+  if (orgPageExtrasSupported !== false && Object.keys(extras).length > 0) {
+    const { error } = await supabaseAdmin
+      .from('sim_org_pages')
+      .upsert({ ...row, ...extras }, conflict);
+    if (!error) {
+      orgPageExtrasSupported = true;
+      return;
+    }
+    if (/could not find the '.*' column|column .* does not exist/i.test(error.message || '')) {
+      logger.error(
+        { error: error.message },
+        'sim_org_pages is missing the v3.2 columns — apply migrations/205_pressure_and_organic_decisions.sql',
+      );
+      orgPageExtrasSupported = false;
+    } else {
+      logger.warn({ error, orgKey: row.org_key }, 'sim_org_pages upsert failed');
+      return;
+    }
+  }
+  const { error } = await supabaseAdmin.from('sim_org_pages').upsert(row, conflict);
+  if (error) {
+    if (row.role === 'pressure' && /check constraint|violates/i.test(error.message || '')) {
+      logger.error(
+        { orgKey: row.org_key },
+        'Pressure page not seeded: sim_org_pages role CHECK predates migration 205 — pressure engine idle for this page',
+      );
+    } else {
+      logger.warn({ error, orgKey: row.org_key }, 'sim_org_pages upsert failed');
     }
   }
 }
