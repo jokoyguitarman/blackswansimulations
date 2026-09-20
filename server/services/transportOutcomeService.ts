@@ -6,6 +6,8 @@
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import type { Server as SocketServer } from 'socket.io';
 
@@ -26,44 +28,24 @@ interface TransportIntent {
 
 async function detectTransportIntent(
   decisionText: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<TransportIntent | null> {
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are a crisis management evaluator. Given a decision, determine if it involves TRANSPORTING patients, casualties, or injured people to a specific facility (hospital, clinic, medical center).
+    return await chatJson<TransportIntent>({
+      tier: 'fast',
+      messages: systemUser(
+        `You are a crisis management evaluator. Given a decision, determine if it involves TRANSPORTING patients, casualties, or injured people to a specific facility (hospital, clinic, medical center).
 Return JSON only: { "is_transport": boolean, "destination_facility": "facility name or null" }
 - is_transport: true only if the decision explicitly proposes moving patients/casualties to a named medical facility.
 - destination_facility: the specific facility name mentioned (e.g. "Singapore General Hospital", "TTSH"). null if no specific facility named.
 - Decisions about setting up triage or treating on-site are NOT transport decisions.`,
-          },
-          {
-            role: 'user',
-            content: `Decision text:\n${decisionText.slice(0, 1500)}\n\nIs this a transport decision? JSON only.`,
-          },
-        ],
-        temperature: 0.1,
-        max_tokens: 200,
-        response_format: { type: 'json_object' },
-      }),
+        `Decision text:\n${decisionText.slice(0, 1500)}\n\nIs this a transport decision? JSON only.`,
+      ),
+      json: true,
+      temperature: 0.1,
+      maxTokens: 200,
+      label: 'transportOutcome.detectIntent',
     });
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-
-    return JSON.parse(content) as TransportIntent;
   } catch (err) {
     logger.warn({ err }, 'Transport intent detection failed');
     return null;
@@ -127,7 +109,7 @@ async function generateOutcomeInjectContent(
   outcome: Exclude<TransportOutcome, { type: 'no_data' }>,
   facilityName: string,
   scenarioTitle: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<{ title: string; content: string; severity: string } | null> {
   let contextBlock: string;
   let desiredTone: string;
@@ -159,18 +141,10 @@ async function generateOutcomeInjectContent(
   }
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are generating a realistic in-world inject for a crisis management training exercise ("${scenarioTitle}"). Write a brief field update about a patient transport outcome.
+    return await chatJson<{ title: string; content: string; severity: string }>({
+      tier: 'fast',
+      messages: systemUser(
+        `You are generating a realistic in-world inject for a crisis management training exercise ("${scenarioTitle}"). Write a brief field update about a patient transport outcome.
 
 Context: ${contextBlock}
 
@@ -182,25 +156,13 @@ Return JSON only:
   "content": "string — 1-3 sentences. Write as a realistic field radio report. Be specific about road names and conditions. If the route is blocked, suggest the team consider alternatives or request traffic support.",
   "severity": "low|medium|high|critical"
 }`,
-          },
-          {
-            role: 'user',
-            content: 'Generate the transport outcome inject. JSON only.',
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 300,
-        response_format: { type: 'json_object' },
-      }),
+        'Generate the transport outcome inject. JSON only.',
+      ),
+      json: true,
+      temperature: 0.7,
+      maxTokens: 300,
+      label: 'transportOutcome.inject',
     });
-
-    if (!response.ok) return null;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-
-    return JSON.parse(content) as { title: string; content: string; severity: string };
   } catch (err) {
     logger.warn({ err }, 'Transport outcome inject generation failed');
     return null;
@@ -218,12 +180,12 @@ export async function evaluateTransportOutcome(
   openAiApiKey: string | undefined,
   socketIo: SocketServer,
 ): Promise<void> {
-  if (!openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   const decisionText = `${decision.title ?? ''} ${decision.description ?? ''}`.trim();
   if (!decisionText) return;
 
-  const intent = await detectTransportIntent(decisionText, openAiApiKey);
+  const intent = await detectTransportIntent(decisionText, openAiApiKey ?? '');
   if (!intent?.is_transport || !intent.destination_facility) return;
 
   const { data: session } = await supabaseAdmin
@@ -291,7 +253,7 @@ export async function evaluateTransportOutcome(
     outcome,
     intent.destination_facility,
     scenarioTitle,
-    openAiApiKey,
+    openAiApiKey ?? '',
   );
 
   if (!injectData) return;

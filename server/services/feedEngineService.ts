@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { resolveTeamMembers } from './teamCharterService.js';
 
@@ -301,7 +302,7 @@ async function routeToSocialFeed(
 
   logger.info({ sessionId, injectId, postId: post.id }, 'Inject routed to social feed');
 
-  if (config.spawn_replies && config.spawn_replies > 0 && env.openAiApiKey) {
+  if (config.spawn_replies && config.spawn_replies > 0 && env.aiEnabled) {
     void spawnNPCReplies(sessionId, post, config).catch((err) =>
       logger.warn({ err, postId: post.id }, 'Failed to spawn NPC replies'),
     );
@@ -335,22 +336,20 @@ async function spawnNPCReplies(
     .join('; ');
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          {
-            role: 'system',
-            content: `Generate ${count} realistic reply tweets to a social media post. The replies should feel like real X/Twitter replies during a crisis.
+    const parsed = await chatJson<Record<string, unknown> | Array<Record<string, unknown>>>({
+      tier: 'standard',
+      json: true,
+      temperature: 0.85,
+      maxTokens: 2000,
+      label: 'feedEngine.replies',
+      messages: [
+        {
+          role: 'system',
+          content: `Generate ${count} realistic reply tweets to a social media post. The replies should feel like real X/Twitter replies during a crisis.
 
 Sentiment distribution: ${Object.entries(dist)
-              .map(([k, v]) => `${k}: ${Math.round(Number(v) * 100)}%`)
-              .join(', ')}
+            .map(([k, v]) => `${k}: ${Math.round(Number(v) * 100)}%`)
+            .join(', ')}
 
 ${npcContext ? `Available personas: ${npcContext}` : ''}
 
@@ -358,26 +357,18 @@ Each reply should be 1-3 sentences. Include a mix of reactions: agreement, disag
 
 Return ONLY valid JSON:
 { "replies": [{ "author_handle": "@username", "author_display_name": "Name", "content": "reply text", "sentiment": "neutral|negative|supportive|hateful|inflammatory" }] }`,
-          },
-          {
-            role: 'user',
-            content: `Original post by ${String(parentPost.author_handle)}:\n"${String(parentPost.content)}"`,
-          },
-        ],
-        temperature: 0.85,
-        max_completion_tokens: 2000,
-        response_format: { type: 'json_object' },
-      }),
+        },
+        {
+          role: 'user',
+          content: `Original post by ${String(parentPost.author_handle)}:\n"${String(parentPost.content)}"`,
+        },
+      ],
     });
 
-    if (!response.ok) return;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    const parsed = JSON.parse(content);
-    const replies = Array.isArray(parsed) ? parsed : parsed.replies || [];
+    if (!parsed) return;
+    const replies: Array<Record<string, unknown>> = Array.isArray(parsed)
+      ? parsed
+      : ((parsed.replies as Array<Record<string, unknown>> | undefined) ?? []);
 
     const replyBatch = replies.slice(0, count);
     for (let ri = 0; ri < replyBatch.length; ri++) {

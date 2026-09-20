@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { sanitizeEmailCategory } from './feedEngineService.js';
 import { pickResponders, resolveStakeholderRecipients } from '../lib/stakeholderRecipients.js';
@@ -273,7 +274,7 @@ export async function triggerNPCEmailReply(
   sessionId: string,
   playerEmail: PlayerEmail,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     // Anti-loop: check if this email already got an NPC reply
@@ -571,18 +572,16 @@ export async function triggerNPCEmailReply(
 ${respondentRole ? `Role/Title: ${respondentRole}` : ''}
 ${respondentPersonality ? `Personality: ${respondentPersonality}` : ''}`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          {
-            role: 'system',
-            content: `You are generating an NPC email reply during a crisis simulation. The player sent an email and you must respond in character.
+    const parsed = await chatJson<Record<string, unknown>>({
+      tier: 'standard',
+      json: true,
+      temperature: 0.8,
+      maxTokens: isMediaNPC ? 4000 : 1000,
+      label: 'npcEmailReply.generate',
+      messages: [
+        {
+          role: 'system',
+          content: `You are generating an NPC email reply during a crisis simulation. The player sent an email and you must respond in character.
 
 ${respondentInfo}
 
@@ -637,35 +636,16 @@ Return ONLY valid JSON:
       : ''
   }
 }`,
-          },
-          {
-            role: 'user',
-            content: `Player email from ${playerEmail.from_name} (${playerEmail.from_address}):\nTo: ${toAddress}\nSubject: ${playerEmail.subject}\n\n${playerEmail.body_text}`,
-          },
-        ],
-        temperature: 0.8,
-        max_completion_tokens: isMediaNPC ? 4000 : 1000,
-        response_format: { type: 'json_object' },
-      }),
+        },
+        {
+          role: 'user',
+          content: `Player email from ${playerEmail.from_name} (${playerEmail.from_address}):\nTo: ${toAddress}\nSubject: ${playerEmail.subject}\n\n${playerEmail.body_text}`,
+        },
+      ],
     });
 
-    if (!response.ok) {
-      logger.warn({ status: response.status, sessionId }, 'OpenAI email reply request failed');
-      return;
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    let parsed: Record<string, unknown>;
-    try {
-      parsed = JSON.parse(content);
-    } catch {
-      logger.warn(
-        { sessionId, content: content.substring(0, 200) },
-        'Failed to parse NPC email reply JSON',
-      );
+    if (!parsed) {
+      logger.warn({ sessionId }, 'NPC email reply request failed or returned no JSON');
       return;
     }
 

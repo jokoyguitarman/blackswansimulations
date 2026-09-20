@@ -15,6 +15,7 @@
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import {
   type EnvironmentalConsistencyResult,
   type EnvironmentalConsistencySeverity,
@@ -32,6 +33,7 @@ import {
   type ForbiddenAction,
   type StandardsFinding,
 } from './warroomResearchService.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -92,38 +94,23 @@ export const UNIVERSAL_FORBIDDEN_ACTIONS: ForbiddenAction[] = [
 
 // ─── LLM call helper ────────────────────────────────────────────────────────
 
-const EVAL_MODEL = 'gpt-4o-mini';
 const EVAL_TEMPERATURE = 0.2;
 const EVAL_MAX_TOKENS = 2048;
 
+/** Fast-tier evaluator call (gpt-4o-mini while AI_PROVIDER=openai). Null on any failure. */
 async function callEvaluatorLLM(
-  openAiApiKey: string,
+  _openAiApiKey: string,
   systemPrompt: string,
   userPrompt: string,
 ): Promise<Record<string, unknown> | null> {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: EVAL_MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: EVAL_TEMPERATURE,
-      max_tokens: EVAL_MAX_TOKENS,
-      response_format: { type: 'json_object' },
-    }),
+  return chatJson<Record<string, unknown>>({
+    tier: 'fast',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    maxTokens: EVAL_MAX_TOKENS,
+    temperature: EVAL_TEMPERATURE,
+    label: 'decisionEvaluation.orchestrator',
   });
-
-  if (!response.ok) return null;
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) return null;
-  return JSON.parse(content) as Record<string, unknown>;
 }
 
 function parseEvaluatorOutput(
@@ -830,13 +817,15 @@ function aggregateEvaluations(results: EvaluatorResult[]): EnvironmentalConsiste
 export async function orchestrateDecisionEvaluation(
   sessionId: string,
   decision: DecisionInput,
-  openAiApiKey: string | undefined,
+  openAiApiKeyArg: string | undefined,
   incident?: IncidentContext | null,
   teamName?: string,
   qualityFailureCount?: number,
 ): Promise<EnvironmentalConsistencyResult> {
   const consistentDefault: EnvironmentalConsistencyResult = { consistent: true };
-  if (!openAiApiKey) return consistentDefault;
+  if (!env.aiEnabled) return consistentDefault;
+  // Legacy positional key threaded to sub-evaluators; the shared AI client reads its own credentials.
+  const openAiApiKey = openAiApiKeyArg ?? '';
 
   try {
     const { data: session, error: sessionErr } = await supabaseAdmin

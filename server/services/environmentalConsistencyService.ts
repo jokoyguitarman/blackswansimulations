@@ -9,10 +9,12 @@
 
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { getTeamCatalogAssets } from '../lib/teamAssetCatalog.js';
 import type { Server as SocketServer } from 'socket.io';
 import { haversineM, pointInPolygon, polygonBoundingBox } from './geoUtils.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 /**
  * Fuzzy team-doctrine lookup: tries exact match, then case-insensitive, then
@@ -718,7 +720,7 @@ export async function evaluateDecisionAgainstEnvironment(
   qualityFailureCount?: number,
 ): Promise<EnvironmentalConsistencyResult> {
   const consistentDefault: EnvironmentalConsistencyResult = { consistent: true };
-  if (!openAiApiKey) return consistentDefault;
+  if (!env.aiEnabled) return consistentDefault;
 
   try {
     const { data: session, error: sessionErr } = await supabaseAdmin
@@ -1071,34 +1073,7 @@ Evaluate this decision against professional response standards, operational spec
 
 Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 1024,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in decision standards evaluation');
-      return consistentDefault;
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return consistentDefault;
-
-    const parsed = JSON.parse(content) as {
+    const parsed = await chatJson<{
       rejected?: boolean;
       rejection_reason?: string;
       consistent?: boolean;
@@ -1110,7 +1085,15 @@ Return JSON only.`;
       specific?: boolean;
       missing_details?: string[];
       feedback?: string;
-    };
+    }>({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, userPrompt),
+      json: true,
+      temperature: 0.2,
+      maxTokens: 1024,
+      label: 'environmentalConsistency.evaluateDecision',
+    });
+    if (!parsed) return consistentDefault;
 
     const isRejected = parsed.rejected === true;
     const rejectionReason =

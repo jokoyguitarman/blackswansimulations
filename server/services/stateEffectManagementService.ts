@@ -1,6 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 type ManagedEffectsState = Record<
   string,
@@ -105,7 +107,7 @@ async function evaluateEffectsAddressed(
     decisionDescription: string;
     activeEffects: StateEffectCandidate[];
   },
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<Array<{ key: string; confidence: number }>> {
   const systemPrompt = `You are an expert crisis-operations evaluator. You decide whether a player's DECISION credibly manages one or more ACTIVE STATE EFFECTS in a crisis simulation.\n\nRules:\n- Only mark an effect as addressed if the decision is concrete and operationally plausible (who/what/where/how), and clearly tied to that specific effect.\n- Vague intent statements (e.g. "clear congestion", "manage surge") do NOT count.\n- If the decision does not name a specific exit/zone or does not describe concrete flow-control measures, it does NOT address exit congestion.\n- Output JSON only.\n\nReturn JSON: { "effects_addressed": [ { "key": string, "confidence": number } ] }\n- confidence is 0.0 to 1.0\n- Include only keys from the provided ACTIVE EFFECTS list.`;
 
@@ -115,41 +117,16 @@ async function evaluateEffectsAddressed(
 
   const userPrompt = `ACTIVE EFFECTS:\n${effectsText}\n\nDECISION:\nTitle: ${params.decisionTitle}\nDescription: ${params.decisionDescription}\n\nWhich active effects are credibly addressed by this decision? Return JSON only.`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.2,
-      max_tokens: 250,
-      response_format: { type: 'json_object' },
-    }),
+  const parsed = await chatJson<{ effects_addressed?: unknown }>({
+    tier: 'fast',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    temperature: 0.2,
+    maxTokens: 250,
+    label: 'stateEffects.evaluateAddressed',
   });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    logger.warn({ status: response.status, body: text }, 'State effect management AI call failed');
-    return [];
-  }
-
-  const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) return [];
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(content);
-  } catch {
-    return [];
-  }
-  const obj = parsed as { effects_addressed?: unknown };
+  if (!parsed) return [];
+  const obj = parsed;
   const arr = Array.isArray(obj.effects_addressed) ? obj.effects_addressed : [];
   const allowed = new Set(params.activeEffects.map((e) => e.key));
   const results: Array<{ key: string; confidence: number }> = [];
@@ -169,7 +146,7 @@ export async function evaluateStateEffectManagementAndUpdateState(
   openAiApiKey: string | undefined,
   actorId?: string | null,
 ): Promise<void> {
-  if (!openAiApiKey?.trim()) return;
+  if (!env.aiEnabled) return;
 
   const { data: session, error: sessionErr } = await supabaseAdmin
     .from('sessions')
@@ -193,7 +170,7 @@ export async function evaluateStateEffectManagementAndUpdateState(
       decisionDescription: decision.description,
       activeEffects: active,
     },
-    openAiApiKey,
+    openAiApiKey ?? '',
   );
   const toManage = addressed.filter((r) => r.confidence >= 0.7).map((r) => r.key);
   if (toManage.length === 0) return;

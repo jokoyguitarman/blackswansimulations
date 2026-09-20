@@ -493,7 +493,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           'Social AAR section generation failed, keeping basic summary',
         );
       }
-    } else if (env.openAiApiKey) {
+    } else if (env.aiEnabled) {
       // Generate AI summary if OpenAI API key is configured (field-ops path)
       try {
         // Get session start/end times, scenario_id, and current_state (for final counters when state_history is empty)
@@ -851,7 +851,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 robustness_by_decision: m.robustness_by_decision,
               }),
             ),
-            env.openAiApiKey,
+            env.openAiApiKey ?? '',
           );
 
           const insiderUsage = await buildInsiderUsageGaps(
@@ -1067,7 +1067,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
                 key,
                 sectionData,
                 sectionContext,
-                env.openAiApiKey,
+                env.openAiApiKey ?? '',
               );
               sections = { ...sections, [key]: { ...entry, analysis } };
               await supabaseAdmin.from('aar_reports').update({ sections }).eq('id', aar.id);
@@ -1089,7 +1089,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
           logger.info({ sessionId }, 'AAR section-based report generated');
         } else {
           // Legacy: single summary + insights
-          const aiSummary = await generateAARSummary(sessionDataForAI, env.openAiApiKey);
+          const aiSummary = await generateAARSummary(sessionDataForAI, env.openAiApiKey ?? '');
 
           await supabaseAdmin
             .from('aar_reports')
@@ -1101,7 +1101,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
             .eq('id', aar.id);
 
           try {
-            const aiInsights = await generateAARInsights(sessionDataForAI, env.openAiApiKey);
+            const aiInsights = await generateAARInsights(sessionDataForAI, env.openAiApiKey ?? '');
             await supabaseAdmin
               .from('aar_reports')
               .update({
@@ -1125,7 +1125,7 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
         // Continue with basic summary if AI fails
       }
     } else {
-      logger.info({ sessionId }, 'OpenAI API key not configured, skipping AI summary generation');
+      logger.info({ sessionId }, 'AI provider not configured, skipping AI summary generation');
     }
 
     // Fetch updated AAR with AI content

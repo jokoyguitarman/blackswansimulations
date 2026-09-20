@@ -4,6 +4,8 @@
  * Revertible: when AAR_REPORT_FORMAT=legacy this service is not used.
  */
 
+import { chat, systemUser } from './ai/chatClient.js';
+
 export const AAR_SECTION_KEYS = [
   'executive',
   'decisions',
@@ -428,7 +430,7 @@ export async function generateSectionAnalysis(
   sectionKey: AARSectionKey,
   sectionData: unknown,
   context: { sessionId: string; scenarioTitle?: string; sectorStandards?: string },
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<string> {
   const label = SECTION_LABELS[sectionKey];
   const extra =
@@ -464,32 +466,19 @@ export async function generateSectionAnalysis(
       ? `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nSource sections (insider_usage and coordination):\n${dataJson}\n\nWrite the information-sharing analysis now.`
       : `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\nData for ${label}:\n${dataJson}\n\nWrite the analysis now.`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.5,
-      max_tokens: 800,
-    }),
+  const result = await chat({
+    tier: 'standard',
+    openaiModel: 'gpt-4',
+    messages: systemUser(systemPrompt, userPrompt),
+    temperature: 0.5,
+    maxTokens: 800,
+    throwOnError: true,
+    label: `aarSection.${sectionKey}`,
   });
 
-  if (!response.ok) {
-    const errBody = await response.json().catch(() => ({}));
-    throw new Error(errBody?.error?.message || `OpenAI ${response.status}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
+  const content = result?.content;
   if (!content || typeof content !== 'string') {
-    throw new Error('No content from OpenAI');
+    throw new Error('No content from AI provider');
   }
   return content.trim();
 }

@@ -4,6 +4,29 @@
  */
 
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
+
+/**
+ * Fast-tier JSON evaluation. Returns null on any failure so callers use their keyword
+ * fallbacks. The `_openAiApiKey` parameters on the exported functions are kept for
+ * call-site compatibility; availability is decided by `env.aiEnabled`.
+ */
+async function evaluate<T>(
+  label: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+): Promise<T | null> {
+  return chatJson<T>({
+    tier: 'fast',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    maxTokens,
+    temperature: 0.2,
+    label: `decisionEvaluation.${label}`,
+  });
+}
 
 export interface LocationReferenceIntentResult {
   referencesBadLocationPositively: boolean;
@@ -30,9 +53,9 @@ export async function evaluateLocationReferenceIntent(
     badLocations: Array<{ label: string; location_type: string }>;
     incidentContext?: { title: string; description: string } | null;
   },
-  openAiApiKey: string | undefined,
+  _openAiApiKey: string | undefined,
 ): Promise<LocationReferenceIntentResult | null> {
-  if (!openAiApiKey || !params.badLocations.length) return null;
+  if (!env.aiEnabled || !params.badLocations.length) return null;
   const { decisionText, badLocations, incidentContext } = params;
   try {
     const locationsBlock = badLocations.map((l) => `- ${l.label} (${l.location_type})`).join('\n');
@@ -45,37 +68,11 @@ Return JSON only: { "referencesBadLocationPositively": boolean, "reason": "one s
 - referencesBadLocationPositively: true if the decision proposes or commits to using any of the listed bad locations. false if it only mentions them to reject/avoid or to choose an alternative.`;
     const userPrompt = `Bad locations (do not use unless cleared):\n${locationsBlock}${incidentBlock}\n\nDecision text:\n${decisionText.slice(0, 1500)}\n\nDoes the decision propose using any bad location (true) or only reject/avoid them (false)? JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 150,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      logger.warn(
-        { status: response.status },
-        'OpenAI API error in evaluateLocationReferenceIntent',
-      );
-      return null;
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(content) as {
+    const parsed = await evaluate<{
       referencesBadLocationPositively?: boolean;
       reason?: string;
-    };
+    }>('locationReferenceIntent', systemPrompt, userPrompt, 150);
+    if (!parsed) return null;
     const ref = parsed.referencesBadLocationPositively === true;
     return {
       referencesBadLocationPositively: ref,
@@ -93,9 +90,9 @@ Return JSON only: { "referencesBadLocationPositively": boolean, "reason": "one s
  */
 export async function evaluateRouteManagementIntent(
   params: { decisionText: string; unmanagedRouteLabelsOrSegments: string[] },
-  openAiApiKey: string | undefined,
+  _openAiApiKey: string | undefined,
 ): Promise<RouteManagementIntentResult | null> {
-  if (!openAiApiKey || !params.unmanagedRouteLabelsOrSegments.length) return null;
+  if (!env.aiEnabled || !params.unmanagedRouteLabelsOrSegments.length) return null;
   const { decisionText, unmanagedRouteLabelsOrSegments } = params;
   try {
     const routesList = unmanagedRouteLabelsOrSegments.join(', ');
@@ -104,31 +101,13 @@ Return JSON only: { "proposesManagingBeforeUse": boolean, "reason": "optional on
 - proposesManagingBeforeUse: true only if the decision clearly states or implies that the route will be cleared/managed before use. false if it assumes use without prior clearance.`;
     const userPrompt = `Unmanaged routes: ${routesList}\n\nDecision text:\n${decisionText.slice(0, 1500)}\n\nDoes the decision propose managing/clearing these routes before use? JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 120,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in evaluateRouteManagementIntent');
-      return null;
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(content) as { proposesManagingBeforeUse?: boolean; reason?: string };
+    const parsed = await evaluate<{ proposesManagingBeforeUse?: boolean; reason?: string }>(
+      'routeManagementIntent',
+      systemPrompt,
+      userPrompt,
+      120,
+    );
+    if (!parsed) return null;
     return {
       proposesManagingBeforeUse: parsed.proposesManagingBeforeUse === true,
       reason: typeof parsed.reason === 'string' ? parsed.reason.trim().slice(0, 300) : undefined,
@@ -150,9 +129,9 @@ export async function evaluateGateContentSatisfaction(
     minHints: number;
     gateDescription?: string | null;
   },
-  openAiApiKey: string | undefined,
+  _openAiApiKey: string | undefined,
 ): Promise<GateContentSatisfactionResult | null> {
-  if (!openAiApiKey) return null;
+  if (!env.aiEnabled) return null;
   const { decisionDescription, contentHints, minHints, gateDescription } = params;
   if (!contentHints.length || minHints <= 0) return { satisfies: true };
   try {
@@ -163,34 +142,13 @@ Return JSON only: { "satisfies": boolean, "reason": "optional one sentence" }
 - satisfies: true if the decision is sufficiently concrete and addresses the gate (matches or paraphrases the required themes). false if it is vague or off-topic.`;
     const userPrompt = `Required themes (at least ${minHints}): ${hintsList}${gateBlock}\n\nDecision description:\n${decisionDescription.slice(0, 1200)}\n\nIs this decision sufficiently concrete and on-topic? JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 150,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      logger.warn(
-        { status: response.status },
-        'OpenAI API error in evaluateGateContentSatisfaction',
-      );
-      return null;
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(content) as { satisfies?: boolean; reason?: string };
+    const parsed = await evaluate<{ satisfies?: boolean; reason?: string }>(
+      'gateContentSatisfaction',
+      systemPrompt,
+      userPrompt,
+      150,
+    );
+    if (!parsed) return null;
     return {
       satisfies: parsed.satisfies === true,
       reason: typeof parsed.reason === 'string' ? parsed.reason.trim().slice(0, 300) : undefined,
@@ -225,7 +183,7 @@ export async function evaluatePrerequisiteReferences(
     badLocations: Array<{ label: string; location_type: string; condition: string }>;
     incidentContext?: { title: string; description: string };
   },
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<PrerequisiteReferenceResult | null> {
   const { decisionText, capacityFacilities, claimedSpaces, badLocations, incidentContext } = params;
   const hasItems =
@@ -270,34 +228,13 @@ Set the category to null if that category has no items to check. Set match to tr
 
     const userPrompt = `${sections.join('\n\n')}${incidentBlock}\n\nDECISION TEXT:\n${decisionText.slice(0, 1500)}\n\nDoes the decision propose using any of the listed items? JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 300,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      logger.warn(
-        { status: response.status },
-        'OpenAI API error in evaluatePrerequisiteReferences',
-      );
-      return null;
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(content) as PrerequisiteReferenceResult;
+    const parsed = await evaluate<PrerequisiteReferenceResult>(
+      'prerequisiteReferences',
+      systemPrompt,
+      userPrompt,
+      300,
+    );
+    if (!parsed) return null;
     return {
       capacity_facility: parsed.capacity_facility ?? null,
       claimed_space: parsed.claimed_space ?? null,
@@ -336,7 +273,7 @@ export async function evaluatePrerequisiteConflict(
     badLocations: Array<{ label: string; location_type: string; condition: string }>;
     incidentContext?: { title: string; description: string };
   },
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<PrerequisiteConflictResult | null> {
   const { decisionText, capacityFacilities, claimedSpaces, badLocations, incidentContext } = params;
   const hasItems =
@@ -402,36 +339,13 @@ ${decisionText.slice(0, 1500)}
 ---
 Does this decision conflict with the environmental conditions described above? JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 300,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in evaluatePrerequisiteConflict');
-      return null;
-    }
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(content) as {
+    const parsed = await evaluate<{
       conflict?: boolean;
       conflict_type?: string;
       location_label?: string;
       reason?: string;
-    };
+    }>('prerequisiteConflict', systemPrompt, userPrompt, 300);
+    if (!parsed) return null;
     const validTypes = ['capacity', 'space_contention', 'location'] as const;
     const conflictType =
       parsed.conflict === true &&

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
 
@@ -131,8 +132,8 @@ class ChatSurveillanceService {
       return;
     }
 
-    if (!env.openAiApiKey) {
-      logger.warn('OpenAI API key not configured, chat surveillance will not run');
+    if (!env.aiEnabled) {
+      logger.warn('AI provider not configured, chat surveillance will not run');
       return;
     }
 
@@ -306,40 +307,15 @@ Analyze these communications thoroughly. Is there anything that could be spun as
   }
 
   private async callAI(userPrompt: string): Promise<ScandalResult | null> {
-    if (!env.openAiApiKey) return null;
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${env.openAiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-5.2',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.7,
-          max_completion_tokens: 10000,
-          response_format: { type: 'json_object' },
-        }),
-      });
-
-      if (!response.ok) {
-        logger.warn({ status: response.status }, 'Chat surveillance LLM call failed');
-        return null;
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
-      if (!content) return null;
-
-      return JSON.parse(content) as ScandalResult;
-    } catch (err) {
-      logger.error({ error: err }, 'Chat surveillance AI call error');
-      return null;
-    }
+    if (!env.aiEnabled) return null;
+    return chatJson<ScandalResult>({
+      tier: 'standard',
+      messages: systemUser(SYSTEM_PROMPT, userPrompt),
+      json: true,
+      temperature: 0.7,
+      maxTokens: 10000,
+      label: 'chatSurveillance.scan',
+    });
   }
 
   private async generateNewsGraphic(): Promise<string | null> {

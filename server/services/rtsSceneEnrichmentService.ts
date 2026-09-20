@@ -1,4 +1,5 @@
 import { logger } from '../lib/logger.js';
+import { chat, type ChatMessage, type ContentPart } from './ai/chatClient.js';
 import {
   runEnvironmentalSimulation,
   type SimStud,
@@ -8,8 +9,28 @@ import {
 
 // ── Shared constants ─────────────────────────────────────────────────────
 
-const AI_MODEL = 'gpt-5.1';
 const MAX_TOKENS = 16000;
+
+/**
+ * Scene-enrichment completion through the shared client. Photo analyses use the `vision`
+ * tier (gpt-5.1 while AI_PROVIDER=openai), text-only synthesis the `standard` tier with the
+ * same model for parity. Returns the raw reply text (callers extract JSON), or null.
+ */
+async function enrichmentText(
+  messages: ChatMessage[],
+  opts: { tier: 'vision' | 'standard'; temperature: number; label: string },
+): Promise<string | null> {
+  const result = await chat({
+    tier: opts.tier,
+    openaiModel: 'gpt-5.1',
+    messages,
+    maxTokens: MAX_TOKENS,
+    temperature: opts.temperature,
+    timeoutMs: 300_000,
+    label: `rtsSceneEnrichment.${opts.label}`,
+  });
+  return result?.content?.trim() ?? null;
+}
 
 // ── Input types ──────────────────────────────────────────────────────────
 
@@ -233,11 +254,7 @@ async function analyzeHazard(
   openAiApiKey: string,
   nearbyStuds?: NearbyStud[],
 ): Promise<HazardAnalysis> {
-  const userContent: Array<{
-    type: string;
-    text?: string;
-    image_url?: { url: string; detail?: string };
-  }> = [];
+  const userContent: ContentPart[] = [];
 
   for (const photoUrl of hazard.photos) {
     if (photoUrl) {
@@ -281,31 +298,19 @@ Perform a thorough analysis and return JSON only.`;
   userContent.push({ type: 'text', text: promptText });
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [
-          { role: 'system', content: HAZARD_SYSTEM_PROMPT },
-          { role: 'user', content: userContent },
-        ],
-        max_completion_tokens: MAX_TOKENS,
-        temperature: 0.3,
-      }),
-    });
+    const raw = await enrichmentText(
+      [
+        { role: 'system', content: HAZARD_SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      { tier: 'vision', temperature: 0.3, label: 'hazard' },
+    );
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      logger.error(
-        { status: response.status, body: errBody, hazardId: hazard.id },
-        'Hazard analysis API failed',
-      );
+    if (raw == null) {
+      logger.error({ hazardId: hazard.id }, 'Hazard analysis API failed');
       return defaultHazardAnalysis(hazard.id);
     }
 
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.warn({ raw, hazardId: hazard.id }, 'Hazard analysis response was not valid JSON');
@@ -376,13 +381,9 @@ Return JSON only:
 async function analyzeCasualty(
   casualty: CasualtyPinInput,
   sceneContext: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<EnrichedCasualty> {
-  const userContent: Array<{
-    type: string;
-    text?: string;
-    image_url?: { url: string; detail?: string };
-  }> = [];
+  const userContent: ContentPart[] = [];
 
   for (const photoUrl of casualty.photos) {
     if (photoUrl) {
@@ -409,31 +410,19 @@ Return JSON only.`;
   userContent.push({ type: 'text', text: promptText });
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [
-          { role: 'system', content: CASUALTY_SYSTEM_PROMPT },
-          { role: 'user', content: userContent },
-        ],
-        max_completion_tokens: MAX_TOKENS,
-        temperature: 0.3,
-      }),
-    });
+    const raw = await enrichmentText(
+      [
+        { role: 'system', content: CASUALTY_SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      { tier: 'vision', temperature: 0.3, label: 'casualty' },
+    );
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      logger.error(
-        { status: response.status, body: errBody, casualtyId: casualty.id },
-        'Casualty analysis API failed',
-      );
+    if (raw == null) {
+      logger.error({ casualtyId: casualty.id }, 'Casualty analysis API failed');
       return defaultCasualtyAnalysis(casualty.id);
     }
 
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.warn(
@@ -542,28 +531,19 @@ ${studBlock}
 Synthesize all findings into a unified scene analysis. Include an environmentalTimeline showing how fire, smoke, gas, and structural damage affect specific studs over 30 minutes. Return JSON only.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [
-          { role: 'system', content: SYNTHESIS_SYSTEM_PROMPT },
-          { role: 'user', content: promptText },
-        ],
-        max_completion_tokens: MAX_TOKENS,
-        temperature: 0.3,
-      }),
-    });
+    const raw = await enrichmentText(
+      [
+        { role: 'system', content: SYNTHESIS_SYSTEM_PROMPT },
+        { role: 'user', content: promptText },
+      ],
+      { tier: 'standard', temperature: 0.3, label: 'synthesis' },
+    );
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      logger.error({ status: response.status, body: errBody }, 'Synthesis API failed');
+    if (raw == null) {
+      logger.error('Synthesis API failed');
       return defaultSynthesis();
     }
 
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.warn({ raw }, 'Synthesis response was not valid JSON');
@@ -937,13 +917,9 @@ Return JSON only:
 
 export async function calibrateFireParams(
   req: FireCalibrationRequest,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<CalibratedFireParams> {
-  const userContent: Array<{
-    type: string;
-    text?: string;
-    image_url?: { url: string; detail?: string };
-  }> = [];
+  const userContent: ContentPart[] = [];
 
   for (const h of req.hazards) {
     for (const photoUrl of h.photos) {
@@ -975,28 +951,19 @@ Calibrate fire spread parameters for this specific scene. Return JSON only.`;
   userContent.push({ type: 'text', text: promptText });
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [
-          { role: 'system', content: FIRE_CALIBRATION_PROMPT },
-          { role: 'user', content: userContent },
-        ],
-        max_completion_tokens: MAX_TOKENS,
-        temperature: 0.2,
-      }),
-    });
+    const raw = await enrichmentText(
+      [
+        { role: 'system', content: FIRE_CALIBRATION_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      { tier: 'vision', temperature: 0.2, label: 'fireCalibration' },
+    );
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      logger.error({ status: response.status, body: errBody }, 'Fire calibration API failed');
+    if (raw == null) {
+      logger.error('Fire calibration API failed');
       return defaultFireParams();
     }
 
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       logger.warn({ raw }, 'Fire calibration response was not valid JSON');

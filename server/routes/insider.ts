@@ -189,12 +189,12 @@ router.post(
           publishedInjectTitles,
         };
 
-        if (!env.openAiApiKey) {
+        if (!env.aiEnabled) {
           answer =
             "I don't have enough information to answer that question. The AI service is not configured.";
           sources_used = 'none';
         } else {
-          const result = await buildAIContextualAnswer(content, ctx, env.openAiApiKey);
+          const result = await buildAIContextualAnswer(content, ctx, env.openAiApiKey ?? '');
           answer = result.answer;
           sources_used = result.sources_used;
         }

@@ -742,11 +742,11 @@ async function processExecutedDecisionInBackground(
 
   // --- Phase 2: AI classification + team state + decision triggers ---
   let aiClassification: Awaited<ReturnType<typeof classifyDecision>> | null = null;
-  if (env.openAiApiKey) {
+  if (env.aiEnabled) {
     try {
       aiClassification = await classifyDecision(
         { title: decision.title as string, description: decision.description as string },
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       );
 
       await supabaseAdmin
@@ -930,7 +930,7 @@ async function processExecutedDecisionInBackground(
       isMediaTeam &&
       (incidentResponseType === 'media_statement' || decisionType === 'public_statement');
 
-    if (needsEditorialReview && env.openAiApiKey && sessionScenarioId) {
+    if (needsEditorialReview && env.aiEnabled && sessionScenarioId) {
       try {
         const { data: casRows } = await supabaseAdmin
           .from('scenario_casualties')
@@ -1122,7 +1122,7 @@ async function processExecutedDecisionInBackground(
           description: decision.description as string,
           type: (decision.type as string) ?? null,
         },
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         incidentContext,
         authorTeamNames[0],
         qualityFailureCount,
@@ -1137,7 +1137,7 @@ async function processExecutedDecisionInBackground(
           team_name: authorTeamNames[0] ?? undefined,
         },
         incidentContext,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       ),
     ]);
     const { result: prereqResult, evaluationReason: envPrereqReason } = prereqOut;
@@ -1232,7 +1232,7 @@ async function processExecutedDecisionInBackground(
       io
     ) {
       try {
-        if (env.openAiApiKey && failureType !== 'rejected') {
+        if (env.aiEnabled && failureType !== 'rejected') {
           const { data: allDecisionRows } = await supabaseAdmin
             .from('decisions')
             .select('title, description, type')
@@ -1264,7 +1264,7 @@ async function processExecutedDecisionInBackground(
               const cancelCheck = await shouldCancelScheduledInject(
                 { title: failureContent.slice(0, 200), content: failureContent },
                 allDecisions,
-                env.openAiApiKey,
+                env.openAiApiKey ?? '',
               );
 
               await supabaseAdmin.from('session_events').insert({
@@ -1479,7 +1479,7 @@ async function processExecutedDecisionInBackground(
         description: decision.description as string,
         type: (decision.type as string) ?? null,
       },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     ).catch((err) =>
       logger.error({ error: err, decisionId }, 'Env condition management check failed'),
     ),
@@ -1493,7 +1493,7 @@ async function processExecutedDecisionInBackground(
         title: decision.title as string,
         description: decision.description as string,
       },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
       userId,
     ).catch((err) =>
       logger.error({ error: err, decisionId }, 'State effect management check failed'),
@@ -1601,7 +1601,7 @@ async function processExecutedDecisionInBackground(
           type: (decision.type as string) ?? null,
         },
         authorTeamNames[0],
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         io,
       ).catch((err) =>
         logger.error({ error: err, decisionId }, 'Transport outcome evaluation failed'),

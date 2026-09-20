@@ -1,5 +1,6 @@
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson } from './ai/chatClient.js';
 
 export interface SocialInjectCancellationResult {
   cancel: boolean;
@@ -25,7 +26,7 @@ export async function shouldCancelSocialInject(
   },
   orgName?: string,
 ): Promise<SocialInjectCancellationResult> {
-  if (!env.openAiApiKey) {
+  if (!env.aiEnabled) {
     return { cancel: false, cancel_reason: 'No API key' };
   }
 
@@ -67,48 +68,36 @@ Return ONLY valid JSON:
             .join('\n')
         : 'No player actions taken yet.';
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: `SCHEDULED INJECT:\nTitle: ${inject.title}\nContent: ${inject.content}\nApp: ${(inject.delivery_config as Record<string, unknown>)?.app || 'social_feed'}${orgName ? `\nOrganization: ${orgName}` : ''}\n\nTEAM ACTIONS:\n${actionsText}\n\nSENTIMENT: ${sentimentState.overall}/100 (${sentimentState.trend})\nPENDING RESPONSES: ${pendingResponseCount} posts still need response${
-              researchGuidelines?.per_team?.length
-                ? `\n\nBEST PRACTICE GUIDELINES (hidden rubric):\n${researchGuidelines.per_team
-                    .flatMap((t) =>
-                      t.guidelines.map(
-                        (g) =>
-                          `[${t.team_name}] ${g.best_practice} — if violated: ${g.if_violated}`,
-                      ),
-                    )
-                    .slice(0, 10)
-                    .join('\n')}`
-                : ''
-            }`,
-          },
-        ],
-        temperature: 0.4,
-        max_completion_tokens: 600,
-        response_format: { type: 'json_object' },
-      }),
+    const parsed = await chatJson<SocialInjectCancellationResult>({
+      tier: 'standard',
+      json: true,
+      temperature: 0.4,
+      maxTokens: 600,
+      label: 'socialCrisisAi.shouldCancelInject',
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `SCHEDULED INJECT:\nTitle: ${inject.title}\nContent: ${inject.content}\nApp: ${(inject.delivery_config as Record<string, unknown>)?.app || 'social_feed'}${orgName ? `\nOrganization: ${orgName}` : ''}\n\nTEAM ACTIONS:\n${actionsText}\n\nSENTIMENT: ${sentimentState.overall}/100 (${sentimentState.trend})\nPENDING RESPONSES: ${pendingResponseCount} posts still need response${
+            researchGuidelines?.per_team?.length
+              ? `\n\nBEST PRACTICE GUIDELINES (hidden rubric):\n${researchGuidelines.per_team
+                  .flatMap((t) =>
+                    t.guidelines.map(
+                      (g) => `[${t.team_name}] ${g.best_practice} — if violated: ${g.if_violated}`,
+                    ),
+                  )
+                  .slice(0, 10)
+                  .join('\n')}`
+              : ''
+          }`,
+        },
+      ],
     });
 
-    if (!response.ok) {
+    if (!parsed) {
       return { cancel: false, cancel_reason: 'AI check failed' };
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return { cancel: false, cancel_reason: 'Empty AI response' };
-
-    return JSON.parse(content) as SocialInjectCancellationResult;
+    return parsed;
   } catch (err) {
     logger.error({ err }, 'Social inject cancellation check failed');
     return { cancel: false, cancel_reason: 'Error during check' };

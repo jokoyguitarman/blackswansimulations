@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { triggerNPCReactions } from './npcReactionService.js';
 import {
@@ -77,34 +78,15 @@ async function callAI(
   maxTokens = 900,
   temperature = 0.95,
 ): Promise<Record<string, unknown> | null> {
-  if (!env.openAiApiKey) return null;
-  try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature,
-        max_completion_tokens: maxTokens,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    return JSON.parse(content);
-  } catch (err) {
-    logger.error({ err }, 'Extremist hive AI call failed');
-    return null;
-  }
+  if (!env.aiEnabled) return null;
+  return chatJson<Record<string, unknown>>({
+    tier: 'standard',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    maxTokens,
+    temperature,
+    label: 'extremistHive',
+  });
 }
 
 /** Hive is deliberately rarer than the antagonist; gap shrinks as escalation rises. */
@@ -188,7 +170,7 @@ function pickMove(persona: ExtremistPersona, opening: Opening): ExtremistMove {
 }
 
 export async function runExtremistHive(sessionId: string, elapsedMinutes: number): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
   // Let the crisis breathe before opportunists move in.
   if (elapsedMinutes < 2) return;
 
@@ -475,7 +457,7 @@ export async function runHiveThreadReplies(
   sessionId: string,
   elapsedMinutes: number,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
   // Let threads form before working them.
   if (elapsedMinutes < 3) return;
 

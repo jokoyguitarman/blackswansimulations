@@ -3,6 +3,8 @@
  */
 
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { chat, chatJson, systemUser } from './ai/chatClient.js';
 import type { OsmVicinity } from './osmVicinityService.js';
 
 export type InsiderCategory =
@@ -176,24 +178,22 @@ const VALID_INSIDER_CATEGORIES: InsiderCategory[] = [
  */
 export async function classifyInsiderQuestionWithAI(
   question: string,
-  openAiApiKey: string | undefined,
+  _openAiApiKey: string | undefined,
 ): Promise<InsiderCategory> {
-  if (!openAiApiKey?.trim()) {
+  if (!env.aiEnabled) {
     return classifyInsiderQuestion(question);
   }
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You classify a crisis-simulation player question into exactly one category. Return ONLY a JSON object: { "category": "<category>" }.
+    const parsed = await chatJson<{ category?: string }>({
+      tier: 'fast',
+      json: true,
+      temperature: 0.2,
+      maxTokens: 30,
+      label: 'insider.classifyQuestion',
+      messages: [
+        {
+          role: 'system',
+          content: `You classify a crisis-simulation player question into exactly one category. Return ONLY a JSON object: { "category": "<category>" }.
 
 Valid categories and what they mean:
 - map: request for a map, layout image, or vicinity map
@@ -210,31 +210,16 @@ Valid categories and what they mean:
 - other: none of the above or unclear
 
 Pick the single best-matching category. Use "other" only if the question does not clearly fit any other category.`,
-          },
-          {
-            role: 'user',
-            content: normalizeQuestion(question).slice(0, 1000) || question.slice(0, 1000),
-          },
-        ],
-        temperature: 0.2,
-        max_tokens: 30,
-        response_format: { type: 'json_object' },
-      }),
+        },
+        {
+          role: 'user',
+          content: normalizeQuestion(question).slice(0, 1000) || question.slice(0, 1000),
+        },
+      ],
     });
-    if (!response.ok) {
-      const text = await response.text();
-      logger.warn(
-        { status: response.status, body: text },
-        'Insider AI classification request failed',
-      );
+    if (!parsed) {
       return classifyInsiderQuestion(question);
     }
-    const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) {
-      return classifyInsiderQuestion(question);
-    }
-    const parsed = JSON.parse(content) as { category?: string };
     const category = parsed.category;
     if (
       typeof category === 'string' &&
@@ -943,7 +928,7 @@ function buildInsiderContextBlock(ctx: InsiderContext): string {
 export async function buildAIContextualAnswer(
   question: string,
   ctx: InsiderContext,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<{ answer: string; sources_used: string }> {
   const contextBlock = buildInsiderContextBlock(ctx);
 
@@ -974,36 +959,22 @@ CONTEXT:
 ${contextBlock}`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: question.slice(0, 2000) },
-        ],
-        temperature: 0.3,
-        max_tokens: 1000,
-      }),
+    const result = await chat({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, question.slice(0, 2000)),
+      temperature: 0.3,
+      maxTokens: 1000,
+      label: 'insider.contextualAnswer',
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      logger.warn({ status: response.status, body: text }, 'Insider AI contextual answer failed');
+    if (!result) {
       return {
         answer: "I'm having trouble processing that question right now. Try asking again.",
         sources_used: 'none',
       };
     }
 
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = json.choices?.[0]?.message?.content;
+    const content = result.content;
 
     if (!content?.trim()) {
       return {

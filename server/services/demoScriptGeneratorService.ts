@@ -3,11 +3,11 @@ import { join } from 'path';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import type { DemoScript } from './demoScriptPlaybackService.js';
 import { resolveScenarioCenter } from './scenarioCenterService.js';
 
 const SCRIPTS_DIR = join(process.cwd(), 'demo_scripts');
-const AI_MODEL = 'gpt-4o-mini';
 
 /**
  * Generates a full demo script JSON from an existing scenario's data via OpenAI.
@@ -20,8 +20,8 @@ export async function generateDemoScript(
   scenarioId: string,
   options?: { durationMinutes?: number; eventDensity?: 'light' | 'normal' | 'heavy' },
 ): Promise<{ script: DemoScript; filePath: string } | null> {
-  if (!env.openAiApiKey) {
-    logger.error('Script generator requires OPENAI_API_KEY');
+  if (!env.aiEnabled) {
+    logger.error('Script generator requires an AI provider (AI_PROVIDER + credentials)');
     return null;
   }
 
@@ -43,37 +43,19 @@ export async function generateDemoScript(
   const userPrompt = buildGeneratorUserPrompt(ctx, duration, densityCounts[density]);
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.75,
-        max_tokens: 8000,
-        response_format: { type: 'json_object' },
-      }),
+    const script = await chatJson<DemoScript>({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, userPrompt),
+      temperature: 0.75,
+      maxTokens: 8000,
+      timeoutMs: 300_000,
+      label: 'demoScriptGenerator.generate',
     });
 
-    if (!response.ok) {
-      const text = await response.text();
-      logger.error({ status: response.status, body: text }, 'Script generator: OpenAI call failed');
+    if (!script) {
+      logger.error('Script generator: AI call failed');
       return null;
     }
-
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) return null;
-
-    const script = JSON.parse(content) as DemoScript;
 
     if (!script.events || !Array.isArray(script.events)) {
       logger.error('Script generator: invalid script – missing events array');

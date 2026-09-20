@@ -1,0 +1,1677 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AWS Bedrock Migration &mdash; What Gets Swapped for What &mdash; Black Swan Simulations</title>
+    <style>
+      :root {
+        --bg: #080b10;
+        --panel: #0e131b;
+        --panel-2: #131a24;
+        --line: #1e2733;
+        --line-bright: #2a3646;
+        --text: #dfe6ef;
+        --muted: #8b9bb0;
+        --dim: #5d6b7e;
+        --accent: #5b9dff;
+        --accent-dim: #0d1829;
+        --accent-line: #234a80;
+        --ok: #3ecf8e;
+        --ok-dim: #0d2419;
+        --ok-line: #1d5039;
+        --warn: #f5a623;
+        --warn-dim: #2a2010;
+        --warn-line: #5c4720;
+        --danger: #ff5f56;
+        --danger-dim: #2a1114;
+        --danger-line: #5c1f22;
+        --aws: #ff9900;
+        --aws-dim: #2a1c08;
+        --aws-line: #6b4512;
+        --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+      }
+
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: var(--sans);
+        font-size: 15px;
+        line-height: 1.65;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(91, 157, 255, 0.03) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(91, 157, 255, 0.03) 1px, transparent 1px);
+        background-size: 44px 44px;
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      .wrap {
+        position: relative;
+        z-index: 1;
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 28px 120px;
+      }
+
+      /* ---------- Header ---------- */
+
+      header { padding: 60px 0 36px; border-bottom: 1px solid var(--line); }
+
+      .eyebrow {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--accent);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 22px;
+      }
+      .eyebrow::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: linear-gradient(90deg, var(--accent-line), transparent);
+      }
+
+      h1 {
+        font-size: clamp(30px, 5vw, 48px);
+        line-height: 1.08;
+        margin: 0 0 18px;
+        letter-spacing: -0.02em;
+        font-weight: 650;
+      }
+      h1 .aws { color: var(--aws); }
+
+      .lede { font-size: 18px; color: var(--muted); max-width: 72ch; margin: 0 0 22px; }
+      .lede strong { color: var(--text); font-weight: 600; }
+
+      .meta { display: flex; flex-wrap: wrap; gap: 8px; }
+      .meta span {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        padding: 5px 10px;
+        border: 1px solid var(--line-bright);
+        border-radius: 999px;
+        color: var(--muted);
+        background: var(--panel);
+      }
+      .meta span b { color: var(--text); font-weight: 600; }
+      .meta span.ok { border-color: var(--ok-line); color: var(--ok); }
+      .meta span.warn { border-color: var(--warn-line); color: var(--warn); }
+
+      /* ---------- Sticky nav ---------- */
+
+      nav.toc {
+        position: sticky;
+        top: 0;
+        z-index: 5;
+        background: rgba(8, 11, 16, 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--line);
+        margin: 0 -28px;
+        padding: 10px 28px;
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+        scrollbar-width: none;
+      }
+      nav.toc::-webkit-scrollbar { display: none; }
+      nav.toc a {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+        color: var(--muted);
+        text-decoration: none;
+        padding: 6px 11px;
+        border-radius: 999px;
+        border: 1px solid transparent;
+      }
+      nav.toc a:hover { color: var(--text); border-color: var(--line-bright); background: var(--panel); }
+
+      /* ---------- Sections ---------- */
+
+      section { padding: 64px 0 0; }
+
+      h2 {
+        font-size: 13px;
+        font-family: var(--mono);
+        letter-spacing: 0.15em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin: 0 0 8px;
+        font-weight: 500;
+      }
+      h3 { font-size: 27px; margin: 0 0 16px; letter-spacing: -0.015em; font-weight: 620; }
+
+      h4.step {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.13em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin: 34px 0 12px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      h4.step::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+
+      p { color: var(--muted); max-width: 80ch; }
+      p strong { color: var(--text); font-weight: 600; }
+      ul.plain { color: var(--muted); padding-left: 20px; max-width: 80ch; }
+      ul.plain li { margin: 6px 0; }
+      ul.plain strong { color: var(--text); font-weight: 600; }
+
+      code.inline {
+        font-family: var(--mono);
+        font-size: 0.88em;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        padding: 1px 6px;
+        border-radius: 4px;
+        color: #b6c7dd;
+      }
+
+      /* ---------- Callouts ---------- */
+
+      .callout {
+        border: 1px solid var(--line-bright);
+        border-left-width: 3px;
+        border-radius: 8px;
+        padding: 16px 20px;
+        background: var(--panel);
+        margin: 22px 0;
+      }
+      .callout .h {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        font-weight: 600;
+      }
+      .callout p { margin: 0; font-size: 14.5px; }
+      .callout p + p { margin-top: 8px; }
+      .callout.info { border-left-color: var(--accent); }
+      .callout.info .h { color: var(--accent); }
+      .callout.ok { border-left-color: var(--ok); }
+      .callout.ok .h { color: var(--ok); }
+      .callout.warn { border-left-color: var(--warn); }
+      .callout.warn .h { color: var(--warn); }
+      .callout.danger { border-left-color: var(--danger); }
+      .callout.danger .h { color: var(--danger); }
+      .callout.aws { border-left-color: var(--aws); }
+      .callout.aws .h { color: var(--aws); }
+
+      /* ---------- KPI grid ---------- */
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 12px;
+        margin-top: 22px;
+      }
+      @media (max-width: 900px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+      .kpi {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 16px 16px 14px;
+      }
+      .kpi .n {
+        font-family: var(--mono);
+        font-size: 30px;
+        font-weight: 600;
+        line-height: 1;
+        color: var(--text);
+        letter-spacing: -0.02em;
+      }
+      .kpi .n.accent { color: var(--accent); }
+      .kpi .n.ok { color: var(--ok); }
+      .kpi .n.warn { color: var(--warn); }
+      .kpi .n.aws { color: var(--aws); }
+      .kpi .l { font-size: 12.5px; color: var(--muted); margin-top: 8px; line-height: 1.4; }
+
+      /* ---------- Two-column compare ---------- */
+
+      .cols2 {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-top: 18px;
+      }
+      @media (max-width: 860px) { .cols2 { grid-template-columns: 1fr; } }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 18px 20px;
+      }
+      .card .t {
+        font-family: var(--mono);
+        font-size: 11px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--dim);
+        margin-bottom: 10px;
+      }
+      .card.today { border-color: var(--danger-line); }
+      .card.today .t { color: var(--danger); }
+      .card.after { border-color: var(--ok-line); }
+      .card.after .t { color: var(--ok); }
+      .card blockquote {
+        margin: 0;
+        padding: 12px 16px;
+        border-left: 2px solid var(--line-bright);
+        color: var(--text);
+        font-size: 14.5px;
+        background: var(--panel-2);
+        border-radius: 0 6px 6px 0;
+      }
+      .card ul { margin: 12px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+      .card ul li { margin: 5px 0; }
+
+      /* ---------- Architecture map + toggle ---------- */
+
+      .seg {
+        display: inline-flex;
+        border: 1px solid var(--line-bright);
+        border-radius: 8px;
+        overflow: hidden;
+        margin: 18px 0 0;
+      }
+      .seg button {
+        background: var(--panel);
+        color: var(--muted);
+        border: 0;
+        padding: 9px 18px;
+        font-family: var(--mono);
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        cursor: pointer;
+      }
+      .seg button + button { border-left: 1px solid var(--line-bright); }
+      .seg button.on { background: var(--accent-dim); color: var(--accent); }
+      .seg button.on[data-view="after"] { background: var(--ok-dim); color: var(--ok); }
+
+      .map {
+        margin-top: 14px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 22px 18px 16px;
+      }
+      .map svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+      .map .cap { text-align: center; font-size: 12.5px; color: var(--dim); margin-top: 14px; }
+      .map [data-panel] { display: none; }
+      .map [data-panel].on { display: block; }
+      @media (max-width: 820px) {
+        .map { overflow-x: auto; }
+        .map svg { min-width: 820px; max-width: none; }
+      }
+
+      /* SVG text/shape classes */
+      svg text { font-family: var(--sans); fill: var(--text); }
+      svg text.mono { font-family: var(--mono); }
+      svg text.dim { fill: var(--dim); }
+      svg text.muted { fill: var(--muted); }
+      svg text.accent { fill: var(--accent); }
+      svg text.ok { fill: var(--ok); }
+      svg text.warn { fill: var(--warn); }
+      svg text.danger { fill: var(--danger); }
+      svg text.aws { fill: var(--aws); }
+      svg .box { fill: var(--panel-2); stroke: var(--line-bright); stroke-width: 1; }
+      svg .box.accent { stroke: var(--accent-line); fill: var(--accent-dim); }
+      svg .box.ok { stroke: var(--ok-line); fill: var(--ok-dim); }
+      svg .box.danger { stroke: var(--danger-line); fill: var(--danger-dim); }
+      svg .box.aws { stroke: var(--aws-line); fill: var(--aws-dim); }
+      svg .box.ghost { stroke: var(--line); fill: transparent; stroke-dasharray: 4 4; }
+      svg .inner { fill: var(--panel); stroke: var(--line); stroke-width: 1; }
+      svg .arrow { stroke: var(--muted); stroke-width: 1.4; fill: none; }
+      svg .arrow.danger { stroke: var(--danger); }
+      svg .arrow.ok { stroke: var(--ok); }
+      svg .arrow.dim { stroke: var(--line-bright); stroke-dasharray: 3 3; }
+      svg .boundary { fill: none; stroke-width: 1.5; stroke-dasharray: 6 5; }
+      svg .boundary.danger { stroke: var(--danger); opacity: 0.7; }
+      svg .boundary.ok { stroke: var(--ok); opacity: 0.8; }
+
+      /* ---------- Tables ---------- */
+
+      table.swap {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 18px;
+        font-size: 13.5px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      table.swap th, table.swap td {
+        text-align: left;
+        vertical-align: top;
+        padding: 12px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      table.swap th {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--dim);
+        background: #0a0e14;
+        font-weight: 500;
+      }
+      table.swap tr:last-child td { border-bottom: 0; }
+      table.swap td.cap { color: var(--text); font-weight: 600; white-space: nowrap; }
+      table.swap td .n {
+        display: inline-block;
+        font-family: var(--mono);
+        font-size: 11px;
+        color: var(--accent);
+        background: var(--accent-dim);
+        border: 1px solid var(--accent-line);
+        border-radius: 4px;
+        padding: 0 6px;
+        margin-left: 6px;
+      }
+      table.swap td.today { color: var(--danger); font-family: var(--mono); font-size: 12.5px; }
+      table.swap td.target { color: var(--ok); font-family: var(--mono); font-size: 12.5px; }
+      table.swap td.why { color: var(--muted); }
+      .tablewrap { overflow-x: auto; }
+
+      /* ---------- Tier flow ---------- */
+
+      .flow {
+        display: grid;
+        grid-template-columns: minmax(200px, 1.2fr) 34px minmax(120px, 0.7fr) 34px minmax(220px, 1.3fr);
+        gap: 8px 6px;
+        align-items: center;
+        margin-top: 18px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 18px 18px 16px;
+      }
+      .flow .hd {
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--dim);
+        padding-bottom: 8px;
+        border-bottom: 1px solid var(--line);
+        margin-bottom: 4px;
+      }
+      .flow .arr { text-align: center; color: var(--dim); font-family: var(--mono); font-size: 14px; }
+      .flow .sep { grid-column: 1 / -1; height: 1px; background: var(--line); margin: 8px 0; }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--mono);
+        font-size: 12px;
+        padding: 6px 10px;
+        border-radius: 6px;
+        border: 1px solid var(--line-bright);
+        background: var(--panel-2);
+        color: var(--text);
+        max-width: 100%;
+      }
+      .chip .cnt {
+        font-size: 10.5px;
+        color: var(--dim);
+        border-left: 1px solid var(--line-bright);
+        padding-left: 8px;
+      }
+      .chip.model { border-color: var(--danger-line); color: #ffb3ae; }
+      .chip.tier { border-color: var(--accent-line); background: var(--accent-dim); color: var(--accent); justify-content: center; width: 100%; }
+      .chip.bedrock { border-color: var(--aws-line); background: var(--aws-dim); color: #ffc46b; }
+      .chip.off { border-color: var(--line-bright); color: var(--muted); }
+      .chip.sdk { border-color: var(--ok-line); background: var(--ok-dim); color: var(--ok); }
+      .flow .note { grid-column: 1 / -1; font-size: 12.5px; color: var(--dim); margin-top: 6px; }
+      @media (max-width: 760px) {
+        .flow { grid-template-columns: 1fr; }
+        .flow .arr { transform: rotate(90deg); }
+        .flow .hd { display: none; }
+      }
+
+      /* ---------- Code ---------- */
+
+      .ba { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+      .ba.single { grid-template-columns: 1fr; }
+      @media (max-width: 900px) { .ba { grid-template-columns: 1fr; } }
+
+      .codebox {
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        overflow: hidden;
+        background: var(--panel);
+        display: flex;
+        flex-direction: column;
+      }
+      .codebox.before { border-color: var(--danger-line); }
+      .codebox.after { border-color: var(--ok-line); }
+      .codebox.neutral { border-color: var(--accent-line); }
+      .codebox.aws { border-color: var(--aws-line); }
+
+      .cbhead {
+        padding: 10px 15px;
+        font-family: var(--mono);
+        font-size: 10.5px;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 12px;
+        border-bottom: 1px solid var(--line);
+      }
+      .codebox.before .cbhead { background: var(--danger-dim); color: var(--danger); border-bottom-color: var(--danger-line); }
+      .codebox.after .cbhead { background: var(--ok-dim); color: var(--ok); border-bottom-color: var(--ok-line); }
+      .codebox.neutral .cbhead { background: var(--accent-dim); color: var(--accent); border-bottom-color: var(--accent-line); }
+      .codebox.aws .cbhead { background: var(--aws-dim); color: var(--aws); border-bottom-color: var(--aws-line); }
+      .cbhead .path { font-size: 10px; opacity: 0.75; text-transform: none; letter-spacing: 0; text-align: right; word-break: break-all; }
+
+      pre {
+        margin: 0;
+        padding: 15px 16px;
+        font-family: var(--mono);
+        font-size: 12px;
+        line-height: 1.72;
+        overflow-x: auto;
+        color: #b8c6d6;
+        flex: 1;
+        tab-size: 2;
+      }
+      .kw { color: #c792ea; }
+      .fn { color: #82aaff; }
+      .str { color: #9bd8a4; }
+      .cm { color: var(--dim); }
+      .num { color: #f78c6c; }
+      .add { color: var(--ok); }
+      .del { color: var(--danger); text-decoration: line-through; opacity: 0.8; }
+      .hl { background: rgba(245, 166, 35, 0.12); border-radius: 3px; }
+
+      /* ---------- Seeds (3 wrappers) ---------- */
+
+      .seeds { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 14px; }
+      @media (max-width: 900px) { .seeds { grid-template-columns: 1fr; } }
+      .seed { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+      .seed .f { font-family: var(--mono); font-size: 12px; color: var(--accent); word-break: break-all; }
+      .seed .g { font-size: 13px; color: var(--muted); margin-top: 8px; }
+      .seed .g b { color: var(--text); font-weight: 600; }
+      .seed ul { margin: 8px 0 0; padding-left: 16px; font-size: 13px; color: var(--muted); }
+      .seed ul li { margin: 3px 0; }
+
+      /* ---------- Unchanged list ---------- */
+
+      .check { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin-top: 16px; }
+      .check div {
+        background: var(--panel);
+        border: 1px solid var(--ok-line);
+        border-radius: 8px;
+        padding: 12px 14px 12px 40px;
+        position: relative;
+        font-size: 14px;
+        color: var(--text);
+      }
+      .check div::before {
+        content: "\2713";
+        position: absolute;
+        left: 14px;
+        top: 11px;
+        color: var(--ok);
+        font-weight: 700;
+      }
+      .check div span { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px; }
+
+      /* ---------- Bars ---------- */
+
+      .bars { margin-top: 18px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px 14px; }
+      .bar-row { display: grid; grid-template-columns: 250px 1fr 56px; gap: 12px; align-items: center; padding: 6px 0; border-bottom: 1px dotted var(--line); }
+      .bar-row:last-child { border-bottom: 0; }
+      .bar-row .lbl { font-size: 13px; color: var(--text); }
+      .bar-row .lbl span { display: block; font-family: var(--mono); font-size: 11px; color: var(--dim); }
+      .bar-row .track { height: 12px; background: #0a0e14; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: flex; }
+      .bar-row .fill { height: 100%; background: var(--accent); opacity: 0.85; }
+      .bar-row .fill.search { background: var(--warn); }
+      .bar-row .fill.vision { background: var(--ok); }
+      .bar-row .fill.bots { background: #c792ea; }
+      .bar-row .cnt { font-family: var(--mono); font-size: 12px; color: var(--muted); text-align: right; }
+      .legend { display: flex; flex-wrap: wrap; gap: 14px; font-family: var(--mono); font-size: 11px; color: var(--dim); margin-top: 12px; }
+      .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; background: var(--accent); }
+      .legend i.search { background: var(--warn); }
+      .legend i.vision { background: var(--ok); }
+      .legend i.bots { background: #c792ea; }
+      @media (max-width: 700px) { .bar-row { grid-template-columns: 1fr; gap: 6px; } .bar-row .cnt { text-align: left; } }
+
+      /* ---------- Risk cards ---------- */
+
+      .risks { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 18px; }
+      @media (max-width: 860px) { .risks { grid-template-columns: 1fr; } }
+      .risk { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+      .risk .rh { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; margin-bottom: 8px; }
+      .risk .rh b { font-size: 15.5px; color: var(--text); font-weight: 620; }
+      .badge {
+        font-family: var(--mono);
+        font-size: 10px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        padding: 3px 8px;
+        border-radius: 999px;
+        border: 1px solid;
+        white-space: nowrap;
+      }
+      .badge.proven { color: var(--danger); border-color: var(--danger-line); background: var(--danger-dim); }
+      .badge.verify { color: var(--warn); border-color: var(--warn-line); background: var(--warn-dim); }
+      .badge.design { color: var(--accent); border-color: var(--accent-line); background: var(--accent-dim); }
+      .risk p { font-size: 13.5px; margin: 0 0 8px; }
+      .risk .ev {
+        font-family: var(--mono);
+        font-size: 11.5px;
+        color: var(--muted);
+        background: #0a0e14;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 8px 10px;
+        line-height: 1.6;
+      }
+      .risk .ev b { color: var(--text); font-weight: 600; }
+      .risk .fix { font-size: 13px; color: var(--ok); margin-top: 8px; }
+      .risk .fix::before { content: "fix \2192\00a0"; margin-right: 4px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); }
+
+      /* ---------- Timeline ---------- */
+
+      .tl { list-style: none; margin: 18px 0 0; padding: 0; position: relative; }
+      .tl::before { content: ""; position: absolute; left: 21px; top: 8px; bottom: 8px; width: 1px; background: var(--line-bright); }
+      .tl li { position: relative; padding: 0 0 18px 60px; }
+      .tl .dot {
+        position: absolute;
+        left: 10px;
+        top: 2px;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--panel);
+        border: 1px solid var(--accent-line);
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      .tl li.pr .dot { border-color: var(--ok-line); color: var(--ok); }
+      .tl li.infra .dot { border-color: var(--aws-line); color: var(--aws); }
+      .tl b { display: block; font-size: 15.5px; color: var(--text); font-weight: 620; }
+      .tl b small { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); margin-left: 8px; font-weight: 500; }
+      .tl p { margin: 4px 0 0; font-size: 13.5px; }
+
+      /* ---------- Switch visual ---------- */
+
+      .switch {
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        gap: 16px;
+        align-items: center;
+        margin-top: 18px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 20px 22px;
+      }
+      .switch .st { border: 1px solid var(--line-bright); border-radius: 8px; padding: 14px 16px; }
+      .switch .st .k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 6px; }
+      .switch .st.a .k { color: var(--danger); }
+      .switch .st.b .k { color: var(--aws); }
+      .switch .st .v { font-family: var(--mono); font-size: 13px; color: var(--text); }
+      .switch .st p { font-size: 12.5px; margin: 6px 0 0; }
+      .switch .mid { text-align: center; font-family: var(--mono); font-size: 11px; color: var(--dim); letter-spacing: 0.1em; text-transform: uppercase; }
+      .switch .mid .big { font-size: 26px; color: var(--accent); display: block; line-height: 1; margin-bottom: 4px; }
+      @media (max-width: 760px) { .switch { grid-template-columns: 1fr; } .switch .mid .big { transform: rotate(90deg); display: inline-block; } }
+
+      /* ---------- Ops columns ---------- */
+
+      .ops { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+      @media (max-width: 1000px) { .ops { grid-template-columns: 1fr 1fr; } }
+      @media (max-width: 600px) { .ops { grid-template-columns: 1fr; } }
+      .ops .col { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px 16px 12px; }
+      .ops h5 { margin: 0 0 10px; font-size: 15px; font-weight: 620; display: flex; align-items: center; gap: 8px; }
+      .ops h5 i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+      .ops .render h5 i { background: #46e3b7; }
+      .ops .vercel h5 i { background: #ffffff; }
+      .ops .awsc h5 i { background: var(--aws); }
+      .ops .supa h5 i { background: #3ecf8e; }
+      .ops ul { margin: 0; padding-left: 16px; font-size: 13px; color: var(--muted); }
+      .ops ul li { margin: 6px 0; }
+      .ops ul li b { color: var(--text); font-weight: 600; }
+      .ops .when { font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--dim); display: block; }
+
+      /* ---------- Checks ---------- */
+
+      ol.checks { margin: 16px 0 0; padding-left: 0; list-style: none; counter-reset: c; }
+      ol.checks li {
+        counter-increment: c;
+        position: relative;
+        padding: 10px 14px 10px 46px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        margin-bottom: 8px;
+        font-size: 14px;
+        color: var(--text);
+      }
+      ol.checks li::before {
+        content: counter(c);
+        position: absolute;
+        left: 12px;
+        top: 10px;
+        width: 24px;
+        height: 24px;
+        border-radius: 6px;
+        background: var(--accent-dim);
+        border: 1px solid var(--accent-line);
+        color: var(--accent);
+        font-family: var(--mono);
+        font-size: 11px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      ol.checks li span { display: block; color: var(--dim); font-size: 12.5px; margin-top: 2px; }
+
+      /* ---------- Glossary ---------- */
+
+      dl.gl { display: grid; grid-template-columns: 220px 1fr; gap: 10px 18px; margin-top: 18px; font-size: 14px; }
+      dl.gl dt { font-family: var(--mono); font-size: 12.5px; color: var(--accent); }
+      dl.gl dd { margin: 0; color: var(--muted); }
+      @media (max-width: 700px) { dl.gl { grid-template-columns: 1fr; gap: 2px 0; } dl.gl dd { margin-bottom: 10px; } }
+
+      footer { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--dim); }
+      footer a { color: var(--muted); }
+      footer ul { padding-left: 18px; margin: 8px 0 0; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <div class="eyebrow">Privacy series &middot; 05 &middot; The decision, made concrete</div>
+        <h1>What gets swapped for what: moving inference to <span class="aws">AWS Bedrock</span></h1>
+        <p class="lede">
+          Every AI call this product makes today leaves for <strong>api.openai.com</strong> (and one for
+          <strong>api.x.ai</strong>). This page explains, in one place, what each of those calls becomes,
+          <strong>how</strong> the code changes to make that happen, <strong>why</strong> each choice was made,
+          and what you personally have to do on Render, Vercel, AWS and Supabase. It is the visual
+          companion to <code class="inline">docs/AWS_BEDROCK_MIGRATION_v2.md</code> (revision 2.4).
+        </p>
+        <div class="meta">
+          <span>Plan <b>v2.4</b></span>
+          <span>Verified against <b>cf41f0c</b> &middot; 2026-09-20</span>
+          <span class="ok">PR 1 (text chat) <b>code-complete, 83/83 sites</b> &middot; branch <code class="inline">feat/aws-bedrock-pr1-shared-ai-client</code></span>
+          <span class="warn">PR 2-3 (images, speech, video) <b>not started</b></span>
+          <span class="ok">Rollback <b>= one env var</b></span>
+        </div>
+      </header>
+
+      <nav class="toc" aria-label="Sections">
+        <a href="#summary">Summary</a>
+        <a href="#why">Why</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#swap">The swap</a>
+        <a href="#tiers">Model tiers</a>
+        <a href="#code">Code changes</a>
+        <a href="#unchanged">Unchanged</a>
+        <a href="#sites">The 83 sites</a>
+        <a href="#risks">Risks &amp; evidence</a>
+        <a href="#plan">Work plan</a>
+        <a href="#ops">Your to-dos</a>
+        <a href="#checks">Smoke checks</a>
+        <a href="#glossary">Glossary</a>
+      </nav>
+
+      <div class="callout warn" style="margin-top: 28px">
+        <div class="h">How this relates to pages 03 and 04</div>
+        <p>
+          Page 03 recommended Azure OpenAI and set Bedrock aside because it offered "Claude and others, not
+          OpenAI &mdash; you would re-tune every prompt". The migration plan's September 2026 verification of
+          AWS documentation records that OpenAI's <strong>GPT-5.6 Luna / Terra / Sol</strong> are now served on
+          Bedrock through an OpenAI-compatible <code class="inline">/openai/v1/chat/completions</code> endpoint.
+          That removes 03's main objection, so the decision moved to AWS. Page 04's gateway-and-aliasing
+          phases are <strong>not</strong> what this plan does; it replaces the 83 hand-written fetches with one
+          shared client inside the existing server. Aliasing (page 02) stays an optional layer that could
+          later live inside that client. Where 03/04 and this page disagree, this page is current.
+        </p>
+      </div>
+
+      <!-- ============================================================ -->
+      <section id="summary">
+        <h2>Summary</h2>
+        <h3>The one-paragraph version</h3>
+        <p>
+          The backend on Render (<code class="inline">server/</code>) contains <strong>90 provider call sites</strong>:
+          83 chat completions, 4 image generations, 2 speech-to-text, 1 video. They are all hand-written
+          <code class="inline">fetch()</code> blocks; there is no SDK and no shared client. The plan introduces
+          <strong>one shared AI client</strong> that resolves URL, key and model from an
+          <code class="inline">AI_PROVIDER</code> environment variable, migrates every chat site onto it (same
+          request shape, so the refactor merges with <em>zero</em> behaviour change while
+          <code class="inline">AI_PROVIDER=openai</code>), adds small AWS-SDK clients for images and speech, and
+          then flips the variable to <code class="inline">bedrock</code> on the Render service. Rollback is
+          flipping it back.
+        </p>
+        <div class="kpis">
+          <div class="kpi"><div class="n accent">83</div><div class="l">chat-completion fetch sites in 44 files</div></div>
+          <div class="kpi"><div class="n accent">7</div><div class="l">image + speech + video sites (4 + 2 + 1), on a separate SDK path</div></div>
+          <div class="kpi"><div class="n warn">6</div><div class="l">web-search sites &mdash; become plain chat on the standard tier (no live search); research retirement decided but deferred</div></div>
+          <div class="kpi"><div class="n warn">~91</div><div class="l"><code class="inline">if (!env.openAiApiKey)</code> gates in 50 files</div></div>
+          <div class="kpi"><div class="n warn">6</div><div class="l">background workers that call models on timers</div></div>
+          <div class="kpi"><div class="n ok">0</div><div class="l">database migrations, route changes, WebSocket changes</div></div>
+          <div class="kpi"><div class="n ok">1</div><div class="l">frontend string to reword (names OpenAI to users)</div></div>
+          <div class="kpi"><div class="n aws">1</div><div class="l">env var to flip on Render at cutover</div></div>
+        </div>
+        <div class="callout info">
+          <div class="h">Is this a major refactor?</div>
+          <p>
+            Wide but shallow. By file count it is large (~65 files touched); by conceptual weight it is a
+            consolidation: 83 copies of the same 30-line pattern collapse into a 5-line call. No domain
+            logic, schema or UI changes. The real risk is <strong>model behaviour drift</strong> (prompts tuned
+            on <code class="inline">gpt-4o-mini</code> / <code class="inline">gpt-5.2</code> running on GPT-5.6),
+            which is why the plan spends as much effort on smoke checks and a staging comparison run as on
+            code. Rough effort: one to two weeks of code, plus one to two weeks around it for AWS account
+            setup, a duplicate staging stack and the comparison run.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="why">
+        <h2>Why</h2>
+        <h3>The sentence we want to be able to sign</h3>
+        <p>
+          Corporate clients run crisis-team training here. Their scenario briefs, uploaded documents,
+          participant messages, public statements and voice input all pass through model calls. The goal is
+          a contractual statement that is simply true.
+        </p>
+        <div class="cols2">
+          <div class="card today">
+            <div class="t">Today &mdash; what is true</div>
+            <blockquote>
+              Prompts and completions are sent to OpenAI's public API (and xAI for video) under our API keys,
+              subject to those providers' data-use terms.
+            </blockquote>
+            <ul>
+              <li>Provider terms govern retention and abuse review.</li>
+              <li>Two third parties on the wire (OpenAI, xAI).</li>
+              <li>No account-level "zero retention" switch we control.</li>
+            </ul>
+          </div>
+          <div class="card after">
+            <div class="t">After cutover &mdash; what becomes true</div>
+            <blockquote>
+              Model inference is performed via Amazon Bedrock and Amazon Transcribe within our AWS account.
+              Inputs and outputs are not shared with model providers and are not used to train foundation
+              models. Bedrock is configured for zero data retention, enforced by organisation policy.
+            </blockquote>
+            <ul>
+              <li>Bedrock is AWS-hosted inference inside the AWS trust boundary, like S3 or RDS.</li>
+              <li>Model providers have no access to the deployment, logs, prompts or completions.</li>
+              <li><code class="inline">data_retention_mode: none</code>, locked by an SCP; org-wide AI opt-out for Transcribe.</li>
+            </ul>
+          </div>
+        </div>
+        <div class="callout aws">
+          <div class="h">Why Bedrock specifically, and why not the alternatives</div>
+          <p>
+            <strong>Same models, same wire format.</strong> GPT-5.6 on Bedrock is reached through an
+            OpenAI-compatible chat-completions endpoint, so the 83 request bodies survive nearly unchanged
+            and the prompts keep working. <strong>Not self-hosting:</strong> evaluated and deferred &mdash;
+            feasible (vLLM speaks the same wire format, so this abstraction still applies) but it costs GPU
+            hardware, a quality gap on long multi-constraint prompts, and owning inference ops.
+            <strong>Not a gateway:</strong> the Render server already holds the provider key; adding a hop adds
+            latency and a component without changing what the provider sees.
+          </p>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="architecture">
+        <h2>Architecture</h2>
+        <h3>Where the calls go, before and after</h3>
+        <p>
+          Nothing moves except the far end of the arrows. The browser still talks to Render; Render still
+          runs the same routes and the same six background workers. Toggle the view.
+        </p>
+        <div class="seg" role="tablist">
+          <button data-view="today" class="on">Today</button>
+          <button data-view="after">After cutover</button>
+        </div>
+
+        <div class="map">
+          <!-- ---------------- TODAY ---------------- -->
+          <div data-panel="today" class="on">
+            <svg viewBox="0 0 1000 400" role="img" aria-label="Today: browser to Render backend, which calls api.openai.com and api.x.ai directly with bearer keys">
+              <defs>
+                <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#8b9bb0"></path>
+                </marker>
+                <marker id="ahd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#ff5f56"></path>
+                </marker>
+              </defs>
+
+              <!-- Browser / Vercel -->
+              <rect class="box" x="20" y="120" width="170" height="92" rx="8"></rect>
+              <text x="105" y="150" text-anchor="middle" font-size="13" font-weight="600">Browser</text>
+              <text x="105" y="170" text-anchor="middle" font-size="11.5" class="muted">frontend/dist on Vercel</text>
+              <text x="105" y="188" text-anchor="middle" font-size="11" class="dim">no provider calls</text>
+
+              <rect class="box ghost" x="20" y="232" width="170" height="54" rx="8"></rect>
+              <text x="105" y="254" text-anchor="middle" font-size="11" class="dim">api/index.ts bridge</text>
+              <text x="105" y="271" text-anchor="middle" font-size="10.5" class="dim">mounts AI routes &middot; dormant</text>
+
+              <!-- arrow browser -> render -->
+              <path class="arrow" d="M190 166 L262 166" marker-end="url(#ah)"></path>
+              <text x="226" y="156" text-anchor="middle" font-size="10" class="dim mono">REST + WS</text>
+
+              <!-- Render -->
+              <rect class="box accent" x="264" y="50" width="300" height="300" rx="10"></rect>
+              <text x="414" y="78" text-anchor="middle" font-size="13.5" font-weight="600">Render &middot; server/index.ts</text>
+              <text x="414" y="96" text-anchor="middle" font-size="11" class="muted">the only place AI calls are made</text>
+
+              <rect class="inner" x="282" y="112" width="264" height="44" rx="6"></rect>
+              <text x="414" y="130" text-anchor="middle" font-size="11.5">REST routes + Socket.IO</text>
+              <text x="414" y="146" text-anchor="middle" font-size="10.5" class="dim">scenarios &middot; sessions &middot; decisions &middot; aar &middot; ai &middot; voice</text>
+
+              <rect class="inner" x="282" y="166" width="264" height="58" rx="6"></rect>
+              <text x="414" y="184" text-anchor="middle" font-size="11.5">6 boot workers on timers</text>
+              <text x="414" y="200" text-anchor="middle" font-size="10.5" class="dim">inject &middot; AI inject &middot; surveillance &middot; watchdog</text>
+              <text x="414" y="214" text-anchor="middle" font-size="10.5" class="dim">engine ticker (60 s) &middot; bot reconciler (60 s)</text>
+
+              <rect class="inner" x="282" y="234" width="264" height="98" rx="6" style="stroke: #5c1f22"></rect>
+              <text x="414" y="254" text-anchor="middle" font-size="11.5" class="danger">90 hand-written fetch() sites</text>
+              <text x="414" y="272" text-anchor="middle" font-size="10.5" class="muted">83 chat &middot; 4 image &middot; 2 STT &middot; 1 video</text>
+              <text x="414" y="290" text-anchor="middle" font-size="10.5" class="muted">44 files &middot; 3 partial wrappers &middot; 4 callAI copies</text>
+              <text x="414" y="308" text-anchor="middle" font-size="10.5" class="dim mono">Authorization: Bearer OPENAI_API_KEY</text>
+              <text x="414" y="322" text-anchor="middle" font-size="10.5" class="dim mono">~91 gates on env.openAiApiKey</text>
+
+              <!-- arrows render -> providers -->
+              <path class="arrow danger" d="M564 200 C 610 200, 610 150, 656 150" marker-end="url(#ahd)"></path>
+              <path class="arrow danger" d="M564 290 C 610 290, 610 320, 656 320" marker-end="url(#ahd)"></path>
+              <text x="594" y="240" text-anchor="middle" font-size="10" class="danger mono">TLS over the</text>
+              <text x="594" y="253" text-anchor="middle" font-size="10" class="danger mono">public internet</text>
+
+              <!-- Third-party boundary -->
+              <rect class="boundary danger" x="640" y="56" width="340" height="300" rx="12"></rect>
+              <text x="810" y="80" text-anchor="middle" font-size="10.5" class="danger mono">THIRD-PARTY PROVIDERS &middot; THEIR TERMS</text>
+
+              <rect class="box danger" x="658" y="96" width="304" height="150" rx="8"></rect>
+              <text x="810" y="120" text-anchor="middle" font-size="13" font-weight="600">api.openai.com</text>
+              <text x="810" y="146" text-anchor="middle" font-size="11.5" class="mono muted">/v1/chat/completions &middot; 83 sites</text>
+              <text x="810" y="166" text-anchor="middle" font-size="10.5" class="mono dim">gpt-4o-mini &middot; gpt-4 &middot; gpt-5.1 &middot; gpt-5.2 &middot; gpt-5.5</text>
+              <text x="810" y="186" text-anchor="middle" font-size="10.5" class="mono dim">gpt-4o-search-preview (6 of the 83)</text>
+              <text x="810" y="208" text-anchor="middle" font-size="11.5" class="mono muted">/v1/images/generations &middot; 4 &middot; gpt-image-2</text>
+              <text x="810" y="228" text-anchor="middle" font-size="11.5" class="mono muted">/v1/audio/transcriptions &middot; 2 &middot; whisper-1</text>
+
+              <rect class="box danger" x="658" y="268" width="304" height="70" rx="8"></rect>
+              <text x="810" y="292" text-anchor="middle" font-size="13" font-weight="600">api.x.ai</text>
+              <text x="810" y="314" text-anchor="middle" font-size="11.5" class="mono muted">/v1/videos/generations &middot; 1 &middot; grok-imagine-video</text>
+            </svg>
+            <div class="cap">
+              Today: the Render backend holds <code class="inline">OPENAI_API_KEY</code> and <code class="inline">XAI_API_KEY</code>
+              and calls both providers directly from 90 places.
+            </div>
+          </div>
+
+          <!-- ---------------- AFTER ---------------- -->
+          <div data-panel="after">
+            <svg viewBox="0 0 1000 400" role="img" aria-label="After: browser to Render backend with a shared AI client, which calls Amazon Bedrock and Amazon Transcribe inside your AWS account boundary">
+              <defs>
+                <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#8b9bb0"></path>
+                </marker>
+                <marker id="ahk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#3ecf8e"></path>
+                </marker>
+              </defs>
+
+              <!-- Browser / Vercel -->
+              <rect class="box" x="20" y="120" width="170" height="92" rx="8"></rect>
+              <text x="105" y="150" text-anchor="middle" font-size="13" font-weight="600">Browser</text>
+              <text x="105" y="170" text-anchor="middle" font-size="11.5" class="muted">frontend/dist on Vercel</text>
+              <text x="105" y="188" text-anchor="middle" font-size="11" class="ok">unchanged</text>
+
+              <rect class="box ghost" x="20" y="232" width="170" height="54" rx="8"></rect>
+              <text x="105" y="254" text-anchor="middle" font-size="11" class="dim">api/index.ts bridge</text>
+              <text x="105" y="271" text-anchor="middle" font-size="10.5" class="dim">confirm VITE_API_URL &rarr; Render</text>
+
+              <path class="arrow" d="M190 166 L262 166" marker-end="url(#ah2)"></path>
+              <text x="226" y="156" text-anchor="middle" font-size="10" class="dim mono">REST + WS</text>
+
+              <!-- Render -->
+              <rect class="box accent" x="264" y="50" width="300" height="300" rx="10"></rect>
+              <text x="414" y="78" text-anchor="middle" font-size="13.5" font-weight="600">Render &middot; server/index.ts</text>
+              <text x="414" y="96" text-anchor="middle" font-size="11" class="muted">same routes, same six workers</text>
+
+              <rect class="inner" x="282" y="112" width="264" height="44" rx="6"></rect>
+              <text x="414" y="130" text-anchor="middle" font-size="11.5">REST routes + Socket.IO</text>
+              <text x="414" y="146" text-anchor="middle" font-size="10.5" class="ok">unchanged</text>
+
+              <rect class="inner" x="282" y="166" width="264" height="58" rx="6"></rect>
+              <text x="414" y="184" text-anchor="middle" font-size="11.5">6 boot workers on timers</text>
+              <text x="414" y="200" text-anchor="middle" font-size="10.5" class="dim">gates become env.aiEnabled</text>
+              <text x="414" y="214" text-anchor="middle" font-size="10.5" class="dim">bots keep their per-session LLM budget</text>
+
+              <rect class="inner" x="282" y="234" width="264" height="98" rx="6" style="stroke: #1d5039"></rect>
+              <text x="414" y="254" text-anchor="middle" font-size="11.5" class="ok">one shared AI client</text>
+              <text x="414" y="272" text-anchor="middle" font-size="10.5" class="muted">chatClient &middot; imageClient &middot; transcribeClient</text>
+              <text x="414" y="290" text-anchor="middle" font-size="10.5" class="muted">tiers: fast &middot; standard &middot; vision &middot; search</text>
+              <text x="414" y="308" text-anchor="middle" font-size="10.5" class="mono aws">AI_PROVIDER=bedrock</text>
+              <text x="414" y="322" text-anchor="middle" font-size="10.5" class="dim mono">retry &middot; timeout &middot; tolerant JSON &middot; usage logs</text>
+
+              <!-- arrows -->
+              <path class="arrow ok" d="M564 175 C 610 175, 610 140, 656 140" marker-end="url(#ahk)"></path>
+              <path class="arrow ok" d="M564 260 C 610 260, 610 236, 656 236" marker-end="url(#ahk)"></path>
+              <path class="arrow ok" d="M564 300 C 610 300, 610 310, 656 310" marker-end="url(#ahk)"></path>
+              <text x="598" y="120" text-anchor="middle" font-size="10" class="ok mono">TLS to AWS</text>
+
+              <!-- AWS boundary -->
+              <rect class="boundary ok" x="640" y="56" width="340" height="300" rx="12"></rect>
+              <text x="810" y="80" text-anchor="middle" font-size="10.5" class="ok mono">YOUR AWS ACCOUNT &middot; YOUR TERMS</text>
+
+              <rect class="box aws" x="658" y="96" width="304" height="112" rx="8"></rect>
+              <text x="810" y="118" text-anchor="middle" font-size="13" font-weight="600">Amazon Bedrock</text>
+              <text x="810" y="138" text-anchor="middle" font-size="10.5" class="mono muted">bedrock-runtime &middot; /openai/v1/chat/completions</text>
+              <text x="810" y="156" text-anchor="middle" font-size="10.5" class="mono aws">us.openai.gpt-5.6-luna &middot; fast tier</text>
+              <text x="810" y="172" text-anchor="middle" font-size="10.5" class="mono aws">us.openai.gpt-5.6-terra &middot; standard + vision</text>
+              <text x="810" y="194" text-anchor="middle" font-size="10.5" class="mono muted">InvokeModel &middot; Stability Stable Image &middot; 4 image sites</text>
+
+              <rect class="box aws" x="658" y="218" width="304" height="52" rx="8"></rect>
+              <text x="810" y="240" text-anchor="middle" font-size="13" font-weight="600">Amazon Transcribe</text>
+              <text x="810" y="258" text-anchor="middle" font-size="10.5" class="mono muted">batch via S3 bucket &middot; 2 STT sites &middot; org AI opt-out</text>
+
+              <rect class="box ghost" x="658" y="282" width="304" height="52" rx="8"></rect>
+              <text x="810" y="303" text-anchor="middle" font-size="12" class="muted">Luma Ray2 (optional) or video off</text>
+              <text x="810" y="321" text-anchor="middle" font-size="10.5" class="mono dim">web search: dropped &middot; research sites run as plain chat</text>
+
+              <text x="810" y="349" text-anchor="middle" font-size="10" class="ok mono">data_retention_mode: none &middot; SCP &middot; CloudTrail &middot; Cost Explorer</text>
+            </svg>
+            <div class="cap">
+              After: the same server, one client, one switch. <code class="inline">api.openai.com</code> and
+              <code class="inline">api.x.ai</code> are no longer called; their keys are removed once stable.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="swap">
+        <h2>The swap</h2>
+        <h3>Six capabilities, six answers</h3>
+        <p>
+          Everything the product asks a model to do falls into one of these rows. The first two rows are
+          the bulk of the work and the easiest (same wire format). The others need small, separate
+          clients because Bedrock does not serve OpenAI's image or speech models.
+        </p>
+        <div class="tablewrap">
+          <table class="swap">
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th>Today</th>
+                <th>Target on AWS</th>
+                <th>How</th>
+                <th>Why this way</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="cap">Chat / JSON<span class="n">83</span></td>
+                <td class="today">POST api.openai.com/v1/chat/completions<br />gpt-4o-mini &middot; gpt-4 &middot; gpt-5.1 &middot; gpt-5.2 &middot; gpt-5.5</td>
+                <td class="target">bedrock-runtime /openai/v1/chat/completions<br />GPT-5.6 Luna (fast) &middot; Terra (standard)</td>
+                <td>Shared <code class="inline">chatClient</code>; callers pass a <em>tier</em>, never a model. Bedrock API key as Bearer.</td>
+                <td class="why">Identical request/response shape; prompts survive. Tiers let cost be tuned in env, not code.</td>
+              </tr>
+              <tr>
+                <td class="cap">Vision<span class="n">5</span></td>
+                <td class="today">same endpoint, <code class="inline">image_url</code> content parts, 3 with <code class="inline">detail: 'high'</code></td>
+                <td class="target">same endpoint, GPT-5.6 Terra accepts image input</td>
+                <td>Same content-part shape. If Bedrock will not fetch remote URLs, the client downloads and inlines base64.</td>
+                <td class="why">All five sites pass Supabase Storage URLs; inlining keeps the image fetch inside our boundary anyway.</td>
+              </tr>
+              <tr>
+                <td class="cap">Web search<span class="n">6</span></td>
+                <td class="today">gpt-4o-search-preview via chat completions (field-ops research: area dossier, standards, similar cases, workflows, crowd dynamics)</td>
+                <td class="target"><strong>Standard tier, plain chat</strong> (GPT-5.6 Terra) &mdash; same functions, no live search. Field-ops research itself is retired <em>later</em> (decided 21 Sep, deferred).</td>
+                <td>Switch the six sites to <code class="inline">tier: 'standard'</code>, reword the "use ONLY real documented incidents" prompts, keep their loose parsing and fallbacks. Own commit with a before/after comparison. No <code class="inline">search</code> tier, no bedrock-mantle. Nothing else in field ops changes.</td>
+                <td class="why">The search model does not exist on Bedrock and live search would leave the AWS boundary. Retiring the research step properly is bigger than it looks &mdash; the same wizard step also generates teams/narrative and runs scene enrichment &mdash; so it stays a separate, later piece of work with an internal knowledge pack (standards, physics, demographics, injury types) replacing the AI research.</td>
+              </tr>
+              <tr>
+                <td class="cap">Image generation<span class="n">4</span></td>
+                <td class="today">POST /v1/images/generations &middot; gpt-image-2</td>
+                <td class="target">Bedrock InvokeModel &middot; stability.stable-image-core-v1:1</td>
+                <td>New <code class="inline">imageClient</code> on <code class="inline">@aws-sdk/client-bedrock-runtime</code>; <code class="inline">size</code> becomes <code class="inline">aspect_ratio</code>, <code class="inline">quality</code> dropped, output is base64.</td>
+                <td class="why"><code class="inline">gpt-image-*</code> is not on Bedrock. Nova Canvas reaches end-of-life 2026-09-30, so Stability is the durable choice.</td>
+              </tr>
+              <tr>
+                <td class="cap">Speech-to-text<span class="n">2</span></td>
+                <td class="today">POST /v1/audio/transcriptions &middot; whisper-1</td>
+                <td class="target">Amazon Transcribe (batch job via S3; streaming optional)</td>
+                <td>New <code class="inline">transcribeClient</code>. Put audio in S3 &rarr; start job &rarr; poll &rarr; read transcript &rarr; delete object.</td>
+                <td class="why">Whisper is not on Bedrock. Browser audio is WebM/Opus; batch accepts it natively, streaming does not (PCM/OGG-Opus/FLAC only).</td>
+              </tr>
+              <tr>
+                <td class="cap">Video<span class="n">1</span></td>
+                <td class="today">POST api.x.ai/v1/videos/generations &middot; grok-imagine-video</td>
+                <td class="target"><code class="inline">AI_VIDEO_ENABLED=false</code> first; Luma Ray2 (us-west-2, async to S3) if wanted</td>
+                <td>Short-circuit returning <code class="inline">null</code>; callers already tolerate absence.</td>
+                <td class="why">One site, lowest value, region-constrained. Not worth blocking the cutover on.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="tiers">
+        <h2>Model tiers</h2>
+        <h3>Every model name in the code becomes a tier</h3>
+        <p>
+          Today model IDs are hard-coded in 90 places (37 literal <code class="inline">gpt-4o-mini</code>,
+          16 <code class="inline">gpt-5.2</code>, and so on) plus a handful of constants and two env vars for the
+          bots. After the migration a call site says <em>what kind</em> of model it needs; env says which
+          model that is on the current provider. Do not default everything to Sol &mdash; it is roughly ten
+          times the cost of Luna and none of these tasks need it.
+        </p>
+        <div class="flow">
+          <div class="hd">Today (count of sites)</div><div class="hd"></div><div class="hd">Tier</div><div class="hd"></div><div class="hd">Bedrock model / path</div>
+
+          <div><span class="chip model">gpt-4o-mini <span class="cnt">37 + 5 via constants/env</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">fast</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip bedrock">us.openai.gpt-5.6-luna</span></div>
+
+          <div><span class="chip model">gpt-4 <span class="cnt">3 &middot; AAR</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">fast</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip bedrock">us.openai.gpt-5.6-luna</span></div>
+
+          <div><span class="chip model">gpt-5.1 <span class="cnt">9 + 4 via constant</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">standard</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip bedrock">us.openai.gpt-5.6-terra</span></div>
+
+          <div><span class="chip model">gpt-5.2 <span class="cnt">16 + blueprint + bots "strong"</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">standard</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip bedrock">us.openai.gpt-5.6-terra</span></div>
+
+          <div><span class="chip model">gpt-5.5 <span class="cnt">1 &middot; content grader</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">standard</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip bedrock">us.openai.gpt-5.6-terra</span></div>
+
+          <div><span class="chip model">vision sites <span class="cnt">5 &middot; gpt-5.1 + image_url</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">vision</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip bedrock">us.openai.gpt-5.6-terra</span></div>
+
+          <div><span class="chip model">gpt-4o-search-preview <span class="cnt">6 &middot; field-ops research</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">standard</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip bedrock">us.openai.gpt-5.6-terra <span class="cnt">plain chat, no search</span></span></div>
+
+          <div class="sep"></div>
+
+          <div><span class="chip model">gpt-image-2 <span class="cnt">4</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">image</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip sdk">InvokeModel &middot; stability.stable-image-core-v1:1</span></div>
+
+          <div><span class="chip model">whisper-1 <span class="cnt">2</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">stt</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip sdk">Amazon Transcribe &middot; batch</span></div>
+
+          <div><span class="chip model">grok-imagine-video <span class="cnt">1</span></span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip tier">video</span></div>
+          <div class="arr">&rarr;</div>
+          <div><span class="chip off">off &middot; or luma.ray-v2:0 (us-west-2)</span></div>
+
+          <div class="note">
+            In <code class="inline">AI_PROVIDER=openai</code> mode the same tiers resolve to today's names
+            (fast &rarr; gpt-4o-mini, standard &rarr; gpt-5.2, vision &rarr; gpt-5.1, search &rarr; gpt-4o-search-preview),
+            with a per-call <code class="inline">modelOverride</code> available for exact parity during the comparison run.
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="code">
+        <h2>Code changes</h2>
+        <h3>One pattern, 83 times</h3>
+        <p>
+          This is the whole refactor in miniature. The left side is condensed from a real site
+          (<code class="inline">npcMessengerService.ts</code> L140-189, NPC direct-message generation). The right
+          side is what it becomes. Every one of the 83 chat sites follows this exact transformation; the
+          prompt text is untouched.
+        </p>
+
+        <div class="ba">
+          <div class="codebox before">
+            <div class="cbhead"><span>Before &middot; one of 83</span><span class="path">server/services/npcMessengerService.ts</span></div>
+<pre><span class="kw">const</span> response = <span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'https://api.openai.com/v1/chat/completions'</span>, {
+  method: <span class="str">'POST'</span>,
+  headers: {
+    <span class="str">'Content-Type'</span>: <span class="str">'application/json'</span>,
+    Authorization: <span class="str">`Bearer ${env.openAiApiKey}`</span>,
+  },
+  body: JSON.<span class="fn">stringify</span>({
+    model: <span class="str hl">'gpt-5.2'</span>,
+    messages: [
+      { role: <span class="str">'system'</span>, content: systemPrompt },
+      { role: <span class="str">'user'</span>, content: <span class="str">'Generate NPC direct messages...'</span> },
+    ],
+    temperature: <span class="num">0.85</span>,
+    max_completion_tokens: <span class="num">1000</span>,
+    response_format: { type: <span class="str">'json_object'</span> },
+  }),
+});
+<span class="kw">if</span> (!response.ok) {
+  logger.<span class="fn">warn</span>({ status: response.status }, <span class="str">'OpenAI DM generation request failed'</span>);
+  <span class="kw">return</span>;
+}
+<span class="kw">const</span> data = (<span class="kw">await</span> response.<span class="fn">json</span>()) <span class="kw">as</span> { choices?: Array&lt;{ message?: { content?: string } }&gt; };
+<span class="kw">const</span> content = data.choices?.[<span class="num">0</span>]?.message?.content;
+<span class="kw">if</span> (!content) <span class="kw">return</span>;
+<span class="kw">const</span> parsed = JSON.<span class="fn">parse</span>(content) <span class="kw">as</span> { messages?: NpcDm[] };  <span class="cm">// throws on a fenced reply</span></pre>
+          </div>
+          <div class="codebox after">
+            <div class="cbhead"><span>After &middot; same site</span><span class="path">server/services/npcMessengerService.ts</span></div>
+<pre><span class="kw">const</span> parsed = <span class="kw">await</span> <span class="fn">chatJson</span>&lt;{ messages?: NpcDm[] }&gt;({
+  tier: <span class="str hl">'standard'</span>,        <span class="cm">// gpt-5.2 today &middot; GPT-5.6 Terra on Bedrock</span>
+  messages: [
+    { role: <span class="str">'system'</span>, content: systemPrompt },
+    { role: <span class="str">'user'</span>, content: <span class="str">'Generate NPC direct messages...'</span> },
+  ],
+  json: <span class="kw">true</span>,
+  maxTokens: <span class="num">1000</span>,         <span class="cm">// always sent as max_completion_tokens</span>
+  temperature: <span class="num">0.85</span>,       <span class="cm">// dropped where the model rejects it</span>
+  label: <span class="str">'npcMessenger.generateDms'</span>,
+});
+<span class="kw">if</span> (!parsed) <span class="kw">return</span>;         <span class="cm">// retry, timeout, tolerant parse done inside</span>
+
+
+
+
+
+<span class="cm">// No URL. No key. No model name. No response plumbing.</span>
+<span class="cm">// The prompt is byte-identical to before.</span></pre>
+          </div>
+        </div>
+
+        <h4 class="step">The switch itself &middot; server/env.ts + the client</h4>
+        <p>
+          The provider decision is made in one function. In <code class="inline">openai</code> mode the client
+          produces the same request the site sends today, which is what makes the refactor safe to merge
+          before anyone touches AWS.
+        </p>
+        <div class="ba">
+          <div class="codebox neutral">
+            <div class="cbhead"><span>New environment variables</span><span class="path">server/env.ts &middot; docs/ENV_TEMPLATE.md</span></div>
+<pre><span class="add">+ AI_PROVIDER=openai</span>               <span class="cm"># openai | bedrock  (the switch)</span>
+<span class="add">+ AI_BASE_URL=https://bedrock-runtime.us-east-1.amazonaws.com/openai/v1</span>
+<span class="add">+ AI_API_KEY=</span>                      <span class="cm"># Bedrock API key, sent as Bearer</span>
+<span class="add">+ AI_MODEL_FAST=us.openai.gpt-5.6-luna</span>
+<span class="add">+ AI_MODEL_STANDARD=us.openai.gpt-5.6-terra</span>
+<span class="add">+ AI_MODEL_VISION=us.openai.gpt-5.6-terra</span>
+<span class="add">+ AI_TEMPERATURE_POLICY=auto</span>       <span class="cm"># strip for models that 400 on it</span>
+<span class="add">+ AI_TIMEOUT_MS=120000</span>
+<span class="add">+ AI_FAST_MIN_COMPLETION_TOKENS=0</span>  <span class="cm"># raise if reasoning eats tiny budgets</span>
+<span class="add">+ AWS_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY</span>
+<span class="add">+ AI_IMAGE_MODEL_ID=stability.stable-image-core-v1:1</span>
+<span class="add">+ AI_STT_MODE=batch  AI_STT_S3_BUCKET=</span>
+<span class="add">+ AI_VIDEO_ENABLED=false</span>
+<span class="add">+ RESEARCH_LIVE_SEARCH=true</span>
+  OPENAI_API_KEY=                   <span class="cm"># kept until cutover is stable, then removed</span>
+  XAI_API_KEY=
+<span class="del">- OPENAI_MODEL=gpt-4o</span>              <span class="cm"># documented but never read; delete</span></pre>
+          </div>
+          <div class="codebox neutral">
+            <div class="cbhead"><span>Provider resolution &middot; sketch</span><span class="path">server/services/ai/chatClient.ts</span></div>
+<pre><span class="kw">function</span> <span class="fn">resolve</span>(tier: AiTier) {
+  <span class="kw">if</span> (env.aiProvider === <span class="str">'bedrock'</span>) {
+    <span class="kw">return</span> {
+      url:   <span class="str">`${env.aiBaseUrl}/chat/completions`</span>,
+      key:   env.aiApiKey,
+      model: env.aiModel[tier],          <span class="cm">// luna / terra from env</span>
+    };
+  }
+  <span class="kw">return</span> {                             <span class="cm">// byte-identical to today</span>
+    url:   <span class="str">'https://api.openai.com/v1/chat/completions'</span>,
+    key:   env.openAiApiKey,
+    model: { fast: <span class="str">'gpt-4o-mini'</span>, standard: <span class="str">'gpt-5.2'</span>,
+             vision: <span class="str">'gpt-5.1'</span>, search: <span class="str">'gpt-4o-search-preview'</span> }[tier],
+  };
+}
+
+<span class="cm">// Inside chat(): normalise ceiling -> max_completion_tokens,</span>
+<span class="cm">// apply temperature policy, json_object | strict json_schema (+ fallback),</span>
+<span class="cm">// AbortSignal.timeout, retry 429/5xx, optional per-key budget + queue,</span>
+<span class="cm">// tolerant JSON parse, log provider/tier/model/latency/usage.</span></pre>
+          </div>
+        </div>
+
+        <h4 class="step">The gates &middot; ~91 places in 50 files</h4>
+        <p>
+          Every feature that can call a model first checks for the OpenAI key. That check has to become
+          provider-agnostic, or removing <code class="inline">OPENAI_API_KEY</code> after cutover silently switches off
+          the chat surveillance worker, the statement watchdog, the pressure engine, the bots and dozens of
+          smaller features.
+        </p>
+        <div class="ba single">
+          <div class="codebox neutral">
+            <div class="cbhead"><span>One-line change, ~91 times</span><span class="path">e.g. chatSurveillanceService.ts L134 &middot; statementWatchdogService.ts L200 &middot; pressureEngineService.ts L158 &middot; teammates/llmQueue.ts L127</span></div>
+<pre><span class="del">- if (!env.openAiApiKey) return null;</span>
+<span class="add">+ if (!env.aiEnabled) return null;</span>     <span class="cm">// aiEnabled = provider's key is present, whichever provider</span>
+
+<span class="del">- fallback(input, shortlist[0], 'no OPENAI_API_KEY');</span>          <span class="cm">// teammates/brain.ts L300</span>
+<span class="add">+ fallback(input, shortlist[0], 'ai disabled');</span></pre>
+          </div>
+        </div>
+
+        <h4 class="step">Three existing wrappers seed the shared client</h4>
+        <p>
+          The codebase already contains three partial clients, each with one good idea. The shared client
+          is the union of them; each then becomes a thin wrapper and eventually disappears.
+        </p>
+        <div class="seeds">
+          <div class="seed">
+            <div class="f">blueprint/llmClient.ts &middot; openAiJson()</div>
+            <div class="g"><b>Contributes:</b> retry on 429/5xx with backoff, <code class="inline">parseJsonLoose</code> (strips prose and fences), never throws.</div>
+            <ul><li>Used by blueprint extraction + scenario director</li><li>Already sends <code class="inline">max_completion_tokens</code></li></ul>
+          </div>
+          <div class="seed">
+            <div class="f">warroomAiService.ts &middot; callOpenAi&lt;T&gt;()</div>
+            <div class="g"><b>Contributes:</b> <code class="inline">repairTruncatedJson</code> for long generation phases.</div>
+            <ul><li>29 War Room generation phases in one file</li><li>Multi-org and stakeholder generation route through it</li></ul>
+          </div>
+          <div class="seed">
+            <div class="f">teammates/llmQueue.ts &middot; callJson()</div>
+            <div class="g"><b>Contributes:</b> global sequential queue with pause, per-session hourly budget (400), 45 s timeout, strict <code class="inline">json_schema</code> with <code class="inline">json_object</code> fallback, stats.</div>
+            <ul><li>Newest; the bots depend on the budget semantics</li><li>Migrate first: it proves the client's feature set</li></ul>
+          </div>
+        </div>
+
+        <h4 class="step">The non-text paths &middot; small, separate clients</h4>
+        <div class="ba">
+          <div class="codebox before">
+            <div class="cbhead"><span>Images today &middot; 4 sites</span><span class="path">mediaGenerationService.ts L96 &middot; chatSurveillanceService.ts L350 &middot; rtsCasualtyService.ts L83, L140</span></div>
+<pre>POST https://api.openai.com/v1/images/generations
+{
+  model: <span class="str">'gpt-image-2'</span>,
+  prompt,
+  size: <span class="str">'1024x1024'</span> | <span class="str">'1792x1024'</span>,
+  quality: <span class="str">'medium'</span> | <span class="str">'standard'</span>,
+  n: <span class="num">1</span>,
+  response_format: <span class="str">'url'</span>          <span class="cm">// rtsCasualty only; reads data[0].url</span>
+}
+<span class="cm">// others read data[0].b64_json and upload to Supabase Storage</span></pre>
+          </div>
+          <div class="codebox aws">
+            <div class="cbhead"><span>Images after &middot; imageClient.ts</span><span class="path">@aws-sdk/client-bedrock-runtime &middot; IAM credentials</span></div>
+<pre><span class="kw">new</span> <span class="fn">InvokeModelCommand</span>({
+  modelId: env.aiImageModelId,          <span class="cm">// stability.stable-image-core-v1:1</span>
+  contentType: <span class="str">'application/json'</span>,
+  body: JSON.<span class="fn">stringify</span>({
+    prompt,
+    aspect_ratio: <span class="str">'1:1'</span> | <span class="str">'16:9'</span>,       <span class="cm">// mapped from size</span>
+    output_format: <span class="str">'png'</span>,
+  }),
+})
+<span class="cm">// response.images[0] is base64 (shape per Stability's Bedrock docs;</span>
+<span class="cm">// confirm in the smoke test). rtsCasualty must accept base64 or</span>
+<span class="cm">// upload and return a storage URL. Re-tune the four prompts.</span></pre>
+          </div>
+        </div>
+        <div class="ba">
+          <div class="codebox before">
+            <div class="cbhead"><span>Speech-to-text today &middot; 2 sites</span><span class="path">routes/ai.ts L115 (live) &middot; routes/voice.ts L134 (post-call batch)</span></div>
+<pre><span class="cm">// ai.ts: raw body from the browser recorder</span>
+<span class="cm">//   Content-Type: audio/webm;codecs=opus  (useVoiceInput.ts L35-37)</span>
+<span class="kw">const</span> formData = <span class="kw">new</span> <span class="fn">FormData</span>();
+formData.<span class="fn">append</span>(<span class="str">'file'</span>, blob, <span class="str">'recording.webm'</span>);
+formData.<span class="fn">append</span>(<span class="str">'model'</span>, <span class="str">'whisper-1'</span>);
+formData.<span class="fn">append</span>(<span class="str">'language'</span>, <span class="str">'en'</span>);
+<span class="kw">await</span> <span class="fn">fetch</span>(<span class="str">'https://api.openai.com/v1/audio/transcriptions'</span>, ...)
+<span class="cm">// -> { text }</span>
+
+<span class="cm">// voice.ts: same call in a loop over recordings already</span>
+<span class="cm">//   stored in the Supabase 'voice-recordings' bucket</span></pre>
+          </div>
+          <div class="codebox aws">
+            <div class="cbhead"><span>Speech-to-text after &middot; transcribeClient.ts (batch)</span><span class="path">@aws-sdk/client-transcribe + S3</span></div>
+<pre><span class="cm">// 1. PutObject  -> s3://AI_STT_S3_BUCKET/{jobId}.webm</span>
+<span class="cm">// 2. StartTranscriptionJob { MediaFormat: 'webm', LanguageCode: 'en-US' }</span>
+<span class="cm">// 3. poll GetTranscriptionJob until COMPLETED (seconds for short clips)</span>
+<span class="cm">// 4. fetch TranscriptFileUri -> results.transcripts[0].transcript</span>
+<span class="cm">// 5. DeleteObject; short S3 lifecycle rule as a backstop</span>
+<span class="cm">// -> { text }   (same return shape for both call sites)</span>
+
+<span class="cm">// Why batch: it accepts WebM natively. Streaming Transcribe only</span>
+<span class="cm">// takes PCM / OGG-Opus / FLAC, so the live path would need a</span>
+<span class="cm">// server-side demux or a recorder change. voice.ts is already</span>
+<span class="cm">// asynchronous; ai.ts gains a few seconds -- measure on staging.</span>
+<span class="cm">// Prerequisite: AWS Organizations AI-services opt-out policy.</span></pre>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="unchanged">
+        <h2>Unchanged</h2>
+        <h3>What does not change at all</h3>
+        <p>
+          It helps to be explicit about the blast radius. The migration touches how the server reaches a
+          model and nothing else.
+        </p>
+        <div class="check">
+          <div>Database schema<span>no migrations; <code class="inline">research_cases</code> gets seeded, not altered</span></div>
+          <div>REST route contracts<span>same paths, same payloads, same auth</span></div>
+          <div>WebSocket protocol<span>Socket.IO events untouched</span></div>
+          <div>Prompt text<span>system/user prompts are copied verbatim into the client call</span></div>
+          <div>Business logic around results<span>everything after <code class="inline">JSON.parse</code> stays as is</span></div>
+          <div>Frontend UI<span>one alert string reworded; recorder format only if streaming STT is chosen</span></div>
+          <div>Six background workers<span>same schedules; only their key gate changes</span></div>
+          <div>Bots' cost cap<span>the 400 calls/session/hour budget moves into the client, not away</span></div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="sites">
+        <h2>The 83 sites</h2>
+        <h3>Where the chat calls live</h3>
+        <p>
+          Grouped by product area, one bar per file. The two biggest files account for 23 of the 83; the
+          rest is a long tail of one-to-five sites per service. The War Room's single
+          <code class="inline">callOpenAi</code> site is one bar but serves 29 generation phases.
+        </p>
+        <div class="bars">
+          <div class="bar-row"><div class="lbl">Social crisis, one site each<span>socialCrisisAi &middot; socialCrisisGenerator (callAI) &middot; antagonist &middot; extremistHive &middot; feedEngine &middot; npcEmailReply &middot; npcReaction &middot; chatSurveillance &middot; statementWatchdog &middot; contentDispute &middot; contentGrader &middot; stakeholderReconsideration &middot; aarSocialSection</span></div><div class="track"><div class="fill" style="width: 100%"></div></div><div class="cnt">13</div></div>
+          <div class="bar-row"><div class="lbl">aiService.ts<span>core: scenario gen, classification, sentiment, objectives</span></div><div class="track"><div class="fill" style="width: 92.3%"></div></div><div class="cnt">12</div></div>
+          <div class="bar-row"><div class="lbl">warroomResearchService.ts<span>field ops research: 5 search + 6 gpt-5.1</span></div><div class="track"><div class="fill search" style="width: 38.5%"></div><div class="fill" style="width: 46.1%"></div></div><div class="cnt">11</div></div>
+          <div class="bar-row"><div class="lbl">aarAiService.ts &middot; insiderService.ts &middot; transportOutcomeService.ts &middot; incidentDecisionGradingService.ts<span>2 each</span></div><div class="track"><div class="fill" style="width: 61.5%"></div></div><div class="cnt">4 &times; 2</div></div>
+          <div class="bar-row"><div class="lbl">Decision / environment / hospital, one site each<span>decisionEvaluationOrchestrator &middot; decisionCasualtyEffects &middot; scenarioState &middot; stateEffect &middot; environmentalCondition &middot; environmentalConsistency &middot; hospitalCapacity</span></div><div class="track"><div class="fill" style="width: 53.8%"></div></div><div class="cnt">7</div></div>
+          <div class="bar-row"><div class="lbl">decisionEvaluationAiService.ts<span>decision grading</span></div><div class="track"><div class="fill" style="width: 38.5%"></div></div><div class="cnt">5</div></div>
+          <div class="bar-row"><div class="lbl">routes/scenarios.ts<span>1 search (retry-custom-facts) + 3 enrichment</span></div><div class="track"><div class="fill search" style="width: 7.7%"></div><div class="fill" style="width: 23.1%"></div></div><div class="cnt">4</div></div>
+          <div class="bar-row"><div class="lbl">demoAIAgentService.ts<span>demo agent</span></div><div class="track"><div class="fill" style="width: 30.8%"></div></div><div class="cnt">4</div></div>
+          <div class="bar-row"><div class="lbl">rtsSceneEnrichmentService.ts<span>3 vision + 1 text</span></div><div class="track"><div class="fill vision" style="width: 23.1%"></div><div class="fill" style="width: 7.7%"></div></div><div class="cnt">4</div></div>
+          <div class="bar-row"><div class="lbl">ambientContentService.ts &middot; npcMessengerService.ts<span>social crisis, 2 each</span></div><div class="track"><div class="fill" style="width: 30.8%"></div></div><div class="cnt">2 + 2</div></div>
+          <div class="bar-row"><div class="lbl">Wrappers &amp; misc<span>blueprint/llmClient &middot; teammates/llmQueue &middot; demoScriptGenerator &middot; aarSection</span></div><div class="track"><div class="fill" style="width: 23.1%"></div><div class="fill bots" style="width: 7.7%"></div></div><div class="cnt">4</div></div>
+          <div class="bar-row"><div class="lbl">heatMeterService.ts</div><div class="track"><div class="fill" style="width: 23.1%"></div></div><div class="cnt">3</div></div>
+          <div class="bar-row"><div class="lbl">RTS vision, one site each<span>rtsVisionService &middot; rtsCasualtyService (vision)</span></div><div class="track"><div class="fill vision" style="width: 15.4%"></div></div><div class="cnt">2</div></div>
+          <div class="bar-row"><div class="lbl">War Room generator + parser<span>warroomAiService.callOpenAi (29 phases) &middot; warroomPromptParser</span></div><div class="track"><div class="fill" style="width: 15.4%"></div></div><div class="cnt">2</div></div>
+          <div class="legend">
+            <span><i></i>plain chat / JSON</span>
+            <span><i class="search"></i>web-search model (6)</span>
+            <span><i class="vision"></i>vision with image_url (5)</span>
+            <span><i class="bots"></i>AI teammate bots (json_schema, budgeted)</span>
+          </div>
+        </div>
+        <p style="margin-top: 14px">
+          Plus the non-chat sites: images in <code class="inline">mediaGenerationService</code>,
+          <code class="inline">chatSurveillanceService</code>, <code class="inline">rtsCasualtyService</code> (&times;2); speech in
+          <code class="inline">routes/ai.ts</code> and <code class="inline">routes/voice.ts</code>; video in
+          <code class="inline">mediaGenerationService</code>. And six direct <code class="inline">process.env.OPENAI_API_KEY</code>
+          reads in <code class="inline">routes/scenarios.ts</code> that bypass <code class="inline">env</code> entirely.
+        </p>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="risks">
+        <h2>Risks &amp; evidence</h2>
+        <h3>What the audit found that the first plan did not</h3>
+        <p>
+          Each card says what could go wrong, where the evidence is in the code, and what the plan does
+          about it. "Proven" means it has already happened in this codebase; "verify" means a smoke check
+          decides; "design" means the client is built to absorb it.
+        </p>
+        <div class="risks">
+          <div class="risk">
+            <div class="rh"><b>Newer models reject <code class="inline">temperature</code></b><span class="badge proven">proven</span></div>
+            <p>~70 request bodies send a non-default temperature. If the target model returns 400, callers silently fall back to <code class="inline">null</code> or a default result &mdash; nothing crashes, quality just quietly dies.</p>
+            <div class="ev">commit <b>44e26d7</b> &middot; contentGraderService.ts: removed <code class="inline">temperature: 0.3</code> &mdash; "gpt-5.5 rejects any temperature other than the default and returns a 400, which lands every response on the neutral defaultGrade".</div>
+            <div class="fix"><code class="inline">AI_TEMPERATURE_POLICY=auto</code> strips it per model and logs once; smoke check 3 decides for GPT-5.6.</div>
+          </div>
+          <div class="risk">
+            <div class="rh"><b>Tiny completion budgets vs reasoning tokens</b><span class="badge verify">verify</span></div>
+            <p>Eight fast-tier sites cap output at 30&ndash;150 tokens. If GPT-5.6 spends reasoning tokens inside <code class="inline">max_completion_tokens</code>, those return empty or truncated JSON.</p>
+            <div class="ev">insiderService.ts L220 (<b>30</b>) &middot; incidentDecisionGradingService.ts L98, L156 (<b>50</b>) &middot; decisionEvaluationAiService.ts L120 (120), L61, L179 (150) &middot; aiService.ts L1577 (150) &middot; hospitalCapacityService.ts L68 (150)</div>
+            <div class="fix">Smoke check 4 with a 30-token request; <code class="inline">AI_FAST_MIN_COMPLETION_TOKENS</code> or a no-reasoning setting under Bedrock.</div>
+          </div>
+          <div class="risk">
+            <div class="rh"><b>Vision images are remote URLs</b><span class="badge verify">verify</span></div>
+            <p>All five vision sites pass Supabase Storage HTTPS URLs; none inline base64. Bedrock's OpenAI-compatible path may not fetch external URLs the way OpenAI does.</p>
+            <div class="ev">rtsSceneEnrichmentService.ts L244, L389, L951 (<code class="inline">detail: 'high'</code>) &middot; rtsVisionService.ts L52 &middot; rtsCasualtyService.ts L219</div>
+            <div class="fix">Smoke check 2 uses a real remote URL; the client downloads and inlines a <code class="inline">data:</code> URL if needed.</div>
+          </div>
+          <div class="risk">
+            <div class="rh"><b>Strict <code class="inline">json_schema</code> is now in use</b><span class="badge verify">verify</span></div>
+            <p>The AI teammate bots request strict structured output and already carry a fallback to <code class="inline">json_object</code> with the schema inlined. Bedrock support for strict mode is unverified.</p>
+            <div class="ev">teammates/llmQueue.ts L142-145 (json_schema, strict) &middot; L150-161 (fallback) &middot; schemas in teammates/brain.ts</div>
+            <div class="fix">Smoke check 5; the client ports the fallback verbatim and can skip straight to it under Bedrock.</div>
+          </div>
+          <div class="risk">
+            <div class="rh"><b>Browser audio format vs Transcribe streaming</b><span class="badge design">design</span></div>
+            <p>The recorder produces WebM/Opus. Transcribe streaming accepts only PCM, OGG-Opus or FLAC; batch accepts WebM but needs S3 and an async job.</p>
+            <div class="ev">frontend/src/hooks/useVoiceInput.ts L35-37 &middot; routes/ai.ts L88-113 (raw body, 10 MB) &middot; routes/voice.ts L113-157 (batch over storage)</div>
+            <div class="fix">Batch for both sites first; measure live latency on staging; streaming only with a demux or recorder change.</div>
+          </div>
+          <div class="risk">
+            <div class="rh"><b>Six workers call models on timers</b><span class="badge design">design</span></div>
+            <p>The engine ticker runs every 60 s for every live social session and is ON by default in production; bots add up to 400 calls per session per hour. Bedrock enforces per-model RPM/TPM quotas.</p>
+            <div class="ev">server/index.ts L73-94 &middot; engineTicker.ts L17, L26 (<code class="inline">ENABLE_EXECUTIVE_DECISIONS</code> default on) &middot; teammateBotService.ts L29, L81 &middot; env.ts L100</div>
+            <div class="fix">Size quotas from a realistic staging session (check 13); optional <code class="inline">serialize</code> for ticker callers; never point two backends at one database.</div>
+          </div>
+          <div class="risk">
+            <div class="rh"><b>The Vercel bridge mounts AI routes</b><span class="badge verify">verify</span></div>
+            <p><code class="inline">api/index.ts</code> mounts scenarios, sessions, decisions, AAR and the Whisper route and imports <code class="inline">env.ts</code>. It is dormant only if the frontend points at Render.</p>
+            <div class="ev">api/index.ts L12, L72-81 &middot; frontend/src/lib/api.ts L9 (<code class="inline">VITE_API_URL || ''</code>) &middot; vercel.json has no /api rewrite</div>
+            <div class="fix">Confirm <code class="inline">VITE_API_URL</code>; never set <code class="inline">AI_PROVIDER=bedrock</code> on Vercel; optionally drop the AI routers from the bridge.</div>
+          </div>
+          <div class="risk">
+            <div class="rh"><b>~91 key gates, ~499 threaded parameters</b><span class="badge design">design</span></div>
+            <p>Removing the OpenAI key after cutover would silently disable every feature still gated on it. The <code class="inline">openAiApiKey</code> parameter is threaded through 67 files.</p>
+            <div class="ev">warroomAiService.ts (100 occurrences) &middot; aiService.ts (35) &middot; warroomService.ts, warroomResearchService.ts (26 each) &middot; decisionEvaluationOrchestrator.ts (25) &middot; routes/warroom.ts (21)</div>
+            <div class="fix">Gates &rarr; <code class="inline">env.aiEnabled</code> in the first PR; parameters become no-ops, removed mechanically later; a grep gate in the checklist keeps them at zero.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="plan">
+        <h2>Work plan</h2>
+        <h3>Order of operations</h3>
+        <p>
+          Each step is a separate reviewable commit. The first three ship together as one PR that changes no
+          behaviour. AWS is not touched by code until step 4.
+        </p>
+        <ol class="tl">
+          <li class="pr"><div class="dot">1</div><b>Env plumbing <small>PR 1 &middot; plan 7.1</small></b><p>Add the section-6 variables and derived <code class="inline">aiEnabled</code> to <code class="inline">server/env.ts</code>; validate Bedrock vars only when <code class="inline">AI_PROVIDER=bedrock</code>; make the bots' model vars default to tier models; replace the six direct <code class="inline">process.env.OPENAI_API_KEY</code> reads in <code class="inline">routes/scenarios.ts</code>.</p></li>
+          <li class="pr"><div class="dot">2</div><b>Shared chat client <small>PR 1 &middot; plan 7.2</small></b><p>Grow <code class="inline">blueprint/llmClient.ts</code> into <code class="inline">services/ai/chatClient.ts</code>: tiers, provider resolution, ceiling normalisation, temperature policy, json_object / json_schema + fallback, timeout, retry, budget + queue, tolerant parsing, usage logging.</p></li>
+          <li class="pr"><div class="dot">3</div><b>Migrate the 83 chat sites and ~91 gates <small>PR 1 &middot; plan 7.3</small></b><p>Order: <code class="inline">llmQueue</code> &rarr; <code class="inline">callJudge</code> &rarr; the four <code class="inline">callAI</code> helpers &rarr; <code class="inline">callOpenAi</code> &rarr; long tail. Leave <code class="inline">openAiApiKey</code> parameters as no-ops. Regression: lint, build, 17 tests, two generated scenarios compared against master with <code class="inline">AI_PROVIDER=openai</code>.</p></li>
+          <li class="pr"><div class="dot">4</div><b>Images <small>PR 2 &middot; plan 7.4</small></b><p><code class="inline">imageClient.ts</code> on <code class="inline">@aws-sdk/client-bedrock-runtime</code>; four sites; <code class="inline">rtsCasualtyService</code> stops expecting a URL; re-tune four prompts on Stability.</p></li>
+          <li class="pr"><div class="dot">5</div><b>Speech-to-text <small>PR 3 &middot; plan 7.5</small></b><p><code class="inline">transcribeClient.ts</code>, batch mode via S3 for both sites; org AI opt-out policy set beforehand; measure live round-trip on staging.</p></li>
+          <li class="pr"><div class="dot">6</div><b>Web-search sites &rarr; standard tier <small>own commit &middot; plan 7.6</small></b><p>Convert the six <code class="inline">gpt-4o-search-preview</code> sites (five in <code class="inline">warroomResearchService.ts</code>, one in <code class="inline">retry-custom-facts</code>) to plain chat on the standard tier; reword the "only real documented incidents" prompts; compare one generated scenario before and after. The field-ops research step itself stays for now &mdash; its retirement (replace with an internal knowledge pack: standards, physics, demographics, injury types) is decided but scheduled separately; the blueprint is in plan 7.6.</p></li>
+          <li class="pr"><div class="dot">7</div><b>Video <small>PR 5 &middot; plan 7.7</small></b><p><code class="inline">AI_VIDEO_ENABLED=false</code> short-circuit; Luma Ray2 later if wanted.</p></li>
+          <li class="infra"><div class="dot">8</div><b>Staging comparison <small>plan 8 + 9</small></b><p>Duplicate stack (Supabase + Render + Vercel + staging IAM). Smoke checks 1&ndash;8, then the same two scenarios and a full multi-org session with bots and engines on under <code class="inline">AI_PROVIDER=bedrock</code>. Compare narrative, hazards, casualties, injects, verdicts, AAR; watch for 429s; read CloudTrail and Cost Explorer.</p></li>
+          <li class="infra"><div class="dot">9</div><b>Cutover <small>plan 8 &middot; items 16&ndash;19</small></b><p>Merge with <code class="inline">AI_PROVIDER=openai</code> (no change). In a quiet window set <code class="inline">AI_PROVIDER=bedrock</code> + Bedrock vars on the production Render service. Watch the first sessions. Rollback is the same variable.</p></li>
+          <li class="infra"><div class="dot">10</div><b>Cleanup <small>plan 7.8</small></b><p>Remove OpenAI/xAI branches and keys, <code class="inline">test-grok-video.mjs</code>; reword the frontend string; fix <code class="inline">demo-run/</code> tooling; update ENV_TEMPLATE, TECH_STACK, ARCHITECTURE and the bots plan wording.</p></li>
+        </ol>
+
+        <h4 class="step">The flip, and the rollback</h4>
+        <div class="switch">
+          <div class="st a">
+            <div class="k">Before the flip</div>
+            <div class="v">AI_PROVIDER=openai</div>
+            <p>Refactored code in production, producing byte-identical OpenAI requests. This is the state after PR 1 merges. Nothing about the product's behaviour has changed.</p>
+          </div>
+          <div class="mid"><span class="big">&harr;</span>one env var on Render<br />process restarts<br />no rebuild</div>
+          <div class="st b">
+            <div class="k">After the flip</div>
+            <div class="v">AI_PROVIDER=bedrock</div>
+            <p>Same code, now resolving to Bedrock URLs, key and GPT-5.6 tiers; images to Stability, speech to Transcribe. Set it back to <code class="inline">openai</code> to roll back within a minute.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="ops">
+        <h2>Your to-dos</h2>
+        <h3>What you do on each platform</h3>
+        <p>
+          Render stays where it is: the plan keeps the backend on Render calling AWS over TLS. Moving the
+          backend into AWS would let you use PrivateLink and strengthen the residency story, but it is not
+          required for the claim about where inference runs.
+        </p>
+        <div class="ops">
+          <div class="col render">
+            <h5><i></i>Render</h5>
+            <ul>
+              <li><span class="when">now</span><b>Add <code class="inline">AI_PROVIDER=openai</code></b> to the production service so the switch exists and is visible.</li>
+              <li><span class="when">on merge</span>Normal deploy. Default is <code class="inline">openai</code>; no behaviour change.</li>
+              <li><span class="when">staging</span><b>Second service from the branch</b> with <code class="inline">AI_PROVIDER=bedrock</code>, all Bedrock/AWS vars, <code class="inline">ENABLE_TEAMMATE_BOTS=true</code>, staging Supabase keys, <code class="inline">EMAIL_ENABLED=false</code>, no Stripe.</li>
+              <li><span class="when">cutover</span>Set <code class="inline">AI_PROVIDER=bedrock</code> and the Bedrock vars. <b>Saving env vars restarts the process</b> (WebSockets reconnect, workers restart) &mdash; pick a quiet window.</li>
+              <li><span class="when">hygiene</span>Dedicated IAM user + Bedrock API key as Render secrets; optionally lock the IAM policy to Render's static outbound IPs.</li>
+              <li><span class="when">later</span>Remove <code class="inline">OPENAI_API_KEY</code> and <code class="inline">XAI_API_KEY</code>.</li>
+            </ul>
+          </div>
+          <div class="col vercel">
+            <h5><i></i>Vercel</h5>
+            <ul>
+              <li><span class="when">now</span><b>Confirm <code class="inline">VITE_API_URL</code> points at Render</b> so the dormant <code class="inline">api/index.ts</code> bridge never serves AI routes.</li>
+              <li><span class="when">always</span>Do <b>not</b> set <code class="inline">AI_PROVIDER=bedrock</code> here; without the Bedrock vars the env validation would throw on cold start.</li>
+              <li><span class="when">staging</span>Second project on the branch with <code class="inline">VITE_API_URL</code> = staging Render URL and staging Supabase anon key.</li>
+              <li><span class="when">optional</span>Drop the AI-reaching routers from <code class="inline">api/index.ts</code> so the bridge cannot become a second inference path.</li>
+            </ul>
+          </div>
+          <div class="col awsc">
+            <h5><i></i>AWS</h5>
+            <ul>
+              <li><span class="when">account</span><b><code class="inline">data_retention_mode = none</code></b> on Bedrock, enforced by an SCP denying <code class="inline">bedrock:PutAccountDataRetention</code> unless none.</li>
+              <li><span class="when">org</span><b>AI services opt-out policy</b> <code class="inline">default: optOut</code> (Transcribe defaults to using audio for service improvement).</li>
+              <li><span class="when">access</span>Enable GPT-5.6 Luna/Terra, Stability Stable Image (and Luma if video) in the chosen region; request RPM/TPM quota increases sized from the staging run.</li>
+              <li><span class="when">identity</span>IAM user with <code class="inline">bedrock:InvokeModel</code> on the inference profiles and the default project; Bedrock API key; S3 bucket for Transcribe input with a short lifecycle rule.</li>
+              <li><span class="when">verify</span>CloudTrail shows calls only from the expected identity; Cost Explorer shows spend per session-hour in range.</li>
+              <li><span class="when">region</span>Decide what clients accept: <code class="inline">us.</code> cross-region profiles on bedrock-runtime vs in-region GPT only on bedrock-mantle (us-east-1/2); Luma is us-west-2 only.</li>
+            </ul>
+          </div>
+          <div class="col supa">
+            <h5><i></i>Supabase</h5>
+            <ul>
+              <li><span class="when">staging</span><b>New project</b>; apply <code class="inline">migrations/</code> through 207 (207 creates the bot account pool); seed a few scenarios.</li>
+              <li><span class="when">never</span>Do not point the staging backend at the production database: six timed workers would double-fire injects, NPC reactions, pressure posts and decision cascades on live sessions.</li>
+              <li><span class="when">unchanged</span><code class="inline">research_cases</code> keeps being written by the (now search-less) similar-cases research until the deferred retirement; no schema work now.</li>
+              <li><span class="when">none</span>No schema changes are required by the migration itself.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="checks">
+        <h2>Smoke checks</h2>
+        <h3>Eight requests before touching 83 sites</h3>
+        <p>
+          Each is one request against Bedrock from a scratch script. Together they settle every open
+          technical question in the client's design before the migration pass starts.
+        </p>
+        <ol class="checks">
+          <li>Chat completion with <code class="inline">response_format: { type: 'json_object' }</code> returns valid JSON on Luna and Terra.<span>Decision 4: json_object stays.</span></li>
+          <li>Vision request with a <b>remote HTTPS</b> <code class="inline">image_url</code> (a real Supabase Storage object), with and without <code class="inline">detail: 'high'</code>, succeeds on Terra.<span>Fails &rarr; client inlines base64.</span></li>
+          <li><code class="inline">temperature: 0.2</code> and <code class="inline">0.85</code> accepted on Luna and Terra.<span>Expect rejection given gpt-5.5's behaviour; auto policy strips it.</span></li>
+          <li>Fast-tier JSON request with <code class="inline">max_completion_tokens: 30</code> (the insider prompt) returns usable content on Luna.<span>Fails &rarr; no-reasoning setting or <code class="inline">AI_FAST_MIN_COMPLETION_TOKENS</code>.</span></li>
+          <li>Strict <code class="inline">json_schema</code> (one of the bots' schemas) honoured on Luna and Terra.<span>Fails &rarr; go straight to the json_object + inlined-schema fallback.</span></li>
+          <li><code class="inline">max_tokens</code> rejected or ignored; <code class="inline">max_completion_tokens</code> accepted.<span>Confirms the ceiling normalisation is required.</span></li>
+          <li>Model IDs resolve in the chosen region; IAM identity has <code class="inline">bedrock:InvokeModel</code> on the inference profile and the default project; note RPM/TPM quotas.<span>Also the first real cost datapoint.</span></li>
+          <li>A deliberate 4xx/429 carries an HTTP status the retry logic keys on.<span>The client retries on status, not on OpenAI's error body.</span></li>
+        </ol>
+      </section>
+
+      <!-- ============================================================ -->
+      <section id="glossary">
+        <h2>Glossary</h2>
+        <h3>Terms used above</h3>
+        <dl class="gl">
+          <dt>Amazon Bedrock</dt><dd>AWS's managed inference service. Multi-tenant, but inside the AWS trust boundary like S3 or RDS; model providers cannot see the deployment, prompts or completions.</dd>
+          <dt>OpenAI-compatible endpoint</dt><dd><code class="inline">bedrock-runtime.&lt;region&gt;.amazonaws.com/openai/v1/...</code>: accepts the same chat-completions request body OpenAI does, authenticated with a Bedrock API key as Bearer. Why the 83 sites port cheaply.</dd>
+          <dt>Inference profile</dt><dd>Model IDs like <code class="inline">us.openai.gpt-5.6-luna</code>: the <code class="inline">us.</code> prefix routes within US regions. GPT models are only reachable this way on bedrock-runtime.</dd>
+          <dt>bedrock-mantle</dt><dd>A second endpoint offering in-region GPT (us-east-1/2) and the only server-side <code class="inline">web_search</code> tool, via the Responses API. Not needed: web search is dropped; the six search sites run as plain chat on the standard tier.</dd>
+          <dt>data_retention_mode</dt><dd>Bedrock account/project setting: <code class="inline">none</code> (zero retention, our choice), <code class="inline">default</code> (AWS may retain for abuse detection), <code class="inline">aws_review</code>. Models needing review simply become unavailable under <code class="inline">none</code>.</dd>
+          <dt>SCP</dt><dd>AWS Organizations Service Control Policy. Used to deny changing the retention mode away from <code class="inline">none</code>.</dd>
+          <dt>AI services opt-out policy</dt><dd>Organization-wide policy that stops AWS AI services (notably Transcribe) from using content for service improvement. Bedrock does not need it; Transcribe does.</dd>
+          <dt>Amazon Transcribe</dt><dd>AWS speech-to-text. Batch jobs read audio from S3 asynchronously and accept WebM; streaming is real-time but accepts only PCM, OGG-Opus or FLAC.</dd>
+          <dt>InvokeModel</dt><dd>The native Bedrock API (via the AWS SDK, IAM credentials) used for models without an OpenAI-compatible shape, here Stability image generation.</dd>
+          <dt>Tier</dt><dd>What a call site asks for instead of a model name: <code class="inline">fast</code>, <code class="inline">standard</code>, <code class="inline">vision</code>. Env maps each tier to a model per provider. (A <code class="inline">search</code> tier was considered and dropped: the six search sites move to <code class="inline">standard</code>.)</dd>
+          <dt>AI_PROVIDER</dt><dd>The switch. <code class="inline">openai</code> reproduces today's requests exactly; <code class="inline">bedrock</code> routes to AWS. Flipping it on Render is the cutover; flipping it back is the rollback.</dd>
+          <dt>aiEnabled</dt><dd>Derived flag replacing ~91 <code class="inline">env.openAiApiKey</code> checks: true when the active provider's key is present.</dd>
+          <dt>Shared client</dt><dd><code class="inline">chatClient</code> / <code class="inline">imageClient</code> / <code class="inline">transcribeClient</code> under <code class="inline">server/services/ai/</code>: the only code that knows a provider URL, key or model ID.</dd>
+        </dl>
+      </section>
+
+      <footer>
+        Sources and further reading (all in this repository):
+        <ul>
+          <li><code class="inline">docs/AWS_BEDROCK_MIGRATION_v2.md</code> &mdash; the plan, revision 2.3, with every line reference used here. Sections 0.0 and 7.6 record the 21 Sep decisions: web-search sites become plain chat now; field-ops research is retired later, replaced by an internal knowledge pack.</li>
+          <li><code class="inline">docs/AWS_BEDROCK_MIGRATION.md</code> &mdash; v1, kept unchanged for history.</li>
+          <li><code class="inline">docs/ai-teammate-bots-plan.md</code> (D11, section 11), <code class="inline">docs/executive-decisions-organic-plan.md</code>, <code class="inline">docs/pressure-organisations-plan.md</code> &mdash; the newer AI consumers.</li>
+          <li><code class="inline">docs/privacy/01</code>&ndash;<code class="inline">04</code> &mdash; the earlier privacy analysis; superseded where they disagree with this page.</li>
+        </ul>
+        Counts and line numbers verified against commit <code class="inline">cf41f0c</code> on 2026-09-20; re-grep before editing.
+      </footer>
+    </div>
+
+    <script>
+      (function () {
+        var buttons = document.querySelectorAll('.seg button[data-view]');
+        var panels = document.querySelectorAll('.map [data-panel]');
+        function show(view) {
+          buttons.forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-view') === view); });
+          panels.forEach(function (p) { p.classList.toggle('on', p.getAttribute('data-panel') === view); });
+        }
+        buttons.forEach(function (b) {
+          b.addEventListener('click', function () { show(b.getAttribute('data-view')); });
+        });
+      })();
+    </script>
+  </body>
+</html>

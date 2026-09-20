@@ -16,7 +16,7 @@ export async function runPathwayOutcomesOnInjectPublished(
   sessionId: string,
   injectId: string,
 ): Promise<void> {
-  if (!env.openAiApiKey) {
+  if (!env.aiEnabled) {
     logger.debug({ sessionId, injectId }, 'No OpenAI key; skipping factor identification');
     return;
   }
@@ -157,7 +157,7 @@ export async function runPathwayOutcomesOnInjectPublished(
         (session.current_state as Record<string, unknown>) ?? {},
         objectivesForFactors,
         singleInjectContext,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         teamFocusContext,
       );
       const existingFactorIds = new Set(factorsResult.factors.map((f) => f.id));
@@ -174,7 +174,7 @@ export async function runPathwayOutcomesOnInjectPublished(
           objectivesForFactors,
           singleInjectContext,
           mergedFactors,
-          env.openAiApiKey,
+          env.openAiApiKey ?? '',
           teamFocusContext,
         );
         deEscalationFactors = deEscResult.factors;

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { createHash } from 'crypto';
 
@@ -197,8 +198,8 @@ class StatementWatchdogService {
       return;
     }
 
-    if (!env.openAiApiKey) {
-      logger.warn('OpenAI API key not configured, statement watchdog will not run');
+    if (!env.aiEnabled) {
+      logger.warn('AI provider not configured, statement watchdog will not run');
       return;
     }
 
@@ -477,40 +478,15 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
   }
 
   private async callAI(userPrompt: string): Promise<WatchdogResult | null> {
-    if (!env.openAiApiKey) return null;
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${env.openAiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: 'gpt-5.2',
-          messages: [
-            { role: 'system', content: SYSTEM_PROMPT },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.6,
-          max_completion_tokens: 10000,
-          response_format: { type: 'json_object' },
-        }),
-      });
-
-      if (!response.ok) {
-        logger.warn({ status: response.status }, 'Statement watchdog LLM call failed');
-        return null;
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
-      if (!content) return null;
-
-      return JSON.parse(content) as WatchdogResult;
-    } catch (err) {
-      logger.error({ error: err }, 'Statement watchdog AI call error');
-      return null;
-    }
+    if (!env.aiEnabled) return null;
+    return chatJson<WatchdogResult>({
+      tier: 'standard',
+      messages: systemUser(SYSTEM_PROMPT, userPrompt),
+      json: true,
+      temperature: 0.6,
+      maxTokens: 10000,
+      label: 'statementWatchdog.review',
+    });
   }
 
   private async createChallengeCascade(

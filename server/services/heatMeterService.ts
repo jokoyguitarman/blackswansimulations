@@ -14,6 +14,7 @@ import { getWebSocketService } from './websocketService.js';
 import { publishInjectToSession } from '../routes/injects.js';
 import { shouldCancelScheduledInject } from './aiService.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import type { Server as IoServer } from 'socket.io';
 // PathwayOutcome type import removed — pathway system replaced by dynamic consequences
 
@@ -52,7 +53,6 @@ export async function updateTeamHeatMeter(
   sessionId: string,
   teamName: string,
   mistakeType: MistakeType,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _io?: IoServer | null,
 ): Promise<{ heat_percentage: number }> {
   const { data: session, error: sessErr } = await supabaseAdmin
@@ -147,8 +147,9 @@ export async function generateDecisionConsequence(
   io: IoServer,
   decisionText?: string,
 ): Promise<void> {
-  const apiKey = env.openAiApiKey;
-  if (!apiKey || !decisionText) return;
+  // Kept for the shouldCancelScheduledInject signature; provider selection lives in the client.
+  const apiKey = env.openAiApiKey ?? '';
+  if (!env.aiEnabled || !decisionText) return;
 
   try {
     const band = heatPercentageToRobustnessBand(heatPercentage);
@@ -227,42 +228,18 @@ ${factorSummary ? `CURRENT ESCALATION/DE-ESCALATION FACTORS:\n${factorSummary}` 
 
 Generate a consequence inject that describes what happens IN THE WORLD as a result of this team's decision. Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.7,
-        max_tokens: 350,
-      }),
+    // No response_format here (kept as before): the prompt asks for JSON and the client's
+    // tolerant parser strips fences.
+    const parsed = await chatJson<{ title?: string; content?: string; severity?: string }>({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, userPrompt),
+      json: false,
+      temperature: 0.7,
+      maxTokens: 350,
+      label: 'heatMeter.decisionConsequence',
     });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'Decision consequence: OpenAI API error');
-      return;
-    }
-
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = json.choices?.[0]?.message?.content?.trim() ?? '';
-    const cleaned = raw
-      .replace(/```json\s*/g, '')
-      .replace(/```/g, '')
-      .trim();
-
-    let parsed: { title?: string; content?: string; severity?: string };
-    try {
-      parsed = JSON.parse(cleaned) as { title?: string; content?: string; severity?: string };
-    } catch {
-      logger.warn({ raw: cleaned.slice(0, 200) }, 'Decision consequence: failed to parse JSON');
+    if (!parsed) {
+      logger.warn('Decision consequence: AI call failed or returned no JSON');
       return;
     }
 
@@ -481,8 +458,7 @@ export async function evaluateMediaScript(
     editor_name: 'Chief Editor M. Torres',
   };
 
-  const apiKey = env.openAiApiKey;
-  if (!apiKey) return fallback;
+  if (!env.aiEnabled) return fallback;
 
   try {
     const previousBlock =
@@ -548,39 +524,18 @@ export async function evaluateMediaScript(
 
     const userPrompt = `Review this draft public statement:\n\n${scriptContent.slice(0, 1500)}`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a crisis communications editorial reviewer. Return valid JSON only.',
-          },
-          { role: 'user', content: systemPrompt + '\n\n' + userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 600,
-        response_format: { type: 'json_object' },
-      }),
+    const parsed = await chatJson<Record<string, unknown>>({
+      tier: 'fast',
+      messages: systemUser(
+        'You are a crisis communications editorial reviewer. Return valid JSON only.',
+        systemPrompt + '\n\n' + userPrompt,
+      ),
+      json: true,
+      temperature: 0.3,
+      maxTokens: 600,
+      label: 'heatMeter.evaluateMediaScript',
     });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'evaluateMediaScript: OpenAI API error');
-      return fallback;
-    }
-
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) return fallback;
-
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    if (!parsed) return fallback;
 
     const score =
       typeof parsed.score === 'number' ? Math.min(10, Math.max(1, Math.round(parsed.score))) : 7;
@@ -692,36 +647,18 @@ async function evaluateMediaTone(
       '{ "reassurance": number, "factual": number, "empathy": number, "guidance": number, "transparency": number, "delta": number, "label": "1-3 word summary", "reason": "1 sentence explanation" }',
     ].join('\n');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: 'You evaluate crisis communications quality. Return valid JSON only.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 300,
-        response_format: { type: 'json_object' },
-      }),
+    const parsed = await chatJson<Record<string, unknown>>({
+      tier: 'fast',
+      messages: systemUser(
+        'You evaluate crisis communications quality. Return valid JSON only.',
+        prompt,
+      ),
+      json: true,
+      temperature: 0.2,
+      maxTokens: 300,
+      label: 'heatMeter.evaluateMediaTone',
     });
-
-    if (!response.ok) return fallback;
-
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) return fallback;
-
-    const parsed = JSON.parse(content) as Record<string, unknown>;
+    if (!parsed) return fallback;
     const delta =
       typeof parsed.delta === 'number' ? Math.min(2, Math.max(-2, parsed.delta)) : fallbackDelta;
     const label = typeof parsed.label === 'string' ? parsed.label : fallback.label;

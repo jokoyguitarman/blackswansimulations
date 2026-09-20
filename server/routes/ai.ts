@@ -40,8 +40,8 @@ router.post(
         return res.status(403).json({ error: 'Only trainers can generate scenarios with AI' });
       }
 
-      if (!env.openAiApiKey) {
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) {
+        return res.status(500).json({ error: 'AI provider not configured' });
       }
 
       logger.info(
@@ -57,7 +57,7 @@ router.post(
           context,
           specific_requirements,
         },
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       );
 
       logger.info({ userId: user.id }, 'Scenario generated successfully');
@@ -90,6 +90,8 @@ router.post(
   raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }),
   async (req: AuthenticatedRequest, res) => {
     try {
+      // Speech-to-text still calls OpenAI Whisper directly until the Amazon Transcribe swap
+      // (docs/AWS_BEDROCK_MIGRATION_v2.md §7.5), so this gate stays on the OpenAI key.
       if (!env.openAiApiKey) {
         return res.status(500).json({ error: 'OpenAI API key not configured' });
       }

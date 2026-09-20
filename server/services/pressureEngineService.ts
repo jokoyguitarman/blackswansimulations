@@ -155,7 +155,7 @@ async function loadEnginePages(sessionId: string): Promise<PageRow[]> {
 }
 
 export async function runPressureEngine(sessionId: string, elapsedMinutes: number): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
   if (elapsedMinutes < 8) return;
 
   const pageRows = await loadEnginePages(sessionId);

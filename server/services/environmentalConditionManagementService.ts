@@ -9,6 +9,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { getWebSocketService } from './websocketService.js';
+import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 interface UnmanagedCondition {
   type: 'route' | 'location';
@@ -155,7 +157,7 @@ async function evaluateConditionsAddressed(
   sectorStandards: string | undefined,
   decisionTitle: string,
   decisionDescription: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<Array<{ type: 'route' | 'location'; id: string }>> {
   const conditionsList = conditions
     .map(
@@ -187,36 +189,17 @@ Decision description: ${decisionDescription}
 Which conditions were credibly addressed (concrete, sector-appropriate proposal)? Return JSON only.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 300,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in evaluateConditionsAddressed');
-      return [];
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return [];
-
-    const parsed = JSON.parse(content) as {
+    const parsed = await chatJson<{
       conditions_addressed?: Array<{ type?: string; id?: string }>;
-    };
+    }>({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, userPrompt),
+      json: true,
+      temperature: 0.2,
+      maxTokens: 300,
+      label: 'environmentalConditions.evaluateAddressed',
+    });
+    if (!parsed) return [];
     const addressed = Array.isArray(parsed.conditions_addressed) ? parsed.conditions_addressed : [];
     const validIds = new Set(conditions.map((c) => c.id));
 
@@ -355,7 +338,7 @@ export async function evaluateEnvironmentalManagementIntentAndUpdateState(
   decision: { id: string; title: string; description: string; type: string | null },
   openAiApiKey: string | undefined,
 ): Promise<void> {
-  if (!openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   const built = await buildUnmanagedConditions(sessionId);
   if (!built || built.conditions.length === 0) return;
@@ -383,7 +366,7 @@ export async function evaluateEnvironmentalManagementIntentAndUpdateState(
     sectorStandards,
     decision.title ?? '',
     decision.description ?? '',
-    openAiApiKey,
+    openAiApiKey ?? '',
   );
 
   if (conditionsAddressed.length === 0) return;

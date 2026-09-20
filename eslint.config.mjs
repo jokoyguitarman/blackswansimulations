@@ -18,5 +18,12 @@ export default tseslint.config(js.configs.recommended, ...tseslint.configs.recom
       project: './tsconfig.json',
     },
   },
-  rules: {},
+  rules: {
+    // Underscore-prefixed parameters are intentional no-ops (e.g. the `_openAiApiKey`
+    // parameters kept for call-site compatibility during the AI provider migration).
+    '@typescript-eslint/no-unused-vars': [
+      'error',
+      { args: 'after-used', argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+    ],
+  },
 });

@@ -263,8 +263,8 @@ export class AIInjectSchedulerService {
       return;
     }
 
-    if (!env.openAiApiKey) {
-      logger.warn('OpenAI API key not configured, AI inject scheduler will not run');
+    if (!env.aiEnabled) {
+      logger.warn('AI provider not configured, AI inject scheduler will not run');
       return;
     }
 
@@ -650,7 +650,7 @@ export class AIInjectSchedulerService {
     let latestRobustnessByDecision: Record<string, number> | null = null;
 
     // Inter-team impact matrix: write a row every cycle (Checkpoint 6). With decisions: call AI; without: empty row + response_taxonomy
-    if (env.openAiApiKey) {
+    if (env.aiEnabled) {
       try {
         await supabaseAdmin.from('session_events').insert({
           session_id: session.id,
@@ -704,7 +704,7 @@ export class AIInjectSchedulerService {
           const impactResult = await computeInterTeamImpactMatrix(
             teamsArray,
             decisionsWithTeam,
-            env.openAiApiKey,
+            env.openAiApiKey ?? '',
             scenarioContext,
             escalationFactorsSnapshot.length > 0 ? escalationFactorsSnapshot : undefined,
             undefined, // pathways removed — consequences generated per-decision
@@ -829,7 +829,7 @@ export class AIInjectSchedulerService {
       const sentimentResult = await computePublicSentiment(
         stateSummary,
         mediaSummary,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         previousSentiment,
         mediaProtocolScore,
       );
@@ -929,7 +929,7 @@ export class AIInjectSchedulerService {
       // Decision consequences now fire per-decision via generateDecisionConsequence
       // in decisions.ts / demoActionDispatcher.ts. Here we generate supplementary
       // situation-development injects based on overall team activity.
-      if (env.openAiApiKey) {
+      if (env.aiEnabled) {
         await supabaseAdmin.from('session_events').insert({
           session_id: session.id,
           event_type: 'ai_step_start',
@@ -957,7 +957,7 @@ export class AIInjectSchedulerService {
           if (teamResult) generatedThisCycle.push(teamResult);
         }
       }
-      if (env.openAiApiKey) {
+      if (env.aiEnabled) {
         await supabaseAdmin.from('session_events').insert({
           session_id: session.id,
           event_type: 'ai_step_end',
@@ -971,7 +971,7 @@ export class AIInjectSchedulerService {
       // Skip penalty if no team had actionable incidents – they had nothing to respond to
       const anyTeamHadActionable = teamsWithActionable.size > 0;
       if (anyTeamHadActionable) {
-        if (env.openAiApiKey) {
+        if (env.aiEnabled) {
           await supabaseAdmin.from('session_events').insert({
             session_id: session.id,
             event_type: 'ai_step_start',
@@ -987,7 +987,7 @@ export class AIInjectSchedulerService {
             'Generate an inject that reflects escalation or deterioration due to the lack of any team response in the last 5 minutes.',
         };
         await this.generateUniversalInject(session, inactionContext, []);
-        if (env.openAiApiKey) {
+        if (env.aiEnabled) {
           await supabaseAdmin.from('session_events').insert({
             session_id: session.id,
             event_type: 'ai_step_end',
@@ -1046,7 +1046,7 @@ export class AIInjectSchedulerService {
         type: primaryDecision.type as string,
       },
       universalContext as Parameters<typeof generateInjectFromDecision>[1],
-      env.openAiApiKey!,
+      env.openAiApiKey ?? '',
     );
 
     if (!generatedInject) {
@@ -1175,7 +1175,7 @@ export class AIInjectSchedulerService {
         type: primaryDecision.type as string,
       },
       teamContext as Parameters<typeof generateInjectFromDecision>[1],
-      env.openAiApiKey!,
+      env.openAiApiKey ?? '',
     );
 
     if (!generatedInject) {
@@ -1251,7 +1251,7 @@ export class AIInjectSchedulerService {
     matrix: Record<string, Record<string, number>> | null | undefined,
     alreadyGenerated: Array<{ title: string; content: string }>,
   ): Promise<void> {
-    if (!matrix || !env.openAiApiKey) return;
+    if (!matrix || !env.aiEnabled) return;
 
     // Extract all negative pairs, sorted by magnitude (most negative first)
     const negativePairs: Array<{ acting: string; affected: string; score: number }> = [];
@@ -1312,7 +1312,7 @@ export class AIInjectSchedulerService {
           type: 'coordination_order',
         },
         frictionContext as Parameters<typeof generateInjectFromDecision>[1],
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       );
 
       if (!generatedInject) {

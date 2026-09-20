@@ -115,7 +115,7 @@ export async function runScenarioDirector(
   sessionId: string,
   elapsedMinutes: number,
 ): Promise<void> {
-  if (!env.enableScenarioDirector || !env.openAiApiKey) return;
+  if (!env.enableScenarioDirector || !env.aiEnabled) return;
 
   const { data: sessionRow } = await supabaseAdmin
     .from('sessions')
