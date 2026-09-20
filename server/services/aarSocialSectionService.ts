@@ -24,9 +24,12 @@ export const SOCIAL_AAR_SECTION_KEYS = [
   'social_public_comms',
   'social_team_executive',
   'social_team_communications',
+  'social_team_shareholder',
+  'social_team_stakeholder',
+  'social_team_legal',
+  // retired presets — only emitted for scenarios compiled before Sep 2026
   'social_team_procurement',
   'social_team_sales',
-  'social_team_legal',
   'social_team_other',
   'social_information_flow',
   'social_misinformation',
@@ -46,9 +49,11 @@ export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_public_comms: 'Public communications review',
   social_team_executive: 'Team deep-dive: Executive',
   social_team_communications: 'Team deep-dive: Communications',
+  social_team_shareholder: 'Team deep-dive: Shareholder Engagement',
+  social_team_stakeholder: 'Team deep-dive: Stakeholder Engagement',
+  social_team_legal: 'Team deep-dive: Legal',
   social_team_procurement: 'Team deep-dive: Procurement',
   social_team_sales: 'Team deep-dive: Sales',
-  social_team_legal: 'Team deep-dive: Legal',
   social_team_other: 'Team deep-dive: other teams',
   social_information_flow: 'Cross-team information flow',
   social_misinformation: 'Misinformation and moderation',
@@ -66,9 +71,12 @@ export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
 const TEAM_SECTION_BY_FUNCTION: Record<string, SocialAARSectionKey> = {
   Executive: 'social_team_executive',
   Communications: 'social_team_communications',
+  'Shareholder Engagement': 'social_team_shareholder',
+  'Stakeholder Engagement': 'social_team_stakeholder',
+  Legal: 'social_team_legal',
+  // retired presets keep their own sections so legacy scenarios review unchanged
   Procurement: 'social_team_procurement',
   Sales: 'social_team_sales',
-  Legal: 'social_team_legal',
 };
 
 function teamSectionFor(teamFunction: string): SocialAARSectionKey {
@@ -86,6 +94,10 @@ const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
     "This is the dedicated review of the EXECUTIVE team (leadership). Using their recorded decisions (leadership_decisions: what was decided, when, scope and rationale), the chain of command (should_inform), the obligations each decision created and whether they were met or lapsed, the eruptions that followed, and any artifacts or messages they produced: state clearly (1) whether decisions were timely, scoped and explained, (2) whether the right functions were looped in and the obligations honoured, (3) what they should have done differently, and (4) one note per member. If several organisations are present (teams[]), assess each organisation's executive team separately and then compare. Cite T+ times.",
   social_team_communications:
     'This is the dedicated review of the COMMUNICATIONS team. Using their complete task record, artifacts with grades, member ledger, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Quote specific artifacts with T+ times and scores. Coaching tone, specific and fair.',
+  social_team_shareholder:
+    'This is the dedicated review of the SHAREHOLDER ENGAGEMENT team (investor relations: shareholders, board, analysts, lenders). Using their complete task record, investor-facing artifacts with grades, member ledger, intel they held/shared, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Assess disclosure discipline (nothing selective, nothing forward-looking beyond confirmed facts), factual precision, calm authority, and whether material developments were escalated and relayed to the teams that needed them. Cite T+ times.',
+  social_team_stakeholder:
+    'This is the dedicated review of the STAKEHOLDER ENGAGEMENT team (customers, clients, partners, suppliers, affected communities). Using their complete task record, stakeholder-facing artifacts with grades, member ledger, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Assess empathy, honesty of expectations, de-escalation, escalation discipline, and consistency with the official line. Cite T+ times.',
   social_team_procurement:
     'This is the dedicated review of the PROCUREMENT team. Using their complete task record, artifacts with grades, member ledger, intel they held/shared, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Pay special attention to whether verified facts they received were relayed to teams that needed them. Cite T+ times.',
   social_team_sales:
@@ -93,7 +105,7 @@ const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
   social_team_legal:
     'This is the dedicated review of the LEGAL team. Using their complete task record, regulator/dispute artifacts with grades, member ledger, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Assess review timeliness, dispute quality, and risk flagging. Cite T+ times.',
   social_team_other:
-    'This is the dedicated review of the teams outside the four preset functions (teams[] — one block per team, e.g. Fleet Operations, Driver Relations, Investigations). For EACH team, using its mission, complete task record, artifacts with grades, member ledger and role-fit signals: state clearly (1) what it did well, (2) what it should have done differently, and (3) one member-level note per member. Judge each team against its own charter, not against the preset functions. Cite T+ times.',
+    'This is the dedicated review of the teams outside the preset functions (teams[] — one block per team, e.g. Fleet Operations, Driver Relations, Investigations). For EACH team, using its mission, complete task record, artifacts with grades, member ledger and role-fit signals: state clearly (1) what it did well, (2) what it should have done differently, and (3) one member-level note per member. Judge each team against its own charter, not against the preset functions. Cite T+ times.',
   social_information_flow:
     'Assess how information moved (or failed to move) across teams: every intel dependency with its holder, deadline, share time and consequence; email/chat coordination volume; escalations. Connect withheld or late intel to the public consequences it caused. Name the strongest and weakest handoff.',
   social_misinformation:

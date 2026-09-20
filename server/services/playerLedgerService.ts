@@ -41,7 +41,7 @@ export interface LedgerEntry {
 export interface LedgerPlayer {
   player_id: string;
   display_name: string;
-  /** Fixed-team membership (Communications/Procurement/Sales/Legal) or null when unassigned. */
+  /** Team membership (preset or custom team name) or null when unassigned. */
   team_name: string | null;
   entries: LedgerEntry[];
 }

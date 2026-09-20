@@ -89,9 +89,9 @@ export interface SocialInjectDeliveryConfig {
   detection_keywords?: string[];
   intel_summary?: string;
   // Stakeholder routing (emails only): the team that owns this stakeholder
-  // relationship (customer mail -> Sales, supplier mail -> Procurement,
-  // press -> Communications, regulators -> Legal). Universal emails carrying
-  // this land only in that team's inboxes at runtime.
+  // relationship (customer/partner mail -> Stakeholder Engagement, investor mail ->
+  // Shareholder Engagement, press -> Communications, regulators -> Legal). Universal
+  // emails carrying this land only in that team's inboxes at runtime.
   stakeholder_team?: string;
   // ─── Contract §4 / §4.1 / §7A (generator writes, runtime reads) ───
   /** Stakeholder.id of the character issuing this inject (social post, email, phone call, news). */
@@ -723,9 +723,10 @@ export async function adaptTeamCharters(
 
   const roleSummary: Record<string, string> = {
     Communications: 'public-facing communication (feed + press)',
-    Procurement:
-      'suppliers and supply chain / operational partners (adapt to vendors/partners if the org has no physical supply chain)',
-    Sales: 'direct customer/client expectation management',
+    'Shareholder Engagement':
+      'shareholders, board, analysts and lenders — confidence and disclosure discipline (adapt to owners, funders, or the oversight body if the organisation has no shareholders)',
+    'Stakeholder Engagement':
+      'direct relationships with customers/clients, partners, suppliers and affected communities — expectation management one conversation at a time',
     Legal: 'legal counsel, review, regulators, disputes',
   };
 

@@ -241,9 +241,13 @@ interface IntelStatusRow {
 
 const TEAM_COLOR: Record<string, string> = {
   Communications: '#3b82f6',
+  'Shareholder Engagement': '#D97706',
+  'Stakeholder Engagement': '#15803D',
+  Legal: '#1E3A5F',
+  Executive: '#5E5CE6',
+  // retired presets (legacy scenarios)
   Procurement: '#D97706',
   Sales: '#15803D',
-  Legal: '#1E3A5F',
 };
 const teamColor = (name: string | null | undefined): string =>
   (name && TEAM_COLOR[name]) || '#64748b';

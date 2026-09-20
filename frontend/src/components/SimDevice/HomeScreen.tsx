@@ -140,10 +140,13 @@ interface TeamBriefing {
 
 const TEAM_ICON: Record<string, string> = {
   Communications: '📣',
-  Procurement: '📦',
-  Sales: '🤝',
+  'Shareholder Engagement': '📈',
+  'Stakeholder Engagement': '🤝',
   Legal: '⚖️',
   Executive: '🏛️',
+  // retired presets (legacy scenarios)
+  Procurement: '📦',
+  Sales: '🤝',
 };
 
 function teamIcon(team: Pick<TeamBriefing, 'team_name' | 'function_key'>): string {
@@ -287,8 +290,9 @@ export default function HomeScreen() {
     checkDemographics();
   }, [checkDemographics]);
 
-  // Load the player's team briefing (fixed teams: Communications, Procurement,
-  // Sales, Legal). Null when unassigned — the widget simply doesn't render.
+  // Load the player's team briefing (preset teams: Communications, Shareholder
+  // Engagement, Stakeholder Engagement, Legal, Executive — or a custom team).
+  // Null when unassigned — the widget simply doesn't render.
   useEffect(() => {
     if (!sessionId) return;
     let cancelled = false;

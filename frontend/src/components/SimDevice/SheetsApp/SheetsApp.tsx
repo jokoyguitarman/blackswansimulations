@@ -176,7 +176,7 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
           <input
             value={teamFilter}
             onChange={(e) => setTeamFilter(e.target.value)}
-            placeholder="function, e.g. Sales"
+            placeholder="function, e.g. Stakeholder Engagement"
             style={{
               font: 'inherit',
               padding: '3px 6px',

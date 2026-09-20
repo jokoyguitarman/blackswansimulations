@@ -5,16 +5,39 @@ import { resolveTeamFunction } from '../lib/stakeholderContract.js';
 /**
  * Fixed team catalog for the social media crisis module.
  *
- * The four team names are a closed set: every downstream consumer (assignment,
- * routing, grading, scoring, dashboards) validates against this catalog or the
- * scenario's persisted scenario_teams rows. Charters are copied onto
- * scenario_teams at compile time so trainers can tweak wording per scenario
- * without code changes; the catalog entries below are the canonical defaults.
+ * The four preset team names are a closed set: every downstream consumer
+ * (assignment, routing, grading, scoring, dashboards) validates against this
+ * catalog or the scenario's persisted scenario_teams rows. Charters are copied
+ * onto scenario_teams at compile time so trainers can tweak wording per
+ * scenario without code changes; the catalog entries below are the canonical
+ * defaults.
+ *
+ * History: the presets were Communications / Procurement / Sales / Legal until
+ * Sep 2026, when Procurement became Shareholder Engagement (investors, board,
+ * analysts) and Sales became Stakeholder Engagement (customers, partners,
+ * suppliers, communities). Scenarios compiled with the old names keep working:
+ * their rows carry their own charters, and the old catalog entries remain
+ * resolvable via LEGACY_TEAM_CATALOG / getCatalogCharter().
  */
 
-export const FIXED_TEAM_NAMES = ['Communications', 'Procurement', 'Sales', 'Legal'] as const;
+export const FIXED_TEAM_NAMES = [
+  'Communications',
+  'Shareholder Engagement',
+  'Stakeholder Engagement',
+  'Legal',
+] as const;
 
 export type FixedTeamName = (typeof FIXED_TEAM_NAMES)[number];
+
+/** Preset names retired in Sep 2026; still valid function keys on already-compiled scenarios. */
+export const LEGACY_TEAM_NAMES = ['Procurement', 'Sales'] as const;
+export type LegacyTeamName = (typeof LEGACY_TEAM_NAMES)[number];
+
+/** Which current preset a retired name corresponds to (for colours, icons, AAR grouping). */
+export const LEGACY_FUNCTION_ALIASES: Record<LegacyTeamName, FixedTeamName> = {
+  Procurement: 'Shareholder Engagement',
+  Sales: 'Stakeholder Engagement',
+};
 
 /**
  * The closed vocabulary of detectable player actions (mirrors the
@@ -256,14 +279,197 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
       'Judge as public-facing crisis communication: empathetic, authoritative tone; only verified facts; no amplification of harmful content; clear calls to action; timeliness of the official response. Penalise defensiveness, speculation, and quoting harmful claims verbatim.',
     out_of_lane: [
       'Making legal commitments or admissions — route to Legal for review first',
-      'Promising specific remedies to individual customers — that is Sales territory',
-      'Negotiating with suppliers — hand to Procurement',
+      'Promising specific remedies to individual customers or partners — that is Stakeholder Engagement territory',
+      'Speaking for the organisation to investors, analysts, or the board — hand to Shareholder Engagement',
     ],
     min_participants: 1,
     max_participants: 4,
     can_post_publicly: true,
     sentiment_dimension: 'narrative_control',
   },
+  'Shareholder Engagement': {
+    team_name: 'Shareholder Engagement',
+    mission:
+      'Protect the confidence of the people who own and fund the organisation. You are its voice to shareholders, the board, analysts, and lenders while the crisis unfolds — factual, disciplined, and never ahead of what has been confirmed.',
+    responsibilities: [
+      'Respond to shareholder, analyst, lender, and board emails and calls during the crisis',
+      'Verify every financial or operational claim against the confirmed fact sheet before it reaches an investor',
+      'Keep disclosure discipline: no selective disclosure, no forward-looking guarantees, no material information shared with one investor and not others',
+      'Track what the market and financial press are saying and brief the wider team on confidence risks',
+      'Coordinate with Legal before any statement that could count as a material announcement',
+      'Relay information you receive that other teams need, and ask them for what you are missing',
+    ],
+    expected_actions: [
+      {
+        action_id: 'shareholder_investor_response',
+        description: 'Respond to shareholder, analyst, lender, and board emails',
+        detection_action_type: 'email_sent',
+        timing_benchmark_minutes: 20,
+        weight: 35,
+        tier: 2,
+      },
+      {
+        action_id: 'shareholder_read_intel',
+        description: 'Read incoming investor, board, and market emails promptly',
+        detection_action_type: 'email_read',
+        timing_benchmark_minutes: 10,
+        weight: 15,
+        tier: 1,
+      },
+      {
+        action_id: 'shareholder_fact_check',
+        description:
+          'Verify financial and operational claims against confirmed facts before briefing investors',
+        detection_action_type: 'fact_checked',
+        timing_benchmark_minutes: 25,
+        weight: 25,
+        tier: 2,
+      },
+      {
+        action_id: 'shareholder_escalate',
+        description: 'Escalate material developments and disclosure risks to the wider team',
+        detection_action_type: 'chat_message_sent',
+        timing_benchmark_minutes: 30,
+        weight: 25,
+        tier: 3,
+      },
+    ],
+    scoring_rubric:
+      'Judge as investor-relations communication: factual precision, disclosure discipline (nothing selective, nothing forward-looking that is not confirmed), calm authority, and consistency with the official line. Reward accurate framing of material impact and realistic timelines. Heavily penalise guarantees about share price, dividends, or recovery, unverified financial figures, and telling one investor something others have not been told.',
+    out_of_lane: [
+      'Posting on public social media — escalate facts to Communications instead',
+      'Legal interpretation of disclosure obligations or contracts — route to Legal',
+      'Promises to customers, partners, or communities — that is Stakeholder Engagement territory',
+    ],
+    min_participants: 1,
+    max_participants: 3,
+    can_post_publicly: false,
+    sentiment_dimension: 'community_safety',
+  },
+  'Stakeholder Engagement': {
+    team_name: 'Stakeholder Engagement',
+    mission:
+      'Manage the organisation\u2019s direct relationships under pressure: customers and clients, partners and suppliers, and the communities affected. You are the human face of the organisation, one conversation at a time.',
+    responsibilities: [
+      'Reply to customer, client, partner, and community direct messages and comments',
+      'Answer stakeholder emails with honest expectations — never over-promise',
+      'Stay consistent with the official line from Communications',
+      'Escalate complaints and demands that carry legal risk to Legal',
+      'De-escalate angry stakeholders with empathy and verified facts',
+      'Relay information you receive that other teams need, and ask them for what you are missing',
+    ],
+    expected_actions: [
+      {
+        action_id: 'stakeholder_dm_response',
+        description: 'Respond to customer, partner, and community direct messages',
+        detection_action_type: 'dm_sent',
+        timing_benchmark_minutes: 15,
+        weight: 30,
+        tier: 1,
+      },
+      {
+        action_id: 'stakeholder_comment_response',
+        description: 'Reply to stakeholder comments and complaints on the feed',
+        detection_action_type: 'reply_posted',
+        timing_benchmark_minutes: 20,
+        weight: 30,
+        tier: 2,
+      },
+      {
+        action_id: 'stakeholder_email_response',
+        description: 'Answer customer, partner, and community emails',
+        detection_action_type: 'email_sent',
+        timing_benchmark_minutes: 25,
+        weight: 20,
+        tier: 2,
+      },
+      {
+        action_id: 'stakeholder_escalate',
+        description: 'Escalate legal-risk complaints and unmet demands to the wider team',
+        detection_action_type: 'chat_message_sent',
+        timing_benchmark_minutes: 30,
+        weight: 20,
+        tier: 3,
+      },
+    ],
+    scoring_rubric:
+      'Judge as direct stakeholder communication: empathy first, honest expectation-setting, consistency with the official organisational line, and de-escalation skill across customers, partners, and affected communities. Penalise over-promising (refunds, timelines, guarantees not confirmed in the fact sheet), dismissiveness, and contradicting official messaging.',
+    out_of_lane: [
+      'Publishing official statements — that is Communications territory',
+      'Admitting fault or liability — route to Legal first',
+      'Speaking to investors, analysts, or the board — that is Shareholder Engagement territory',
+    ],
+    min_participants: 1,
+    max_participants: 3,
+    can_post_publicly: false,
+    sentiment_dimension: 'public_trust',
+  },
+  Legal: {
+    team_name: 'Legal',
+    mission:
+      'You are the organisation\u2019s legal counsel. You protect the organisation from legal exposure while the crisis unfolds.',
+    responsibilities: [
+      'Review public drafts before anything is published',
+      'Respond to regulator and legal-threat emails',
+      'File fact-based disputes and takedown requests on provably false content',
+      'Flag any public messaging that admits liability',
+      'Advise the other teams on legal risk in their channels',
+      'Relay information you receive that other teams need, and ask them for what you are missing',
+    ],
+    expected_actions: [
+      {
+        action_id: 'legal_regulator_response',
+        description: 'Respond to regulator and legal-threat emails',
+        detection_action_type: 'email_sent',
+        timing_benchmark_minutes: 25,
+        weight: 30,
+        tier: 2,
+      },
+      {
+        action_id: 'legal_dispute',
+        description: 'File a fact-based dispute or takedown on provably false content',
+        detection_action_type: 'dispute_filed',
+        timing_benchmark_minutes: 35,
+        weight: 30,
+        tier: 3,
+      },
+      {
+        action_id: 'legal_fact_check',
+        description: 'Verify claims against the confirmed fact sheet before advising',
+        detection_action_type: 'fact_checked',
+        timing_benchmark_minutes: 20,
+        weight: 15,
+        tier: 1,
+      },
+      {
+        action_id: 'legal_review_drafts',
+        description: 'Review and approve team drafts before publication',
+        detection_action_type: 'draft_approved',
+        timing_benchmark_minutes: 30,
+        weight: 25,
+        tier: 2,
+      },
+    ],
+    scoring_rubric:
+      'Judge as legal counsel output: legal accuracy, precise risk flagging, protection of the organisation, and factual discipline. Reward identifying admissions of liability and defamation risks. Heavily penalise making public commitments, admissions of fault, or legal conclusions not supported by confirmed facts.',
+    out_of_lane: [
+      'Publishing public statements yourself — approve them, then Communications publishes',
+      'Making customer or partner service promises — that is Stakeholder Engagement territory',
+      'Investor and board communications — that is Shareholder Engagement territory',
+    ],
+    min_participants: 1,
+    max_participants: 2,
+    can_post_publicly: false,
+    sentiment_dimension: 'escalation_risk',
+  },
+};
+
+/**
+ * Retired presets, kept verbatim so scenarios compiled before the rename keep
+ * their exact scoring fallback. Not offered in the wizard; never used for new
+ * scenarios.
+ */
+export const LEGACY_TEAM_CATALOG: Record<LegacyTeamName, TeamCharter> = {
   Procurement: {
     team_name: 'Procurement',
     mission:
@@ -380,72 +586,28 @@ export const TEAM_CATALOG: Record<FixedTeamName, TeamCharter> = {
     can_post_publicly: false,
     sentiment_dimension: 'public_trust',
   },
-  Legal: {
-    team_name: 'Legal',
-    mission:
-      'You are the organisation\u2019s legal counsel. You protect the organisation from legal exposure while the crisis unfolds.',
-    responsibilities: [
-      'Review public drafts before anything is published',
-      'Respond to regulator and legal-threat emails',
-      'File fact-based disputes and takedown requests on provably false content',
-      'Flag any public messaging that admits liability',
-      'Advise the other teams on legal risk in their channels',
-      'Relay information you receive that other teams need, and ask them for what you are missing',
-    ],
-    expected_actions: [
-      {
-        action_id: 'legal_regulator_response',
-        description: 'Respond to regulator and legal-threat emails',
-        detection_action_type: 'email_sent',
-        timing_benchmark_minutes: 25,
-        weight: 30,
-        tier: 2,
-      },
-      {
-        action_id: 'legal_dispute',
-        description: 'File a fact-based dispute or takedown on provably false content',
-        detection_action_type: 'dispute_filed',
-        timing_benchmark_minutes: 35,
-        weight: 30,
-        tier: 3,
-      },
-      {
-        action_id: 'legal_fact_check',
-        description: 'Verify claims against the confirmed fact sheet before advising',
-        detection_action_type: 'fact_checked',
-        timing_benchmark_minutes: 20,
-        weight: 15,
-        tier: 1,
-      },
-      {
-        action_id: 'legal_review_drafts',
-        description: 'Review and approve team drafts before publication',
-        detection_action_type: 'draft_approved',
-        timing_benchmark_minutes: 30,
-        weight: 25,
-        tier: 2,
-      },
-    ],
-    scoring_rubric:
-      'Judge as legal counsel output: legal accuracy, precise risk flagging, protection of the organisation, and factual discipline. Reward identifying admissions of liability and defamation risks. Heavily penalise making public commitments, admissions of fault, or legal conclusions not supported by confirmed facts.',
-    out_of_lane: [
-      'Publishing public statements yourself — approve them, then Communications publishes',
-      'Making customer service promises — that is Sales territory',
-      'Operational supplier decisions — that is Procurement territory',
-    ],
-    min_participants: 1,
-    max_participants: 2,
-    can_post_publicly: false,
-    sentiment_dimension: 'escalation_risk',
-  },
 };
 
 export function isKnownTeam(name: string): name is FixedTeamName {
   return (FIXED_TEAM_NAMES as readonly string[]).includes(name);
 }
 
+export function isLegacyTeam(name: string): name is LegacyTeamName {
+  return (LEGACY_TEAM_NAMES as readonly string[]).includes(name);
+}
+
+/** Current preset name for a function: itself, its legacy alias's replacement, or null for custom. */
+export function canonicalPresetName(name: string): FixedTeamName | null {
+  if (isKnownTeam(name)) return name;
+  if (isLegacyTeam(name)) return LEGACY_FUNCTION_ALIASES[name];
+  return null;
+}
+
+/** Catalog charter for a current preset OR a retired one (legacy scenarios); null for custom teams. */
 export function getCatalogCharter(name: string): TeamCharter | null {
-  return isKnownTeam(name) ? TEAM_CATALOG[name] : null;
+  if (isKnownTeam(name)) return TEAM_CATALOG[name];
+  if (isLegacyTeam(name)) return LEGACY_TEAM_CATALOG[name];
+  return null;
 }
 
 /** TeamDef-compatible shape consumed by assemblePayload / persistence. */
@@ -486,9 +648,12 @@ export function benchmarksFromCharters(charters: TeamCharter[]): Array<{
 }> {
   const dimensionByTeam: Record<string, string> = {
     Communications: 'narrative_control',
+    'Shareholder Engagement': 'community_safety',
+    'Stakeholder Engagement': 'public_trust',
+    Legal: 'escalation_risk',
+    // retired presets (legacy scenarios)
     Procurement: 'community_safety',
     Sales: 'public_trust',
-    Legal: 'escalation_risk',
   };
 
   return charters.flatMap((charter) =>

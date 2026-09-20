@@ -117,7 +117,7 @@ async function getBalance(trainerId: string, type: 'scenario' | 'session'): Prom
 
 // ─── Compile payload (hand-built; charters provided so no charter AI call) ───
 
-const FIXED_TEAMS = ['Communications', 'Procurement', 'Sales', 'Legal'];
+const FIXED_TEAMS = ['Communications', 'Shareholder Engagement', 'Stakeholder Engagement', 'Legal'];
 
 function buildCompileBody() {
   const mkInject = (

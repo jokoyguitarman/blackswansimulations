@@ -1,12 +1,15 @@
 /** Team-function glyphs (by function_key, contract §5.2) and people avatars. */
 export const FUNCTION_ICON: Record<string, string> = {
   Communications: '📣',
-  Procurement: '📦',
-  Sales: '🤝',
+  'Shareholder Engagement': '📈',
+  'Stakeholder Engagement': '🤝',
   Legal: '⚖️',
   Executive: '🏛️',
   Investigations: '🔍',
   Operations: '🛠️',
+  // retired presets (legacy scenarios)
+  Procurement: '📦',
+  Sales: '🤝',
 };
 
 export const CHANNEL_TYPE_ICON: Record<string, string> = {

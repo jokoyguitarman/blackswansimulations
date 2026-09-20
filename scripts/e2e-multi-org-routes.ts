@@ -117,7 +117,10 @@ const validOrgs = [
     country: 'Malaysia',
     kind: 'office',
     is_primary: false,
-    team_roster: [{ team_name: 'Communications', is_public_voice: true }, { team_name: 'Sales' }],
+    team_roster: [
+      { team_name: 'Communications', is_public_voice: true },
+      { team_name: 'Stakeholder Engagement' },
+    ],
   },
 ];
 const base = {

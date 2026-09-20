@@ -1,6 +1,7 @@
 import {
-  TEAM_CATALOG,
   FIXED_TEAM_NAMES,
+  getCatalogCharter,
+  canonicalPresetName,
   type TeamCharter,
   type TeamExpectedAction,
 } from './teamCharterService.js';
@@ -250,13 +251,10 @@ export function isPresetFunction(name: string): boolean {
   return GENERATOR_PRESET_FUNCTIONS.includes(name);
 }
 
-/** Catalog charter for a function (runtime catalog or the Executive preset), else null. */
+/** Catalog charter for a function (runtime catalog incl. retired presets, or Executive), else null. */
 export function getCatalogCharterByFunction(functionKey: string): TeamCharter | null {
   if (functionKey === EXECUTIVE_FUNCTION) return EXECUTIVE_CHARTER;
-  if ((FIXED_TEAM_NAMES as readonly string[]).includes(functionKey)) {
-    return TEAM_CATALOG[functionKey as (typeof FIXED_TEAM_NAMES)[number]];
-  }
-  return null;
+  return getCatalogCharter(functionKey);
 }
 
 /** Catalog charter for a persisted team row via the contract's resolver. */
@@ -441,11 +439,14 @@ export function validateOrganisations(
     const seenFunctions = new Set<string>();
     let executiveCount = 0;
     for (const entry of roster) {
-      const name = String(entry.team_name || '').trim();
-      if (!name) {
+      const rawName = String(entry.team_name || '').trim();
+      if (!rawName) {
         fail('MO-TEAM-001', `${path}.team_roster`, 'Every team needs a name');
         continue;
       }
+      // Retired preset names (Procurement / Sales) from older drafts map to their replacements.
+      const legacyAlias = !entry.is_custom ? canonicalPresetName(rawName) : null;
+      const name = legacyAlias && legacyAlias !== rawName ? legacyAlias : rawName;
       const isCustom = !!entry.is_custom || !isPresetFunction(name);
       if (!!entry.is_custom && isPresetFunction(name)) {
         fail(

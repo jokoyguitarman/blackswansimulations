@@ -40,13 +40,40 @@ export interface CompetitorDraft {
   x_handle?: string;
 }
 
-export const PRESET_TEAM_NAMES = ['Communications', 'Procurement', 'Sales', 'Legal', 'Executive'];
+export const PRESET_TEAM_NAMES = [
+  'Communications',
+  'Shareholder Engagement',
+  'Stakeholder Engagement',
+  'Legal',
+  'Executive',
+];
+/** Retired preset names — legacy drafts resume with them mapped to the current presets. */
+export const LEGACY_PRESET_ALIASES: Record<string, string> = {
+  Procurement: 'Shareholder Engagement',
+  Sales: 'Stakeholder Engagement',
+};
+
+/** Rename retired preset entries in a saved roster (custom teams are left untouched). */
+export function migrateLegacyRoster(roster: RosterEntry[]): RosterEntry[] {
+  const seen = new Set<string>();
+  const out: RosterEntry[] = [];
+  for (const t of roster) {
+    const name =
+      !t.is_custom && LEGACY_PRESET_ALIASES[t.team_name]
+        ? LEGACY_PRESET_ALIASES[t.team_name]
+        : t.team_name;
+    if (!t.is_custom && seen.has(name)) continue; // two retired names mapping to one preset
+    seen.add(name);
+    out.push({ ...t, team_name: name });
+  }
+  return out;
+}
 export const EXECUTIVE_TEAM = 'Executive';
 
 export const DEFAULT_TEAM_ROSTER: RosterEntry[] = [
   'Communications',
-  'Procurement',
-  'Sales',
+  'Shareholder Engagement',
+  'Stakeholder Engagement',
   'Legal',
 ].map((n) => ({
   team_name: n,

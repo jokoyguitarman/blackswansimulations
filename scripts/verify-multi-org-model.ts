@@ -73,7 +73,7 @@ const orgsInput = [
     is_primary: false,
     team_roster: [
       { team_name: 'Communications' },
-      { team_name: 'Sales' },
+      { team_name: 'Stakeholder Engagement' },
       {
         team_name: 'Driver Relations',
         is_custom: true,
@@ -92,7 +92,8 @@ if (v.ok) {
   check('derived short name from initials', hq.short_name === 'SL', hq.short_name);
   check(
     'composed team names in multi-org',
-    hq.teams[0].team_name === 'Communications — SL' && my.teams[1].team_name === 'Sales — SLM',
+    hq.teams[0].team_name === 'Communications — SL' &&
+      my.teams[1].team_name === 'Stakeholder Engagement — SLM',
     `${hq.teams[0].team_name} / ${my.teams[1].team_name}`,
   );
   check(
@@ -129,6 +130,30 @@ if (v.ok) {
     countries.map((c) => `${c.name}:${c.code}`).join(' '),
   );
 }
+// Retired presets (Procurement / Sales) in older drafts map to their replacements server-side.
+const legacy = validateOrganisations(
+  [
+    {
+      display_name: 'Legacy Co',
+      country: 'Singapore',
+      is_primary: true,
+      team_roster: [
+        { team_name: 'Communications', is_public_voice: true },
+        { team_name: 'Procurement' },
+        { team_name: 'Sales' },
+      ],
+    },
+  ],
+  [],
+);
+check(
+  'legacy preset names alias to Shareholder/Stakeholder Engagement',
+  legacy.ok &&
+    legacy.orgs[0].teams.map((t) => t.function_key).join(',') ===
+      'Communications,Shareholder Engagement,Stakeholder Engagement' &&
+    legacy.orgs[0].teams.every((t) => !t.is_custom),
+  legacy.ok ? legacy.orgs[0].teams.map((t) => t.function_key).join(',') : legacy.message,
+);
 check(
   'single org keeps bare names',
   composeTeamName('Legal', { short_name: 'SL' }, false) === 'Legal',
@@ -369,9 +394,9 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
   const pureMy: Stakeholder = {
     ...pure,
     id: 'stk_slm_sales_desk',
-    name: 'Sales Desk',
+    name: 'Stakeholder Desk',
     organisation: 'Sigma Logistics Malaysia',
-    owning_team: 'Sales',
+    owning_team: 'Stakeholder Engagement',
     org_key: 'org_slm_my',
     email: 'sales.desk@slm.sim',
     handle: '@salesdesk_slm',
@@ -505,7 +530,7 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
       function_key: 'Communications',
     },
     {
-      team_name: 'Sales — SLM',
+      team_name: 'Stakeholder Engagement — SLM',
       mission: 'm',
       responsibilities: [],
       expected_actions: [],
@@ -514,7 +539,7 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
       min_participants: 1,
       max_participants: 4,
       org_key: 'org_slm_my',
-      function_key: 'Sales',
+      function_key: 'Stakeholder Engagement',
     },
   ];
   const legalPure: Stakeholder = {
@@ -623,8 +648,8 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
                 obligation_key: 'brief_staff',
                 description: 'Brief depot staff before external comms',
                 owed_to_stakeholder_ids: [pureMy.id],
-                owed_by_function: 'Sales',
-                by_function: 'Sales',
+                owed_by_function: 'Stakeholder Engagement',
+                by_function: 'Stakeholder Engagement',
                 window_minutes: 30,
                 detection: 'stakeholder_contacted',
               },
@@ -689,7 +714,7 @@ function expectCode(
 }
 expectPass('valid multi-org fixture passes');
 expectCode('MO-STK-001 owning_team not in org', 'MO-STK-001', (p) => {
-  p.scenario.initial_state.stakeholders![0].owning_team = 'Procurement';
+  p.scenario.initial_state.stakeholders![0].owning_team = 'Shareholder Engagement';
 });
 expectCode('MO-STK-002 stakeholder org_key is antagonist', 'MO-STK-002', (p) => {
   p.scenario.initial_state.stakeholders![0].org_key = 'org_antagonist_swift_freight_0';

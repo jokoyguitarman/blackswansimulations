@@ -314,8 +314,8 @@ router.post('/session/:sessionId/generate', requireAuth, async (req: Authenticat
       },
     };
 
-    // Social crisis sessions: final per-team debrief (fixed response teams —
-    // Communications, Procurement, Sales, Legal). Non-fatal if unavailable.
+    // Social crisis sessions: final per-team debrief (every scenario team — preset
+    // functions and custom teams alike). Non-fatal if unavailable.
     if (session.sim_mode === 'social_media') {
       try {
         const { computeTeamScores } = await import('../services/teamScoreService.js');

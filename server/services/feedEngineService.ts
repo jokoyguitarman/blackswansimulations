@@ -21,8 +21,9 @@ export interface DeliveryConfig {
   priority?: string;
   email_category?: string;
   /** Team that owns this stakeholder relationship — universal emails carrying
-   * this land only in that team's inboxes (customer mail -> Sales, supplier
-   * mail -> Procurement, press -> Communications, regulators -> Legal). */
+   * this land only in that team's inboxes (customer/partner mail -> Stakeholder
+   * Engagement, investor mail -> Shareholder Engagement, press -> Communications,
+   * regulators -> Legal). */
   stakeholder_team?: string;
   // News-specific
   outlet_name?: string;

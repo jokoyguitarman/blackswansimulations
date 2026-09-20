@@ -6,6 +6,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { insertTeamRowsWithOrgColumns } from './socialCrisisPersistenceService.js';
+import { getCatalogCharter } from './teamCharterService.js';
 import { refreshOsmVicinityForScenario } from './osmVicinityService.js';
 import type { WarroomScenarioPayload } from './warroomAiService.js';
 import { haversineM, circleToPolygon, pointInPolygon } from './geoUtils.js';
@@ -112,9 +113,7 @@ export async function persistWarroomScenario(
           // Contract §5.2: field-ops scenarios are single-org; function_key only when the
           // team is literally a catalog function (lets resolveTeamFunction pick icons/AAR).
           org_key: null,
-          function_key: ['Communications', 'Procurement', 'Sales', 'Legal'].includes(t.team_name)
-            ? t.team_name
-            : null,
+          function_key: getCatalogCharter(t.team_name) ? t.team_name : null,
         })),
         scenarioId,
       );

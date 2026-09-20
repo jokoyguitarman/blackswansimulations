@@ -8,6 +8,7 @@ import {
   CountrySelect,
   organisationsErrorFor,
   newOrganisationDraft,
+  migrateLegacyRoster,
   DEFAULT_TEAM_ROSTER,
   ORG_KIND_LABELS,
   type RosterEntry,
@@ -586,7 +587,7 @@ export const SocialCrisisWizard = () => {
         if (Array.isArray(input.team_charters))
           setTeamCharters(input.team_charters as TeamCharterWire[]);
         if (Array.isArray(input.team_roster) && input.team_roster.length > 0)
-          setTeamRoster(input.team_roster as RosterEntry[]);
+          setTeamRoster(migrateLegacyRoster(input.team_roster as RosterEntry[]));
         if (Array.isArray(input.shared_injects))
           setSharedInjects(input.shared_injects as SocialInject[]);
         if (Array.isArray(input.convergence_gates))
@@ -602,7 +603,10 @@ export const SocialCrisisWizard = () => {
         // Legacy drafts: "allied pages" become additional organisations in the primary's
         // country with the default roster; competitors gain the primary's country.
         const extras: OrganisationDraft[] = Array.isArray(input.extra_organisations)
-          ? (input.extra_organisations as OrganisationDraft[])
+          ? (input.extra_organisations as OrganisationDraft[]).map((o) => ({
+              ...o,
+              team_roster: migrateLegacyRoster(o.team_roster || []),
+            }))
           : [];
         if (extras.length === 0 && Array.isArray(input.ally_entries)) {
           for (const a of input.ally_entries as Array<{

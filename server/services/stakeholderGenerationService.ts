@@ -44,9 +44,12 @@ const MIN_PUBLIC_ERUPTION_MINUTES = 20;
 const RELATIONSHIPS_BY_FUNCTION: Record<string, StakeholderRelationship[]> = {
   Communications: ['media', 'community', 'internal'],
   Legal: ['regulator', 'partner', 'internal'],
+  'Shareholder Engagement': ['investor', 'partner', 'media', 'internal'],
+  'Stakeholder Engagement': ['client', 'community', 'supplier', 'partner', 'internal'],
+  Executive: ['investor', 'partner', 'regulator', 'internal'],
+  // retired presets (legacy scenarios re-generated through the editor)
   Procurement: ['supplier', 'partner', 'internal'],
   Sales: ['client', 'partner', 'internal'],
-  Executive: ['investor', 'partner', 'regulator', 'internal'],
 };
 
 const C_SUITE_TITLE =
@@ -640,6 +643,8 @@ function syntheticInternalContact(
   const roleByFunction: Record<string, string> = {
     Communications: 'Media Relations Coordinator',
     Legal: 'Legal Operations Analyst',
+    'Shareholder Engagement': 'Investor Relations Coordinator',
+    'Stakeholder Engagement': 'Customer & Partner Relations Lead',
     Procurement: 'Supplier Operations Coordinator',
     Sales: 'Customer Service Lead',
     [EXECUTIVE_FUNCTION]: 'Chief of Staff Office Coordinator',

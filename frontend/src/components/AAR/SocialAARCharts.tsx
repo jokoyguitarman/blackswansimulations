@@ -11,10 +11,13 @@ type SectionsMap = Record<string, { data: unknown; analysis: string | null }>;
 
 const TEAM_COLOR: Record<string, string> = {
   Communications: '#3b82f6',
-  Procurement: '#D97706',
-  Sales: '#15803D',
+  'Shareholder Engagement': '#D97706',
+  'Stakeholder Engagement': '#15803D',
   Legal: '#1E3A5F',
   Executive: '#5E5CE6',
+  // retired presets (legacy scenarios)
+  Procurement: '#D97706',
+  Sales: '#15803D',
 };
 /** Colour by team function when known (composed names like "Communications — PNP" resolve via function_key). */
 const teamColor = (nameOrFunction: unknown, functionKey?: unknown): string =>

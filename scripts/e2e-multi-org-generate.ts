@@ -72,7 +72,7 @@ const organisations = SINGLE
         team_roster: [
           { team_name: 'Communications', is_public_voice: true },
           { team_name: 'Legal' },
-          { team_name: 'Sales' },
+          { team_name: 'Stakeholder Engagement' },
           {
             team_name: 'Fleet Operations',
             is_custom: true,
@@ -110,7 +110,7 @@ const organisations = SINGLE
         is_primary: false,
         team_roster: [
           { team_name: 'Communications', is_public_voice: true },
-          { team_name: 'Sales' },
+          { team_name: 'Stakeholder Engagement' },
           {
             team_name: 'Driver Relations',
             is_custom: true,
