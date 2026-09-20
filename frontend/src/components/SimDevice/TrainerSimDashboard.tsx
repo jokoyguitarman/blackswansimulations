@@ -107,6 +107,230 @@ interface ConsequenceEvent {
   created_at: string;
 }
 
+/** Organic executive decision as returned by GET /sessions/:id/exec-decisions (plan §6.7). */
+interface ExecDecisionView {
+  id: string;
+  decision_key: string;
+  status: 'active' | 'dismissed' | 'reversed';
+  summary: string;
+  category: string;
+  confidence: number;
+  org_key: string | null;
+  detected_at_minute: number;
+  decided_by: { team: string | null; by_trainer: boolean };
+  told: Array<{ actor_kind: string; actor_id: string; label: string }>;
+  should_know: {
+    functions: string[];
+    stakeholders: Array<{ id: string; label: string; state: string; via: string | null }>;
+  };
+  knowledge: Array<{
+    actor_kind: string;
+    actor_id: string;
+    label: string;
+    state: string;
+    via: string | null;
+    at_minute: number;
+  }>;
+  reactions: Array<{
+    node_id: string;
+    actor_kind: string;
+    label: string;
+    channel: string;
+    title: string;
+    planned_minute: number;
+    fired_minute: number | null;
+    depth: number;
+  }>;
+  relays: Array<{
+    node_id: string;
+    carrier: string;
+    learners: string[];
+    planned_minute: number;
+    done: boolean;
+  }>;
+  notice: {
+    at_minute: number;
+    order_ok: boolean;
+    before_leak: boolean;
+    tone_grade: number | null;
+    coverage: number;
+  } | null;
+  sources: Array<{ ref_table: string; excerpt: string }>;
+  events: Array<{
+    id: string;
+    kind: string;
+    label: string | null;
+    at_minute: number;
+    summary: string;
+  }>;
+}
+
+const KNOWLEDGE_TONE: Record<string, string> = {
+  unaware: '#9CA3AF',
+  rumour: '#B45309',
+  informed: '#0369A1',
+  officially_notified: '#15803D',
+};
+
+function ExecDecisionCard({ d, onDismiss }: { d: ExecDecisionView; onDismiss: () => void }) {
+  const [open, setOpen] = useState(false);
+  const fired = d.reactions.filter((r) => r.fired_minute != null).length;
+  const gap = d.should_know.stakeholders.filter(
+    (s) => s.state === 'unaware' || s.state === 'rumour',
+  );
+  const tone = d.status === 'active' ? '#1E3A5F' : d.status === 'reversed' ? '#B45309' : '#9CA3AF';
+  return (
+    <div
+      className="rounded-lg p-3 border-l-2"
+      style={{ backgroundColor: '#FFFFFF', borderColor: tone }}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span
+              className="text-[10px] font-bold tracking-wide px-1.5 py-0.5 rounded"
+              style={{ color: tone, backgroundColor: `${tone}14` }}
+            >
+              {d.status.toUpperCase()} · {d.category.replace('_', ' ')}
+            </span>
+            <span className="text-[10px]" style={{ color: '#64748b' }}>
+              T+{Math.round(d.detected_at_minute)} ·{' '}
+              {d.decided_by.by_trainer
+                ? 'trainer on behalf of leadership'
+                : d.decided_by.team || 'Executive'}
+              {d.org_key ? ` · ${d.org_key}` : ''}
+            </span>
+          </div>
+          <p className="text-xs mt-1 leading-relaxed" style={{ color: '#111827' }}>
+            {d.summary}
+          </p>
+          <div className="text-[10px] mt-1" style={{ color: '#64748b' }}>
+            Told:{' '}
+            {d.told.length > 0
+              ? d.told.map((t) => t.label).join(', ')
+              : 'nobody outside the executive team'}
+            {gap.length > 0 ? (
+              <>
+                {' · '}
+                <span style={{ color: '#B45309' }}>
+                  Should know but not told: {gap.map((s) => s.label).join(', ')}
+                </span>
+              </>
+            ) : null}
+          </div>
+          <div className="text-[10px] mt-1" style={{ color: '#64748b' }}>
+            Reactions: {fired}/{d.reactions.length} fired · relays{' '}
+            {d.relays.filter((r) => r.done).length}/{d.relays.length}
+            {d.notice
+              ? ` · notice at T+${Math.round(d.notice.at_minute)} (${d.notice.order_ok ? 'right order' : 'wrong order'}, ${d.notice.before_leak ? 'before leak' : 'after leak'}${d.notice.tone_grade != null ? `, tone ${Math.round(d.notice.tone_grade)}` : ''})`
+              : ' · no formal notice yet'}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1 items-end shrink-0">
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="text-[10px] px-2 py-0.5 rounded border"
+            style={{ borderColor: '#E4DFD4', color: '#1E3A5F' }}
+          >
+            {open ? 'Hide cascade' : 'Show cascade'}
+          </button>
+          {d.status === 'active' && (
+            <button
+              onClick={onDismiss}
+              className="text-[10px] px-2 py-0.5 rounded border"
+              style={{ borderColor: 'rgba(185,28,28,0.35)', color: '#B91C1C' }}
+            >
+              Dismiss (stop cascade)
+            </button>
+          )}
+        </div>
+      </div>
+      {open && (
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <div
+              className="text-[10px] font-bold uppercase tracking-wide mb-1"
+              style={{ color: '#64748b' }}
+            >
+              Who knows what
+            </div>
+            <div className="space-y-0.5">
+              {d.knowledge.length === 0 && (
+                <div className="text-[10px]" style={{ color: '#9CA3AF' }}>
+                  Only the executive team so far.
+                </div>
+              )}
+              {d.knowledge.map((k) => (
+                <div
+                  key={`${k.actor_kind}:${k.actor_id}`}
+                  className="text-[10px] flex items-center gap-1.5"
+                >
+                  <span
+                    className="inline-block w-2 h-2 rounded-full"
+                    style={{ backgroundColor: KNOWLEDGE_TONE[k.state] || '#9CA3AF' }}
+                  />
+                  <span style={{ color: '#111827' }}>{k.label}</span>
+                  <span style={{ color: '#64748b' }}>
+                    — {k.state.replace('_', ' ')}
+                    {k.via ? ` via ${k.via.replace('_', ' ')}` : ''} · T+{Math.round(k.at_minute)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div
+              className="text-[10px] font-bold uppercase tracking-wide mb-1"
+              style={{ color: '#64748b' }}
+            >
+              Planned reactions
+            </div>
+            <div className="space-y-0.5">
+              {d.reactions.map((r) => (
+                <div
+                  key={r.node_id}
+                  className="text-[10px]"
+                  style={{ color: '#111827', paddingLeft: r.depth * 10 }}
+                >
+                  <span style={{ color: r.fired_minute != null ? '#15803D' : '#64748b' }}>
+                    {r.fired_minute != null
+                      ? `fired T+${Math.round(r.fired_minute)}`
+                      : `planned T+${Math.round(r.planned_minute)}`}
+                  </span>{' '}
+                  · {r.label} · {r.channel.replace('_', ' ')} — {r.title}
+                </div>
+              ))}
+              {d.relays.map((r) => (
+                <div key={r.node_id} className="text-[10px]" style={{ color: '#64748b' }}>
+                  {r.done ? 'relayed' : `relay T+${Math.round(r.planned_minute)}`} · {r.carrier} →{' '}
+                  {r.learners.join(', ') || 'colleagues'}
+                </div>
+              ))}
+            </div>
+            {d.events.length > 0 && (
+              <>
+                <div
+                  className="text-[10px] font-bold uppercase tracking-wide mt-2 mb-1"
+                  style={{ color: '#64748b' }}
+                >
+                  Timeline
+                </div>
+                <div className="space-y-0.5 max-h-40 overflow-y-auto">
+                  {d.events.map((e) => (
+                    <div key={e.id} className="text-[10px]" style={{ color: '#64748b' }}>
+                      T+{Math.round(e.at_minute)} · {e.kind.replace(/_/g, ' ')} — {e.summary}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Stakeholder reconsideration outcomes (docs/stakeholder-runtime-plan.md §3.6). */
 interface StakeholderEvent {
   id: string;
@@ -793,6 +1017,9 @@ export default function TrainerSimDashboard() {
   const [gradedReplies, setGradedReplies] = useState<GradedReply[]>([]);
   const [consequences, setConsequences] = useState<ConsequenceEvent[]>([]);
   const [stakeholderEvents, setStakeholderEvents] = useState<StakeholderEvent[]>([]);
+  const [execDecisions, setExecDecisions] = useState<ExecDecisionView[]>([]);
+  const [manualDecisionText, setManualDecisionText] = useState('');
+  const [manualDecisionBusy, setManualDecisionBusy] = useState(false);
   const [showExplainer, setShowExplainer] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [orchestration, setOrchestration] = useState<OrchestrationInject[]>([]);
@@ -943,6 +1170,53 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
+  /** Organic executive decisions (docs/executive-decisions-organic-plan.md §6.7). */
+  const loadExecDecisions = useCallback(async () => {
+    if (!sessionId) return;
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/sessions/${sessionId}/exec-decisions`), { headers });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (Array.isArray(json.data)) setExecDecisions(json.data as ExecDecisionView[]);
+    } catch {
+      /* retry */
+    }
+  }, [sessionId]);
+
+  const submitManualDecision = useCallback(async () => {
+    const text = manualDecisionText.trim();
+    if (!sessionId || text.length < 8) return;
+    setManualDecisionBusy(true);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(apiUrl(`/api/sessions/${sessionId}/exec-decisions/manual`), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ text }),
+      });
+      if (res.ok) {
+        setManualDecisionText('');
+        await loadExecDecisions();
+      }
+    } finally {
+      setManualDecisionBusy(false);
+    }
+  }, [sessionId, manualDecisionText, loadExecDecisions]);
+
+  const dismissExecDecision = useCallback(
+    async (decisionId: string) => {
+      if (!sessionId) return;
+      const headers = await getAuthHeaders();
+      await fetch(apiUrl(`/api/sessions/${sessionId}/exec-decisions/${decisionId}/dismiss`), {
+        method: 'POST',
+        headers,
+      });
+      await loadExecDecisions();
+    },
+    [sessionId, loadExecDecisions],
+  );
+
   const loadSessionInfo = useCallback(async () => {
     if (!sessionId) return;
     try {
@@ -1043,6 +1317,7 @@ export default function TrainerSimDashboard() {
     loadTeamScores();
     loadIntelStatus();
     loadStakeholderEvents();
+    loadExecDecisions();
   }, [
     loadSocialState,
     loadPosts,
@@ -1055,6 +1330,7 @@ export default function TrainerSimDashboard() {
     loadTeamScores,
     loadIntelStatus,
     loadStakeholderEvents,
+    loadExecDecisions,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -1796,6 +2072,51 @@ export default function TrainerSimDashboard() {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </Card>
+
+        {/* ============ EXECUTIVE DECISIONS ROW: full width ============ */}
+        <Card
+          title={`Executive Decisions (${execDecisions.filter((d) => d.status === 'active').length})`}
+        >
+          <p className="text-[11px] mb-3" style={{ color: '#64748b' }}>
+            Nothing here is scripted. When an executive commits to a course of action in an email, a
+            chat or a call, the simulation detects it, works out who was told and who should have
+            been, and lets the consequences travel — through the organisation first, then out to
+            unions, press and regulators — on realistic delays. Teams that reach the right person
+            before the reaction fires can still soften or stop it.
+          </p>
+          <div className="flex gap-2 mb-3">
+            <input
+              value={manualDecisionText}
+              onChange={(e) => setManualDecisionText(e.target.value)}
+              placeholder="No executive players? Record a leadership decision on their behalf (e.g. 'We are suspending the Johor line for 30 days effective today')."
+              className="flex-1 text-xs px-2.5 py-1.5 rounded border outline-none"
+              style={{ borderColor: '#E4DFD4', color: '#111827', backgroundColor: '#FFFFFF' }}
+            />
+            <button
+              onClick={() => void submitManualDecision()}
+              disabled={manualDecisionBusy || manualDecisionText.trim().length < 8}
+              className="text-[11px] font-bold px-3 py-1.5 rounded disabled:opacity-50"
+              style={{ backgroundColor: '#1E3A5F', color: '#fff' }}
+            >
+              {manualDecisionBusy ? 'Recording…' : 'Record decision'}
+            </button>
+          </div>
+          {execDecisions.length === 0 ? (
+            <p className="text-xs text-center py-4" style={{ color: '#64748b' }}>
+              No executive decision detected yet.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {execDecisions.map((d) => (
+                <ExecDecisionCard
+                  key={d.id}
+                  d={d}
+                  onDismiss={() => void dismissExecDecision(d.id)}
+                />
+              ))}
             </div>
           )}
         </Card>

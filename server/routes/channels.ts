@@ -1133,6 +1133,26 @@ router.post(
         );
       }
 
+      // Organic executive decisions (docs/executive-decisions-organic-plan.md §6.1; touch point,
+      // generator agent): team / direct / NPC-DM messages are detection candidates.
+      try {
+        const { onPlayerChatMessage } =
+          await import('../services/decisions/decisionDetectionService.js');
+        const memberIds = await getChannelMemberIds(channel).catch(() => channel.members || []);
+        onPlayerChatMessage({
+          sessionId: channel.session_id,
+          channelId,
+          channelType: String(channel.type),
+          messageId: String(messageData.id),
+          userId: user.id,
+          content,
+          memberIds,
+          stakeholderId: channel.stakeholder_id ?? null,
+        });
+      } catch {
+        /* non-critical */
+      }
+
       // NPC DM: hand the message to the stakeholder engine (in-character reply + reconsideration).
       if (channel.type === 'npc_direct' && channel.stakeholder_id) {
         void (async () => {

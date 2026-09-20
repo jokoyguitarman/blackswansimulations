@@ -743,6 +743,7 @@ function SingleTeamBlock({ data }: { data: Dict }) {
   }
   const scores = (data.scores || {}) as Dict;
   const preemption = arr(data.stakeholder_preemption);
+  const execDecisions = arr(data.executive_decisions);
   const tasks = arr(data.task_outcomes);
   const members = arr(data.members);
   const memberSummaries = arr(data.member_summaries);
@@ -906,6 +907,96 @@ function SingleTeamBlock({ data }: { data: Dict }) {
                   </span>{' '}
                   “{String(p.inject_title || '')}”
                   {p.reason ? <span className="text-muted"> — {String(p.reason)}</span> : null}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {execDecisions.length > 0 && (
+        <div>
+          <div className="text-[10px] font-extrabold uppercase text-muted mb-1.5">
+            Leadership decisions — how they travelled
+          </div>
+          <div className="space-y-2">
+            {execDecisions.map((d, i) => {
+              const reactions = arr(d.reactions);
+              const foundOut = arr(d.found_out);
+              const notice = (d.notice || null) as Dict | null;
+              const notTold = Array.isArray(d.should_know_not_told)
+                ? (d.should_know_not_told as unknown[]).map(String)
+                : [];
+              const informed = Array.isArray(d.informed)
+                ? (d.informed as unknown[]).map(String)
+                : [];
+              return (
+                <div key={i} className="rounded border border-border p-2 text-xs text-ink">
+                  <div>
+                    <span className="text-brand font-bold">T+{String(d.at_minute ?? '?')}m</span>{' '}
+                    <span className="font-semibold">{String(d.summary || '')}</span>
+                    {d.by_trainer ? (
+                      <span className="text-muted"> (trainer on behalf of leadership)</span>
+                    ) : null}
+                  </div>
+                  <div className="text-muted mt-0.5">
+                    Told:{' '}
+                    {informed.length > 0
+                      ? informed.join(', ')
+                      : 'nobody outside the executive team'}
+                    {notTold.length > 0 ? (
+                      <>
+                        {' · '}
+                        <span className="text-warning font-semibold">
+                          not told: {notTold.join(', ')}
+                        </span>
+                      </>
+                    ) : null}
+                  </div>
+                  {foundOut.length > 0 && (
+                    <div className="text-muted mt-0.5">
+                      Found out on their own:{' '}
+                      {foundOut
+                        .map(
+                          (f) =>
+                            `${String(f.actor)} (${String(f.via).replace('_', ' ')}, T+${String(f.at_minute)})`,
+                        )
+                        .join('; ')}
+                    </div>
+                  )}
+                  <div className="text-muted mt-0.5">
+                    {notice
+                      ? `Formal notice at T+${String(notice.at_minute)}: ${notice.order_ok ? 'right order' : 'employees before representatives'}, ${notice.before_leak ? 'before any leak' : 'after it had leaked'}${notice.tone_grade != null ? `, tone ${String(notice.tone_grade)}` : ''}`
+                      : 'No formal notice went out.'}
+                  </div>
+                  {reactions.length > 0 && (
+                    <div className="mt-1 space-y-0.5">
+                      {reactions.map((r, j) => {
+                        const outcome = String(r.outcome || '');
+                        const tone =
+                          outcome === 'withdrawn'
+                            ? '#15803D'
+                            : outcome === 'softened'
+                              ? '#0369A1'
+                              : outcome === 'held'
+                                ? '#B45309'
+                                : outcome === 'fired'
+                                  ? '#B91C1C'
+                                  : '#64748b';
+                        return (
+                          <div key={j}>
+                            <span style={{ color: tone, fontWeight: 700 }}>{outcome}</span>{' '}
+                            {String(r.actor)} · {String(r.channel).replace('_', ' ')} — “
+                            {String(r.title)}”{' '}
+                            <span className="text-muted">
+                              (planned T+{String(r.planned_minute)}
+                              {r.fired_minute != null ? `, fired T+${String(r.fired_minute)}` : ''})
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               );
             })}

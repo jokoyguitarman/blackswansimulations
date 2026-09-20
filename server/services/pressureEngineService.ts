@@ -419,9 +419,9 @@ async function recentDecisionTouching(
 ): Promise<boolean> {
   const { data } = await supabaseAdmin
     .from('session_decisions')
-    .select('org_key, recorded_at')
+    .select('org_key, created_at')
     .eq('session_id', sessionId)
-    .order('recorded_at', { ascending: false })
+    .order('created_at', { ascending: false })
     .limit(5);
   return (data || []).some((d) => targetOrgKeys.includes(String(d.org_key)));
 }

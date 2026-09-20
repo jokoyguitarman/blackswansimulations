@@ -1348,6 +1348,26 @@ router.post(
         }
       })();
 
+      // Organic executive decisions (docs/executive-decisions-organic-plan.md §6.1; touch point,
+      // generator agent): every outbound mail — including player-to-player — is a detection
+      // candidate; the service filters by the author's function and coalesces per thread.
+      try {
+        const { onPlayerEmailSent } =
+          await import('../services/decisions/decisionDetectionService.js');
+        onPlayerEmailSent({
+          sessionId: session_id,
+          emailId: email.id,
+          userId: user.id,
+          toAddresses: to_addresses,
+          ccAddresses: cc_addresses || [],
+          subject,
+          bodyText: body_text,
+          threadId: resolvedThreadId,
+        });
+      } catch {
+        /* non-critical */
+      }
+
       // Trigger NPC reply if the email is to an NPC (non-blocking). Skipped
       // when the primary recipient is a session player — player-to-player mail
       // must never spawn an invented NPC respondent.

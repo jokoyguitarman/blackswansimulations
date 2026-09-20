@@ -85,13 +85,13 @@ function teamSectionFor(teamFunction: string): SocialAARSectionKey {
 
 const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
   social_executive:
-    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If organisations is non-empty (several organisations took part), compare them briefly by avg_composite and name the strongest and weakest organisation with the team that drove each. End with a one-sentence overall verdict.',
+    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If executive_decisions is non-empty, name each leadership decision (T+), who was told and who found out on their own, and whether the organisation communicated it in the right order before it leaked — this is usually the decisive lesson. If organisations is non-empty (several organisations took part), compare them briefly by avg_composite and name the strongest and weakest organisation with the team that drove each. End with a one-sentence overall verdict.',
   social_timeline:
     'Reconstruct the session chronologically in phases (opening, escalation, turning point, resolution). Pair each pressure beat (inject, watchdog challenge, consequence) with the team response that followed — or note the silence. Cite T+ minutes throughout. Identify the single most consequential moment.',
   social_public_comms:
     'Assess every published statement and reply: quality (use the stored grade dimensions), timing, consistency across platforms, and reach versus hostile content (impression dominance). Quote the strongest and weakest artifacts with their scores. Judge whether format choices (statement, thread reply, creative) matched the moment.',
   social_team_executive:
-    "This is the dedicated review of the EXECUTIVE team (leadership). Executives do not pick decisions from a menu; they decide by communicating — emails, chat messages, calls and statements in the ledger. Read those artifacts and messages as their decisions: what was decided, when (T+), to whom it was communicated, with what scope and rationale. State clearly (1) whether decisions were timely, scoped and explained, (2) whether the right functions and stakeholders were looped in before the consequences reached them, (3) what they should have done differently, and (4) one note per member. If several organisations are present (teams[]), assess each organisation's executive team separately and then compare. Cite T+ times.",
+    "This is the dedicated review of the EXECUTIVE team (leadership). Executives do not pick decisions from a menu; they decide by communicating — emails, chat messages, calls and statements in the ledger. Read those artifacts and messages as their decisions: what was decided, when (T+), to whom it was communicated, with what scope and rationale. If executive_decisions is non-empty, it is the detected record of those decisions: for each, judge HOW it was communicated — who was told directly (informed), who should have known but was not told (should_know_not_told), who found out by rumour or from the press (found_out, with via and T+), whether a formal notice went out in the right order (representatives before employees) and before any leak (notice), and which reactions fired versus were softened / withdrawn because a team reached the stakeholder first (reactions). State clearly (1) whether decisions were timely, scoped and explained, (2) whether the right functions and stakeholders were looped in before the consequences reached them, (3) what they should have done differently, and (4) one note per member. If several organisations are present (teams[]), assess each organisation's executive team separately and then compare. Cite T+ times.",
   social_team_communications:
     'This is the dedicated review of the COMMUNICATIONS team. Using their complete task record, artifacts with grades, member ledger, and role-fit signals: state clearly (1) what they did well, (2) what they should have done differently, and (3) one member-level note per member. Quote specific artifacts with T+ times and scores. Coaching tone, specific and fair.',
   social_team_shareholder:
@@ -369,6 +369,8 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       impression_dominance: social.impression_dominance,
       // Planned stakeholder actions withdrawn / revised / held because players engaged first.
       stakeholder_preemption: social.stakeholder_preemption ?? [],
+      // Organic executive decisions: what leadership decided, who was told, what followed.
+      executive_decisions: social.executive_decisions ?? [],
       headline_counts: {
         graded_player_posts: social.content_quality.posts_created,
         emails_sent: social.coordination_metrics.total_emails_sent,
@@ -586,6 +588,16 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
       stakeholder_preemption: (social.stakeholder_preemption ?? []).filter(
         (p) => p.team === team.team_name || p.contributing_teams.includes(team.team_name),
       ),
+      ...(teamFunction === 'Executive'
+        ? {
+            executive_decisions: (social.executive_decisions ?? []).filter(
+              (d) =>
+                d.decided_by === team.team_name ||
+                (!d.decided_by && identity.org_key == null) ||
+                d.org_key === identity.org_key,
+            ),
+          }
+        : {}),
     };
     if (!teamBlocksBySection.has(key)) teamBlocksBySection.set(key, []);
     teamBlocksBySection.get(key)!.push(block);

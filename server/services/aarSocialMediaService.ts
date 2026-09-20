@@ -135,6 +135,40 @@ export interface SocialMediaAARData {
     reason: string;
     criteria_met: number[];
   }>;
+  /**
+   * Organic executive decisions (docs/executive-decisions-organic-plan.md §6.8): what leadership
+   * decided by communicating, who was told, who found out, the formal notice (if any), and the
+   * reactions that fired / were softened / withdrawn — with the team credited.
+   */
+  executive_decisions: Array<{
+    decision_id: string;
+    summary: string;
+    category: string;
+    at_minute: number;
+    decided_by: string | null;
+    by_trainer: boolean;
+    org_key: string | null;
+    status: string;
+    informed: string[];
+    should_know_not_told: string[];
+    found_out: Array<{ actor: string; via: string; at_minute: number }>;
+    notice: {
+      at_minute: number;
+      order_ok: boolean;
+      before_leak: boolean;
+      tone_grade: number | null;
+      coverage: number;
+    } | null;
+    reactions: Array<{
+      actor: string;
+      channel: string;
+      title: string;
+      planned_minute: number;
+      fired_minute: number | null;
+      outcome: 'fired' | 'withdrawn' | 'softened' | 'held' | 'pending';
+    }>;
+    public_effect: { posts: number; articles: number };
+  }>;
 }
 
 const TIER1_ACTIONS = ['reply_posted', 'post_liked', 'post_reposted', 'post_flagged', 'news_read'];
@@ -542,7 +576,117 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
     },
     team_performance: teamPerformance,
     stakeholder_preemption: await buildStakeholderPreemption(sessionId),
+    executive_decisions: await buildExecutiveDecisions(sessionId),
   };
+}
+
+async function buildExecutiveDecisions(
+  sessionId: string,
+): Promise<SocialMediaAARData['executive_decisions']> {
+  try {
+    const { listDecisions, listDecisionEvents, loadKnowledge } =
+      await import('./decisions/decisionLedger.js');
+    const { getSessionScenarioId } = await import('../lib/scenarioCache.js');
+    const { getStakeholders } = await import('./stakeholderService.js');
+    const [decisions, events, scenarioId] = await Promise.all([
+      listDecisions(sessionId),
+      listDecisionEvents(sessionId),
+      getSessionScenarioId(sessionId),
+    ]);
+    if (decisions.length === 0) return [];
+    const stakeholders = scenarioId ? await getStakeholders(scenarioId) : [];
+    const nameOf = new Map(stakeholders.map((s) => [s.id, `${s.name} (${s.title})`]));
+    const label = (kind: string, id: string) =>
+      kind === 'stakeholder' ? (nameOf.get(id) ?? id) : id;
+    const out: SocialMediaAARData['executive_decisions'] = [];
+    for (const d of decisions) {
+      const knowledge = await loadKnowledge(sessionId, d.id);
+      const mine = events.filter((e) => e.decision_id === d.id);
+      const outcomeFor = (injectId: string | null | undefined, fired: boolean) => {
+        if (!injectId) return fired ? 'fired' : 'pending';
+        const v = mine.filter((e) => e.ref_id === injectId);
+        if (v.some((e) => e.kind === 'reaction_withdrawn')) return 'withdrawn';
+        if (v.some((e) => e.kind === 'reaction_softened')) return 'softened';
+        if (!fired && v.some((e) => e.kind === 'reaction_delayed')) return 'held';
+        return fired ? 'fired' : 'pending';
+      };
+      const nodes = d.detail.plan?.nodes ?? [];
+      const publicNodes = nodes.filter(
+        (n) =>
+          n.fired_at_minute != null &&
+          (n.kind === 'public' ||
+            n.channel === 'social_post' ||
+            n.channel === 'page_statement' ||
+            n.channel === 'news'),
+      );
+      out.push({
+        decision_id: d.id,
+        summary: d.detail.summary,
+        category: d.detail.category,
+        at_minute: d.detail.detected_at_minute,
+        decided_by: d.team_name,
+        by_trainer: d.recorded_by_trainer,
+        org_key: d.org_key,
+        status: d.status,
+        informed: d.detail.informed.map((a) => label(a.actor_kind, a.actor_id)),
+        should_know_not_told: d.detail.should_know_stakeholder_ids
+          .filter((id) => {
+            const k = knowledge.get(`stakeholder:${id}`);
+            return !k || (k.learned_via !== 'direct_message' && k.learned_via !== 'formal_notice');
+          })
+          .map((id) => nameOf.get(id) ?? id),
+        found_out: Array.from(knowledge.values())
+          .filter(
+            (k) =>
+              k.learned_via === 'internal_relay' ||
+              k.learned_via === 'grievance_relay' ||
+              k.learned_via === 'public_exposure',
+          )
+          .filter(
+            (k) =>
+              k.actor_kind === 'stakeholder' &&
+              stakeholders.find((s) => s.id === k.actor_id)?.tier !== 'roster',
+          )
+          .map((k) => ({
+            actor: nameOf.get(k.actor_id) ?? k.actor_id,
+            via: k.learned_via || 'unknown',
+            at_minute: k.at_minute,
+          })),
+        notice: d.detail.notice
+          ? {
+              at_minute: d.detail.notice.at_minute,
+              order_ok: d.detail.notice.order_ok,
+              before_leak: d.detail.notice.before_leak,
+              tone_grade: d.detail.notice.tone_grade,
+              coverage: d.detail.notice.coverage,
+            }
+          : null,
+        reactions: nodes
+          .filter((n) => n.kind !== 'relay')
+          .map((n) => ({
+            actor: n.actor_kind === 'page' ? n.actor_id : (nameOf.get(n.actor_id) ?? n.actor_id),
+            channel: n.channel,
+            title: n.content.title,
+            planned_minute: d.detail.detected_at_minute + n.delay_minutes,
+            fired_minute: n.fired_at_minute ?? null,
+            outcome: outcomeFor(n.inject_id, n.fired_at_minute != null) as
+              | 'fired'
+              | 'withdrawn'
+              | 'softened'
+              | 'held'
+              | 'pending',
+          })),
+        public_effect: {
+          posts: publicNodes.filter((n) => n.channel !== 'news').length,
+          articles: publicNodes.filter((n) => n.channel === 'news').length,
+        },
+      });
+    }
+    return out;
+  } catch (err) {
+    logger.warn({ err, sessionId }, 'buildExecutiveDecisions failed');
+    return [];
+  }
 }
 
 async function buildStakeholderPreemption(

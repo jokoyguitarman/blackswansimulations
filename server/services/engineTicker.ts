@@ -2,7 +2,10 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { runPressureEngine, flipUnstaffedOrgsToAi } from './pressureEngineService.js';
-import { runDecisionTick } from './decisions/decisionCascadeService.js';
+import {
+  runDecisionTick,
+  registerDecisionGrievanceResolver,
+} from './decisions/decisionCascadeService.js';
 
 /**
  * Generator-owned runtime engines (docs/executive-decisions-organic-plan.md §5–§6), ticked on
@@ -24,6 +27,8 @@ export function startGeneratorEngines(): void {
     logger.info('Generator engines disabled (ENABLE_EXECUTIVE_DECISIONS=false)');
     return;
   }
+  // Generated grievances (organic plan §6.4): the reconsideration judge asks us first.
+  registerDecisionGrievanceResolver();
   interval = setInterval(() => void tick(), TICK_MS);
   logger.info('Generator engines started (pressure engine + organic decisions, every 60s)');
 }
