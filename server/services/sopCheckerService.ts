@@ -42,12 +42,34 @@ export async function evaluateSOPCompliance(
 
   const results: SOPComplianceResult[] = [];
 
+  // Organic executive decisions (docs/executive-decisions-organic-plan.md §4.1 / §6.6; touch
+  // point, generator agent): notification steps carry `trigger: 'decision_notification'` and
+  // their clock starts at the FIRST detected decision, not at session start. With no decision
+  // they stay pending — never overdue.
+  const hasDecisionSteps = sops.some((sop) =>
+    ((sop.steps || []) as Array<{ trigger?: string }>).some(
+      (s) => s.trigger === 'decision_notification',
+    ),
+  );
+  let firstDecisionMinute: number | null = null;
+  if (hasDecisionSteps) {
+    const { data: decisions } = await supabaseAdmin
+      .from('session_decisions')
+      .select('recorded_at_minute')
+      .eq('session_id', sessionId)
+      .order('recorded_at_minute', { ascending: true })
+      .limit(1);
+    const m = decisions?.[0]?.recorded_at_minute;
+    firstDecisionMinute = typeof m === 'number' ? m : null;
+  }
+
   for (const sop of sops) {
     const steps = (sop.steps || []) as Array<{
       step_id: string;
       name: string;
       time_limit_minutes?: number;
       triggered_by_decision_key?: string;
+      trigger?: string;
     }>;
 
     for (const step of steps) {
@@ -61,10 +83,21 @@ export async function evaluateSOPCompliance(
       let status: SOPComplianceResult['status'] = 'pending';
       let completedAt: string | undefined;
 
+      const decisionStep = step.trigger === 'decision_notification';
+      const minutesOnClock = decisionStep
+        ? firstDecisionMinute == null
+          ? null
+          : elapsedMinutes - firstDecisionMinute
+        : elapsedMinutes;
+
       if (matchingActions.length > 0) {
         status = 'completed';
         completedAt = matchingActions[0].created_at;
-      } else if (step.time_limit_minutes && elapsedMinutes > step.time_limit_minutes) {
+      } else if (
+        step.time_limit_minutes &&
+        minutesOnClock != null &&
+        minutesOnClock > step.time_limit_minutes
+      ) {
         status = 'overdue';
       }
 
