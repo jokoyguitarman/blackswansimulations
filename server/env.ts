@@ -16,6 +16,22 @@ const validatePort = (port: number): number => {
 
 const nodeEnv = process.env.NODE_ENV ?? 'development';
 
+// ---------- AI provider switch (docs/AWS_BEDROCK_MIGRATION_v2.md §6) ----------
+// `openai` reproduces today's requests exactly; `bedrock` routes every chat call to the
+// OpenAI-compatible Bedrock endpoint. Cutover and rollback are this one variable.
+type AiProvider = 'openai' | 'bedrock';
+const aiProvider: AiProvider = process.env.AI_PROVIDER === 'bedrock' ? 'bedrock' : 'openai';
+const aiApiKey = process.env.AI_API_KEY;
+const aiBaseUrl = process.env.AI_BASE_URL;
+if (aiProvider === 'bedrock' && (!aiApiKey || !aiBaseUrl)) {
+  throw new Error('AI_PROVIDER=bedrock requires AI_API_KEY and AI_BASE_URL');
+}
+type AiTemperaturePolicy = 'auto' | 'pass' | 'strip';
+const aiTemperaturePolicy: AiTemperaturePolicy =
+  process.env.AI_TEMPERATURE_POLICY === 'pass' || process.env.AI_TEMPERATURE_POLICY === 'strip'
+    ? process.env.AI_TEMPERATURE_POLICY
+    : 'auto';
+
 const DEV_SESSION_SECRET = 'dev-secret-change-in-production';
 
 const resolveSessionSecret = (): string => {
@@ -43,6 +59,27 @@ export const env = {
   ),
   openAiApiKey: process.env.OPENAI_API_KEY,
   xaiApiKey: process.env.XAI_API_KEY,
+  // ---------- AI provider (shared chat client, server/services/ai) ----------
+  aiProvider,
+  aiApiKey,
+  aiBaseUrl,
+  // True when the ACTIVE provider has a key. Feature gates check this, never a
+  // provider-specific key, so removing OPENAI_API_KEY after cutover cannot silently
+  // switch features off.
+  aiEnabled: aiProvider === 'bedrock' ? Boolean(aiApiKey) : Boolean(process.env.OPENAI_API_KEY),
+  // Tier -> model on Bedrock. In openai mode the tiers resolve to today's model names
+  // (see server/services/ai/chatCore.ts OPENAI_TIER_MODELS).
+  aiModelFast: process.env.AI_MODEL_FAST ?? 'us.openai.gpt-5.6-luna',
+  aiModelStandard: process.env.AI_MODEL_STANDARD ?? 'us.openai.gpt-5.6-terra',
+  aiModelVision: process.env.AI_MODEL_VISION ?? 'us.openai.gpt-5.6-terra',
+  // Per-request abort. Long generation phases pass their own timeoutMs.
+  aiTimeoutMs: Number(process.env.AI_TIMEOUT_MS) || 180_000,
+  // auto = drop `temperature` for models known to reject it (gpt-5.5 returned 400 on it,
+  // see contentGraderService history); pass = always send; strip = never send.
+  aiTemperaturePolicy,
+  // Floor applied to fast-tier completion budgets under Bedrock if the smoke checks show
+  // reasoning tokens eat the tiny (30-150 token) ceilings some classifiers use.
+  aiFastMinCompletionTokens: Number(process.env.AI_FAST_MIN_COMPLETION_TOKENS) || 0,
   sessionSecret: resolveSessionSecret(),
   logLevel: process.env.LOG_LEVEL ?? 'info',
   // Email configuration
@@ -109,8 +146,11 @@ export const env = {
   teammateBotPassword: process.env.TEAMMATE_BOT_PASSWORD ?? 'TeammateBot#NoLogin!2026',
   teammateBotsMaxPerSession: Number(process.env.TEAMMATE_BOTS_MAX_PER_SESSION ?? 8),
   teammateBotsMaxLlmPerHour: Number(process.env.TEAMMATE_BOTS_MAX_LLM_PER_HOUR ?? 400),
-  teammateBotsModelFast: process.env.TEAMMATE_BOTS_MODEL_FAST ?? 'gpt-4o-mini',
-  teammateBotsModelStrong: process.env.TEAMMATE_BOTS_MODEL_STRONG ?? 'gpt-5.2',
+  // Optional exact-model overrides for the bots. Unset (the default) means the shared
+  // client's `fast` / `standard` tier, which in openai mode is gpt-4o-mini / gpt-5.2 --
+  // identical to the previous hardcoded defaults.
+  teammateBotsModelFast: process.env.TEAMMATE_BOTS_MODEL_FAST || undefined,
+  teammateBotsModelStrong: process.env.TEAMMATE_BOTS_MODEL_STRONG || undefined,
   // Per-phase behaviour flags (backtracking guide §17). All ON by default.
   teammateBotsPlanner: process.env.TEAMMATE_BOTS_PLANNER !== 'off',
   teammateBotsCoordination: process.env.TEAMMATE_BOTS_COORDINATION !== 'off',
