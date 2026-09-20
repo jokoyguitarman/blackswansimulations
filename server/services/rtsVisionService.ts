@@ -1,4 +1,5 @@
 import { logger } from '../lib/logger.js';
+import { chat, type ContentPart } from './ai/chatClient.js';
 
 interface AssessmentRequest {
   imageUrl: string;
@@ -42,9 +43,9 @@ Respond with JSON only:
 
 export async function evaluateBombSquadAssessment(
   req: AssessmentRequest,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<AssessmentResult> {
-  const userContent: Array<{ type: string; text?: string; image_url?: { url: string } }> = [];
+  const userContent: ContentPart[] = [];
 
   if (req.imageUrl) {
     userContent.push({
@@ -66,26 +67,19 @@ export async function evaluateBombSquadAssessment(
   userContent.push({ type: 'text', text: promptText });
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.1',
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: userContent },
-        ],
-        max_completion_tokens: 16000,
-        temperature: 0.3,
-      }),
+    const result = await chat({
+      tier: 'vision',
+      messages: [
+        { role: 'system', content: SYSTEM_PROMPT },
+        { role: 'user', content: userContent },
+      ],
+      maxTokens: 16000,
+      temperature: 0.3,
+      timeoutMs: 300_000,
+      label: 'rtsVision.bombSquadAssessment',
     });
 
-    if (!response.ok) {
-      const errBody = await response.text();
-      logger.error({ status: response.status, body: errBody }, 'GPT vision API error');
+    if (!result) {
       return {
         found: false,
         response: 'Assessment system temporarily unavailable. Continue sweep manually.',
@@ -93,10 +87,7 @@ export async function evaluateBombSquadAssessment(
       };
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = data.choices?.[0]?.message?.content?.trim() ?? '';
+    const raw = result.content.trim();
 
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
