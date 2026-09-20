@@ -10,6 +10,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
 import {
   ALLOWED_VERDICTS,
@@ -394,7 +395,7 @@ const REPLY_LENGTH: Record<string, string> = {
 };
 
 async function callJudge(input: JudgeInput): Promise<JudgeOutput | null> {
-  if (!env.openAiApiKey) return null;
+  if (!env.aiEnabled) return null;
 
   const criteriaList = input.effective.resolution_criteria
     .map((c, i) => `${i + 1}. ${c}`)
@@ -463,34 +464,21 @@ Return ONLY valid JSON:
   }`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.openAiApiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        max_completion_tokens: 1800,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      logger.warn(
-        { status: response.status, sessionId: input.sessionId },
-        'Stakeholder judge request failed',
-      );
-      return null;
-    }
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return null;
-    const parsed = JSON.parse(content) as {
+    const parsed = await chatJson<{
       should_reply?: unknown;
       reply?: { text?: unknown; subject?: unknown; delay_seconds?: unknown };
       verdicts?: unknown;
-    };
+    }>({
+      tier: 'standard',
+      messages: systemUser(system, user),
+      json: true,
+      maxTokens: 1800,
+      label: 'stakeholder.judge',
+    });
+    if (!parsed) {
+      logger.warn({ sessionId: input.sessionId }, 'Stakeholder judge request failed');
+      return null;
+    }
     const rawText = typeof parsed.reply?.text === 'string' ? parsed.reply.text.trim() : '';
     const text = rawText ? scrubPlaceholders(rawText, input.player, input.stakeholder.name) : '';
     const delay = Math.round(Number(parsed.reply?.delay_seconds));

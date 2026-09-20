@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import {
   notifyPostReply,
@@ -23,7 +24,7 @@ export async function triggerNPCReactions(
   sessionId: string,
   playerPost: Record<string, unknown>,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     const { data: session } = await supabaseAdmin
@@ -228,18 +229,16 @@ OFFICIAL STATEMENT SCRUTINY (this post is official crisis communication${orgName
 `;
     }
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          {
-            role: 'system',
-            content: `You are generating NPC reactions to a player's social media post during a crisis simulation.
+    const parsed = await chatJson<{ reactions?: Array<Record<string, unknown>> }>({
+      tier: 'standard',
+      json: true,
+      temperature: 0.95,
+      maxTokens: 1500,
+      label: 'npcReaction.generate',
+      messages: [
+        {
+          role: 'system',
+          content: `You are generating NPC reactions to a player's social media post during a crisis simulation.
 
 The player posted a ${postFormat} format post. Their handle is ${String(playerPost.author_handle || '@player')}. Generate realistic reactions from these NPCs:
 
@@ -247,15 +246,15 @@ ${npcContext}
 
 Reaction types:
 - "attack": ${
-              isOfficialComms
-                ? 'critical challenge -- engage with the SUBSTANCE of the statement: quote its exact words, point out what it fails to address, question unverified claims, demand specifics (numbers, timelines, affected scope, next update). Sceptical and demanding, never sarcastic or mocking.'
-                : 'hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias'
-            }
+            isOfficialComms
+              ? 'critical challenge -- engage with the SUBSTANCE of the statement: quote its exact words, point out what it fails to address, question unverified claims, demand specifics (numbers, timelines, affected scope, next update). Sceptical and demanding, never sarcastic or mocking.'
+              : 'hostile reply -- twist their words, mock them, double down on misinformation, accuse them of bias'
+          }
 - "cover": media-style coverage -- ${
-              isOfficialComms
-                ? 'report what the statement said and what remains unanswered, like a journalist covering a press release'
-                : "neutral to positive news angle about the response team's communication"
-            }
+            isOfficialComms
+              ? 'report what the statement said and what remains unanswered, like a journalist covering a press release'
+              : "neutral to positive news angle about the response team's communication"
+          }
 - "support": endorsing reply or repost with supportive commentary, OR just "like" the post
 - "neutral": ambiguous reaction that could go either way
 - "position": subtle competitive messaging -- highlight own values, imply superiority without directly attacking. Professional and strategic, not aggressive. Used by competitor brands.
@@ -273,25 +272,15 @@ If the player attached media (photo/video), the description is shown as [Attache
 
 Return ONLY valid JSON:
 { "reactions": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "author_type": "npc_public|npc_media|npc_politician|npc_influencer", "content": "reaction text", "sentiment": "negative|supportive|neutral|hateful", "is_reply": true, "action": "reply|repost_with_comment|new_post|like" }] }`,
-          },
-          {
-            role: 'user',
-            content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"${playerPost.image_prompt ? `\n\n[Attached media: ${String(playerPost.image_prompt)}]` : ''}`,
-          },
-        ],
-        temperature: 0.95,
-        max_completion_tokens: 1500,
-        response_format: { type: 'json_object' },
-      }),
+        },
+        {
+          role: 'user',
+          content: `Player post by ${String(playerPost.author_handle)}:\n"${String(playerPost.content || '')}"${playerPost.image_prompt ? `\n\n[Attached media: ${String(playerPost.image_prompt)}]` : ''}`,
+        },
+      ],
     });
 
-    if (!response.ok) return;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    const parsed = JSON.parse(content);
+    if (!parsed) return;
     const reactions = (parsed.reactions || []) as Array<Record<string, unknown>>;
 
     const postPlatform = String(playerPost.platform || 'x_twitter');

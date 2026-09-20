@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { recordPlayerAction } from './sopCheckerService.js';
 
@@ -122,47 +123,27 @@ ${dispute.claimed_falsehood}
 PLAYER'S SUBMITTED FACTS / EVIDENCE:
 ${dispute.submitted_facts}`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${env.openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-5.2',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.3,
-      max_completion_tokens: 600,
-      response_format: { type: 'json_object' },
-    }),
+  const parsed = await chatJson<Partial<JudgeVerdict>>({
+    tier: 'standard',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    temperature: 0.3,
+    maxTokens: 600,
+    label: 'contentDispute.judge',
   });
-
-  if (!response.ok) {
-    logger.warn({ status: response.status }, 'Dispute judge AI request failed');
+  if (!parsed) {
+    logger.warn('Dispute judge AI request failed');
     return null;
   }
 
-  const data = await response.json();
-  const raw = data.choices?.[0]?.message?.content;
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<JudgeVerdict>;
-    const verdict =
-      parsed.verdict === 'uphold' || parsed.verdict === 'correct' ? parsed.verdict : 'reject';
-    return {
-      verdict,
-      confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
-      reason: String(parsed.reason || ''),
-      correction_note: String(parsed.correction_note || ''),
-    };
-  } catch {
-    logger.warn({ raw: String(raw).substring(0, 200) }, 'Failed to parse dispute verdict JSON');
-    return null;
-  }
+  const verdict =
+    parsed.verdict === 'uphold' || parsed.verdict === 'correct' ? parsed.verdict : 'reject';
+  return {
+    verdict,
+    confidence: Math.max(0, Math.min(1, Number(parsed.confidence) || 0)),
+    reason: String(parsed.reason || ''),
+    correction_note: String(parsed.correction_note || ''),
+  };
 }
 
 /**
@@ -281,7 +262,7 @@ async function notifyRequester(dispute: DisputeRecord, verdict: JudgeVerdict): P
  * requester, and score the player action.
  */
 export async function adjudicateDispute(disputeId: string): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     const { data: dispute } = await supabaseAdmin

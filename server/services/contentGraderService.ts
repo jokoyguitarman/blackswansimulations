@@ -1,5 +1,6 @@
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 export interface ContentGrade {
   format: string;
@@ -157,7 +158,7 @@ export async function gradePlayerContent(
     team_charter?: TeamCharterContext;
   },
 ): Promise<ContentGrade> {
-  if (!env.openAiApiKey) {
+  if (!env.aiEnabled) {
     return defaultGrade('AI grading not available - no API key configured', context.post_format);
   }
 
@@ -224,39 +225,21 @@ Evaluate the media concept as part of your grading. Include these additional fie
     : ''
 }`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.5',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: `Grade this ${format} response:\n\n${playerContent}` },
-        ],
-        // gpt-5.5 rejects any temperature other than the default and returns a
-        // 400, which lands every response on the neutral defaultGrade below.
-        max_completion_tokens: 4096,
-        response_format: { type: 'json_object' },
-      }),
+    // No temperature: gpt-5.5 rejects any non-default value with a 400 (the client's
+    // temperature policy would strip it anyway). Grader stays on gpt-5.5 in openai mode.
+    const grade = await chatJson<ContentGrade>({
+      tier: 'standard',
+      openaiModel: 'gpt-5.5',
+      messages: systemUser(systemPrompt, `Grade this ${format} response:\n\n${playerContent}`),
+      json: true,
+      maxTokens: 4096,
+      label: 'contentGrader.grade',
     });
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => '');
-      logger.warn(
-        { status: response.status, body: body.slice(0, 500) },
-        'OpenAI content grading failed',
-      );
+    if (!grade) {
+      logger.warn('Content grading failed or returned no JSON');
       return defaultGrade('AI grading temporarily unavailable', format);
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return defaultGrade('Empty AI response', format);
-
-    const grade = JSON.parse(content) as ContentGrade;
     grade.format = format;
     if (grade.clarity == null || Number.isNaN(grade.clarity)) {
       grade.clarity = grade.tone || 50;

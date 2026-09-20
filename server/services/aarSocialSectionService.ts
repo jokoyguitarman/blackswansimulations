@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { chat, systemUser } from './ai/chatClient.js';
 import { buildSocialMediaAARData } from './aarSocialMediaService.js';
 import { buildPlayerLedger } from './playerLedgerService.js';
 import { getIntelStatus, type IntelStatusEntry } from './intelSharingService.js';
@@ -820,7 +822,7 @@ export async function generateSocialSectionAnalysis(
   sectionKey: SocialAARSectionKey,
   sectionData: unknown,
   context: { sessionId: string; scenarioTitle?: string; orgName?: string },
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<string> {
   const label = SOCIAL_SECTION_LABELS[sectionKey];
   const instruction = SOCIAL_SECTION_INSTRUCTIONS[sectionKey];
@@ -837,34 +839,16 @@ export async function generateSocialSectionAnalysis(
 
   const userPrompt = `Session: ${context.sessionId}${context.scenarioTitle ? `; Scenario: ${context.scenarioTitle}` : ''}\n\n${isRecommendations ? 'Analyses from the other report sections' : `Data for ${label}`}:\n${dataJson}\n\nWrite the ${isRecommendations ? 'recommendations' : 'analysis'} now.`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-5.2',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.4,
-      max_completion_tokens: isRecommendations ? 1200 : 1800,
-    }),
+  const result = await chat({
+    tier: 'standard',
+    messages: systemUser(systemPrompt, userPrompt),
+    temperature: 0.4,
+    maxTokens: isRecommendations ? 1200 : 1800,
+    throwOnError: true,
+    label: 'aarSocial.section',
   });
-
-  if (!response.ok) {
-    const errBody = (await response.json().catch(() => ({}))) as {
-      error?: { message?: string };
-    };
-    throw new Error(errBody?.error?.message || `OpenAI ${response.status}`);
-  }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content || typeof content !== 'string') throw new Error('No content from OpenAI');
-  return content.trim();
+  if (!result) throw new Error('No content from AI provider');
+  return result.content.trim();
 }
 
 // ─── Orchestrator ────────────────────────────────────────────────────────────
@@ -894,8 +878,11 @@ export async function generateSocialAarReport(
     orgName: (executiveData.org_name as string) || undefined,
   };
 
-  if (!openAiApiKey) {
-    logger.info({ sessionId }, 'Social AAR: no OpenAI key, section data stored without analysis');
+  if (!env.aiEnabled) {
+    logger.info(
+      { sessionId },
+      'Social AAR: AI not configured, section data stored without analysis',
+    );
     return;
   }
 
@@ -921,7 +908,12 @@ export async function generateSocialAarReport(
       key === 'social_recommendations' ? buildSocialRecommendationsContext(sections) : entry.data;
 
     try {
-      const analysis = await generateSocialSectionAnalysis(key, sectionData, context, openAiApiKey);
+      const analysis = await generateSocialSectionAnalysis(
+        key,
+        sectionData,
+        context,
+        openAiApiKey ?? '',
+      );
       sections = { ...sections, [key]: { ...entry, analysis } };
       await supabaseAdmin.from('aar_reports').update({ sections }).eq('id', aarReportId);
     } catch (err) {

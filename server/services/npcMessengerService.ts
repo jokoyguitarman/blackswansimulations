@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import { randomUUID } from 'crypto';
 
@@ -63,7 +64,7 @@ async function resolveRecipientUserId(
 }
 
 export async function triggerNPCMessages(sessionId: string): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     const { data: session } = await supabaseAdmin
@@ -137,18 +138,16 @@ export async function triggerNPCMessages(sessionId: string): Promise<void> {
       ? `Sentiment: ${socialState.sentiment_score ?? 'unknown'}, Escalation risk: ${socialState.escalation_risk ?? 'unknown'}, Public trust: ${socialState.public_trust ?? 'unknown'}, Stakeholder confidence: ${socialState.community_safety ?? 'unknown'}`
       : 'No metrics available yet';
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          {
-            role: 'system',
-            content: `You are generating NPC direct messages during a crisis simulation. NPCs may privately DM the organization's page or individual players.
+    const parsed = await chatJson<{ messages?: GeneratedDM[] }>({
+      tier: 'standard',
+      json: true,
+      temperature: 0.85,
+      maxTokens: 1000,
+      label: 'npcMessenger.generateDms',
+      messages: [
+        {
+          role: 'system',
+          content: `You are generating NPC direct messages during a crisis simulation. NPCs may privately DM the organization's page or individual players.
 
 Crisis context: ${String(scenario.description || '').substring(0, 400)}${orgName ? `\nOrganization: ${orgName}` : ''}
 
@@ -176,28 +175,19 @@ Return ONLY valid JSON:
 { "messages": [{ "sender_handle": "@exact_handle", "sender_display_name": "Exact Name", "sender_type": "npc_public|npc_media|npc_politician|npc_influencer", "recipient_handle": "@recipient", "content": "message text", "urgency": "low|medium|high" }] }
 
 If no messages are warranted right now, return: { "messages": [] }`,
-          },
-          {
-            role: 'user',
-            content: 'Generate NPC direct messages for the current crisis state.',
-          },
-        ],
-        temperature: 0.85,
-        max_completion_tokens: 1000,
-        response_format: { type: 'json_object' },
-      }),
+        },
+        {
+          role: 'user',
+          content: 'Generate NPC direct messages for the current crisis state.',
+        },
+      ],
     });
 
-    if (!response.ok) {
-      logger.warn({ status: response.status, sessionId }, 'OpenAI DM generation request failed');
+    if (!parsed) {
+      logger.warn({ sessionId }, 'NPC DM generation request failed');
       return;
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    const parsed = JSON.parse(content);
     const messages = (parsed.messages || []) as GeneratedDM[];
 
     if (messages.length === 0) return;
@@ -326,7 +316,7 @@ export async function triggerNPCDMReply(
   playerMessage: string,
   playerUserId?: string,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   try {
     const { data: session } = await supabaseAdmin
@@ -444,18 +434,16 @@ export async function triggerNPCDMReply(
       .map((m) => `${m.sender_handle}: ${String(m.content).substring(0, 150)}`)
       .join('\n');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.2',
-        messages: [
-          {
-            role: 'system',
-            content: `You are ${npc.handle} (${npc.name}), an NPC in a crisis simulation. Reply to a direct message in character.
+    const parsed = await chatJson<{ reply?: string }>({
+      tier: 'standard',
+      json: true,
+      temperature: 0.85,
+      maxTokens: 300,
+      label: 'npcMessenger.reply',
+      messages: [
+        {
+          role: 'system',
+          content: `You are ${npc.handle} (${npc.name}), an NPC in a crisis simulation. Reply to a direct message in character.
 
 Your personality: ${npc.personality}
 Your bias: ${npc.bias}
@@ -469,25 +457,15 @@ Reply in 1-3 sentences. Stay in character. Be authentic to your personality and 
 
 Return ONLY valid JSON:
 { "reply": "your reply text" }`,
-          },
-          {
-            role: 'user',
-            content: `The player just sent you this DM: "${playerMessage}"`,
-          },
-        ],
-        temperature: 0.85,
-        max_completion_tokens: 300,
-        response_format: { type: 'json_object' },
-      }),
+        },
+        {
+          role: 'user',
+          content: `The player just sent you this DM: "${playerMessage}"`,
+        },
+      ],
     });
 
-    if (!response.ok) return;
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return;
-
-    const parsed = JSON.parse(content);
+    if (!parsed) return;
     const replyText = String(parsed.reply || '');
     if (!replyText) return;
 
