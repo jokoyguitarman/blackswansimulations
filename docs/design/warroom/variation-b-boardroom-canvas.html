@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>War Room — Variation B · Boardroom Canvas</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#FAF8F4;--surface:#FFFFFF;--surface-2:#F4F1EA;--ink:#172033;--muted:#6B7280;
+    --brand:#1E3A5F;--brand-strong:#18304E;--accent:#D97706;--accent-strong:#B45309;
+    --border:#E4DFD4;--border-strong:#D6CFC0;--success:#15803D;--warning:#D97706;--danger:#B91C1C;--deep:#0E1A2B;
+    --org:#1E3A5F;--ai:#0F766E;--pressure:#B45309;--rival:#B91C1C;--intel:#4F46E5;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.45}
+  .note{background:var(--deep);color:#E5E7EB;padding:10px 22px;font-size:12px}
+  .note b{color:#FCD34D}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:14px 28px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:5}
+  .brandmark{display:flex;align-items:center;gap:10px;font-weight:800}
+  .brandmark .dot{width:28px;height:28px;border-radius:8px;background:var(--brand);color:#fff;display:grid;place-items:center;font-size:13px}
+  .progress{display:flex;align-items:center;gap:0}
+  .progress .p{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--muted)}
+  .progress .p .c{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;border:2px solid var(--border-strong);font-size:11px;background:#fff}
+  .progress .p.on{color:var(--ink)}.progress .p.on .c{background:var(--brand);border-color:var(--brand);color:#fff}
+  .progress .bar{width:56px;height:2px;background:var(--border-strong);margin:0 10px}
+  .credits{font-size:12px;color:var(--muted)}.credits b{color:var(--ink)}
+
+  .wrap{max-width:1380px;margin:24px auto 60px;padding:0 28px}
+  .hero{display:grid;grid-template-columns:1fr 340px;gap:20px;align-items:start}
+  .panel{background:var(--surface);border:1px solid var(--border);border-radius:16px}
+  .panel .ph{display:flex;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--border)}
+  .panel .ph h2{margin:0;font-size:14px;font-weight:800}
+  .panel .ph .sub{font-size:12px;color:var(--muted)}
+  .panel .ph .r{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .panel .pb{padding:16px 18px}
+  .lbl{display:block;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .field{width:100%;border:1px solid var(--border-strong);border-radius:10px;padding:10px 12px;font:inherit;font-size:13px;background:#fff;color:var(--ink)}
+  textarea.field{min-height:150px;resize:vertical}
+  .attach{display:flex;gap:10px;margin-top:10px}
+  .attach .a{flex:1;border:1.5px dashed var(--border-strong);border-radius:10px;padding:10px 12px;font-size:12px;color:var(--muted);background:var(--surface-2)}
+  .attach .a b{color:var(--ink)}
+  .btn{border:1px solid var(--border-strong);background:#fff;border-radius:9px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;color:var(--brand);cursor:pointer}
+  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .btn.ghost{border-color:transparent;color:var(--muted)}
+  .btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 35%,#fff)}
+  .btn.sm{padding:5px 9px;font-size:11px}
+
+  /* footprint panel */
+  .fp .row{display:flex;flex-wrap:wrap;gap:6px}
+  .fp h5{margin:14px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .fp h5:first-child{margin-top:0}
+  .chip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--border);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:600;background:#fff}
+  .chip small{font-size:10px;color:var(--muted);font-weight:600}
+  .chip.on{border-color:color-mix(in srgb,var(--intel) 45%,#fff);background:color-mix(in srgb,var(--intel) 7%,#fff);color:var(--intel)}
+  .chip.on small{color:var(--intel);opacity:.8}
+  .fp .tip{margin-top:12px;font-size:12px;color:var(--muted);background:var(--surface-2);border-radius:10px;padding:10px 12px}
+
+  /* board of groups */
+  .board{margin-top:22px;display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
+  .group{grid-column:span 12;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+  .group.half{grid-column:span 6}
+  .gh{display:flex;align-items:center;gap:12px;padding:14px 18px;background:color-mix(in srgb,var(--g) 8%,#fff);border-bottom:1px solid color-mix(in srgb,var(--g) 25%,var(--border))}
+  .gh .tile{width:36px;height:36px;border-radius:10px;background:var(--g);color:#fff;display:grid;place-items:center;font-size:16px}
+  .gh h2{margin:0;font-size:15px;font-weight:800;color:var(--g)}
+  .gh p{margin:2px 0 0;font-size:12px;color:var(--muted)}
+  .gh .r{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .badge{font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:#fff;border:1px solid color-mix(in srgb,var(--g) 35%,#fff);color:var(--g)}
+  .gb{padding:16px 18px}
+
+  .tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .tile-org{border:1px solid var(--border);border-radius:14px;background:#fff;padding:14px;position:relative;display:flex;flex-direction:column;gap:10px}
+  .tile-org.hq{border:2px solid var(--org)}
+  .tile-org.ai{border-color:color-mix(in srgb,var(--ai) 55%,#fff);background:color-mix(in srgb,var(--ai) 3%,#fff)}
+  .tile-org .ribbon{position:absolute;top:12px;right:12px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:6px;background:var(--org);color:#fff}
+  .tile-org.ai .ribbon{background:var(--ai)}
+  .tile-org .id{display:flex;gap:10px;align-items:center}
+  .tile-org .lg{width:42px;height:42px;border-radius:11px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;font-weight:800;color:var(--org)}
+  .tile-org .nm{font-weight:800;font-size:14px}
+  .tile-org .mt{font-size:12px;color:var(--muted)}
+  .roster{display:flex;flex-wrap:wrap;gap:6px}
+  .tm{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border)}
+  .tm.voice{background:color-mix(in srgb,var(--accent) 10%,#fff);border-color:color-mix(in srgb,var(--accent) 45%,#fff)}
+  .tm.custom{border-style:dashed}
+  .tm .av{width:16px;height:16px;border-radius:50%;background:var(--org);color:#fff;font-size:9px;display:grid;place-items:center;font-weight:800}
+  .tile-org .foot{display:flex;align-items:center;gap:8px;margin-top:auto;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted)}
+  .sw{width:30px;height:18px;border-radius:999px;background:var(--border-strong);position:relative;display:inline-block;vertical-align:middle}
+  .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff}
+  .sw.on{background:var(--ai)}.sw.on::after{left:14px}
+  .tile-add{border:1.5px dashed var(--border-strong);border-radius:14px;display:grid;place-items:center;color:var(--org);font-weight:700;background:var(--surface-2);min-height:170px}
+  .reason{font-size:11px;color:var(--ai);background:color-mix(in srgb,var(--ai) 8%,#fff);border-radius:8px;padding:6px 8px}
+
+  .list .it{display:grid;grid-template-columns:40px 1fr auto;gap:12px;align-items:start;padding:12px 0;border-top:1px solid var(--border)}
+  .list .it:first-child{border-top:0;padding-top:0}
+  .list .ic{width:40px;height:40px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--g) 10%,#fff);border:1px solid color-mix(in srgb,var(--g) 30%,#fff);font-size:17px}
+  .list .t{font-weight:800}
+  .list .s{font-size:12px;color:var(--muted)}
+  .list .w{margin-top:6px;font-size:12px;color:var(--ink)}
+  .list .w b{color:var(--g)}
+  .regbar{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .regbar .btn{border-style:dashed}
+
+  .footer-cta{margin-top:22px;display:flex;align-items:center;gap:14px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px 18px}
+  .footer-cta .stats{display:flex;gap:18px;font-size:12px;color:var(--muted)}
+  .footer-cta .stats b{display:block;font-size:16px;color:var(--ink)}
+  .footer-cta .grow{flex:1}
+  .footer-cta .ready{color:var(--success);font-weight:700;font-size:12px}
+
+  /* scenario cards */
+  .library{margin-top:44px}
+  .library h3{font-size:18px;font-weight:800;margin:0 0 4px}
+  .library p.sub{color:var(--muted);margin:0 0 16px;font-size:13px}
+  .tickets{display:grid;gap:14px}
+  .ticket{display:grid;grid-template-columns:150px 1fr 230px;background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+  .ticket .side{background:var(--g);color:#fff;padding:18px 16px;display:flex;flex-direction:column;gap:8px}
+  .ticket .side .ico{font-size:26px}
+  .ticket .side .mode{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
+  .ticket .side .dur{margin-top:auto;font-size:12px;opacity:.9}
+  .ticket .side .status{align-self:flex-start;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.18)}
+  .ticket .mid{padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+  .ticket h4{margin:0;font-size:17px;font-weight:800}
+  .ticket .desc{margin:0;font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .castrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:2px}
+  .castrow .o{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:999px;padding:3px 8px}
+  .castrow .o.hq{border-color:var(--org);color:var(--org)}
+  .castrow .o.ai{border-color:var(--ai);color:var(--ai)}
+  .castrow .o.pr{border-color:color-mix(in srgb,var(--pressure) 45%,#fff);color:var(--pressure)}
+  .castrow .o.rv{border-color:color-mix(in srgb,var(--rival) 45%,#fff);color:var(--rival)}
+  .ticket .meta{font-size:11px;color:var(--muted);margin-top:auto}
+  .ticket .end{border-left:1px solid var(--border);padding:16px 18px;display:flex;flex-direction:column;gap:10px;background:var(--surface-2)}
+  .ticket .kpis{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .ticket .kpis div{background:#fff;border:1px solid var(--border);border-radius:9px;padding:6px 8px}
+  .ticket .kpis b{display:block;font-size:15px}
+  .ticket .kpis span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .ticket .lock{font-size:11px;font-weight:700;color:var(--success)}
+  .ticket .lock.locked{color:var(--accent-strong)}
+  .ticket .acts{display:flex;gap:6px;margin-top:auto}
+  .ticket .acts .btn{flex:1;text-align:center;padding:8px 6px}
+
+  @media (max-width:1100px){
+    .hero{grid-template-columns:1fr}
+    .group.half{grid-column:span 12}
+    .tiles{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .ticket{grid-template-columns:130px 1fr}
+    .ticket .end{grid-column:1/-1;border-left:0;border-top:1px solid var(--border);flex-direction:row;align-items:center}
+    .ticket .end .kpis{flex:1;grid-template-columns:repeat(4,1fr)}
+    .ticket .acts{margin-top:0}
+  }
+  @media (max-width:760px){
+    .tiles{grid-template-columns:1fr}
+    .footer-cta{flex-wrap:wrap}
+  }
+</style>
+</head>
+<body>
+<div class="note"><b>Variation B · Boardroom Canvas</b> Two zones: the brief (what happened + what was detected) on top, then a board of colour-tiled groups — your organisations as entity tiles, pressure groups and rivals as lists. Every group has a coloured header tile so the eye jumps straight to it. Scenario cards become horizontal tickets with a colour side-panel by type.</div>
+
+<div class="topbar">
+  <div class="brandmark"><span class="dot">BS</span> War Room · Corporate crisis</div>
+  <div class="progress">
+    <span class="p on"><span class="c">1</span> Setup</span><span class="bar"></span>
+    <span class="p"><span class="c">2</span> Build</span><span class="bar"></span>
+    <span class="p"><span class="c">3</span> Review &amp; compile</span>
+  </div>
+  <div class="credits">Scenario credits <b>3</b> · Session credits <b>6</b></div>
+</div>
+
+<div class="wrap">
+  <!-- ZONE 1: THE BRIEF -->
+  <div class="hero">
+    <section class="panel">
+      <div class="ph"><h2>The brief</h2><span class="sub">What happened, where, who is in it. Everything downstream reads this.</span><div class="r"><span class="chip on">✓ 412 words</span></div></div>
+      <div class="pb">
+        <label class="lbl">Crisis description</label>
+        <textarea class="field">Sigma Logistics, a regional freight and last-mile company headquartered in Singapore with a large depot in Johor Bahru, is hit by a viral video of a driver collapsing after a 19-hour shift. Malaysian drivers post pay slips showing unpaid overtime; a Singapore hospital reports a spoiled cold-chain shipment; a Malaysian labour NGO calls for a boycott. MOHR announces an inspection; MOM asks for scheduling records…</textarea>
+        <div class="attach">
+          <div class="a">📄 <b>Attach a document</b> — policy, incident report, press pack (optional)</div>
+          <div class="a">🖼️ <b>Brand logo</b> for the organisation's page (optional)</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel fp" style="--g:var(--intel)">
+      <div class="ph"><h2>Detected footprint</h2><div class="r"><button class="btn sm">Re-detect</button></div></div>
+      <div class="pb">
+        <h5>Countries</h5>
+        <div class="row"><span class="chip">🇸🇬 Singapore <small>decision centre</small></span><span class="chip">🇲🇾 Malaysia <small>incident location</small></span></div>
+        <h5>Signals</h5>
+        <div class="row"><span class="chip on">Labour dispute</span><span class="chip on">Product safety</span></div>
+        <h5>Proposed · added to the board</h5>
+        <div class="row">
+          <span class="chip on">🏢 Sigma Logistics Malaysia <small>AI office</small></span>
+          <span class="chip on">🏛️ MOHR <small>regulator</small></span>
+          <span class="chip on">🏛️ MOM <small>regulator</small></span>
+          <span class="chip on">✊ Transport Workers Union <small>union</small></span>
+          <span class="chip">🌱 Tenaganita <small>NGO · removed</small></span>
+        </div>
+        <div class="tip">Nobody plays in Malaysia, so its crowd, pages and statements will be visible to everyone as regional spillover.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ZONE 2: THE BOARD -->
+  <div class="board">
+    <!-- ORGANISATIONS -->
+    <section class="group" style="--g:var(--org)">
+      <div class="gh">
+        <div class="tile">🏢</div>
+        <div><h2>Your organisations</h2><p>Who responds on your side. HQ is where your players sit; offices and partner agencies get their own page, teams and contacts.</p></div>
+        <div class="r"><span class="badge">2 of 6</span><button class="btn">+ Add organisation</button></div>
+      </div>
+      <div class="gb">
+        <div class="tiles">
+          <div class="tile-org hq">
+            <span class="ribbon">HQ · players</span>
+            <div class="id"><div class="lg">SL</div><div><div class="nm">Sigma Logistics</div><div class="mt">🇸🇬 Singapore · Company · “SL”</div></div></div>
+            <label class="lbl" style="margin:4px 0 0">Teams · 4 of 6</label>
+            <div class="roster">
+              <span class="tm voice"><span class="av">C</span> Communications · voice</span>
+              <span class="tm"><span class="av">L</span> Legal</span>
+              <span class="tm"><span class="av">E</span> Executive</span>
+              <span class="tm custom"><span class="av">F</span> Fleet Operations</span>
+              <span class="tm" style="background:#fff;color:var(--org);border-style:dashed">+ team</span>
+            </div>
+            <div class="foot">Human players · scored per team <span style="margin-left:auto"><button class="btn sm ghost">Edit</button></span></div>
+          </div>
+          <div class="tile-org ai">
+            <span class="ribbon">Office · AI</span>
+            <div class="id"><div class="lg" style="color:var(--ai)">MY</div><div><div class="nm">Sigma Logistics Malaysia</div><div class="mt">🇲🇾 Johor Bahru · Office · “SLM”</div></div></div>
+            <div class="reason">Suggested from your description — the depot's operating company.</div>
+            <div class="roster">
+              <span class="tm voice"><span class="av" style="background:var(--ai)">C</span> Communications</span>
+              <span class="tm"><span class="av" style="background:var(--ai)">S</span> Stakeholder Eng.</span>
+              <span class="tm custom"><span class="av" style="background:var(--ai)">D</span> Driver Relations</span>
+            </div>
+            <div class="foot"><span class="sw on"></span> Operated by AI <span style="margin-left:auto"><button class="btn sm ghost">Edit</button> <button class="btn sm danger">Remove</button></span></div>
+          </div>
+          <div class="tile-add">+ Office, subsidiary or partner agency</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRESSURE -->
+    <section class="group half" style="--g:var(--pressure)">
+      <div class="gh">
+        <div class="tile">✊</div>
+        <div><h2>Pressure groups</h2><p>AI-run pages with a spokesperson. Engage them and they stand down; ignore them and they escalate.</p></div>
+        <div class="r"><span class="badge">2 of 6</span></div>
+      </div>
+      <div class="gb list">
+        <div class="it"><div class="ic">🏛️</div><div><div class="t">Ministry of Human Resources Malaysia</div><div class="s">Regulator · 🇲🇾 Putrajaya · statutory</div><div class="w"><b>Wants</b> scheduling records and proof of rest periods within 48 h</div></div><div><button class="btn sm ghost">Edit</button></div></div>
+        <div class="it"><div class="ic">✊</div><div><div class="t">Transport Workers Union of Malaysia</div><div class="s">Union · 🇲🇾 Johor Bahru · advocacy</div><div class="w"><b>Wants</b> consultation before roster changes; all overtime paid</div></div><div><button class="btn sm ghost">Edit</button></div></div>
+        <div class="regbar"><button class="btn sm">+ Regulator</button><button class="btn sm">+ Union</button><button class="btn sm">+ NGO</button><button class="btn sm">+ Community</button><button class="btn sm">+ Political</button></div>
+      </div>
+    </section>
+
+    <!-- RIVALS -->
+    <section class="group half" style="--g:var(--rival)">
+      <div class="gh">
+        <div class="tile">⚔️</div>
+        <div><h2>Rival pages</h2><p>Competitors the AI drives against you. Leave empty and one is invented.</p></div>
+        <div class="r"><label style="font-size:12px;color:var(--muted);display:flex;gap:8px;align-items:center"><span class="sw on" style="--ai:var(--rival)"></span> Invent a rival</label></div>
+      </div>
+      <div class="gb list">
+        <div class="it"><div class="ic">🏢</div><div><div class="t">Swift Freight</div><div class="s">Competitor · 🇲🇾 Malaysia · @SwiftFreightMY · @swift_freight</div></div><div><button class="btn sm ghost">Edit</button></div></div>
+        <div class="regbar"><input class="field" style="flex:2;min-width:160px" placeholder="Competitor name" /><input class="field" style="flex:1" placeholder="Country" /><button class="btn danger">+ Add</button></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="footer-cta">
+    <div class="stats">
+      <div><b>2</b>organisations</div><div><b>7</b>teams</div><div><b>2</b>countries</div><div><b>2</b>pressure groups</div><div><b>1</b>rival</div>
+    </div>
+    <div class="grow"></div>
+    <span class="ready">✓ Ready to build</span>
+    <button class="btn ghost">Save draft</button>
+    <button class="btn primary" style="padding:11px 18px">Continue → Build the scenario</button>
+  </div>
+
+  <!-- CARDS -->
+  <section class="library">
+    <h3>Scenario card — redesigned as a ticket</h3>
+    <p class="sub">Type and status in the coloured side panel; the cast row shows exactly who is in the scenario; the right column carries the numbers, the lock state and the actions.</p>
+    <div class="tickets">
+      <article class="ticket" style="--g:var(--accent)">
+        <div class="side"><span class="ico">📱</span><span class="mode">Corporate crisis</span><span class="status">Active</span><span class="dur">60 min · compiled today</span></div>
+        <div class="mid">
+          <h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4>
+          <p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis across Singapore and Malaysia.</p>
+          <div class="castrow"><span class="o hq">🇸🇬 Sigma Logistics · HQ</span><span class="o ai">🇲🇾 Sigma Logistics Malaysia · AI</span><span class="o pr">🏛️ MOHR</span><span class="o pr">✊ TWUM</span><span class="o rv">🏢 Swift Freight</span></div>
+          <div class="meta">4 objectives · Executive decisions: organic · last session 18 Sep</div>
+        </div>
+        <div class="end">
+          <div class="kpis"><div><b>7</b><span>teams</span></div><div><b>85</b><span>contacts</span></div><div><b>217</b><span>injects</span></div><div><b>2</b><span>countries</span></div></div>
+          <span class="lock">🔓 Editable</span>
+          <div class="acts"><button class="btn">Preview</button><button class="btn">Edit</button><button class="btn primary">Launch</button></div>
+        </div>
+      </article>
+      <article class="ticket" style="--g:var(--accent)">
+        <div class="side"><span class="ico">📱</span><span class="mode">Corporate crisis</span><span class="status">Live · T+23</span><span class="dur">60 min · compiled 18 Sep</span></div>
+        <div class="mid">
+          <h4>VacuumGate SEA — Dyson Singapore</h4>
+          <p class="desc">Allegations of forced overtime at a Johor contract manufacturer land on Dyson's Singapore HQ while a Malaysian ministry opens an inspection.</p>
+          <div class="castrow"><span class="o hq">🇸🇬 Dyson · HQ</span><span class="o pr">🏛️ MOHR</span><span class="o pr">🌱 Tenaganita</span></div>
+          <div class="meta">3 objectives · 1 session in progress</div>
+        </div>
+        <div class="end">
+          <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>47</b><span>contacts</span></div><div><b>146</b><span>injects</span></div><div><b>1</b><span>country</span></div></div>
+          <span class="lock locked">🔒 Locked — session live</span>
+          <div class="acts"><button class="btn">Preview</button><button class="btn" disabled style="opacity:.5">Edit</button><button class="btn primary">Open session</button></div>
+        </div>
+      </article>
+      <article class="ticket" style="--g:var(--brand)">
+        <div class="side"><span class="ico">🗺️</span><span class="mode">Field operations</span><span class="status">Draft</span><span class="dur">90 min · not compiled</span></div>
+        <div class="mid">
+          <h4>Marina Bay Sands — IED at Convention Hall B</h4>
+          <p class="desc">Improvised device discovered during a trade expo; evacuation, triage and cordon management across three response teams.</p>
+          <div class="castrow"><span class="o hq">🇸🇬 SCDF · SPF · SMRT</span></div>
+          <div class="meta">Resume in the War Room</div>
+        </div>
+        <div class="end">
+          <div class="kpis"><div><b>3</b><span>teams</span></div><div><b>12</b><span>hazards</span></div><div><b>38</b><span>injects</span></div><div><b>1</b><span>country</span></div></div>
+          <span class="lock" style="color:var(--muted)">◌ Draft</span>
+          <div class="acts"><button class="btn ghost">Delete</button><button class="btn primary">Resume</button></div>
+        </div>
+      </article>
+    </div>
+  </section>
+</div>
+</body>
+</html>
