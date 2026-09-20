@@ -43,6 +43,15 @@ export const useRealtime = <T = Record<string, unknown>>(
   const [error, setError] = useState<Error | null>(null);
   const channelRef = useRef<RealtimeChannel | null>(null);
   const processedIdsRef = useRef<Set<string>>(new Set());
+  // One Realtime channel PER HOOK INSTANCE. Since realtime-js 2.9x `supabase.channel(topic)`
+  // returns the existing channel when the topic already exists, so two components subscribing to
+  // the same table (e.g. TeamChat's list, conversation and ChatInterface all watching
+  // `chat_messages`) would share one channel and the second `.on('postgres_changes')` would throw
+  // "cannot add `postgres_changes` callbacks … after `subscribe()`". A unique suffix keeps every
+  // subscriber on its own channel; Supabase happily multiplexes them over one socket.
+  const instanceIdRef = useRef(
+    `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+  );
 
   // Store callbacks in refs to prevent re-subscription on every render
   const onInsertRef = useRef(onInsert);
@@ -75,8 +84,9 @@ export const useRealtime = <T = Record<string, unknown>>(
     };
     setRealtimeAuth();
 
-    // Create channel with filter
-    const channelName = filter ? `${table}:${filter.replace(/[^a-zA-Z0-9]/g, '_')}` : table;
+    // Create channel with filter — suffixed per hook instance so subscribers never share a topic.
+    const baseName = filter ? `${table}:${filter.replace(/[^a-zA-Z0-9]/g, '_')}` : table;
+    const channelName = `${baseName}:${instanceIdRef.current}`;
 
     // Parse filter if provided (format: "column=eq.value" or "column=in.(value1,value2)")
     let filterConfig: Record<string, string> | undefined = undefined;
