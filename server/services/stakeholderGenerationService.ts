@@ -8,12 +8,12 @@ import {
 import type { NormalisedOrg, OrgTeamCharter } from './scenarioOrgModel.js';
 import { EXECUTIVE_FUNCTION, teamNamesForFunction } from './scenarioOrgModel.js';
 import {
-  RELATIONSHIPS,
-  PERSUADABILITY,
+  STAKEHOLDER_RELATIONSHIPS as RELATIONSHIPS,
+  PERSUADABILITIES as PERSUADABILITY,
   type Persuadability,
   type Stakeholder,
   type StakeholderRelationship,
-} from './stakeholderShapes.js';
+} from '../lib/stakeholderContract.js';
 import {
   claimHandle,
   normaliseHandle,
@@ -168,7 +168,7 @@ export function ensurePersonaTwins(
   stakeholders: Stakeholder[],
   injects: SocialInject[],
   personas: NPCPersona[],
-  countryByOrgKey: Map<string, string>,
+  countryByOrgKey: Map<string, string | null | undefined>,
 ): NPCPersona[] {
   const existing = new Set(personas.map((p) => p.handle));
   const added: NPCPersona[] = [];
@@ -183,7 +183,10 @@ export function ensurePersonaTwins(
   );
   for (const s of stakeholders) {
     if (!feedAuthors.has(s.id) || existing.has(s.handle)) continue;
-    const twin = personaTwinFor(s, s.org_key ? countryByOrgKey.get(s.org_key) : undefined);
+    const twin = personaTwinFor(
+      s,
+      s.org_key ? (countryByOrgKey.get(s.org_key) ?? undefined) : undefined,
+    );
     existing.add(twin.handle);
     added.push(twin);
     logger.info(

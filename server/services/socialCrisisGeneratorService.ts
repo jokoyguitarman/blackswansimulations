@@ -11,13 +11,8 @@ import {
   genericExpectedActions,
   type TeamCharter,
 } from './teamCharterService.js';
-import type {
-  Stakeholder,
-  OrgRegistryEntry,
-  CountryEntry,
-  ExecutiveDecision,
-  ChainOfCommandEdge,
-} from './stakeholderShapes.js';
+import type { Stakeholder, OrgRegistryEntry, CountryEntry } from '../lib/stakeholderContract.js';
+import type { ExecutiveDecision, ChainOfCommandEdge } from './scenarioOrgModel.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 

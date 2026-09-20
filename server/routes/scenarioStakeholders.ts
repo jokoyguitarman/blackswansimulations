@@ -8,12 +8,12 @@ import { assertScenarioOwner } from '../lib/access.js';
 import { canEditScenario } from '../services/scenarioEditService.js';
 import {
   StakeholderSchema,
-  RELATIONSHIPS,
-  PERSUADABILITY,
+  STAKEHOLDER_RELATIONSHIPS as RELATIONSHIPS,
+  PERSUADABILITIES as PERSUADABILITY,
   resolveTeamFunction,
   type Stakeholder,
   type OrgRegistryEntry,
-} from '../services/stakeholderShapes.js';
+} from '../lib/stakeholderContract.js';
 import { countrySlug } from '../../shared/countries.js';
 import { personaTwinFor } from '../services/stakeholderGenerationService.js';
 
@@ -355,11 +355,9 @@ scenarioStakeholdersRouter.patch(
       };
       if (next.grievance === '') next.resolution_criteria = [];
       else if (next.resolution_criteria.length === 0) {
-        return res
-          .status(400)
-          .json({
-            error: 'A stakeholder with a grievance needs at least one resolution criterion',
-          });
+        return res.status(400).json({
+          error: 'A stakeholder with a grievance needs at least one resolution criterion',
+        });
       }
       const parsed = StakeholderSchema.safeParse(next);
       if (!parsed.success)
@@ -525,7 +523,7 @@ scenarioStakeholdersRouter.post(
       if (personas.some((p) => p.handle === s.handle))
         return res.json({ ok: true, created: false });
       const country = s.org_key
-        ? ctx.orgs.find((o) => o.org_key === s.org_key)?.country
+        ? (ctx.orgs.find((o) => o.org_key === s.org_key)?.country ?? undefined)
         : undefined;
       const twin = personaTwinFor(s, country);
       const { error } = await supabaseAdmin

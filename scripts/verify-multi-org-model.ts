@@ -20,7 +20,7 @@ import {
   resolveTeamFunction,
   isStakeholderVisibleToTeam,
   type Stakeholder,
-} from '../server/services/stakeholderShapes.js';
+} from '../server/lib/stakeholderContract.js';
 import {
   validateScenarioPayload,
   MultiOrgValidationError,

@@ -126,6 +126,26 @@ async function main() {
   if (VALIDATE_FILE) {
     const { readFileSync } = await import('node:fs');
     const { payload, charters } = JSON.parse(readFileSync(VALIDATE_FILE, 'utf8'));
+    // Mirror compile's normalisation of older dumps (title/by_function aliases, chain `to` strings).
+    const is = payload.scenario.initial_state;
+    for (const d of is.decision_space || []) {
+      d.title = d.title || d.label;
+      for (const ob of d.sop_obligations || []) {
+        ob.by_function = ob.by_function || ob.owed_by_function;
+        ob.owed_by_function = ob.owed_by_function || ob.by_function;
+      }
+    }
+    for (const edge of is.chain_of_command || []) {
+      edge.to = (edge.to || []).map((t: unknown) =>
+        typeof t === 'string'
+          ? t
+          : String(
+              (t as { stakeholder_id?: string; function?: string }).stakeholder_id ||
+                (t as { function?: string }).function ||
+                '',
+            ),
+      );
+    }
     try {
       validateScenarioPayload(payload, charters);
       console.log('VALIDATION PASS');

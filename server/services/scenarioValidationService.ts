@@ -4,11 +4,10 @@ import type { TeamCharter } from './teamCharterService.js';
 import {
   StakeholderSchema,
   OrgRegistryEntrySchema,
-  ExecutiveDecisionSchema,
   resolveTeamFunction,
   type Stakeholder,
-} from './stakeholderShapes.js';
-import { functionKeyForTeamRow } from './scenarioOrgModel.js';
+} from '../lib/stakeholderContract.js';
+import { functionKeyForTeamRow, ExecutiveDecisionSchema } from './scenarioOrgModel.js';
 
 type PersistableTeamCharter = TeamCharter & {
   org_key?: string | null;
@@ -77,7 +76,9 @@ export function validateScenarioPayload(
   );
   const allOrgKeys = new Set(orgs.map((o) => o.org_key));
   const countrySet = new Set<string>(
-    countries.length > 0 ? countries.map((c) => c.name) : orgs.map((o) => o.country),
+    countries.length > 0
+      ? countries.map((c) => c.name)
+      : orgs.map((o) => o.country).filter((c): c is string => !!c),
   );
   for (const o of orgs) {
     const parsed = OrgRegistryEntrySchema.safeParse(o);
@@ -87,7 +88,7 @@ export function validateScenarioPayload(
         `orgs.${o.org_key}`,
         `Registry entry invalid: ${parsed.error.issues[0]?.message}`,
       );
-    if (countries.length > 0 && !countrySet.has(o.country)) {
+    if (countries.length > 0 && !countrySet.has(o.country ?? '')) {
       fail(
         'MO-ORG-006',
         `orgs.${o.org_key}`,

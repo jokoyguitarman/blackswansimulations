@@ -58,12 +58,10 @@ import {
   EXECUTIVE_CHARTER,
   type OrganisationInput,
   type CompetitorInput,
+  type ExecutiveDecision,
+  type ChainOfCommandEdge,
 } from '../services/scenarioOrgModel.js';
-import type {
-  Stakeholder,
-  ExecutiveDecision,
-  ChainOfCommandEdge,
-} from '../services/stakeholderShapes.js';
+import type { Stakeholder } from '../lib/stakeholderContract.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { env } from '../env.js';
 import { extractBlueprint } from '../services/blueprint/blueprintExtractionService.js';

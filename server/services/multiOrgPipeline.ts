@@ -43,13 +43,8 @@ import {
 } from './stakeholderGenerationService.js';
 import { generateDecisionLayer, hasExecutiveTeam } from './decisionLayerService.js';
 import { sanitizeExpectedActions, SENTIMENT_DIMENSIONS } from './teamCharterService.js';
-import type {
-  Stakeholder,
-  OrgRegistryEntry,
-  CountryEntry,
-  ExecutiveDecision,
-  ChainOfCommandEdge,
-} from './stakeholderShapes.js';
+import type { Stakeholder, OrgRegistryEntry, CountryEntry } from '../lib/stakeholderContract.js';
+import type { ExecutiveDecision, ChainOfCommandEdge } from './scenarioOrgModel.js';
 
 /**
  * Multi-organisation War Room pipeline (contract §5): the per-endpoint

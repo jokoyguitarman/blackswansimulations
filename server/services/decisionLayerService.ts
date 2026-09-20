@@ -6,15 +6,19 @@ import {
   type SocialInject,
   type SOPStep,
 } from './socialCrisisGeneratorService.js';
-import { EXECUTIVE_FUNCTION, type NormalisedOrg, type OrgTeamCharter } from './scenarioOrgModel.js';
-import type {
-  ChainOfCommandEdge,
-  ExecutiveDecision,
-  LatentGrievance,
-  Persuadability,
-  Stakeholder,
-} from './stakeholderShapes.js';
-import { PERSUADABILITY } from './stakeholderShapes.js';
+import {
+  EXECUTIVE_FUNCTION,
+  type NormalisedOrg,
+  type OrgTeamCharter,
+  type ChainOfCommandEdge,
+  type ExecutiveDecision,
+} from './scenarioOrgModel.js';
+import {
+  PERSUADABILITIES as PERSUADABILITY,
+  type LatentGrievance,
+  type Persuadability,
+  type Stakeholder,
+} from '../lib/stakeholderContract.js';
 import type { CrisisContext } from './multiOrgGenerationService.js';
 import { countrySlug } from '../../shared/countries.js';
 

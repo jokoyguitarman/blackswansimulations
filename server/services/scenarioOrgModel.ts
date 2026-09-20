@@ -4,9 +4,82 @@ import {
   type TeamCharter,
   type TeamExpectedAction,
 } from './teamCharterService.js';
+import { z } from 'zod';
 import { countryCode, countrySlug, isKnownCountry } from '../../shared/countries.js';
-import type { CountryEntry, OrgRegistryEntry, OrgKind } from './stakeholderShapes.js';
-import { resolveTeamFunction } from './stakeholderShapes.js';
+import {
+  DecisionOptionSchema,
+  resolveTeamFunction,
+  type ChainOfCommandLink,
+  type CountryEntry,
+  type OrgRegistryEntry,
+} from '../lib/stakeholderContract.js';
+
+// ─── Generator-side extensions of the shared contract (§5.1 kind, §7A decisions) ──
+
+export type OrgKind = 'company' | 'office' | 'agency' | 'ngo' | 'other';
+
+export const SOP_DETECTIONS = [
+  'stakeholder_contacted',
+  'statement_published',
+  'internal_directive_sent',
+] as const;
+export type SopDetection = (typeof SOP_DETECTIONS)[number];
+
+/**
+ * The generator writes a richer decision than the contract's DecisionOption
+ * (which it structurally satisfies): a human label alongside `title`, an
+ * obligation key + detection hint per obligation, and whether a public
+ * statement is expected. Type literals (not interfaces) so they stay
+ * assignable to the contract's passthrough-inferred types.
+ */
+export type SopObligation = {
+  obligation_key: string;
+  description: string;
+  owed_to_stakeholder_ids: string[];
+  owed_by_function: string;
+  /** Contract field name (mirrors owed_by_function). */
+  by_function: string;
+  window_minutes: number;
+  detection: SopDetection;
+};
+
+export type ExecutiveDecision = {
+  decision_key: string;
+  label: string;
+  /** Contract field name (mirrors label). */
+  title: string;
+  description: string;
+  decidable_by_org_keys: string[];
+  affected_org_keys: string[];
+  severity: 'low' | 'medium' | 'high';
+  sop_obligations: SopObligation[];
+  eruption_inject_keys: string[];
+  spillover_inject_keys: string[];
+  public_statement_expected: boolean;
+};
+
+/** Contract DecisionOptionSchema tightened with the generator's extra fields (MO-DEC-001). */
+export const ExecutiveDecisionSchema = DecisionOptionSchema.extend({
+  label: z.string().min(2).max(120),
+  description: z.string().min(2).max(600),
+  decidable_by_org_keys: z.array(z.string()).min(1),
+  affected_org_keys: z.array(z.string()).min(1),
+  severity: z.enum(['low', 'medium', 'high']),
+  sop_obligations: z.array(
+    z.object({
+      obligation_key: z.string().min(2).max(60),
+      description: z.string().min(2).max(300),
+      owed_to_stakeholder_ids: z.array(z.string()),
+      owed_by_function: z.string().min(1),
+      by_function: z.string().min(1),
+      window_minutes: z.number().int().min(5).max(120),
+      detection: z.enum(SOP_DETECTIONS),
+    }),
+  ),
+  public_statement_expected: z.boolean(),
+});
+
+export type ChainOfCommandEdge = ChainOfCommandLink;
 
 /**
  * Generator-owned organisation model (contract §5): organisation inputs from
@@ -526,6 +599,7 @@ export function buildOrgRegistry(
 export function buildCountries(registry: OrgRegistryEntry[]): CountryEntry[] {
   const seen = new Map<string, CountryEntry>();
   for (const e of registry) {
+    if (!e.country) continue;
     if (!seen.has(e.country)) {
       seen.set(e.country, { name: e.country, code: countryCode(e.country).toUpperCase() });
     }
