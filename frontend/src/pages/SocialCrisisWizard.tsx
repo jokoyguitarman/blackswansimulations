@@ -25,9 +25,10 @@ import {
   type PressureRegister,
 } from '../components/Scenario/OrganisationRosterBuilder';
 import { BrandMark } from '../components/BrandMark';
-import { WrIcon, type WrIconName } from '../components/UI/WarRoomIcon';
-import { countryCode, initialsOf } from '../components/UI/Collapsible';
-import { SHELL_ART } from '../lib/scenarioArt';
+import { WrIcon, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon';
+import { WrFold, countryCode, initialsOf } from '../components/UI/Collapsible';
+import { OriginBadge } from '../components/UI/OriginBadge';
+import { SHELL_ART, artFor } from '../lib/scenarioArt';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -2745,11 +2746,33 @@ export const SocialCrisisWizard = () => {
     const stages: Array<{
       key: 'characters' | 'storyline' | 'convergence' | 'pages';
       label: string;
+      desc: string;
+      icon: WrIconName;
     }> = [
-      { key: 'characters', label: 'Characters & facts' },
-      { key: 'storyline', label: 'Storyline' },
-      { key: 'convergence', label: 'Convergence' },
-      { key: 'pages', label: 'Org pages' },
+      {
+        key: 'characters',
+        label: 'Characters & facts',
+        desc: 'Stakeholder contacts, crowd personas, the fact sheet',
+        icon: 'users',
+      },
+      {
+        key: 'storyline',
+        label: 'Storyline',
+        desc: 'Per-team pressure, shared injects, timing',
+        icon: 'layers',
+      },
+      {
+        key: 'convergence',
+        label: 'Convergence',
+        desc: 'Gates where the teams’ threads meet',
+        icon: 'target',
+      },
+      {
+        key: 'pages',
+        label: 'Pages',
+        desc: 'Fakebook and Z pages for every organisation',
+        icon: 'phone',
+      },
     ];
     const order = ['characters', 'storyline', 'convergence', 'pages', 'done'];
     const curIdx = buildStage ? order.indexOf(buildStage) : -1;
@@ -2760,36 +2783,72 @@ export const SocialCrisisWizard = () => {
       pages: buildStage === 'pages',
     };
     const errorMsg = step2Error || step3Error || step4Error;
+    const doneCount = stages.filter(
+      (s) => buildStage === 'done' || (curIdx > -1 && curIdx > order.indexOf(s.key)),
+    ).length;
     return (
       <div>
-        <p className="text-xs terminal-text text-muted mb-6">
-          Generating characters, storyline, convergence, and brand pages. This takes a few minutes;
-          you will advance to compile automatically.
-        </p>
-        <div className="border border-border rounded p-4 space-y-2 mb-4">
+        <div className="wr-phase" aria-hidden>
+          {stages.map((s, i) => (
+            <span
+              key={s.key}
+              style={{
+                width: '25%',
+                background:
+                  i < doneCount
+                    ? 'var(--success)'
+                    : buildStage === s.key && !buildError
+                      ? 'var(--accent)'
+                      : buildError === s.key
+                        ? 'var(--danger)'
+                        : 'var(--surface-2)',
+              }}
+            />
+          ))}
+        </div>
+        <div className="wr-groups" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
           {stages.map((s) => {
             const idx = order.indexOf(s.key);
             const isDone = buildStage === 'done' || (curIdx > -1 && curIdx > idx);
             const isRunning = buildStage === s.key && !buildError && loadingByKey[s.key] !== false;
             const isErrored = buildError === s.key;
+            const family = isErrored
+              ? 'var(--danger)'
+              : isDone
+                ? 'var(--success)'
+                : isRunning
+                  ? 'var(--accent)'
+                  : 'var(--muted)';
             return (
-              <div key={s.key} className="flex items-center gap-3 text-sm terminal-text">
-                <span
-                  className={`w-5 h-5 flex items-center justify-center rounded text-[11px] font-bold ${
-                    isErrored
-                      ? 'bg-danger/10 text-danger'
-                      : isDone
-                        ? 'bg-success/10 text-success'
-                        : isRunning
-                          ? 'bg-accent/10 text-ink animate-pulse'
-                          : 'bg-surface-2 text-muted'
-                  }`}
-                >
-                  {isErrored ? '!' : isDone ? '✓' : isRunning ? '●' : '·'}
-                </span>
-                <span className={isDone ? 'text-ink' : isRunning ? 'text-ink' : 'text-muted'}>
-                  {s.label}
-                </span>
+              <div
+                key={s.key}
+                className="wr-node"
+                style={
+                  {
+                    '--g': family,
+                    opacity: !isDone && !isRunning && !isErrored ? 0.6 : 1,
+                  } as CSSProperties
+                }
+              >
+                <div className="kicker">
+                  {isErrored ? 'failed' : isDone ? 'done' : isRunning ? 'running' : 'queued'}
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <div
+                    className={`wr-tile ${isDone || isRunning || isErrored ? '' : 'soft'}`}
+                    style={{ width: 40, height: 40 }}
+                  >
+                    {isRunning ? (
+                      <span className="wr-livedot" style={{ color: '#fff' }} />
+                    ) : (
+                      <WrIcon name={isDone ? 'check' : isErrored ? 'alert' : s.icon} size={18} />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-extrabold text-ink">{s.label}</div>
+                    <div className="text-xs text-muted">{s.desc}</div>
+                  </div>
+                </div>
               </div>
             );
           })}
@@ -2797,598 +2856,931 @@ export const SocialCrisisWizard = () => {
 
         {/* Live storyline generation log */}
         {buildStage === 'storyline' && step3Progress.length > 0 && (
-          <div className="border border-border rounded p-3 bg-surface-2 font-mono text-xs space-y-1 max-h-40 overflow-y-auto mb-4">
+          <div
+            className="mt-4 rounded-2xl p-4 font-mono text-xs space-y-1 max-h-48 overflow-y-auto"
+            style={{ background: 'var(--wr-deep)', color: 'rgba(255,255,255,.75)' }}
+          >
             {step3Progress.map((msg, i) => (
-              <div key={i} className="text-muted">
-                <span className="text-muted">[{String(i + 1).padStart(2, '0')}]</span> {msg}
+              <div key={i}>
+                <span style={{ color: 'var(--accent)' }}>[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                {msg}
               </div>
             ))}
-            <div className="animate-pulse text-muted">&#9612;</div>
+            <div className="animate-pulse">&#9612;</div>
           </div>
         )}
 
         {buildError ? (
-          <div className="text-center py-4">
-            <p className="text-sm terminal-text text-danger mb-4">
-              {errorMsg || `The ${buildError} stage failed.`} Retry to rebuild the scenario.
-            </p>
-            <button
-              onClick={() => void generateAll()}
-              className="px-6 py-2 text-xs terminal-text border border-accent text-ink hover:bg-accent/10"
-            >
-              Retry
+          <div className="wr-empty mt-4" style={{ '--g': 'var(--danger)' } as CSSProperties}>
+            <div className="wr-tile">
+              <WrIcon name="alert" size={24} />
+            </div>
+            <div>
+              <h4>The {buildError} stage failed</h4>
+              <p>
+                {errorMsg || 'The generator did not return a result.'} Retry to rebuild the scenario
+                from this stage.
+              </p>
+            </div>
+            <button onClick={() => void generateAll()} className="wr-btn accent">
+              <WrIcon name="refresh" /> Retry
             </button>
           </div>
         ) : (
-          <Spinner text="Building scenario..." />
+          <div className="mt-4">
+            <Spinner
+              text={`Building scenario — ${doneCount} of ${stages.length} stages complete…`}
+            />
+          </div>
         )}
       </div>
     );
   };
 
-  /* ── Step 5: Review & Compile ──────────────────────────────────────── */
+  /* ── Step 7: Review & Compile ──────────────────────────────────────── */
 
-  const renderStep7 = () => (
-    <div>
-      {!scenarioId && !compiling && (
-        <div className="space-y-6">
-          <p className="text-xs terminal-text text-muted mb-4">
-            Review everything the War Room produced, then compile to persist. After compiling, you
-            can still edit all of it — injects, NPCs, fact sheet, org pages, charters — from the
-            scenario's detail page.
-          </p>
+  const renderStep7 = () => {
+    const reviewInjects = [
+      ...storylineInjects,
+      ...Object.values(teamStorylines).flat(),
+      ...sharedInjects,
+    ];
+    const timedInjects = reviewInjects
+      .filter((inj) => inj.trigger_time_minutes != null)
+      .sort((a, b) => (a.trigger_time_minutes || 0) - (b.trigger_time_minutes || 0));
+    const conditionalInjects = reviewInjects.filter((inj) => inj.trigger_time_minutes == null);
+    const countries = Array.from(new Set([country, ...extraOrganisations.map((o) => o.country)]));
+    const liveConcerns = stakeholders.filter((s) => s.grievance).length;
+    const scheduledStatements = stakeholderInjects.filter(
+      (i) => i.trigger_time_minutes != null,
+    ).length;
+    const registryByKey = new Map(orgRegistry.map((o) => [o.org_key, o]));
 
-          <div className="border border-border rounded p-4 mb-4">
-            <h3 className="text-xs terminal-text text-muted uppercase mb-4">Scenario Summary</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-xs terminal-text">
-              <div className="border border-border rounded p-3 text-center col-span-2 sm:col-span-3">
-                <div className="text-[10px] text-muted uppercase">Crisis Scenario</div>
-                <div className="text-ink text-xs mt-1 line-clamp-2">{crisisLabel}</div>
-              </div>
-              <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">
-                  {extraOrganisations.length > 0 ? 'Countries' : 'Country'}
+    const kpi = (value: string | number, label: string, sub?: string, family = 'var(--brand)') => (
+      <div
+        className="wr-node text-center"
+        style={{ '--g': family, padding: '14px 10px 12px' } as CSSProperties}
+      >
+        <div
+          className="font-extrabold text-ink"
+          style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 22, color: family }}
+        >
+          {value}
+        </div>
+        <div className="wr-lbl m-0" style={{ marginTop: 2 }}>
+          {label}
+        </div>
+        {sub && <div className="text-[11px] text-muted mt-1 leading-snug">{sub}</div>}
+      </div>
+    );
+
+    return (
+      <div>
+        {!scenarioId && !compiling && (
+          <div className="space-y-5">
+            {/* narrative — the scenario as it will appear in the library */}
+            {narrative && (
+              <div className="wr-artband rounded-2xl" style={{ padding: '22px 24px' }}>
+                <img
+                  className="wr-art"
+                  src={artFor(
+                    {
+                      id: wizardDraftId ?? narrative.title,
+                      category: 'social_media_crisis',
+                      title: narrative.title,
+                      description: narrative.description,
+                    },
+                    'full',
+                  )}
+                  alt=""
+                />
+                <div className="wr-eyebrow">
+                  <WrIcon name="phone" size={12} /> Corporate crisis · {countries.join(' · ')} · 60
+                  minutes
                 </div>
-                <div className="text-ink font-bold">
-                  {extraOrganisations.length > 0
-                    ? Array.from(
-                        new Set([country, ...extraOrganisations.map((o) => o.country)]),
-                      ).join(', ')
-                    : country}
-                </div>
-              </div>
-              <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">Storyline Injects</div>
-                <div className="text-ink font-bold text-lg">{storylineInjects.length}</div>
-              </div>
-              <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">NPC Count</div>
-                <div className="text-ink font-bold text-lg">{personas.length}</div>
-                {Object.keys(perCountryCounts).length > 1 && (
-                  <div className="text-[9px] text-muted mt-0.5">
-                    {Object.entries(perCountryCounts)
-                      .map(([c, n]) => `${c}: ${n}`)
-                      .join(' · ')}
-                  </div>
+                <h2
+                  className="text-white font-extrabold mt-2 mb-2"
+                  style={{ fontSize: 24, lineHeight: 1.15, letterSpacing: '-.015em' }}
+                >
+                  {narrative.title}
+                </h2>
+                <p
+                  className="text-sm whitespace-pre-wrap"
+                  style={{ color: 'rgba(255,255,255,.75)', maxWidth: 820 }}
+                >
+                  {narrative.description}
+                </p>
+                {narrative.briefing && (
+                  <details className="mt-3">
+                    <summary
+                      className="cursor-pointer text-xs font-bold"
+                      style={{ color: 'var(--accent)' }}
+                    >
+                      Participant briefing
+                    </summary>
+                    <p
+                      className="text-xs whitespace-pre-wrap mt-2"
+                      style={{ color: 'rgba(255,255,255,.7)', maxWidth: 820 }}
+                    >
+                      {narrative.briefing}
+                    </p>
+                  </details>
                 )}
               </div>
-              <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">Stakeholders</div>
-                <div className="text-ink font-bold text-lg">{stakeholders.length}</div>
-                {stakeholders.length > 0 && (
-                  <div className="text-[9px] text-muted mt-0.5">
-                    {stakeholders.filter((s) => s.grievance).length} with a live concern ·{' '}
-                    {stakeholderInjects.filter((i) => i.trigger_time_minutes != null).length}{' '}
-                    scheduled
-                  </div>
+            )}
+
+            {/* summary tiles */}
+            <div>
+              <div className="wr-sech" style={{ margin: '0 0 10px' }}>
+                <h2>What was generated</h2>
+                <p className="truncate" style={{ maxWidth: 640 }}>
+                  From: {crisisLabel}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {kpi(
+                  countries.length,
+                  countries.length === 1 ? 'country' : 'countries',
+                  countries.join(', '),
+                  'var(--f-org)',
+                )}
+                {kpi(
+                  personas.length,
+                  'crowd personas',
+                  Object.keys(perCountryCounts).length > 1
+                    ? Object.entries(perCountryCounts)
+                        .map(([c, n]) => `${c} ${n}`)
+                        .join(' · ')
+                    : undefined,
+                  'var(--f-intel)',
+                )}
+                {kpi(
+                  stakeholders.length,
+                  'contacts',
+                  stakeholders.length > 0
+                    ? `${liveConcerns} with a live concern · ${scheduledStatements} scheduled`
+                    : undefined,
+                  'var(--f-intel)',
+                )}
+                {kpi(
+                  storylineInjects.length + totalTeamInjects + sharedInjects.length,
+                  'injects',
+                  `${storylineInjects.length} storyline · ${totalTeamInjects} team · ${sharedInjects.length} shared`,
+                  'var(--brand)',
+                )}
+                {kpi(
+                  convergenceGates.length,
+                  'convergence gates',
+                  'where the teams’ threads meet',
+                  'var(--f-intel)',
+                )}
+                {kpi(
+                  teamCharters.length,
+                  'teams',
+                  orgRegistry.length > 1
+                    ? `across ${orgRegistry.filter((o) => o.side === 'protagonist').length || orgRegistry.length} organisations`
+                    : undefined,
+                  'var(--f-org)',
+                )}
+                {kpi(
+                  pressureOrgs.length,
+                  'pressure groups',
+                  pressureOrgs.length
+                    ? pressureOrgs.map((p) => p.kind.replace('_', ' ')).join(' · ')
+                    : 'none',
+                  'var(--f-pressure)',
+                )}
+                {kpi(
+                  sopSteps.length,
+                  'SOP steps',
+                  sopSteps.length ? 'graded when leadership decides' : 'no notification SOP',
+                  'var(--f-pressure)',
                 )}
               </div>
-              {sopSteps.length > 0 && (
-                <div className="border border-border rounded p-3 text-center">
-                  <div className="text-[10px] text-muted uppercase">Notification SOP steps</div>
-                  <div className="text-ink font-bold text-lg">{sopSteps.length}</div>
-                  <div className="text-[9px] text-muted mt-0.5">
-                    graded when leadership decisions are communicated
-                  </div>
+            </div>
+
+            {/* pressure + AI-operated organisations */}
+            {(pressureOrgs.length > 0 || extraOrganisations.some((o) => o.operation === 'ai')) && (
+              <div>
+                <div className="wr-sech" style={{ margin: '0 0 10px' }}>
+                  <h2>
+                    Run by the AI{' '}
+                    <span className="n" style={{ '--g': 'var(--f-pressure)' } as CSSProperties}>
+                      {pressureOrgs.length +
+                        extraOrganisations.filter((o) => o.operation === 'ai').length}
+                    </span>
+                  </h2>
+                  <p>
+                    Pages the simulation drives on its own; their spokespeople answer your teams as
+                    characters.
+                  </p>
                 </div>
-              )}
-              <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">Team Injects</div>
-                <div className="text-ink font-bold text-lg">{totalTeamInjects}</div>
-              </div>
-              <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">Shared Injects</div>
-                <div className="text-ink font-bold text-lg">{sharedInjects.length}</div>
-              </div>
-              <div className="border border-border rounded p-3 text-center">
-                <div className="text-[10px] text-muted uppercase">Conv. Gates</div>
-                <div className="text-ink font-bold text-lg">{convergenceGates.length}</div>
-              </div>
-            </div>
-          </div>
-
-          {(pressureOrgs.length > 0 || extraOrganisations.some((o) => o.operation === 'ai')) && (
-            <div className="border border-warning/30 rounded p-4 mb-4">
-              <h3 className="text-xs terminal-text text-muted uppercase mb-2">
-                Pressure &amp; AI-operated organisations
-              </h3>
-              <div className="space-y-1.5">
-                {extraOrganisations
-                  .filter((o) => o.operation === 'ai')
-                  .map((o) => (
-                    <div key={o.id} className="text-[10px] terminal-text text-muted">
-                      <span className="text-ink font-bold">{o.display_name}</span> · {o.country} ·{' '}
-                      <span className="text-accent">operated by AI</span> — its page follows
-                      headquarters&apos; line; its site leader, HR counterpart and staff answer your
-                      teams as characters.
-                    </div>
-                  ))}
-                {pressureOrgs.map((p) => {
-                  const sp = p.spokesperson_stakeholder_id
-                    ? stakeholders.find((s) => s.id === p.spokesperson_stakeholder_id)
-                    : undefined;
-                  const statements = stakeholderInjects.filter(
-                    (i) =>
-                      (i.delivery_config as Record<string, unknown> | undefined)?.page_org_key ===
-                      p.org_key,
-                  ).length;
-                  return (
-                    <div key={p.id} className="text-[10px] terminal-text text-muted">
-                      <span className="text-ink font-bold">{p.display_name}</span> · {p.country} ·{' '}
-                      <span className="text-warning">{p.kind.replace('_', ' ')}</span> ·{' '}
-                      {p.register} register
-                      {sp ? ` · spokesperson ${sp.name} (${sp.title})` : ''}
-                      {statements > 0 ? ` · ${statements} scheduled statements` : ''}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {teamCharters.length > 0 &&
-            (() => {
-              // Group teams by organisation (single-org scenarios: one unnamed group).
-              const groups = new Map<string, TeamCharterWire[]>();
-              for (const t of teamCharters) {
-                const k = t.org_key ?? '__single';
-                if (!groups.has(k)) groups.set(k, []);
-                groups.get(k)!.push(t);
-              }
-              const registryByKey = new Map(orgRegistry.map((o) => [o.org_key, o]));
-              const orgLabel = (k: string, sample: TeamCharterWire) => {
-                if (k === '__single') return null;
-                const reg = registryByKey.get(k);
-                const name = reg?.display_name || sample.short_name || k;
-                const place = reg?.country || sample.country;
-                return `${name}${place ? ` · ${place}` : ''}`;
-              };
-              const teamCard = (team: TeamCharterWire) => {
-                const contacts = stakeholders.filter(
-                  (s) =>
-                    (s.owning_team === (team.function_key || team.team_name) ||
-                      s.owning_team === team.team_name) &&
-                    (s.org_key === null || team.org_key == null || s.org_key === team.org_key),
-                );
-                return (
-                  <div key={team.team_name} className="border border-border rounded p-3">
-                    <div className="flex items-center justify-between mb-1 gap-2">
-                      <span className="text-xs terminal-text text-ink font-bold truncate">
-                        {team.team_name}
-                      </span>
-                      <span className="text-[10px] terminal-text text-accent whitespace-nowrap">
-                        {(teamStorylines[team.team_name] || []).length} injects
-                        {contacts.length > 0 ? ` · ${contacts.length} contacts` : ''}
-                      </span>
-                    </div>
-                    <div className="flex gap-1.5 mb-1">
-                      {team.is_custom && (
-                        <span className="text-[9px] terminal-text px-1.5 py-0.5 rounded border border-accent/40 text-accent">
-                          Custom
-                        </span>
-                      )}
-                      {team.function_key === 'Executive' && (
-                        <span className="text-[9px] terminal-text px-1.5 py-0.5 rounded border border-warning/40 text-warning">
-                          Leadership
-                        </span>
-                      )}
-                      {team.can_post_publicly && (
-                        <span className="text-[9px] terminal-text px-1.5 py-0.5 rounded border border-success/40 text-success">
-                          Public voice
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[10px] terminal-text text-muted leading-relaxed line-clamp-2">
-                      {team.mission}
-                    </div>
-                  </div>
-                );
-              };
-              return (
-                <div className="border border-border rounded p-4 mb-4">
-                  <h3 className="text-xs terminal-text text-muted uppercase mb-3">
-                    Response teams ({teamCharters.length}
-                    {groups.size > 1 ? ` across ${groups.size} organisations` : ''})
-                  </h3>
-                  {Array.from(groups.entries()).map(([k, teams]) => {
-                    const label = orgLabel(k, teams[0]);
-                    return (
-                      <div key={k} className={groups.size > 1 ? 'mb-4' : ''}>
-                        {label && (
-                          <div className="text-[10px] terminal-text text-accent uppercase mb-2">
-                            {label}
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                  {extraOrganisations
+                    .filter((o) => o.operation === 'ai')
+                    .map((o) => (
+                      <div
+                        key={o.id}
+                        className="wr-node ai"
+                        style={{ '--g': 'var(--f-ai)' } as CSSProperties}
+                      >
+                        <div className="kicker">
+                          <WrIcon name="sparkle" size={12} /> Office · AI-operated
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="wr-mono ai"
+                            style={{ width: 40, height: 40, fontSize: 13 }}
+                          >
+                            {initialsOf(o.display_name)}
                           </div>
-                        )}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {teams.map(teamCard)}
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-ink truncate">{o.display_name}</div>
+                            <div className="text-xs text-muted flex items-center gap-1.5">
+                              <span className="wr-cc">{countryCode(o.country)}</span> {o.country}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted mt-2.5">
+                          Its page follows headquarters’ line; its site leader, HR counterpart and
+                          staff answer your teams as characters.
+                        </div>
+                      </div>
+                    ))}
+                  {pressureOrgs.map((p) => {
+                    const sp = p.spokesperson_stakeholder_id
+                      ? stakeholders.find((s) => s.id === p.spokesperson_stakeholder_id)
+                      : undefined;
+                    const statements = stakeholderInjects.filter(
+                      (i) =>
+                        (i.delivery_config as Record<string, unknown> | undefined)?.page_org_key ===
+                        p.org_key,
+                    ).length;
+                    return (
+                      <div
+                        key={p.id}
+                        className="wr-node"
+                        style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
+                      >
+                        <div className="kicker">
+                          <WrIcon name={PRESSURE_KIND_ICON[p.kind] ?? 'landmark'} size={12} />{' '}
+                          {PRESSURE_KIND_LABEL[p.kind] ?? p.kind} · {p.register}
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          <div className="wr-tile" style={{ width: 40, height: 40 }}>
+                            <WrIcon name={PRESSURE_KIND_ICON[p.kind] ?? 'landmark'} size={18} />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-ink truncate">{p.display_name}</div>
+                            <div className="text-xs text-muted flex items-center gap-1.5">
+                              <span className="wr-cc light">{countryCode(p.country)}</span>{' '}
+                              {p.country}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-xs text-muted mt-2.5">
+                          {sp ? (
+                            <>
+                              Spokesperson <b className="text-ink">{sp.name}</b>, {sp.title}.
+                            </>
+                          ) : (
+                            'Spokesperson assigned at compile.'
+                          )}
+                          {statements > 0
+                            ? ` ${statements} scheduled statement${statements === 1 ? '' : 's'}.`
+                            : ''}
                         </div>
                       </div>
                     );
                   })}
-                  <p className="text-[9px] terminal-text text-muted mt-3">
-                    Players are assigned to these teams in the session lobby. Each team has its own
-                    storyline pressure, stakeholder contacts, tasks, and scoring rubric — all
-                    editable after compile from the scenario&apos;s detail page.
-                  </p>
                 </div>
-              );
-            })()}
-
-          {sopSteps.length > 0 && (
-            <div className="border border-border rounded p-4 mb-4">
-              <h3 className="text-xs terminal-text text-muted uppercase mb-3">
-                Notification &amp; consultation SOP ({sopSteps.length} steps)
-              </h3>
-              <p className="text-[10px] terminal-text text-muted mb-3">
-                Leadership decides by communicating — an email, a chat line, a call. When the
-                simulation detects a decision, these steps are what the HR / people-facing teams are
-                graded against: who they told, in what order, how quickly, and how humanely.
-              </p>
-              <ul className="space-y-1">
-                {sopSteps.map((s) => (
-                  <li key={s.step_id} className="text-[10px] terminal-text text-muted">
-                    <span className="text-ink font-bold">{s.name}</span> — {s.description} (
-                    {s.time_limit_minutes} min)
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {narrative && (
-            <div className="border border-border rounded p-4 mb-4">
-              <h3 className="text-xs terminal-text text-muted uppercase mb-2">Narrative</h3>
-              <div className="text-sm terminal-text text-accent font-bold mb-1">
-                {narrative.title}
               </div>
-              <div className="text-[10px] terminal-text text-muted leading-relaxed whitespace-pre-wrap">
-                {narrative.description}
-              </div>
-              {narrative.briefing && (
-                <>
-                  <h4 className="text-[10px] terminal-text text-muted uppercase mt-3 mb-1">
-                    Participant briefing
-                  </h4>
-                  <div className="text-[10px] terminal-text text-muted leading-relaxed whitespace-pre-wrap">
-                    {narrative.briefing}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
+            )}
 
-          {/* Full read-through of everything the warroom generated */}
-          {(() => {
-            const reviewInjects = [
-              ...storylineInjects,
-              ...Object.values(teamStorylines).flat(),
-              ...sharedInjects,
-            ];
-            const timedInjects = reviewInjects
-              .filter((inj) => inj.trigger_time_minutes != null)
-              .sort((a, b) => (a.trigger_time_minutes || 0) - (b.trigger_time_minutes || 0));
-            const conditionalInjects = reviewInjects.filter(
-              (inj) => inj.trigger_time_minutes == null,
-            );
-            const detailsCls = 'border border-border rounded mb-3';
-            const summaryCls =
-              'text-xs terminal-text text-ink font-bold uppercase px-4 py-3 cursor-pointer select-none hover:bg-surface-2';
-
-            return (
-              <div>
-                <details className={detailsCls}>
-                  <summary className={summaryCls}>
-                    Inject timeline ({timedInjects.length} timed
-                    {conditionalInjects.length > 0
-                      ? ` + ${conditionalInjects.length} conditional`
-                      : ''}
-                    )
-                  </summary>
-                  <div className="px-4 pb-4 space-y-2 max-h-[420px] overflow-y-auto">
-                    {timedInjects.map((inj, i) => {
-                      const dc = (inj.delivery_config || {}) as Record<string, unknown>;
-                      const app = dc.app ? String(dc.app) : inj.type;
+            {/* response teams */}
+            {teamCharters.length > 0 &&
+              (() => {
+                const groups = new Map<string, TeamCharterWire[]>();
+                for (const t of teamCharters) {
+                  const k = t.org_key ?? '__single';
+                  if (!groups.has(k)) groups.set(k, []);
+                  groups.get(k)!.push(t);
+                }
+                const orgLabel = (k: string, sample: TeamCharterWire) => {
+                  if (k === '__single') return null;
+                  const reg = registryByKey.get(k);
+                  const name = reg?.display_name || sample.short_name || k;
+                  const place = reg?.country || sample.country;
+                  return { name, place };
+                };
+                return (
+                  <div>
+                    <div className="wr-sech" style={{ margin: '0 0 10px' }}>
+                      <h2>
+                        Response teams <span className="n">{teamCharters.length}</span>
+                      </h2>
+                      <p>
+                        Players are assigned to these in the session lobby. Each has its own
+                        pressure, contacts and scoring rubric — all editable after compile.
+                      </p>
+                    </div>
+                    {Array.from(groups.entries()).map(([k, teams]) => {
+                      const label = orgLabel(k, teams[0]);
                       return (
-                        <div key={i} className="border border-border rounded p-2.5">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span className="text-[10px] terminal-text text-accent font-mono">
-                              T+{inj.trigger_time_minutes}m
-                            </span>
-                            <span className="text-[10px] terminal-text px-1.5 py-0.5 bg-surface-2 text-muted rounded">
-                              {app.replace(/_/g, ' ')}
-                            </span>
-                            {!!dc.author_handle && (
-                              <span className="text-[10px] terminal-text text-muted">
-                                {String(dc.author_handle)}
-                              </span>
-                            )}
-                            {inj.severity === 'critical' && (
-                              <span className="text-[10px] terminal-text text-danger">
-                                critical
-                              </span>
-                            )}
-                            {inj.target_teams?.length > 0 && (
-                              <span className="text-[10px] terminal-text text-muted">
-                                → {inj.target_teams.join(', ')}
-                              </span>
-                            )}
-                          </div>
-                          <div className="text-[11px] terminal-text text-ink">{inj.title}</div>
-                          <div className="text-[10px] terminal-text text-muted mt-0.5 whitespace-pre-wrap">
-                            {inj.content}
+                        <div key={k} className={groups.size > 1 ? 'mb-4' : ''}>
+                          {label && (
+                            <div
+                              className="flex items-center gap-2 mb-2 text-xs font-extrabold uppercase tracking-wider"
+                              style={{ color: 'var(--f-org)' }}
+                            >
+                              {label.place && (
+                                <span className="wr-cc">{countryCode(label.place)}</span>
+                              )}
+                              {label.name}
+                              {label.place && (
+                                <span className="text-muted font-semibold normal-case tracking-normal">
+                                  · {label.place}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {teams.map((team) => {
+                              const contacts = stakeholders.filter(
+                                (s) =>
+                                  (s.owning_team === (team.function_key || team.team_name) ||
+                                    s.owning_team === team.team_name) &&
+                                  (s.org_key === null ||
+                                    team.org_key == null ||
+                                    s.org_key === team.org_key),
+                              );
+                              const injN = (teamStorylines[team.team_name] || []).length;
+                              return (
+                                <div
+                                  key={team.team_name}
+                                  className="wr-node"
+                                  style={
+                                    {
+                                      '--g': team.can_post_publicly
+                                        ? 'var(--accent)'
+                                        : team.function_key === 'Executive'
+                                          ? 'var(--f-pressure)'
+                                          : 'var(--f-org)',
+                                    } as CSSProperties
+                                  }
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="wr-tile" style={{ width: 38, height: 38 }}>
+                                      <WrIcon
+                                        name={teamIcon(team.function_key || team.team_name)}
+                                        size={17}
+                                      />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="font-extrabold text-ink truncate">
+                                        {team.team_name}
+                                      </div>
+                                      <div className="text-[11.5px] text-muted">
+                                        {injN} inject{injN === 1 ? '' : 's'}
+                                        {contacts.length > 0
+                                          ? ` · ${contacts.length} contact${contacts.length === 1 ? '' : 's'}`
+                                          : ''}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex gap-1.5 mt-2.5 flex-wrap">
+                                    {team.can_post_publicly && (
+                                      <span className="wr-p live">public voice</span>
+                                    )}
+                                    {team.function_key === 'Executive' && (
+                                      <span className="wr-p speaks">
+                                        leadership · decides by communicating
+                                      </span>
+                                    )}
+                                    {team.is_custom && <span className="wr-p rel">custom</span>}
+                                  </div>
+                                  <div className="text-xs text-muted mt-2.5 leading-relaxed line-clamp-3">
+                                    {team.mission}
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         </div>
                       );
                     })}
-                    {conditionalInjects.length > 0 && (
-                      <div className="text-[10px] terminal-text text-muted pt-1">
-                        + {conditionalInjects.length} condition-triggered inject(s) that fire on
-                        participant behaviour rather than the clock.
-                      </div>
-                    )}
                   </div>
-                </details>
+                );
+              })()}
 
-                {stakeholders.length > 0 && (
-                  <details className={detailsCls}>
-                    <summary className={summaryCls}>
-                      Stakeholder contacts ({stakeholders.length})
-                    </summary>
-                    <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {stakeholders.map((s) => (
-                        <div key={s.id} className="border border-border rounded p-2.5">
-                          <div className="text-[11px] terminal-text text-ink font-bold">
-                            {s.name}{' '}
-                            <span className="text-muted font-normal">
-                              — {s.title}, {s.organisation}
-                            </span>
+            {/* notification SOP */}
+            {sopSteps.length > 0 && (
+              <div>
+                <div
+                  className="wr-sech"
+                  style={{ margin: '0 0 10px', '--g': 'var(--f-pressure)' } as CSSProperties}
+                >
+                  <h2>
+                    Notification &amp; consultation SOP <span className="n">{sopSteps.length}</span>
+                  </h2>
+                  <p>
+                    Leadership decides by communicating. When a decision is detected, these steps
+                    grade the people-facing teams: who they told, in what order, how quickly, how
+                    humanely.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  {sopSteps.map((s, i) => (
+                    <div
+                      key={s.step_id}
+                      className="wr-node flex items-center gap-3"
+                      style={{ padding: '10px 14px' }}
+                    >
+                      <div
+                        className="wr-mono plain"
+                        style={{
+                          width: 32,
+                          height: 32,
+                          fontSize: 12,
+                          fontFamily: 'JetBrains Mono, monospace',
+                        }}
+                      >
+                        {String(i + 1).padStart(2, '0')}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="font-bold text-ink text-sm">{s.name}</div>
+                        <div className="text-xs text-muted">{s.description}</div>
+                      </div>
+                      <span className="wr-p">{s.time_limit_minutes} min</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* full read-through */}
+            <div>
+              <div className="wr-sech" style={{ margin: '0 0 10px' }}>
+                <h2>Read everything</h2>
+                <p>Every inject, contact, persona and fact — fold what you have already checked.</p>
+              </div>
+
+              <WrFold
+                title="Inject timeline"
+                count={timedInjects.length}
+                sub={
+                  conditionalInjects.length > 0
+                    ? `+ ${conditionalInjects.length} conditional`
+                    : undefined
+                }
+                lead={<WrIcon name="layers" size={14} className="text-muted" />}
+              >
+                <div className="max-h-[480px] overflow-y-auto pr-1">
+                  {timedInjects.map((inj, i) => {
+                    const dc = (inj.delivery_config || {}) as Record<string, unknown>;
+                    return (
+                      <div
+                        key={i}
+                        className="wr-inj"
+                        style={{ gridTemplateColumns: '60px auto 1fr auto', alignItems: 'start' }}
+                      >
+                        <span className="t">
+                          T+{String(inj.trigger_time_minutes).padStart(2, '0')}
+                        </span>
+                        <OriginBadge
+                          inject={
+                            inj as {
+                              type: string;
+                              delivery_config?: Record<string, unknown> | null;
+                            }
+                          }
+                          size="sm"
+                        />
+                        <div className="min-w-0">
+                          <div className="ttl">{inj.title}</div>
+                          <div className="by">
+                            {dc.author_display_name || dc.author_handle
+                              ? String(dc.author_display_name ?? dc.author_handle)
+                              : ''}
+                            {(dc.author_display_name || dc.author_handle) &&
+                            inj.target_teams?.length
+                              ? ' → '
+                              : ''}
+                            {inj.target_teams?.length ? inj.target_teams.join(', ') : ''}
                           </div>
-                          <div className="text-[10px] terminal-text text-muted mt-0.5">
-                            {s.relationship} · owned by {s.owning_team}
-                            {s.org_key ? ` @ ${s.org_key}` : ' (all organisations)'} · {s.email}
+                          <div className="text-xs text-muted mt-1 whitespace-pre-wrap leading-relaxed">
+                            {inj.content}
                           </div>
-                          <div className="text-[10px] terminal-text text-muted mt-1">{s.note}</div>
+                        </div>
+                        <div className="tags">
+                          {inj.severity === 'critical' && (
+                            <span className="wr-p rival">critical</span>
+                          )}
+                          {!!dc.stakeholder_id && <span className="wr-p live">stakeholder</span>}
+                          {!!dc.page_org_key && <span className="wr-p speaks">page statement</span>}
+                          {!!dc.country && (
+                            <span className="wr-cc light">{countryCode(String(dc.country))}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {conditionalInjects.length > 0 && (
+                    <div className="text-xs text-muted pt-2 px-2">
+                      + {conditionalInjects.length} condition-triggered inject
+                      {conditionalInjects.length === 1 ? '' : 's'} that fire on participant
+                      behaviour rather than the clock.
+                    </div>
+                  )}
+                </div>
+              </WrFold>
+
+              {stakeholders.length > 0 && (
+                <WrFold
+                  title="Stakeholder contacts"
+                  count={stakeholders.length}
+                  sub={`${liveConcerns} with a live concern`}
+                  lead={<WrIcon name="target" size={14} className="text-muted" />}
+                >
+                  <div className="max-h-[480px] overflow-y-auto pr-1">
+                    {stakeholders.map((s) => (
+                      <div key={s.id} className="wr-row" style={{ alignItems: 'start' }}>
+                        <div className={`wr-mono av ${s.page_org_key ? 'pr' : ''}`}>
+                          {initialsOf(s.name)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="nm">
+                            <span>{s.name}</span>
+                            <span className="wr-p rel">{s.relationship}</span>
+                            {s.grievance ? (
+                              <span className="wr-p live">live concern</span>
+                            ) : (
+                              <span className="wr-p pure">pure contact</span>
+                            )}
+                            {!!s.page_org_key && (
+                              <span className="wr-p speaks">
+                                speaks for{' '}
+                                {registryByKey.get(String(s.page_org_key))?.display_name ??
+                                  String(s.page_org_key)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="ti">
+                            {s.title}, {s.organisation} · owned by {s.owning_team}
+                            {s.org_key
+                              ? ` @ ${registryByKey.get(s.org_key)?.display_name ?? s.org_key}`
+                              : ' · all organisations'}
+                          </div>
+                          {s.note && (
+                            <div className="text-[11.5px] text-muted mt-0.5">{s.note}</div>
+                          )}
                           {s.grievance && (
-                            <div className="text-[10px] terminal-text text-warning mt-1">
-                              hidden concern: {s.grievance}
+                            <div
+                              className="text-[11.5px] mt-0.5"
+                              style={{ color: 'var(--accent-strong)' }}
+                            >
+                              Hidden concern: {s.grievance}
                             </div>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
-
-                <details className={detailsCls}>
-                  <summary className={summaryCls}>NPC personas ({personas.length})</summary>
-                  <div className="px-4 pb-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {personas.map((npc, i) => (
-                      <div key={i} className="border border-border rounded p-2.5">
-                        <div className="text-[11px] terminal-text text-ink font-bold">
-                          {npc.name} <span className="text-muted font-normal">{npc.handle}</span>
+                        <div className="pills">
+                          <span className="wr-p font-mono">{s.email}</span>
                         </div>
-                        <div className="text-[10px] terminal-text text-muted mt-1">
-                          {npc.personality}
-                        </div>
-                        {npc.bias && npc.bias !== 'none' && (
-                          <div className="text-[10px] terminal-text text-accent mt-1">
-                            bias: {npc.bias}
-                          </div>
-                        )}
                       </div>
                     ))}
                   </div>
-                </details>
+                </WrFold>
+              )}
 
-                {factSheet && (
-                  <details className={detailsCls}>
-                    <summary className={summaryCls}>
-                      Fact sheet ({factSheet.confirmed_facts.length} facts,{' '}
-                      {factSheet.unconfirmed_claims.length} claims)
-                    </summary>
-                    <div className="px-4 pb-4">
-                      <div className="text-[10px] terminal-text text-success uppercase mb-1">
-                        Confirmed facts
+              <WrFold
+                title="Crowd personas"
+                count={personas.length}
+                sub={
+                  Object.keys(perCountryCounts).length > 1
+                    ? Object.entries(perCountryCounts)
+                        .map(([c, n]) => `${c} ${n}`)
+                        .join(' · ')
+                    : undefined
+                }
+                lead={<WrIcon name="feed" size={14} className="text-muted" />}
+              >
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 max-h-[480px] overflow-y-auto pr-1">
+                  {personas.map((npc, i) => (
+                    <div key={i} className="wr-row" style={{ gridTemplateColumns: '36px 1fr' }}>
+                      <div className="wr-mono av plain">{initialsOf(npc.name)}</div>
+                      <div className="min-w-0">
+                        <div className="nm">
+                          <span>{npc.name}</span>
+                          <span className="text-muted font-medium text-xs">{npc.handle}</span>
+                          {npc.bias && npc.bias !== 'none' && (
+                            <span className="wr-p key">{npc.bias}</span>
+                          )}
+                        </div>
+                        <div className="ti line-clamp-2">{npc.personality}</div>
                       </div>
-                      {factSheet.confirmed_facts.map((f, i) => (
-                        <div key={i} className="text-[10px] terminal-text text-muted mb-1">
-                          + {f}
-                        </div>
-                      ))}
-                      {factSheet.unconfirmed_claims.length > 0 && (
-                        <>
-                          <div className="text-[10px] terminal-text text-danger uppercase mt-3 mb-1">
-                            False / unverified claims
-                          </div>
+                    </div>
+                  ))}
+                </div>
+              </WrFold>
+
+              {factSheet && (
+                <WrFold
+                  title="Fact sheet"
+                  count={factSheet.confirmed_facts.length + factSheet.unconfirmed_claims.length}
+                  sub={`${factSheet.confirmed_facts.length} confirmed · ${factSheet.unconfirmed_claims.length} claims`}
+                  lead={<WrIcon name="shield" size={14} className="text-muted" />}
+                >
+                  <div className="wr-facts p-2">
+                    <div>
+                      <h5>Confirmed</h5>
+                      <ul className="m-0 p-0 list-none space-y-1.5">
+                        {factSheet.confirmed_facts.map((f, i) => (
+                          <li key={i} className="text-xs text-ink flex gap-2">
+                            <WrIcon
+                              name="check"
+                              size={12}
+                              className="mt-0.5 flex-none"
+                              style={{ color: 'var(--success)' }}
+                            />
+                            <span>{f}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                    {factSheet.unconfirmed_claims.length > 0 && (
+                      <div>
+                        <h5>Claims — and the truth</h5>
+                        <ul className="m-0 p-0 list-none space-y-2">
                           {factSheet.unconfirmed_claims.map((c, i) => (
-                            <div key={i} className="text-[10px] terminal-text text-muted mb-1.5">
-                              <span className="text-danger">[{c.status}]</span> {c.claim}
-                              <div className="text-muted ml-4">Truth: {c.truth}</div>
-                            </div>
+                            <li key={i} className="text-xs">
+                              <div className="flex gap-2 text-ink">
+                                <span className="wr-p rival flex-none">{c.status}</span>
+                                <span>{c.claim}</span>
+                              </div>
+                              <div className="text-muted mt-0.5 pl-1">Truth: {c.truth}</div>
+                            </li>
                           ))}
-                        </>
-                      )}
-                    </div>
-                  </details>
-                )}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </WrFold>
+              )}
 
-                {objectives.length > 0 && (
-                  <details className={detailsCls}>
-                    <summary className={summaryCls}>Objectives ({objectives.length})</summary>
-                    <div className="px-4 pb-4 space-y-1.5">
-                      {objectives.map((o, i) => (
-                        <div key={i} className="text-[10px] terminal-text text-muted">
-                          <span className="text-ink font-bold">{o.objective_name}</span>{' '}
-                          <span className="text-accent">({o.weight}%)</span> — {o.description}
+              {objectives.length > 0 && (
+                <WrFold
+                  title="Objectives"
+                  count={objectives.length}
+                  lead={<WrIcon name="target" size={14} className="text-muted" />}
+                >
+                  <div className="space-y-2 p-1">
+                    {objectives.map((o, i) => (
+                      <div
+                        key={i}
+                        className="wr-node flex items-center gap-3"
+                        style={{ padding: '10px 14px' }}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-ink text-sm">{o.objective_name}</div>
+                          <div className="text-xs text-muted">{o.description}</div>
                         </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
+                        <span className="font-mono font-bold" style={{ color: 'var(--brand)' }}>
+                          {o.weight}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </WrFold>
+              )}
 
-                {convergenceGates.length > 0 && (
-                  <details className={detailsCls}>
-                    <summary className={summaryCls}>
-                      Convergence gates ({convergenceGates.length})
-                    </summary>
-                    <div className="px-4 pb-4 space-y-2">
-                      {convergenceGates.map((g, i) => (
-                        <div key={i} className="border border-border rounded p-2.5">
-                          <div className="text-[11px] terminal-text text-ink">{g.title}</div>
-                          <div className="text-[10px] terminal-text text-muted mt-0.5">
-                            {g.content}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </details>
-                )}
+              {convergenceGates.length > 0 && (
+                <WrFold
+                  title="Convergence gates"
+                  count={convergenceGates.length}
+                  lead={<WrIcon name="target" size={14} className="text-muted" />}
+                >
+                  <div className="space-y-2 p-1">
+                    {convergenceGates.map((g, i) => (
+                      <div key={i} className="wr-node" style={{ padding: '10px 14px' }}>
+                        <div className="font-bold text-ink text-sm">{g.title}</div>
+                        <div className="text-xs text-muted mt-0.5">{g.content}</div>
+                      </div>
+                    ))}
+                  </div>
+                </WrFold>
+              )}
 
-                {orgPage && (
-                  <details className={detailsCls}>
-                    <summary className={summaryCls}>Organisation pages</summary>
-                    <div className="px-4 pb-4 space-y-2">
-                      {(() => {
-                        const orgs = (orgPage.orgs as Array<Record<string, unknown>>) || [
-                          { display_name: orgName || 'Primary org', ...orgPage },
-                        ];
-                        return orgs.map((org, i) => {
-                          const fb = (org.facebook || {}) as Record<string, unknown>;
-                          const x = (org.x_twitter || {}) as Record<string, unknown>;
-                          return (
-                            <div key={i} className="border border-border rounded p-2.5">
-                              <div className="text-[11px] terminal-text text-ink font-bold">
-                                {String(org.display_name || fb.page_name || '')}
-                                {org.role === 'antagonist' && (
-                                  <span className="text-danger font-normal"> · antagonist</span>
-                                )}
-                              </div>
-                              <div className="text-[10px] terminal-text text-muted mt-0.5">
-                                Fakebook: {String(fb.page_name || '—')} (
-                                {String(fb.page_handle || '—')}){' · '}X:{' '}
-                                {String(x.page_name || '—')} ({String(x.page_handle || '—')})
-                              </div>
-                              {!!fb.page_bio && (
-                                <div className="text-[10px] terminal-text text-muted mt-0.5">
-                                  {String(fb.page_bio)}
-                                </div>
-                              )}
+              {orgPage && (
+                <WrFold
+                  title="Organisation pages"
+                  lead={<WrIcon name="phone" size={14} className="text-muted" />}
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1">
+                    {(() => {
+                      const orgs = (orgPage.orgs as Array<Record<string, unknown>>) || [
+                        { display_name: orgName || 'Primary org', ...orgPage },
+                      ];
+                      return orgs.map((org, i) => {
+                        const fb = (org.facebook || {}) as Record<string, unknown>;
+                        const x = (org.x_twitter || {}) as Record<string, unknown>;
+                        const role = String(org.role ?? 'protagonist');
+                        return (
+                          <div
+                            key={i}
+                            className="wr-node"
+                            style={
+                              {
+                                '--g':
+                                  role === 'antagonist'
+                                    ? 'var(--f-rival)'
+                                    : role === 'pressure'
+                                      ? 'var(--f-pressure)'
+                                      : 'var(--f-org)',
+                                padding: '12px 14px',
+                              } as CSSProperties
+                            }
+                          >
+                            <div className="kicker">
+                              <WrIcon
+                                name={
+                                  role === 'antagonist'
+                                    ? 'swords'
+                                    : role === 'pressure'
+                                      ? 'landmark'
+                                      : 'building'
+                                }
+                                size={12}
+                              />{' '}
+                              {role}
                             </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  </details>
-                )}
-              </div>
-            );
-          })()}
+                            <div className="font-extrabold text-ink">
+                              {String(org.display_name || fb.page_name || '')}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 mt-1.5">
+                              <span className="wr-ch fb sm">Fakebook</span>
+                              <span className="text-xs text-muted">
+                                {String(fb.page_name || '—')} · {String(fb.page_handle || '—')}
+                              </span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5 mt-1">
+                              <span className="wr-ch z sm">Z</span>
+                              <span className="text-xs text-muted">
+                                {String(x.page_name || '—')} · {String(x.page_handle || '—')}
+                              </span>
+                            </div>
+                            {!!fb.page_bio && (
+                              <div className="text-xs text-muted mt-1.5">{String(fb.page_bio)}</div>
+                            )}
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                </WrFold>
+              )}
+            </div>
 
-          <button
-            onClick={compileScenario}
-            className="military-button px-8 py-3 w-full text-center"
-          >
-            Compile scenario
-          </button>
-        </div>
-      )}
-
-      {compiling && (
-        <div className="py-6">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
-            <span className="text-sm terminal-text text-ink animate-pulse">
-              Compiling scenario...
-            </span>
-          </div>
-          <div className="border border-border rounded p-4 bg-surface-2 font-mono text-xs space-y-1 max-h-64 overflow-y-auto">
-            {compileProgress.map((msg, i) => (
-              <div key={i} className="text-muted">
-                <span className="text-muted">[{String(i + 1).padStart(2, '0')}]</span> {msg}
-              </div>
-            ))}
-            <div className="animate-pulse text-muted">&#9612;</div>
-          </div>
-        </div>
-      )}
-
-      {scenarioId && !compiling && (
-        <div className="text-center py-8">
-          <div className="text-4xl mb-4">&#9989;</div>
-          <h3 className="text-lg terminal-text font-bold mb-2">Scenario Created Successfully</h3>
-          {scenarioTitle && (
-            <p className="text-sm terminal-text text-accent mb-1">{scenarioTitle}</p>
-          )}
-          <p className="text-xs terminal-text text-muted mb-2">Scenario ID: {scenarioId}</p>
-
-          <div className="border border-border rounded p-4 bg-surface-2 text-xs terminal-text mb-4 text-left max-w-md mx-auto">
-            <div className="grid grid-cols-2 gap-2">
-              <span className="text-muted">Injects:</span>
-              <span className="text-ink">{storylineInjects.length}</span>
-              <span className="text-muted">NPCs:</span>
-              <span className="text-ink">{personas.length}</span>
-              <span className="text-muted">Shared Injects:</span>
-              <span className="text-ink">{sharedInjects.length}</span>
-              <span className="text-muted">Convergence Gates:</span>
-              <span className="text-ink">{convergenceGates.length}</span>
+            <div className="wr-ctabar" style={{ marginTop: 4 }}>
+              <span className="hint">
+                Compiling spends <b>1 scenario credit</b> and persists everything above. You can
+                still edit all of it from the library afterwards.
+              </span>
+              <span className="grow" />
+              <button onClick={compileScenario} className="wr-btn accent lg">
+                <WrIcon name="bolt" /> Compile scenario
+              </button>
             </div>
           </div>
+        )}
 
-          <div className="border border-border rounded p-4 bg-surface-2 font-mono text-xs space-y-1 max-h-48 overflow-y-auto mb-6">
-            {compileProgress.map((msg, i) => (
-              <div key={i} className="text-muted">
-                <span className="text-muted">[{String(i + 1).padStart(2, '0')}]</span> {msg}
-              </div>
-            ))}
-          </div>
-
-          <div className="flex justify-center gap-4 flex-wrap">
-            <a href="/scenarios" className="military-button px-8 py-3 text-center">
-              View scenarios
-            </a>
-            <button
-              onClick={() => navigate('/sessions')}
-              className="px-8 py-3 text-xs terminal-text border border-accent text-accent hover:bg-accent/10"
+        {compiling && (
+          <div className="py-2">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-5 h-5 border-2 border-accent/30 border-t-accent rounded-full animate-spin" />
+              <span className="text-sm font-bold text-ink">Compiling scenario…</span>
+            </div>
+            <div
+              className="rounded-2xl p-4 font-mono text-xs space-y-1 max-h-72 overflow-y-auto"
+              style={{ background: 'var(--wr-deep)', color: 'rgba(255,255,255,.75)' }}
             >
-              Create session
-            </button>
-            {wizardDraftId && (
-              <button
-                onClick={() => {
-                  setScenarioId(null);
-                  setCompileProgress([]);
-                  setStep(1);
-                }}
-                className="px-8 py-3 text-xs terminal-text border border-accent text-ink hover:bg-accent/10"
-              >
-                Modify &amp; recompile
-              </button>
-            )}
+              {compileProgress.map((msg, i) => (
+                <div key={i}>
+                  <span style={{ color: 'var(--accent)' }}>[{String(i + 1).padStart(2, '0')}]</span>{' '}
+                  {msg}
+                </div>
+              ))}
+              <div className="animate-pulse">&#9612;</div>
+            </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
+        )}
+
+        {scenarioId && !compiling && (
+          <div>
+            <div
+              className="wr-artband center rounded-2xl text-center"
+              style={{ padding: '34px 24px 28px' }}
+            >
+              <img
+                className="wr-art"
+                src={artFor(
+                  {
+                    id: scenarioId,
+                    category: 'social_media_crisis',
+                    title: scenarioTitle ?? narrative?.title ?? '',
+                    description: narrative?.description,
+                  },
+                  'full',
+                )}
+                alt=""
+              />
+              <div
+                className="wr-tile mx-auto"
+                style={
+                  {
+                    width: 56,
+                    height: 56,
+                    borderRadius: 18,
+                    '--g': 'var(--success)',
+                  } as CSSProperties
+                }
+              >
+                <WrIcon name="check" size={26} />
+              </div>
+              <div className="wr-eyebrow justify-center mt-4">Scenario compiled</div>
+              <h2
+                className="text-white font-extrabold mt-2"
+                style={{ fontSize: 26, lineHeight: 1.12, letterSpacing: '-.015em' }}
+              >
+                {scenarioTitle ?? narrative?.title ?? 'Your scenario'}
+              </h2>
+              <div className="font-mono text-[11px] mt-2" style={{ color: 'rgba(255,255,255,.5)' }}>
+                {scenarioId}
+              </div>
+              <div className="wr-kpis onDark mx-auto mt-5" style={{ maxWidth: 560 }}>
+                <div>
+                  <b>{storylineInjects.length + totalTeamInjects + sharedInjects.length}</b>
+                  <span>injects</span>
+                </div>
+                <div>
+                  <b>{personas.length}</b>
+                  <span>crowd</span>
+                </div>
+                <div>
+                  <b>{stakeholders.length}</b>
+                  <span>contacts</span>
+                </div>
+                <div>
+                  <b>{convergenceGates.length}</b>
+                  <span>gates</span>
+                </div>
+              </div>
+              <div className="flex justify-center gap-2.5 flex-wrap mt-6">
+                <a href="/scenarios" className="wr-btn accent lg">
+                  <WrIcon name="layers" /> View in the library
+                </a>
+                <button
+                  onClick={() => navigate(`/sessions?create=${scenarioId}`)}
+                  className="wr-btn onDark lg"
+                >
+                  <WrIcon name="play" /> Create a session
+                </button>
+                {wizardDraftId && (
+                  <button
+                    onClick={() => {
+                      setScenarioId(null);
+                      setCompileProgress([]);
+                      setStep(1);
+                    }}
+                    className="wr-btn onDark lg"
+                  >
+                    <WrIcon name="edit" /> Modify &amp; recompile
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="mt-4">
+              <WrFold
+                title="Compile log"
+                count={compileProgress.length}
+                lead={<WrIcon name="doc" size={14} className="text-muted" />}
+              >
+                <div className="font-mono text-xs space-y-1 p-2 max-h-56 overflow-y-auto text-muted">
+                  {compileProgress.map((msg, i) => (
+                    <div key={i}>
+                      <span style={{ color: 'var(--accent)' }}>
+                        [{String(i + 1).padStart(2, '0')}]
+                      </span>{' '}
+                      {msg}
+                    </div>
+                  ))}
+                </div>
+              </WrFold>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   /* ─── Main return ──────────────────────────────────────────────────── */
 
@@ -3539,10 +3931,14 @@ export const SocialCrisisWizard = () => {
           {step === 7 ? (
             scenarioId ? (
               <a href="/scenarios" className="wr-btn accent lg">
-                View scenarios <WrIcon name="arrow" />
+                View in the library <WrIcon name="arrow" />
               </a>
+            ) : compiling ? (
+              <span className="hint">Compiling…</span>
             ) : (
-              <span className="hint">{compiling ? 'Compiling…' : 'Review & compile above'}</span>
+              <button onClick={compileScenario} className="wr-btn accent lg">
+                <WrIcon name="bolt" /> Compile scenario
+              </button>
             )
           ) : (
             <button

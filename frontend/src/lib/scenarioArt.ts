@@ -339,6 +339,8 @@ export const SHELL_ART = {
   wizardBuild: artPath('29-clock-pressure', 'full'),
   wizardReview: artPath('13-debrief', 'full'),
   library: artPath('40-timeline-wall', 'full'),
+  sessions: artPath('14-trainer-console', 'full'),
+  lobby: artPath('19-calm-before', 'full'),
   laneOrgs: artPath('01-war-room', 'sm'),
   lanePressure: artPath('16-protest-lobby', 'sm'),
   laneRivals: artPath('31-headline-storm', 'sm'),
