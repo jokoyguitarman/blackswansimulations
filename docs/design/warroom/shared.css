@@ -57,6 +57,7 @@ a{color:inherit;text-decoration:none}
 .btn.dashed{border-style:dashed}
 .btn.sm{padding:5px 9px;font-size:11.5px;border-radius:8px}
 .btn.icon{padding:6px;border-radius:8px}
+.btn.lg{padding:11px 18px;font-size:14px;border-radius:12px}
 .btn[disabled]{opacity:.45;cursor:not-allowed}
 
 /* fields */

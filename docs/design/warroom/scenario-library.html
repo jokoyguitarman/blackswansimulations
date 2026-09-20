@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scenario library (Situation Map)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shared.css" />
+<style>
+  .hero{padding:18px 28px 34px}
+  .hero>*{position:relative;z-index:1}
+  .hero .top{display:flex;align-items:center;justify-content:space-between;max-width:1380px;margin:0 auto 22px;gap:16px}
+  .brandmark{display:flex;align-items:center;gap:10px;font-weight:800;color:#fff}
+  .brandmark .mono{width:30px;height:30px;font-size:12px;background:linear-gradient(150deg,#F08C1C,var(--accent) 60%,var(--accent-strong))}
+  .brandmark .sub{color:rgba(255,255,255,.6);font-weight:600}
+  .nav{display:flex;gap:6px;align-items:center}
+  .nav a{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;padding:7px 12px;border-radius:999px;color:rgba(255,255,255,.75);border:1px solid transparent}
+  .nav a:hover{background:rgba(255,255,255,.08);color:#fff}
+  .nav a.here{background:#fff;color:var(--deep)}
+  .nav a.cta{background:linear-gradient(180deg,#F08C1C,var(--accent) 55%,var(--accent-strong));color:#fff;border-color:var(--accent-strong);margin-left:6px;box-shadow:0 8px 18px -10px var(--accent)}
+  .hero .grid{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1fr auto;gap:22px;align-items:end}
+  .hero h1{margin:6px 0 6px;font-size:30px;font-weight:800;color:#fff;letter-spacing:-.02em;line-height:1.05}
+  .hero .lead{margin:0;color:rgba(255,255,255,.7);font-size:13.5px;max-width:620px}
+  .stats{display:grid;grid-template-columns:repeat(4,auto);gap:8px}
+  .stats div{padding:10px 14px;border-radius:12px;min-width:104px}
+  .stats b{display:block;font-family:"JetBrains Mono",monospace;font-size:20px;color:#fff;font-variant-numeric:tabular-nums}
+  .stats span{font-size:10px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.1em;font-weight:700;display:flex;align-items:center;gap:6px}
+  .stats .live b{color:#FCD34D}
+
+  .wrap{max-width:1380px;margin:-16px auto 60px;padding:0 28px}
+  .toolbar{position:sticky;top:10px;z-index:5;background:rgba(255,255,255,.9);backdrop-filter:blur(10px);border:1px solid var(--border);border-radius:18px;padding:10px 12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;box-shadow:var(--shadow-md)}
+  .search{flex:1 1 300px;min-width:240px;position:relative}
+  .search input{padding-left:36px}
+  .search .ic{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted)}
+  .search kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:700 10px "JetBrains Mono",monospace;color:var(--muted);background:var(--surface-2);border-radius:5px;padding:2px 6px;box-shadow:inset 0 0 0 1px var(--border)}
+  .seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:12px;overflow:hidden;background:#fff}
+  .seg button{border:0;background:transparent;padding:8px 12px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:7px}
+  .seg button+button{border-left:1px solid var(--border)}
+  .seg button .n{font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:999px;background:var(--surface-2);color:var(--muted)}
+  .seg button.on{background:var(--brand);color:#fff}.seg button.on .n{background:rgba(255,255,255,.2);color:#fff}
+  .seg button.on.acc{background:var(--accent)}
+  .chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;padding:7px 11px;border-radius:999px;border:1px solid var(--border-strong);background:#fff;color:var(--muted);cursor:pointer}
+  .chip:hover{border-color:var(--brand);color:var(--ink)}
+  .chip.on{border-color:var(--brand);color:var(--brand);background:color-mix(in srgb,var(--brand) 7%,#fff)}
+  .chip .dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+  .sort{display:inline-flex;align-items:center;gap:8px;font-size:12px;color:var(--muted);font-weight:600}
+  .sort select{border:1px solid var(--border-strong);border-radius:10px;padding:7px 10px;font:inherit;font-size:12px;font-weight:700;color:var(--ink);background:#fff}
+  .view{display:inline-flex;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden}
+  .view button{border:0;background:#fff;padding:7px 9px;color:var(--muted);cursor:pointer;display:grid;place-items:center}
+  .view button.on{background:var(--surface-2);color:var(--ink)}
+  .shown{font-size:12px;color:var(--muted);margin-left:auto;font-weight:600}
+  .shown b{color:var(--ink)}
+
+  .sec{margin-top:26px}
+  .sech{display:flex;align-items:center;gap:12px;margin:0 0 12px}
+  .sech h2{margin:0;font-size:16px;font-weight:800;display:flex;align-items:center;gap:10px}
+  .sech h2 .n{font-size:11px;font-weight:800;color:var(--g,var(--brand));background:color-mix(in srgb,var(--g,var(--brand)) 10%,#fff);padding:2px 8px;border-radius:999px}
+  .sech p{margin:0;color:var(--muted);font-size:12.5px}
+  .sech .more{margin-left:auto;font-size:12.5px;font-weight:700;color:var(--brand)}
+
+  /* live rail */
+  .rail{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .liverow{display:grid;grid-template-columns:150px 1fr auto;gap:0;border:1px solid var(--border);border-radius:18px;overflow:hidden;background:var(--surface);box-shadow:var(--shadow-sm)}
+  .liverow .band{padding:14px;color:#fff;display:flex;flex-direction:column;justify-content:flex-end}
+  .liverow .band::before{background:linear-gradient(180deg,rgba(14,26,43,.2),rgba(14,26,43,.85))}
+  .liverow .band>*{position:relative}
+  .liverow .live{display:inline-flex;align-items:center;gap:7px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#FCD34D}
+  .liverow .t{font-family:"JetBrains Mono",monospace;font-size:20px;font-weight:700;margin-top:4px}
+  .liverow .mid{padding:14px 16px;min-width:0}
+  .liverow h4{margin:0 0 4px;font-size:15px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .liverow .meta{font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .liverow .teams{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}
+  .liverow .teams span{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);display:inline-flex;align-items:center;gap:6px}
+  .liverow .teams span i{width:7px;height:7px;border-radius:50%;background:var(--success);font-style:normal}
+  .liverow .teams span i.warn{background:var(--accent)}
+  .liverow .acts{display:flex;flex-direction:column;gap:8px;justify-content:center;padding:14px;border-left:1px solid var(--border);background:var(--surface-2)}
+
+  /* poster grid (same card as the Situation Map study) */
+  .posters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+  .poster{background:var(--surface);border:1px solid var(--border);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow-sm);transition:transform .2s var(--ease),box-shadow .2s var(--ease)}
+  .poster:hover{transform:translateY(-3px);box-shadow:var(--shadow-md)}
+  .poster .band{padding:18px 18px 16px;color:#fff;min-height:168px;display:flex;flex-direction:column;justify-content:flex-end}
+  .poster .band::before{background:linear-gradient(180deg,rgba(14,26,43,.25),rgba(14,26,43,.9) 75%)}
+  .poster .band::after{background:linear-gradient(90deg,color-mix(in srgb,var(--g) 55%,transparent),transparent 60%);opacity:.5}
+  .poster .band .row{display:flex;align-items:center;gap:8px;margin-bottom:10px;position:relative}
+  .poster .mode{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.9}
+  .poster .status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.18)}
+  .poster .status.live{background:rgba(0,0,0,.25);color:#FCD34D}
+  .poster h4{margin:0;font-size:17px;font-weight:800;line-height:1.25;position:relative}
+  .poster .desc{margin:6px 0 0;font-size:12.5px;opacity:.85;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;position:relative}
+  .poster .body{padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
+  .cast{display:flex;flex-wrap:wrap;gap:6px}
+  .cast .o{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:999px;padding:3px 8px 3px 4px}
+  .cast .o.hq{border-color:var(--f-org);color:var(--f-org)}.cast .o.ai{border-color:var(--f-ai);color:var(--f-ai)}.cast .o.pr{border-color:color-mix(in srgb,var(--f-pressure) 45%,#fff);color:var(--f-pressure)}.cast .o.rv{border-color:color-mix(in srgb,var(--f-rival) 45%,#fff);color:var(--f-rival)}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+  .kpis div{text-align:center;background:var(--surface-2);border-radius:10px;padding:8px 4px}
+  .kpis b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
+  .kpis span{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .poster .meta{font-size:11px;color:var(--muted);display:flex;gap:6px;align-items:center}
+  .poster .ft{margin-top:auto;display:flex;align-items:center;gap:6px;padding:12px 18px;border-top:1px solid var(--border);background:var(--surface-2)}
+  .lock{font-size:11px;font-weight:700;color:var(--success);flex:1;display:inline-flex;align-items:center;gap:6px}
+  .lock.locked{color:var(--accent-strong)}.lock.draft{color:var(--muted)}
+  .poster .ft .del{color:var(--muted)}.poster .ft .del:hover{color:var(--f-rival)}
+
+  .empty{margin-top:26px;border:1.5px dashed var(--border-strong);border-radius:20px;padding:28px;display:grid;grid-template-columns:auto 1fr auto;gap:18px;align-items:center;background:rgba(255,255,255,.7)}
+  .empty .tile{width:52px;height:52px;font-size:24px;border-radius:16px}
+  .empty h4{margin:0 0 4px;font-size:15px;font-weight:800}
+  .empty p{margin:0;font-size:12.5px;color:var(--muted)}
+
+  @media (max-width:1100px){.posters{grid-template-columns:repeat(2,minmax(0,1fr))}.rail{grid-template-columns:1fr}.hero .grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr)}}
+  @media (max-width:760px){.posters{grid-template-columns:1fr}.liverow{grid-template-columns:1fr}.liverow .acts{flex-direction:row;border-left:0;border-top:1px solid var(--border)}}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M13 7l4 4"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M9.5 21V10M14.5 21V10M19 21V10"/><path d="M2 10l10-6 10 6z"/></symbol>
+  <symbol id="i-fist" viewBox="0 0 24 24"><path d="M7 12V8a2 2 0 1 1 4 0v3"/><path d="M11 11V6a2 2 0 1 1 4 0v5"/><path d="M15 11V8a2 2 0 1 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-2a2 2 0 1 1 4 0"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M4 20c0-9 6-15 16-16-1 10-7 16-16 16z"/><path d="M4 20l8-8"/></symbol>
+  <symbol id="i-swords" viewBox="0 0 24 24"><path d="M3 3l8 8M14 14l3 3M3 21l6-6M21 3l-8 8M10 14l-3 3M21 21l-6-6"/><path d="M6 15l3 3M15 6l3 3"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="10" rx="2"/><rect x="13" y="3" width="8" height="6" rx="2"/><rect x="13" y="11" width="8" height="10" rx="2"/><rect x="3" y="15" width="8" height="6" rx="2"/></symbol>
+  <symbol id="i-cal" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
+  <symbol id="i-card" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18M7 15h4"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+</svg>
+
+<div class="note"><b>DESIGN STUDY · SCENARIO LIBRARY</b> The page frame around the poster card: illustrated header with nav and counts, a sticky toolbar (search, type, status, sort, view), a live rail for running sessions, then the grid. Remove this strip before build.</div>
+
+<header class="hero artband">
+  <img class="art" src="../../../frontend/public/marketing/library/40-timeline-wall.webp" alt="" />
+  <div class="top">
+    <div class="brandmark"><span class="mono">S</span> Black Swan <span class="sub">· trainer</span></div>
+    <nav class="nav">
+      <a href="#"><svg class="ic ic-14"><use href="#i-dash"/></svg> Dashboard</a>
+      <a href="#" class="here"><svg class="ic ic-14"><use href="#i-layers"/></svg> Scenarios</a>
+      <a href="#"><svg class="ic ic-14"><use href="#i-cal"/></svg> Sessions</a>
+      <a href="#"><svg class="ic ic-14"><use href="#i-card"/></svg> Clients &amp; billing</a>
+      <a href="warroom-entry.html" class="cta"><svg class="ic ic-14"><use href="#i-bolt"/></svg> War Room</a>
+    </nav>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="eyebrow">Scenario library</div>
+      <h1>97 scenarios, ready to run</h1>
+      <p class="lead">Everything the War Room has built. Cards open in place; the full view has the cast, injects and fact sheet. Editing locks while a session is live or when you're out of session credits.</p>
+    </div>
+    <div class="stats">
+      <div class="glass"><b>61</b><span><svg class="ic ic-12"><use href="#i-phone"/></svg> corporate</span></div>
+      <div class="glass"><b>36</b><span><svg class="ic ic-12"><use href="#i-map"/></svg> field ops</span></div>
+      <div class="glass live"><b>2</b><span><span class="livedot" style="color:#FCD34D"></span> live now</span></div>
+      <div class="glass"><b>6</b><span><svg class="ic ic-12"><use href="#i-play"/></svg> session credits</span></div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="toolbar">
+    <label class="search"><svg class="ic ic-14"><use href="#i-search"/></svg><input class="field" placeholder="Search 97 scenarios — title, organisation, country, contact…" /><kbd>/</kbd></label>
+    <div class="seg"><button class="on">All <span class="n">97</span></button><button><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis <span class="n">61</span></button><button><svg class="ic ic-12"><use href="#i-map"/></svg> Field ops <span class="n">36</span></button></div>
+    <div class="chips"><span class="chip on"><span class="dot" style="color:var(--success)"></span> Active 88</span><span class="chip"><span class="dot" style="color:var(--muted)"></span> Draft 7</span><span class="chip"><span class="dot" style="color:var(--accent)"></span> Live 2</span><span class="chip"><svg class="ic ic-12"><use href="#i-lock"/></svg> Locked 2</span></div>
+    <span class="sort">Sort <select><option>Recently compiled</option><option>Recently run</option><option>Most sessions</option><option>A – Z</option></select></span>
+    <div class="view"><button class="on" title="Cards"><svg class="ic ic-14"><use href="#i-grid"/></svg></button><button title="List"><svg class="ic ic-14"><use href="#i-list"/></svg></button></div>
+    <span class="shown"><b>88</b> of 97 shown</span>
+  </div>
+
+  <!-- live rail -->
+  <section class="sec">
+    <div class="sech" style="--g:var(--accent)"><h2><span class="livedot" style="color:var(--accent)"></span> Live now <span class="n">2</span></h2><p>Sessions in progress. Their scenarios are locked for editing until the session ends.</p><a class="more" href="#">All sessions →</a></div>
+    <div class="rail">
+      <div class="liverow">
+        <div class="band artband"><img class="art" src="../../../frontend/public/marketing/library/05-factory-floor-sm.webp" alt="" /><span class="live"><span class="livedot"></span> Live</span><div class="t">T+23</div></div>
+        <div class="mid"><h4>VacuumGate SEA — Dyson Singapore</h4><div class="meta"><span><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span>·</span><span>14 players · 4 teams</span><span>·</span><span>ends 18:05</span></div><div class="teams"><span><i></i> Communications</span><span><i></i> Legal</span><span><i class="warn"></i> Executive · 1 decision</span><span><i></i> Stakeholder Eng.</span></div></div>
+        <div class="acts"><button class="btn accent">Open session <svg class="ic ic-14"><use href="#i-arrow"/></svg></button><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button></div>
+      </div>
+      <div class="liverow">
+        <div class="band artband"><img class="art" src="../../../frontend/public/marketing/library/48-searchlight-sm.webp" alt="" /><span class="live"><span class="livedot"></span> Live</span><div class="t">T+41</div></div>
+        <div class="mid"><h4>Marina Bay Sands — IED at Convention Hall B</h4><div class="meta"><span><svg class="ic ic-12"><use href="#i-map"/></svg> Field operations</span><span>·</span><span>9 players · 3 teams</span><span>·</span><span>ends 18:30</span></div><div class="teams"><span><i></i> EOD</span><span><i></i> Medical Triage</span><span><i class="warn"></i> Fire / Rescue · hazard active</span></div></div>
+        <div class="acts"><button class="btn accent">Open session <svg class="ic ic-14"><use href="#i-arrow"/></svg></button><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- grid -->
+  <section class="sec">
+    <div class="sech"><h2>All scenarios <span class="n">88</span></h2><p>Recently compiled first.</p></div>
+    <div class="posters">
+      <article class="poster reveal" style="--g:var(--accent);--i:0">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/11-border-bridge-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4><p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> Sigma Logistics · HQ</span><span class="o ai"><span class="cc">MY</span> Sigma Logistics MY · AI</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> MOHR</span><span class="o pr"><svg class="ic ic-12"><use href="#i-fist"/></svg> TWUM</span><span class="o rv"><svg class="ic ic-12"><use href="#i-swords"/></svg> Swift Freight</span></div>
+          <div class="kpis"><div><b>7</b><span>teams</span></div><div><b>85</b><span>contacts</span></div><div><b>217</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled today 12:46 · 4 objectives</div>
+        </div>
+        <div class="ft"><span class="lock"><svg class="ic ic-12"><use href="#i-unlock"/></svg> Editable</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn sm accent"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--accent);--i:1">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/05-factory-floor-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status live"><span class="livedot"></span> Live · T+23</span></div><h4>VacuumGate SEA — Dyson Singapore</h4><p class="desc">Allegations of forced overtime at a Johor contract manufacturer land on Dyson's Singapore HQ while a ministry opens an inspection.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> Dyson · HQ</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> MOHR</span><span class="o pr"><svg class="ic ic-12"><use href="#i-leaf"/></svg> Tenaganita</span></div>
+          <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>47</b><span>contacts</span></div><div><b>146</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 18 Sep · 1 session in progress</div>
+        </div>
+        <div class="ft"><span class="lock locked"><svg class="ic ic-12"><use href="#i-lock"/></svg> Locked — session live</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm accent">Open session <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--brand);--i:2">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/48-searchlight-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-map"/></svg> Field operations</span><span class="status live"><span class="livedot"></span> Live · T+41</span></div><h4>Marina Bay Sands — IED at Convention Hall B</h4><p class="desc">Improvised device discovered during a trade expo; evacuation, triage and cordon management across three response teams.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> SCDF · SPF · SMRT</span></div>
+          <div class="kpis"><div><b>3</b><span>teams</span></div><div><b>12</b><span>hazards</span></div><div><b>38</b><span>injects</span></div><div><b>90</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 18 Jul · 3 sessions run</div>
+        </div>
+        <div class="ft"><span class="lock locked"><svg class="ic ic-12"><use href="#i-lock"/></svg> Locked — session live</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm accent">Open session <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--accent);--i:3">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/23-container-port-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>Straits Under Pressure: Singapore in the Crossfire of the South China Sea Escalation</h4><p class="desc">Shots have been fired in the South China Sea in a confrontation between Chinese and Philippine maritime forces — an unprecedented escalation.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> MFA · Comms</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> Parliament</span></div>
+          <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>39</b><span>contacts</span></div><div><b>122</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 12 Sep · 2 sessions run</div>
+        </div>
+        <div class="ft"><span class="lock"><svg class="ic ic-12"><use href="#i-unlock"/></svg> Editable</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn sm accent"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--accent);--i:4">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/25-data-breach-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>Gateway Under Fire: The China-Linked Intrusion</h4><p class="desc">Singapore's cyber defenders detect suspicious outbound traffic and a new privileged account inside a government infrastructure environment.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> GovTech · HQ</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> CSA</span><span class="o rv"><svg class="ic ic-12"><use href="#i-swords"/></svg> Threat actor</span></div>
+          <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>44</b><span>contacts</span></div><div><b>131</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 9 Sep · 6 objectives</div>
+        </div>
+        <div class="ft"><span class="lock"><svg class="ic ic-12"><use href="#i-unlock"/></svg> Editable</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn sm accent"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--accent);--i:5">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/36-trading-floor-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status">Draft</span></div><h4>Shockwaves &amp; Withdrawals: CBA in the Taiwan Escalation Market Panic</h4><p class="desc">A major military escalation between China and Taiwan has triggered extreme volatility across global markets. Funding liquidity is tightening.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">AU</span> CBA · HQ</span><span class="o ai"><span class="cc">SG</span> CBA Singapore · AI</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> APRA</span></div>
+          <div class="kpis"><div><b>5</b><span>teams</span></div><div><b>52</b><span>contacts</span></div><div><b>160</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 3 Sep · not yet run</div>
+        </div>
+        <div class="ft"><span class="lock draft">Draft</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm ghost del"><svg class="ic ic-14"><use href="#i-trash"/></svg></button><button class="btn sm">Resume <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--accent);--i:6">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/30-town-hall-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>Amanah Under Fire: AMP, Mismanagement Allegations &amp; a Community Trust Spiral</h4><p class="desc">Over the past 24 hours, the Association of Muslim Professionals has come under intense online scrutiny from segments of Singapore's community.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> AMP · HQ</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> Commissioner of Charities</span></div>
+          <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>41</b><span>contacts</span></div><div><b>118</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 28 Aug · 1 session run</div>
+        </div>
+        <div class="ft"><span class="lock"><svg class="ic ic-12"><use href="#i-unlock"/></svg> Editable</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn sm accent"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--accent);--i:7">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/06-hospital-corridor-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>Red Lanterns in the ICU: Bangkok Hospital's Chinese New Year Scandal</h4><p class="desc">A leaked recording from an ICU on the busiest night of the year spreads across three languages before the hospital's morning briefing.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">TH</span> Bangkok Hospital · HQ</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> MoPH</span></div>
+          <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>43</b><span>contacts</span></div><div><b>128</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 21 Aug · 2 sessions run</div>
+        </div>
+        <div class="ft"><span class="lock"><svg class="ic ic-12"><use href="#i-unlock"/></svg> Editable</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn sm accent"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
+      </article>
+      <article class="poster reveal" style="--g:var(--brand);--i:8">
+        <div class="band artband center"><img class="art" src="../../../frontend/public/marketing/library/24-airport-gate-sm.webp" alt="" /><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-map"/></svg> Field operations</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>Changi T3 — VBIED at the departures kerb</h4><p class="desc">A vehicle-borne device at the departures drop-off; kerbside casualties, terminal evacuation and a secondary-device sweep of the car park.</p></div>
+        <div class="body">
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> SCDF · SPF · CAG</span></div>
+          <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>16</b><span>hazards</span></div><div><b>44</b><span>injects</span></div><div><b>90</b><span>min</span></div></div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 14 Aug · 4 sessions run</div>
+        </div>
+        <div class="ft"><span class="lock"><svg class="ic ic-12"><use href="#i-unlock"/></svg> Editable</span><button class="btn sm ghost"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn sm accent"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
+      </article>
+    </div>
+  </section>
+
+  <div class="empty" style="--g:var(--brand)">
+    <div class="tile"><svg class="ic"><use href="#i-search"/></svg></div>
+    <div><h4>No matches (state shown for reference)</h4><p>Nothing matches “union johor” with Field ops selected. Clear the type filter, or build it in the War Room.</p></div>
+    <div style="display:flex;gap:8px"><button class="btn">Clear filters</button><a class="btn accent" href="warroom-entry.html"><svg class="ic ic-14"><use href="#i-bolt"/></svg> Open War Room</a></div>
+  </div>
+</main>
+</body>
+</html>

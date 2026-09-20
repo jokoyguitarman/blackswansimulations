@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>War Room — Entry &amp; field-ops shell (Situation Map)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shared.css" />
+<style>
+  .hero{padding:20px 28px 46px}
+  .hero>*{position:relative;z-index:1}
+  .hero .top{display:flex;align-items:center;justify-content:space-between;max-width:1380px;margin:0 auto 26px;gap:16px}
+  .brandmark{display:flex;align-items:center;gap:10px;font-weight:800;color:#fff}
+  .brandmark .mono{width:30px;height:30px;font-size:12px;background:linear-gradient(150deg,#F08C1C,var(--accent) 60%,var(--accent-strong))}
+  .brandmark .sub{color:rgba(255,255,255,.6);font-weight:600}
+  .steps{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .steps span{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;padding:6px 12px 6px 6px;border-radius:999px;border:1px solid rgba(255,255,255,.16);color:rgba(255,255,255,.65)}
+  .steps span i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;background:rgba(255,255,255,.1)}
+  .steps span.on{background:#fff;color:var(--deep);border-color:#fff;box-shadow:0 8px 20px -10px rgba(0,0,0,.5)}
+  .steps span.on i{background:var(--deep);color:#fff}
+  .steps span.done i{background:var(--success);color:#fff}
+  .steps span.ghost{border-style:dashed;color:rgba(255,255,255,.4)}
+  .credits{font-size:12px;color:rgba(255,255,255,.65);display:flex;gap:14px;white-space:nowrap}.credits b{color:#fff}
+  .credits span{display:inline-flex;align-items:center;gap:6px}
+  .hero .grid{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1.1fr .9fr;gap:26px;align-items:start}
+  .hero h1{margin:8px 0 8px;font-size:32px;font-weight:800;color:#fff;letter-spacing:-.02em;line-height:1.05}
+  .hero .lead{margin:0 0 20px;color:rgba(255,255,255,.7);font-size:14px;max-width:560px}
+  .hero .facts{display:flex;gap:14px;flex-wrap:wrap}
+  .hero .facts div{padding:10px 14px;border-radius:12px}
+  .hero .facts b{display:block;font-family:"JetBrains Mono",monospace;font-size:20px;color:#fff}
+  .hero .facts span{font-size:10.5px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+
+  /* resume ledger */
+  .ledger{padding:14px 16px 12px;border-radius:18px}
+  .ledger h3{margin:0 0 4px;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:#F59E0B;display:flex;align-items:center;gap:10px}
+  .ledger h3 .x{margin-left:auto;color:rgba(255,255,255,.5);font-size:11px;letter-spacing:0;text-transform:none;font-weight:600;cursor:pointer}
+  .ledger h3 .x:hover{color:#fff}
+  .ledger p{margin:0 0 10px;font-size:12px;color:rgba(255,255,255,.6)}
+  .ledger .lgrp{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.45);margin:10px 0 4px}
+  .draft{display:grid;grid-template-columns:36px 1fr auto auto;gap:10px;align-items:center;padding:8px 8px;border-radius:12px;transition:background .15s}
+  .draft:hover{background:rgba(255,255,255,.06)}
+  .draft .tile{width:36px;height:36px;border-radius:10px;font-size:16px}
+  .draft .nm{font-weight:700;font-size:13px;color:#fff;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .draft .nm .k{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:2px 6px;border-radius:5px;background:rgba(255,255,255,.12);color:rgba(255,255,255,.85)}
+  .draft .nm .k.done{background:rgba(22,163,74,.25);color:#86EFAC}
+  .draft .mt{font-size:11.5px;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:8px;margin-top:2px}
+  .draft .prog{display:inline-flex;gap:2px}
+  .draft .prog i{width:9px;height:4px;border-radius:2px;background:rgba(255,255,255,.18)}
+  .draft .prog i.f{background:#F59E0B}
+  .draft .prog i.d{background:var(--success)}
+  .draft .btn{border-color:rgba(255,255,255,.25);background:transparent;color:#fff;white-space:nowrap}
+  .draft .btn:hover{background:rgba(255,255,255,.08)}
+  .draft .btn.accent{border-color:transparent}
+  .draft .del{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;color:rgba(255,255,255,.4);cursor:pointer}
+  .draft .del:hover{color:#fff;background:rgba(255,255,255,.1)}
+
+  .wrap{max-width:1380px;margin:-22px auto 60px;padding:0 28px}
+  .map{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:22px;box-shadow:var(--shadow-md)}
+  .map h2{margin:0 0 4px;font-size:18px;font-weight:800}
+  .map>p.sub{margin:0 0 16px;color:var(--muted);font-size:13px}
+
+  /* the two paths */
+  .paths{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+  .path{position:relative;border:2px solid var(--border);border-radius:20px;overflow:hidden;background:#fff;cursor:pointer;transition:transform .2s var(--ease),box-shadow .2s var(--ease),border-color .2s;display:flex;flex-direction:column}
+  .path:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+  .path.on{border-color:var(--accent);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,transparent),var(--shadow-md)}
+  .path .band{min-height:190px;padding:18px 20px;display:flex;flex-direction:column;justify-content:flex-end;color:#fff}
+  .path .band::before{background:linear-gradient(180deg,rgba(14,26,43,.15),rgba(14,26,43,.9) 78%)}
+  .path .band::after{background:linear-gradient(90deg,color-mix(in srgb,var(--g) 55%,transparent),transparent 65%);opacity:.5}
+  .path .band>*{position:relative}
+  .path .kicker{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;opacity:.9;display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .path .kicker .pick{margin-left:auto;width:26px;height:26px;border-radius:50%;border:2px solid rgba(255,255,255,.5);display:grid;place-items:center}
+  .path.on .kicker .pick{background:var(--accent);border-color:var(--accent);color:#fff}
+  .path h3{margin:0;font-size:22px;font-weight:800;letter-spacing:-.01em}
+  .path .band p{margin:6px 0 0;font-size:13px;opacity:.88;max-width:520px}
+  .path .body{padding:16px 20px 18px;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .path h5{margin:0 0 8px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .path .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .path .chips span{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:4px 9px 4px 6px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border)}
+  .path .out{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+  .path .out div{text-align:center;background:color-mix(in srgb,var(--g) 6%,#fff);border-radius:10px;padding:8px 4px}
+  .path .out b{display:block;font-size:15px;font-variant-numeric:tabular-nums;color:var(--g)}
+  .path .out span{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
+  .path .route{grid-column:1/-1;display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding-top:12px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted)}
+  .path .route b{color:var(--ink);font-weight:700}
+  .path .route .arrow{color:var(--border-strong)}
+  .path .route .dur{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--g)}
+  .path .ft{padding:12px 20px;border-top:1px solid var(--border);background:var(--surface-2);display:flex;align-items:center;gap:10px}
+  .path .ft .who{font-size:12px;color:var(--muted);flex:1}
+  .path.on .ft .btn{background:var(--accent);color:#fff;border-color:transparent}
+
+  .ctabar{margin-top:18px;display:flex;align-items:center;gap:18px;background:var(--deep);color:#fff;border-radius:18px;padding:14px 18px;box-shadow:var(--shadow-lg)}
+  .ctabar .grow{flex:1}
+  .ctabar .hint{font-size:12.5px;color:rgba(255,255,255,.65)}
+  .ctabar .hint b{color:#fff}
+  .ctabar .btn.ghost{color:rgba(255,255,255,.75)}.ctabar .btn.ghost:hover{background:rgba(255,255,255,.08);color:#fff}
+
+  /* field-ops step shell */
+  .divider{margin:44px 0 16px;display:flex;align-items:center;gap:14px}
+  .divider h3{margin:0;font-size:18px;font-weight:800}
+  .divider p{margin:0;color:var(--muted);font-size:13px}
+  .stephero{padding:18px 28px 42px}
+  .stephero>*{position:relative;z-index:1}
+  .stephero .grid{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1fr auto;gap:22px;align-items:end}
+  .stephero h1{margin:8px 0 6px;font-size:26px;font-weight:800;color:#fff;letter-spacing:-.015em}
+  .stephero .lead{margin:0;color:rgba(255,255,255,.7);font-size:13.5px;max-width:620px}
+  .brief{padding:12px 14px;border-radius:14px;min-width:300px}
+  .brief h5{margin:0 0 6px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#F59E0B}
+  .brief .row{display:flex;align-items:center;gap:8px;font-size:12.5px;color:#fff;padding:4px 0}
+  .brief .row span{color:rgba(255,255,255,.55)}
+  .brief .row b{margin-left:auto}
+  .groups{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+  .grp{border:1px solid var(--border);border-radius:16px;background:#fff;overflow:hidden;box-shadow:var(--shadow-sm)}
+  .grp header{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--border);background:var(--surface-2)}
+  .grp header .tile{width:28px;height:28px;font-size:14px;border-radius:8px}
+  .grp header h4{margin:0;font-size:12.5px;font-weight:800;color:var(--g)}
+  .grp header .n{margin-left:auto;font-size:10.5px;font-weight:800;color:var(--muted);background:#fff;padding:2px 7px;border-radius:999px;box-shadow:inset 0 0 0 1px var(--border)}
+  .grp .tiles{padding:10px;display:grid;gap:8px}
+  .inc{display:grid;grid-template-columns:34px 1fr auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--border);border-radius:12px;cursor:pointer;transition:border-color .15s,background .15s,transform .15s var(--ease);position:relative}
+  .inc:hover{border-color:var(--g);transform:translateX(2px)}
+  .inc .tile{width:34px;height:34px;font-size:16px;border-radius:9px}
+  .inc .nm{font-weight:700;font-size:13px}
+  .inc .ds{font-size:11px;color:var(--muted)}
+  .inc.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 7%,#fff);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 15%,transparent)}
+  .inc.on .pick{color:var(--accent-strong)}
+  .inc.soon{opacity:.55;cursor:not-allowed}
+  .inc.soon:hover{transform:none;border-color:var(--border)}
+  .inc .soon{font-size:9.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--surface-2);padding:2px 6px;border-radius:5px}
+  .custom{margin-top:14px;border:1.5px dashed var(--border-strong);border-radius:16px;padding:14px 16px;display:grid;grid-template-columns:auto 1fr;gap:14px;align-items:center;background:rgba(255,255,255,.7)}
+  .custom .tile{width:40px;height:40px;font-size:18px}
+  .custom h4{margin:0 0 2px;font-size:13.5px;font-weight:800}
+  .custom p{margin:0 0 8px;font-size:12px;color:var(--muted)}
+  .teamsrow{margin-top:18px;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+  .team{border:1px solid var(--border);border-radius:16px;padding:14px;background:#fff;box-shadow:var(--shadow-sm);position:relative}
+  .team .id{display:flex;gap:10px;align-items:center;margin-bottom:8px}
+  .team .tile{width:38px;height:38px;font-size:17px}
+  .team .nm{font-weight:800;font-size:14px}
+  .team .ds{font-size:12px;color:var(--muted)}
+  .team .ctl{display:flex;gap:8px;align-items:center;margin-top:10px;font-size:12px;color:var(--muted)}
+  .team .ctl .n{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--ink);background:var(--surface-2);border-radius:8px;padding:4px 8px}
+  .team .ctl .inv{margin-left:auto;font-size:11px;font-weight:700;padding:4px 9px;border-radius:999px;border:1px solid var(--border-strong);color:var(--muted)}
+  .team .ctl .inv.on{border-color:var(--accent);color:var(--accent-strong);background:color-mix(in srgb,var(--accent) 8%,#fff)}
+  .team .acts{position:absolute;top:10px;right:10px}
+  div.add{border:1.5px dashed var(--border-strong);border-radius:16px;display:grid;place-items:center;min-height:120px;color:var(--brand);font-weight:700;background:rgba(255,255,255,.75);text-align:center;padding:14px;cursor:pointer;transition:border-color .15s,background .15s}
+  div.add:hover{border-color:var(--brand);background:#fff}
+  div.add small{display:block;color:var(--muted);font-weight:500;margin-top:4px;font-size:11px}
+
+  @media (max-width:1100px){.hero .grid,.paths,.stephero .grid{grid-template-columns:1fr}.groups{grid-template-columns:repeat(2,minmax(0,1fr))}.teamsrow{grid-template-columns:1fr}}
+  @media (max-width:760px){.groups{grid-template-columns:1fr}.path .body{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M15 20a4.5 4.5 0 0 1 6 0"/></symbol>
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16"/><path d="M14 9h5a1 1 0 0 1 1 1v11"/><path d="M8 8h2M8 12h2M8 16h2M17 13h1M17 17h1"/><path d="M2 21h20"/></symbol>
+  <symbol id="i-fist" viewBox="0 0 24 24"><path d="M7 12V8a2 2 0 1 1 4 0v3"/><path d="M11 11V6a2 2 0 1 1 4 0v5"/><path d="M15 11V8a2 2 0 1 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-2a2 2 0 1 1 4 0"/></symbol>
+  <symbol id="i-swords" viewBox="0 0 24 24"><path d="M3 3l8 8M14 14l3 3M3 21l6-6M21 3l-8 8M10 14l-3 3M21 21l-6-6"/><path d="M6 15l3 3M15 6l3 3"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/><path d="M12 12l6-6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-flag" viewBox="0 0 24 24"><path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/></symbol>
+  <symbol id="i-hazard" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18h.01"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 22s7-7 7-12a7 7 0 0 0-14 0c0 5 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M13 7l4 4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <!-- incident type glyphs -->
+  <symbol id="i-bomb" viewBox="0 0 24 24"><circle cx="11" cy="14" r="7"/><path d="M15 9l2-2M17 7l2-2M19 3v2M21 5h-2M14 5l1 2"/></symbol>
+  <symbol id="i-car" viewBox="0 0 24 24"><path d="M3 13l2-5h14l2 5v5H3z"/><circle cx="7.5" cy="17" r="1.5"/><circle cx="16.5" cy="17" r="1.5"/><path d="M5 13h14"/></symbol>
+  <symbol id="i-vest" viewBox="0 0 24 24"><path d="M8 3l4 3 4-3 3 5-2 13H7L5 8z"/><path d="M9 12h6M9 16h6"/></symbol>
+  <symbol id="i-mall" viewBox="0 0 24 24"><path d="M3 9l2-5h14l2 5"/><path d="M4 9h16v12H4z"/><path d="M9 21v-6h6v6M3 9c0 1.5 1.5 3 3 3s3-1.5 3-3c0 1.5 1.5 3 3 3s3-1.5 3-3c0 1.5 1.5 3 3 3s3-1.5 3-3"/></symbol>
+  <symbol id="i-gun" viewBox="0 0 24 24"><path d="M3 8h17v5h-5l-1 2H9l-1 4H4l2-6H3z"/><path d="M14 13v-2"/></symbol>
+  <symbol id="i-knife" viewBox="0 0 24 24"><path d="M3 21l6-6"/><path d="M9 15L20 4c1 3 0 7-4 9l-4 2z"/></symbol>
+  <symbol id="i-bio" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2.5"/><path d="M12 3a5 5 0 0 1 4 8M12 3a5 5 0 0 0-4 8M4.5 17a5 5 0 0 1 4-8M19.5 17a5 5 0 0 0-4-8M4.5 17a5 5 0 0 0 7.5 2M19.5 17a5 5 0 0 1-7.5 2"/></symbol>
+  <symbol id="i-skull" viewBox="0 0 24 24"><path d="M12 3a8 8 0 0 1 8 8c0 3-2 5-3 6v3H7v-3c-1-1-3-3-3-6a8 8 0 0 1 8-8z"/><circle cx="9" cy="11" r="1.5"/><circle cx="15" cy="11" r="1.5"/><path d="M11 16h2"/></symbol>
+  <symbol id="i-siren" viewBox="0 0 24 24"><path d="M6 19V12a6 6 0 0 1 12 0v7"/><path d="M3 19h18v2H3z"/><path d="M12 3v2M5 5l1.5 1.5M19 5l-1.5 1.5"/></symbol>
+  <symbol id="i-plane" viewBox="0 0 24 24"><path d="M2 14l8-2 4-8 2 1-2 7 7 2v2l-7-1-2 6-2 1 0-7-8 1z"/></symbol>
+  <symbol id="i-medic" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="M12 9v6M9 12h6"/></symbol>
+  <symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 22c-4 0-7-3-7-7 0-3 2-5 3-7 0 2 1 3 2 3 0-4 2-7 5-9 0 3 1 5 3 7s2 4 2 6c0 4-3 7-8 7z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+</svg>
+
+<div class="note"><b>DESIGN STUDY · WAR ROOM ENTRY</b> The first screen of the War Room and the shell every field-ops step inherits. Same language as the Situation Map: illustration behind a deep gradient, a light map below, custom icons, one accent. Remove this strip before build.</div>
+
+<!-- ───────────────────────── 1. ENTRY: choose a path ───────────────────────── -->
+<header class="hero artband">
+  <img class="art" src="../../../frontend/public/marketing/library/21-command-post.webp" alt="" />
+  <div class="top">
+    <div class="brandmark"><span class="mono">S</span> War Room <span class="sub">· new scenario</span></div>
+    <div class="steps"><span class="on"><i>1</i> Choose a path</span><span class="ghost"><i>2</i> …</span><span class="ghost"><i>3</i> …</span></div>
+    <div class="credits"><span><svg class="ic ic-14"><use href="#i-layers"/></svg> Scenario credits <b>3</b></span><span><svg class="ic ic-14"><use href="#i-play"/></svg> Session credits <b>6</b></span></div>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="eyebrow">War Room · step 1</div>
+      <h1>What are you training for?</h1>
+      <p class="lead">Pick the kind of exercise. Field operations puts teams on a map with hazards and casualties; corporate crisis puts them on a phone with feeds, inboxes and stakeholders. Everything after this is generated from what you tell us.</p>
+      <div class="facts"><div class="glass"><b>97</b><span>scenarios built</span></div><div class="glass"><b>12</b><span>sessions this month</span></div><div class="glass"><b>3</b><span>drafts waiting</span></div></div>
+    </div>
+    <aside class="ledger glass">
+      <h3><span class="livedot"></span> Pick up where you left off <span class="x">Dismiss</span></h3>
+      <p>Drafts save at every step. Compiled scenarios can be re-run through the compiler.</p>
+      <div class="lgrp">In progress · 3</div>
+      <div class="draft"><div class="tile" style="--g:var(--accent)"><svg class="ic"><use href="#i-phone"/></svg></div><div><div class="nm">Sigma Logistics — Johor night runs <span class="k">Corporate</span></div><div class="mt"><span class="prog"><i class="f"></i><i></i><i></i></span> Setup · 3 organisations · updated 14:02</div></div><button class="btn sm accent">Resume <svg class="ic ic-12"><use href="#i-arrow"/></svg></button><span class="del" title="Discard draft"><svg class="ic ic-12"><use href="#i-x"/></svg></span></div>
+      <div class="draft"><div class="tile" style="--g:var(--brand)"><svg class="ic"><use href="#i-map"/></svg></div><div><div class="nm">Car bomb — Raffles Place <span class="k">Field ops</span></div><div class="mt"><span class="prog"><i class="f"></i><i class="f"></i><i class="f"></i><i></i><i></i><i></i><i></i></span> Scene editor · 19 Jul 17:41</div></div><button class="btn sm">Resume</button><span class="del"><svg class="ic ic-12"><use href="#i-x"/></svg></span></div>
+      <div class="draft"><div class="tile" style="--g:var(--brand)"><svg class="ic"><use href="#i-map"/></svg></div><div><div class="nm">Bombing — untitled <span class="k">Field ops</span></div><div class="mt"><span class="prog"><i class="f"></i><i></i><i></i><i></i><i></i><i></i><i></i></span> Incident · 30 Jul 15:10</div></div><button class="btn sm">Resume</button><span class="del"><svg class="ic ic-12"><use href="#i-x"/></svg></span></div>
+      <div class="lgrp">Compiled · 2</div>
+      <div class="draft"><div class="tile" style="--g:var(--success)"><svg class="ic"><use href="#i-check"/></svg></div><div><div class="nm">Bombing — Convention Hall B <span class="k done">Compiled</span></div><div class="mt"><span class="prog"><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i><i class="d"></i></span> 18 Jul 11:31 · in the library</div></div><button class="btn sm">Re-compile</button><span class="del"><svg class="ic ic-12"><use href="#i-x"/></svg></span></div>
+    </aside>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="map">
+    <h2>Choose a path</h2>
+    <p class="sub">Each path has its own steps; both end in the same library with the same card, detail view and edit lock.</p>
+    <div class="paths">
+      <!-- Field operations -->
+      <article class="path reveal" style="--g:var(--brand);--i:0">
+        <div class="band artband"><img class="art" src="../../../frontend/public/marketing/library/22-responders.webp" alt="" />
+          <div class="kicker"><svg class="ic ic-14"><use href="#i-map"/></svg> Field operations <span class="pick"></span></div>
+          <h3>Teams on the ground</h3>
+          <p>Bombing, armed attack, CBRN. A real location, a scene you lay out, hazards and casualties that evolve, and response teams working the map in real time.</p>
+        </div>
+        <div class="body">
+          <div><h5>You define</h5><div class="chips"><span><svg class="ic ic-12"><use href="#i-hazard"/></svg> Incident type</span><span><svg class="ic ic-12"><use href="#i-users"/></svg> Response teams</span><span><svg class="ic ic-12"><use href="#i-pin"/></svg> Scene &amp; location</span></div></div>
+          <div><h5>We generate</h5><div class="out"><div><b>12</b><span>hazards</span></div><div><b>40</b><span>casualties</span></div><div><b>38</b><span>injects</span></div></div></div>
+          <div class="route"><b>Incident</b><span class="arrow">›</span>Teams<span class="arrow">›</span>Scene editor<span class="arrow">›</span>Location<span class="arrow">›</span>Research<span class="arrow">›</span>Compile<span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> ~20 min to build</span></div>
+        </div>
+        <div class="ft"><span class="who">For emergency services, security, facilities and site teams.</span><button class="btn">Start field operations <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
+      </article>
+      <!-- Corporate crisis (selected) -->
+      <article class="path on reveal" style="--g:var(--accent);--i:1">
+        <div class="band artband"><img class="art" src="../../../frontend/public/marketing/library/01-war-room.webp" alt="" />
+          <div class="kicker"><svg class="ic ic-14"><use href="#i-phone"/></svg> Corporate crisis <span class="pick"><svg class="ic ic-14"><use href="#i-check"/></svg></span></div>
+          <h3>Teams on the phone</h3>
+          <p>A reputational, labour, safety or data crisis told through feeds, news, inboxes and calls. Multiple offices and countries, pressure groups, rivals — and executives who decide by communicating.</p>
+        </div>
+        <div class="body">
+          <div><h5>You define</h5><div class="chips"><span><svg class="ic ic-12"><use href="#i-doc"/></svg> What happened</span><span><svg class="ic ic-12"><use href="#i-building"/></svg> Organisations &amp; teams</span><span><svg class="ic ic-12"><use href="#i-fist"/></svg> Pressure groups</span><span><svg class="ic ic-12"><use href="#i-swords"/></svg> Rivals</span></div></div>
+          <div><h5>We generate</h5><div class="out"><div><b>85</b><span>contacts</span></div><div><b>188</b><span>crowd</span></div><div><b>217</b><span>injects</span></div></div></div>
+          <div class="route"><b>Setup</b><span class="arrow">›</span>Build<span class="arrow">›</span>Review &amp; compile<span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> ~12 min to build</span></div>
+        </div>
+        <div class="ft"><span class="who">For communications, legal, HR, operations and leadership teams.</span><button class="btn accent">Start corporate crisis <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
+      </article>
+    </div>
+    <div class="ctabar">
+      <button class="btn ghost" disabled style="opacity:.4">Back</button>
+      <span class="hint">Step <b>1</b> of 3 · Corporate crisis selected — the next screen is <b>Setup</b>, where you describe the crisis.</span>
+      <span class="grow"></span>
+      <button class="btn accent lg">Continue <svg class="ic ic-14"><use href="#i-arrow"/></svg></button>
+    </div>
+  </section>
+
+  <!-- ───────────────────────── 2. FIELD-OPS SHELL: Incident + Teams ───────────────────────── -->
+  <div class="divider"><h3>Field operations · the same shell</h3><p>— every step gets the illustrated header, a brief on the right, and containers with custom icons. Shown: Incident (step 1) and Teams (step 2).</p></div>
+</main>
+
+<header class="stephero artband">
+  <img class="art" src="../../../frontend/public/marketing/library/20-evacuation.webp" alt="" />
+  <div class="top" style="max-width:1380px;margin:0 auto 22px;display:flex;align-items:center;justify-content:space-between;gap:16px">
+    <div class="brandmark"><span class="mono">S</span> War Room <span class="sub">· Field operations</span></div>
+    <div class="steps"><span class="on"><i>1</i> Incident</span><span><i>2</i> Teams</span><span><i>3</i> Scene editor</span><span><i>4</i> Location</span><span><i>5</i> Research</span><span><i>6</i> Compile</span></div>
+    <div class="credits"><span><svg class="ic ic-14"><use href="#i-layers"/></svg> Scenario credits <b>3</b></span></div>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="eyebrow">Field operations · step 1 of 6</div>
+      <h1>What kind of incident?</h1>
+      <p class="lead">The incident type drives the hazards, casualty profile, team suggestions and the research the AI runs. Greyed types are coming soon.</p>
+    </div>
+    <aside class="brief glass">
+      <h5>Scenario so far</h5>
+      <div class="row"><svg class="ic ic-14"><use href="#i-hazard"/></svg> Incident <b>Car bomb / VBIED</b></div>
+      <div class="row"><svg class="ic ic-14"><use href="#i-users"/></svg> Teams <b><span>suggested next</span></b></div>
+      <div class="row"><svg class="ic ic-14"><use href="#i-pin"/></svg> Location <b><span>not set</span></b></div>
+    </aside>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="map">
+    <div class="groups">
+      <div class="grp" style="--g:var(--f-crisis)"><header><div class="tile"><svg class="ic"><use href="#i-bomb"/></svg></div><h4>Explosives</h4><span class="n">4</span></header><div class="tiles">
+        <div class="inc"><div class="tile soft"><svg class="ic"><use href="#i-bomb"/></svg></div><div><div class="nm">Bombing (general)</div><div class="ds">Placed device · blast &amp; fragmentation</div></div></div>
+        <div class="inc on"><div class="tile"><svg class="ic"><use href="#i-car"/></svg></div><div><div class="nm">Car bomb / VBIED</div><div class="ds">Vehicle-borne · secondary device sweep</div></div><svg class="ic ic-16 pick"><use href="#i-check"/></svg></div>
+        <div class="inc"><div class="tile soft"><svg class="ic"><use href="#i-vest"/></svg></div><div><div class="nm">Suicide bombing</div><div class="ds">Person-borne · crowd egress</div></div></div>
+        <div class="inc"><div class="tile soft"><svg class="ic"><use href="#i-mall"/></svg></div><div><div class="nm">Mall bombing</div><div class="ds">Enclosed retail · multi-level evacuation</div></div></div>
+      </div></div>
+      <div class="grp" style="--g:var(--f-rival)"><header><div class="tile"><svg class="ic"><use href="#i-gun"/></svg></div><h4>Armed attack</h4><span class="n">2</span></header><div class="tiles">
+        <div class="inc soon"><div class="tile soft"><svg class="ic"><use href="#i-gun"/></svg></div><div><div class="nm">Shooting (open field)</div><div class="ds">Active shooter · cordon &amp; contain</div></div><span class="soon">Soon</span></div>
+        <div class="inc soon"><div class="tile soft"><svg class="ic"><use href="#i-knife"/></svg></div><div><div class="nm">Knife / bladed attack</div><div class="ds">Close quarters · rapid triage</div></div><span class="soon">Soon</span></div>
+      </div></div>
+      <div class="grp" style="--g:var(--f-ai)"><header><div class="tile"><svg class="ic"><use href="#i-bio"/></svg></div><h4>CBRN</h4><span class="n">2</span></header><div class="tiles">
+        <div class="inc soon"><div class="tile soft"><svg class="ic"><use href="#i-bio"/></svg></div><div><div class="nm">Chemical / gas attack</div><div class="ds">Plume · decontamination corridor</div></div><span class="soon">Soon</span></div>
+        <div class="inc soon"><div class="tile soft"><svg class="ic"><use href="#i-skull"/></svg></div><div><div class="nm">Poisoning</div><div class="ds">Food / water · public health</div></div><span class="soon">Soon</span></div>
+      </div></div>
+      <div class="grp" style="--g:var(--f-intel)"><header><div class="tile"><svg class="ic"><use href="#i-siren"/></svg></div><h4>Other</h4><span class="n">2</span></header><div class="tiles">
+        <div class="inc soon"><div class="tile soft"><svg class="ic"><use href="#i-siren"/></svg></div><div><div class="nm">Kidnapping / hostage</div><div class="ds">Negotiation · perimeter</div></div><span class="soon">Soon</span></div>
+        <div class="inc soon"><div class="tile soft"><svg class="ic"><use href="#i-plane"/></svg></div><div><div class="nm">Hijacking</div><div class="ds">Aviation · multi-agency</div></div><span class="soon">Soon</span></div>
+      </div></div>
+    </div>
+    <div class="custom" style="--g:var(--accent)">
+      <div class="tile"><svg class="ic"><use href="#i-sparkle"/></svg></div>
+      <div><h4>Or describe your own</h4><p>Anything explosive-based works today — the type above is inferred from what you write.</p><input class="field" placeholder="e.g. IED hidden in a vehicle outside a government building during a state visit…" /></div>
+    </div>
+
+    <div class="divider" style="margin:26px 0 12px"><h3 style="font-size:15px">Step 2 · Teams</h3><p>— suggested for a car bomb; add from the inventory or trim. Investigative teams get the intel layer.</p></div>
+    <div class="teamsrow">
+      <div class="team" style="--g:var(--f-crisis)"><div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div><div class="id"><div class="tile"><svg class="ic"><use href="#i-bomb"/></svg></div><div><div class="nm">Bomb Squad / EOD</div><div class="ds">Secondary sweep, render-safe, forensic IED analysis</div></div></div><div class="ctl">Players <span class="n">2 – 6</span><span class="inv on"><svg class="ic ic-12"><use href="#i-search"/></svg> Investigative</span></div></div>
+      <div class="team" style="--g:var(--success)"><div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div><div class="id"><div class="tile"><svg class="ic"><use href="#i-medic"/></svg></div><div><div class="nm">Medical Triage</div><div class="ds">Mass-casualty triage, stabilisation, hospital coordination</div></div></div><div class="ctl">Players <span class="n">3 – 8</span><span class="inv">Investigative</span></div></div>
+      <div class="team" style="--g:var(--f-pressure)"><div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div><div class="id"><div class="tile"><svg class="ic"><use href="#i-fire"/></svg></div><div><div class="nm">Hazards / Fire / Rescue</div><div class="ds">Suppression, HAZMAT, structural rescue, ventilation</div></div></div><div class="ctl">Players <span class="n">3 – 8</span><span class="inv">Investigative</span></div></div>
+      <div class="team" style="--g:var(--brand)"><div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div><div class="id"><div class="tile"><svg class="ic"><use href="#i-shield"/></svg></div><div><div class="nm">Incident Command</div><div class="ds">Unified command, resource allocation, comms with agencies</div></div></div><div class="ctl">Players <span class="n">1 – 3</span><span class="inv">Investigative</span></div></div>
+      <div class="add"><div><svg class="ic ic-24"><use href="#i-plus"/></svg><div style="margin-top:8px">Add a team from the inventory</div><small>Police cordon · Forensics · Public information · Logistics</small></div></div>
+    </div>
+    <div class="ctabar">
+      <button class="btn ghost">Back</button>
+      <span class="hint">Step <b>1</b> of 6 · Car bomb / VBIED selected.</span>
+      <span class="grow"></span>
+      <button class="btn ghost"><svg class="ic ic-14"><use href="#i-doc"/></svg> Save draft</button>
+      <button class="btn accent lg">Suggest teams <svg class="ic ic-14"><use href="#i-arrow"/></svg></button>
+    </div>
+  </section>
+</main>
+</body>
+</html>
