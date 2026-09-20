@@ -1,9 +1,76 @@
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { AiCallError, chatJson, systemUser } from './ai/chatClient.js';
 
 /**
  * AI Service - Business logic for AI-powered features
  * Separation of concerns: All AI-related business logic
+ *
+ * Every model call goes through the shared chat client (fast tier: gpt-4o-mini while
+ * AI_PROVIDER=openai). The `_openAiApiKey` parameters on the public functions are kept for
+ * call-site compatibility; the client reads the active provider's key from env.
  */
+
+/** Error shape the routes expect: `statusCode` plus the user-facing messages used before. */
+function toApiError(err: unknown, context: string): Error & { statusCode?: number } {
+  if (err instanceof AiCallError) {
+    const apiError = new Error(err.message) as Error & { statusCode?: number };
+    apiError.statusCode = err.status;
+    if (err.status === 429) {
+      apiError.message = 'Rate limit exceeded. Please wait a moment and try again.';
+    } else if (err.status === 401) {
+      apiError.message = 'AI provider API key is invalid or expired.';
+    } else if (err.status === 503) {
+      apiError.message = 'AI service is temporarily unavailable. Please try again later.';
+    }
+    logger.error({ error: err.message, status: err.status }, `AI API error in ${context}`);
+    return apiError;
+  }
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+/** Fast-tier JSON call that throws (with `statusCode`) on any failure. */
+async function fastJsonOrThrow<T>(
+  label: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+  temperature: number,
+): Promise<T> {
+  try {
+    const parsed = await chatJson<T>({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, userPrompt),
+      json: true,
+      maxTokens,
+      temperature,
+      throwOnError: true,
+      label: `aiService.${label}`,
+    });
+    if (parsed == null) throw new Error('No content received from AI provider');
+    return parsed;
+  } catch (err) {
+    throw toApiError(err, label);
+  }
+}
+
+/** Fast-tier JSON call that returns null on any failure so callers substitute a default. */
+async function fastJsonOrNull<T>(
+  label: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+  temperature: number,
+): Promise<T | null> {
+  return chatJson<T>({
+    tier: 'fast',
+    messages: systemUser(systemPrompt, userPrompt),
+    json: true,
+    maxTokens,
+    temperature,
+    label: `aiService.${label}`,
+  });
+}
 
 interface ScenarioGenerationPrompt {
   category: string;
@@ -36,7 +103,7 @@ interface GeneratedScenario {
  */
 export const generateScenario = async (
   prompt: ScenarioGenerationPrompt,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<GeneratedScenario> => {
   try {
     const systemPrompt = `You are an expert crisis management scenario designer for multi-agency emergency response simulations. 
@@ -86,56 +153,13 @@ ${prompt.specific_requirements ? `Specific requirements: ${prompt.specific_requi
 
 Make it realistic, challenging, and suitable for multi-agency crisis management training.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini', // Using cost-effective model
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.8,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-      const status = response.status;
-      const errorMessage = error.error?.message || error.message || 'Unknown error';
-
-      logger.error({ error: errorMessage, status }, 'OpenAI API error');
-
-      // Create error with status code for proper handling
-      const apiError = new Error(errorMessage) as Error & { statusCode?: number };
-      apiError.statusCode = status;
-
-      // Provide user-friendly messages for common errors
-      if (status === 429) {
-        apiError.message = 'Rate limit exceeded. Please wait a moment and try again.';
-      } else if (status === 401) {
-        apiError.message = 'OpenAI API key is invalid or expired.';
-      } else if (status === 503) {
-        apiError.message = 'OpenAI service is temporarily unavailable. Please try again later.';
-      }
-
-      throw apiError;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('No content received from OpenAI');
-    }
-
-    // Parse JSON response
-    const parsed = JSON.parse(content) as GeneratedScenario;
+    const parsed = await fastJsonOrThrow<GeneratedScenario>(
+      'generateScenario',
+      systemPrompt,
+      userPrompt,
+      2000,
+      0.8,
+    );
 
     // Validate and normalize
     return {
@@ -171,7 +195,7 @@ export interface DecisionClassification {
  */
 export const classifyDecision = async (
   decision: { title: string; description: string },
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<DecisionClassification> => {
   try {
     console.log('🟡 CLASSIFY_START: Starting classification', { decisionTitle: decision.title });
@@ -228,81 +252,14 @@ Provide a detailed classification with high confidence.`;
       'CLASSIFY_API_CALL: Sending request to OpenAI API',
     );
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3, // Lower temperature for more consistent classification
-        max_tokens: 500,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    console.log('🟡 CLASSIFY_RESPONSE: Received response', {
-      decisionTitle: decision.title,
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok,
-    });
-    logger.info(
-      { decisionTitle: decision.title, status: response.status, ok: response.ok },
-      'CLASSIFY_RESPONSE: Received response from OpenAI',
+    const parsed = await fastJsonOrThrow<DecisionClassification>(
+      'classifyDecision',
+      systemPrompt,
+      userPrompt,
+      500,
+      0.3,
     );
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-      const status = response.status;
-      const errorMessage = error.error?.message || error.message || 'Unknown error';
-
-      console.error('🔴 CLASSIFY_ERROR: OpenAI API error', {
-        decisionTitle: decision.title,
-        status,
-        error: errorMessage,
-      });
-      logger.error({ error: errorMessage, status }, 'OpenAI API error in decision classification');
-
-      const apiError = new Error(errorMessage) as Error & { statusCode?: number };
-      apiError.statusCode = status;
-
-      if (status === 429) {
-        apiError.message = 'Rate limit exceeded. Please wait a moment and try again.';
-      } else if (status === 401) {
-        apiError.message = 'OpenAI API key is invalid or expired.';
-      } else if (status === 503) {
-        apiError.message = 'OpenAI service is temporarily unavailable. Please try again later.';
-      }
-
-      throw apiError;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-
-    console.log('🟡 CLASSIFY_PARSE: Parsing response', {
-      decisionTitle: decision.title,
-      hasContent: !!content,
-      contentLength: content?.length || 0,
-    });
-    logger.info(
-      { decisionTitle: decision.title, hasContent: !!content },
-      'CLASSIFY_PARSE: Parsing OpenAI response',
-    );
-
-    if (!content) {
-      console.error('🔴 CLASSIFY_ERROR: No content received', { decisionTitle: decision.title });
-      throw new Error('No content received from OpenAI');
-    }
-
-    // Parse JSON response
-    const parsed = JSON.parse(content) as DecisionClassification;
+    logger.info({ decisionTitle: decision.title }, 'CLASSIFY_RESPONSE: Received classification');
 
     console.log('🟢 CLASSIFY_SUCCESS: Classification complete', {
       decisionTitle: decision.title,
@@ -375,7 +332,7 @@ export interface ScheduledInjectCancellationResult {
 export const shouldCancelScheduledInject = async (
   inject: { title: string; content: string },
   recentDecisions: Array<{ title: string; description: string; type: string | null }>,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<ScheduledInjectCancellationResult> => {
   try {
     const systemPrompt = `You are the adversary engine for a crisis management simulation. You evaluate scheduled events (injects) in two steps.
@@ -440,44 +397,18 @@ STEP 1: Have the teams collectively addressed the concern of this inject? If NO,
 STEP 2 (only if Step 1 = yes): Can you, the adversary, still realistically cause trouble on the SAME subject? If yes, provide adversary_inject. If the team fully neutralised it, omit adversary_inject.
 Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.4,
-        max_tokens: 600,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-      logger.warn(
-        { status: response.status, injectTitle: inject.title, error },
-        'OpenAI API error in shouldCancelScheduledInject, defaulting to not cancel',
-      );
-      return { cancel: false, cancel_reason: 'AI check failed; inject will publish.' };
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    if (!content) {
-      return { cancel: false, cancel_reason: 'No AI response; inject will publish.' };
-    }
-
-    const parsed = JSON.parse(content) as {
+    const parsed = await fastJsonOrNull<{
       cancel?: boolean;
       cancel_reason?: string;
       adversary_inject?: { title?: string; content?: string };
-    };
+    }>('shouldCancelScheduledInject', systemPrompt, userPrompt, 600, 0.4);
+    if (!parsed) {
+      logger.warn(
+        { injectTitle: inject.title },
+        'AI check failed in shouldCancelScheduledInject, defaulting to not cancel',
+      );
+      return { cancel: false, cancel_reason: 'AI check failed; inject will publish.' };
+    }
     const cancel = parsed.cancel === true;
     const cancel_reason =
       typeof parsed.cancel_reason === 'string' ? parsed.cancel_reason : undefined;
@@ -609,36 +540,14 @@ ${teamFocusLine}
 ---
 Identify de-escalation factors (what helps mitigate). Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 600,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in identifyDeEscalationFactors');
-      return empty;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    if (!content) {
-      return empty;
-    }
-
-    const parsed = JSON.parse(content) as { factors?: DeEscalationFactor[] };
+    const parsed = await fastJsonOrNull<{ factors?: DeEscalationFactor[] }>(
+      'identifyDeEscalationFactors',
+      systemPrompt,
+      userPrompt,
+      600,
+      0.2,
+    );
+    if (!parsed) return empty;
     const factors = Array.isArray(parsed.factors) ? parsed.factors : [];
     const normalized = factors
       .filter((f) => f && typeof f.name === 'string')
@@ -717,36 +626,14 @@ ${teamFocusLine}
 ---
 Identify escalation factors. Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 600,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in identifyEscalationFactors');
-      return empty;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    if (!content) {
-      return empty;
-    }
-
-    const parsed = JSON.parse(content) as { factors?: EscalationFactor[] };
+    const parsed = await fastJsonOrNull<{ factors?: EscalationFactor[] }>(
+      'identifyEscalationFactors',
+      systemPrompt,
+      userPrompt,
+      600,
+      0.2,
+    );
+    if (!parsed) return empty;
     const factors = Array.isArray(parsed.factors) ? parsed.factors : [];
     const normalized = factors
       .filter((f) => f && typeof f.name === 'string')
@@ -854,36 +741,14 @@ ${teamFocusLine}
 ---
 Generate escalation pathways (trajectory + trigger_behaviours). Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 800,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in generateEscalationPathways');
-      return empty;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    if (!content) {
-      return empty;
-    }
-
-    const parsed = JSON.parse(content) as { pathways?: EscalationPathway[] };
+    const parsed = await fastJsonOrNull<{ pathways?: EscalationPathway[] }>(
+      'generateEscalationPathways',
+      systemPrompt,
+      userPrompt,
+      800,
+      0.2,
+    );
+    if (!parsed) return empty;
     const pathways = Array.isArray(parsed.pathways) ? parsed.pathways : [];
     const normalized = pathways
       .filter((p) => p && typeof p.trajectory === 'string')
@@ -998,36 +863,14 @@ ${teamFocusLine}
 ---
 Generate de-escalation pathways (trajectory + mitigating_behaviours + optional emerging_challenges). Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 1000,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in generateDeEscalationPathways');
-      return empty;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    if (!content) {
-      return empty;
-    }
-
-    const parsed = JSON.parse(content) as { pathways?: DeEscalationPathway[] };
+    const parsed = await fastJsonOrNull<{ pathways?: DeEscalationPathway[] }>(
+      'generateDeEscalationPathways',
+      systemPrompt,
+      userPrompt,
+      1000,
+      0.2,
+    );
+    if (!parsed) return empty;
     const pathways = Array.isArray(parsed.pathways) ? parsed.pathways : [];
     const normalized = pathways
       .filter((p) => p && typeof p.trajectory === 'string')
@@ -1184,36 +1027,14 @@ ${teamFocusLine}
 ---
 Generate 3 to 8 outcome injects (low/medium/high robustness bands). Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 2000,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in generatePathwayOutcomeInjects');
-      return empty;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    if (!content) {
-      return empty;
-    }
-
-    const parsed = JSON.parse(content) as { outcomes?: PathwayOutcome[] };
+    const parsed = await fastJsonOrNull<{ outcomes?: PathwayOutcome[] }>(
+      'generatePathwayOutcomeInjects',
+      systemPrompt,
+      userPrompt,
+      2000,
+      0.3,
+    );
+    if (!parsed) return empty;
     const raw = Array.isArray(parsed.outcomes) ? parsed.outcomes : [];
     const outcomes: PathwayOutcome[] = [];
     for (let i = 0; i < raw.length; i++) {
@@ -1412,41 +1233,13 @@ ${recentOutcomesBlock}${escalationContext}${teamDoctrineBlock}
 ---
 Produce the impact matrix (acting_team -> affected_team -> score -2 to +2) and robustness per decision_id (required; use the strict calibration above). When escalation context is provided, reference it in your analysis reasoning. When recent outcomes are provided, use them to set impact and robustness. When per-team doctrine is provided, calibrate each decision's robustness against its own team's standards. Return JSON only.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.2,
-        max_tokens: 4000,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI API error in computeInterTeamImpactMatrix');
-      return empty;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-    if (!content) {
-      return empty;
-    }
-
-    const parsed = JSON.parse(content) as {
+    const parsed = await fastJsonOrNull<{
       matrix?: Record<string, Record<string, number>>;
       matrix_reasoning_per_cell?: Record<string, Record<string, string>>;
       robustness?: Record<string, number>;
       analysis?: ImpactMatrixAnalysis;
-    };
+    }>('computeInterTeamImpactMatrix', systemPrompt, userPrompt, 4000, 0.2);
+    if (!parsed) return empty;
     const matrix = parsed.matrix && typeof parsed.matrix === 'object' ? parsed.matrix : {};
     const robustnessByDecisionId =
       parsed.robustness && typeof parsed.robustness === 'object' ? parsed.robustness : {};
@@ -1529,7 +1322,7 @@ export interface PublicSentimentResult {
 export const computePublicSentiment = async (
   stateSummary: string,
   mediaSummary: string,
-  openAiApiKey: string | undefined,
+  _openAiApiKey: string | undefined,
   previousSentiment?: number,
   mediaProtocolScore?: number,
 ): Promise<PublicSentimentResult> => {
@@ -1537,7 +1330,7 @@ export const computePublicSentiment = async (
     public_sentiment: previousSentiment ?? 5,
     sentiment_label: 'Unknown',
   };
-  if (!openAiApiKey?.trim()) return defaultResult;
+  if (!env.aiEnabled) return defaultResult;
 
   const prevScore = previousSentiment ?? 5;
   const protocolContext =
@@ -1546,18 +1339,7 @@ export const computePublicSentiment = async (
       : '';
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You evaluate public sentiment changes in a crisis simulation based on the current game state and Media & Communications team actions.
+    const systemPrompt = `You evaluate public sentiment changes in a crisis simulation based on the current game state and Media & Communications team actions.
 
 The PREVIOUS public sentiment score was ${prevScore}/10. You must decide whether sentiment should move UP, DOWN, or stay the SAME, and by how much (max ±2 per evaluation).
 Sentiment should shift gradually — large jumps are unrealistic unless something dramatic happened.
@@ -1566,32 +1348,16 @@ Factors that IMPROVE sentiment: timely official statements, designated spokesper
 Factors that WORSEN sentiment: unanswered misinformation, delayed statements, contradictory messaging, leaked victim names, lack of updates, visible chaos/casualties.${protocolContext}
 
 Return ONLY valid JSON: { "delta": number, "sentiment_label": string, "reason": string }
-where delta is between -2 and +2 (can be fractional, e.g. -0.5, +1).`,
-          },
-          {
-            role: 'user',
-            content: `Previous sentiment: ${prevScore}/10\n\nCurrent state:\n${stateSummary.slice(0, 3000)}\n\nMedia / statements:\n${mediaSummary.slice(0, 1500)}\n\nHow should sentiment change? JSON only.`,
-          },
-        ],
-        temperature: 0.3,
-        max_tokens: 150,
-        response_format: { type: 'json_object' },
-      }),
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      logger.warn({ status: response.status, body: text }, 'computePublicSentiment API error');
-      return defaultResult;
-    }
-    const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) return defaultResult;
-    const parsed = JSON.parse(content) as {
+where delta is between -2 and +2 (can be fractional, e.g. -0.5, +1).`;
+    const userPrompt = `Previous sentiment: ${prevScore}/10\n\nCurrent state:\n${stateSummary.slice(0, 3000)}\n\nMedia / statements:\n${mediaSummary.slice(0, 1500)}\n\nHow should sentiment change? JSON only.`;
+
+    const parsed = await fastJsonOrNull<{
       delta?: number;
       public_sentiment?: number;
       sentiment_label?: string;
       reason?: string;
-    };
+    }>('computePublicSentiment', systemPrompt, userPrompt, 150, 0.3);
+    if (!parsed) return defaultResult;
 
     let score: number;
     if (typeof parsed.delta === 'number') {
@@ -1644,7 +1410,7 @@ export const evaluateObjectiveCompletion = async (
     executed_at: string;
   }>,
   sessionStartTime: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<ObjectiveCompletionEvaluation> => {
   try {
     const systemPrompt = `You are an expert crisis management evaluator. Your task is to determine if a scenario objective has been successfully completed based on the decisions made during the session.
@@ -1700,57 +1466,13 @@ Based on the decisions made, determine:
 3. What is the current progress percentage (0-100)?
 4. Provide brief reasoning for your evaluation.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3, // Lower temperature for consistent evaluation
-        max_tokens: 500,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-      const status = response.status;
-      const errorMessage = error.error?.message || error.message || 'Unknown error';
-
-      logger.error(
-        { error: errorMessage, status, objectiveId: objective.objective_id },
-        'OpenAI API error in objective completion evaluation',
-      );
-
-      const apiError = new Error(errorMessage) as Error & { statusCode?: number };
-      apiError.statusCode = status;
-
-      if (status === 429) {
-        apiError.message = 'Rate limit exceeded. Please wait a moment and try again.';
-      } else if (status === 401) {
-        apiError.message = 'OpenAI API key is invalid or expired.';
-      } else if (status === 503) {
-        apiError.message = 'OpenAI service is temporarily unavailable. Please try again later.';
-      }
-
-      throw apiError;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('No content received from OpenAI');
-    }
-
-    // Parse JSON response
-    const parsed = JSON.parse(content) as ObjectiveCompletionEvaluation;
+    const parsed = await fastJsonOrThrow<ObjectiveCompletionEvaluation>(
+      'evaluateObjectiveCompletion',
+      systemPrompt,
+      userPrompt,
+      500,
+      0.3,
+    );
 
     // Validate and normalize
     return {
@@ -2091,7 +1813,7 @@ export const generateInjectFromDecision = async (
     /** Injects already generated in this scheduling cycle (to avoid semantic overlap) */
     alreadyGeneratedThisCycle?: Array<{ title: string; content: string }>;
   },
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<GeneratedInject | null> => {
   try {
     const doctrineInstruction = sessionContext.sectorStandards
@@ -2411,54 +2133,16 @@ Important considerations:
 
 If this decision doesn't warrant a meaningful inject, return null. Otherwise, return a well-crafted inject that fits seamlessly into the ongoing scenario.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.7, // Creative but consistent
-        max_tokens: 800,
-        response_format: { type: 'json_object' },
-      }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: { message: 'Unknown error' } }));
-      const status = response.status;
-      const errorMessage = error.error?.message || error.message || 'Unknown error';
-
-      logger.error({ error: errorMessage, status }, 'OpenAI API error in inject generation');
-
-      const apiError = new Error(errorMessage) as Error & { statusCode?: number };
-      apiError.statusCode = status;
-
-      if (status === 429) {
-        apiError.message = 'Rate limit exceeded. Please wait a moment and try again.';
-      } else if (status === 401) {
-        apiError.message = 'OpenAI API key is invalid or expired.';
-      } else if (status === 503) {
-        apiError.message = 'OpenAI service is temporarily unavailable. Please try again later.';
-      }
-
-      throw apiError;
-    }
-
-    const data = await response.json();
-    const content = data.choices[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('No content received from OpenAI');
-    }
-
-    // Parse JSON response
-    const parsed = JSON.parse(content);
+    const parsed = await fastJsonOrThrow<{
+      type?: string;
+      title?: string;
+      content?: string;
+      severity?: string;
+      affected_roles?: unknown;
+      inject_scope?: string;
+      requires_response?: unknown;
+      requires_coordination?: unknown;
+    } | null>('generateInjectFromDecision', systemPrompt, userPrompt, 800, 0.7);
 
     // If AI returned null, don't generate an inject
     if (parsed === null || (typeof parsed === 'object' && Object.keys(parsed).length === 0)) {
@@ -2482,13 +2166,22 @@ If this decision doesn't warrant a meaningful inject, return null. Otherwise, re
     const validSeverities = ['low', 'medium', 'high', 'critical'];
     const validScopes = ['universal', 'role_specific', 'team_specific'];
 
+    const type = parsed.type ?? '';
+    const severity = parsed.severity ?? '';
+    const scope = parsed.inject_scope ?? '';
     return {
-      type: validTypes.includes(parsed.type) ? parsed.type : 'field_update',
+      type: (validTypes.includes(type) ? type : 'field_update') as GeneratedInject['type'],
       title: parsed.title || 'Update',
       content: parsed.content || 'No content provided',
-      severity: validSeverities.includes(parsed.severity) ? parsed.severity : 'medium',
-      affected_roles: Array.isArray(parsed.affected_roles) ? parsed.affected_roles : [],
-      inject_scope: validScopes.includes(parsed.inject_scope) ? parsed.inject_scope : 'universal',
+      severity: (validSeverities.includes(severity)
+        ? severity
+        : 'medium') as GeneratedInject['severity'],
+      affected_roles: Array.isArray(parsed.affected_roles)
+        ? (parsed.affected_roles as string[])
+        : [],
+      inject_scope: (validScopes.includes(scope)
+        ? scope
+        : 'universal') as GeneratedInject['inject_scope'],
       requires_response: parsed.requires_response === true,
       requires_coordination: parsed.requires_coordination === true,
     };

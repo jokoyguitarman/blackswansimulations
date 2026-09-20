@@ -7,6 +7,7 @@ import {
 } from './scenarioConditionConfigService.js';
 import { getFlagsForTeams, catalogFlagsToCandidates } from '../counterCatalog.js';
 import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 /**
  * Scenario State Service - Server-side only
@@ -259,7 +260,7 @@ async function evaluateStateKeysWithAI(
   decisionTitle: string,
   decisionDescription: string,
   candidates: StateKeyCandidate[],
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<AIStateKeyEvaluation> {
   if (!candidates.length) return { keys_to_flip: [] };
 
@@ -304,38 +305,18 @@ ${candidateList}
 Which keys should be flipped? Be strict — only flip keys where the decision specifically and clearly demonstrates the action.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 800,
-        response_format: { type: 'json_object' },
-      }),
+    const parsed = await chatJson<AIStateKeyEvaluation>({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, userPrompt),
+      json: true,
+      temperature: 0.1,
+      maxTokens: 800,
+      label: 'scenarioState.evaluateKeys',
     });
-
-    if (!response.ok) {
-      const errBody = await response.text().catch(() => 'unknown');
-      logger.warn(
-        { status: response.status, body: errBody },
-        'AI state-key evaluation failed; falling back to no flips',
-      );
+    if (!parsed) {
+      logger.warn('AI state-key evaluation failed; falling back to no flips');
       return { keys_to_flip: [] };
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return { keys_to_flip: [] };
-
-    const parsed = JSON.parse(content) as AIStateKeyEvaluation;
     const validKeys = new Set(candidates.map((c) => c.key));
     const validStateKeys = new Set(candidates.map((c) => c.stateKey));
 
@@ -449,9 +430,13 @@ export async function updateTeamStateFromDecision(
       locationMap = locResult.locationMap;
     }
 
-    const apiKey = env.openAiApiKey;
-    if (allCandidates.length > 0 && apiKey) {
-      const result = await evaluateStateKeysWithAI(title, description, allCandidates, apiKey);
+    if (allCandidates.length > 0 && env.aiEnabled) {
+      const result = await evaluateStateKeysWithAI(
+        title,
+        description,
+        allCandidates,
+        env.openAiApiKey ?? '',
+      );
 
       for (const flip of result.keys_to_flip) {
         if (flip.key.startsWith('claim:')) {
@@ -510,7 +495,7 @@ export async function updateTeamStateFromDecision(
         'AI-evaluated state key flips from decision (catalog)',
       );
     } else if (allCandidates.length > 0) {
-      logger.warn({ sessionId }, 'OpenAI API key not configured; skipping AI state-key evaluation');
+      logger.warn({ sessionId }, 'AI provider not configured; skipping AI state-key evaluation');
     }
 
     const nextState = { ...currentState };

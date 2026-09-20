@@ -1,5 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 /** Inject titles or keywords that indicate the Insider has no relevant intel (opportunistic / external actor). */
 const NO_INSIDER_INTEL_KEYWORDS = [
@@ -71,40 +73,23 @@ export async function aiMatchInsiderIntel(
   incidentDescription: string,
   decisionDescription: string,
   insiderIntel: string,
-  openAiApiKey: string | undefined,
+  _openAiApiKey: string | undefined,
 ): Promise<boolean> {
-  if (!openAiApiKey || !insiderIntel.trim()) return false;
+  if (!env.aiEnabled || !insiderIntel.trim()) return false;
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert evaluator. Given an INCIDENT (title and description), a DECISION (the player's response), and INSIDER INTEL (ground truth: sites, exits, zones, figures), answer: do the stats, figures, and specifics mentioned in the decision MATCH what the Insider intel says? (e.g. correct exit names, capacities, zone labels, flow numbers.)
+    const parsed = await chatJson<{ match?: boolean }>({
+      tier: 'fast',
+      messages: systemUser(
+        `You are an expert evaluator. Given an INCIDENT (title and description), a DECISION (the player's response), and INSIDER INTEL (ground truth: sites, exits, zones, figures), answer: do the stats, figures, and specifics mentioned in the decision MATCH what the Insider intel says? (e.g. correct exit names, capacities, zone labels, flow numbers.)
 Return ONLY a JSON object: { "match": true } or { "match": false }.`,
-          },
-          {
-            role: 'user',
-            content: `INCIDENT - Title: ${incidentTitle}\nDescription: ${incidentDescription}\n\nDECISION: ${decisionDescription}\n\nINSIDER INTEL: ${insiderIntel.slice(0, 4000)}\n\nDo the decision's specifics match the intel? JSON only.`,
-          },
-        ],
-        temperature: 0.2,
-        max_tokens: 50,
-        response_format: { type: 'json_object' },
-      }),
+        `INCIDENT - Title: ${incidentTitle}\nDescription: ${incidentDescription}\n\nDECISION: ${decisionDescription}\n\nINSIDER INTEL: ${insiderIntel.slice(0, 4000)}\n\nDo the decision's specifics match the intel? JSON only.`,
+      ),
+      json: true,
+      temperature: 0.2,
+      maxTokens: 50,
+      label: 'incidentGrading.matchInsiderIntel',
     });
-    if (!response.ok) return false;
-    const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) return false;
-    const parsed = JSON.parse(content) as { match?: boolean };
-    return parsed.match === true;
+    return parsed?.match === true;
   } catch (e) {
     logger.warn({ err: e }, 'aiMatchInsiderIntel failed');
     return false;
@@ -122,46 +107,30 @@ export async function aiGradeRelevanceOnly(
   openAiApiKey: string | undefined,
   sectorStandards?: string,
 ): Promise<DecisionBand> {
-  if (!openAiApiKey) return 'lowest';
+  if (!env.aiEnabled) return 'lowest';
 
   const sectorNormsInstruction = sectorStandards
     ? `When judging whether the decision is sufficiently detailed, use these sector-specific standards as the benchmark:\n${sectorStandards}\nMore specific on these points counts as more detailed; vague or absent on them counts as less detailed.`
     : `When judging whether the decision is sufficiently detailed, consider whether the decision provides actionable specifics appropriate to the incident type (e.g. concrete resource allocations, named locations, time targets, role assignments). More specific counts as more detailed; vague or absent counts as less detailed.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `You are an expert evaluator. Rate how relevant and detailed the DECISION is in response to the INCIDENT. No Insider intel is available for this incident.
+    const parsed = await chatJson<{ band?: string }>({
+      tier: 'fast',
+      messages: systemUser(
+        `You are an expert evaluator. Rate how relevant and detailed the DECISION is in response to the INCIDENT. No Insider intel is available for this incident.
 Return ONLY a JSON object with one key "band": "top" | "medium" | "lowest".
 - top: decision is clearly relevant and sufficiently detailed for the situation.
 - medium: partly relevant or somewhat vague.
 - lowest: vague, off-topic, or unhelpful.
 ${sectorNormsInstruction}`,
-          },
-          {
-            role: 'user',
-            content: `INCIDENT - Title: ${incidentTitle}\nDescription: ${incidentDescription}\n\nDECISION: ${decisionDescription}\n\nRate relevance and detail. JSON only: { "band": "top"|"medium"|"lowest" }`,
-          },
-        ],
-        temperature: 0.2,
-        max_tokens: 50,
-        response_format: { type: 'json_object' },
-      }),
+        `INCIDENT - Title: ${incidentTitle}\nDescription: ${incidentDescription}\n\nDECISION: ${decisionDescription}\n\nRate relevance and detail. JSON only: { "band": "top"|"medium"|"lowest" }`,
+      ),
+      json: true,
+      temperature: 0.2,
+      maxTokens: 50,
+      label: 'incidentGrading.relevance',
     });
-    if (!response.ok) return 'lowest';
-    const json = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) return 'lowest';
-    const parsed = JSON.parse(content) as { band?: string };
+    if (!parsed) return 'lowest';
     if (parsed.band === 'top' || parsed.band === 'medium' || parsed.band === 'lowest') {
       return parsed.band;
     }

@@ -10,6 +10,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson } from './ai/chatClient.js';
 import { getWebSocketService } from './websocketService.js';
 import {
   CROWD_WALK_MPM,
@@ -46,10 +47,9 @@ export async function applyDecisionCasualtyEffects(
   sessionId: string,
   decisionTitle: string,
   decisionDescription: string,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   _authorTeamName: string | null,
 ): Promise<void> {
-  if (!env.openAiApiKey) return;
+  if (!env.aiEnabled) return;
 
   const { data: session } = await supabaseAdmin
     .from('sessions')
@@ -152,21 +152,16 @@ async function extractCasualtyEffects(
   description: string,
 ): Promise<CasualtyEffect[]> {
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${env.openAiApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        temperature: 0.1,
-        max_tokens: 500,
-        messages: [
-          {
-            role: 'system',
-            content: `You analyze crisis management decisions to detect EXPLICIT physical movement orders for people (crowds, patients, casualties). Return a JSON object with a single key "casualty_effects" containing an array.
+    const parsed = await chatJson<CasualtyEffectsResult>({
+      tier: 'fast',
+      json: true,
+      temperature: 0.1,
+      maxTokens: 500,
+      label: 'decisionCasualtyEffects.extract',
+      messages: [
+        {
+          role: 'system',
+          content: `You analyze crisis management decisions to detect EXPLICIT physical movement orders for people (crowds, patients, casualties). Return a JSON object with a single key "casualty_effects" containing an array.
 
 Each effect object has:
 - target_type: "crowd" or "patient"
@@ -191,21 +186,15 @@ DO NOT infer movement from:
 - Any decision about fire suppression, hazard containment, or structural assessment
 
 When in doubt, return {"casualty_effects": []}. It is better to miss an effect than to fabricate one.`,
-          },
-          {
-            role: 'user',
-            content: `Decision title: ${title}\nDescription: ${description}`,
-          },
-        ],
-      }),
+        },
+        {
+          role: 'user',
+          content: `Decision title: ${title}\nDescription: ${description}`,
+        },
+      ],
     });
 
-    if (!response.ok) return [];
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (!content) return [];
-
-    const parsed = JSON.parse(content) as CasualtyEffectsResult;
+    if (!parsed) return [];
     return Array.isArray(parsed.casualty_effects) ? parsed.casualty_effects : [];
   } catch (err) {
     logger.warn({ err }, 'Failed to extract casualty effects from decision');

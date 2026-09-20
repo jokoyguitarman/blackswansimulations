@@ -3,6 +3,8 @@
  * using session environmental state. Used when players DM a hospital.
  */
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { chat, systemUser } from './ai/chatClient.js';
 
 export interface HospitalArea {
   area_id: string;
@@ -25,12 +27,12 @@ export async function answerHospitalCapacityQuestion(
     capacityAvailable?: number;
     question: string;
   },
-  openAiApiKey: string | undefined,
+  _openAiApiKey: string | undefined,
 ): Promise<string> {
   const { hospitalId, hospitalLabel, atCapacity, capacityAvailable } = params;
   const { question } = params;
 
-  if (!openAiApiKey?.trim()) {
+  if (!env.aiEnabled) {
     return `[${hospitalLabel}] We are unable to process capacity inquiries at this time. Please try again later.`;
   }
 
@@ -53,30 +55,16 @@ Rules:
 - Match the tone of the question (formal if they're formal, brief if they're brief).`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: question },
-        ],
-        max_tokens: 150,
-        temperature: 0.3,
-      }),
+    const result = await chat({
+      tier: 'fast',
+      messages: systemUser(systemPrompt, question),
+      maxTokens: 150,
+      temperature: 0.3,
+      throwOnError: true,
+      label: 'hospitalCapacity.reply',
     });
-
-    if (!response.ok) {
-      throw new Error(`OpenAI ${response.status}`);
-    }
-
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const reply = data.choices?.[0]?.message?.content?.trim();
-    return reply ?? `[${hospitalLabel}] We are unable to respond at this time.`;
+    const reply = result?.content.trim();
+    return reply || `[${hospitalLabel}] We are unable to respond at this time.`;
   } catch (err) {
     logger.warn({ err, hospitalId }, 'Hospital capacity AI failed, using fallback');
     if (atCapacity) {
