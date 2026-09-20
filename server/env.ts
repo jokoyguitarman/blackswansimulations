@@ -54,6 +54,17 @@ export const env = {
   smtpPass: process.env.SMTP_PASS,
   emailFrom: process.env.EMAIL_FROM ?? 'noreply@simulator.local',
   emailFromName: process.env.EMAIL_FROM_NAME ?? 'Simulation Environment',
+  // ---------- Background engines master switch ----------
+  // The process boots six loops that act on every active session in the database: inject
+  // scheduler, AI inject scheduler, chat surveillance, statement watchdog, generator engines
+  // (pressure orgs / organic decisions) and the AI teammate bot reconciler. Exactly one process
+  // may run them per database. On 20 Sep 2026 a developer server started for a "visual check"
+  // ran them against production for 38 minutes and every inject fired twice
+  // (docs/session-bugfix-spec-2026-09-20.md §2). Semantics: ON in production unless
+  // RUN_BACKGROUND_ENGINES=false; OFF everywhere else unless RUN_BACKGROUND_ENGINES=true.
+  runBackgroundEngines:
+    process.env.RUN_BACKGROUND_ENGINES === 'true' ||
+    (nodeEnv === 'production' && process.env.RUN_BACKGROUND_ENGINES !== 'false'),
   // Inject scheduler configuration
   // Auto-injects enabled if: explicitly set to 'true' OR (in production and not explicitly 'false')
   // In development: defaults to false unless ENABLE_AUTO_INJECTS='true'

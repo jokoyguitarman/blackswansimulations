@@ -30,7 +30,17 @@ EMAIL_FROM_NAME=Simulation Environment
 LOG_LEVEL=info
 
 # Inject Scheduler Configuration
+# MASTER SWITCH for every background loop (inject scheduler, AI inject scheduler, chat
+# surveillance, statement watchdog, generator engines, AI teammate bot reconciler).
+# Exactly ONE process per database may run them. Default: ON in production (NODE_ENV=production),
+# OFF everywhere else. A local server sharing the production Supabase must leave this unset —
+# on 20 Sep 2026 a dev server ran the engines for 38 minutes and every inject fired twice
+# (docs/session-bugfix-spec-2026-09-20.md §2). Set to 'true' only against a database no other
+# server uses.
+# RUN_BACKGROUND_ENGINES=true
+
 # Enable automatic publishing of time-based injects when trigger_time_minutes is reached
+# (only meaningful when RUN_BACKGROUND_ENGINES allows the engines to start at all).
 # Default: enabled in production, disabled in development unless explicitly set to 'true'
 ENABLE_AUTO_INJECTS=true
 # Interval in milliseconds for checking if injects should be published (default: 30000 = 30 seconds)

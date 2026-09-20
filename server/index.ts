@@ -69,29 +69,42 @@ const io = setupWebSocket(server);
 // Initialize WebSocket service
 initializeWebSocketService(io);
 
-// Initialize and start inject scheduler
+// Background engines. Exactly ONE process per database may run these (they act on every active
+// session they find). Gated by RUN_BACKGROUND_ENGINES: on in production, off in development
+// unless explicitly requested — a dev server started next to the production deployment must
+// serve HTTP only (docs/session-bugfix-spec-2026-09-20.md §2, §12).
 const injectScheduler = initializeInjectScheduler(io);
-injectScheduler.start();
-
-// Initialize and start AI inject scheduler (runs every 5 minutes)
 const aiInjectScheduler = initializeAIInjectScheduler(io);
-aiInjectScheduler.start();
-
-// Initialize and start chat surveillance (monitors comms for scandal spin)
 const chatSurveillance = initializeChatSurveillance();
-chatSurveillance.start();
-
-// Initialize and start statement watchdog (adversarial fact-checker for player public statements)
 const statementWatchdog = initializeStatementWatchdog();
-statementWatchdog.start();
 
-// Generator-owned engines: pressure organisations + organic executive decisions
-// (docs/executive-decisions-organic-plan.md). Own interval; touch point per handover §3.
-startGeneratorEngines();
-
-// AI teammate bots (docs/ai-teammate-bots-plan.md): reconciles in-progress social sessions
-// with bot participants every 60s. No-op when ENABLE_TEAMMATE_BOTS is off.
-getTeammateBotService().startReconciler();
+if (env.runBackgroundEngines) {
+  if (env.nodeEnv !== 'production') {
+    logger.warn(
+      { supabaseUrl: env.supabaseUrl, nodeEnv: env.nodeEnv },
+      'RUN_BACKGROUND_ENGINES=true outside production: this process will publish injects and run every engine against the database above. Make sure no other server (e.g. the deployed one) shares it.',
+    );
+  }
+  // Inject scheduler (time- and condition-based publication, 30s tick)
+  injectScheduler.start();
+  // AI inject scheduler (runs every 5 minutes)
+  aiInjectScheduler.start();
+  // Chat surveillance (monitors comms for scandal spin)
+  chatSurveillance.start();
+  // Statement watchdog (adversarial fact-checker for player public statements)
+  statementWatchdog.start();
+  // Generator-owned engines: pressure organisations + organic executive decisions
+  // (docs/executive-decisions-organic-plan.md). Own interval; touch point per handover §3.
+  startGeneratorEngines();
+  // AI teammate bots (docs/ai-teammate-bots-plan.md): reconciles in-progress social sessions
+  // with bot participants every 60s. No-op when ENABLE_TEAMMATE_BOTS is off.
+  getTeammateBotService().startReconciler();
+} else {
+  logger.warn(
+    { nodeEnv: env.nodeEnv },
+    'Background engines are OFF for this process (HTTP/WebSocket only). Set RUN_BACKGROUND_ENGINES=true to run the inject scheduler, AI schedulers, watchdogs, generator engines and bot reconciler here — only if no other server shares this database.',
+  );
+}
 
 // Security: Helmet for security headers
 app.use(

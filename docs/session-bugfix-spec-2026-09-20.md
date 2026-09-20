@@ -13,17 +13,17 @@ can be recognised next time. Three of the findings are systemic and get their ow
 
 ## 0. Summary table
 
-| #   | Symptom                                                                                                                                                      | Root cause                                                                                                                               | Fix (section) |
-| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------- |
-| 1   | NPC group-chat lines show the trainer's name with "[NPC]" inline                                                                                             | `routeToGroupChat` inserts with `sender_id = trainer_id` and a text prefix                                                               | §1            |
-| 2   | Same NPC line / email / post appears twice                                                                                                                   | Every scheduled inject fires twice — two API instances, no DB-level publish guard                                                        | §2, §12       |
-| 3   | Bots never answer in team chat                                                                                                                               | Bot perception counts a line as "addressed to me" only if it names the bot, `@team`, or ends with `?`; the Executive channel has no bots | §3            |
-| 4   | Send button is a bare green circle                                                                                                                           | Global `button { padding: 0.6em 1.2em }` squeezes the 40 px WhatsApp-style button                                                        | §4            |
-| 5   | Own message shows twice, then one disappears                                                                                                                 | WebSocket fallback appends the real message without removing the optimistic bubble                                                       | §5            |
-| 6   | Emails to NPCs unanswered ("Closing down factory" to Amelia Tan)                                                                                             | Legacy path's session-wide limiter (10 replies / 5 min) saturated by bot mail; stakeholder cap (30 / 10 min) same exposure               | §6, §11       |
-| 7   | Desktop Back / Home / cross-app icon drops into mobile view                                                                                                  | Shared apps `navigate()` to `/device/...` routes instead of the desktop-aware intent helper                                              | §7            |
-| 8   | To-field suggests addresses "from other simulations"; `@crisisresponse.sim` teammates                                                                        | Browser autofill on the To input (no `autoComplete="off"`); platform-wide hard-coded player domain                                       | §8            |
-| 9   | "Participant, 1" on Z/Fakebook, "Sandwichman" in chat, "DH" / "[Name]" in NPC emails; an internal NPC argues instead of executing an executive's instruction | Two name stores (auth metadata vs `user_profiles`); NPC prompt never told who is writing; no chain-of-command rule for internal staff    | §9, §10       |
+| #   | Symptom                                                                                                                                                      | Root cause                                                                                                                                                                                                               | Fix (section) |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------- |
+| 1   | NPC group-chat lines show the trainer's name with "[NPC]" inline                                                                                             | `routeToGroupChat` inserts with `sender_id = trainer_id` and a text prefix                                                                                                                                               | §1            |
+| 2   | Same NPC line / email / post appears twice                                                                                                                   | Every scheduled inject fired twice — a developer backend on the maintainer's PC ran the schedulers against production for 38 min alongside Render (single instance); no DB-level publish guard, no dev-mode engine guard | §2, §12       |
+| 3   | Bots never answer in team chat                                                                                                                               | Bot perception counts a line as "addressed to me" only if it names the bot, `@team`, or ends with `?`; the Executive channel has no bots                                                                                 | §3            |
+| 4   | Send button is a bare green circle                                                                                                                           | Global `button { padding: 0.6em 1.2em }` squeezes the 40 px WhatsApp-style button                                                                                                                                        | §4            |
+| 5   | Own message shows twice, then one disappears                                                                                                                 | WebSocket fallback appends the real message without removing the optimistic bubble                                                                                                                                       | §5            |
+| 6   | Emails to NPCs unanswered ("Closing down factory" to Amelia Tan)                                                                                             | Legacy path's session-wide limiter (10 replies / 5 min) saturated by bot mail; stakeholder cap (30 / 10 min) same exposure                                                                                               | §6, §11       |
+| 7   | Desktop Back / Home / cross-app icon drops into mobile view                                                                                                  | Shared apps `navigate()` to `/device/...` routes instead of the desktop-aware intent helper                                                                                                                              | §7            |
+| 8   | To-field suggests addresses "from other simulations"; `@crisisresponse.sim` teammates                                                                        | Browser autofill on the To input (no `autoComplete="off"`); platform-wide hard-coded player domain                                                                                                                       | §8            |
+| 9   | "Participant, 1" on Z/Fakebook, "Sandwichman" in chat, "DH" / "[Name]" in NPC emails; an internal NPC argues instead of executing an executive's instruction | Two name stores (auth metadata vs `user_profiles`); NPC prompt never told who is writing; no chain-of-command rule for internal staff                                                                                    | §9, §10       |
 
 ---
 
@@ -65,25 +65,47 @@ posts.
 
 **Root cause.** `InjectSchedulerService` has an in-process per-session lock
 (`sessionsInProgress`), so a single process cannot double-publish. Two publications therefore mean
-two API processes were running the scheduler against the same database — a second instance, or an
-old deployment kept alive through a rollout. `publishInjectToSession()` (`routes/injects.ts`) has no
-database-level guard: it reads `session_events`, then inserts one, then routes; two processes both
-see "not published" and both publish.
+two processes were running the scheduler against the same database, and
+`publishInjectToSession()` (`routes/injects.ts`) had no database-level guard: it reads
+`session_events`, then inserts one, then routes; both processes see "not published" and both
+publish.
 
-**Fix.** Publication becomes idempotent at the database (§12): migration 208 adds
-`inject_publications (session_id, inject_id) PRIMARY KEY`; `publishInjectToSession` claims the row
-first (`ON CONFLICT DO NOTHING`) and returns silently when the claim already exists. Trainer manual
-publish passes `{ force: true }` to re-publish deliberately. This also halves the load on the rate
-limiters in §6.
+**Where the second process was (resolved 21 Sep via the Render MCP + local terminal history).**
+Not Render. The service `blackswansimulations-backend` (`srv-d590vcuuk2gs73dtk870`) has
+`numInstances: 1`, previews off, and its `instance_count` metric read 1 for every minute of the
+incident; each deploy's old pod stopped publishing when the next came up. For the duplicated
+inject `4a5543be` ("Local media inquiry escalated to Executive inbox") Render's logs contain
+exactly one publication — pod `j7fmw` at 15:06:07 UTC, producing the second email — and **no log
+line at all** for the first publication at 15:05:55. That one came from a **developer backend on
+the maintainer's PC**: the IDE terminal history shows `PORT=3001 … tsx server/index.ts` ("Start
+backend for a visual check", launched by another agent session with a Vite dev server) starting at
+14:58:06 UTC and running 38 minutes, until ~15:36 — bracketing the incident exactly. The local
+`.env` points `SUPABASE_URL` at the production project and sets `ENABLE_AUTO_INJECTS=true`, so that
+process ran the full inject scheduler (and every other engine, none of which had a development
+guard) against production. Similar local servers ran earlier the same day (09:38–10:31 bots smoke
+tests, 10:55–11:16 and 14:18 visual checks).
 
-**Open question for the product owner.** How is the API hosted and how many instances run? If two
-are intended, every background engine (scheduler, AI inject scheduler, chat surveillance,
-statement watchdog, pressure engine ticker, bot runner) runs twice and costs twice. If not intended,
-the platform is keeping the previous deployment alive — the guard makes the visible symptom
-impossible either way.
+**Fix (two layers).**
 
-**Verify.** With two local processes pointed at the same DB, one inject → one `inject` event, one
-chat line; the `inject_publications` row exists once.
+1. Publication is idempotent at the database (§12): migration 208 adds
+   `inject_publications (session_id, inject_id) PRIMARY KEY`; `publishInjectToSession` claims the
+   row first (`ON CONFLICT DO NOTHING`) and returns silently when the claim already exists. Trainer
+   manual publish passes `{ force: true }` to re-publish deliberately. Halves the load on the §6
+   limiters too.
+2. Boot-level master switch `RUN_BACKGROUND_ENGINES` (`server/env.ts`, `server/index.ts`): the six
+   loops (inject scheduler, AI inject scheduler, chat surveillance, statement watchdog, generator
+   engines, bot reconciler) start only when it is on — **on by default in production
+   (`NODE_ENV=production`, i.e. Render), off by default everywhere else**. A dev server therefore
+   serves HTTP/WebSocket only unless a developer sets `RUN_BACKGROUND_ENGINES=true`, and doing so
+   outside production logs a loud warning naming the database it will act on.
+   `docs/ENV_TEMPLATE.md` documents it.
+
+**Recommendation.** Give local development its own Supabase project (`.env.local`) so an
+accidental `RUN_BACKGROUND_ENGINES=true` cannot touch production data.
+
+**Verify.** `tsx server/index.ts` locally without the flag → the boot log says "Background engines
+are OFF for this process"; with two processes on one DB and the flag on in both, one inject → one
+`inject` event, one chat line, one `inject_publications` row.
 
 ---
 
