@@ -33,12 +33,23 @@
   .attach .a:hover{border-color:var(--brand);background:#fff}
   .attach .a b{color:var(--ink)}
 
-  .fp{--g:var(--f-intel)}
+  /* footprint panel: the site's art behind a deep gradient, chips in light-on-dark */
+  .fp{--g:#F59E0B;border-color:transparent;border-radius:18px}
+  .fp .ph{border-bottom-color:rgba(255,255,255,.12)}
+  .fp .ph h2{color:#fff}
   .fp .row{display:flex;flex-wrap:wrap;gap:6px}
-  .fp h5{margin:14px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .fp h5{margin:14px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55)}
   .fp h5:first-child{margin-top:0}
-  .fp .tip{margin-top:12px;display:flex;gap:8px;font-size:12px;color:var(--muted);background:var(--surface-2);border-radius:10px;padding:10px 12px}
-  .fp .ph .live{display:inline-flex;align-items:center;gap:8px;color:var(--f-intel);font-size:11px;font-weight:800}
+  .fp .chip{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.18);color:#fff}
+  .fp .chip small{color:rgba(255,255,255,.6)}
+  .fp .chip .cc{background:rgba(255,255,255,.16)}
+  .fp .chip.on{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.6)}
+  .fp .chip.on .tick{color:#F59E0B}
+  .fp .chip.off{opacity:.45}
+  .fp .tip{margin-top:12px;display:flex;gap:8px;font-size:12px;color:rgba(255,255,255,.7);background:rgba(255,255,255,.06);border-radius:10px;padding:10px 12px}
+  .fp .ph .live{display:inline-flex;align-items:center;gap:8px;color:#F59E0B;font-size:11px;font-weight:800}
+  .fp .ph .btn{border-color:rgba(255,255,255,.25);background:transparent;color:#fff}
+  .fp .ph .btn:hover{background:rgba(255,255,255,.08)}
 
   .board{margin-top:22px;display:grid;grid-template-columns:repeat(12,1fr);gap:18px}
   .group{grid-column:span 12;background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-sm)}
@@ -90,7 +101,9 @@
   .library p.sub{color:var(--muted);margin:0 0 16px;font-size:13px}
   .tickets{display:grid;gap:14px}
   .ticket{display:grid;grid-template-columns:156px 1fr 240px;background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow-sm)}
-  .ticket .side{color:#fff;padding:18px 16px;display:flex;flex-direction:column;gap:8px;background:linear-gradient(160deg,color-mix(in srgb,var(--g) 80%,#fff),var(--g) 50%,color-mix(in srgb,var(--g) 78%,#000))}
+  .ticket .side{color:#fff;padding:18px 16px;display:flex;flex-direction:column;gap:8px}
+  .ticket .side::before{background:linear-gradient(180deg,rgba(14,26,43,.35),rgba(14,26,43,.9))}
+  .ticket .side::after{background:linear-gradient(180deg,color-mix(in srgb,var(--g) 55%,transparent),transparent 70%);opacity:.55}
   .ticket .side .tile{width:40px;height:40px;font-size:20px;background:rgba(255,255,255,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.3)}
   .ticket .side .mode{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.9}
   .ticket .side .dur{margin-top:auto;font-size:12px;opacity:.9;display:flex;gap:6px;align-items:center}
@@ -166,7 +179,7 @@
   <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></symbol>
 </svg>
 
-<div class="note"><b>DESIGN STUDY B</b> Boardroom Canvas — the brief and the detected footprint on top, a board of colour-tiled groups below, tickets for the library. Remove this strip before build.</div>
+<div class="note"><b>DESIGN STUDY B</b> Boardroom Canvas — the brief beside an art-backed radar, a board of colour-headed groups below, tickets for the library. Remove this strip before build.</div>
 
 <div class="topbar">
   <div class="brandmark"><span class="mono">BS</span> War Room <span class="sub">· Corporate crisis</span></div>
@@ -192,8 +205,9 @@
       </div>
     </section>
 
-    <section class="panel fp reveal" style="--i:1">
-      <div class="ph"><h2><svg class="ic ic-16" style="color:var(--f-intel)"><use href="#i-radar"/></svg> Detected footprint</h2><div class="r"><span class="live"><span class="livedot"></span> 12:31</span><button class="btn sm">Re-detect</button></div></div>
+    <section class="panel fp artband reveal" style="--i:1">
+      <img class="art" src="art/crisis-social-feed-sm.webp" alt="" />
+      <div class="ph"><h2><svg class="ic ic-16" style="color:#F59E0B"><use href="#i-radar"/></svg> Detected footprint</h2><div class="r"><span class="live"><span class="livedot"></span> 12:31</span><button class="btn sm">Re-detect</button></div></div>
       <div class="pb">
         <h5>Countries</h5>
         <div class="row"><span class="chip"><span class="cc">SG</span> Singapore <small>decision centre</small></span><span class="chip"><span class="cc">MY</span> Malaysia <small>incident location</small></span></div>
@@ -295,7 +309,7 @@
     <p class="sub">Type and status in the side panel; the cast row shows who is in it; numbers, lock state and actions on the right.</p>
     <div class="tickets">
       <article class="ticket lift reveal" style="--g:var(--accent);--i:1">
-        <div class="side"><span class="tile"><svg class="ic"><use href="#i-phone"/></svg></span><span class="mode">Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span><span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> 60 min · today</span></div>
+        <div class="side artband"><img class="art" src="art/crisis-social-feed-sm.webp" alt="" /><span class="tile"><svg class="ic"><use href="#i-phone"/></svg></span><span class="mode">Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span><span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> 60 min · today</span></div>
         <div class="mid">
           <h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4>
           <p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis across Singapore and Malaysia.</p>
@@ -309,7 +323,7 @@
         </div>
       </article>
       <article class="ticket lift reveal" style="--g:var(--accent);--i:2">
-        <div class="side"><span class="tile"><svg class="ic"><use href="#i-phone"/></svg></span><span class="mode">Corporate crisis</span><span class="status"><span class="livedot"></span> Live · T+23</span><span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> 60 min · 18 Sep</span></div>
+        <div class="side artband"><img class="art" src="art/crisis-reputational-sm.webp" alt="" /><span class="tile"><svg class="ic"><use href="#i-phone"/></svg></span><span class="mode">Corporate crisis</span><span class="status"><span class="livedot"></span> Live · T+23</span><span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> 60 min · 18 Sep</span></div>
         <div class="mid">
           <h4>VacuumGate SEA — Dyson Singapore</h4>
           <p class="desc">Allegations of forced overtime at a Johor contract manufacturer land on Dyson's Singapore HQ while a Malaysian ministry opens an inspection.</p>
@@ -323,7 +337,7 @@
         </div>
       </article>
       <article class="ticket lift reveal" style="--g:var(--brand);--i:3">
-        <div class="side"><span class="tile"><svg class="ic"><use href="#i-map"/></svg></span><span class="mode">Field operations</span><span class="status">Draft</span><span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> 90 min · not compiled</span></div>
+        <div class="side artband"><img class="art" src="art/crisis-site-response-sm.webp" alt="" /><span class="tile"><svg class="ic"><use href="#i-map"/></svg></span><span class="mode">Field operations</span><span class="status">Draft</span><span class="dur"><svg class="ic ic-12"><use href="#i-clock"/></svg> 90 min · not compiled</span></div>
         <div class="mid">
           <h4>Marina Bay Sands — IED at Convention Hall B</h4>
           <p class="desc">Improvised device discovered during a trade expo; evacuation, triage and cordon management across three response teams.</p>

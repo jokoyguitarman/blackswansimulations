@@ -1,0 +1,483 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Scenario — 19 Hours at the Border</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shared.css" />
+<style>
+  /* action bar */
+  .bar{position:sticky;top:0;z-index:6;display:flex;align-items:center;gap:14px;padding:10px 28px;background:rgba(14,26,43,.92);backdrop-filter:blur(8px);color:#fff;border-bottom:1px solid rgba(255,255,255,.08)}
+  .bar .back{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.7);font-size:12.5px;font-weight:600}
+  .bar .back:hover{color:#fff}
+  .bar .t{font-weight:800;font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:460px}
+  .bar .grow{flex:1}
+  .bar .btn{border-color:rgba(255,255,255,.22);background:transparent;color:#fff}
+  .bar .btn:hover{background:rgba(255,255,255,.08)}
+  .bar .btn.accent{border-color:var(--accent-strong)}
+  .bar .lock{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:#86EFAC}
+  .bar .lock.locked{color:#FCD34D}
+
+  /* header band */
+  .head{padding:34px 28px 30px}
+  .head .in{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1.3fr .9fr;gap:28px;align-items:end}
+  .head h1{margin:6px 0 8px;font-size:30px;line-height:1.1;font-weight:800;color:#fff;letter-spacing:-.015em}
+  .head .desc{margin:0 0 16px;font-size:14px;color:rgba(255,255,255,.7);max-width:720px}
+  .castrow{display:flex;flex-wrap:wrap;gap:6px}
+  .castrow .o{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;border:1px solid rgba(255,255,255,.2);border-radius:999px;padding:4px 9px 4px 5px;color:#fff;background:rgba(255,255,255,.05)}
+  .castrow .o .cc{background:rgba(255,255,255,.18)}
+  .castrow .o.ai{border-color:rgba(20,184,166,.6)}.castrow .o.pr{border-color:rgba(245,158,11,.6)}.castrow .o.rv{border-color:rgba(239,68,68,.6)}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+  .kpis div{padding:12px 12px 10px;border-radius:14px}
+  .kpis b{display:block;font-family:"JetBrains Mono",monospace;font-size:22px;color:#fff;font-variant-numeric:tabular-nums}
+  .kpis span{font-size:10.5px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.1em;font-weight:700}
+  .head .meta{margin-top:12px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:rgba(255,255,255,.6)}
+  .head .meta span{display:inline-flex;align-items:center;gap:6px}
+
+  /* body */
+  .wrap{max-width:1380px;margin:22px auto 60px;padding:0 28px;display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;align-items:start}
+  .toc{position:sticky;top:64px;background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:12px;box-shadow:var(--shadow-sm)}
+  .toc h4{margin:4px 6px 8px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .toc a{display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:10px;font-size:13px;font-weight:600;color:var(--muted)}
+  .toc a:hover{background:var(--surface-2);color:var(--ink)}
+  .toc a .d{width:8px;height:8px;border-radius:2px;background:var(--g,var(--muted))}
+  .toc a .n{margin-left:auto;font-size:11px;font-weight:800;color:var(--g,var(--muted));background:color-mix(in srgb,var(--g,var(--muted)) 10%,#fff);padding:2px 7px;border-radius:999px;font-variant-numeric:tabular-nums}
+  .toc .all{display:flex;gap:6px;margin-top:8px;padding-top:10px;border-top:1px solid var(--border)}
+  .toc .all .btn{flex:1}
+
+  /* collapsible section */
+  details.sec{background:var(--surface);border:1px solid var(--border);border-radius:18px;margin-bottom:14px;box-shadow:var(--shadow-sm);overflow:hidden}
+  details.sec>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:44px 1fr auto auto;gap:14px;align-items:center;padding:14px 18px;user-select:none}
+  details.sec>summary::-webkit-details-marker{display:none}
+  details.sec>summary:hover{background:color-mix(in srgb,var(--g) 3%,#fff)}
+  details.sec>summary .tile{width:44px;height:44px;font-size:20px}
+  details.sec>summary h2{margin:0;font-size:15.5px;font-weight:800;display:flex;align-items:center;gap:10px}
+  details.sec>summary h2 .n{font-size:11px;font-weight:800;color:var(--g);background:color-mix(in srgb,var(--g) 10%,#fff);padding:2px 8px;border-radius:999px;font-variant-numeric:tabular-nums}
+  details.sec>summary p{margin:2px 0 0;font-size:12.5px;color:var(--muted)}
+  details.sec>summary .peek{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;max-width:420px}
+  details.sec>summary .chev{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:var(--muted);background:var(--surface-2);transition:transform .2s var(--ease)}
+  details.sec[open]>summary .chev{transform:rotate(90deg)}
+  details.sec[open]>summary{border-bottom:1px solid var(--border)}
+  details.sec .body{padding:16px 18px 18px}
+  .sec .edit{margin-left:6px}
+
+  /* nested groups */
+  details.grp{border:1px solid var(--border);border-radius:14px;margin-bottom:10px;background:#fff}
+  details.grp>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:10px 14px;font-weight:800;font-size:13.5px}
+  details.grp>summary::-webkit-details-marker{display:none}
+  details.grp>summary .n{font-size:11px;font-weight:800;color:var(--muted);background:var(--surface-2);padding:2px 7px;border-radius:999px;font-variant-numeric:tabular-nums}
+  details.grp>summary .sub{font-size:12px;color:var(--muted);font-weight:500}
+  details.grp>summary .chev{margin-left:auto;color:var(--muted);transition:transform .2s var(--ease)}
+  details.grp[open]>summary .chev{transform:rotate(90deg)}
+  details.grp[open]>summary{border-bottom:1px solid var(--border)}
+  details.grp .g{padding:8px 10px 10px}
+  details.sub{border-top:1px solid var(--border)}
+  details.sub:first-of-type{border-top:0}
+  details.sub>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:9px 8px;font-size:12.5px;font-weight:700;color:var(--ink)}
+  details.sub>summary::-webkit-details-marker{display:none}
+  details.sub>summary .n{font-size:10.5px;font-weight:800;color:var(--muted);background:var(--surface-2);padding:1px 7px;border-radius:999px}
+  details.sub>summary .chev{margin-left:auto;color:var(--muted);transition:transform .2s var(--ease)}
+  details.sub[open]>summary .chev{transform:rotate(90deg)}
+  details.sub>summary .hint{font-size:11px;color:var(--muted);font-weight:500}
+
+  /* cast rows */
+  .toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .search{flex:1;min-width:220px;position:relative}
+  .search input{padding-left:34px}
+  .search .ic{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)}
+  .seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:10px;overflow:hidden;background:#fff}
+  .seg button{border:0;background:transparent;padding:7px 11px;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer}
+  .seg button.on{background:var(--brand);color:#fff}
+  .row{display:grid;grid-template-columns:36px 1fr auto;gap:12px;align-items:center;padding:8px 8px;border-radius:10px}
+  .row:hover{background:var(--surface-2)}
+  .row .av{width:36px;height:36px;border-radius:10px;font-size:12px}
+  .row .nm{font-weight:700;font-size:13.5px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .row .ti{font-size:12px;color:var(--muted)}
+  .row .pills{display:flex;gap:5px;flex-wrap:wrap;justify-content:flex-end}
+  .p{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;border:1px solid var(--border);color:var(--muted);background:#fff}
+  .p.rel{color:var(--brand);border-color:color-mix(in srgb,var(--brand) 30%,#fff)}
+  .p.live{color:var(--accent-strong);border-color:color-mix(in srgb,var(--accent) 45%,#fff);background:color-mix(in srgb,var(--accent) 8%,#fff)}
+  .p.pure{color:var(--success);border-color:color-mix(in srgb,var(--success) 35%,#fff)}
+  .p.roster{color:var(--muted);border-style:dashed}
+  .p.group{color:var(--f-ai);border-color:color-mix(in srgb,var(--f-ai) 45%,#fff)}
+  .p.speaks{color:var(--f-pressure);border-color:color-mix(in srgb,var(--f-pressure) 45%,#fff)}
+  details.person{border-radius:10px}
+  details.person>summary{list-style:none;cursor:pointer}
+  details.person>summary::-webkit-details-marker{display:none}
+  details.person .char{margin:0 8px 10px 56px;padding:10px 12px;border-radius:10px;background:var(--surface-2);font-size:12px;display:grid;grid-template-columns:1fr 1fr;gap:8px 16px}
+  details.person .char b{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:2px}
+  details.person .char .full{grid-column:1/-1}
+  .hidden-note{font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:6px;margin-left:8px}
+
+  /* org cards */
+  .orgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .orgcard{border:1px solid var(--border);border-radius:14px;padding:14px;background:#fff;position:relative}
+  .orgcard.hq{border:2px solid var(--f-org)}
+  .orgcard.ai{border-color:var(--f-ai)}
+  .orgcard .kicker{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--g);display:flex;align-items:center;gap:6px;margin-bottom:8px}
+  .orgcard .id{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .orgcard .mono,.orgcard .tile{width:40px;height:40px;font-size:13px}
+  .orgcard .tile{font-size:18px}
+  .orgcard .nm{font-weight:800}
+  .orgcard .mt{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px}
+  .orgcard .foot{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+  .roster{display:flex;flex-wrap:wrap;gap:6px}
+  .pagehandles{font-size:11.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
+
+  /* injects */
+  .inj{display:grid;grid-template-columns:64px 28px 1fr auto;gap:10px;align-items:center;padding:7px 8px;border-radius:10px;font-size:12.5px}
+  .inj:hover{background:var(--surface-2)}
+  .inj .t{font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:700;color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,#fff);border-radius:6px;padding:3px 6px;text-align:center}
+  .inj .t.cond{color:var(--f-intel);background:color-mix(in srgb,var(--f-intel) 8%,#fff)}
+  .inj .app{color:var(--muted)}
+  .inj .ttl{font-weight:600}
+  .inj .by{font-size:11.5px;color:var(--muted)}
+  .inj .tags{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap}
+  .phase{display:flex;gap:4px;height:6px;border-radius:3px;overflow:hidden;background:var(--surface-2);margin:0 0 12px}
+  .phase span{display:block;height:100%}
+
+  /* fact sheet / sop / objectives */
+  .facts{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .facts .col h5{margin:0 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .facts li{font-size:12.5px;margin:0 0 6px;padding-left:18px;position:relative}
+  .facts li::before{content:"";position:absolute;left:0;top:7px;width:8px;height:8px;border-radius:2px;background:var(--success)}
+  .facts .unv li::before{background:var(--accent)}
+  .steps{display:grid;gap:8px}
+  .step{display:grid;grid-template-columns:32px 1fr auto;gap:12px;align-items:center;border:1px solid var(--border);border-radius:12px;padding:10px 12px}
+  .step .num{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;font-weight:800;font-family:"JetBrains Mono",monospace;font-size:12px;background:var(--surface-2);color:var(--brand)}
+  .step .nm{font-weight:700;font-size:13px}
+  .step .ds{font-size:12px;color:var(--muted)}
+  .obj{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:12px;margin-bottom:8px}
+  .obj .w{font-family:"JetBrains Mono",monospace;font-weight:700;color:var(--brand)}
+
+  @media (max-width:1100px){.wrap{grid-template-columns:1fr}.toc{position:static;display:flex;flex-wrap:wrap;gap:4px}.toc h4{width:100%}.toc .all{width:100%;border:0;padding:0;margin:0}.head .in{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,1fr)}.facts{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16"/><path d="M14 9h5a1 1 0 0 1 1 1v11"/><path d="M8 8h2M8 12h2M8 16h2M17 13h1M17 17h1"/><path d="M2 21h20"/></symbol>
+  <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6l-5 4H4a1 1 0 0 0-1 1z"/><path d="M15 9.5a3.5 3.5 0 0 1 0 5M17.5 7a7 7 0 0 1 0 10"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M6 21h12M4 7h16"/><path d="M7 7l-3 7a3 3 0 0 0 6 0L7 7zM17 7l-3 7a3 3 0 0 0 6 0l-3-7z"/></symbol>
+  <symbol id="i-tie" viewBox="0 0 24 24"><path d="M9 3h6l-1 4 2 10-4 4-4-4 2-10-1-4z"/></symbol>
+  <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+  <symbol id="i-handshake" viewBox="0 0 24 24"><path d="M2 10l4-4 4 3 3-1 5 3 4-3"/><path d="M2 10l4 4 3 3 3 2 3-2 3-3 4-4"/><path d="M9 13l2 2M12 11l2 2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M15 20a4.5 4.5 0 0 1 6 0"/></symbol>
+  <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M9.5 21V10M14.5 21V10M19 21V10"/><path d="M2 10l10-6 10 6z"/></symbol>
+  <symbol id="i-fist" viewBox="0 0 24 24"><path d="M7 12V8a2 2 0 1 1 4 0v3"/><path d="M11 11V6a2 2 0 1 1 4 0v5"/><path d="M15 11V8a2 2 0 1 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-2a2 2 0 1 1 4 0"/></symbol>
+  <symbol id="i-swords" viewBox="0 0 24 24"><path d="M3 3l8 8M14 14l3 3M3 21l6-6M21 3l-8 8M10 14l-3 3M21 21l-6-6"/><path d="M6 15l3 3M15 6l3 3"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/><path d="M12 12l6-6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-arrow-l" viewBox="0 0 24 24"><path d="M19 12H5M11 6l-6 6 6 6"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M13 7l4 4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 10.6a3 3 0 0 0 4.2 4.2M9.9 5.2A10.4 10.4 0 0 1 12 5c6 0 10 7 10 7a17 17 0 0 1-3.2 3.9M6.6 6.6C4 8.4 2 12 2 12s4 7 10 7c1.4 0 2.7-.3 3.9-.8"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></symbol>
+  <symbol id="i-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></symbol>
+  <symbol id="i-news" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h6M7 12h10M7 16h10M16 8h1"/></symbol>
+  <symbol id="i-feed" viewBox="0 0 24 24"><path d="M4 4h16v6H4zM4 14h16v6H4z"/></symbol>
+  <symbol id="i-call" viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+  <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></symbol>
+</svg>
+
+<div class="note"><b>DESIGN STUDY · SCENARIO DETAIL</b> The view behind a card. Every section folds; the cast is grouped by organisation and relationship with the roster collapsed by default; search narrows the list. Remove this strip before build.</div>
+
+<div class="bar">
+  <a class="back" href="#"><svg class="ic ic-14"><use href="#i-arrow-l"/></svg> Scenarios</a>
+  <span class="t">19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</span>
+  <span class="lock"><svg class="ic ic-14"><use href="#i-unlock"/></svg> Editable</span>
+  <span class="grow"></span>
+  <button class="btn sm"><svg class="ic ic-14"><use href="#i-copy"/></svg> Clone</button>
+  <button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button>
+  <button class="btn sm accent"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch session</button>
+</div>
+
+<header class="head artband">
+  <img class="art" src="art/crisis-multi-agency-sm.webp" alt="" />
+  <div class="in">
+    <div>
+      <div class="eyebrow"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis · compiled today 12:46 · 60 minutes</div>
+      <h1>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h1>
+      <p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis across Singapore and Malaysia — with two ministries asking questions and a hospital waiting on a shipment.</p>
+      <div class="castrow">
+        <span class="o"><span class="cc">SG</span> Sigma Logistics · HQ</span>
+        <span class="o ai"><span class="cc">MY</span> Sigma Logistics Malaysia · AI-operated</span>
+        <span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> Ministry of Human Resources</span>
+        <span class="o pr"><svg class="ic ic-12"><use href="#i-fist"/></svg> Transport Workers Union</span>
+        <span class="o rv"><svg class="ic ic-12"><use href="#i-swords"/></svg> Swift Freight</span>
+      </div>
+      <div class="meta"><span><svg class="ic ic-12"><use href="#i-check"/></svg> Contract validation passed</span><span><svg class="ic ic-12"><use href="#i-sparkle"/></svg> Executive decisions: organic</span><span><svg class="ic ic-12"><use href="#i-clock"/></svg> Last session 18 Sep · 2 sessions run</span></div>
+    </div>
+    <div>
+      <div class="kpis">
+        <div class="glass"><b>7</b><span>teams</span></div>
+        <div class="glass"><b>85</b><span>contacts</span></div>
+        <div class="glass"><b>188</b><span>crowd</span></div>
+        <div class="glass"><b>217</b><span>injects</span></div>
+        <div class="glass"><b>2</b><span>countries</span></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <nav class="toc">
+    <h4>Sections</h4>
+    <a href="#overview" style="--g:var(--f-crisis)"><span class="d"></span> Overview</a>
+    <a href="#orgs" style="--g:var(--f-org)"><span class="d"></span> Organisations &amp; pages <span class="n">5</span></a>
+    <a href="#teams" style="--g:var(--f-org)"><span class="d"></span> Teams &amp; charters <span class="n">7</span></a>
+    <a href="#cast" style="--g:var(--f-intel)"><span class="d"></span> Cast · contacts <span class="n">85</span></a>
+    <a href="#crowd" style="--g:var(--f-intel)"><span class="d"></span> Crowd personas <span class="n">188</span></a>
+    <a href="#injects" style="--g:var(--brand)"><span class="d"></span> Injects <span class="n">217</span></a>
+    <a href="#pressure" style="--g:var(--f-pressure)"><span class="d"></span> Pressure groups <span class="n">2</span></a>
+    <a href="#facts" style="--g:var(--success)"><span class="d"></span> Fact sheet <span class="n">17</span></a>
+    <a href="#sop" style="--g:var(--f-pressure)"><span class="d"></span> Notification SOP <span class="n">4</span></a>
+    <a href="#objectives" style="--g:var(--brand)"><span class="d"></span> Objectives <span class="n">4</span></a>
+    <div class="all"><button class="btn sm" onclick="setAll(true)"><svg class="ic ic-14"><use href="#i-expand"/></svg> Expand all</button><button class="btn sm" onclick="setAll(false)"><svg class="ic ic-14"><use href="#i-collapse"/></svg> Collapse all</button></div>
+  </nav>
+
+  <main>
+    <!-- OVERVIEW -->
+    <details class="sec" id="overview" open style="--g:var(--f-crisis)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-bolt"/></svg></div><div><h2>Overview</h2><p>Narrative, participant briefing and how the scenario was built.</p></div><div class="peek"></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <div class="facts">
+          <div class="col"><h5>Participant briefing</h5><p style="margin:0;font-size:13px;line-height:1.6">It is 07:40 on a Tuesday. A 40-second clip of a Sigma driver collapsing at the Johor depot has 1.2 million views. Your inbox, feed and news apps are live. Leadership is reachable. Nothing has been said publicly yet.</p></div>
+          <div class="col"><h5>Built from</h5><p style="margin:0;font-size:13px;line-height:1.6">Trainer's description (412 words) · detected footprint: Singapore (decision centre), Malaysia (incident location) · labour and product-safety signals · 2 organisations, 2 pressure groups, 1 rival.</p></div>
+        </div>
+      </div>
+    </details>
+
+    <!-- ORGANISATIONS -->
+    <details class="sec" id="orgs" open style="--g:var(--f-org)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-building"/></svg></div><div><h2>Organisations &amp; pages <span class="n">5</span></h2><p>Two on your side, two applying pressure, one rival — each with a page in the sim.</p></div><div class="peek"><span class="p rel">2 protagonist</span><span class="p speaks">2 pressure</span><span class="p" style="color:var(--f-rival)">1 rival</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <div class="orgs">
+          <div class="orgcard hq" style="--g:var(--f-org)">
+            <div class="kicker"><svg class="ic ic-12"><use href="#i-building"/></svg> Headquarters · players</div>
+            <div class="id"><div class="mono">SL</div><div><div class="nm">Sigma Logistics</div><div class="mt"><span class="cc">SG</span> Singapore · Company</div></div></div>
+            <div class="pagehandles"><span>Fakebook @SigmaLogistics · 128k</span><span>X @sigma_sg · 64k</span></div>
+            <div class="foot"><span>4 teams</span><span>38 contacts</span><span>94 crowd</span></div>
+          </div>
+          <div class="orgcard ai" style="--g:var(--f-ai)">
+            <div class="kicker"><svg class="ic ic-12"><use href="#i-sparkle"/></svg> Office · AI-operated · aligned</div>
+            <div class="id"><div class="mono ai">MY</div><div><div class="nm">Sigma Logistics Malaysia</div><div class="mt"><span class="cc">MY</span> Johor Bahru · Office</div></div></div>
+            <div class="pagehandles"><span>Fakebook @SigmaMY · 41k</span><span>X @sigma_my · 22k</span></div>
+            <div class="foot"><span>3 teams · unstaffed</span><span>41 contacts</span><span>94 crowd · unscoped</span></div>
+          </div>
+          <div class="orgcard" style="--g:var(--f-pressure)">
+            <div class="kicker"><svg class="ic ic-12"><use href="#i-landmark"/></svg> Regulator · statutory</div>
+            <div class="id"><div class="tile"><svg class="ic"><use href="#i-landmark"/></svg></div><div><div class="nm">Ministry of Human Resources Malaysia</div><div class="mt"><span class="cc light">MY</span> Putrajaya · spokesperson Lim Chee Kiong</div></div></div>
+            <div class="foot"><span>2 statements scheduled</span><span>ladder: statement → records request → inspection notice</span></div>
+          </div>
+          <div class="orgcard" style="--g:var(--f-pressure)">
+            <div class="kicker"><svg class="ic ic-12"><use href="#i-fist"/></svg> Union · advocacy</div>
+            <div class="id"><div class="tile"><svg class="ic"><use href="#i-fist"/></svg></div><div><div class="nm">Transport Workers Union of Malaysia</div><div class="mt"><span class="cc light">MY</span> Johor Bahru · spokesperson Mohd Firdaus Ismail</div></div></div>
+            <div class="foot"><span>2 statements scheduled</span><span>wants consultation + overtime paid</span></div>
+          </div>
+          <div class="orgcard" style="--g:var(--f-rival)">
+            <div class="kicker"><svg class="ic ic-12"><use href="#i-swords"/></svg> Competitor · AI</div>
+            <div class="id"><div class="mono rv">SF</div><div><div class="nm">Swift Freight</div><div class="mt"><span class="cc light">MY</span> Malaysia</div></div></div>
+            <div class="foot"><span>stance: “the safe choice for cold chain”</span></div>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- TEAMS -->
+    <details class="sec" id="teams" style="--g:var(--f-org)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-users"/></svg></div><div><h2>Teams &amp; charters <span class="n">7</span></h2><p>Mission, responsibilities and the expected actions each team is scored on.</p></div><div class="peek"><span class="p rel">4 · Sigma Logistics</span><span class="p group">3 · SLM (AI)</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <details class="grp" open><summary><span class="cc">SG</span> Sigma Logistics <span class="n">4 teams</span><span class="sub">players</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g">
+            <details class="sub" open><summary><span class="tm voice"><span class="av"><svg class="ic ic-12"><use href="#i-megaphone"/></svg></span> Communications — SL <span class="tag">voice</span></span><span class="hint">15 injects · 7 contacts · 6 expected actions</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+              <div style="padding:8px 8px 12px;font-size:12.5px;color:var(--muted)"><b style="color:var(--ink)">Mission.</b> Own the public line across both platforms; verify before publishing; keep the hospital customer informed. <b style="color:var(--ink)">Scored on:</b> official statement within 20 min, fact-check before post, reply to hostile threads, brief Legal before publishing figures.</div>
+            </details>
+            <details class="sub"><summary><span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-scale"/></svg></span> Legal — SL</span><span class="hint">14 injects · 9 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary><span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-tie"/></svg></span> Executive — SL</span><span class="hint">15 injects · 10 contacts · decides by communicating</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary><span class="tm custom"><span class="av"><svg class="ic ic-12"><use href="#i-truck"/></svg></span> Fleet Operations — SL</span><span class="hint">15 injects · 22 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+          </div>
+        </details>
+        <details class="grp"><summary><span class="cc">MY</span> Sigma Logistics Malaysia <span class="n">3 teams</span><span class="sub">AI-operated · unscored</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g">
+            <details class="sub"><summary><span class="tm voice"><span class="av"><svg class="ic ic-12"><use href="#i-megaphone"/></svg></span> Communications — SLM</span><span class="hint">15 injects · 8 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary><span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-handshake"/></svg></span> Stakeholder Engagement — SLM</span><span class="hint">14 injects · 8 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary><span class="tm custom"><span class="av"><svg class="ic ic-12"><use href="#i-users"/></svg></span> Driver Relations — SLM</span><span class="hint">15 injects · 22 contacts</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+          </div>
+        </details>
+      </div>
+    </details>
+
+    <!-- CAST -->
+    <details class="sec" id="cast" style="--g:var(--f-intel)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-target"/></svg></div><div><h2>Cast · contacts <span class="n">85</span></h2><p>Every person your teams can email, message or call. Grouped by organisation; the roster is folded so the principals stay in view.</p></div><div class="peek"><span class="p live">38 with a live concern</span><span class="p pure">47 pure contacts</span><span class="p roster">20 roster</span><span class="p group">2 lists</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <div class="toolbar">
+          <label class="search"><svg class="ic ic-14"><use href="#i-search"/></svg><input class="field" id="castSearch" placeholder="Search name, title, organisation…" oninput="filterCast(this.value)" /></label>
+          <div class="seg"><button class="on">All</button><button>Principals</button><button>Roster</button><button>Lists</button><button>Spokespersons</button></div>
+          <span class="hidden-note"><svg class="ic ic-12"><use href="#i-eye-off"/></svg> Hidden character shown to trainers only</span>
+        </div>
+
+        <details class="grp" open data-org><summary><span class="cc">SG</span> Sigma Logistics <span class="n">38</span><span class="sub">HQ · Singapore</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g">
+            <details class="sub" open><summary>Internal <span class="n">12</span><span class="hint">site leader, HR, EA, coordinators</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+              <details class="person"><summary><div class="row" data-cast="adrian koh site operations manager sigma logistics"><div class="mono av">AK</div><div><div class="nm">Adrian Koh <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">Site Operations Manager · Sigma Logistics · owned by Executive</div></div><div class="pills"><span class="p">adrian.koh@sigmalogistics.sim</span></div></div></summary>
+                <div class="char"><div><b>Personality</b>Measured, protective of his crews; answers in short paragraphs.</div><div><b>Stance</b>Waiting for HQ to say something before the depot does.</div><div><b>Knows</b>Night-run rosters since June; the collapsed driver's shift record.</div><div><b>Won't disclose</b>Individual pay slips; the driver's medical status.</div><div class="full"><b>Reacts to</b>Any change to depot operations or headcount; being told after outsiders.</div></div>
+              </details>
+              <details class="person"><summary><div class="row" data-cast="felicia ng hr business partner"><div class="mono av">FN</div><div><div class="nm">Felicia Ng <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">HR Business Partner · Sigma Logistics · owned by Communications</div></div><div class="pills"><span class="p">felicia.ng@sigmalogistics.sim</span></div></div></summary></details>
+              <details class="person"><summary><div class="row" data-cast="jolene tan executive assistant"><div class="mono av">JT</div><div><div class="nm">Jolene Tan Wei Ling <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">Executive Assistant to the CEO · owned by Executive</div></div><div class="pills"><span class="p">jolene.tan@sigmalogistics.sim</span></div></div></summary></details>
+              <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 9 more internal contacts</div>
+            </details>
+            <details class="sub"><summary>Clients &amp; partners <span class="n">6</span><span class="hint">hospital, pharma distributor, 3PL</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+              <details class="person"><summary><div class="row" data-cast="dr priya nair mount elizabeth pharmacy"><div class="mono av" style="background:linear-gradient(150deg,#7C6AF0,#4F46E5)">PN</div><div><div class="nm">Dr Priya Nair <span class="p rel">client</span><span class="p live">live concern · T+35 email</span></div><div class="ti">Head of Pharmacy · Mount Elizabeth Hospital · owned by Fleet Operations</div></div><div class="pills"><span class="p">persuadability medium</span></div></div></summary>
+                <div class="char"><div class="full"><b>Grievance</b>A cold-chain shipment arrived spoiled and nobody has told her whether tomorrow's is safe.</div><div class="full"><b>Would stand down if</b>1 · told whether the current route is affected · 2 · given a named contact · 3 · offered an alternative delivery window.</div></div>
+              </details>
+            </details>
+            <details class="sub"><summary>Media <span class="n">5</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary>Regulators <span class="n">2</span><span class="hint">MOM Singapore</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary>Investors &amp; board <span class="n">2</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary>Workforce roster <span class="n">10</span><span class="hint">reachable via the all-staff list · never author injects</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+              <div class="row" data-cast="wei ming tan line operator"><div class="mono plain av">WT</div><div><div class="nm">Wei Ming Tan <span class="p roster">roster</span></div><div class="ti">Line Operator (day shift, 6 yrs) · Singapore depot</div></div><div class="pills"></div></div>
+              <div class="row" data-cast="hui ling lim shift supervisor"><div class="mono plain av">HL</div><div><div class="nm">Hui Ling Lim <span class="p roster">roster</span></div><div class="ti">Shift Supervisor (night shift, 11 yrs)</div></div><div class="pills"></div></div>
+              <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 8 more</div>
+            </details>
+            <details class="sub"><summary>Distribution list <span class="n">1</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+              <div class="row" data-cast="all staff singapore distribution list"><div class="mono ai av"><svg class="ic ic-14"><use href="#i-mail"/></svg></div><div><div class="nm">Sigma Logistics — Singapore · all staff <span class="p group">list · 10 members</span></div><div class="ti">all-staff.singapore@sigmalogistics.sim · one email reaches every roster member</div></div><div class="pills"></div></div>
+            </details>
+          </div>
+        </details>
+
+        <details class="grp" data-org><summary><span class="cc">MY</span> Sigma Logistics Malaysia <span class="n">41</span><span class="sub">AI-operated office · Johor Bahru</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g">
+            <details class="sub" open><summary>Internal <span class="n">14</span><span class="hint">depot manager, HR, supervisors</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+              <details class="person"><summary><div class="row" data-cast="hafiz zulkifli depot manager johor"><div class="mono ai av">HZ</div><div><div class="nm">Hafiz Zulkifli <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">Depot Manager (Johor) · owned by Driver Relations</div></div><div class="pills"><span class="p">hafiz.zulkifli@slm.sim</span></div></div></summary></details>
+              <details class="person"><summary><div class="row" data-cast="nadia rahman hr business partner johor"><div class="mono ai av">NR</div><div><div class="nm">Nadia Rahman <span class="p rel">internal</span><span class="p pure">pure contact</span></div><div class="ti">HR Business Partner (Johor) · owned by Driver Relations</div></div><div class="pills"><span class="p">nadia.rahman@slm.sim</span></div></div></summary></details>
+              <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 12 more</div>
+            </details>
+            <details class="sub"><summary>Union <span class="n">1</span><span class="hint">speaks for the union page</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+              <details class="person"><summary><div class="row" data-cast="mohd firdaus ismail branch secretary transport workers union"><div class="mono pr av">MF</div><div><div class="nm">Mohd Firdaus Ismail <span class="p rel">union</span><span class="p live">live concern</span><span class="p speaks">speaks for TWUM</span></div><div class="ti">Branch Secretary · Transport Workers Union of Malaysia · owned by Driver Relations</div></div><div class="pills"><span class="p">persuadability low</span></div></div></summary></details>
+            </details>
+            <details class="sub"><summary>Media <span class="n">4</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary>Regulators <span class="n">2</span><span class="hint">MOHR · DOSH</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary>Suppliers <span class="n">3</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary>Workforce roster <span class="n">10</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+            <details class="sub"><summary>Distribution list <span class="n">1</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+          </div>
+        </details>
+
+        <details class="grp" data-org><summary><svg class="ic ic-14" style="color:var(--muted)"><use href="#i-target"/></svg> Common to every organisation <span class="n">6</span><span class="sub">regional media, industry body, insurer</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+      </div>
+    </details>
+
+    <!-- CROWD -->
+    <details class="sec" id="crowd" style="--g:var(--f-intel)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-feed"/></svg></div><div><h2>Crowd personas <span class="n">188</span></h2><p>The public that posts, replies and reacts. Key personas drive the storyline; background personas fill the feed.</p></div><div class="peek"><span class="p"><span class="cc light">SG</span> 94 · scoped</span><span class="p"><span class="cc light">MY</span> 94 · unscoped</span><span class="p live">31 key</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <details class="grp"><summary><span class="cc">SG</span> Singapore <span class="n">94</span><span class="sub">15 key · 79 background · visible to Singapore players</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+        <details class="grp"><summary><span class="cc">MY</span> Malaysia <span class="n">94</span><span class="sub">15 key · 79 background · unscoped (nobody plays in Malaysia)</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+      </div>
+    </details>
+
+    <!-- INJECTS -->
+    <details class="sec" id="injects" style="--g:var(--brand)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-layers"/></svg></div><div><h2>Injects <span class="n">217</span></h2><p>Timed and conditional content, by phase. Stakeholder-authored items pass the reconsideration judge before firing.</p></div><div class="peek"><span class="p">202 timed</span><span class="p" style="color:var(--f-intel)">15 conditional</span><span class="p live">41 stakeholder</span><span class="p speaks">4 page statements</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <div class="phase" title="volume by phase"><span style="width:19%;background:var(--brand)"></span><span style="width:24%;background:color-mix(in srgb,var(--brand) 80%,#fff)"></span><span style="width:28%;background:color-mix(in srgb,var(--brand) 60%,#fff)"></span><span style="width:22%;background:color-mix(in srgb,var(--brand) 40%,#fff)"></span><span style="width:7%;background:var(--f-intel)"></span></div>
+        <details class="grp" open><summary>T+0 – 15 · opening <span class="n">41</span><span class="sub">the clip spreads; first calls; nothing official yet</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g">
+            <div class="inj"><span class="t">T+02</span><svg class="ic ic-16 app"><use href="#i-feed"/></svg><div><div class="ttl">“He just went down.” — clip reposted by @johor_nightshift</div><div class="by">crowd · Malaysia · unscoped</div></div><div class="tags"><span class="p">social</span></div></div>
+            <div class="inj"><span class="t">T+06</span><svg class="ic ic-16 app"><use href="#i-mail"/></svg><div><div class="ttl">Mount Elizabeth: is tomorrow's cold-chain run affected?</div><div class="by">Dr Priya Nair → Fleet Operations — SL</div></div><div class="tags"><span class="p live">stakeholder</span><span class="cc light">SG</span></div></div>
+            <div class="inj"><span class="t">T+09</span><svg class="ic ic-16 app"><use href="#i-call"/></svg><div><div class="ttl">Depot manager calls: drivers are refusing the 22:00 run</div><div class="by">Hafiz Zulkifli → Driver Relations — SLM</div></div><div class="tags"><span class="p live">stakeholder</span><span class="cc light">MY</span></div></div>
+            <div class="inj"><span class="t">T+12</span><svg class="ic ic-16 app"><use href="#i-news"/></svg><div><div class="ttl">The Star: “Driver collapses after 19-hour shift at Johor logistics depot”</div><div class="by">Suresh Menon · The Star</div></div><div class="tags"><span class="p">news</span></div></div>
+            <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 37 more in this phase</div>
+          </div>
+        </details>
+        <details class="grp"><summary>T+15 – 30 · escalation <span class="n">52</span><span class="sub">pay slips, boycott call, MOHR statement</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g">
+            <div class="inj"><span class="t">T+20</span><svg class="ic ic-16 app"><use href="#i-feed"/></svg><div><div class="ttl">Ministry of Human Resources: statement on the Johor depot</div><div class="by">page statement · spokesperson Lim Chee Kiong</div></div><div class="tags"><span class="p speaks">page</span><span class="cc light">MY</span></div></div>
+            <div style="padding:6px 8px;font-size:12px;color:var(--muted)">+ 51 more</div>
+          </div>
+        </details>
+        <details class="grp"><summary>T+30 – 45 · turning point <span class="n">60</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+        <details class="grp"><summary>T+45 – 60 · resolution <span class="n">49</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+        <details class="grp"><summary><span class="t cond" style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:2px 6px;border-radius:6px;color:var(--f-intel);background:color-mix(in srgb,var(--f-intel) 8%,#fff)">IF</span> Conditional <span class="n">15</span><span class="sub">convergence gates and intel dependencies between the two offices</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+      </div>
+    </details>
+
+    <!-- PRESSURE -->
+    <details class="sec" id="pressure" style="--g:var(--f-pressure)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-fist"/></svg></div><div><h2>Pressure groups <span class="n">2</span></h2><p>Posture, escalation ladder and what makes each one stand down.</p></div><div class="peek"><span class="p speaks">statutory</span><span class="p speaks">advocacy</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <details class="grp" open><summary><svg class="ic ic-14" style="color:var(--f-pressure)"><use href="#i-landmark"/></svg> Ministry of Human Resources Malaysia <span class="n">statutory</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary>
+          <div class="g facts" style="padding:12px 14px">
+            <div class="col"><h5>Mandate</h5><p style="margin:0 0 10px;font-size:12.5px">Enforce the Employment Act and protect workers in Malaysia.</p><h5>Demands</h5><ul style="margin:0;padding:0;list-style:none" class="unv"><li>Scheduling records for the Johor depot within 48 hours</li><li>Evidence of statutory rest periods</li><li>A named compliance contact</li></ul></div>
+            <div class="col"><h5>Escalation ladder</h5><ul style="margin:0;padding:0;list-style:none"><li>Public statement noting the report</li><li>Formal request for records with a deadline</li><li>Notice of inspection</li></ul><h5 style="margin-top:10px">Stands down when</h5><ul style="margin:0;padding:0;list-style:none"><li>Records are provided in full</li><li>A named contact responds within the deadline</li></ul></div>
+          </div>
+        </details>
+        <details class="grp"><summary><svg class="ic ic-14" style="color:var(--f-pressure)"><use href="#i-fist"/></svg> Transport Workers Union of Malaysia <span class="n">advocacy</span><svg class="ic ic-14 chev"><use href="#i-chevron"/></svg></summary></details>
+      </div>
+    </details>
+
+    <!-- FACT SHEET -->
+    <details class="sec" id="facts" style="--g:var(--success)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-shield"/></svg></div><div><h2>Fact sheet <span class="n">17</span></h2><p>Ground truth. The fact-check tool, the watchdog and every NPC engine verify against it live.</p></div><div class="peek"><span class="p pure">10 confirmed</span><span class="p live">7 claims</span><span class="p">cluster: preventable</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body facts">
+        <div class="col"><h5>Confirmed</h5><ul style="margin:0;padding:0;list-style:none"><li>The driver worked 19 hours across two consecutive rosters on 16 Sep</li><li>Overtime for the Johor night runs has been paid at the flat rate since June</li><li>One cold-chain shipment breached temperature for 3 h 40 m on 17 Sep</li><li>MOHR issued an inspection notice at 09:10 on 18 Sep</li></ul><div style="margin-top:8px;font-size:12px;color:var(--muted)">+ 6 more</div></div>
+        <div class="col unv"><h5>Unconfirmed claims (and the truth)</h5><ul style="margin:0;padding:0;list-style:none"><li>“Three drivers have collapsed this month” — <b>false</b>: one incident</li><li>“Sigma falsifies tachograph logs” — <b>false</b>: logs are intact; rosters are the problem</li><li>“The hospital shipment was insulin” — <b>true</b>, but it was quarantined</li></ul><div style="margin-top:8px;font-size:12px;color:var(--muted)">+ 4 more</div></div>
+      </div>
+    </details>
+
+    <!-- SOP -->
+    <details class="sec" id="sop" style="--g:var(--f-pressure)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-list"/></svg></div><div><h2>Notification SOP <span class="n">4</span></h2><p>What the people-facing teams are graded on when leadership decides something. The clock starts at the first detected decision.</p></div><div class="peek"><span class="p">owner: Driver Relations</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body steps">
+        <div class="step"><div class="num">01</div><div><div class="nm">Brief site leadership</div><div class="ds">Site leader and HR counterpart hear it first — decision, timeline, support measures.</div></div><span class="p">15 min</span></div>
+        <div class="step"><div class="num">02</div><div><div class="nm">Consult workforce representatives</div><div class="ds">Union branch / staff representatives before employees; rationale, timeline, questions invited.</div></div><span class="p">20 min</span></div>
+        <div class="step"><div class="num">03</div><div><div class="nm">Notify affected employees</div><div class="ds">Individually or via the site distribution list — clear, humane, lawful; says what, when, why, and what support exists.</div></div><span class="p">45 min</span></div>
+        <div class="step"><div class="num">04</div><div><div class="nm">No public statement before staff are told</div><div class="ds">Communications publishes the official line only after steps 1–3.</div></div><span class="p">60 min</span></div>
+      </div>
+    </details>
+
+    <!-- OBJECTIVES -->
+    <details class="sec" id="objectives" style="--g:var(--brand)">
+      <summary><div class="tile"><svg class="ic"><use href="#i-target"/></svg></div><div><h2>Objectives &amp; benchmarks <span class="n">4</span></h2><p>What the exercise is trying to teach, weighted; benchmarks derive from the team charters.</p></div><div class="peek"></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
+      <div class="body">
+        <div class="obj"><div><div style="font-weight:700">Establish the facts before speaking</div><div style="font-size:12px;color:var(--muted)">Verify the shift record and the shipment status before any public line.</div></div><span class="w">30%</span></div>
+        <div class="obj"><div><div style="font-weight:700">Tell the people before the public</div><div style="font-size:12px;color:var(--muted)">Depot staff and the union hear any decision from Sigma first.</div></div><span class="w">30%</span></div>
+        <div class="obj"><div><div style="font-weight:700">Keep the hospital supplied</div><div style="font-size:12px;color:var(--muted)">A safe delivery path for the pharmacy within the session.</div></div><span class="w">25%</span></div>
+        <div class="obj"><div><div style="font-weight:700">Cooperate with both regulators</div><div style="font-size:12px;color:var(--muted)">Records to MOHR and MOM inside their deadlines.</div></div><span class="w">15%</span></div>
+      </div>
+    </details>
+  </main>
+</div>
+
+<script>
+  function setAll(open){document.querySelectorAll('details.sec, details.grp, details.sub').forEach(d=>{d.open=open});}
+  function filterCast(q){
+    q=(q||'').trim().toLowerCase();
+    const rows=document.querySelectorAll('#cast .row[data-cast]');
+    rows.forEach(r=>{const hit=!q||r.dataset.cast.includes(q);const holder=r.closest('details.person')||r;holder.style.display=hit?'':'none';});
+    if(q){document.querySelectorAll('#cast details.grp, #cast details.sub').forEach(d=>d.open=true);}
+  }
+</script>
+</body>
+</html>
