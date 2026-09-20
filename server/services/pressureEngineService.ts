@@ -333,10 +333,24 @@ Return ONLY valid JSON: { "content": "..." }`,
   const content = String(result?.content || '').trim();
   if (!content) return;
 
+  // Contract §4.1 stamps page posts with the page's country — but only when humans play there;
+  // otherwise the post is unscoped so the players present see it (pressure plan §11).
   let pageCountry: string | null = null;
   try {
     const { orgCountryForPage } = await import('./orgRegistryService.js');
     pageCountry = await orgCountryForPage(scenarioId, cfg.org_key);
+    const registry =
+      (initialState.orgs as Array<{
+        side?: string;
+        operation?: string;
+        country?: string | null;
+      }>) || [];
+    const human = new Set(
+      registry
+        .filter((o) => o.side === 'protagonist' && o.operation !== 'ai' && o.country)
+        .map((o) => String(o.country)),
+    );
+    if (pageCountry && human.size > 0 && !human.has(pageCountry)) pageCountry = null;
   } catch {
     /* single-country */
   }

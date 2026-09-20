@@ -450,6 +450,10 @@ export function buildPressureStatements(
   pages: OrgConfig[],
   stakeholders: Stakeholder[],
   protagonists: NormalisedOrg[],
+  /** Countries where humans play; a page in any other country posts UNSCOPED (pressure plan §11). */
+  humanCountries: Set<string> = new Set(
+    protagonists.filter((o) => o.operation !== 'ai').map((o) => o.country),
+  ),
 ): { injects: SocialInject[]; personaTwins: NPCPersona[] } {
   const injects: SocialInject[] = [];
   const twins: NPCPersona[] = [];
@@ -490,7 +494,8 @@ export function buildPressureStatements(
         author_display_name: ident.page_name,
         author_type: 'official_account',
         inject_key: key,
-        ...(page.country ? { country: page.country } : {}),
+        // Unscoped when nobody plays in the page's country (pressure plan §11).
+        ...(page.country && humanCountries.has(page.country) ? { country: page.country } : {}),
         ...(page.posture!.targets_org_keys.length === 1
           ? { org_key: page.posture!.targets_org_keys[0] }
           : {}),

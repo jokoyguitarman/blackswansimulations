@@ -198,6 +198,48 @@ function countriesOf(orgs: NormalisedOrg[]): string[] {
   return Array.from(new Set(orgs.map((o) => o.country)));
 }
 
+/**
+ * Countries where HUMANS play (a protagonist organisation with operation 'players').
+ * Pressure plan §11: content from any other country — an AI-operated office's crowd, a pressure
+ * page there, stakeholder posts — is emitted UNSCOPED (no `country`) so the players present see
+ * it as regional spillover. The feed shows a viewer only `country IS NULL` or their own country.
+ */
+export function humanCountries(orgs: NormalisedOrg[]): Set<string> {
+  return new Set(orgs.filter((o) => o.operation !== 'ai').map((o) => o.country));
+}
+
+/** Strip `delivery_config.country` from injects whose country hosts no human players (mutates). */
+export function unscopeInjectsForCountriesWithoutPlayers(
+  injects: SocialInject[],
+  human: Set<string>,
+): number {
+  let n = 0;
+  for (const inj of injects) {
+    const dc = inj.delivery_config;
+    if (dc?.country && !human.has(dc.country)) {
+      delete dc.country;
+      n++;
+    }
+  }
+  return n;
+}
+
+/** Strip `country` from personas whose country hosts no human players (returns new objects). */
+export function unscopePersonasForCountriesWithoutPlayers(
+  personas: NPCPersona[],
+  human: Set<string>,
+): NPCPersona[] {
+  return personas.map((p) => {
+    if (!p.country || human.has(p.country)) return p;
+    const copy = { ...p } as NPCPersona & { country?: string };
+    delete copy.country;
+    copy.backstory = /Based in /.test(copy.backstory || '')
+      ? copy.backstory
+      : `${copy.backstory || ''} (Based in ${p.country}.)`.trim();
+    return copy as NPCPersona;
+  });
+}
+
 function personasPerCountryTarget(): number {
   const raw = Number(process.env.SOCIAL_PERSONAS_PER_COUNTRY);
   return Number.isFinite(raw) && raw >= 20 ? Math.min(400, Math.round(raw)) : 200;
@@ -278,9 +320,19 @@ export async function runNpcsPipeline(
       ),
     ),
   ]);
-  const personas = [...perCountry.flat(), ...spillover.flat()];
+  // Countries whose protagonist organisations are ALL AI-operated behave like spillover countries:
+  // their crowd is unscoped so the humans elsewhere see it.
+  const human = humanCountries(orgs);
+  const personas = [
+    ...unscopePersonasForCountriesWithoutPlayers(perCountry.flat(), human),
+    ...spillover.flat(),
+  ];
   const per_country_counts: Record<string, number> = {};
-  countries.forEach((c, i) => (per_country_counts[c] = perCountry[i].length));
+  countries.forEach(
+    (c, i) =>
+      (per_country_counts[human.has(c) ? c : `${c} (AI-operated, unscoped)`] =
+        perCountry[i].length),
+  );
   spilloverCountries.forEach(
     (c, i) => (per_country_counts[`${c} (spillover)`] = spillover[i].length),
   );
@@ -508,6 +560,20 @@ export async function runStorylinePipeline(
     }
   }
 
+  // Visibility rule (pressure plan §11): content from countries where nobody plays is unscoped.
+  const human = humanCountries(orgs);
+  const unscoped =
+    unscopeInjectsForCountriesWithoutPlayers(injects, human) +
+    unscopeInjectsForCountriesWithoutPlayers(stakeholderInjects, human) +
+    unscopeInjectsForCountriesWithoutPlayers(Object.values(teamStorylines).flat(), human);
+  if (unscoped > 0) {
+    write({
+      type: 'progress',
+      message: `${unscoped} injects unscoped (countries without human players)`,
+    });
+  }
+  const twins = unscopePersonasForCountriesWithoutPlayers(personaTwins, human);
+
   const registry = buildOrgRegistry(orgs, competitors, null, pressureOrgs);
   return {
     injects,
@@ -515,7 +581,7 @@ export async function runStorylinePipeline(
     team_charters: allCharters.map(orgCharterWire),
     stakeholders,
     stakeholder_injects: stakeholderInjects,
-    persona_twins: personaTwins,
+    persona_twins: twins,
     orgs: registry,
     countries: buildCountries(registry),
     sop_steps: sopSteps,
@@ -669,9 +735,12 @@ export async function runOrgPagePipeline(
     const pages = await generatePressureOrgPages(pressureOrgs, orgs, crisis, factSheet, onProgress);
     orgPage.orgs = [...(orgPage.orgs || []), ...pages];
     if (extras.stakeholders && extras.stakeholders.length > 0) {
-      const r = buildPressureStatements(pages, extras.stakeholders, orgs);
+      const r = buildPressureStatements(pages, extras.stakeholders, orgs, humanCountries(orgs));
       pressureInjects = r.injects;
-      personaTwins = r.personaTwins;
+      personaTwins = unscopePersonasForCountriesWithoutPlayers(
+        r.personaTwins,
+        humanCountries(orgs),
+      );
     }
   }
 
@@ -795,10 +864,20 @@ export function buildCompileArtifacts(
     }
   }
 
+  // Visibility rule (pressure plan §11), applied again at compile so wizard state saved before
+  // an organisation was switched to AI-operated still comes out right.
+  const human = humanCountries(orgs);
+  unscopeInjectsForCountriesWithoutPlayers(extraInjects, human);
+
   // Defensive: persona twins for every feed-authoring stakeholder (idempotent).
   const countryByOrg = new Map(registry.map((r) => [r.org_key, r.country]));
-  const personas = [...body.personas];
-  personas.push(...ensurePersonaTwins(stakeholders, extraInjects, personas, countryByOrg));
+  const personas = unscopePersonasForCountriesWithoutPlayers([...body.personas], human);
+  personas.push(
+    ...unscopePersonasForCountriesWithoutPlayers(
+      ensurePersonaTwins(stakeholders, extraInjects, personas, countryByOrg),
+      human,
+    ),
+  );
 
   return {
     charters,
