@@ -35,6 +35,7 @@ import { SheetsAppMobile } from './components/SimDevice/SheetsApp/SheetsApp';
 import TrainerSimDashboard from './components/SimDevice/TrainerSimDashboard';
 import DesktopShell from './components/SimDevice/DesktopShell';
 import './style.css';
+import './design/warroom.css';
 
 const ProtectedRoute = ({
   children,

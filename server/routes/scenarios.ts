@@ -183,6 +183,89 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to fetch scenarios' });
     }
 
+    // ?include=summary — per-card counts for the scenario library (spec §2.1). Additive:
+    // without the flag the payload is unchanged. Three grouped queries, aggregated in memory.
+    if (req.query.include === 'summary' && data && data.length > 0) {
+      try {
+        const rows = data as Array<Record<string, unknown>>;
+        const ids = rows.map((r) => r.id as string);
+        const [teamsRes, injectsRes, sessionsRes] = await Promise.all([
+          supabaseAdmin.from('scenario_teams').select('scenario_id').in('scenario_id', ids),
+          supabaseAdmin.from('scenario_injects').select('scenario_id').in('scenario_id', ids),
+          supabaseAdmin
+            .from('sessions')
+            .select('id, scenario_id, status, start_time, created_at')
+            .in('scenario_id', ids),
+        ]);
+        const countBy = (list: Array<{ scenario_id: string }> | null) => {
+          const m = new Map<string, number>();
+          for (const r of list ?? []) m.set(r.scenario_id, (m.get(r.scenario_id) ?? 0) + 1);
+          return m;
+        };
+        const teamCounts = countBy(teamsRes.data as Array<{ scenario_id: string }> | null);
+        const injectCounts = countBy(injectsRes.data as Array<{ scenario_id: string }> | null);
+        const sessionsByScenario = new Map<
+          string,
+          Array<{ id: string; status: string; start_time: string | null; created_at: string }>
+        >();
+        for (const s of (sessionsRes.data ?? []) as Array<{
+          id: string;
+          scenario_id: string;
+          status: string;
+          start_time: string | null;
+          created_at: string;
+        }>) {
+          const arr = sessionsByScenario.get(s.scenario_id) ?? [];
+          arr.push(s);
+          sessionsByScenario.set(s.scenario_id, arr);
+        }
+        const LIVE = new Set(['in_progress', 'paused']);
+        for (const row of rows) {
+          const id = row.id as string;
+          const is = (row.initial_state ?? {}) as Record<string, unknown>;
+          const stakeholders = Array.isArray(is.stakeholders) ? is.stakeholders : [];
+          const personas = Array.isArray(is.npc_personas) ? is.npc_personas : [];
+          const registry = Array.isArray(is.orgs)
+            ? (is.orgs as Array<Record<string, unknown>>)
+            : [];
+          const orgs = registry
+            .map((o) => ({
+              org_key: String(o.org_key ?? ''),
+              name: String(o.display_name ?? o.name ?? o.short_name ?? o.org_key ?? ''),
+              country: (o.country as string | null) ?? null,
+              side: (o.side as 'protagonist' | 'antagonist' | 'pressure') ?? 'protagonist',
+              operation: o.operation as 'players' | 'ai' | undefined,
+              is_primary: Boolean(o.is_primary),
+              kind: o.kind as string | undefined,
+            }))
+            .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
+            .slice(0, 8);
+          const sessions = sessionsByScenario.get(id) ?? [];
+          const live = sessions.find((s) => LIVE.has(s.status));
+          const completed = sessions.filter((s) => s.status === 'completed');
+          const lastAt = sessions
+            .map((s) => s.start_time ?? s.created_at)
+            .filter(Boolean)
+            .sort()
+            .pop();
+          row.summary = {
+            teams: teamCounts.get(id) ?? 0,
+            injects: injectCounts.get(id) ?? 0,
+            contacts: stakeholders.length,
+            crowd: personas.length,
+            orgs,
+            live_session_id: live?.id ?? null,
+            live_session_started_at: live?.start_time ?? null,
+            sessions_run: completed.length,
+            last_session_at: lastAt ?? null,
+          };
+        }
+      } catch (summaryErr) {
+        // Never fail the list because of the summary — the library degrades to client-side counts.
+        logger.warn({ error: summaryErr, userId: user.id }, 'Scenario summary aggregation failed');
+      }
+    }
+
     res.json({ data });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios');

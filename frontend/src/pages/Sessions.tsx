@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import { CreateSessionModal } from '../components/Forms/CreateSessionModal';
@@ -35,7 +35,10 @@ export const Sessions = () => {
   const navigate = useNavigate();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  // `/sessions?create=<scenarioId>` (the library's Launch button) opens the modal preselected.
+  const createParam = searchParams.get('create');
+  const [showCreateModal, setShowCreateModal] = useState(!!createParam);
   const [scenarios, setScenarios] = useState<Array<{ id: string; title: string }>>([]);
 
   useEffect(() => {
@@ -278,8 +281,10 @@ export const Sessions = () => {
       {showCreateModal && (
         <CreateSessionModal
           scenarios={scenarios}
+          initialScenarioId={createParam ?? undefined}
           onClose={() => {
             setShowCreateModal(false);
+            if (createParam) setSearchParams({}, { replace: true });
           }}
           onSuccess={loadSessions}
         />

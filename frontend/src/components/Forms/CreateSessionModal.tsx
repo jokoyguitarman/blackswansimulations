@@ -7,16 +7,23 @@ interface CreateSessionModalProps {
   scenarios: Array<{ id: string; title: string }>;
   onClose: () => void;
   onSuccess: () => void;
+  /** Preselect a scenario (the library's Launch button arrives with `?create=<id>`). */
+  initialScenarioId?: string;
 }
 
-export const CreateSessionModal = ({ scenarios, onClose, onSuccess }: CreateSessionModalProps) => {
+export const CreateSessionModal = ({
+  scenarios,
+  onClose,
+  onSuccess,
+  initialScenarioId,
+}: CreateSessionModalProps) => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const isAdminUser = user?.role === 'admin';
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
-    scenario_id: '',
+    scenario_id: initialScenarioId ?? '',
     scheduled_start_time: '',
     trainer_instructions: '',
   });
