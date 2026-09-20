@@ -315,4 +315,24 @@ Push to `master` after each green slice (Render deploys from master; the fronten
 
 ## 12. Delivery record
 
-_Filled in as slices land — commit hash, date, deviations from this spec._
+All slices landed on `master` on 2026-09-20. Frontend `tsc` + `vite build`, server `tsc`, and eslint were green before each push; each surface was smoke-tested in the browser against the dev stack (`PORT=3001` backend, Vite on 3002) with the trainer account's real library (97 scenarios).
+
+| Slice                | Commit    | Notes                                                                                                                                                                                                                               |
+| -------------------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1+2 Foundation + API | `58361cc` | `warroom.css`, `WarRoomIcon.tsx`, `OriginBadge.tsx`, `Collapsible.tsx`, `scenarioArt.ts`; `GET /api/scenarios?include=summary`; `CreateSessionModal.initialScenarioId`; `Sessions ?create=`.                                        |
+| 3 Library            | `d3f399b` | `Scenarios.tsx` rewritten around the preserved logic.                                                                                                                                                                               |
+| 4 War Room entry     | `f34df92` | render from `if (!isTrainer)` down replaced; everything above untouched.                                                                                                                                                            |
+| 5 Wizard Setup       | `04ef28c` | `progressBar` + `renderStep1` + outer render replaced; `renderBuilding` / `renderBlueprintReview` / `renderStep7` bodies kept (their duplicate `<h2>` headings removed, `military-border` → `wr-node`).                             |
+| 6 Detail             | `ed4095d` | `SocialScenarioEditor` frame + `SectionCard`→`WrSection`; `InjectsSection` phases + origin filter; `InjectCard` → `wr-inj` row with `OriginBadge`; `StakeholdersSection` grouped cast + search; `ScenarioDetailView` frame + index. |
+
+**Deviations from the spec (and why):**
+
+1. **`frontend/src/lib/api.ts` was not edited.** Another agent had the file open with uncommitted work, so the library calls live in a new module `frontend/src/lib/scenarioLibraryApi.ts` (same auth + base-URL conventions). §2.2 as written is superseded by this.
+2. **Inject counts are per-scenario HEAD requests, not one grouped `IN` query.** The grouped select returned 0 for most cards in the live check: PostgREST caps responses at 1000 rows and 97 scenarios × ~150 template injects exceeds it. `injectCountsFor()` counts each scenario with `select('id', { count: 'exact', head: true })` in batches of 12, filtered to `session_id IS NULL`, cached in-process for 60 s and invalidated on inject create/delete. Teams and sessions keep the grouped query with an explicit `.limit(5000)`.
+3. **Clone shipped.** §11 said no endpoint existed; `POST /api/scenarios/:id/clone` does. `cloneScenario()` was added to the library API and a Clone button to the corporate detail bar (confirms, clones, closes; the library reloads on close).
+4. **Team card KPIs on field-ops posters show objectives, not hazards** — hazard counts are not in the list summary (they need `scenario_hazards`); the field detail hero shows real hazard / casualty counts from its own loads.
+5. **Cast grouping was verified by typecheck and code review only.** No scenario in the account has `initial_state.stakeholders` (the E2E multi-org scenarios were cleaned up), so the browser check exercised the empty path; the grouping mirrors the previous list's data flow (`list` → `org_key` → `relationship`).
+6. **Stepper on the War Room entry** shows the path's steps as ghosts once a path is chosen (the study had "…" placeholders only before choosing).
+7. **Wizard "Next" label** reads _Detect footprint & continue_ until the footprint has run for the current text, then _Build the scenario_ — matching the existing two-click behaviour in `goNext`.
+
+**Still open (unchanged from §11):** draft discard from the ledger; a read-only Preview distinct from the editor; the field-ops Scene editor / Location / Research / Compile step bodies; Dashboard, Sessions and AAR pages.
