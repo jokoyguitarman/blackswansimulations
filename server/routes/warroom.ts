@@ -202,8 +202,8 @@ router.post(
         return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
       }
 
-      if (!env.openAiApiKey) {
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) {
+        return res.status(500).json({ error: 'AI provider not configured' });
       }
 
       if (!prompt && !scenario_type) {
@@ -214,7 +214,7 @@ router.post(
 
       const result = await suggestWarroomTeams(
         { prompt, scenario_type, setting, terrain, location },
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       );
       res.json({ data: result });
     } catch (err) {
@@ -257,8 +257,8 @@ router.post(
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
       }
 
-      if (!env.openAiApiKey) {
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) {
+        return res.status(500).json({ error: 'AI provider not configured' });
       }
 
       if (!prompt && !scenario_type) {
@@ -302,7 +302,7 @@ router.post(
             real_bombs_count,
             teams,
           },
-          env.openAiApiKey,
+          env.openAiApiKey ?? '',
           user.id,
         );
         scenarioId = result.scenarioId;
@@ -359,8 +359,8 @@ router.post(
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
       }
 
-      if (!env.openAiApiKey) {
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) {
+        return res.status(500).json({ error: 'AI provider not configured' });
       }
 
       if (!prompt && !scenario_type) {
@@ -412,7 +412,7 @@ router.post(
             real_bombs_count,
             teams,
           },
-          env.openAiApiKey,
+          env.openAiApiKey ?? '',
           user.id,
           onProgress,
         );
@@ -645,8 +645,7 @@ router.post(
       if (await lacksScenarioCredit(user)) {
         return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
       }
-      if (!env.openAiApiKey)
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) return res.status(500).json({ error: 'AI provider not configured' });
 
       const draftId = req.params.id;
       const { data: draft, error: fetchErr } = await supabaseAdmin
@@ -705,7 +704,7 @@ router.post(
 
       const result = await stageParseAndGeocode(
         input,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         undefined,
         validOverride,
         false,
@@ -780,8 +779,7 @@ router.post(
       if (await lacksScenarioCredit(user)) {
         return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
       }
-      if (!env.openAiApiKey)
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) return res.status(500).json({ error: 'AI provider not configured' });
 
       const draftId = req.params.id;
       const { data: draft, error: fetchErr } = await supabaseAdmin
@@ -843,7 +841,7 @@ router.post(
       const { phase1Preview, userTeams } = await stageTeamsAndNarrative(
         geoResult as unknown as Parameters<typeof stageTeamsAndNarrative>[0],
         input as unknown as Parameters<typeof stageTeamsAndNarrative>[1],
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       );
 
       const sceneCtx = (input.scene_context as Record<string, unknown>) ?? null;
@@ -851,7 +849,7 @@ router.post(
       // Auto-enrich scene when rts_scene_id is present
       let enrichmentResult: SceneEnrichmentResult | null = null;
       const rtsSceneId = sceneCtx?.rts_scene_id as string | undefined;
-      if (rtsSceneId && env.openAiApiKey) {
+      if (rtsSceneId && env.aiEnabled) {
         try {
           const { data: sceneRow } = await supabaseAdmin
             .from('rts_scene_configs')
@@ -949,7 +947,7 @@ router.post(
                 pedestrianCount: (sceneRow.pedestrian_count as number) || 120,
                 gameDurationMin: (input.duration_minutes as number) || 60,
               },
-              env.openAiApiKey,
+              env.openAiApiKey ?? '',
               studGrids.length > 0 ? studGrids : undefined,
               buildingPolygon || undefined,
             );
@@ -994,7 +992,7 @@ router.post(
         phase1Preview,
         geoResult as unknown as Parameters<typeof stageResearchDoctrines>[1],
         userTeams,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         undefined,
         sceneCtx,
       );
@@ -1062,8 +1060,7 @@ router.post(
       if (user.role !== 'trainer' && user.role !== 'admin') {
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
       }
-      if (!env.openAiApiKey)
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) return res.status(500).json({ error: 'AI provider not configured' });
 
       const draftId = req.params.id;
       const { data: draft, error: fetchErr } = await supabaseAdmin
@@ -1137,7 +1134,7 @@ router.post(
           userTeams as Parameters<typeof stageGenerateAndPersist>[2],
           doctrines,
           input as unknown as Parameters<typeof stageGenerateAndPersist>[4],
-          env.openAiApiKey,
+          env.openAiApiKey ?? '',
           user.id,
         );
         scenarioId = result.scenarioId;
@@ -1213,8 +1210,8 @@ router.post(
       if (await lacksScenarioCredit(user)) {
         return res.status(402).json(NO_SCENARIO_CREDITS_BODY);
       }
-      if (!env.openAiApiKey) {
-        return res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) {
+        return res.status(500).json({ error: 'AI provider not configured' });
       }
 
       const bodyOverride = req.body.geocode_override as
@@ -1226,7 +1223,7 @@ router.post(
           : null;
       const geoResult = await stageParseAndGeocode(
         req.body,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
         undefined,
         bodyValidOverride,
       );
@@ -1242,14 +1239,14 @@ router.post(
       const { phase1Preview, userTeams } = await stageTeamsAndNarrative(
         geoResult,
         req.body,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       );
 
       const doctrines = await stageResearchDoctrines(
         phase1Preview,
         geoResult,
         userTeams,
-        env.openAiApiKey,
+        env.openAiApiKey ?? '',
       );
 
       res.json({
@@ -1298,12 +1295,12 @@ router.post(
         return;
       }
 
-      if (!env.openAiApiKey) {
-        res.status(500).json({ error: 'OpenAI API key not configured' });
+      if (!env.aiEnabled) {
+        res.status(500).json({ error: 'AI provider not configured' });
         return;
       }
 
-      const openAiKey = env.openAiApiKey;
+      const openAiKey = env.openAiApiKey ?? '';
 
       const { researchDeteriorationPhysics, deteriorationResearchToPromptBlock } =
         await import('../services/warroomResearchService.js');

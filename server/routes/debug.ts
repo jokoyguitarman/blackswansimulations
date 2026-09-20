@@ -499,8 +499,8 @@ router.post('/snap-test', requireAuth, (req, res) => {
 // ── RTS Vision Assessment (GPT-5.1 / GPT-4.1) ─────────────────────────
 router.post('/rts-assess', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
   try {
-    if (!env.openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
 
     const { imageUrl, playerAction, plantedItem, context } = req.body;
@@ -516,7 +516,7 @@ router.post('/rts-assess', requireAuth, json(), async (req: AuthenticatedRequest
         plantedItem: plantedItem || null,
         context: context || 'Bomb squad sweep of building perimeter during crisis exercise.',
       },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     res.json({ data: result });
@@ -529,8 +529,8 @@ router.post('/rts-assess', requireAuth, json(), async (req: AuthenticatedRequest
 // ── RTS Casualty Scene Image Generation (DALL-E 3) ─────────────────────
 router.post('/rts-casualty-image', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
   try {
-    if (!env.openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
 
     const { victims, sceneContext } = req.body;
@@ -540,7 +540,7 @@ router.post('/rts-casualty-image', requireAuth, json(), async (req: Authenticate
 
     const imageUrl = await generateCasualtySceneImage(
       { victims, sceneContext: sceneContext || 'Bombing aftermath near a building entrance' },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     if (!imageUrl) {
@@ -557,8 +557,8 @@ router.post('/rts-casualty-image', requireAuth, json(), async (req: Authenticate
 // ── RTS Individual Victim Image (DALL-E 3) ──────────────────────────────
 router.post('/rts-victim-image', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
   try {
-    if (!env.openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
 
     const { victim, sceneContext } = req.body;
@@ -569,7 +569,7 @@ router.post('/rts-victim-image', requireAuth, json(), async (req: AuthenticatedR
     const imageUrl = await generateVictimImage(
       victim,
       sceneContext || 'Bombing aftermath near a building',
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     if (!imageUrl) {
@@ -586,8 +586,8 @@ router.post('/rts-victim-image', requireAuth, json(), async (req: AuthenticatedR
 // ── RTS Triage Assessment Evaluation (GPT Vision) ───────────────────────
 router.post('/rts-triage-assess', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
   try {
-    if (!env.openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
 
     const { imageUrl, victims, sceneContext } = req.body;
@@ -601,7 +601,7 @@ router.post('/rts-triage-assess', requireAuth, json(), async (req: Authenticated
         victims,
         sceneContext: sceneContext || 'Mass casualty triage exercise at bombing scene.',
       },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     res.json({ data: result });
@@ -614,8 +614,8 @@ router.post('/rts-triage-assess', requireAuth, json(), async (req: Authenticated
 // ── RTS Scene Enrichment (AI casualty + hazard analysis) ────────────────
 router.post('/rts-enrich-scene', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
   try {
-    if (!env.openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
 
     const {
@@ -644,7 +644,7 @@ router.post('/rts-enrich-scene', requireAuth, json(), async (req: AuthenticatedR
         buildingName: buildingName || null,
         pedestrianCount: pedestrianCount || 120,
       },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     res.json({ data: result });
@@ -657,8 +657,8 @@ router.post('/rts-enrich-scene', requireAuth, json(), async (req: AuthenticatedR
 // ── RTS Fire Parameter Calibration (GPT-5.1) ───────────────────────────
 router.post('/rts-fire-params', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
   try {
-    if (!env.openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
 
     const { incidentDescription, buildingName, hazards, wallMaterials, blastRadius } = req.body;
@@ -671,7 +671,7 @@ router.post('/rts-fire-params', requireAuth, json(), async (req: AuthenticatedRe
         wallMaterials: wallMaterials || [],
         blastRadius: blastRadius || 20,
       },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     res.json({ data: result });

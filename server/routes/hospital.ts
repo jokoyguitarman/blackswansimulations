@@ -203,7 +203,7 @@ router.post('/ask', requireAuth, validate(askSchema), async (req: AuthenticatedR
         capacityAvailable,
         question: content,
       },
-      env.openAiApiKey,
+      env.openAiApiKey ?? '',
     );
 
     return res.json({ data: { answer } });

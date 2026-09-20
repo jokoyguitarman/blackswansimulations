@@ -1527,7 +1527,7 @@ router.patch(
       }
 
       // Checkpoint 4: When session becomes in_progress (just started), persist initial escalation factors and pathways
-      if (status === 'in_progress' && !session.start_time && data && env.openAiApiKey) {
+      if (status === 'in_progress' && !session.start_time && data && env.aiEnabled) {
         try {
           const scenarioId = (data as { scenario_id?: string }).scenario_id;
           const currentState = ((data as { current_state?: Record<string, unknown> })
@@ -1558,7 +1558,7 @@ router.patch(
             currentState,
             objectives,
             [],
-            env.openAiApiKey,
+            env.openAiApiKey ?? '',
           );
           const insiderKnowledge = (scenarioRow?.data as { insider_knowledge?: unknown } | null)
             ?.insider_knowledge as Record<string, unknown> | undefined;
@@ -1617,7 +1617,9 @@ router.patch(
       if (status && status !== previousStatus) {
         void import('../services/teammates/teammateBotService.js')
           .then(({ getTeammateBotService }) => getTeammateBotService().onBotsChanged(id))
-          .catch((botErr) => logger.debug({ err: botErr, sessionId: id }, 'teammate bots hook failed'));
+          .catch((botErr) =>
+            logger.debug({ err: botErr, sessionId: id }, 'teammate bots hook failed'),
+          );
       }
 
       logger.info({ sessionId: id, status, userId: user.id }, 'Session updated');
