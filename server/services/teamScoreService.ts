@@ -36,6 +36,8 @@ export interface TeamTaskStatus {
 export interface TeamMemberSummary {
   user_id: string;
   display_name: string;
+  /** Pooled AI teammate account (docs/ai-teammate-bots-plan.md). Display-only. */
+  is_bot?: boolean;
   graded_items: number;
   avg_overall: number | null;
   avg_role_fit: number | null;
@@ -193,13 +195,15 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
   for (const p of participantsRes.data || []) allPlayerIds.add(String(p.user_id));
   for (const pid of teamByPlayer.keys()) allPlayerIds.add(pid);
   const nameById = new Map<string, string>();
+  const botIds = new Set<string>();
   if (allPlayerIds.size > 0) {
     const { data: profiles } = await supabaseAdmin
       .from('user_profiles')
-      .select('id, full_name')
+      .select('id, full_name, is_bot')
       .in('id', Array.from(allPlayerIds));
     for (const pr of profiles || []) {
       nameById.set(String(pr.id), String(pr.full_name || 'Unknown'));
+      if ((pr as { is_bot?: boolean }).is_bot) botIds.add(String(pr.id));
     }
   }
 
@@ -339,6 +343,7 @@ export async function computeTeamScores(sessionId: string): Promise<TeamScoreRep
       return {
         user_id: pid,
         display_name: nameById.get(pid) || 'Unknown',
+        ...(botIds.has(pid) ? { is_bot: true } : {}),
         graded_items: acc?.overallCount || 0,
         avg_overall:
           acc && acc.overallCount > 0 ? Math.round(acc.overallSum / acc.overallCount) : null,

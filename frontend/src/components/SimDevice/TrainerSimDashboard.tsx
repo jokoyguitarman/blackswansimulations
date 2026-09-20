@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase';
 import { AdversaryConsole } from './AdversaryConsole';
 import { TeammateConsole } from './TeammateConsole';
 import { MetricSparkline } from './MetricSparkline';
+import { BotBadge } from '../UI/BotBadge';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -427,6 +428,7 @@ interface TeamScoreRow {
   members: Array<{
     user_id: string;
     display_name: string;
+    is_bot?: boolean;
     graded_items: number;
     avg_overall: number | null;
     avg_role_fit: number | null;
@@ -2536,7 +2538,10 @@ export default function TrainerSimDashboard() {
                                 key={m.user_id}
                                 className="flex justify-between text-[10px] py-0.5"
                               >
-                                <span style={{ color: '#4B5563' }}>{m.display_name}</span>
+                                <span style={{ color: '#4B5563' }}>
+                                  {m.display_name}
+                                  {m.is_bot && <BotBadge className="ml-1" />}
+                                </span>
                                 <span style={{ color: '#64748b' }}>
                                   {m.graded_items > 0 && m.avg_overall != null ? (
                                     <>

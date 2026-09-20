@@ -114,6 +114,8 @@ export interface SocialMediaAARData {
     }>;
     members: Array<{
       display_name: string;
+      /** Pooled AI teammate account (docs/ai-teammate-bots-plan.md). */
+      is_bot?: boolean;
       graded_items: number;
       avg_overall: number | null;
       avg_role_fit: number | null;
@@ -489,6 +491,7 @@ export async function buildSocialMediaAARData(sessionId: string): Promise<Social
         })),
         members: team.members.map((m) => ({
           display_name: m.display_name,
+          ...(m.is_bot ? { is_bot: true } : {}),
           graded_items: m.graded_items,
           avg_overall: m.avg_overall,
           avg_role_fit: m.avg_role_fit,

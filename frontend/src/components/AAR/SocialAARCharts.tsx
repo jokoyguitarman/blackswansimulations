@@ -1,4 +1,5 @@
 import React from 'react';
+import { BotBadge } from '../UI/BotBadge';
 
 /**
  * Dependency-free SVG chart kit + section renderers for the social-crisis
@@ -824,6 +825,7 @@ function SingleTeamBlock({ data }: { data: Dict }) {
               >
                 <span className="text-ink font-semibold">
                   {String(m.display_name || 'Unknown')}
+                  {Boolean(m.is_bot) && <BotBadge className="ml-1.5" />}
                 </span>
                 <span className="text-muted">
                   {m.avg_overall != null ? (

@@ -40,6 +40,24 @@ INJECT_SCHEDULER_INTERVAL_MS=30000
 # Falls back to live OSM automatically if disabled or cache tables are empty.
 ENABLE_LOCAL_OSM_SINGAPORE=false
 
+# AI teammate bots for social-crisis sessions (docs/ai-teammate-bots-plan.md).
+# Default: ON in development, OFF in production unless set to 'true'. When off, the
+# lobby card and trainer console are hidden and the reconciler stays idle.
+ENABLE_TEAMMATE_BOTS=true
+# Shared password for the pooled bot accounts (created via the Admin API on first use).
+# TEAMMATE_BOT_PASSWORD=change-me-in-production
+# Guard rails: bots per session, LLM calls per session per hour, models per tier.
+# TEAMMATE_BOTS_MAX_PER_SESSION=8
+# TEAMMATE_BOTS_MAX_LLM_PER_HOUR=400
+# TEAMMATE_BOTS_MODEL_FAST=gpt-4o-mini
+# TEAMMATE_BOTS_MODEL_STRONG=gpt-5.2
+# Per-phase behaviour switches for backtracking (set to 'off' to disable):
+# TEAMMATE_BOTS_PLANNER / TEAMMATE_BOTS_COORDINATION / TEAMMATE_BOTS_REACTIVE / TEAMMATE_BOTS_CRITIQUE
+# Use the game's own grader as the bots' critic (inflates scores vs humans):
+# TEAMMATE_BOTS_PREGRADE=false
+# Where the bot runtime calls this API (defaults to loopback on PORT):
+# TEAMMATE_BOTS_API_BASE=http://127.0.0.1:3001
+
 # Security (Generate secure random strings for production)
 # Run: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 SESSION_SECRET=change-this-to-a-secure-random-string
