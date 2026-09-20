@@ -62,8 +62,9 @@ const PRESSURE_KINDS: readonly PressureKind[] = [
   'community_group',
   'political',
 ];
+// "ministry" is a regulator signal, not a political one; "minister" (the person) is.
 const POLITICAL_RE =
-  /\b(minister|ministry|parliament|mp\b|senator|government|opposition|election|policy ?makers?)\b/i;
+  /\b(minister|parliament|mp|senator|opposition|election|policy ?makers?|lawmakers?)\b/i;
 
 /** Deterministic clean-up of the model's proposal (also used when the AI is unavailable). */
 export function guardRailFootprint(
