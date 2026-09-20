@@ -2,7 +2,9 @@
 
 **Owner:** generator agent (end to end: generation + runtime + UI + AAR data), per
 `docs/executive-decisions-organic-handover.md` (2026-09-20).
-**Status:** v1 plan reviewed 2026-09-20; implementation in progress on `master`.
+**Status:** v1 plan reviewed 2026-09-20; **P0–P6 implemented and pushed to `master` the same day**
+(commits 72838b6 … see §11). Migration 205 written, **not yet applied** — hand to the runtime agent;
+everything degrades gracefully until then (§9).
 **Companion:** `docs/pressure-organisations-plan.md` (its runtime side is now also mine, §0 there).
 
 ---
@@ -245,6 +247,26 @@ Existing: `scripts/verify-multi-org-model.ts` (extended), `scripts/e2e-multi-org
 - No player-facing "decision detected" UI, no broadcast to the org.
 
 ---
+
+## 11. Delivery record (2026-09-20)
+
+| Slice                                                                                        | Commit      | Verification                                                                      |
+| -------------------------------------------------------------------------------------------- | ----------- | --------------------------------------------------------------------------------- |
+| P0 retire + P1 contract v3.2 + migration 205 + P2 cast completeness                          | `72838b6`   | `npm test`, `scripts/verify-multi-org-model.ts` 58/58                             |
+| P3 footprint + pressure orgs (generator) + AI-operated offices + wizard/editor               | `908de94`   | frontend `tsc` + eslint                                                           |
+| P4 pressure engine + engine ticker + seeding + console                                       | `f5d842f`   | server `tsc` + eslint                                                             |
+| P5 organic decision engine (detection, planner, knowledge, cascade, trainer card, AAR)       | `1849dd5`   | server + frontend `tsc` + eslint                                                  |
+| P6 unit tests (8 files, 67 new tests)                                                        | `825d800`   | `npm test` 120/120                                                                |
+| Live E2E (`scripts/e2e-multi-org-generate.ts`, Sigma SG + SLM MY AI-operated + MOHR + union) | this commit | 52/52 checks, 572 s, contract §9 validation on 202 timed / 15 conditional injects |
+
+**Open for the runtime agent:** apply `migrations/205_pressure_and_organic_decisions.sql`;
+acknowledge contract v3.2 (§13 of the contract); runtime gaps R1–R3 (handover §10.5) — the engine
+builds against the workarounds noted there (recipients from `to_addresses`, one mail per carrier,
+found-out messages carry the decision summary in the body).
+
+**Not yet exercised live:** a full session run of the detection → cascade path (needs a live
+session with an Executive player); unit tests cover every pure rule, and the IO layer degrades to
+in-memory state pre-205. `scripts/e2e-exec-decisions.ts` (plan §7) is the follow-on.
 
 ## 10. Self-review notes (2026-09-20)
 

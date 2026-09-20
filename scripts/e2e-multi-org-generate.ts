@@ -21,6 +21,7 @@ import {
   crisisContextFrom,
   runNpcsPipeline,
   runStorylinePipeline,
+  runOrgPagePipeline,
   buildCompileArtifacts,
   chartersFromWire,
 } from '../server/services/multiOrgPipeline.js';
@@ -28,6 +29,7 @@ import {
   generateConvergenceLayer,
   generateIntelDependencies,
   assemblePayload,
+  normalizeOrgPages,
   type SocialInject,
 } from '../server/services/socialCrisisGeneratorService.js';
 import {
@@ -107,6 +109,8 @@ const organisations = SINGLE
         city: 'Johor Bahru',
         kind: 'office' as const,
         is_primary: false,
+        // Pressure plan §12: nobody plays the Malaysian office — its page runs `aligned`.
+        operation: 'ai' as const,
         team_roster: [
           { team_name: 'Communications', is_public_voice: true },
           { team_name: 'Stakeholder Engagement' },
@@ -120,6 +124,24 @@ const organisations = SINGLE
       },
     ];
 const competitors = SINGLE ? [] : [{ name: 'Swift Freight', country: 'Malaysia' }];
+// Pressure organisations (pressure plan §5.1): a statutory regulator and an advocacy union.
+const pressureOrganisations = SINGLE
+  ? []
+  : [
+      {
+        display_name: 'Ministry of Human Resources Malaysia',
+        kind: 'regulator' as const,
+        country: 'Malaysia',
+        city: 'Putrajaya',
+      },
+      {
+        display_name: 'Transport Workers Union of Malaysia',
+        kind: 'union' as const,
+        country: 'Malaysia',
+        city: 'Johor Bahru',
+        wants: 'Consultation before any roster change and payment of all outstanding overtime',
+      },
+    ];
 
 async function main() {
   if (VALIDATE_FILE) {
@@ -155,7 +177,7 @@ async function main() {
   console.log(
     `\n=== Multi-org E2E (${SINGLE ? 'single-org regression' : 'two orgs, two countries'}) ===\n`,
   );
-  const orgsResult = resolveOrganisations(organisations, competitors);
+  const orgsResult = resolveOrganisations(organisations, competitors, pressureOrganisations);
   if (!orgsResult || !orgsResult.ok)
     throw new Error(
       `organisations invalid: ${orgsResult && !orgsResult.ok ? orgsResult.message : 'null'}`,
@@ -192,14 +214,24 @@ async function main() {
       `${n} (key ${npc.personas.filter((p) => p.country === c && p.tier === 'key').length})`,
     );
   }
+  // Footprint countries without a protagonist org contribute an UNSCOPED spillover crowd.
+  const spillover = npc.personas.filter((p) => !p.country);
   check(
-    'every persona carries a country',
-    npc.personas.every((p) => !!p.country),
+    'org-country personas carry a country; spillover crowd is unscoped',
+    npc.personas.filter((p) => p.country).every((p) => countries.includes(p.country!)),
+    `${spillover.length} unscoped spillover personas`,
   );
   check(
     'handles unique across countries',
     new Set(npc.personas.map((p) => p.handle)).size === npc.personas.length,
     `${npc.personas.length} personas`,
+  );
+  check(
+    'footprint inferred (countries with roles, labour signal)',
+    npc.footprint.countries.length >= countries.length && npc.footprint.labour_signal === true,
+    npc.footprint.countries.map((c) => `${c.name}:${c.role}`).join(', ') +
+      ` | implied: ${npc.footprint.implied_organisations.map((o) => o.display_name).join(', ') || '—'}` +
+      ` | pressure: ${npc.footprint.pressure_organisations.map((p) => `${p.kind}:${p.display_name}`).join(', ') || '—'}`,
   );
 
   // 2. Storyline pipeline (charters, storylines, stakeholders, backbone)
@@ -451,17 +483,108 @@ async function main() {
     `${(story.sop_steps || []).length} steps`,
   );
   check('charters resolved for all teams', charters.length === expectedTeams.length);
+  if (!SINGLE) {
+    check(
+      'pressure orgs anchored to spokespersons (linked both ways)',
+      story.pressure_organisations.length === pressureOrganisations.length &&
+        story.pressure_organisations.every((p) => {
+          const sp = stks.find((s) => s.id === p.spokesperson_stakeholder_id);
+          return !!sp && sp.page_org_key === p.org_key && sp.grievance !== '';
+        }),
+      story.pressure_organisations
+        .map((p) => `${p.org_key} → ${p.spokesperson_stakeholder_id}`)
+        .join(', '),
+    );
+    check(
+      'regulator spokesperson is none/low persuadability',
+      story.pressure_organisations
+        .filter((p) => p.kind === 'regulator')
+        .every((p) => {
+          const sp = stks.find((s) => s.id === p.spokesperson_stakeholder_id);
+          return !!sp && (sp.persuadability === 'none' || sp.persuadability === 'low');
+        }),
+    );
+  }
+
+  // 4b. Org pages: protagonist pages, AI-operated office (aligned), pressure pages + statements
+  console.log(`\n[4b] org pages + pressure pages (${stamp()})`);
+  const pageResult = await runOrgPagePipeline(
+    orgsResult,
+    CRISIS,
+    undefined,
+    true,
+    () => undefined,
+    { stakeholders: stks, factSheet: npc.factSheet, crisis },
+  );
+  const pages = normalizeOrgPages(pageResult.orgPage);
+  check(
+    'every protagonist has a page; pressure orgs have AI pages with posture',
+    orgs.every((o) => pages.some((p) => p.org_key === o.org_key && p.role === 'protagonist')) &&
+      orgsResult.pressureOrgs.every((p) =>
+        pages.some(
+          (pg) =>
+            pg.org_key === p.org_key &&
+            pg.role === 'pressure' &&
+            pg.control_mode === 'ai' &&
+            !!pg.posture &&
+            pg.posture.demands.length > 0 &&
+            pg.posture.escalation_ladder.length >= 2,
+        ),
+      ),
+    pages
+      .map(
+        (p) =>
+          `${p.org_key}[${p.role}/${p.control_mode}${p.posture ? `/${p.posture.register}` : ''}]`,
+      )
+      .join(' '),
+  );
+  if (!SINGLE) {
+    const slm = pages.find((p) => p.org_key === orgs[1].org_key);
+    check(
+      'AI-operated office page is ai-controlled with an aligned posture',
+      !!slm &&
+        slm.control_mode === 'ai' &&
+        slm.operation === 'ai' &&
+        slm.posture?.register === 'aligned',
+    );
+    check(
+      'pressure statements: page identity as author, spokesperson as stakeholder, >= T+15',
+      pageResult.pressure_injects.length >= orgsResult.pressureOrgs.length * 2 &&
+        pageResult.pressure_injects.every((i) => {
+          const dc = i.delivery_config;
+          const pg = pages.find((p) => p.org_key === dc.page_org_key);
+          return (
+            !!pg &&
+            dc.author_type === 'official_account' &&
+            (dc.author_handle === pg.x_twitter?.page_handle ||
+              dc.author_handle === pg.facebook?.page_handle) &&
+            !!dc.stakeholder_id &&
+            (i.trigger_time_minutes ?? 0) >= 15
+          );
+        }),
+      `${pageResult.pressure_injects.length} statements`,
+    );
+    check(
+      'registry carries pressure entries with spokesperson + AI operation',
+      pageResult.orgs.some((o) => o.side === 'pressure' && !!o.spokesperson_stakeholder_id) &&
+        pageResult.orgs.some((o) => o.side === 'protagonist' && o.operation === 'ai'),
+    );
+  }
 
   // 5. Compile artefacts + payload + validation
   console.log(`\n[5] compile artefacts + validation (${stamp()})`);
-  const stakeholderInjects: SocialInject[] = [...stkInjects];
+  const stakeholderInjects: SocialInject[] = [...stkInjects, ...pageResult.pressure_injects];
+  personas.push(
+    ...pageResult.persona_twins.filter((t) => !personas.some((p) => p.handle === t.handle)),
+  );
   const artifacts = buildCompileArtifacts(orgsResult, {
     team_charters: story.team_charters,
     stakeholders: stks,
     stakeholder_injects: stakeholderInjects,
     personas,
-    org_page: null,
+    org_page: pageResult.orgPage,
     sop_steps: story.sop_steps,
+    decision_context: story.decision_context,
   });
   const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
   sop.steps = [...sop.steps, ...artifacts.sop_steps];
@@ -481,7 +604,7 @@ async function main() {
     undefined,
     story.injects,
     conv.dimensionLabels || null,
-    null,
+    pageResult.orgPage,
     'Sigma Logistics',
     null,
     {
@@ -490,6 +613,7 @@ async function main() {
       country: artifacts.primaryCountry,
       stakeholders: artifacts.stakeholders,
       extraInjects: artifacts.extraInjects,
+      decision_context: artifacts.decision_context,
     },
   );
   (payload.scenario.initial_state as Record<string, unknown>).strategic_benchmarks =

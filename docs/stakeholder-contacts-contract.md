@@ -1,9 +1,11 @@
 # Stakeholder Contacts — generation ↔ runtime contract
 
-Version 3.1 — 2026-09-20 — **status: accepted by both agents. §7A (menu-based decision layer)
-RETIRED by the product owner on 2026-09-20 and replaced by the organic executive-decision model,
-whose specification and ownership live in `docs/executive-decisions-organic-handover.md`**
-(changes in §13). Runtime delivery order lives in `docs/stakeholder-runtime-plan.md`.
+Version 3.2 — 2026-09-20 — **status: v3.1 accepted by both agents; v3.2 is the ADDITIVE set the
+generator agent was authorised to apply for the organic executive-decision model and pressure
+organisations (handover §9 / §10.2, product owner 2026-09-20) — runtime agent to acknowledge**
+(changes in §13). §7A (menu-based decision layer) is RETIRED; the organic model is specified in
+`docs/executive-decisions-organic-plan.md`. Runtime delivery order lives in
+`docs/stakeholder-runtime-plan.md`.
 
 Two agents work in parallel on this feature:
 
@@ -728,6 +730,42 @@ removals or semantic changes to the visibility predicate or the persuadability t
 agents to acknowledge before either merges.
 
 ## 13. Changelog
+
+**v3.2 (2026-09-20)** — additive fields for the organic executive-decision model and pressure
+organisations (applied by the generator agent per handover §9; `server/lib/stakeholderContract.ts`
+is the source of truth, all fields optional, `passthrough` preserved):
+
+- `stakeholders[]`: `kind: 'person' | 'group'` (a group is a distribution list; mail to it reaches
+  `members[]`), `tier: 'principal' | 'roster'` (roster = lightweight workforce entry: sampled
+  replies, never authors injects — `MO-CAST-007`), `site_key`, `sensitivities: string[]`
+  (plain-language: which executive decisions this person reacts to), `page_org_key` (reverse link
+  from a pressure page's spokesperson to `orgs[].org_key`).
+- `orgs[]`: `side` gains `'pressure'`; `kind` gains `union | regulator | community_group |
+political` (`ngo` already existed); `spokesperson_stakeholder_id` (required when
+  `side === 'pressure'`); `operation: 'players' | 'ai'` on protagonists (AI-operated office: page
+  run by the pressure engine in the `aligned` register, carriers answer as characters, teams
+  unstaffed → unscored); `sites[]` (`site_key`, `name`, `country`, `city`).
+- `org_page.orgs[]`: `role` gains `'pressure'` (always `control_mode: 'ai'` unless trainer-seized;
+  `normalizeOrgPages` enforces it); `posture` (`register: statutory | advocacy | grassroots |
+political | aligned`, `mandate`, `demands[]`, `escalation_ladder[]`, `targets_org_keys[]`,
+  `stand_down_signals[]`); `spokesperson_stakeholder_id`; `kind`; `operation`.
+- `delivery_config`: `page_org_key` — **page-authored inject**: author fields carry the PAGE
+  identity (`author_handle` = page handle, `author_type: 'official_account'`), `stakeholder_id` is
+  the spokesperson and governs reconsideration (exception to §4.2, validated as `MO-PRS-005`,
+  never before T+15 — `MO-PRS-006`); `decision_id` (runtime cascade linkage);
+  `parent_inject_key` (second-order chaining with the generic `inject_published:*`).
+- `sop_definitions.steps[]`: `owner_function`, `trigger: 'decision_notification'`,
+  `must_precede[]` on the cast-generated notification steps (graded when a formal notice is
+  detected).
+- Runtime tables (migration 205): `sim_org_pages.role` CHECK widened + `spokesperson_stakeholder_id
+/ register / kind / operation`; `session_decisions.detail JSONB / status`; `decision_knowledge`;
+  `decision_events`; `session_events.event_type` += `decision_detected, decision_propagated,
+decision_dismissed, decision_reversed, pressure_post, pressure_reply, pressure_stand_down`.
+  Every reader degrades to the pre-205 shape with a one-time loud log (organic plan §9).
+- Runtime touch points edited by the generator agent (handover §3): email send route, chat
+  message route, `seedOrgPages`, `groupOrgPages`, `index.ts` boot/mount, `env.ts` flag, AAR data,
+  trainer dashboard card, `AdversaryConsole`, `PageAssignmentModal`. `injectSchedulerService.ts`
+  and `sessions.ts` untouched.
 
 **v3.1 (2026-09-20)** — product owner retires the menu-based decision layer.
 
