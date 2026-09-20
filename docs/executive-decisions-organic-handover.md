@@ -729,23 +729,38 @@ render:
 Scope note for the product owner: NPC effects live **within a session**. Stakeholders reset per
 session; "the union remembers last quarter" would be a separate feature.
 
-### 10.5 Runtime gaps on my side (owner: runtime agent; status: open — I fix these, not you)
+### 10.5 Runtime gaps on my side (owner: runtime agent; status: DELIVERED 2026-09-20)
 
-- **R1 — multi-recipient stakeholder mail.** `npcEmailReplyService.triggerNPCEmailReply` matches
-  only `to_addresses[0]`; an HR email to 20 roster members is logged against one and the other 19
-  never "know". Fix: resolve **every** recipient to a stakeholder, `appendConversation` for each,
-  expand `kind: 'group'` to its members, run one coalesced plan per email, and reply from a bounded
-  sample (≤ 3; principals always, roster sampled by disposition). Until this lands, tell your
-  engine to treat any recipient list as fully notified using the email's `to_addresses` rather than
-  the conversation log.
-- **R2 — workbook and Mail autocomplete** for `kind: 'group'` and `tier: 'roster'` (Roster sheet,
-  "(distribution list)" badge, group expansion on send). Lands with §10.2.
-- **R3 — decision context in NPC replies.** `handlePlayerMessage` builds the character prompt from
-  the record and the log only, so the plant manager cannot know about the closure unless it is in
-  the message he received. I will add an optional `context?: string` to `PlayerMessageCtx` (appended
-  to the character prompt) and pass through to `decideAndReply`; supply "what this person knows
-  about the decision and how they feel about it" from your knowledge state. Until then, the grievance
-  override (§6.3) is the only way your engine influences a reply.
+- **R1 — multi-recipient stakeholder mail — done.** `triggerNPCEmailReply` now resolves **every**
+  recipient (`server/lib/stakeholderRecipients.ts` → `resolveStakeholderRecipients`: addresses →
+  stakeholders, `kind: 'group'` expanded to `members`, deduplicated), logs all of them as contacted
+  (`stakeholderReplyService.appendPlayerMessage` — no model call), and answers from a bounded
+  sample (`pickResponders`: ≤ 3 replies per email; the primary first, then principals in recipient
+  order, then ≤ 2 roster voices chosen by a stable per-email hash so replays match; replies are
+  staggered 25 s apart). A distribution-list primary never answers itself. The conversation log is
+  therefore authoritative again: `wasContacted(memberId)` and `wasContacted(groupId)` both hold
+  after one mass notice — drop the `to_addresses` workaround.
+- **R2 — workbook and Mail autocomplete — done.** `GET /social/contacts/session/:id` puts
+  `tier: 'roster'` rows on their own **Roster** sheet (`relationship: 'roster'`, sorted by
+  `site_key`), keeps principals on the relationship sheets, and the Sheets app badges
+  `kind: 'group'` rows as "(distribution list · N members)" with a Site column on the roster sheet.
+  `GET /social/emails/contacts/session/:id` entries carry `kind: 'group'` + `member_count` and
+  `tier: 'roster'`; group names are suffixed "(distribution list)" when the name lacks it.
+  `PLAYER_VISIBLE_FIELDS` += `kind, members, tier, site_key, page_org_key`; `sensitivities` stays
+  hidden (tested).
+- **R3 — decision context in NPC replies — done.** Two ways in, both merged by
+  `stakeholderReplyService.resolveContext` and appended to the character prompt (live replies via
+  `handlePlayerMessage` **and** the fire-time judge in `decideAtFireTime`):
+  - `PlayerMessageCtx.context?: string` for direct callers;
+  - `registerStakeholderContextProvider((sessionId, stakeholder) => Promise<string | null>)` —
+    register once at boot next to your grievance resolver; return "what this person currently
+    knows and feels about recent events" from your knowledge state, or `null`.
+    Roster-tier stakeholders also get a prompt line ("one member of a larger workforce, reply
+    briefly and personally, do not negotiate").
+- **Also fixed (migration 206):** `scenario_injects.generation_source` CHECK now admits
+  `stakeholder_modified` (my reconsideration `modify` copies were being rejected),
+  `decision_consequence`, `sentiment_negative`, `transport_outcome`. Your `decision_response`
+  reuse was the right call.
 
 ### 10.6 Acceptance additions (extend §7)
 

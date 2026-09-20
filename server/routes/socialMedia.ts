@@ -1469,15 +1469,34 @@ router.get('/contacts/session/:sessionId', requireAuth, async (req: Authenticate
       }
     }
 
-    const sheets = RELATIONSHIP_SHEETS.map(([relationship, label]) => ({
-      relationship,
-      label,
-      rows: rows
-        .filter((r) => r.relationship === relationship)
-        .sort(
-          (a, b) => a.organisation.localeCompare(b.organisation) || a.name.localeCompare(b.name),
-        ),
-    })).filter((sheet) => sheet.rows.length > 0);
+    // Contract v3.2: rank-and-file (`tier: 'roster'`) get their own sheet so the relationship
+    // sheets stay readable; distribution lists (`kind: 'group'`) sit in their relationship sheet
+    // and are badged client-side.
+    const isRoster = (r: Row) => (r as { tier?: string }).tier === 'roster';
+    const bySite = (a: Row, b: Row) =>
+      String((a as { site_key?: string }).site_key ?? '').localeCompare(
+        String((b as { site_key?: string }).site_key ?? ''),
+      );
+    const sheets: Array<{ relationship: string; label: string; rows: Row[] }> =
+      RELATIONSHIP_SHEETS.map(([relationship, label]) => ({
+        relationship: relationship as string,
+        label,
+        rows: rows
+          .filter((r) => r.relationship === relationship && !isRoster(r))
+          .sort(
+            (a, b) => a.organisation.localeCompare(b.organisation) || a.name.localeCompare(b.name),
+          ),
+      })).filter((sheet) => sheet.rows.length > 0);
+    const rosterRows = rows
+      .filter(isRoster)
+      .sort(
+        (a, b) =>
+          bySite(a, b) ||
+          a.organisation.localeCompare(b.organisation) ||
+          a.name.localeCompare(b.name),
+      );
+    if (rosterRows.length > 0)
+      sheets.push({ relationship: 'roster', label: 'Roster', rows: rosterRows });
 
     const org = identity?.org_key
       ? (() => {
@@ -1582,6 +1601,11 @@ router.get(
         name: string;
         source: string;
         team_name?: string | null;
+        /** Contract v3.2: distribution list (mail reaches `member_count` people). */
+        kind?: 'group';
+        member_count?: number;
+        /** Contract v3.2: rank-and-file workforce entry. */
+        tier?: 'roster';
       }> = [];
       const seenAddresses = new Set<string>();
 
@@ -1643,11 +1667,20 @@ router.get(
               const addr = s.email.toLowerCase();
               if (seenAddresses.has(addr)) continue;
               seenAddresses.add(addr);
+              // Contract v3.2: a distribution list is visibly a list (mail to it reaches every
+              // member); roster entries are flagged so the compose UI can group them.
+              const isGroup = s.kind === 'group';
+              const badged =
+                isGroup && !/distribution list/i.test(s.name)
+                  ? `${s.name} (distribution list)`
+                  : s.name;
               contacts.push({
                 address: s.email,
-                name: s.name,
+                name: badged,
                 source: 'stakeholder',
                 team_name: s.owning_team,
+                ...(isGroup ? { kind: 'group', member_count: (s.members ?? []).length } : {}),
+                ...(s.tier === 'roster' ? { tier: 'roster' } : {}),
               });
             }
           }

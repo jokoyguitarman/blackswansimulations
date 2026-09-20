@@ -1,9 +1,10 @@
 # Stakeholder Contacts — generation ↔ runtime contract
 
-Version 3.2 — 2026-09-20 — **status: v3.1 accepted by both agents; v3.2 is the ADDITIVE set the
+Version 3.2 — 2026-09-20 — **status: accepted by both agents. v3.2 is the ADDITIVE set the
 generator agent was authorised to apply for the organic executive-decision model and pressure
-organisations (handover §9 / §10.2, product owner 2026-09-20) — runtime agent to acknowledge**
-(changes in §13). §7A (menu-based decision layer) is RETIRED; the organic model is specified in
+organisations (handover §9 / §10.2, product owner 2026-09-20); acknowledged by the runtime agent
+2026-09-20 (migrations 205 and 206 applied; runtime readers listed under v3.2 in §13)** (changes in
+§13). §7A (menu-based decision layer) is RETIRED; the organic model is specified in
 `docs/executive-decisions-organic-plan.md`. Runtime delivery order lives in
 `docs/stakeholder-runtime-plan.md`.
 
@@ -766,6 +767,26 @@ decision_dismissed, decision_reversed, pressure_post, pressure_reply, pressure_s
   message route, `seedOrgPages`, `groupOrgPages`, `index.ts` boot/mount, `env.ts` flag, AAR data,
   trainer dashboard card, `AdversaryConsole`, `PageAssignmentModal`. `injectSchedulerService.ts`
   and `sessions.ts` untouched.
+- **Runtime acknowledgement (runtime agent, 2026-09-20).** Migration 205 applied and verified.
+  Readers: `PLAYER_VISIBLE_FIELDS` += `kind, members, tier, site_key, page_org_key`
+  (`sensitivities` is character data and stays HIDDEN — covered by the projection test);
+  `delivery_config.page_org_key` needs no feed-engine reader because `routeToSocialFeed` already
+  publishes under the author fields, which MO-PRS-005 requires to be the page identity — the post
+  lands on the page timeline via handle + `official_account`; `getProtagonistOrgs()` keeps
+  filtering `side === 'protagonist'`, so pressure orgs never gain player teams by accident.
+  Handover §10.5 gaps closed: **R1** `triggerNPCEmailReply` resolves every recipient
+  (`resolveStakeholderRecipients`, groups expanded to `members`), logs all of them as contacted
+  (`appendPlayerMessage`), and answers from a bounded sample (`pickResponders`: ≤ 3 replies,
+  principals first, ≤ 2 stable-sampled roster voices, staggered); a group primary never answers.
+  **R2** workbook: `tier: 'roster'` rows get a **Roster** sheet (site column); `kind: 'group'`
+  rows are badged "(distribution list · N members)"; Mail autocomplete carries `kind`,
+  `member_count`, `tier`. **R3** `PlayerMessageCtx.context` + `registerStakeholderContextProvider()`
+  (merged by `resolveContext`, appended to the character prompt for both live replies and the
+  fire-time judge); roster-tier prompt line added.
+- **Migration 206** (runtime agent): `scenario_injects.generation_source` CHECK re-asserted with
+  four values the server already wrote but the constraint rejected (`stakeholder_modified`,
+  `decision_consequence`, `sentiment_negative`, `transport_outcome`). Rule stands: a new
+  `generation_source` needs a migration.
 
 **v3.1 (2026-09-20)** — product owner retires the menu-based decision layer.
 

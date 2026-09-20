@@ -606,17 +606,23 @@ export async function decideAtFireTime(
 
     let verdict = await getLatestVerdict(session.id, inject.id);
     if (!verdict) {
-      const { getConversationLog, buildCharacterPrompt } =
+      const { getConversationLog, buildCharacterPrompt, resolveContext } =
         await import('./stakeholderReplyService.js');
       const log = await getConversationLog(session.id, stakeholderId);
       if (log.some((r) => r.direction === 'player')) {
         const snapshot = await getScenarioSnapshot(session.scenario_id);
-        const prompt = buildCharacterPrompt(stakeholder, log, {
-          description: snapshot?.description ?? '',
-          org_name: String(snapshot?.initial_state.org_name ?? ''),
-          fact_sheet:
-            (snapshot?.initial_state.fact_sheet as Record<string, unknown> | undefined) ?? null,
-        });
+        const context = await resolveContext(session.id, stakeholder);
+        const prompt = buildCharacterPrompt(
+          stakeholder,
+          log,
+          {
+            description: snapshot?.description ?? '',
+            org_name: String(snapshot?.initial_state.org_name ?? ''),
+            fact_sheet:
+              (snapshot?.initial_state.fact_sheet as Record<string, unknown> | undefined) ?? null,
+          },
+          { context },
+        );
         verdict = await judgeAtFireTime(session.id, stakeholder, inject, log, prompt);
       }
     }

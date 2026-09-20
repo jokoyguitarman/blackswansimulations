@@ -111,10 +111,52 @@ export async function loadScenarioCtx(scenarioId: string): Promise<ScenarioCtx> 
   };
 }
 
+// ─── Situational context provider (handover §10.5 R3) ────────────────────────
+
+/**
+ * Lets a runtime engine (e.g. the organic executive-decision engine's knowledge state) tell a
+ * stakeholder what they currently know and feel about events that are not in their authored
+ * record — "you were told this morning that the Johor plant is being suspended; you are angry
+ * that HR has not briefed the shift leads". Returned text is appended to the character prompt.
+ * Registered once at boot by the owning module; nothing registers by default.
+ */
+export type StakeholderContextProvider = (
+  sessionId: string,
+  stakeholder: Stakeholder,
+) => Promise<string | null>;
+
+let contextProvider: StakeholderContextProvider | null = null;
+
+export function registerStakeholderContextProvider(
+  provider: StakeholderContextProvider | null,
+): void {
+  contextProvider = provider;
+}
+
+/** Merged situational context for a stakeholder: explicit text (if any) + registered provider. */
+export async function resolveContext(
+  sessionId: string,
+  stakeholder: Stakeholder,
+  explicit?: string,
+): Promise<string> {
+  const parts: string[] = [];
+  if (explicit?.trim()) parts.push(explicit.trim());
+  if (contextProvider) {
+    try {
+      const provided = await contextProvider(sessionId, stakeholder);
+      if (provided?.trim()) parts.push(provided.trim());
+    } catch (err) {
+      logger.debug({ err, sessionId, stakeholderId: stakeholder.id }, 'Context provider failed');
+    }
+  }
+  return parts.join('\n');
+}
+
 export function buildCharacterPrompt(
   s: Stakeholder,
   _log: ConversationRow[],
   ctx: ScenarioCtx,
+  extra?: { context?: string },
 ): string {
   const facts = ctx.fact_sheet as {
     confirmed_facts?: string[];
@@ -138,11 +180,12 @@ ${s.will_not_disclose.length ? s.will_not_disclose.map((k) => `- ${k}`).join('\n
 Crisis context: ${ctx.description.slice(0, 600)}
 ${confirmed ? `Confirmed facts (do not contradict): ${confirmed}` : ''}
 ${claims ? `Unverified public claims: ${claims}` : ''}
-
+${extra?.context ? `\nWhat you currently know and feel about recent events (this overrides your default posture where they conflict):\n${extra.context}\n` : ''}
 Conduct rules:
 - Stay in character as this specific person on every channel; you remember every previous exchange listed below regardless of channel.
 - ${s.relationship === 'internal' ? 'You are ground-level operational staff. Share verified facts, request status, flag constraints. NEVER draft public statements, talking points, suggested messaging or PR strategy for the players — they must craft their own response.' : 'Reflect your own interests and concerns; you are not on the response team and do not coach them on messaging.'}
 - ${s.relationship === 'media' ? 'You are a journalist: professional, guarded, you publish when you have something usable.' : 'Be authentic: a real person with limited time and their own agenda.'}
+${s.tier === 'roster' ? '- You are one member of a larger workforce, not a spokesperson: reply briefly and personally (2-4 sentences), about your own situation, shift and family; you do not speak for colleagues or negotiate.' : ''}
 - Do not invent facts that contradict the confirmed facts. Do not reveal anything from your private situation.`;
 }
 
@@ -194,29 +237,49 @@ export interface PlayerMessageCtx {
   subject?: string;
   refTable: string;
   refId: string | null;
+  /** Situational context appended to the character prompt (handover §10.5 R3); merged with
+   *  whatever the registered context provider returns. */
+  context?: string;
 }
 
 /**
- * Append the player's message, run ONE coalesced judge call (reply + verdicts) and return the
- * reply plan. The CALLER persists the reply in its channel table and then calls
- * `recordNpcReply`. Returns `should_reply: false` when the engine is disabled, capped, or the
- * model declined.
+ * Record a player's message in a stakeholder's conversation log WITHOUT asking for a reply.
+ * Used for recipients beyond the reply sample (mass notices, cc'd principals, roster members):
+ * they "know" from now on, `wasContacted()` is true, and a later reply of theirs sees the message.
  */
-export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyPlan> {
-  const identity = await getTeamIdentity(ctx.sessionId, ctx.userId).catch(() => null);
+export async function appendPlayerMessage(
+  ctx: Omit<PlayerMessageCtx, 'context'>,
+  identity?: TeamIdentity | null,
+): Promise<void> {
+  const resolved =
+    identity === undefined
+      ? await getTeamIdentity(ctx.sessionId, ctx.userId).catch(() => null)
+      : identity;
   await appendConversation({
     sessionId: ctx.sessionId,
     stakeholderId: ctx.stakeholder.id,
     channel: ctx.channel,
     direction: 'player',
     userId: ctx.userId,
-    identity,
+    identity: resolved,
     content: ctx.subject ? `Subject: ${ctx.subject}\n${ctx.content}` : ctx.content,
     refTable: ctx.refTable,
     refId: ctx.refId,
   });
+}
+
+/**
+ * Append the player's message, run ONE coalesced judge call (reply + verdicts) and return the
+ * reply plan. The CALLER persists the reply in its channel table and then calls
+ * `recordNpcReply`. Returns `should_reply: false` when the engine is disabled, capped, or the
+ * model declined. Distribution lists (`kind: 'group'`) never reply — expand them to members first.
+ */
+export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyPlan> {
+  const identity = await getTeamIdentity(ctx.sessionId, ctx.userId).catch(() => null);
+  await appendPlayerMessage(ctx, identity);
 
   const none: ReplyPlan = { should_reply: false, text: '', delay_seconds: 30 };
+  if (ctx.stakeholder.kind === 'group') return none;
   if (!env.enableStakeholderEngine || !env.openAiApiKey) return none;
   if (!(await underSessionCap(ctx.sessionId))) {
     logger.debug({ sessionId: ctx.sessionId }, 'Stakeholder engine session cap reached');
@@ -230,10 +293,11 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
   await coalesce(`${ctx.sessionId}:${ctx.stakeholder.id}`, async () => {
     const log = await getConversationLog(ctx.sessionId, ctx.stakeholder.id);
     const scenarioCtx = await loadScenarioCtx(scenarioId);
+    const context = await resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context);
     const result = await decideAndReply({
       sessionId: ctx.sessionId,
       stakeholder: ctx.stakeholder,
-      characterPrompt: buildCharacterPrompt(ctx.stakeholder, log, scenarioCtx),
+      characterPrompt: buildCharacterPrompt(ctx.stakeholder, log, scenarioCtx, { context }),
       log,
       channel: ctx.channel,
       latestPlayerMessage: ctx.content,

@@ -11,6 +11,7 @@ type Column = {
     | 'name'
     | 'title'
     | 'organisation'
+    | 'site_key'
     | 'email'
     | 'phone'
     | 'handle'
@@ -31,6 +32,31 @@ const PLAYER_COLUMNS: Column[] = [
   { key: 'handle', label: 'Chat', width: 150, action: 'chat' },
   { key: 'note', label: 'Notes', width: 320 },
 ];
+
+/** Roster sheet (contract v3.2 `tier: 'roster'`): rank-and-file, grouped by site. */
+const ROSTER_COLUMNS: Column[] = [
+  { key: 'name', label: 'Name', width: 170 },
+  { key: 'title', label: 'Role', width: 170 },
+  { key: 'site_key', label: 'Site', width: 120 },
+  { key: 'organisation', label: 'Organisation', width: 190 },
+  { key: 'email', label: 'Email', width: 230, action: 'email' },
+  { key: 'phone', label: 'Phone', width: 130, action: 'phone' },
+  { key: 'handle', label: 'Chat', width: 150, action: 'chat' },
+  { key: 'note', label: 'Notes', width: 320 },
+];
+
+/** Display text for a cell; distribution lists are badged with their member count. */
+function cellText(col: Column, row: ContactRow): string {
+  const raw = row[col.key];
+  const value = raw == null || raw === '' ? '' : String(raw);
+  if (col.key === 'name' && row.kind === 'group') {
+    const count = row.members?.length ?? 0;
+    const badge = /distribution list/i.test(value) ? '' : ' (distribution list)';
+    return `${value}${badge}${count > 0 ? ` · ${count} members` : ''}`;
+  }
+  if (col.key === 'title' && row.kind === 'group' && value === '') return 'Distribution list';
+  return value;
+}
 
 const TRAINER_EXTRA: Column[] = [
   { key: 'owning_team', label: 'Owning team', width: 150 },
@@ -88,12 +114,13 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
     void load();
   }, [load]);
 
-  const columns = useMemo(
-    () => (workbook?.is_trainer ? [...PLAYER_COLUMNS, ...TRAINER_EXTRA] : PLAYER_COLUMNS),
-    [workbook?.is_trainer],
-  );
   const sheet = workbook?.sheets[activeSheet] ?? null;
   const rows: ContactRow[] = sheet?.rows ?? [];
+  const isRosterSheet = sheet?.relationship === 'roster';
+  const columns = useMemo(() => {
+    const baseCols = isRosterSheet ? ROSTER_COLUMNS : PLAYER_COLUMNS;
+    return workbook?.is_trainer ? [...baseCols, ...TRAINER_EXTRA] : baseCols;
+  }, [workbook?.is_trainer, isRosterSheet]);
 
   const teamLabel = workbook?.team?.function_key || workbook?.team?.team_name || null;
   const fileName = `Contacts_${(teamLabel || (workbook?.is_trainer ? 'AllTeams' : 'Team')).replace(/[^\w]+/g, '')}.xlsx`;
@@ -141,8 +168,7 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
   const selectedValue = (() => {
     if (!selected || !rows[selected.r]) return '';
     const col = columns[selected.c];
-    const v = rows[selected.r][col.key];
-    return v == null ? '' : String(v);
+    return col ? cellText(col, rows[selected.r]) : '';
   })();
   const selectedRef = selected ? `${colLetter(selected.c)}${selected.r + 2}` : '';
 
@@ -302,8 +328,7 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
                 <tr key={row.id}>
                   <td className="sheets-row-num">{r + 2}</td>
                   {columns.map((c, ci) => {
-                    const raw = row[c.key];
-                    const value = raw == null || raw === '' ? '' : String(raw);
+                    const value = cellText(c, row);
                     const actionable = !!c.action && value !== '';
                     const isSel = selected?.r === r && selected?.c === ci;
                     return (

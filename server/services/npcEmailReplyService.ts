@@ -3,6 +3,7 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getWebSocketService } from './websocketService.js';
 import { sanitizeEmailCategory } from './feedEngineService.js';
+import { pickResponders, resolveStakeholderRecipients } from '../lib/stakeholderRecipients.js';
 
 interface NPCPersona {
   handle: string;
@@ -109,6 +110,84 @@ export function deriveEmailAddress(persona: {
   if (persona.type === 'npc_politician') return `${localPart}@gov.sim`;
   if (persona.type === 'npc_influencer') return `${localPart}@contacts.sim`;
   return `${localPart}@contacts.sim`;
+}
+
+// ─── Multi-recipient stakeholder mail (contract v3.2, handover §10.5 R1) ─────
+
+type StakeholderRec = import('../lib/stakeholderContract.js').Stakeholder;
+
+/** Persist and broadcast a stakeholder's email reply after `delayMs`, then log it. */
+function scheduleStakeholderEmailReply(args: {
+  sessionId: string;
+  stakeholder: StakeholderRec;
+  plan: import('./stakeholderReconsiderationService.js').ReplyPlan;
+  playerEmail: PlayerEmail;
+  delayMs: number;
+  recordNpcReply: (typeof import('./stakeholderReplyService.js'))['recordNpcReply'];
+}): void {
+  const { sessionId, stakeholder, plan, playerEmail, delayMs, recordNpcReply } = args;
+  const subject =
+    plan.subject ||
+    (playerEmail.subject.startsWith('RE:') ? playerEmail.subject : `RE: ${playerEmail.subject}`);
+  setTimeout(async () => {
+    try {
+      const replyThreadId = playerEmail.thread_id || playerEmail.replied_to_id || playerEmail.id;
+      const { data: inserted, error } = await supabaseAdmin
+        .from('sim_emails')
+        .insert({
+          session_id: sessionId,
+          direction: 'inbound',
+          from_address: stakeholder.email,
+          from_name: stakeholder.name,
+          to_addresses: [playerEmail.from_address],
+          subject,
+          body_html: `<p>${plan.text.replace(/\n/g, '</p><p>')}</p>`,
+          body_text: plan.text,
+          priority: 'normal',
+          email_category: sanitizeEmailCategory(
+            stakeholder.relationship === 'internal' ? 'verified_facts' : 'general',
+          ),
+          replied_to_id: playerEmail.id,
+          thread_id: replyThreadId,
+          inject_id: null,
+          sent_by_player_id: null,
+          ...(playerEmail.sender_user_id
+            ? { recipient_user_ids: [playerEmail.sender_user_id] }
+            : {}),
+        })
+        .select()
+        .single();
+      if (error || !inserted) {
+        logger.error(
+          { error, sessionId, playerEmailId: playerEmail.id, stakeholderId: stakeholder.id },
+          'Failed to insert stakeholder email reply',
+        );
+        return;
+      }
+      getWebSocketService().broadcastToSession(sessionId, {
+        type: 'sim_email.received',
+        data: { email: inserted },
+        timestamp: new Date().toISOString(),
+      });
+      await recordNpcReply({
+        sessionId,
+        stakeholderId: stakeholder.id,
+        channel: 'email',
+        content: `Subject: ${subject}\n${plan.text}`,
+        refTable: 'sim_emails',
+        refId: String(inserted.id),
+      });
+      logger.info(
+        { sessionId, stakeholderId: stakeholder.id, replyId: inserted.id },
+        'Stakeholder email reply delivered',
+      );
+    } catch (err) {
+      logger.warn(
+        { err, sessionId, playerEmailId: playerEmail.id, stakeholderId: stakeholder.id },
+        'Stakeholder email reply delivery failed',
+      );
+    }
+  }, delayMs);
 }
 
 export async function triggerNPCEmailReply(
@@ -221,114 +300,107 @@ export async function triggerNPCEmailReply(
     let respondentHandle = '';
     let useAiFallback = false;
 
-    // Step 0: stakeholder record (contract §3). Non-media stakeholders are answered entirely from
-    // the record (one call → reply + inject verdicts) and we return. Media stakeholders keep the
-    // legacy path below because it owns article publication; their record still seeds the
-    // respondent and the exchange is logged/judged for verdicts.
+    // Step 0: stakeholder records (contract §3, v3.2 groups/roster; handover §10.5 R1).
+    // EVERY recipient that resolves to a stakeholder is logged as contacted — principals, roster
+    // members, and distribution lists expanded to their members — so a mass notice really
+    // notifies everyone. Replies come from a bounded sample (principals first, then a few roster
+    // members). The primary recipient keeps its legacy semantics: a media stakeholder falls
+    // through to the article-publishing path below; anything else is answered from the record.
     let mediaStakeholder: import('../lib/stakeholderContract.js').Stakeholder | null = null;
     if (env.enableStakeholderEngine) {
-      const { findByEmail } = await import('./stakeholderService.js');
-      const stakeholder = await findByEmail(session.scenario_id, toAddress);
-      if (stakeholder) {
-        const { handlePlayerMessage, recordNpcReply } =
-          await import('./stakeholderReplyService.js');
-        const planPromise = handlePlayerMessage({
+      const { findByEmail, findById } = await import('./stakeholderService.js');
+      const { handlePlayerMessage, appendPlayerMessage, recordNpcReply } =
+        await import('./stakeholderReplyService.js');
+      const recipients = await resolveStakeholderRecipients(
+        playerEmail.to_addresses,
+        (addr) => findByEmail(session.scenario_id, addr),
+        (id) => findById(session.scenario_id, id),
+      );
+
+      if (recipients.primary || recipients.all.length > 0) {
+        const messageCtx = {
           sessionId,
-          stakeholder,
-          channel: 'email',
+          channel: 'email' as const,
           userId: playerEmail.sender_user_id ?? '',
           content: playerEmail.body_text,
           subject: playerEmail.subject,
           refTable: 'sim_emails',
           refId: playerEmail.id,
+        };
+        const primary = recipients.primary;
+        const responders = pickResponders(recipients.all, primary, playerEmail.id);
+        const responderIds = new Set(responders.map((s) => s.id));
+
+        // Everyone else just learns of the message (log only, no model call).
+        for (const s of recipients.all) {
+          if (responderIds.has(s.id) || s.id === primary?.id) continue;
+          void appendPlayerMessage({ ...messageCtx, stakeholder: s }).catch(() => undefined);
+        }
+        // Groups are logged as contacted too (so `wasContacted(group)` holds); they never reply.
+        if (primary?.kind === 'group') {
+          void appendPlayerMessage({ ...messageCtx, stakeholder: primary }).catch(() => undefined);
+        }
+
+        // Sampled non-primary responders: staggered so a mass notice does not answer in unison.
+        responders.forEach((s, idx) => {
+          if (s.id === primary?.id) return;
+          void (async () => {
+            const plan = await handlePlayerMessage({ ...messageCtx, stakeholder: s });
+            if (s.relationship === 'media') return; // verdicts + log only for cc'd journalists
+            if (!plan.should_reply) return;
+            const delayMs =
+              Math.max(10, Math.min(90, plan.delay_seconds)) * 1000 + (idx + 1) * 25_000;
+            scheduleStakeholderEmailReply({
+              sessionId,
+              stakeholder: s,
+              plan,
+              playerEmail,
+              delayMs,
+              recordNpcReply,
+            });
+          })().catch((err) =>
+            logger.warn(
+              { err, sessionId, stakeholderId: s.id },
+              'Sampled stakeholder reply failed',
+            ),
+          );
         });
 
-        if (stakeholder.relationship === 'media') {
-          mediaStakeholder = stakeholder;
-          respondentName = stakeholder.name;
-          respondentAddress = stakeholder.email;
-          respondentPersonality = stakeholder.personality;
-          respondentRole = [stakeholder.title, stakeholder.organisation].filter(Boolean).join(', ');
-          respondentType = 'npc_media';
-          respondentHandle = stakeholder.handle;
-          void planPromise; // verdicts + log only; the legacy call below writes the reply
-        } else {
-          const plan = await planPromise;
-          if (!plan.should_reply) {
-            logger.debug(
-              { sessionId, stakeholderId: stakeholder.id },
-              'Stakeholder chose not to reply by email',
-            );
+        if (primary && primary.kind !== 'group') {
+          const planPromise = handlePlayerMessage({ ...messageCtx, stakeholder: primary });
+          if (primary.relationship === 'media') {
+            mediaStakeholder = primary;
+            respondentName = primary.name;
+            respondentAddress = primary.email;
+            respondentPersonality = primary.personality;
+            respondentRole = [primary.title, primary.organisation].filter(Boolean).join(', ');
+            respondentType = 'npc_media';
+            respondentHandle = primary.handle;
+            void planPromise; // verdicts + log only; the legacy call below writes the reply
+          } else {
+            const plan = await planPromise;
+            if (!plan.should_reply) {
+              logger.debug(
+                { sessionId, stakeholderId: primary.id },
+                'Stakeholder chose not to reply by email',
+              );
+              return;
+            }
+            scheduleStakeholderEmailReply({
+              sessionId,
+              stakeholder: primary,
+              plan,
+              playerEmail,
+              delayMs: Math.max(10, Math.min(90, plan.delay_seconds)) * 1000,
+              recordNpcReply,
+            });
             return;
           }
-          const delayMs = Math.max(10, Math.min(90, plan.delay_seconds)) * 1000;
-          const subject =
-            plan.subject ||
-            (playerEmail.subject.startsWith('RE:')
-              ? playerEmail.subject
-              : `RE: ${playerEmail.subject}`);
-          setTimeout(async () => {
-            try {
-              const replyThreadId =
-                playerEmail.thread_id || playerEmail.replied_to_id || playerEmail.id;
-              const { data: inserted, error } = await supabaseAdmin
-                .from('sim_emails')
-                .insert({
-                  session_id: sessionId,
-                  direction: 'inbound',
-                  from_address: stakeholder.email,
-                  from_name: stakeholder.name,
-                  to_addresses: [playerEmail.from_address],
-                  subject,
-                  body_html: `<p>${plan.text.replace(/\n/g, '</p><p>')}</p>`,
-                  body_text: plan.text,
-                  priority: 'normal',
-                  email_category: sanitizeEmailCategory(
-                    stakeholder.relationship === 'internal' ? 'verified_facts' : 'general',
-                  ),
-                  replied_to_id: playerEmail.id,
-                  thread_id: replyThreadId,
-                  inject_id: null,
-                  sent_by_player_id: null,
-                  ...(playerEmail.sender_user_id
-                    ? { recipient_user_ids: [playerEmail.sender_user_id] }
-                    : {}),
-                })
-                .select()
-                .single();
-              if (error || !inserted) {
-                logger.error(
-                  { error, sessionId, playerEmailId: playerEmail.id },
-                  'Failed to insert stakeholder email reply',
-                );
-                return;
-              }
-              getWebSocketService().broadcastToSession(sessionId, {
-                type: 'sim_email.received',
-                data: { email: inserted },
-                timestamp: new Date().toISOString(),
-              });
-              await recordNpcReply({
-                sessionId,
-                stakeholderId: stakeholder.id,
-                channel: 'email',
-                content: `Subject: ${subject}\n${plan.text}`,
-                refTable: 'sim_emails',
-                refId: String(inserted.id),
-              });
-              logger.info(
-                { sessionId, stakeholderId: stakeholder.id, replyId: inserted.id },
-                'Stakeholder email reply delivered',
-              );
-            } catch (err) {
-              logger.warn(
-                { err, sessionId, playerEmailId: playerEmail.id },
-                'Stakeholder email reply delivery failed',
-              );
-            }
-          }, delayMs);
-          return;
+        } else if (primary?.kind === 'group') {
+          return; // a distribution list never answers itself; sampled members reply above
         }
+        // `!primary` (first address is a legacy persona, later ones are stakeholders): the
+        // stakeholders are handled; the persona still gets its legacy reply below.
       }
     }
 

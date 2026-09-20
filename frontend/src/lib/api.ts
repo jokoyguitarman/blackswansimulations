@@ -22,6 +22,12 @@ export interface ContactRow {
   handle: string;
   note: string;
   avatar_url?: string;
+  /** Contract v3.2: 'group' = distribution list (mail to it reaches `members`). */
+  kind?: 'person' | 'group';
+  members?: string[];
+  /** Contract v3.2: 'roster' = rank-and-file workforce entry (own "Roster" sheet). */
+  tier?: 'principal' | 'roster';
+  site_key?: string;
   /** Trainer view only */
   org_display?: string;
 }

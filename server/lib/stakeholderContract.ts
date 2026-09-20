@@ -181,6 +181,13 @@ export const PLAYER_VISIBLE_FIELDS = [
   'handle',
   'note',
   'avatar_url',
+  // v3.2 — structural, player-visible (a distribution list is visibly a list; a roster entry is
+  // visibly rank-and-file). `sensitivities` is character data and stays HIDDEN.
+  'kind',
+  'members',
+  'tier',
+  'site_key',
+  'page_org_key',
 ] as const;
 
 export type PlayerVisibleStakeholder = Pick<Stakeholder, (typeof PLAYER_VISIBLE_FIELDS)[number]>;

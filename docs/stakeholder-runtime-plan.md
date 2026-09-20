@@ -1076,6 +1076,19 @@ Workstream 5 was coded, then retired and removed the same day (see §5); its dat
 (migration 203) remain in place, empty. Still pending: end-to-end runs against the generator's
 kidnapping fixture.
 
+**Contract v3.2 acknowledgement (2026-09-20).** The generator agent added the additive v3.2
+fields to `stakeholderContract.ts` (stakeholder `kind / members / tier / site_key / sensitivities /
+page_org_key`; registry `side: 'pressure'`, pressure kinds, `spokesperson_stakeholder_id`,
+`operation`, `sites[]`) and shipped migration 205 (pressure pages, decision ledger detail,
+`decision_knowledge`, `decision_events`, new event types) — applied by the runtime agent. Runtime
+readers added the same day, closing handover §10.5 R1–R3: `server/lib/stakeholderRecipients.ts`
+(`resolveStakeholderRecipients`, `pickResponders`, tested) and the multi-recipient rewrite of
+`triggerNPCEmailReply`; `stakeholderReplyService.appendPlayerMessage`, `resolveContext`,
+`registerStakeholderContextProvider`, `PlayerMessageCtx.context`; roster sheet + group badges in
+the contacts workbook and Mail autocomplete; `PLAYER_VISIBLE_FIELDS` extended (`sensitivities`
+hidden). Migration 206 widened `scenario_injects.generation_source` for four values the server
+already wrote (`stakeholder_modified` was the W3.5 `modify` path failing silently).
+
 Deviations from the spec above, all deliberate:
 
 - **§4.2 country inheritance is a DB trigger** (`social_posts_inherit_country`, migration 202)

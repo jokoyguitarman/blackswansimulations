@@ -117,7 +117,10 @@ describe('isStakeholderVisibleToTeam', () => {
 
 describe('toPlayerVisible', () => {
   test('drops every hidden field and keeps contact fields', () => {
-    const v = toPlayerVisible(base()) as Record<string, unknown>;
+    const v = toPlayerVisible(base({ sensitivities: ['any change to Johor headcount'] })) as Record<
+      string,
+      unknown
+    >;
     for (const hidden of [
       'personality',
       'stance',
@@ -128,12 +131,23 @@ describe('toPlayerVisible', () => {
       'persuadability',
       'hard_constraints',
       'latent_grievances',
+      'sensitivities',
     ]) {
       assert.equal(hidden in v, false, `${hidden} leaked`);
     }
     assert.equal(v.email, 'jasmine.tan@meridian.sim');
     assert.equal(v.handle, '@jtan_meridian');
     assert.equal(v.note, 'Key account.');
+  });
+
+  test('keeps v3.2 structural fields (kind, members, tier, site_key)', () => {
+    const v = toPlayerVisible(
+      base({ kind: 'group', members: ['stk_a', 'stk_b'], tier: 'principal', site_key: 'johor' }),
+    ) as Record<string, unknown>;
+    assert.equal(v.kind, 'group');
+    assert.deepEqual(v.members, ['stk_a', 'stk_b']);
+    assert.equal(v.tier, 'principal');
+    assert.equal(v.site_key, 'johor');
   });
 });
 
