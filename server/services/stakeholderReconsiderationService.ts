@@ -68,7 +68,27 @@ export interface EffectiveGrievance {
   resolution_criteria: string[];
   persuadability: Stakeholder['persuadability'];
   hard_constraints: string[];
-  source: 'base' | `decision:${string}`;
+  /** `base` = authored grievance; `override:<reason>` when a runtime engine has replaced it. */
+  source: 'base' | `override:${string}`;
+}
+
+/**
+ * Extension point for a runtime engine that changes what a stakeholder is aggrieved about
+ * mid-session (e.g. the organic executive-decision propagation — see
+ * docs/executive-decisions-organic-handover.md). Return null to leave the authored grievance
+ * in force. Registered once at boot by the owning module; nothing registers by default.
+ */
+export type GrievanceOverrideResolver = (
+  sessionId: string,
+  stakeholder: Stakeholder,
+) => Promise<(Omit<EffectiveGrievance, 'source'> & { reason: string }) | null>;
+
+let grievanceOverrideResolver: GrievanceOverrideResolver | null = null;
+
+export function registerGrievanceOverrideResolver(
+  resolver: GrievanceOverrideResolver | null,
+): void {
+  grievanceOverrideResolver = resolver;
 }
 
 // ─── Pending injects ─────────────────────────────────────────────────────────
@@ -206,32 +226,25 @@ async function storeVerdicts(
   return stored;
 }
 
-// ─── Effective grievance (base today; §5 swaps in latent grievances) ─────────
+// ─── Effective grievance (authored, unless a registered resolver overrides it) ─
 
 export async function getEffectiveGrievance(
   sessionId: string,
   stakeholder: Stakeholder,
 ): Promise<EffectiveGrievance> {
-  try {
-    const { data } = await supabaseAdmin
-      .from('stakeholder_state')
-      .select('active_decision_key')
-      .eq('session_id', sessionId)
-      .eq('stakeholder_id', stakeholder.id)
-      .maybeSingle();
-    const key = (data?.active_decision_key as string | null) ?? null;
-    const latent = key ? stakeholder.latent_grievances?.[key] : undefined;
-    if (key && latent) {
-      return {
-        grievance: latent.grievance,
-        resolution_criteria: latent.resolution_criteria,
-        persuadability: latent.persuadability,
-        hard_constraints: latent.hard_constraints,
-        source: `decision:${key}`,
-      };
+  if (grievanceOverrideResolver) {
+    try {
+      const override = await grievanceOverrideResolver(sessionId, stakeholder);
+      if (override) {
+        const { reason, ...rest } = override;
+        return { ...rest, source: `override:${reason}` };
+      }
+    } catch (err) {
+      logger.debug(
+        { err, sessionId, stakeholderId: stakeholder.id },
+        'Grievance override resolver failed; authored grievance applies',
+      );
     }
-  } catch {
-    /* stakeholder_state does not exist until migration 203 — base grievance applies */
   }
   return {
     grievance: stakeholder.grievance,

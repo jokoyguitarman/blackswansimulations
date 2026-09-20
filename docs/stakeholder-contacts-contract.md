@@ -1,8 +1,9 @@
 # Stakeholder Contacts — generation ↔ runtime contract
 
-Version 3 — 2026-09-20 — **status: accepted by both agents, including §7A (decision layer),
-approved by the product owner 2026-09-20 as an optional product mode** (changes in §13).
-Runtime delivery order lives in `docs/stakeholder-runtime-plan.md`.
+Version 3.1 — 2026-09-20 — **status: accepted by both agents. §7A (menu-based decision layer)
+RETIRED by the product owner on 2026-09-20 and replaced by the organic executive-decision model,
+whose specification and ownership live in `docs/executive-decisions-organic-handover.md`**
+(changes in §13). Runtime delivery order lives in `docs/stakeholder-runtime-plan.md`.
 
 Two agents work in parallel on this feature:
 
@@ -49,17 +50,18 @@ Confirmed product decisions (not up for re-litigation in this iteration):
 
 Everything that crosses the boundary:
 
-| Surface                                                                                                                                                                                                                                                              | Written by | Read by                          |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------- |
-| `scenarios.initial_state.stakeholders` (new array)                                                                                                                                                                                                                   | generator  | runtime                          |
-| `scenario_injects.delivery_config.stakeholder_id` (new key)                                                                                                                                                                                                          | generator  | runtime                          |
-| `scenario_injects.delivery_config.org_key` / `.country` (new keys, §4.1)                                                                                                                                                                                             | generator  | runtime                          |
-| `scenarios.initial_state.orgs[]` (new array — canonical organisation registry, §5.1)                                                                                                                                                                                 | generator  | runtime                          |
-| `scenarios.initial_state.countries[]` (new optional array, §5.1)                                                                                                                                                                                                     | generator  | runtime                          |
-| `scenario_teams.org_key`, `scenario_teams.function_key` (new nullable columns, §5.2)                                                                                                                                                                                 | generator  | runtime                          |
-| `initial_state.org_page.orgs[].country / city` (optional; must agree with `orgs[]`)                                                                                                                                                                                  | generator  | runtime                          |
-| `initial_state.npc_personas[].country` (new optional field, §5.3)                                                                                                                                                                                                    | generator  | runtime                          |
-| **Reserved (§7A):** `initial_state.decision_space[]`, `initial_state.chain_of_command[]`, `stakeholders[].latent_grievances`, `delivery_config.inject_key` / `.decision_key`, condition primitives `decision_recorded:*`, `inject_published:*`, `inject_cancelled:*` | generator  | runtime (dormant until approved) |
+| Surface                                                                                                                                                                                                                                                                                                                                        | Written by            | Read by                               |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | ------------------------------------- |
+| `scenarios.initial_state.stakeholders` (new array)                                                                                                                                                                                                                                                                                             | generator             | runtime                               |
+| `scenario_injects.delivery_config.stakeholder_id` (new key)                                                                                                                                                                                                                                                                                    | generator             | runtime                               |
+| `scenario_injects.delivery_config.org_key` / `.country` (new keys, §4.1)                                                                                                                                                                                                                                                                       | generator             | runtime                               |
+| `scenarios.initial_state.orgs[]` (new array — canonical organisation registry, §5.1)                                                                                                                                                                                                                                                           | generator             | runtime                               |
+| `scenarios.initial_state.countries[]` (new optional array, §5.1)                                                                                                                                                                                                                                                                               | generator             | runtime                               |
+| `scenario_teams.org_key`, `scenario_teams.function_key` (new nullable columns, §5.2)                                                                                                                                                                                                                                                           | generator             | runtime                               |
+| `initial_state.org_page.orgs[].country / city` (optional; must agree with `orgs[]`)                                                                                                                                                                                                                                                            | generator             | runtime                               |
+| `initial_state.npc_personas[].country` (new optional field, §5.3)                                                                                                                                                                                                                                                                              | generator             | runtime                               |
+| **Retired (§7A, 2026-09-20):** `initial_state.decision_space[]`, `initial_state.chain_of_command[]`, `stakeholders[].latent_grievances`, `delivery_config.decision_key`, primitive `decision_recorded:*` — the runtime no longer reads them (still parsed/preserved so compiled scenarios load). Generator to stop emitting; see handover doc. | generator (to remove) | nobody                                |
+| **Kept (generic):** `delivery_config.inject_key`, condition primitives `inject_published:<inject_key>` / `inject_cancelled:<inject_key>` — any inject may depend on another having fired or been cancelled                                                                                                                                     | generator             | runtime (`conditionEvaluatorService`) |
 
 Every new field is optional. A scenario compiled without any of them runs exactly as it does today.
 
@@ -143,7 +145,9 @@ export interface Stakeholder {
    *  independence, board instruction, …). Usually paired with persuadability 'none' or 'low'. */
   hard_constraints: string[];
 
-  // ─── Reserved — decision layer (§7A). Preserved by the runtime schema, unused until approved ──
+  // ─── RETIRED with the menu-based decision layer (§7A, 2026-09-20). Still parsed so compiled
+  //     scenarios load; the runtime ignores it. Generator: stop emitting. ──
+  /** @deprecated */
   latent_grievances?: Record<
     string /* decision_key */,
     {
@@ -217,9 +221,10 @@ interface SocialInjectDeliveryConfig {
   /** Country whose feed / news this content belongs in — an `initial_state.orgs[].country` value.
    *  See §4.1. Absent = every country. */
   country?: string;
-  /** Reserved (§7A): stable cross-reference key for template injects, and the decision that
-   *  arms them. Preserved by the runtime; inert until the decision layer is approved. */
+  /** Stable cross-reference key for this inject, so other injects can depend on it via
+   *  `inject_published:<inject_key>` / `inject_cancelled:<inject_key>` (generic, kept). */
   inject_key?: string;
+  /** @deprecated Retired with the menu-based decision layer (§7A). Preserved verbatim, unread. */
   decision_key?: string;
 }
 ```
@@ -431,23 +436,55 @@ workbook definitions.
     The existing `update_scenarios_updated_at` trigger bumps that column on every write, so
     post-compile edits to `initial_state` between sessions are picked up by the next session with
     no signalling from the generator.
-11. **Dormancy of reserved surface (§7A).** Unknown `initial_state` keys are ignored; unknown
-    `delivery_config` keys are preserved verbatim; `stakeholders[].latent_grievances` is preserved
-    by the runtime schema; unknown condition primitives evaluate to `false` (existing behaviour in
-    `conditionEvaluatorService`). If a session's scenario contains templates using `decision_recorded:*`
-    while the decision engine is absent, the runtime logs `decision_layer_inert` once per session.
+11. **Dormancy of retired / unknown surface.** Unknown `initial_state` keys are ignored; unknown
+    `delivery_config` keys are preserved verbatim; `stakeholders[].latent_grievances` is still
+    parsed but unread; unknown condition primitives evaluate to `false` (existing behaviour in
+    `conditionEvaluatorService`). `decision_recorded:*` is now an unknown primitive: templates
+    conditioned on it never fire, and the runtime logs `decision_layer_inert` once per session so a
+    silent scenario is explainable. SOP steps carrying `triggered_by_decision_key` are skipped.
     Nothing leaks, nothing fires.
 
 ---
 
-## 7A. Decision layer — additive surface (approved; optional product mode)
+## 7A. Decision layer — RETIRED (menu-based surface, 2026-09-20)
 
-Proposed by the generator agent, approved by the product owner: real executives join as players
-in an **Executive** team (`function_key: "Executive"`, at most one per org), record business
-decisions in-game, and the scenario guarantees SOP consequences toward affected stakeholders. It
-is an **optional mode**: scenarios without `decision_space[]` have no Executive team and nothing
-below applies. The runtime side is workstream 5 of the runtime plan, sequenced after the
-stakeholder runtime and multi-org readers; until it ships the data is dormant (§7 item 11).
+**Status: retired by the product owner on 2026-09-20, the same day it shipped.** The menu-based
+model — executives choosing from a pre-authored `decision_space[]` in a Decisions app, with
+authored obligations, latent grievances and eruption templates armed on `decision_recorded:<key>` —
+was judged too scripted. It is replaced by the **organic model**: executives decide by
+communicating (an email, a chat message, a call), the runtime detects the decision from what they
+wrote, and the consequences are generated at runtime and propagate through the organisation's
+people and out to stakeholders. Specification, integration points and ownership transfer:
+**`docs/executive-decisions-organic-handover.md`** — the generator agent owns that feature end to
+end (generation _and_ runtime).
+
+What remains true after the retirement:
+
+- **Executives as players stay.** `function_key: "Executive"` teams, their charters, the 🏛️ icon,
+  the `social_team_executive` AAR section and `Executive` in `resolveTeamFunction` are unchanged.
+- **Runtime removed:** `decisionEngineService.ts`, `GET /sessions/:id/decision-space`,
+  `POST/GET /sessions/:id/decisions`, the Decisions app (mobile + desktop), the `decision_recorded:*`
+  primitive, latent-grievance swapping, obligation tracking (`markObligationsMet` /
+  `lapseObligations`), `triggered_by_decision_key` SOP clocks, the dashboard "Executive Decisions"
+  card and the AAR `leadership_decisions` block.
+- **Kept as generic runtime surface:** `delivery_config.inject_key` with `inject_published:*` /
+  `inject_cancelled:*`; the `decision_recorded` value in `player_actions.action_type` and the
+  `decision_recorded` / `obligation_met` / `obligation_lapsed` `session_events` types (migration 203);
+  a `registerGrievanceOverrideResolver()` hook in `stakeholderReconsiderationService` for a runtime
+  engine to replace a stakeholder's active grievance.
+- **Database (migration 203) untouched:** `session_decisions`, `stakeholder_state`,
+  `decision_obligations` exist and are empty. Dropping or reusing them is the new owner's call.
+- **Generator must stop emitting** `decision_space[]`, `chain_of_command[]`,
+  `stakeholders[].latent_grievances`, `delivery_config.decision_key`, injects conditioned on
+  `decision_recorded:*`, and SOP steps with `triggered_by_decision_key`. The Zod schemas
+  (`DecisionOptionSchema`, `DecisionSpaceSchema`, `ChainOfCommandLinkSchema`, `ChainOfCommandSchema`)
+  stay exported from `server/lib/stakeholderContract.ts` as `@deprecated` only until the last
+  generator-side importer is gone.
+
+The original text is preserved below for reference; nothing in it is normative any more.
+
+<details>
+<summary>Original §7A (historical)</summary>
 
 ```ts
 // initial_state.decision_space[]
@@ -495,6 +532,8 @@ published/cancelled sets the scheduler already tracks; (d) `sopCheckerService` s
 decision-triggered steps and obligation windows (`stakeholder_contacted` from the conversation
 log); (e) dashboard decision log + obligation status and an AAR "Leadership decisions" section
 using `chain_of_command`.
+
+</details>
 
 ---
 
@@ -689,6 +728,18 @@ removals or semantic changes to the visibility predicate or the persuadability t
 agents to acknowledge before either merges.
 
 ## 13. Changelog
+
+**v3.1 (2026-09-20)** — product owner retires the menu-based decision layer.
+
+- §7A retired; replaced by the organic executive-decision model, specified and owned end to end
+  by the generator agent in `docs/executive-decisions-organic-handover.md`.
+- Runtime menu layer removed (engine, endpoints, Decisions app, `decision_recorded:*` primitive,
+  latent-grievance swap, obligations, dashboard card, AAR block). §7 item 11 now describes the
+  dormancy of the retired surface.
+- `delivery_config.inject_key` + `inject_published:*` / `inject_cancelled:*` promoted from
+  "reserved" to generic kept surface (§2, §4). `decision_key`, `latent_grievances`,
+  `decision_space[]`, `chain_of_command[]` marked deprecated; generator to stop emitting.
+- New runtime hook `registerGrievanceOverrideResolver()` (no default registration).
 
 **v3 (2026-09-20)** — generator agent's dead-end audit.
 

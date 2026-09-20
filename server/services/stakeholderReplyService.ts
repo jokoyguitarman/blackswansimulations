@@ -216,13 +216,6 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
     refId: ctx.refId,
   });
 
-  // Decision layer (§5.5): writing to a stakeholder can satisfy an open SOP obligation.
-  void import('./decisionEngineService.js')
-    .then((m) =>
-      m.markObligationsMet(ctx.sessionId, ctx.stakeholder.id, { userId: ctx.userId, identity }),
-    )
-    .catch(() => undefined);
-
   const none: ReplyPlan = { should_reply: false, text: '', delay_seconds: 30 };
   if (!env.enableStakeholderEngine || !env.openAiApiKey) return none;
   if (!(await underSessionCap(ctx.sessionId))) {

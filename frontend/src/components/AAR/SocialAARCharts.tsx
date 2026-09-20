@@ -743,7 +743,6 @@ function SingleTeamBlock({ data }: { data: Dict }) {
   }
   const scores = (data.scores || {}) as Dict;
   const preemption = arr(data.stakeholder_preemption);
-  const decisions = arr(data.leadership_decisions);
   const tasks = arr(data.task_outcomes);
   const members = arr(data.members);
   const memberSummaries = arr(data.member_summaries);
@@ -885,73 +884,6 @@ function SingleTeamBlock({ data }: { data: Dict }) {
               </div>
             </blockquote>
           )}
-        </div>
-      )}
-
-      {decisions.length > 0 && (
-        <div>
-          <div className="text-[10px] font-extrabold uppercase text-muted mb-1.5">
-            Leadership decisions
-          </div>
-          <div className="space-y-2">
-            {decisions.map((d, i) => {
-              const obligations = arr(d.obligations);
-              const eruptions = arr(d.eruptions);
-              return (
-                <div key={i} className="border border-border rounded-lg p-2.5 bg-surface-2">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <span className="text-xs font-bold text-ink">
-                      {String(d.title || d.decision_key)}
-                    </span>
-                    <span className="text-[10px] text-muted">
-                      T+{String(d.recorded_at_minute ?? '?')}m · {String(d.team_name || '')}
-                      {d.recorded_by_trainer === true ? ' (trainer)' : ''}
-                    </span>
-                  </div>
-                  {(!!d.scope || !!d.rationale) && (
-                    <p className="text-[11px] text-ink mt-1">
-                      {d.scope ? <>Scope: {String(d.scope)}. </> : null}
-                      {d.rationale ? <>Rationale: {String(d.rationale)}</> : null}
-                    </p>
-                  )}
-                  {arr(d.should_inform).length > 0 && (
-                    <p className="text-[10px] text-muted mt-1">
-                      Should inform: {arr(d.should_inform).map(String).join(', ')}
-                    </p>
-                  )}
-                  {obligations.length > 0 && (
-                    <div className="flex flex-wrap gap-1 mt-1.5">
-                      {obligations.map((o, j) => {
-                        const status = String(o.status || 'open');
-                        const tone =
-                          status === 'met'
-                            ? '#15803D'
-                            : status === 'lapsed'
-                              ? '#B91C1C'
-                              : '#D97706';
-                        return (
-                          <span
-                            key={j}
-                            className="text-[9px] font-bold px-1.5 py-0.5 rounded-full text-white"
-                            style={{ backgroundColor: tone }}
-                            title={`${String(o.description || '')} — due T+${String(o.due_at_minute ?? '?')}`}
-                          >
-                            {String(o.by_function)} → {String(o.stakeholder_id)} · {status}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {eruptions.length > 0 && (
-                    <p className="text-[10px] text-muted mt-1">
-                      Eruptions:{' '}
-                      {eruptions.map((e) => `${String(e.title)} (${String(e.outcome)})`).join('; ')}
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
         </div>
       )}
 

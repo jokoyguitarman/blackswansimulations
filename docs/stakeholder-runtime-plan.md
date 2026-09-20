@@ -1,9 +1,12 @@
 # Runtime implementation spec — notifications, TeamChat, stakeholder contacts, multi-org readers
 
-2026-09-20 — **status: implemented (workstreams 0–5); awaiting migrations 198–203 being applied
-and the generator's fixtures for end-to-end verification** — see "Implementation status" at the
-end. Implements the runtime side of `stakeholder-contacts-contract.md` v3 (accepted by both
-agents). Owner: runtime agent.
+2026-09-20 — **status: workstreams 0–4 implemented and live (migrations 198–204 applied,
+pushed to production). Workstream 5 (menu-based decision layer) was built, then RETIRED the same
+day by the product owner and removed from the runtime; its replacement — the organic
+executive-decision model — is specified in `docs/executive-decisions-organic-handover.md` and owned
+end to end by the generator agent.** Implements the runtime side of
+`stakeholder-contacts-contract.md` v3.1. Owner: runtime agent (everything except the organic
+decision feature).
 
 Nothing here is scenario-specific. "Multi-org" means any of: several offices of one company,
 several agencies in one country, several countries. One data shape covers all three.
@@ -23,7 +26,7 @@ Conventions used below: `→` = returns / results in; all endpoints are under th
 | 2   | Department chats                                              | M    | —                                                                                                   |
 | 3   | Stakeholder runtime                                           | L    | generator's `scenario_teams` migration (197) before testing; a scenario with `stakeholders` for E2E |
 | 4   | Multi-org readers                                             | M–L  | generator's `orgs[]` + tagged injects/personas for E2E                                              |
-| 5   | Decision layer (executives as players — optional mode)        | L    | §3.4–3.5, §4.2; Dyson fixture                                                                       |
+| 5   | ~~Decision layer (menu-based)~~ — RETIRED, see handover doc   | —    | —                                                                                                   |
 
 Every reader of a new field treats "absent" as today's behaviour, so 0–3 ship and work in
 single-org scenarios regardless of the generator's progress.
@@ -856,7 +859,32 @@ a session's scenario contains injects whose `conditions_to_appear` use `decision
 
 ---
 
-## 5. Decision layer — executives as players (contract §7A; approved 2026-09-20, optional mode)
+## 5. Decision layer — RETIRED (menu-based; removed 2026-09-20)
+
+**This workstream was built and then removed the same day.** The product owner rejected the
+menu-based model (executives picking pre-authored options in a Decisions app) in favour of an
+organic one where executives decide by communicating and the consequences are generated at
+runtime. The replacement is specified in **`docs/executive-decisions-organic-handover.md`** and is
+owned end to end by the generator agent.
+
+What was removed from the runtime: `decisionEngineService.ts`; `GET /sessions/:id/decision-space`,
+`POST/GET /sessions/:id/decisions`; the Decisions app (mobile route, desktop window, home tile,
+notification deep link, icon); the `decision_recorded:*` primitive; latent-grievance swapping in
+`getEffectiveGrievance`; `markObligationsMet` / `lapseObligations`; `triggered_by_decision_key`
+SOP clocks (steps carrying it are now skipped); the dashboard "Executive Decisions" card; the AAR
+`leadership_decisions` data and block.
+
+What was kept: migration 203 (tables `session_decisions`, `stakeholder_state`,
+`decision_obligations` — empty, unused; the `decision_recorded` action type and the
+`decision_recorded` / `obligation_met` / `obligation_lapsed` event types), the generic
+`inject_published:*` / `inject_cancelled:*` primitives, the Executive team identity and its AAR
+section, and a new `registerGrievanceOverrideResolver()` hook in
+`stakeholderReconsiderationService` for the new engine to plug into.
+
+The original §5.1–5.7 text is preserved below for reference only.
+
+<details>
+<summary>Original §5 (historical)</summary>
 
 C-suite join as players in an **Executive** team (`function_key: "Executive"`, ≤ 1 per org) and
 record business decisions whose SOP consequences toward stakeholders the scenario guarantees.
@@ -1036,14 +1064,17 @@ Decisions tile and no behaviour change.
 Deferred inside §5: AI-run executives for unstaffed orgs; decision reversal; board / regulator
 escalation ladders; per-org metrics.
 
+</details>
+
 ---
 
 ## Implementation status (2026-09-20)
 
-All six workstreams are coded; server and frontend typecheck clean; `stakeholderContract` unit
-tests pass (16 cases). Not yet done: applying migrations 198–203 to the database, and end-to-end
-runs against the generator's kidnapping and Dyson fixtures (which need the generator's
-migration 197 and its scenario output).
+Workstreams 0–4 are coded and live (migrations 197–204 applied to production, merged to
+`master`); server and frontend typecheck clean; `stakeholderContract` unit tests pass (16 cases).
+Workstream 5 was coded, then retired and removed the same day (see §5); its database objects
+(migration 203) remain in place, empty. Still pending: end-to-end runs against the generator's
+kidnapping fixture.
 
 Deviations from the spec above, all deliberate:
 
@@ -1066,16 +1097,17 @@ Deviations from the spec above, all deliberate:
   CHECK (migration 190) rejected (`trainer_alert`, `consequence_inject`, `antagonist_post`,
   `antagonist_reply`, `extremist_post`, `extremist_reply`, `director_action`,
   `evaluator_result`). Those inserts had been failing silently.
-- **§5.5 lapsed obligations** penalise the owing team with the existing `prereq` heat-meter
-  mistake type (no new scoring vocabulary).
+- **§5 removed** — the deviation notes that used to sit here (lapsed obligations → `prereq`
+  heat-meter mistake) no longer apply.
 - **Desktop cross-app intents** (Contacts → Mail compose, Contacts → TeamChat DM) use a small
   parked-intent store (`frontend/src/lib/appIntents.ts`) plus a DOM event that makes the desktop
   shell open/remount the target window; on the phone the same intents travel as query params.
 - **AAR in multi-org scenarios** (follow-up after the generator agent's audit): team deep-dive
   sections are keyed by function; when several organisations share a function the section carries
   `teams[]` and the frontend renders one tab per organisation's team. Two new sections cover teams
-  that previously had no review: `social_team_executive` (leadership decisions, obligations,
-  chain of command) and `social_team_other` (custom functions, one tab per team). The executive
+  that previously had no review: `social_team_executive` (leadership, judged from the decisions
+  they communicated in email/chat/statements) and `social_team_other` (custom functions, one tab
+  per team). The executive
   summary gains an `organisations[]` roll-up (average composite per protagonist org) rendered as an
   "Organisations" comparison beside the team bars. Scoring itself is unchanged: it was already per
   team row, hence per organisation.

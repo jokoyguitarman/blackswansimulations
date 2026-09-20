@@ -64,8 +64,8 @@ const HANDLE_RE = /^@[a-z0-9_]{3,30}$/;
 const ID_RE = /^[a-z0-9_]+$/;
 
 /**
- * Non-strict on purpose: unknown keys the generator adds later are preserved, so reserved
- * surface (contract §7A) survives a round-trip through the runtime.
+ * Non-strict on purpose: unknown keys the generator adds later are preserved, so additive
+ * surface survives a round-trip through the runtime.
  */
 export const StakeholderSchema = z
   .object({
@@ -97,7 +97,10 @@ export const StakeholderSchema = z
     resolution_criteria: z.array(z.string()).default([]),
     persuadability: z.enum(PERSUADABILITIES).default('medium'),
     hard_constraints: z.array(z.string()).default([]),
-    // reserved — decision layer (contract §7A)
+    // RETIRED with the menu-based decision layer (2026-09-20). Still parsed so scenarios compiled
+    // with it load, and because generator-side validation reads it; the runtime ignores it.
+    // See docs/executive-decisions-organic-handover.md.
+    /** @deprecated */
     latent_grievances: z.record(z.string(), LatentGrievanceSchema).optional(),
   })
   .passthrough()
@@ -276,8 +279,15 @@ export function sheetLabel(relationship: StakeholderRelationship): string {
   return RELATIONSHIP_SHEETS.find(([r]) => r === relationship)?.[1] ?? 'Other';
 }
 
-// ─── Decision layer — reserved surface (contract §7A) ────────────────────────
+// ─── Decision layer — RETIRED menu-based surface (contract §7A, retired 2026-09-20) ──
+//
+// The runtime no longer reads any of this: the Decisions app, /sessions/:id/decision-space,
+// /sessions/:id/decisions, the `decision_recorded:*` primitive, latent-grievance swapping and
+// obligation tracking were removed in favour of the organic model described in
+// docs/executive-decisions-organic-handover.md. The schemas below are kept ONLY so generator-side
+// modules that still import them keep compiling; delete them together with the last importer.
 
+/** @deprecated Menu-based decision layer retired — see docs/executive-decisions-organic-handover.md. */
 export const DecisionOptionSchema = z
   .object({
     decision_key: z.string().regex(ID_RE),
@@ -300,9 +310,12 @@ export const DecisionOptionSchema = z
     spillover_inject_keys: z.array(z.string()).default([]),
   })
   .passthrough();
+/** @deprecated Menu-based decision layer retired. */
 export type DecisionOption = z.infer<typeof DecisionOptionSchema>;
+/** @deprecated Menu-based decision layer retired. */
 export const DecisionSpaceSchema = z.array(DecisionOptionSchema);
 
+/** @deprecated Menu-based decision layer retired; the organic model derives who-must-know at runtime. */
 export const ChainOfCommandLinkSchema = z
   .object({
     org_key: z.string().min(1),
@@ -310,16 +323,19 @@ export const ChainOfCommandLinkSchema = z
     to: z.array(z.string()).default([]),
   })
   .passthrough();
+/** @deprecated Menu-based decision layer retired. */
 export type ChainOfCommandLink = z.infer<typeof ChainOfCommandLinkSchema>;
+/** @deprecated Menu-based decision layer retired. */
 export const ChainOfCommandSchema = z.array(ChainOfCommandLinkSchema);
 
-/** Condition primitives introduced by the decision layer (contract §7A). */
-export const DECISION_CONDITION_PREFIXES = [
-  'decision_recorded:',
-  'inject_published:',
-  'inject_cancelled:',
-] as const;
+/**
+ * Cross-inject condition primitives keyed on `delivery_config.inject_key`. These survived the
+ * decision-layer removal because they are generic (any inject may depend on another having
+ * fired or been cancelled). `decision_recorded:*` is NOT a primitive any more; the evaluator
+ * treats it as an unknown key (always false).
+ */
+export const INJECT_KEY_CONDITION_PREFIXES = ['inject_published:', 'inject_cancelled:'] as const;
 
-export function isDecisionLayerCondition(key: string): boolean {
-  return DECISION_CONDITION_PREFIXES.some((p) => key.startsWith(p));
+export function isInjectKeyCondition(key: string): boolean {
+  return INJECT_KEY_CONDITION_PREFIXES.some((p) => key.startsWith(p));
 }

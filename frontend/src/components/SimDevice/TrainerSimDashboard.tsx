@@ -3,7 +3,6 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useCountUp, useMetricHistory } from '../../hooks/useCountUp';
 import { supabase } from '../../lib/supabase';
-import { api, type SessionDecisionView } from '../../lib/api';
 import { AdversaryConsole } from './AdversaryConsole';
 import { MetricSparkline } from './MetricSparkline';
 
@@ -794,7 +793,6 @@ export default function TrainerSimDashboard() {
   const [gradedReplies, setGradedReplies] = useState<GradedReply[]>([]);
   const [consequences, setConsequences] = useState<ConsequenceEvent[]>([]);
   const [stakeholderEvents, setStakeholderEvents] = useState<StakeholderEvent[]>([]);
-  const [decisions, setDecisions] = useState<SessionDecisionView[]>([]);
   const [showExplainer, setShowExplainer] = useState(false);
   const [posts, setPosts] = useState<FeedPost[]>([]);
   const [orchestration, setOrchestration] = useState<OrchestrationInject[]>([]);
@@ -945,16 +943,6 @@ export default function TrainerSimDashboard() {
     }
   }, [sessionId]);
 
-  const loadDecisions = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const res = await api.sessions.listDecisions(sessionId);
-      setDecisions(res.data || []);
-    } catch {
-      /* decision layer absent or retry */
-    }
-  }, [sessionId]);
-
   const loadSessionInfo = useCallback(async () => {
     if (!sessionId) return;
     try {
@@ -1055,7 +1043,6 @@ export default function TrainerSimDashboard() {
     loadTeamScores();
     loadIntelStatus();
     loadStakeholderEvents();
-    loadDecisions();
   }, [
     loadSocialState,
     loadPosts,
@@ -1068,7 +1055,6 @@ export default function TrainerSimDashboard() {
     loadTeamScores,
     loadIntelStatus,
     loadStakeholderEvents,
-    loadDecisions,
   ]);
 
   // ---- Initial load + polling ---------------------------------------------
@@ -1748,71 +1734,6 @@ export default function TrainerSimDashboard() {
             )}
           </Card>
         </div>
-
-        {/* ============ EXECUTIVE DECISIONS ROW (decision-layer scenarios only) ============ */}
-        {decisions.length > 0 && (
-          <Card title={`Executive Decisions (${decisions.length})`}>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-              {decisions.map((d) => {
-                const open = d.obligations.filter((o) => o.status === 'open').length;
-                const met = d.obligations.filter((o) => o.status === 'met').length;
-                const lapsed = d.obligations.filter((o) => o.status === 'lapsed').length;
-                return (
-                  <div
-                    key={d.id}
-                    className="rounded-lg p-2.5 border-l-2"
-                    style={{ backgroundColor: '#FFFFFF', borderColor: '#5E5CE6' }}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-1">
-                      <span className="text-xs font-semibold" style={{ color: '#111827' }}>
-                        {d.title}
-                      </span>
-                      <span className="text-[10px]" style={{ color: '#64748b' }}>
-                        T+{d.recorded_at_minute} · {d.team_name}
-                        {d.recorded_by_trainer ? ' (trainer)' : ''}
-                      </span>
-                    </div>
-                    {(d.scope || d.rationale) && (
-                      <p className="text-[11px] leading-snug mb-1" style={{ color: '#4B5563' }}>
-                        {d.scope ? `Scope: ${d.scope}. ` : ''}
-                        {d.rationale ? `Rationale: ${truncate(d.rationale, 160)}` : ''}
-                      </p>
-                    )}
-                    {d.obligations.length > 0 ? (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {d.obligations.map((o) => (
-                          <span
-                            key={o.id}
-                            className="text-[10px] px-1.5 py-0.5 rounded-full"
-                            title={`${o.description} — due T+${o.due_at_minute}`}
-                            style={{
-                              color: '#fff',
-                              backgroundColor:
-                                o.status === 'met'
-                                  ? '#15803D'
-                                  : o.status === 'lapsed'
-                                    ? '#B91C1C'
-                                    : '#B45309',
-                            }}
-                          >
-                            {o.by_function} → {o.stakeholder_name || o.stakeholder_id} · {o.status}
-                          </span>
-                        ))}
-                        <span className="text-[10px] self-center" style={{ color: '#64748b' }}>
-                          {met} met · {open} open · {lapsed} lapsed
-                        </span>
-                      </div>
-                    ) : (
-                      <p className="text-[10px]" style={{ color: '#64748b' }}>
-                        No obligations created
-                      </p>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        )}
 
         {/* ============ STAKEHOLDER OUTCOMES ROW: full width ============ */}
         <Card title={`Stakeholder Outcomes (${stakeholderEvents.length})`}>

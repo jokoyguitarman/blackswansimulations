@@ -53,27 +53,20 @@ function mapEventToNotification(event: WSEvent, sessionId: string): Notification
     const platform = String(notif.platform || topMetadata.platform || '');
     const isPageNotification = !!topMetadata.is_page_notification;
 
-    // Only surface social interactions (on the player's / their page's posts), team chat, and
-    // executive decisions addressed to the player's organisation. Scenario-content
-    // (inject_published), incidents and other system alerts do not push.
+    // Only surface social interactions (on the player's / their page's posts) and team chat.
+    // Scenario-content (inject_published), incidents and other system alerts do not push.
     const isSocialInteraction =
       notifType === 'social_reply' ||
       notifType === 'social_like' ||
       notifType === 'social_mention' ||
       notifType === 'social_repost';
-    const isDecisionAlert = notifType === 'system_alert' && !!topMetadata.decision_id;
 
     let appId: string;
     let appName: string;
     let appIcon: string;
     let route: string;
 
-    if (isDecisionAlert) {
-      appId = 'decisions';
-      appName = 'Decisions';
-      appIcon = '/icons/icon-decisions.svg';
-      route = `/sim/${sessionId}/device/decisions`;
-    } else if (notifType === 'chat_message') {
+    if (notifType === 'chat_message') {
       appId = 'chat';
       appName = 'TeamChat';
       appIcon = '/icons/icon-chat.png';

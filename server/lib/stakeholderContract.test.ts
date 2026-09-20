@@ -10,7 +10,7 @@ import {
   criteriaThreshold,
   ALLOWED_VERDICTS,
   sheetLabel,
-  isDecisionLayerCondition,
+  isInjectKeyCondition,
   type Stakeholder,
 } from './stakeholderContract.js';
 
@@ -159,7 +159,7 @@ describe('StakeholderSchema', () => {
     );
   });
 
-  test('preserves reserved latent_grievances and unknown keys', () => {
+  test('still parses retired latent_grievances and preserves unknown keys', () => {
     const parsed = StakeholderSchema.parse({
       ...base(),
       latent_grievances: {
@@ -224,11 +224,13 @@ describe('persuadability rules', () => {
 });
 
 describe('misc', () => {
-  test('sheetLabel and decision-layer condition detection', () => {
+  test('sheetLabel and inject_key condition detection', () => {
     assert.equal(sheetLabel('client'), 'Clients');
     assert.equal(sheetLabel('other'), 'Other');
-    assert.equal(isDecisionLayerCondition('decision_recorded:recall_all'), true);
-    assert.equal(isDecisionLayerCondition('inject_published:inj_a'), true);
-    assert.equal(isDecisionLayerCondition('gate_met:x'), false);
+    assert.equal(isInjectKeyCondition('inject_published:inj_a'), true);
+    assert.equal(isInjectKeyCondition('inject_cancelled:inj_a'), true);
+    // Retired menu-layer primitive: no longer recognised.
+    assert.equal(isInjectKeyCondition('decision_recorded:recall_all'), false);
+    assert.equal(isInjectKeyCondition('gate_met:x'), false);
   });
 });

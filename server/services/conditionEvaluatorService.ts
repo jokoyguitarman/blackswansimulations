@@ -43,9 +43,7 @@ export interface EvaluationContext {
   scenarioConditionKeyDefs?: Array<{ key: string; state_path?: string; negate?: boolean }>;
   /** Number of placed assets in the session (used by placed_asset_exists condition). */
   placedAssetsCount?: number;
-  // ─── Decision layer primitives (contract §7A) ─────────────────────────────
-  /** decision_key values recorded in this session (any org). */
-  recordedDecisionKeys?: string[];
+  // ─── Cross-inject primitives (inject_key based) ───────────────────────────
   /** Cancelled scenario inject ids (for inject_cancelled:<inject_key>). */
   cancelledScenarioInjectIds?: string[];
   /** delivery_config.inject_key → inject ids carrying that key (template + runtime copies). */
@@ -621,11 +619,11 @@ function evaluateKey(key: string, context: EvaluationContext): boolean {
     }
   }
 
-  // Decision layer primitives (contract §7A). Absent context → false (dormant).
-  const prefixDecision = 'decision_recorded:';
-  if (key.startsWith(prefixDecision)) {
-    return (context.recordedDecisionKeys ?? []).includes(key.slice(prefixDecision.length));
-  }
+  // `decision_recorded:<key>` belonged to the removed menu-based decision layer
+  // (docs/executive-decisions-organic-handover.md). It is not a primitive any more and
+  // deliberately falls through to the generic "unknown key → false" path below.
+  //
+  // Cross-inject primitives keyed on delivery_config.inject_key. Absent context → false.
   const prefixInjectPublished = 'inject_published:';
   if (key.startsWith(prefixInjectPublished)) {
     const ids = context.injectIdsByKey?.[key.slice(prefixInjectPublished.length)] ?? [];

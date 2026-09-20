@@ -40,23 +40,6 @@ export async function evaluateSOPCompliance(
     .eq('session_id', sessionId)
     .order('created_at', { ascending: true });
 
-  // Decision layer (runtime plan §5.5): steps with `triggered_by_decision_key` are inert until
-  // that decision is recorded, then their clock starts at the recording minute.
-  const decisionMinuteByKey = new Map<string, number>();
-  try {
-    const { data: decisions } = await supabaseAdmin
-      .from('session_decisions')
-      .select('decision_key, recorded_at_minute')
-      .eq('session_id', sessionId);
-    for (const d of decisions ?? []) {
-      const r = d as { decision_key: string; recorded_at_minute: number };
-      if (!decisionMinuteByKey.has(r.decision_key))
-        decisionMinuteByKey.set(r.decision_key, r.recorded_at_minute);
-    }
-  } catch {
-    /* table absent before migration 203 */
-  }
-
   const results: SOPComplianceResult[] = [];
 
   for (const sop of sops) {
@@ -68,12 +51,10 @@ export async function evaluateSOPCompliance(
     }>;
 
     for (const step of steps) {
-      let stepStart = 0;
-      if (step.triggered_by_decision_key) {
-        const recordedAt = decisionMinuteByKey.get(step.triggered_by_decision_key);
-        if (recordedAt === undefined) continue; // decision not taken → step does not apply
-        stepStart = recordedAt;
-      }
+      // Steps keyed to the removed menu-based decision layer stay inert: nothing records a
+      // decision_key any more, so their clock never starts (see
+      // docs/executive-decisions-organic-handover.md). Scenarios compiled with them still load.
+      if (step.triggered_by_decision_key) continue;
 
       const matchingActions = (actions || []).filter((a) => a.sop_step_matched === step.step_id);
 
@@ -83,7 +64,7 @@ export async function evaluateSOPCompliance(
       if (matchingActions.length > 0) {
         status = 'completed';
         completedAt = matchingActions[0].created_at;
-      } else if (step.time_limit_minutes && elapsedMinutes - stepStart > step.time_limit_minutes) {
+      } else if (step.time_limit_minutes && elapsedMinutes > step.time_limit_minutes) {
         status = 'overdue';
       }
 

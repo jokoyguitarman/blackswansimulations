@@ -6,7 +6,6 @@ import NewsApp from './NewsApp';
 import GroupChatApp from './GroupChatApp';
 import { WordAppDesktop } from './WordApp/WordApp';
 import { SheetsAppDesktop } from './SheetsApp/SheetsApp';
-import { DecisionsAppDesktop } from './DecisionsApp/DecisionsApp';
 import ZDesktopLayout from './ZDesktopLayout';
 import { DESKTOP_OPEN_APP_EVENT } from '../../lib/appIntents';
 
@@ -98,14 +97,6 @@ const APP_REGISTRY: Record<
     component: SheetsAppDesktop,
     defaultWidth: 980,
     defaultHeight: 620,
-  },
-  decisions: {
-    title: 'Decisions',
-    icon: '🏛️',
-    iconImg: '/icons/icon-decisions.svg',
-    component: DecisionsAppDesktop,
-    defaultWidth: 520,
-    defaultHeight: 640,
   },
 };
 

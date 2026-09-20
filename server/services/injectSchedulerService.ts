@@ -36,10 +36,9 @@ import { runEngagementTick } from './engagementAlgorithmService.js';
 import { runAntagonistEngine, runAntagonistThreadReplies } from './antagonistEngineService.js';
 import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.js';
 import { runScenarioDirector } from './blueprint/scenarioDirectorService.js';
-import { isDecisionLayerCondition } from '../lib/stakeholderContract.js';
 import type { Server as SocketServer } from 'socket.io';
 
-/** Sessions for which the decision-layer dormancy notice has been logged (once per process). */
+/** Sessions for which the decision-template dormancy notice has been logged (once per process). */
 const decisionLayerInertLogged = new Set<string>();
 /**
  * Shared AI cancellation gate for any inject about to be published.
@@ -884,10 +883,11 @@ export class InjectSchedulerService {
           (inj.eligible_after_minutes == null || inj.eligible_after_minutes <= elapsedMinutes),
       );
 
-      // Dormancy diagnostic (contract §7 item 11): templates use decision-layer primitives but the
-      // scenario has no decision_space, so nothing can ever record a decision → they stay dormant.
+      // The menu-based decision layer was removed (docs/executive-decisions-organic-handover.md).
+      // Templates conditioned on `decision_recorded:*` evaluate false and stay dormant; say so
+      // once per session so a trainer looking at a silent scenario knows why.
       if (!decisionLayerInertLogged.has(session.id)) {
-        const usesDecisionLayer = (condInjectsRaw ?? []).some((inj) => {
+        const usesDecisionRecorded = (condInjectsRaw ?? []).some((inj) => {
           const conds = inj.conditions_to_appear as
             | { conditions?: string[]; all?: string[] }
             | string[]
@@ -895,17 +895,14 @@ export class InjectSchedulerService {
           const keys = Array.isArray(conds)
             ? conds
             : [...(conds?.conditions ?? []), ...(conds?.all ?? [])];
-          return keys.some((k) => isDecisionLayerCondition(String(k)));
+          return keys.some((k) => String(k).startsWith('decision_recorded:'));
         });
-        if (usesDecisionLayer) {
+        if (usesDecisionRecorded) {
           decisionLayerInertLogged.add(session.id);
-          const { isDecisionLayerEnabled } = await import('./decisionEngineService.js');
-          if (!(await isDecisionLayerEnabled(session.id))) {
-            logger.info(
-              { sessionId: session.id, event: 'decision_layer_inert' },
-              'Scenario carries decision-layer templates but no decision_space; they stay dormant',
-            );
-          }
+          logger.info(
+            { sessionId: session.id, event: 'decision_layer_inert' },
+            'Scenario carries menu-based decision templates (decision_recorded:*); that layer was removed, so they stay dormant',
+          );
         }
       }
 
@@ -931,16 +928,29 @@ export class InjectSchedulerService {
           .select('id', { count: 'exact', head: true })
           .eq('session_id', session.id);
 
-        // Decision layer primitives (contract §7A): recorded decision keys and the
-        // inject_key → ids index, so decision_recorded:* / inject_published:* / inject_cancelled:*
-        // resolve. Cheap no-ops for scenarios without a decision space.
-        let recordedDecisionKeys: string[] = [];
-        let injectIdsByKey: Record<string, string[]> = {};
-        try {
-          const { isDecisionLayerEnabled, recordedDecisionKeys: loadKeys } =
-            await import('./decisionEngineService.js');
-          if (await isDecisionLayerEnabled(session.id)) {
-            recordedDecisionKeys = Array.from(await loadKeys(session.id));
+        // inject_key → ids index so `inject_published:<key>` / `inject_cancelled:<key>` conditions
+        // resolve (kept as a generic cross-inject primitive). Only loaded when some
+        // condition-driven inject actually uses one of those prefixes.
+        const injectIdsByKey: Record<string, string[]> = {};
+        const usesInjectKeyConditions = (condInjectsRaw ?? []).some((inj) => {
+          const conds = inj.conditions_to_appear as
+            | { conditions?: string[]; all?: string[] }
+            | string[]
+            | null;
+          const keys = Array.isArray(conds)
+            ? conds
+            : [...(conds?.conditions ?? []), ...(conds?.all ?? [])];
+          const cancelKeys = Array.isArray(inj.conditions_to_cancel)
+            ? (inj.conditions_to_cancel as string[])
+            : [];
+          return [...keys, ...cancelKeys].some(
+            (k) =>
+              String(k).startsWith('inject_published:') ||
+              String(k).startsWith('inject_cancelled:'),
+          );
+        });
+        if (usesInjectKeyConditions) {
+          try {
             const { data: keyed } = await supabaseAdmin
               .from('scenario_injects')
               .select('id, delivery_config')
@@ -954,10 +964,9 @@ export class InjectSchedulerService {
               if (!k) continue;
               (injectIdsByKey[k] ??= []).push(String(row.id));
             }
+          } catch (keyErr) {
+            logger.debug({ err: keyErr, sessionId: session.id }, 'inject_key index unavailable');
           }
-        } catch (dlErr) {
-          logger.debug({ err: dlErr, sessionId: session.id }, 'Decision layer context unavailable');
-          injectIdsByKey = {};
         }
 
         const evalContext: EvaluationContext = {
@@ -975,7 +984,6 @@ export class InjectSchedulerService {
           publishedInjectKeysOrTags: publishedKeysOrTags,
           gateStatusByGateId,
           placedAssetsCount: placedAssetsCount ?? 0,
-          recordedDecisionKeys,
           cancelledScenarioInjectIds: [...cancelledInjectIds],
           injectIdsByKey,
         };
@@ -1071,16 +1079,6 @@ export class InjectSchedulerService {
         { err: condErr, sessionId: session.id },
         'Condition-based inject evaluation error',
       );
-    }
-
-    // --- Decision layer: lapse SOP obligations past their window (runtime plan §5.5) ---
-    try {
-      const { isDecisionLayerEnabled, lapseObligations } =
-        await import('./decisionEngineService.js');
-      if (await isDecisionLayerEnabled(session.id))
-        await lapseObligations(session.id, elapsedMinutes);
-    } catch (obErr) {
-      logger.debug({ err: obErr, sessionId: session.id }, 'Obligation lapse check skipped');
     }
 
     // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---

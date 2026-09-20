@@ -45,63 +45,6 @@ export type ContactSearchResult =
     }
   | { kind: 'stakeholder'; stakeholder: ContactRow };
 
-// ─── Decision layer (contract §7A) ──────────────────────────────────────────
-export interface DecisionObligationView {
-  id: string;
-  decision_id: string;
-  stakeholder_id: string;
-  stakeholder_name?: string;
-  by_function: string;
-  description: string;
-  due_at_minute: number;
-  status: 'open' | 'met' | 'lapsed';
-  met_by_user_id: string | null;
-  met_at: string | null;
-}
-
-export interface SessionDecisionView {
-  id: string;
-  session_id: string;
-  org_key: string;
-  decision_key: string;
-  title: string;
-  recorded_by: string;
-  team_name: string;
-  scope: string | null;
-  rationale: string | null;
-  effective_at: string;
-  recorded_at_minute: number;
-  recorded_by_trainer: boolean;
-  created_at: string;
-  obligations: DecisionObligationView[];
-}
-
-export interface DecisionOptionView {
-  decision_key: string;
-  title: string;
-  description: string;
-  decidable_by_org_keys: string[];
-  affected_org_keys: string[];
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  sop_obligations: Array<{
-    description: string;
-    owed_to_stakeholder_ids: string[];
-    by_function: string;
-    window_minutes: number;
-  }>;
-  eruption_inject_keys: string[];
-  spillover_inject_keys: string[];
-  recorded: SessionDecisionView | null;
-  decidable: boolean;
-}
-
-export interface DecisionSpaceView {
-  org_key: string | null;
-  is_trainer: boolean;
-  options: DecisionOptionView[];
-  chain_of_command: Array<{ org_key: string; from_function: string; to: string[] }>;
-}
-
 // Helper function to build API URLs
 const apiUrl = (path: string) => {
   // Remove leading slash if present, then add it back
@@ -831,38 +774,6 @@ export const api = {
       const headers = await getAuthHeaders();
       return handleResponse<{ data: unknown[]; count: number; page: number; limit: number }>(
         await fetch(apiUrl(`/api/sessions?page=${page}&limit=${limit}`), { headers }),
-      );
-    },
-    // Decision layer (contract §7A). 404 `decision_layer_not_enabled` when the scenario has none.
-    decisionSpace: async (sessionId: string) => {
-      const headers = await getAuthHeaders();
-      return handleResponse<{ data: DecisionSpaceView }>(
-        await fetch(apiUrl(`/api/sessions/${sessionId}/decision-space`), { headers }),
-      );
-    },
-    recordDecision: async (
-      sessionId: string,
-      body: {
-        decision_key: string;
-        scope?: string;
-        rationale?: string;
-        effective_at?: string;
-        as_org_key?: string;
-      },
-    ) => {
-      const headers = await getAuthHeaders();
-      return handleResponse<{ data: SessionDecisionView }>(
-        await fetch(apiUrl(`/api/sessions/${sessionId}/decisions`), {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-        }),
-      );
-    },
-    listDecisions: async (sessionId: string) => {
-      const headers = await getAuthHeaders();
-      return handleResponse<{ data: SessionDecisionView[] }>(
-        await fetch(apiUrl(`/api/sessions/${sessionId}/decisions`), { headers }),
       );
     },
     orgs: async (sessionId: string) => {

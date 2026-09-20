@@ -173,25 +173,6 @@ export default function HomeScreen() {
 
   const [teamBriefing, setTeamBriefing] = useState<TeamBriefing | null>(null);
   const [showBriefing, setShowBriefing] = useState(false);
-  // Decision layer (contract §7A): the Decisions tile exists only for Executive players / trainers
-  // in scenarios that carry a decision space.
-  const [hasDecisions, setHasDecisions] = useState(false);
-  useEffect(() => {
-    if (!sessionId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const headers = await getAuthHeaders();
-        const res = await fetch(apiUrl(`/api/sessions/${sessionId}/decision-space`), { headers });
-        if (!cancelled) setHasDecisions(res.ok);
-      } catch {
-        if (!cancelled) setHasDecisions(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [sessionId]);
 
   const raceOptions = RACE_BY_COUNTRY[scenarioCountry.toLowerCase()] || DEFAULT_RACE_OPTIONS;
   const effectiveReligion = religion === 'other' ? customReligion.trim() : religion;
@@ -394,16 +375,6 @@ export default function HomeScreen() {
     },
     { id: 'drafts', label: 'Docs', icon: '/icons/icon-docs.svg', path: 'drafts' },
     { id: 'contacts', label: 'Contacts', icon: '/icons/icon-sheets.svg', path: 'contacts' },
-    ...(hasDecisions
-      ? [
-          {
-            id: 'decisions',
-            label: 'Decisions',
-            icon: '/icons/icon-decisions.svg',
-            path: 'decisions',
-          },
-        ]
-      : []),
   ];
 
   const dockApps = apps.filter((a) => a.inDock);
