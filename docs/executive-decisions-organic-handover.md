@@ -188,7 +188,9 @@ fine either way.
 ## 4. Target behaviour — what "organic" has to mean
 
 Design freedom is yours; these are the behaviours the product owner described and expects to see.
-Treat them as acceptance criteria, not implementation.
+Treat them as acceptance criteria, not implementation. **§10 refines this section** (cast
+completeness and the two-tier trigger, the knowledge/provenance model for spread, and the decision
+ledger for the AAR) — read both.
 
 ### 4.1 Detection: a decision is what an executive _communicates_, not what they click
 
@@ -317,7 +319,8 @@ sections, `MO-DEC-*` validation rules and the "decision layer" review panel.
    liaison, finance controller, EA to the CEO — owned by the right functions, with `knowledge`
    describing what they see day to day. (Contract §3 already allows this; it just needs to be
    deliberate rather than incidental.) The Sigma run had 13 internal ground staff — that is the
-   right order of magnitude.
+   right order of magnitude. **§10.1 turns this into a rule** (carriers per site, a roster tier,
+   distribution lists) with the contract fields in §10.2.
 2. **Optional additive stakeholder field** to make detection and affected-set matching precise
    without a taxonomy: e.g. `sensitivities: string[]` — "what kinds of executive decisions this
    person would react to, in plain language" (_"any change to Johor shift patterns or headcount"_,
@@ -517,6 +520,8 @@ HR-or-Driver-Relations / Sales / Legal staffed, stakeholders present.
    second wave ("management U-turn")? Real answer is "all three depending on timing"; v1 needs a
    rule.
 4. Pressure-organisations plan: reassign its runtime side to you (recommended) or keep with me?
+5. **Live union / pressure-group participants** (§10.1): v1 = union leader as NPC only, live union
+   teams as a follow-on — confirm, or pull it into v1?
 
 ---
 
@@ -531,3 +536,230 @@ HR-or-Driver-Relations / Sales / Legal staffed, stakeholders present.
   design lives wherever you keep it (suggest `docs/executive-decisions-organic-plan.md`).
 - Migration numbers: you take 205 onward. Tell the product owner to apply them; they have the
   Supabase MCP wired to the right project (`umnutnosxiypbnzpqszk`).
+
+---
+
+## 10. Addendum (2026-09-20, product owner Q&A) — cast completeness, spread, and the ledger
+
+The product owner walked the Dyson case one level deeper: the CEO closes the Malaysian plant, the
+HR team has to tell the Malaysian HR counterpart and the site manager, the workforce has to be
+notified, and the union and the press have to find out. Three questions came out of it; the
+answers below are **requirements**, refining §4 and §5. Where they need something from me, §10.5
+lists it.
+
+### 10.1 Cast completeness — the news must land on someone who can carry it
+
+**The carrier rule.** For every path a decision can plausibly travel, the scenario must contain a
+contactable NPC who can carry it onward — whether or not a live team also covers that role. Per
+protagonist org **and per site** (multi-office orgs: one set per site/country):
+
+| Carrier                                                                                                                            | Why it must exist                                                                                 | Contract shape                                                                                |
+| ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Site leader (plant / depot / branch manager)                                                                                       | first internal recipient of any operational decision; relays to supervisors                       | `relationship: 'internal'`, `org_key` = site org, owned by Operations/Executive               |
+| HR counterpart at the site                                                                                                         | the person the HQ HR team must brief; runs the notification                                       | `relationship: 'internal'`, owned by HR (or the team the charter names)                       |
+| Workforce representative — union branch leader, shop steward or staff council chair (at least one whenever labour is in the story) | the hop from "employees know" to "the union knows"; the person a compliant HR team consults first | `relationship: 'union'` (or `'internal'` for a staff council), owned by HR / Driver Relations |
+| Workforce roster (see below)                                                                                                       | the recipients of the formal notice; the source of the first public grievance                     | lightweight stakeholders, `tier: 'roster'`                                                    |
+| Distribution list per site / group (see below)                                                                                     | how HR actually notifies 60 people at once                                                        | `kind: 'group'`, `members[]`                                                                  |
+| Local labour reporter                                                                                                              | the hop from grievance to publication                                                             | `relationship: 'media'`, country = site country                                               |
+| The relevant regulator contact(s)                                                                                                  | the hop from publication / complaint to enforcement                                               | `relationship: 'regulator'`, `persuadability: none\|low`                                      |
+
+Rule of thumb: **every live player role has an NPC shadow cast around it** (the HR team has
+employees and a site HR counterpart; the Executive team has an EA and a board contact), and
+**every pressure group in the story has at least one contactable person** (the pressure-organisations
+plan's spokesperson). The Sigma run produced 13 ground staff, a union secretary and 9 regulators
+by accident; make it a validation rule (`MO-CAST-*`) so Dyson cannot ship without them.
+
+**Roster tier.** Sixty fully characterised stakeholders would cost more than the rest of the
+scenario. Emit roster employees as lightweight stakeholders: name, role, shift, tenure, site, email,
+a one-line disposition (`personality`), empty `knowledge` / `will_not_disclose`, no scheduled
+injects, `grievance` inherited from the site at runtime. They appear on a **Roster** sheet in the
+owning team's workbook, are individually contactable (for SOPs that require written notice to each
+person), and reply only as a **sampled crowd** (§10.5 R1): when many roster members receive the
+same message, 2–4 with different dispositions answer, the rest stay silent.
+
+**Distribution lists.** One contact per site/group — "Johor plant — all staff (distribution list)",
+`kind: 'group'`, `members` = roster ids (and optionally principals). Sending to it counts as
+notifying every member at that minute (knowledge state → `officially_notified`, §10.3); replies
+come from the sampled crowd. This is how HR really does it and it keeps the exercise playable.
+
+**Two-tier trigger, not one.** Do not make the cascade wait for "the final notice reached an NPC":
+
+1. The CEO's decision message (to players) is detected (§4.1) and starts the **informal leak
+   clock** — internal relay and rumour (§10.3) begin whether or not anyone emails an NPC. A CEO who
+   tells the player teams and nobody notifies anyone is the _most_ likely to leak in reality; the
+   model must not reward it with silence.
+2. The HR notice to carriers (site HR, site leader, union rep, roster / distribution list) is a
+   second, separately detected event — **formal notification** — and is what the SOP grades:
+   **order** (union / staff representatives consulted before employees; employees before public),
+   **timing** (against the leak clock and any statutory notice the scenario defines), **content**
+   (graded with `gradePlayerContent(..., { post_format: 'text' })` against the HR charter: clear,
+   humane, lawful, states support measures) and **coverage** (every affected roster member reached,
+   individually or via the list). Emit these as `sop_definitions.steps[]` for the HR/Driver-Relations
+   function (`step_id`, `name`, `time_limit_minutes`); your detection marks them met via
+   `recordPlayerAction(sessionId, userId, 'email_sent' | 'dm_sent', targetId, content, metadata,
+step_id)` — that is how `evaluateSOPCompliance` already works.
+
+**Live union participants.** Representable today as another organisation in `initial_state.orgs[]`
+with its own team(s) — the identity model is org-agnostic. Two consequences: (a) HR emailing a live
+union leader is player-to-player mail, which the detection hook fires on, so the engine learns "the
+union knows" and the union's **NPC** members and stewards react even if the live union players sit
+on the news — this is why the NPC shadow cast is required around live roles too; (b) it needs the
+pressure-organisations plan to allow `control_mode: 'player'` on a pressure org (that plan currently
+forbids assigning them) and touches the visibility predicate for the union players' own contacts
+sheet (contract §6 — needs me). **Recommendation: v1 = union leader as NPC; live union as a
+follow-on** (open question §8.5).
+
+### 10.2 Contract additions this needs (additive, optional — I add them on your confirmation)
+
+```ts
+// Stakeholder (contract §3) — additive optional fields
+kind?: 'person' | 'group'; // default 'person'. 'group' = distribution list; mail to it reaches members
+members?: string[]; // stakeholder ids; required when kind === 'group'
+tier?: 'principal' | 'roster'; // default 'principal'. roster = lightweight, sampled replies, no own injects
+site_key?: string; // optional grouping within an org (plant / depot / branch) for propagation
+```
+
+Validation I will enforce on my side: `members` resolve to stakeholders in the same `org_key` (or
+common); a group's `owning_team` equals its members' majority owner; `tier: 'roster'` entries have
+no stakeholder-authored injects. Confirm the names (or propose others) and I add them to
+`StakeholderSchema`, the workbook (Roster sheet, "(distribution list)" badge) and Mail autocomplete
+the same day — §10.5 R2.
+
+### 10.3 Spread — model knowledge and provenance, not inboxes
+
+One NPC learning the decision must be enough to reach the union, the press and the regulator, and
+the AAR must be able to say **how** each of them found out. So the engine keeps, per decision, a
+**knowledge state per actor** with provenance:
+
+| State                 | Meaning                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------ |
+| `unaware`             | default                                                                              |
+| `rumour`              | heard something, unconfirmed (internal relay, feed chatter)                          |
+| `informed`            | knows the substance, informally (told by a colleague, read a post, reporter's tip)   |
+| `officially_notified` | received a formal communication from the organisation (HR notice, statement, letter) |
+
+Actors: named stakeholders (principals and roster), groups (a shift, a site's workforce), pages /
+organisations (union branch, ministry, outlet — the pressure-organisations plan's pages), and crowd
+segments by country (the persona pool). Each transition records `learned_from` (actor or artefact),
+`learned_via` (`direct_message | internal_relay | grievance_relay | public_exposure |
+formal_notice`) and `at_minute`. Suggested table: `decision_knowledge (session_id, decision_id,
+actor_kind, actor_id, state, learned_from, learned_via, at_minute, ref_table, ref_id)`.
+
+Transitions your planner may fire:
+
+- **direct message** — a player writes to the actor (hook §6.7); formal notice if it is the HR
+  notification, informed otherwise.
+- **internal relay** — same org/site, minutes, probabilistic; site leader → supervisors →
+  roster; scaled by a scenario "leakiness" parameter the trainer can set.
+- **grievance relay** — an aggrieved actor tells whoever they would naturally tell: roster
+  employee → union rep; union rep → labour reporter; reporter → ministry for comment; client →
+  their own procurement chain. Use `relationship`, `org_key`, country and (if you adopt it)
+  `sensitivities` to pick the next hop.
+- **public exposure** — a feed post or article moves every follower in that country to `informed`
+  (drive the crowd through the existing engines: `triggerNPCReactions`, ambient continuation —
+  both already country-scoped).
+
+**Every hop leaves an artefact players can intercept** wherever plausible: the roster employee's
+feed post ("Told by email after 14 years"), the reporter's email to Communications asking for
+comment by a deadline, the union page statement, the ministry's records request, the client's
+"is Thursday's shipment affected?" email to Sales. Each is a pending stakeholder-authored inject
+(§6.4), so the reconsideration judge applies unchanged: answer the reporter before the deadline
+and the article is softened; meet the union's criteria and the strike notice is withdrawn. That is
+what makes "only the union leader got the email" sufficient — the engine runs employee → union →
+press → regulator on realistic delays and a per-decision budget, and players can break the chain
+at each link.
+
+**What the planner must read:**
+
+- the **content of the notice**, not just its existence — a cold two-line termination email versus
+  a compliant, humane notice with consultation and support measures produces different grievances,
+  intensities and delays; union told before employees partially meets "consulted" criteria and
+  softens the statement; **this is where the training value lives**;
+- **silence** — no formal notice by T+X after the leak clock started raises rumour intensity and
+  brings the reporter forward;
+- **scope** — the Malaysian workforce reaches the Malaysian union, press and ministry; Singapore
+  MOM enters only through an explicit cross-border hop (the Singapore HQ's own workforce, or a
+  reporter with a Singapore desk).
+
+**Determinism.** Persist the planned chain (nodes with `trigger_time_minutes` / conditions) when
+the decision is planned; re-plan only on new player input (a notice arrives, a reporter is
+answered). Replays then fire the same chain, and the AAR reads records, not re-generations.
+
+### 10.4 Recording it — a decision ledger with causal links, and what the AAR shows
+
+Almost every raw record already exists: the emails and chat messages themselves (`sim_emails`,
+`chat_messages`), `stakeholder_conversations` (who told which NPC what, when),
+`inject_verdicts` + `stakeholder_verdict` events (why an NPC softened or withdrew, and which player
+message did it), `player_actions` with `sop_step_matched`, heat-meter and sentiment snapshots,
+`session_events`. **What is missing is the link.** Stamp a `decision_id` on everything downstream:
+
+- `delivery_config.decision_id` on every generated inject (§6.4) — and `parent_inject_key` for
+  second-order ones;
+- `metadata.decision_id` on every `session_events` row you emit;
+- `decision_id` on each `decision_knowledge` transition;
+- a `decision_events` chain if you want an explicit tree: `(id, session_id, decision_id,
+parent_id, kind, actor_kind, actor_id, at_minute, ref_table, ref_id, summary)` — kinds such as
+  `detected | told | found_out | notice_sent | reaction_planned | reaction_fired |
+reaction_softened | reaction_withdrawn | public_effect`.
+
+With the links, the AAR (your data under a new key in `SocialMediaAARData`, §3 touch points) can
+render:
+
+- **Decision cascade** (new section, one tree per decision): decision at T+22 → told: COO, plant
+  manager → found out: HR T+35 (supervisor), Comms T+41 (leak), union T+58 (steward) → reactions
+  planned → fired / softened / withdrawn, each with the team and the **quoted player message** that
+  did it → public effect (posts, article, heat and sentiment deltas by country). The trainer card
+  shows the same tree live; the AAR freezes it.
+- **Executive section** (`social_team_executive`, instruction already reworded): how the decision
+  was communicated — right functions first, scoped, explained, nothing public before Comms had a
+  line.
+- **HR / Driver-Relations section**: notification compliance — order, timing against the leak
+  clock, coverage of the roster, tone grade of the notice; reactions averted by the notice.
+- **Communications section**: reporter queries answered before publication; leak handling.
+- **Stakeholder pre-emption** (exists): gains the decision linkage ("withdrawn because Driver
+  Relations' T+45 email met criteria X").
+- **NPC effects**: per principal stakeholder an end-state — grievance changed by the decision
+  (`override:` source) and whether it was resolved, last verdict, statements issued / withdrawn;
+  per group / roster a summary (notified when, by whom, how many posted); crowd sentiment by country
+  before and after; pressure pages' statement timelines (pressure plan §3.4).
+- **Lessons** paragraph with the counterfactual ("had the union been notified before the
+  employees, the strike notice would likely not have fired") — appropriate post-session even though
+  coaching mid-session is not.
+
+Scope note for the product owner: NPC effects live **within a session**. Stakeholders reset per
+session; "the union remembers last quarter" would be a separate feature.
+
+### 10.5 Runtime gaps on my side (owner: runtime agent; status: open — I fix these, not you)
+
+- **R1 — multi-recipient stakeholder mail.** `npcEmailReplyService.triggerNPCEmailReply` matches
+  only `to_addresses[0]`; an HR email to 20 roster members is logged against one and the other 19
+  never "know". Fix: resolve **every** recipient to a stakeholder, `appendConversation` for each,
+  expand `kind: 'group'` to its members, run one coalesced plan per email, and reply from a bounded
+  sample (≤ 3; principals always, roster sampled by disposition). Until this lands, tell your
+  engine to treat any recipient list as fully notified using the email's `to_addresses` rather than
+  the conversation log.
+- **R2 — workbook and Mail autocomplete** for `kind: 'group'` and `tier: 'roster'` (Roster sheet,
+  "(distribution list)" badge, group expansion on send). Lands with §10.2.
+- **R3 — decision context in NPC replies.** `handlePlayerMessage` builds the character prompt from
+  the record and the log only, so the plant manager cannot know about the closure unless it is in
+  the message he received. I will add an optional `context?: string` to `PlayerMessageCtx` (appended
+  to the character prompt) and pass through to `decideAndReply`; supply "what this person knows
+  about the decision and how they feel about it" from your knowledge state. Until then, the grievance
+  override (§6.3) is the only way your engine influences a reply.
+
+### 10.6 Acceptance additions (extend §7)
+
+11. HR sends **one** email to "Johor plant — all staff (distribution list)" → every roster member is
+    `officially_notified` at that minute; 2–3 sampled replies arrive with different tones; the
+    Roster sheet shows who was reached.
+12. Same notice sent **after** the union statement was already planned → planner leaves the union
+    grievance at full intensity; sent **before**, with consultation language → union criteria
+    partially met, statement planned softer or later. The two runs differ visibly.
+13. A roster employee's feed post appears in the Malaysian feed ~10–20 min after notification; a
+    labour reporter's "comment by 17:00" email lands in Communications' inbox; answering it before
+    the deadline yields `modify` on the article inject; ignoring it yields the article as planned.
+14. `decision_knowledge` shows the union moved to `informed` via `grievance_relay` from a named
+    roster employee before HR's notice (if HR was late), or to `officially_notified` via
+    `formal_notice` from the HR team (if HR was on time) — and the AAR cascade tree says which.
+15. A cold two-line notice and a compliant humane notice, everything else equal, produce different
+    reaction intensities and different tone grades in the HR section of the AAR.
