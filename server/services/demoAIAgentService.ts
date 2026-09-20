@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import { chatJson } from './ai/chatClient.js';
 import {
   getWebSocketService,
   type WebSocketEvent,
@@ -109,7 +110,6 @@ const INTER_ACTION_BASE_MS = 3_000;
 const INTER_ACTION_RANGE_MS = 3_000;
 const HYBRID_DEFER_WINDOW_MS = 10_000;
 const MAX_RECENT_ACTIONS = 15;
-const AI_MODEL = 'gpt-4o-mini';
 const MAX_VALIDATION_RETRIES = 2;
 const PROACTIVE_INTERVAL_MS = 60_000; // 1 min between proactive ticks
 const PROACTIVE_ACT_PROBABILITY = 0.85; // 85% chance per agent per tick (high throughput)
@@ -259,20 +259,17 @@ async function classifyInjectWithAI(
   injectText: string,
 ): Promise<ClassificationResult> {
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        temperature: 0,
-        max_tokens: 200,
-        messages: [
-          {
-            role: 'system',
-            content: `You classify crisis-exercise injects for the "${teamKey}" team.
+    const parsed = await chatJson<{ actionClass: string; reason: string }>({
+      tier: 'fast',
+      json: false,
+      temperature: 0,
+      maxTokens: 200,
+      throwOnError: true,
+      label: 'demoAIAgent.classifyInject',
+      messages: [
+        {
+          role: 'system',
+          content: `You classify crisis-exercise injects for the "${teamKey}" team.
 Return JSON: { "actionClass": "<class>", "reason": "<one-line>" }
 
 Classes:
@@ -290,20 +287,11 @@ Rules:
 - Bystanders filming/watching are NOT casualties — classify as "inject_situational"
 - Diplomatic demands are "inject_stakeholder" NOT "patient_response"
 - Only classify as "patient_response" if the inject describes actual physical injury or illness`,
-          },
-          { role: 'user', content: injectText },
-        ],
-      }),
+        },
+        { role: 'user', content: injectText },
+      ],
     });
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const raw = data.choices?.[0]?.message?.content ?? '';
-    const cleaned = raw
-      .replace(/```json\s*/g, '')
-      .replace(/```/g, '')
-      .trim();
-    const parsed = JSON.parse(cleaned) as { actionClass: string; reason: string };
+    if (!parsed) throw new Error('classifier returned no reply');
     const validClasses: ActionClass[] = [
       'patient_response',
       'hazard_response',
@@ -1837,43 +1825,26 @@ async function aiExtractInfrastructureIntent(
       '- label should be descriptive (e.g. "Medical Triage Triage Station", "Evacuation Assembly Point near Gate B").',
     ].join('\n');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${env.openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You extract infrastructure placement intents from emergency response decisions. Return valid JSON only. Be precise: only identify ESTABLISHMENT of physical structures/areas, not other operational actions.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        temperature: 0.1,
-        max_tokens: 400,
-        response_format: { type: 'json_object' },
-      }),
+    const parsed = await chatJson<Record<string, unknown>>({
+      tier: 'fast',
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You extract infrastructure placement intents from emergency response decisions. Return valid JSON only. Be precise: only identify ESTABLISHMENT of physical structures/areas, not other operational actions.',
+        },
+        { role: 'user', content: prompt },
+      ],
+      temperature: 0.1,
+      maxTokens: 400,
+      label: 'demoAIAgent.extractInfrastructure',
     });
 
-    if (!response.ok) {
-      logger.warn(
-        { status: response.status },
-        'AI infrastructure extraction: OpenAI request failed',
-      );
+    if (!parsed) {
+      logger.warn('AI infrastructure extraction: request failed');
       return [];
     }
 
-    const json = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    const content = json.choices?.[0]?.message?.content;
-    if (!content) return [];
-
-    const parsed = JSON.parse(content) as Record<string, unknown>;
     const raw = Array.isArray(parsed.placements)
       ? parsed.placements
       : Array.isArray(parsed)
@@ -2362,8 +2333,8 @@ export class DemoAIAgentService {
       return false;
     }
 
-    if (!env.openAiApiKey) {
-      logger.error({ sessionId }, 'AI agents require OPENAI_API_KEY');
+    if (!env.aiEnabled) {
+      logger.error({ sessionId }, 'AI agents require an AI provider (AI_PROVIDER + credentials)');
       return false;
     }
 
@@ -2795,7 +2766,6 @@ export class DemoAIAgentService {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private handleChannelEvent(_session: SessionAgents, _event: WebSocketEvent): void {
     // no-op: chat responses disabled to prevent feedback loops
   }
@@ -5204,37 +5174,21 @@ export class DemoAIAgentService {
     userPrompt: string,
   ): Promise<AgentMultiResponse | null> {
     try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${env.openAiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userPrompt },
-          ],
-          temperature: 0.7,
-          max_tokens: 1400,
-          response_format: { type: 'json_object' },
-        }),
+      const parsed = await chatJson<Record<string, unknown>>({
+        tier: 'fast',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.7,
+        maxTokens: 1400,
+        label: 'demoAIAgent.decide',
       });
 
-      if (!response.ok) {
-        const text = await response.text();
-        logger.error({ status: response.status, body: text }, 'AI agent OpenAI call failed');
+      if (!parsed) {
+        logger.error('AI agent LLM call failed');
         return null;
       }
-
-      const json = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = json.choices?.[0]?.message?.content;
-      if (!content) return null;
-
-      const parsed = JSON.parse(content) as Record<string, unknown>;
 
       if (Array.isArray(parsed.actions)) {
         return parsed as unknown as AgentMultiResponse;
@@ -5745,37 +5699,23 @@ export class DemoAIAgentService {
         '- Return empty array [] if no infrastructure placement is intended.',
       ].join('\n');
 
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${env.openAiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: AI_MODEL,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You extract infrastructure placement intents from emergency response decisions. Return valid JSON only.',
-            },
-            { role: 'user', content: extractionPrompt },
-          ],
-          temperature: 0.2,
-          max_tokens: 500,
-          response_format: { type: 'json_object' },
-        }),
+      const parsed = await chatJson<Record<string, unknown>>({
+        tier: 'fast',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You extract infrastructure placement intents from emergency response decisions. Return valid JSON only.',
+          },
+          { role: 'user', content: extractionPrompt },
+        ],
+        temperature: 0.2,
+        maxTokens: 500,
+        label: 'demoAIAgent.extractPlacements',
       });
 
-      if (!response.ok) return;
+      if (!parsed) return;
 
-      const json = (await response.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
-      const content = json.choices?.[0]?.message?.content;
-      if (!content) return;
-
-      const parsed = JSON.parse(content) as Record<string, unknown>;
       const placements = (
         Array.isArray(parsed.placements) ? parsed.placements : Array.isArray(parsed) ? parsed : []
       ) as Array<{

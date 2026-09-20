@@ -6,6 +6,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { chatJson, systemUser } from './ai/chatClient.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -146,7 +147,7 @@ export function validateCompatibility(
  */
 export async function parseFreeTextPrompt(
   prompt: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<ParsedWarroomInput> {
   const scenarioTypesList = SCENARIO_TYPES.join(', ');
   const settingsList = SETTINGS.join(', ');
@@ -248,39 +249,17 @@ Other rules:
 - If no landmarks are mentioned, set landmarks to []
 - Pick the MOST SPECIFIC scenario type and setting that matches. Do not default to generic options when a specific one fits.`;
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${openAiApiKey}`,
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o-mini',
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: prompt },
-      ],
-      temperature: 0.3,
-      max_tokens: 800,
-      response_format: { type: 'json_object' },
-    }),
+  const parsed = await chatJson<Record<string, unknown>>({
+    tier: 'fast',
+    messages: systemUser(systemPrompt, prompt),
+    temperature: 0.3,
+    maxTokens: 800,
+    throwOnError: true,
+    label: 'warroomPromptParser.parse',
   });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(
-      (err as { error?: { message?: string } }).error?.message ||
-        `OpenAI API error: ${response.status}`,
-    );
+  if (!parsed) {
+    throw new Error('No content from AI provider');
   }
-
-  const data = await response.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new Error('No content from OpenAI');
-  }
-
-  const parsed = JSON.parse(content) as Record<string, unknown>;
   const scenario_type = String(parsed.scenario_type || 'car_bomb')
     .toLowerCase()
     .replace(/\s+/g, '_');

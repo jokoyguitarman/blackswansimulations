@@ -1,4 +1,5 @@
 import { logger } from '../lib/logger.js';
+import { AiCallError, chat, chatJson, systemUser } from './ai/chatClient.js';
 
 /**
  * AAR AI Service
@@ -73,7 +74,7 @@ interface SessionData {
  */
 export async function generateAARSummary(
   sessionData: SessionData,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<string> {
   try {
     const systemPrompt = `You are an expert crisis management analyst reviewing a training exercise simulation.
@@ -209,52 +210,45 @@ In each section, cite specific times, metrics, and event/decision titles. Do not
 
 Generate a comprehensive summary that analyzes the exercise performance, uses the escalation data (when provided) to judge whether the team avoided escalations or things turned for the worse, and provides actionable insights for future training.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
+    let result;
+    try {
+      result = await chat({
+        tier: 'standard',
+        openaiModel: 'gpt-4',
+        messages: systemUser(systemPrompt, userPrompt),
         temperature: 0.7,
-        max_tokens: 5000,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+        maxTokens: 5000,
+        timeoutMs: 300_000,
+        throwOnError: true,
+        label: 'aarAi.summary',
+      });
+    } catch (err) {
+      if (!(err instanceof AiCallError)) throw err;
       logger.error(
-        { error: errorMessage, status: response.status },
-        'OpenAI API error in AAR summary generation',
+        { error: err.message, status: err.status },
+        'AI API error in AAR summary generation',
       );
 
-      const apiError = new Error(`OpenAI API error: ${errorMessage}`) as Error & {
+      const apiError = new Error(`AI API error: ${err.message}`) as Error & {
         statusCode?: number;
       };
-      apiError.statusCode = response.status;
+      apiError.statusCode = err.status;
 
-      if (response.status === 401 || response.status === 403) {
-        apiError.message = 'OpenAI API key is invalid or expired.';
-      } else if (response.status === 429) {
-        apiError.message = 'OpenAI rate limit exceeded. Please try again later.';
-      } else if (response.status >= 500) {
-        apiError.message = 'OpenAI service is temporarily unavailable. Please try again later.';
+      if (err.status === 401 || err.status === 403) {
+        apiError.message = 'AI provider API key is invalid or expired.';
+      } else if (err.status === 429) {
+        apiError.message = 'AI provider rate limit exceeded. Please try again later.';
+      } else if (err.status != null && err.status >= 500) {
+        apiError.message = 'AI service is temporarily unavailable. Please try again later.';
       }
 
       throw apiError;
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const content = result?.content;
 
     if (!content) {
-      throw new Error('No content received from OpenAI');
+      throw new Error('No content received from AI provider');
     }
 
     logger.info({ sessionId: sessionData.sessionId }, 'AAR summary generated successfully');
@@ -270,7 +264,7 @@ Generate a comprehensive summary that analyzes the exercise performance, uses th
  */
 export async function generateAARInsights(
   sessionData: SessionData,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<Array<{ type: string; content: string; priority: 'high' | 'medium' | 'low' }>> {
   try {
     const systemPrompt = `You are an expert crisis management analyst. Generate structured insights for a training exercise after-action review.
@@ -318,44 +312,34 @@ ${(sessionData.participantSummary?.length ?? 0) > 0 ? `\nParticipant summary:\n$
 
 Return a JSON array of 5-8 insight objects (use "insights" key or root array).`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
+    let parsed: { insights?: unknown } | unknown[] | null;
+    try {
+      parsed = await chatJson<{ insights?: unknown } | unknown[]>({
+        tier: 'standard',
+        openaiModel: 'gpt-4',
+        messages: systemUser(systemPrompt, userPrompt),
         temperature: 0.7,
-        response_format: { type: 'json_object' },
-        max_tokens: 3000,
-      }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      const errorMessage = errorData.error?.message || `HTTP ${response.status}`;
+        json: true,
+        maxTokens: 3000,
+        timeoutMs: 300_000,
+        throwOnError: true,
+        label: 'aarAi.insights',
+      });
+    } catch (err) {
+      if (!(err instanceof AiCallError)) throw err;
       logger.error(
-        { error: errorMessage, status: response.status },
-        'OpenAI API error in AAR insights generation',
+        { error: err.message, status: err.status },
+        'AI API error in AAR insights generation',
       );
-      throw new Error(`OpenAI API error: ${errorMessage}`);
+      throw new Error(`AI API error: ${err.message}`);
     }
 
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-
-    if (!content) {
-      throw new Error('No content received from OpenAI');
+    if (!parsed) {
+      throw new Error('No content received from AI provider');
     }
 
-    // Parse JSON response
-    const parsed = JSON.parse(content);
-    const insights = parsed.insights || parsed; // Handle both { insights: [...] } and [...] formats
+    // Handle both { insights: [...] } and [...] formats
+    const insights = Array.isArray(parsed) ? parsed : parsed.insights || parsed;
 
     if (!Array.isArray(insights)) {
       logger.warn({ sessionId: sessionData.sessionId }, 'AI insights not in expected array format');
