@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
@@ -7,6 +7,9 @@ import { loadSceneConfig } from '../lib/rts/sceneConfigApi';
 import { LocationValidationStep } from '../components/WarRoom/LocationValidationStep';
 import { ResearchStep } from '../components/WarRoom/ResearchStep';
 import { CompileStep } from '../components/WarRoom/CompileStep';
+import { BrandMark } from '../components/BrandMark';
+import { WrIcon, INCIDENT_ICON, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon';
+import { SHELL_ART } from '../lib/scenarioArt';
 
 interface TeamEntry {
   team_name: string;
@@ -439,12 +442,16 @@ export const WarRoom = () => {
 
   if (!isTrainer) {
     return (
-      <div className="min-h-screen scanline flex items-center justify-center">
-        <div className="military-border p-8 text-center">
-          <h1 className="text-xl terminal-text mb-4">Access denied</h1>
-          <p className="text-sm terminal-text text-muted">
-            War Room is available to trainers only.
-          </p>
+      <div className="min-h-screen bg-bg flex items-center justify-center p-6">
+        <div className="wr-map text-center max-w-md">
+          <div
+            className="wr-tile mx-auto mb-3"
+            style={{ width: 48, height: 48, '--g': 'var(--brand)' } as CSSProperties}
+          >
+            <WrIcon name="lock" size={22} />
+          </div>
+          <h1 className="text-lg font-extrabold text-brand mb-2">Access denied</h1>
+          <p className="text-sm text-muted">War Room is available to trainers only.</p>
         </div>
       </div>
     );
@@ -452,9 +459,14 @@ export const WarRoom = () => {
 
   if (scenarioCredits === 0 && role !== 'admin') {
     return (
-      <div className="min-h-screen scanline flex items-center justify-center p-6">
-        <div className="bg-surface border border-border rounded-xl shadow-sm p-8 text-center max-w-md">
-          <div className="text-3xl mb-3">🔒</div>
+      <div className="min-h-screen bg-bg flex items-center justify-center p-6">
+        <div className="wr-map text-center max-w-md">
+          <div
+            className="wr-tile mx-auto mb-3"
+            style={{ width: 48, height: 48, '--g': 'var(--accent)' } as CSSProperties}
+          >
+            <WrIcon name="lock" size={22} />
+          </div>
           <h1 className="text-lg font-extrabold text-brand mb-2">
             Scenario generation requires a paid engagement
           </h1>
@@ -462,11 +474,8 @@ export const WarRoom = () => {
             You have <b>0 scenario credits</b>. Invoice a client from the Clients page — when they
             pay, the War Room unlocks automatically with 1 scenario credit and 2 session credits.
           </p>
-          <button
-            onClick={() => navigate('/clients')}
-            className="military-button px-6 py-2.5 text-sm"
-          >
-            Go to Clients &amp; billing
+          <button onClick={() => navigate('/clients')} className="wr-btn accent lg">
+            Go to Clients &amp; billing <WrIcon name="arrow" />
           </button>
         </div>
       </div>
@@ -512,377 +521,688 @@ export const WarRoom = () => {
     }
   };
 
-  return (
-    <div className="min-h-screen scanline p-2 sm:p-6">
-      <div className="w-full px-1 sm:px-4">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl terminal-text">War Room</h1>
-          <span className="text-xs terminal-text text-muted">v2.0</span>
-        </div>
+  /* ── Situation Map shell (docs/design/warroom/warroom-entry.html, spec §4) ─────────── */
 
-        {/* Step progress bar */}
-        <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0 sticky top-0 z-30 shadow-md">
-          <div className="flex items-center gap-1 overflow-x-auto">
-            {VISIBLE_STEPS.map((s, i) => {
-              const isCurrent = s === step;
-              const isPast = VISIBLE_STEPS.indexOf(step) > i;
-              return (
-                <div key={s} className="flex items-center">
-                  {i > 0 && (
-                    <div className={`w-4 h-px mx-1 ${isPast ? 'bg-accent' : 'bg-surface-2'}`} />
-                  )}
-                  <div
-                    className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] terminal-text uppercase whitespace-nowrap ${
-                      isCurrent
-                        ? 'border border-accent bg-accent/10 text-ink'
-                        : isPast
-                          ? 'text-muted'
-                          : 'text-muted'
-                    }`}
-                  >
-                    <span
-                      className={`w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold ${
-                        isCurrent
-                          ? 'bg-accent text-black'
-                          : isPast
-                            ? 'bg-accent/10 text-ink'
-                            : 'bg-surface-2 text-muted'
-                      }`}
-                    >
-                      {isPast ? '\u2713' : VISIBLE_STEPS.indexOf(s) + 1}
+  const FIELD_STEPS = VISIBLE_STEPS.filter((s) => s !== 0);
+  const fieldStepIndex = FIELD_STEPS.indexOf(step);
+  const heroArt: Record<number, string> = {
+    0: SHELL_ART.warroomEntry,
+    1: SHELL_ART.fieldIncident,
+    2: SHELL_ART.fieldTeams,
+    3: SHELL_ART.fieldScene,
+    5: SHELL_ART.fieldLocation,
+    6: SHELL_ART.fieldResearch,
+    7: SHELL_ART.fieldCompile,
+  };
+  const heroTitle: Record<number, string> = {
+    0: 'What are you training for?',
+    1: 'What kind of incident?',
+    2: 'Who responds?',
+    3: 'Lay out the scene',
+    5: 'Check the location',
+    6: 'Research & doctrine',
+    7: 'Compile the scenario',
+  };
+  const heroLead: Record<number, string> = {
+    0: 'Pick the kind of exercise. Field operations puts teams on a map with hazards and casualties; corporate crisis puts them on a phone with feeds, inboxes and stakeholders. Everything after this is generated from what you tell us.',
+    1: 'The incident type drives the hazards, casualty profile, team suggestions and the research the AI runs. Greyed types are coming soon.',
+    2: 'Configure the response teams for this scenario. Add or remove teams as needed; investigative teams get the intelligence layer.',
+    3: 'Place the building, the device and the surroundings. The scene becomes the map every team works on.',
+    5: 'Review nearby facilities, routes, and points of interest. Remove or adjust as needed.',
+    6: 'AI researches similar incidents, generates the scenario narrative, and produces per-team doctrines and workflows.',
+    7: 'Compile all research, hazard analysis, and doctrines into a playable scenario.',
+  };
+  const primaryLabel: Record<number, string> = {
+    0: 'Continue',
+    1: 'Suggest teams',
+    2: 'Lay out the scene',
+    3: 'Check location',
+    5: 'Run research',
+    6: 'Compile',
+  };
+  const incidentLabel =
+    incidentType === 'custom'
+      ? customIncidentText.slice(0, 40) || 'Custom'
+      : (INCIDENT_TYPES.find((t) => t.id === incidentType)?.label ?? null);
+  const INCIDENT_HINT: Record<string, string> = {
+    bombing: 'Placed device · blast & fragmentation',
+    car_bomb: 'Vehicle-borne · secondary device sweep',
+    suicide_bombing: 'Person-borne · crowd egress',
+    bombing_mall: 'Enclosed retail · multi-level evacuation',
+    open_field_shooting: 'Active shooter · cordon & contain',
+    knife_attack: 'Close quarters · rapid triage',
+    gas_attack: 'Plume · decontamination corridor',
+    poisoning: 'Food / water · public health',
+    kidnapping: 'Negotiation · perimeter',
+    hijacking: 'Aviation · multi-agency',
+  };
+  const GROUP_FAMILY: Record<string, { colour: string; icon: WrIconName }> = {
+    Explosives: { colour: 'var(--f-crisis)', icon: 'bomb' },
+    'Armed Attack': { colour: 'var(--f-rival)', icon: 'gun' },
+    CBRN: { colour: 'var(--f-ai)', icon: 'bio' },
+    Other: { colour: 'var(--f-intel)', icon: 'siren' },
+  };
+  const TEAM_FAMILY = [
+    'var(--f-crisis)',
+    'var(--success)',
+    'var(--f-pressure)',
+    'var(--brand)',
+    'var(--f-intel)',
+    'var(--f-ai)',
+  ];
+  const draftsInProgress = existingDrafts.filter(
+    (d) => !(d.status === 'persisted' || !!d.scenario_id),
+  );
+  const draftsCompiled = existingDrafts.filter((d) => d.status === 'persisted' || !!d.scenario_id);
+
+  const resumeDraft = (draft: (typeof existingDrafts)[number]) => {
+    const input = (draft.input || {}) as Record<string, unknown>;
+    const isSocialCrisis = input.sim_mode === 'social_media';
+    setShowDraftPicker(false);
+    if (isSocialCrisis) {
+      navigate(`/warroom/social-crisis?draft=${draft.id}`);
+    } else {
+      setSearchParams({ draft: draft.id }, { replace: true });
+      window.location.reload();
+    }
+  };
+
+  const draftRow = (draft: (typeof existingDrafts)[number]) => {
+    const input = (draft.input || {}) as Record<string, unknown>;
+    const isSocialCrisis = input.sim_mode === 'social_media';
+    const sceneName = isSocialCrisis
+      ? String(input.crisis_type || input.org_name || 'Corporate crisis')
+          .replace(/_/g, ' ')
+          .replace(/\+/g, ' + ')
+      : String(input.scenario_type || 'Untitled').replace(/_/g, ' ');
+    const isCompleted = draft.status === 'persisted' || !!draft.scenario_id;
+    const stepLabel = isCompleted
+      ? 'Compiled'
+      : STEP_LABELS[draft.current_step as keyof typeof STEP_LABELS] || `Step ${draft.current_step}`;
+    const updated = new Date(draft.updated_at).toLocaleString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const total = isSocialCrisis ? 3 : FIELD_STEPS.length;
+    const done = isCompleted
+      ? total
+      : Math.max(
+          0,
+          Math.min(
+            total,
+            isSocialCrisis ? draft.current_step : FIELD_STEPS.indexOf(draft.current_step) + 1,
+          ),
+        );
+    return (
+      <div key={draft.id} className="wr-draft">
+        <div
+          className="wr-tile"
+          style={
+            {
+              '--g': isCompleted
+                ? 'var(--success)'
+                : isSocialCrisis
+                  ? 'var(--accent)'
+                  : 'var(--brand)',
+            } as CSSProperties
+          }
+        >
+          <WrIcon name={isCompleted ? 'check' : isSocialCrisis ? 'phone' : 'map'} size={16} />
+        </div>
+        <div className="min-w-0">
+          <div className="nm">
+            <span className="capitalize truncate">{sceneName}</span>
+            <span className={`k ${isCompleted ? 'done' : ''}`}>
+              {isCompleted ? 'Compiled' : isSocialCrisis ? 'Corporate' : 'Field ops'}
+            </span>
+          </div>
+          <div className="mt">
+            <span className="prog" aria-hidden>
+              {Array.from({ length: total }).map((_, i) => (
+                <i key={i} className={i < done ? (isCompleted ? 'd' : 'f') : ''} />
+              ))}
+            </span>
+            {stepLabel} · {updated}
+          </div>
+        </div>
+        <button
+          onClick={() => resumeDraft(draft)}
+          className={`wr-btn sm ${isCompleted ? 'onDark' : isSocialCrisis ? 'accent' : 'onDark'}`}
+        >
+          {isCompleted ? 'Re-compile' : 'Resume'}
+          {!isCompleted && <WrIcon name="arrow" size={12} />}
+        </button>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-bg">
+      <header className="wr-artband wr-hero">
+        <img className="wr-art" src={heroArt[step]} alt="" />
+        <div className="wr-hero-top">
+          <div className="wr-brandmark">
+            <BrandMark className="h-8 w-8" /> War Room{' '}
+            <span className="sub">· {step === 0 ? 'new scenario' : 'Field operations'}</span>
+          </div>
+          <div className="wr-steps" aria-label="Steps">
+            {step === 0 ? (
+              simMode === 'social_media' ? (
+                <>
+                  <span className="on">
+                    <i>1</i> Choose a path
+                  </span>
+                  <span className="ghost">
+                    <i>2</i> Setup
+                  </span>
+                  <span className="ghost">
+                    <i>3</i> Build
+                  </span>
+                  <span className="ghost">
+                    <i>4</i> Review &amp; compile
+                  </span>
+                </>
+              ) : simMode === 'field_ops' ? (
+                <>
+                  <span className="on">
+                    <i>1</i> Choose a path
+                  </span>
+                  {FIELD_STEPS.map((s, i) => (
+                    <span key={s} className="ghost">
+                      <i>{i + 2}</i> {STEP_LABELS[s]}
                     </span>
+                  ))}
+                </>
+              ) : (
+                <>
+                  <span className="on">
+                    <i>1</i> Choose a path
+                  </span>
+                  <span className="ghost">
+                    <i>2</i> …
+                  </span>
+                  <span className="ghost">
+                    <i>3</i> …
+                  </span>
+                </>
+              )
+            ) : (
+              FIELD_STEPS.map((s, i) => {
+                const isCurrent = s === step;
+                const isPast = fieldStepIndex > i;
+                return (
+                  <span key={s} className={isCurrent ? 'on' : isPast ? 'done' : ''}>
+                    <i>{isPast ? <WrIcon name="check" size={11} /> : i + 1}</i>
                     <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
-                  </div>
-                </div>
-              );
-            })}
+                  </span>
+                );
+              })
+            )}
+          </div>
+          <div className="wr-credits">
+            <span>
+              <WrIcon name="layers" /> Scenario credits <b>{scenarioCredits ?? '…'}</b>
+            </span>
           </div>
         </div>
 
-        {/* Draft picker banner */}
-        {showDraftPicker && existingDrafts.length > 0 && (
-          <div className="military-border p-4 mb-4 bg-accent/10">
-            <div className="flex justify-between items-center mb-3">
-              <div className="text-sm terminal-text text-accent">
-                Resume an in-progress scenario
-              </div>
-              <button
-                onClick={() => setShowDraftPicker(false)}
-                className="text-xs terminal-text text-muted hover:text-muted"
-              >
-                Dismiss
-              </button>
+        <div className="wr-hero-grid">
+          <div>
+            <div className="wr-eyebrow">
+              {step === 0
+                ? 'War Room · step 1'
+                : `Field operations · step ${fieldStepIndex + 1} of ${FIELD_STEPS.length}`}
             </div>
-            <div className="space-y-2 max-h-48 overflow-y-auto">
-              {existingDrafts.map((draft) => {
-                const input = (draft.input || {}) as Record<string, unknown>;
-                const isSocialCrisis = input.sim_mode === 'social_media';
-                const sceneName = isSocialCrisis
-                  ? String(input.crisis_type || 'Social Crisis')
-                      .replace(/_/g, ' ')
-                      .replace(/\+/g, ' + ')
-                  : String(input.scenario_type || 'Unknown').replace(/_/g, ' ');
-                const isCompleted = draft.status === 'persisted' || !!draft.scenario_id;
-                const stepLabel = isCompleted
-                  ? 'Compiled'
-                  : STEP_LABELS[draft.current_step as keyof typeof STEP_LABELS] ||
-                    `Step ${draft.current_step}`;
-                const updated = new Date(draft.updated_at).toLocaleString();
-                return (
-                  <div
-                    key={draft.id}
-                    className={`flex items-center justify-between border rounded px-3 py-2 hover:bg-surface-2/20 ${
-                      isCompleted ? 'border-success' : 'border-border'
-                    }`}
+            <h1>{heroTitle[step]}</h1>
+            <p className="lead">{heroLead[step]}</p>
+            {step === 0 && (
+              <div className="wr-facts">
+                <div className="wr-glass">
+                  <b>{existingDrafts.length}</b>
+                  <span>drafts saved</span>
+                </div>
+                <div className="wr-glass">
+                  <b>{draftsCompiled.length}</b>
+                  <span>compiled</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {step === 0 ? (
+            showDraftPicker && existingDrafts.length > 0 ? (
+              <aside className="wr-ledger wr-glass">
+                <h3>
+                  <span className="wr-livedot" /> Pick up where you left off
+                  <button
+                    onClick={() => setShowDraftPicker(false)}
+                    className="ml-auto text-[11px] font-semibold text-white/50 hover:text-white normal-case tracking-normal"
                   >
+                    Dismiss
+                  </button>
+                </h3>
+                <p className="text-xs text-white/60 mt-1">
+                  Drafts save at every step. Compiled scenarios can be re-run through the compiler.
+                </p>
+                {draftsInProgress.length > 0 && (
+                  <>
+                    <div className="lgrp">In progress · {draftsInProgress.length}</div>
+                    <div className="max-h-56 overflow-y-auto">{draftsInProgress.map(draftRow)}</div>
+                  </>
+                )}
+                {draftsCompiled.length > 0 && (
+                  <>
+                    <div className="lgrp">Compiled · {draftsCompiled.length}</div>
+                    <div className="max-h-40 overflow-y-auto">{draftsCompiled.map(draftRow)}</div>
+                  </>
+                )}
+              </aside>
+            ) : null
+          ) : (
+            <aside className="wr-brief wr-glass self-end">
+              <h5>Scenario so far</h5>
+              <div className="row">
+                <WrIcon name="hazard" /> Incident <b>{incidentLabel ?? <span>not set</span>}</b>
+              </div>
+              <div className="row">
+                <WrIcon name="users" /> Teams{' '}
+                <b>
+                  {teams.length > 0 ? (
+                    `${teams.length} team${teams.length === 1 ? '' : 's'}`
+                  ) : (
+                    <span>{step === 2 && teamsLoading ? 'suggesting…' : 'suggested next'}</span>
+                  )}
+                </b>
+              </div>
+              <div className="row">
+                <WrIcon name="pin" /> Scene{' '}
+                <b>{rtsSceneId ? 'saved' : <span>not laid out</span>}</b>
+              </div>
+              <div className="row">
+                <WrIcon name="map" /> Location{' '}
+                <b>
+                  {geoResult ? (
+                    String(
+                      (geoResult as Record<string, unknown>).display_name ??
+                        (sceneConfig?.locationDescription as string | undefined) ??
+                        'validated',
+                    ).slice(0, 34)
+                  ) : (
+                    <span>
+                      {(sceneConfig?.locationDescription as string | undefined)?.slice(0, 34) ??
+                        'not set'}
+                    </span>
+                  )}
+                </b>
+              </div>
+              <div className="row">
+                <WrIcon name="doc" /> Research{' '}
+                <b>{researchResults ? 'complete' : <span>pending</span>}</b>
+              </div>
+            </aside>
+          )}
+        </div>
+      </header>
+
+      <main className="wr-wrap">
+        <section className={`wr-map ${step === 3 ? 'flush' : ''}`}>
+          {step === 0 && (
+            <>
+              <h2>Choose a path</h2>
+              <p className="sub">
+                Each path has its own steps; both end in the same library with the same card, detail
+                view and edit lock.
+              </p>
+              <div className="wr-paths">
+                <button
+                  type="button"
+                  className={`wr-path wr-reveal ${simMode === 'field_ops' ? 'on' : ''}`}
+                  style={{ '--g': 'var(--brand)', '--i': 0 } as CSSProperties}
+                  onClick={() => setSimMode('field_ops')}
+                  aria-pressed={simMode === 'field_ops'}
+                >
+                  <div className="band wr-artband">
+                    <img className="wr-art" src={SHELL_ART.pathField} alt="" />
+                    <div className="kicker">
+                      <WrIcon name="map" /> Field operations
+                      <span className="pick">
+                        {simMode === 'field_ops' && <WrIcon name="check" />}
+                      </span>
+                    </div>
+                    <h3>Teams on the ground</h3>
+                    <p>
+                      Bombing, armed attack, CBRN. A real location, a scene you lay out, hazards and
+                      casualties that evolve, and response teams working the map in real time.
+                    </p>
+                  </div>
+                  <div className="body">
                     <div>
-                      <div className="text-xs terminal-text text-muted capitalize">
-                        {sceneName}
-                        {isSocialCrisis && (
-                          <span className="ml-2 text-[9px] text-accent uppercase">social</span>
-                        )}
-                        {isCompleted && (
-                          <span className="ml-2 text-[9px] text-success uppercase">completed</span>
-                        )}
-                      </div>
-                      <div className="text-[10px] terminal-text text-muted">
-                        {stepLabel} — {updated}
+                      <h5>You define</h5>
+                      <div className="chips">
+                        <span>
+                          <WrIcon name="hazard" size={12} /> Incident type
+                        </span>
+                        <span>
+                          <WrIcon name="users" size={12} /> Response teams
+                        </span>
+                        <span>
+                          <WrIcon name="pin" size={12} /> Scene &amp; location
+                        </span>
                       </div>
                     </div>
-                    <button
-                      onClick={() => {
-                        setShowDraftPicker(false);
-                        if (isSocialCrisis) {
-                          navigate(`/warroom/social-crisis?draft=${draft.id}`);
-                        } else {
-                          setSearchParams({ draft: draft.id }, { replace: true });
-                          window.location.reload();
-                        }
-                      }}
-                      className={`text-xs terminal-text border px-3 py-1 ${
-                        isCompleted
-                          ? 'text-success border-success hover:bg-success/10'
-                          : isSocialCrisis
-                            ? 'text-accent border-accent hover:bg-accent/10'
-                            : 'text-brand border-brand hover:bg-brand/10'
-                      }`}
-                    >
-                      {isCompleted ? 'Re-compile' : 'Resume'}
-                    </button>
+                    <div>
+                      <h5>We generate</h5>
+                      <div className="chips">
+                        <span>Hazards</span>
+                        <span>Casualties</span>
+                        <span>Injects</span>
+                        <span>Doctrines</span>
+                      </div>
+                    </div>
+                    <div className="route">
+                      <b>Incident</b>
+                      <span className="arrow">›</span>Teams<span className="arrow">›</span>Scene
+                      editor
+                      <span className="arrow">›</span>Location<span className="arrow">›</span>
+                      Research
+                      <span className="arrow">›</span>Compile
+                      <span className="dur">
+                        <WrIcon name="clock" size={12} /> ~20 min to build
+                      </span>
+                    </div>
                   </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Step content */}
-        <div
-          className={`military-border mb-4 sm:mb-6 ${step === 3 ? 'p-0' : 'p-4 sm:p-6 pb-8 sm:pb-10'}`}
-        >
-          {step === 0 && (
-            <div className="space-y-6">
-              <h2 className="text-xl terminal-text font-bold">Select Simulation Mode</h2>
-              <p className="text-sm text-muted">Choose the type of crisis simulation to create</p>
-              <div className="grid grid-cols-2 gap-6">
-                <button
-                  onClick={() => {
-                    setSimMode('field_ops');
-                  }}
-                  className={`p-6 rounded-xl border-2 transition-all text-left ${
-                    simMode === 'field_ops'
-                      ? 'border-accent bg-accent/10'
-                      : 'border-border/30 hover:border-border'
-                  }`}
-                >
-                  <div className="text-4xl mb-3">🏗️</div>
-                  <h3 className="text-lg font-bold terminal-text mb-2">Field Operations</h3>
-                  <p className="text-sm text-muted">
-                    Physical crisis simulation with map, teams, hazards, casualties, and tactical
-                    response. For bombing, shooting, CBRN, and other physical incident scenarios.
-                  </p>
+                  <div className="ft">
+                    <span className="who">
+                      For emergency services, security, facilities and site teams.
+                    </span>
+                    <span className={`wr-btn ${simMode === 'field_ops' ? 'accent' : ''}`}>
+                      {simMode === 'field_ops' ? 'Selected' : 'Choose'}{' '}
+                      <WrIcon name={simMode === 'field_ops' ? 'check' : 'arrow'} />
+                    </span>
+                  </div>
                 </button>
+
                 <button
-                  onClick={() => {
-                    setSimMode('social_media');
-                  }}
-                  className={`p-6 rounded-xl border-2 transition-all text-left ${
-                    simMode === 'social_media'
-                      ? 'border-accent bg-accent/10'
-                      : 'border-border/30 hover:border-border'
-                  }`}
+                  type="button"
+                  className={`wr-path wr-reveal ${simMode === 'social_media' ? 'on' : ''}`}
+                  style={{ '--g': 'var(--accent)', '--i': 1 } as CSSProperties}
+                  onClick={() => setSimMode('social_media')}
+                  aria-pressed={simMode === 'social_media'}
                 >
-                  <div className="text-4xl mb-3">📱</div>
-                  <h3 className="text-lg font-bold terminal-text mb-2">Social Crisis</h3>
-                  <p className="text-sm text-muted">
-                    Social crisis response simulation. Players use a simulated phone to monitor
-                    feeds, address harmful narratives, and coordinate responses during any crisis
-                    scenario.
-                  </p>
+                  <div className="band wr-artband">
+                    <img className="wr-art" src={SHELL_ART.pathCorporate} alt="" />
+                    <div className="kicker">
+                      <WrIcon name="phone" /> Corporate crisis
+                      <span className="pick">
+                        {simMode === 'social_media' && <WrIcon name="check" />}
+                      </span>
+                    </div>
+                    <h3>Teams on the phone</h3>
+                    <p>
+                      A reputational, labour, safety or data crisis told through feeds, news,
+                      inboxes and calls. Multiple offices and countries, pressure groups, rivals —
+                      and executives who decide by communicating.
+                    </p>
+                  </div>
+                  <div className="body">
+                    <div>
+                      <h5>You define</h5>
+                      <div className="chips">
+                        <span>
+                          <WrIcon name="doc" size={12} /> What happened
+                        </span>
+                        <span>
+                          <WrIcon name="building" size={12} /> Organisations &amp; teams
+                        </span>
+                        <span>
+                          <WrIcon name="fist" size={12} /> Pressure groups
+                        </span>
+                        <span>
+                          <WrIcon name="swords" size={12} /> Rivals
+                        </span>
+                      </div>
+                    </div>
+                    <div>
+                      <h5>We generate</h5>
+                      <div className="chips">
+                        <span>Contacts</span>
+                        <span>Crowd</span>
+                        <span>Injects</span>
+                        <span>Fact sheet</span>
+                      </div>
+                    </div>
+                    <div className="route">
+                      <b>Setup</b>
+                      <span className="arrow">›</span>Build<span className="arrow">›</span>Review
+                      &amp; compile
+                      <span className="dur">
+                        <WrIcon name="clock" size={12} /> ~12 min to build
+                      </span>
+                    </div>
+                  </div>
+                  <div className="ft">
+                    <span className="who">
+                      For communications, legal, HR, operations and leadership teams.
+                    </span>
+                    <span className={`wr-btn ${simMode === 'social_media' ? 'accent' : ''}`}>
+                      {simMode === 'social_media' ? 'Selected' : 'Choose'}{' '}
+                      <WrIcon name={simMode === 'social_media' ? 'check' : 'arrow'} />
+                    </span>
+                  </div>
                 </button>
               </div>
-            </div>
+            </>
           )}
 
           {step === 1 && (
-            <div>
-              <h2 className="text-lg terminal-text mb-4">Step 1 · Incident selection</h2>
-              <p className="text-xs terminal-text text-muted mb-6">
-                Select the type of incident for this training scenario.
-              </p>
-
-              {INCIDENT_GROUPS.map((group) => {
-                const groupTypes = INCIDENT_TYPES.filter((t) => t.group === group);
-                return (
-                  <div key={group} className="mb-5">
-                    <div className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2">
-                      {group}
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                      {groupTypes.map((t) => {
-                        const isSelected = incidentType === t.id;
-                        const isDisabled = !t.enabled;
-                        return (
-                          <div
-                            key={t.id}
-                            onClick={() => {
-                              if (isDisabled) return;
-                              setIncidentType(t.id);
-                              setCustomIncidentText('');
-                            }}
-                            title={isDisabled ? 'Available soon' : t.label}
-                            className={`relative px-3 py-3 border rounded text-center transition-all ${
-                              isDisabled
-                                ? 'border-border opacity-30 cursor-not-allowed'
-                                : isSelected
-                                  ? 'border-accent bg-accent/10 cursor-pointer'
-                                  : 'border-border hover:border-border cursor-pointer'
-                            }`}
-                          >
-                            <div className="text-xl mb-1">{t.icon}</div>
-                            <div
-                              className={`text-xs terminal-text ${
-                                isSelected
-                                  ? 'text-accent'
-                                  : isDisabled
-                                    ? 'text-muted'
-                                    : 'text-muted'
-                              }`}
+            <>
+              <div className="wr-groups">
+                {INCIDENT_GROUPS.map((group) => {
+                  const groupTypes = INCIDENT_TYPES.filter((t) => t.group === group);
+                  const fam = GROUP_FAMILY[group];
+                  return (
+                    <div
+                      key={group}
+                      className="wr-grp"
+                      style={{ '--g': fam.colour } as CSSProperties}
+                    >
+                      <header>
+                        <div className="wr-tile">
+                          <WrIcon name={fam.icon} size={14} />
+                        </div>
+                        <h4>{group}</h4>
+                        <span className="n">{groupTypes.length}</span>
+                      </header>
+                      <div className="tiles">
+                        {groupTypes.map((t) => {
+                          const isSelected = incidentType === t.id;
+                          const isDisabled = !t.enabled;
+                          return (
+                            <button
+                              type="button"
+                              key={t.id}
+                              onClick={() => {
+                                if (isDisabled) return;
+                                setIncidentType(t.id);
+                                setCustomIncidentText('');
+                              }}
+                              disabled={isDisabled}
+                              title={isDisabled ? 'Available soon' : t.label}
+                              className={`wr-inc ${isSelected ? 'on' : ''} ${isDisabled ? 'soon' : ''}`}
                             >
-                              {t.label}
-                            </div>
-                            {isDisabled && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <span className="text-[8px] terminal-text text-muted bg-surface-2 px-1.5 py-0.5 rounded">
-                                  Soon
-                                </span>
+                              <div className={`wr-tile ${isSelected ? '' : 'soft'}`}>
+                                <WrIcon name={INCIDENT_ICON[t.id] ?? 'hazard'} size={16} />
                               </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                              <div>
+                                <div className="nm">{t.label}</div>
+                                <div className="ds">{INCIDENT_HINT[t.id] ?? ''}</div>
+                              </div>
+                              {isDisabled ? (
+                                <span className="soon">Soon</span>
+                              ) : isSelected ? (
+                                <WrIcon name="check" size={16} className="pick" />
+                              ) : (
+                                <span />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-
-              <div className="border-t border-border pt-4 mt-4">
-                <label className="text-[10px] terminal-text text-muted uppercase tracking-wider">
-                  Or describe a custom bombing scenario
-                </label>
-                <input
-                  type="text"
-                  value={customIncidentText}
-                  onChange={(e) => {
-                    setCustomIncidentText(e.target.value);
-                    if (e.target.value.trim()) {
-                      setIncidentType('custom');
-                    } else if (incidentType === 'custom') {
-                      setIncidentType(null);
-                    }
-                  }}
-                  placeholder="e.g., IED hidden in a vehicle outside a government building..."
-                  className="w-full mt-1 px-4 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm rounded focus:outline-none focus:border-border"
-                />
+                  );
+                })}
               </div>
-            </div>
+              <div className="wr-custom" style={{ '--g': 'var(--accent)' } as CSSProperties}>
+                <div className="wr-tile">
+                  <WrIcon name="sparkle" size={18} />
+                </div>
+                <div>
+                  <h4>Or describe your own</h4>
+                  <p>
+                    Anything explosive-based works today — the type is inferred from what you write.
+                  </p>
+                  <input
+                    type="text"
+                    value={customIncidentText}
+                    onChange={(e) => {
+                      setCustomIncidentText(e.target.value);
+                      if (e.target.value.trim()) {
+                        setIncidentType('custom');
+                      } else if (incidentType === 'custom') {
+                        setIncidentType(null);
+                      }
+                    }}
+                    placeholder="e.g., IED hidden in a vehicle outside a government building during a state visit…"
+                    className="wr-field"
+                  />
+                </div>
+              </div>
+            </>
           )}
 
           {step === 2 && (
-            <div>
-              <h2 className="text-lg terminal-text mb-4">Step 2 · Team selection</h2>
-              <p className="text-xs terminal-text text-muted mb-4">
-                Configure the response teams for this scenario. Add or remove teams as needed.
-              </p>
-
+            <>
               {teamsLoading && (
-                <p className="text-sm terminal-text text-muted animate-pulse mb-4">
-                  Suggesting teams for {incidentType}...
+                <p className="text-sm text-muted animate-pulse mb-4">
+                  Suggesting teams for {incidentLabel ?? incidentType}…
                 </p>
               )}
-
-              <div className="space-y-3 mb-4">
+              <div className="wr-teams">
                 {teams.map((t, i) => (
                   <div
                     key={i}
-                    className="border border-border p-4 bg-surface-2 flex flex-col gap-2"
+                    className="wr-team"
+                    style={{ '--g': TEAM_FAMILY[i % TEAM_FAMILY.length] } as CSSProperties}
                   >
-                    <div className="flex gap-2 items-center">
-                      <div className="flex-1 px-3 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm font-bold">
-                        {t.team_name}
-                      </div>
+                    <div className="acts">
                       <button
                         type="button"
                         onClick={() => removeTeam(i)}
                         disabled={teams.length <= 1}
-                        className="px-3 py-2 text-xs terminal-text text-accent hover:bg-accent/10 disabled:opacity-50"
+                        className="wr-btn sm ghost icon"
+                        aria-label={`Remove ${t.team_name}`}
+                        title="Remove team"
                       >
-                        Remove
+                        <WrIcon name="x" />
                       </button>
+                    </div>
+                    <div className="id">
+                      <div className="wr-tile">
+                        <WrIcon name={teamIcon(t.team_name)} size={17} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="nm">{t.team_name}</div>
+                      </div>
                     </div>
                     <input
                       type="text"
                       value={t.team_description}
                       onChange={(e) => updateTeam(i, 'team_description', e.target.value)}
                       placeholder="Team description"
-                      className="px-3 py-2 bg-surface-2 border border-border text-ink terminal-text text-sm"
+                      className="wr-field"
+                      style={{ fontSize: 12.5, padding: '8px 10px' }}
                     />
-                    <div className="flex gap-4 items-center">
-                      <label className="flex items-center gap-2 text-xs terminal-text text-muted">
-                        Min:
-                        <input
-                          type="number"
-                          min={1}
-                          max={50}
-                          value={t.min_participants}
-                          onChange={(e) =>
-                            updateTeam(i, 'min_participants', parseInt(e.target.value, 10) || 1)
-                          }
-                          className="w-16 px-2 py-1 bg-surface-2 border border-border text-ink"
-                        />
-                      </label>
-                      <label className="flex items-center gap-2 text-xs terminal-text text-muted">
-                        Max:
-                        <input
-                          type="number"
-                          min={1}
-                          max={50}
-                          value={t.max_participants}
-                          onChange={(e) =>
-                            updateTeam(i, 'max_participants', parseInt(e.target.value, 10) || 10)
-                          }
-                          className="w-16 px-2 py-1 bg-surface-2 border border-border text-ink"
-                        />
-                      </label>
+                    <div className="ctl">
+                      Players
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={t.min_participants}
+                        onChange={(e) =>
+                          updateTeam(i, 'min_participants', parseInt(e.target.value, 10) || 1)
+                        }
+                        aria-label="Minimum players"
+                      />
+                      –
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={t.max_participants}
+                        onChange={(e) =>
+                          updateTeam(i, 'max_participants', parseInt(e.target.value, 10) || 10)
+                        }
+                        aria-label="Maximum players"
+                      />
                       <button
                         type="button"
                         onClick={() => updateTeam(i, 'is_investigative', !t.is_investigative)}
-                        className={`px-3 py-1.5 text-[10px] terminal-text border transition-all ${
-                          t.is_investigative
-                            ? 'border-accent bg-accent/10 text-accent'
-                            : 'border-border text-muted hover:border-border'
-                        }`}
+                        className={`inv ${t.is_investigative ? 'on' : ''}`}
+                        aria-pressed={t.is_investigative}
                       >
-                        {t.is_investigative ? '\u2B21 Investigative' : '\u25CB Investigative'}
+                        {t.is_investigative && <WrIcon name="search" size={12} />} Investigative
                       </button>
                     </div>
                   </div>
                 ))}
+                <div className="relative">
+                  <button
+                    type="button"
+                    className="wr-add h-full"
+                    onClick={() => setShowAddTeam(!showAddTeam)}
+                    style={{ '--g': 'var(--brand)' } as CSSProperties}
+                  >
+                    <div>
+                      <WrIcon name="plus" size={24} />
+                      <div className="mt-2">Add a team from the inventory</div>
+                      <small>
+                        {TEAM_INVENTORY.filter(
+                          (inv) => !teams.some((t) => t.team_name === inv.name),
+                        )
+                          .map((inv) => inv.name)
+                          .slice(0, 4)
+                          .join(' · ')}
+                      </small>
+                    </div>
+                  </button>
+                  {showAddTeam && (
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-surface border border-border rounded-xl shadow-lg z-10 max-h-64 overflow-y-auto">
+                      {TEAM_INVENTORY.filter(
+                        (inv) => !teams.some((t) => t.team_name === inv.name),
+                      ).map((inv) => (
+                        <button
+                          key={inv.name}
+                          onClick={() => addTeamFromInventory(inv.name)}
+                          className="block w-full text-left px-4 py-2.5 text-xs text-ink hover:bg-surface-2 border-b border-border last:border-b-0"
+                        >
+                          <div className="font-bold flex items-center gap-2">
+                            <WrIcon name={teamIcon(inv.name)} size={12} /> {inv.name}
+                          </div>
+                          <div className="text-[11px] text-muted mt-0.5">{inv.description}</div>
+                        </button>
+                      ))}
+                      {TEAM_INVENTORY.filter((inv) => !teams.some((t) => t.team_name === inv.name))
+                        .length === 0 && (
+                        <div className="px-4 py-2 text-xs text-muted">All teams added</div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-
-              {/* Add team from inventory */}
-              <div className="relative">
-                <button
-                  onClick={() => setShowAddTeam(!showAddTeam)}
-                  className="text-xs terminal-text text-muted hover:text-ink border border-border px-3 py-2"
-                >
-                  + Add team
-                </button>
-                {showAddTeam && (
-                  <div className="absolute top-full left-0 mt-1 bg-surface-2 border border-border rounded shadow-xl z-10 max-h-60 overflow-y-auto">
-                    {TEAM_INVENTORY.filter(
-                      (inv) => !teams.some((t) => t.team_name === inv.name),
-                    ).map((inv) => (
-                      <button
-                        key={inv.name}
-                        onClick={() => addTeamFromInventory(inv.name)}
-                        className="block w-full text-left px-4 py-2 text-xs terminal-text text-muted hover:bg-accent/10 hover:text-ink border-b border-border last:border-b-0"
-                      >
-                        <div className="font-bold">{inv.name}</div>
-                        <div className="text-[10px] text-muted mt-0.5">{inv.description}</div>
-                      </button>
-                    ))}
-                    {TEAM_INVENTORY.filter((inv) => !teams.some((t) => t.team_name === inv.name))
-                      .length === 0 && (
-                      <div className="px-4 py-2 text-xs terminal-text text-muted">
-                        All teams added
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
+            </>
           )}
 
           {step === 3 && (
@@ -902,80 +1222,85 @@ export const WarRoom = () => {
           )}
 
           {step === 5 && (
-            <div>
-              <h2 className="text-lg terminal-text mb-4">Step 5 · Location validation</h2>
-              <p className="text-xs terminal-text text-muted mb-4">
-                Review nearby facilities, routes, and points of interest. Remove or adjust as
-                needed.
-              </p>
-              <LocationValidationStep
-                geoResult={geoResult}
-                onUpdate={setGeoResult}
-                sceneConfig={sceneConfig}
-                loading={geoLoading}
-                error={geoError}
-              />
-            </div>
+            <LocationValidationStep
+              geoResult={geoResult}
+              onUpdate={setGeoResult}
+              sceneConfig={sceneConfig}
+              loading={geoLoading}
+              error={geoError}
+            />
           )}
 
           {step === 6 && (
-            <div>
-              <h2 className="text-lg terminal-text mb-4">Step 6 · Incident research</h2>
-              <p className="text-xs terminal-text text-muted mb-4">
-                AI researches similar incidents, generates scenario narrative, and produces per-team
-                doctrines and workflows.
-              </p>
-              <ResearchStep
-                wizardDraftId={wizardDraftId}
-                onComplete={(data) => setResearchResults(data)}
-              />
-            </div>
+            <ResearchStep
+              wizardDraftId={wizardDraftId}
+              onComplete={(data) => setResearchResults(data)}
+            />
           )}
 
           {step === 7 && (
-            <div>
-              <h2 className="text-lg terminal-text mb-4">Step 7 · Compile scenario</h2>
-              <p className="text-xs terminal-text text-muted mb-4">
-                Compile all research, hazard analysis, and doctrines into a playable scenario.
-              </p>
-              <CompileStep wizardDraftId={wizardDraftId} onComplete={(id) => setScenarioId(id)} />
-            </div>
+            <CompileStep wizardDraftId={wizardDraftId} onComplete={(id) => setScenarioId(id)} />
           )}
-        </div>
+        </section>
 
-        {/* Navigation buttons */}
-        <div className="flex justify-between items-center flex-shrink-0 sticky bottom-0 z-30 bg-surface border-t border-border px-4 py-3 shadow-[0_-3px_8px_rgba(23,32,51,0.04)]">
-          <button
-            onClick={goBack}
-            disabled={!canGoBack}
-            className="px-6 py-3 text-xs terminal-text border border-border text-muted hover:border-border disabled:opacity-30 disabled:cursor-not-allowed"
-          >
-            Back
+        {/* Navigation */}
+        <div className="wr-ctabar sticky">
+          <button onClick={goBack} disabled={!canGoBack} className="wr-btn ghost">
+            <WrIcon name="arrow-l" /> Back
           </button>
-          <span className="text-xs terminal-text text-muted">
-            Step {VISIBLE_STEPS.indexOf(step) + 1} of {VISIBLE_STEPS.length}
+          <span className="hint">
+            Step <b>{step === 0 ? 1 : fieldStepIndex + 1}</b> of{' '}
+            {step === 0
+              ? simMode === 'social_media'
+                ? 4
+                : FIELD_STEPS.length + 1
+              : FIELD_STEPS.length}
+            {step === 0 && simMode === 'social_media' && (
+              <>
+                {' '}
+                · Corporate crisis selected — next is <b>Setup</b>, where you describe the crisis.
+              </>
+            )}
+            {step === 0 && simMode === 'field_ops' && (
+              <>
+                {' '}
+                · Field operations selected — next is <b>Incident</b>.
+              </>
+            )}
+            {step === 1 && incidentLabel && (
+              <>
+                {' '}
+                · <b>{incidentLabel}</b> selected.
+              </>
+            )}
+            {step === 2 && (
+              <>
+                {' '}
+                · {teams.length} team{teams.length === 1 ? '' : 's'}.
+              </>
+            )}
           </span>
+          <span className="grow" />
+          {step > 0 && step < 7 && (
+            <button onClick={() => void saveDraftState(step)} className="wr-btn ghost">
+              <WrIcon name="save" /> Save draft
+            </button>
+          )}
           {step === 7 ? (
             scenarioId ? (
-              <a href="/scenarios" className="military-button px-8 py-3 text-center">
-                View scenarios
+              <a href="/scenarios" className="wr-btn accent lg">
+                View scenarios <WrIcon name="arrow" />
               </a>
             ) : (
-              <span className="text-xs terminal-text text-muted">
-                Compile the scenario above to finish
-              </span>
+              <span className="hint">Compile the scenario above to finish</span>
             )
           ) : (
-            <button
-              onClick={goNext}
-              disabled={!canGoNext}
-              className="military-button px-8 py-3 disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              Next
+            <button onClick={goNext} disabled={!canGoNext} className="wr-btn accent lg">
+              {primaryLabel[step] ?? 'Next'} <WrIcon name="arrow" />
             </button>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 };
