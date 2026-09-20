@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { env } from '../env.js';
+import { chat, chatJson } from '../services/ai/chatClient.js';
 import { validate } from '../lib/validation.js';
 import { refreshOsmVicinityForScenario } from '../services/osmVicinityService.js';
 import { generateScenarioMaps } from '../services/scenarioMapImageService.js';
@@ -1928,10 +1930,11 @@ router.post('/:id/retry-routes', requireAuth, async (req: AuthenticatedRequest, 
       });
     }
 
-    const openAiApiKey = process.env.OPENAI_API_KEY;
-    if (!openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
+    // Legacy positional argument; the shared AI client reads the active provider's credentials.
+    const openAiApiKey = env.openAiApiKey ?? '';
 
     const { fetchRouteGeometries: fetchRoutes } = await import('../services/osmVicinityService.js');
     const { computeRouteCorridors, enrichRouteLocations: enrichRoutes } =
@@ -2256,10 +2259,11 @@ router.post('/:id/retry-deterioration', requireAuth, async (req: AuthenticatedRe
 
     const venue = (scenario.title as string) || 'the venue';
 
-    const openAiApiKey = process.env.OPENAI_API_KEY;
-    if (!openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
+    // Legacy positional argument; the shared AI client reads the active provider's credentials.
+    const openAiApiKey = env.openAiApiKey ?? '';
 
     const { researchDeteriorationPhysics, deteriorationResearchToPromptBlock } =
       await import('../services/warroomResearchService.js');
@@ -2531,9 +2535,8 @@ router.post('/:id/retry-custom-facts', requireAuth, async (req: AuthenticatedReq
     const owner = await assertScenarioOwner(scenarioId, user);
     if (!owner.ok) return res.status(owner.status).json({ error: owner.error });
 
-    const openAiApiKey = process.env.OPENAI_API_KEY;
-    if (!openAiApiKey) {
-      return res.status(500).json({ error: 'OpenAI API key not configured' });
+    if (!env.aiEnabled) {
+      return res.status(500).json({ error: 'AI provider not configured' });
     }
 
     const { data: scenario, error: scenErr } = await supabaseAdmin
@@ -2644,9 +2647,8 @@ router.post('/:id/retry-custom-facts', requireAuth, async (req: AuthenticatedReq
       researchArchiveBlock = chunks.join('\n\n').slice(0, 7200);
     }
 
-    // Use the same search model as warroomResearchService
-    const SEARCH_MODEL = 'gpt-4o-search-preview';
-
+    // Standard tier, plain chat (formerly the gpt-4o-search-preview web-search model — see
+    // docs/AWS_BEDROCK_MIGRATION_v2.md §7.6).
     const prompt = `You are an intelligence analyst supporting a crisis simulation. Generate research-oriented "Custom Facts" that help trainers run a realistic scenario.
 
 Scenario title: ${String(scenario.title ?? '')}
@@ -2681,30 +2683,20 @@ Return ONLY valid JSON:
   ]
 }`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: SEARCH_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 5000,
-      }),
+    const result = await chat({
+      tier: 'standard',
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 5000,
+      timeoutMs: 300_000,
+      label: 'scenarios.retryCustomFacts',
     });
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => '');
-      logger.error(
-        { status: response.status, body: text },
-        'retry-custom-facts OpenAI call failed',
-      );
+    if (!result) {
+      logger.error({ scenarioId }, 'retry-custom-facts AI call failed');
       return res.status(502).json({ error: 'Custom facts generation failed' });
     }
 
-    const data = (await response.json()) as { choices?: Array<{ message?: { content?: string } }> };
-    const content = data.choices?.[0]?.message?.content;
+    const content = result.content;
     if (!content) return res.status(502).json({ error: 'Custom facts generation returned empty' });
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
@@ -2824,8 +2816,7 @@ async function enrichPatientConditions(
   description?: string,
   scenarioContext?: string,
 ): Promise<Record<string, unknown>> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return {};
+  if (!env.aiEnabled) return {};
 
   const descHint = description ? `\nDescription provided by trainer: "${description}"` : '';
   const ctx = scenarioContext
@@ -2869,24 +2860,15 @@ Rules:
 - contraindications: dangerous actions to avoid for this patient`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1200,
-        temperature: 0.7,
-      }),
+    const parsed = await chatJson<Record<string, unknown>>({
+      tier: 'fast',
+      json: false,
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 1200,
+      temperature: 0.7,
+      label: 'scenarios.enrichPatient',
     });
-
-    if (!res.ok) return {};
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
-    if (!raw) return {};
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return {};
-    return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    return parsed ?? {};
   } catch (err) {
     logger.warn({ err }, 'Patient enrichment failed; using basic conditions');
     return {};
@@ -2903,14 +2885,13 @@ async function enrichHazardDetails(
   equipment_requirements: Array<Record<string, unknown>>;
   enriched_description: string;
 }> {
-  const apiKey = process.env.OPENAI_API_KEY;
   const fallback = {
     properties: { severity: 'medium', description: description || hazardType.replace(/_/g, ' ') },
     resolution_requirements: {},
     equipment_requirements: [],
     enriched_description: description || hazardType.replace(/_/g, ' '),
   };
-  if (!apiKey) return fallback;
+  if (!env.aiEnabled) return fallback;
 
   const descHint = description ? `\nDescription: "${description}"` : '';
   const ctx = scenarioContext
@@ -2948,24 +2929,15 @@ Rules:
 - equipment_requirements: 2-4 items with realistic quantities`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 1000,
-        temperature: 0.7,
-      }),
+    const parsed = await chatJson<Record<string, unknown>>({
+      tier: 'fast',
+      json: false,
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 1000,
+      temperature: 0.7,
+      label: 'scenarios.enrichHazard',
     });
-
-    if (!res.ok) return fallback;
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
-    if (!raw) return fallback;
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return fallback;
-    const parsed = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    if (!parsed) return fallback;
     return {
       properties: (parsed.properties as Record<string, unknown>) || fallback.properties,
       resolution_requirements: (parsed.resolution_requirements as Record<string, unknown>) || {},
@@ -2987,8 +2959,7 @@ async function enrichCrowdConditions(
   description?: string,
   scenarioContext?: string,
 ): Promise<Record<string, unknown>> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey)
+  if (!env.aiEnabled)
     return {
       behavior: behavior || 'calm',
       description: description || `Group of ~${headcount} people`,
@@ -3027,24 +2998,15 @@ Rules:
 - risk_factors: only include realistic risks for this crowd size and behavior`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 800,
-        temperature: 0.7,
-      }),
+    const parsed = await chatJson<Record<string, unknown>>({
+      tier: 'fast',
+      json: false,
+      messages: [{ role: 'user', content: prompt }],
+      maxTokens: 800,
+      temperature: 0.7,
+      label: 'scenarios.enrichCrowd',
     });
-
-    if (!res.ok) return {};
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
-    if (!raw) return {};
-    const jsonMatch = raw.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return {};
-    return JSON.parse(jsonMatch[0]) as Record<string, unknown>;
+    return parsed ?? {};
   } catch (err) {
     logger.warn({ err }, 'Crowd enrichment failed; using basic conditions');
     return {

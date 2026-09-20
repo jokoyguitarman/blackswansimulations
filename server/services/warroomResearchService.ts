@@ -9,24 +9,37 @@
 
 import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
+import { chat } from './ai/chatClient.js';
 
-const SEARCH_MODEL = 'gpt-4o-search-preview';
-
-async function fetchWithRetry(
-  url: string,
-  init: RequestInit,
-  label: string,
-  retries = 1,
-  delayMs = 2000,
-): Promise<Response> {
-  const res = await fetch(url, init);
-  if (res.ok || retries <= 0 || res.status < 500) return res;
-  logger.warn(
-    { status: res.status, label },
-    `${label} got ${res.status}, retrying in ${delayMs}ms`,
-  );
-  await new Promise((r) => setTimeout(r, delayMs));
-  return fetch(url, init);
+/**
+ * All research calls go through the shared chat client on the `standard` tier
+ * (docs/AWS_BEDROCK_MIGRATION_v2.md §7.6). The five functions that used the
+ * `gpt-4o-search-preview` web-search model (area dossier, per-team standards, similar
+ * cases, team workflows, crowd dynamics) now run as plain chat: same prompts, same output
+ * shapes, no live internet grounding. The `openAiApiKey` parameters are kept for call-site
+ * compatibility; the client reads the active provider's key.
+ *
+ * Returns the raw completion text (callers extract JSON from it themselves), or null.
+ */
+async function researchText(opts: {
+  prompt: string;
+  maxTokens: number;
+  temperature?: number;
+  label: string;
+  /** Exact OpenAI model while AI_PROVIDER=openai (the former gpt-5.1 sites). */
+  openaiModel?: string;
+}): Promise<string | null> {
+  const result = await chat({
+    tier: 'standard',
+    openaiModel: opts.openaiModel,
+    messages: [{ role: 'user', content: opts.prompt }],
+    maxTokens: opts.maxTokens,
+    temperature: opts.temperature,
+    retry: { attempts: 2, baseDelayMs: 2000 },
+    timeoutMs: 300_000,
+    label: `warroomResearch.${opts.label}`,
+  });
+  return result?.content ?? null;
 }
 
 export interface AreaResearchStructured {
@@ -216,28 +229,7 @@ Briefly note how a violent incident (explosion, major fire, structural breach) a
 Write 2000-5000 words. Be thorough — this will be used to ground a realistic crisis simulation. Use only factual, real-world information.`;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: SEARCH_MODEL,
-        messages: [{ role: 'user', content: prompt }],
-        max_tokens: 10000,
-      }),
-    });
-
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      const msg = (err as { error?: { message?: string } }).error?.message || response.statusText;
-      logger.warn({ status: response.status, msg }, 'Area research failed');
-      return '';
-    }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
+    const content = await researchText({ prompt, maxTokens: 10000, label: 'area' });
     return typeof content === 'string' ? content.trim() : '';
   } catch (err) {
     logger.warn({ err }, 'Area research error');
@@ -316,23 +308,13 @@ ${dossier.slice(0, 24000)}
 `;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.1',
-        messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 10000,
-        temperature: 0.2,
-      }),
+    const raw = await researchText({
+      prompt,
+      maxTokens: 10000,
+      temperature: 0.2,
+      openaiModel: 'gpt-5.1',
+      label: 'areaStructured',
     });
-
-    if (!response.ok) return null;
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
     if (!raw) return null;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
@@ -385,22 +367,13 @@ Structured area research (may be empty): ${area ? JSON.stringify(area).slice(0, 
 `;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.1',
-        messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 10000,
-        temperature: 0.3,
-      }),
+    const raw = await researchText({
+      prompt,
+      maxTokens: 10000,
+      temperature: 0.3,
+      openaiModel: 'gpt-5.1',
+      label: 'hazardMaterialContext',
     });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
     if (!raw) return null;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
@@ -444,22 +417,13 @@ ${dossier.slice(0, 20000)}
 `;
 
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${openAiApiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-5.1',
-        messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 10000,
-        temperature: 0.2,
-      }),
+    const raw = await researchText({
+      prompt,
+      maxTokens: 10000,
+      temperature: 0.2,
+      openaiModel: 'gpt-5.1',
+      label: 'sensitiveInfrastructure',
     });
-    if (!response.ok) return null;
-    const data = await response.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
     if (!raw) return null;
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
@@ -552,34 +516,15 @@ Return ONLY valid JSON — an array of 2-4 findings:
 Focus on: decision gates, time thresholds, role responsibilities, handover procedures, and any criteria that determine correct vs incorrect responses by this team. For site_requirements, include only area types this team would actually set up or manage.`;
 
       try {
-        const res = await fetchWithRetry(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${openAiApiKey}`,
-            },
-            body: JSON.stringify({
-              model: SEARCH_MODEL,
-              messages: [{ role: 'user', content: prompt }],
-              max_tokens: 10000,
-            }),
-          },
-          `standards:${team.team_name}`,
-        );
-
-        if (!res.ok) {
-          logger.warn(
-            { status: res.status, team: team.team_name },
-            'Per-team standards research failed',
-          );
+        const raw = await researchText({
+          prompt,
+          maxTokens: 10000,
+          label: `standards:${team.team_name}`,
+        });
+        if (!raw) {
+          logger.warn({ team: team.team_name }, 'Per-team standards research failed');
           return;
         }
-
-        const data = await res.json();
-        const raw = data.choices?.[0]?.message?.content as string | undefined;
-        if (!raw) return;
 
         let parsed: StandardsFinding[] = [];
         const jsonArrMatch = raw.match(/\[[\s\S]*\]/);
@@ -685,35 +630,17 @@ Return ONLY valid JSON — an array:
 ]`;
 
       try {
-        const res = await fetchWithRetry(
-          'https://api.openai.com/v1/chat/completions',
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: `Bearer ${openAiApiKey}`,
-            },
-            body: JSON.stringify({
-              model: 'gpt-5.1',
-              messages: [{ role: 'user', content: prompt }],
-              max_completion_tokens: 10000,
-              temperature: 0.3,
-            }),
-          },
-          `forbidden:${team.team_name}`,
-        );
-
-        if (!res.ok) {
-          logger.warn(
-            { status: res.status, team: team.team_name },
-            'Per-team forbidden actions research failed',
-          );
+        const raw = await researchText({
+          prompt,
+          maxTokens: 10000,
+          temperature: 0.3,
+          openaiModel: 'gpt-5.1',
+          label: `forbidden:${team.team_name}`,
+        });
+        if (!raw) {
+          logger.warn({ team: team.team_name }, 'Per-team forbidden actions research failed');
           return;
         }
-
-        const data = await res.json();
-        const raw = data.choices?.[0]?.message?.content as string | undefined;
-        if (!raw) return;
 
         let parsed: ForbiddenAction[] = [];
         const jsonArrMatch = raw.match(/\[[\s\S]*\]/);
@@ -956,30 +883,11 @@ RULES:
 Scenario context: ${scenarioDescription} at ${venueContext}`;
 
   try {
-    const res = await fetchWithRetry(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-        body: JSON.stringify({
-          model: SEARCH_MODEL,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 10000,
-        }),
-      },
-      'similar-cases',
-    );
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = (err as { error?: { message?: string } }).error?.message || res.statusText;
-      logger.warn({ status: res.status, msg }, 'Similar cases internet research failed');
+    const raw = await researchText({ prompt, maxTokens: 10000, label: 'similarCases' });
+    if (!raw) {
+      logger.warn('Similar cases research failed');
       return [];
     }
-
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
-    if (!raw) return [];
 
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return [];
@@ -1360,25 +1268,17 @@ Return ONLY valid JSON:
 Where values are arrays of standard indices. Every standard must appear in at least one team. Every team must have at least one standard.`;
 
   try {
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-      body: JSON.stringify({
-        model: 'gpt-5.1',
-        messages: [{ role: 'user', content: prompt }],
-        max_completion_tokens: 10000,
-        temperature: 0,
-      }),
+    const raw = await researchText({
+      prompt,
+      maxTokens: 10000,
+      temperature: 0,
+      openaiModel: 'gpt-5.1',
+      label: 'mapStandardsToTeams',
     });
-
-    if (!res.ok) {
-      logger.warn({ status: res.status }, 'Standards-to-teams mapping failed');
+    if (!raw) {
+      logger.warn('Standards-to-teams mapping failed');
       return {};
     }
-
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
-    if (!raw) return {};
 
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return {};
@@ -1474,31 +1374,11 @@ Return ONLY valid JSON:
 }`;
 
   try {
-    const response = await fetchWithRetry(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${openAiApiKey}`,
-        },
-        body: JSON.stringify({
-          model: SEARCH_MODEL,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 10000,
-        }),
-      },
-      'team-workflows',
-    );
-
-    if (!response.ok) {
-      logger.warn({ status: response.status }, 'Team workflow research failed');
+    const content = await researchText({ prompt, maxTokens: 10000, label: 'teamWorkflows' });
+    if (typeof content !== 'string') {
+      logger.warn('Team workflow research failed');
       return {};
     }
-
-    const data = await response.json();
-    const content = data.choices?.[0]?.message?.content;
-    if (typeof content !== 'string') return {};
 
     const jsonMatch = content.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return {};
@@ -1607,30 +1487,11 @@ Return ONLY valid JSON:
 Base your response on documented after-action reports and crowd psychology research. Use ONLY real behavioral patterns from real incidents. Be thorough — this drives realistic crowd simulation in a crisis training exercise.`;
 
   try {
-    const res = await fetchWithRetry(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${openAiApiKey}` },
-        body: JSON.stringify({
-          model: SEARCH_MODEL,
-          messages: [{ role: 'user', content: prompt }],
-          max_tokens: 10000,
-        }),
-      },
-      'crowd-dynamics',
-    );
-
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = (err as { error?: { message?: string } }).error?.message || res.statusText;
-      logger.warn({ status: res.status, msg }, 'Crowd dynamics research failed');
+    const raw = await researchText({ prompt, maxTokens: 10000, label: 'crowdDynamics' });
+    if (!raw) {
+      logger.warn('Crowd dynamics research failed');
       return null;
     }
-
-    const data = await res.json();
-    const raw = data.choices?.[0]?.message?.content as string | undefined;
-    if (!raw) return null;
 
     const jsonMatch = raw.match(/\{[\s\S]*\}/);
     if (!jsonMatch) return null;
@@ -1683,7 +1544,7 @@ export async function researchDeteriorationPhysics(
   casualties: Array<{ casualty_type: string; conditions?: Record<string, unknown> }>,
   areaContext: string,
   venue: string,
-  openAiApiKey: string,
+  _openAiApiKey: string,
 ): Promise<DeteriorationResearch | null> {
   const hazardBlock = hazards
     .map(
@@ -1742,44 +1603,26 @@ Return valid JSON:
   const MAX_ATTEMPTS = 2;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const response = await fetchWithRetry(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${openAiApiKey}`,
+      const result = await chat({
+        tier: 'standard',
+        openaiModel: 'gpt-5.1',
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You are a hazardous materials and emergency medicine expert. Return ONLY valid JSON. No markdown, no explanations, no code fences. Start your response with { and end with }.',
           },
-          body: JSON.stringify({
-            model: 'gpt-5.1',
-            messages: [
-              {
-                role: 'system',
-                content:
-                  'You are a hazardous materials and emergency medicine expert. Return ONLY valid JSON. No markdown, no explanations, no code fences. Start your response with { and end with }.',
-              },
-              { role: 'user', content: prompt },
-            ],
-            max_completion_tokens: 10000,
-          }),
-        },
-        'deterioration-physics',
-      );
+          { role: 'user', content: prompt },
+        ],
+        maxTokens: 10000,
+        retry: { attempts: 2, baseDelayMs: 2000 },
+        timeoutMs: 300_000,
+        label: 'warroomResearch.deteriorationPhysics',
+      });
 
-      if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        const msg = (err as { error?: { message?: string } }).error?.message || response.statusText;
-        logger.warn(
-          { status: response.status, msg, attempt },
-          'Deterioration research failed (non-blocking)',
-        );
-        if (attempt < MAX_ATTEMPTS) continue;
-        return null;
-      }
-
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content;
+      const content = result?.content;
       if (typeof content !== 'string') {
+        logger.warn({ attempt }, 'Deterioration research failed (non-blocking)');
         if (attempt < MAX_ATTEMPTS) continue;
         return null;
       }
