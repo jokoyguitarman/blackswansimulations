@@ -43,6 +43,8 @@ export interface LedgerPlayer {
   display_name: string;
   /** Team membership (preset or custom team name) or null when unassigned. */
   team_name: string | null;
+  /** Pooled AI teammate account (docs/ai-teammate-bots-plan.md). Display-only. */
+  is_bot?: boolean;
   entries: LedgerEntry[];
 }
 
@@ -157,13 +159,15 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   for (const pid of teamByPlayer.keys()) playerIds.add(pid);
 
   const nameById = new Map<string, string>();
+  const botIds = new Set<string>();
   if (playerIds.size > 0) {
     const { data: profiles } = await supabaseAdmin
       .from('user_profiles')
-      .select('id, full_name')
+      .select('id, full_name, is_bot')
       .in('id', Array.from(playerIds));
     for (const pr of profiles || []) {
       nameById.set(String(pr.id), String(pr.full_name || 'Unknown'));
+      if ((pr as { is_bot?: boolean }).is_bot) botIds.add(String(pr.id));
     }
   }
 
@@ -250,6 +254,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
       player_id: pid,
       display_name: nameById.get(pid) || 'Unknown',
       team_name: teamByPlayer.get(pid) || null,
+      ...(botIds.has(pid) ? { is_bot: true } : {}),
       entries: entries.sort(
         (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
       ),

@@ -87,6 +87,28 @@ export const env = {
   enableScenarioDirector:
     process.env.ENABLE_SCENARIO_DIRECTOR === 'true' ||
     (nodeEnv === 'production' && process.env.ENABLE_SCENARIO_DIRECTOR !== 'false'),
+  // ---------- AI teammate bots (docs/ai-teammate-bots-plan.md) ----------
+  // Lobby-native AI players for social_media sessions. ON in development, OFF in
+  // production unless ENABLE_TEAMMATE_BOTS=true. When off: routes 404, lobby card
+  // hidden, reconciler idle — data is untouched.
+  enableTeammateBots:
+    process.env.ENABLE_TEAMMATE_BOTS === 'true' ||
+    (nodeEnv !== 'production' && process.env.ENABLE_TEAMMATE_BOTS !== 'false'),
+  // Shared password for the pooled bot accounts (asserted at boot via the Admin API).
+  teammateBotPassword: process.env.TEAMMATE_BOT_PASSWORD ?? 'TeammateBot#NoLogin!2026',
+  teammateBotsMaxPerSession: Number(process.env.TEAMMATE_BOTS_MAX_PER_SESSION ?? 8),
+  teammateBotsMaxLlmPerHour: Number(process.env.TEAMMATE_BOTS_MAX_LLM_PER_HOUR ?? 400),
+  teammateBotsModelFast: process.env.TEAMMATE_BOTS_MODEL_FAST ?? 'gpt-4o-mini',
+  teammateBotsModelStrong: process.env.TEAMMATE_BOTS_MODEL_STRONG ?? 'gpt-5.2',
+  // Per-phase behaviour flags (backtracking guide §17). All ON by default.
+  teammateBotsPlanner: process.env.TEAMMATE_BOTS_PLANNER !== 'off',
+  teammateBotsCoordination: process.env.TEAMMATE_BOTS_COORDINATION !== 'off',
+  teammateBotsReactive: process.env.TEAMMATE_BOTS_REACTIVE !== 'off',
+  teammateBotsCritique: process.env.TEAMMATE_BOTS_CRITIQUE !== 'off',
+  // Use the game's own grader as the critic (inflates scores vs humans; off by default).
+  teammateBotsPregrade: process.env.TEAMMATE_BOTS_PREGRADE === 'true',
+  // Base URL the bot runtime uses to call this API. Defaults to loopback on the listening port.
+  teammateBotsApiBase: process.env.TEAMMATE_BOTS_API_BASE,
   // ---------- Stripe payment portal ----------
   // All optional: without a secret key the app boots normally and billing
   // endpoints return 503. Webhook secret comes from `stripe listen` in dev

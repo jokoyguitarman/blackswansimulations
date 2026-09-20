@@ -47,6 +47,8 @@ import { socialCrisisWarroomRouter } from './routes/socialCrisisWarroom.js';
 import { billingRouter } from './routes/billing.js';
 import { billingWebhookRouter } from './routes/billingWebhook.js';
 import { playerDraftsRouter } from './routes/playerDrafts.js';
+import { teammateBotsRouter } from './routes/teammateBots.js';
+import { getTeammateBotService } from './services/teammates/teammateBotService.js';
 import { setupWebSocket } from './websocket/index.js';
 import { initializeWebSocketService } from './services/websocketService.js';
 import { initializeInjectScheduler } from './services/injectSchedulerService.js';
@@ -86,6 +88,10 @@ statementWatchdog.start();
 // Generator-owned engines: pressure organisations + organic executive decisions
 // (docs/executive-decisions-organic-plan.md). Own interval; touch point per handover §3.
 startGeneratorEngines();
+
+// AI teammate bots (docs/ai-teammate-bots-plan.md): reconciles in-progress social sessions
+// with bot participants every 60s. No-op when ENABLE_TEAMMATE_BOTS is off.
+getTeammateBotService().startReconciler();
 
 // Security: Helmet for security headers
 app.use(
@@ -199,6 +205,7 @@ app.use('/api/join', express.json({ limit: '1kb' }));
 app.use('/api/health', healthRouter);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/scenarios', scenarioStakeholdersRouter);
+app.use('/api/sessions/:id/bots', teammateBotsRouter); // AI teammates (before the generic router)
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/sessions', execDecisionsRouter); // organic executive decisions (generator agent)
 app.use('/api/channels', channelsRouter);

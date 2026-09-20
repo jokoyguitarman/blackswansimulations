@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../../lib/api';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { BotBadge } from '../UI/BotBadge';
 
 interface Participant {
   user_id: string;
@@ -12,6 +13,7 @@ interface Participant {
     email: string;
     role: string;
     agency_name: string;
+    is_bot?: boolean;
   };
 }
 
@@ -238,6 +240,7 @@ export const ParticipantManagement = ({
               <div className="flex-1">
                 <div className="text-sm terminal-text font-semibold">
                   {participant.user?.full_name || 'Unknown User'}
+                  {participant.user?.is_bot && <BotBadge className="ml-1.5" />}
                 </div>
                 <div className="text-xs terminal-text text-muted mt-1">
                   {participant.role.toUpperCase().replace('_', ' ')}

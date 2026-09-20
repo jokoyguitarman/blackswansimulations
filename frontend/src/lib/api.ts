@@ -117,6 +117,46 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
   return response.json();
 };
 
+// ---------- AI teammate bots ----------
+export type TeammateBotStatus = 'idle' | 'acting' | 'paused' | 'stopped';
+
+export interface TeammateBotRow {
+  user_id: string;
+  display_name: string;
+  team_name: string | null;
+  is_ready: boolean;
+  slot: number | null;
+}
+
+export interface TeammateBotView extends TeammateBotRow {
+  status: TeammateBotStatus;
+  stats: {
+    actions: number;
+    failures: number;
+    byKind: Record<string, number>;
+    llmCalls: number;
+    llmFallbacks: number;
+    lastAction: { kind: string; at: string; summary: string } | null;
+    lastError: string | null;
+  } | null;
+}
+
+export interface TeammateBotsView {
+  enabled: boolean;
+  running: boolean;
+  intellect: number;
+  max_per_session: number;
+  llm_budget: { used: number; limit: number; resets_in_ms: number };
+  teams: Array<{
+    team_name: string;
+    team_description: string | null;
+    max_participants: number | null;
+    members: number;
+    bots: number;
+  }>;
+  bots: TeammateBotView[];
+}
+
 // ---------- Payment portal types ----------
 export interface BillingInvoice {
   id: string;
@@ -1055,6 +1095,73 @@ export const api = {
         await fetch(apiUrl(`/api/sessions/${sessionId}/process-all-invitations`), {
           method: 'POST',
           headers,
+        }),
+      );
+    },
+  },
+
+  // AI teammate bots (docs/ai-teammate-bots-plan.md). Trainer-only; 404 when the feature is off.
+  bots: {
+    get: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: TeammateBotsView }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/bots`), { headers }),
+      );
+    },
+    add: async (sessionId: string, teamName: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: TeammateBotRow }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/bots`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ team_name: teamName }),
+        }),
+      );
+    },
+    remove: async (sessionId: string, userId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/bots/${userId}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
+    setIntellect: async (sessionId: string, intellect: number) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { intellect: number } }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/bots/settings`), {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ intellect }),
+        }),
+      );
+    },
+    pause: async (sessionId: string, userId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/bots/${userId}/pause`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+    resume: async (sessionId: string, userId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/bots/${userId}/resume`), {
+          method: 'POST',
+          headers,
+        }),
+      );
+    },
+    nudge: async (sessionId: string, userId: string, text: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ success: boolean }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/bots/${userId}/nudge`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ text }),
         }),
       );
     },

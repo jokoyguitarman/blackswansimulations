@@ -21,7 +21,7 @@
     "generate:sg-osm": "node scripts/generate_singapore_local_osm.mjs",
     "import:sg-osm": "node scripts/import_singapore_local_osm.mjs",
     "prepare": "husky install",
-    "test": "node --import tsx --test server/services/blueprint/blueprintMerge.test.ts server/services/blueprint/blueprintTypes.test.ts server/services/blueprint/directorLogic.test.ts server/services/extremistDoctrine.test.ts server/lib/stakeholderContract.test.ts server/lib/stakeholderRecipients.test.ts server/services/decisions/decisionDetectionCore.test.ts server/services/decisions/decisionPlannerCore.test.ts server/services/decisions/decisionKnowledgeCore.test.ts server/services/castCompleteness.test.ts server/services/crisisFootprint.test.ts server/services/pressureEngine.test.ts server/services/scenarioOrgModel.test.ts server/services/scenarioValidation.test.ts server/services/pressureOrgGeneration.test.ts",
+    "test": "node --import tsx --test server/services/blueprint/blueprintMerge.test.ts server/services/blueprint/blueprintTypes.test.ts server/services/blueprint/directorLogic.test.ts server/services/extremistDoctrine.test.ts server/lib/stakeholderContract.test.ts server/lib/stakeholderRecipients.test.ts server/services/decisions/decisionDetectionCore.test.ts server/services/decisions/decisionPlannerCore.test.ts server/services/decisions/decisionKnowledgeCore.test.ts server/services/castCompleteness.test.ts server/services/crisisFootprint.test.ts server/services/pressureEngine.test.ts server/services/scenarioOrgModel.test.ts server/services/scenarioValidation.test.ts server/services/pressureOrgGeneration.test.ts server/services/teammates/intellect.test.ts server/services/teammates/triage.test.ts",
     "loadtest": "tsx loadtest/run.ts"
   },
   "repository": {

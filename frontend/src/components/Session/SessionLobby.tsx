@@ -5,6 +5,8 @@ import { ParticipantManagement } from './ParticipantManagement';
 import { JoinLinkPanel } from './JoinLinkPanel';
 import { TeamAssignmentModal } from '../Teams/TeamAssignmentModal';
 import { PageAssignmentModal } from '../Teams/PageAssignmentModal';
+import { AITeammatesPanel } from './AITeammatesPanel';
+import { BotBadge } from '../UI/BotBadge';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
 import { websocketClient } from '../../lib/websocketClient';
@@ -29,6 +31,7 @@ interface SessionLobbyProps {
         email?: string;
         role: string;
         agency_name?: string;
+        is_bot?: boolean;
       };
     }>;
   };
@@ -60,6 +63,9 @@ export const SessionLobby = ({
   const [showPageAssignmentModal, setShowPageAssignmentModal] = useState(false);
   const isSocialSim = session.sim_mode === 'social_media';
   const [wsConnected, setWsConnected] = useState(false);
+  const botIds = new Set(
+    (session.participants || []).filter((p) => p.user?.is_bot).map((p) => p.user_id),
+  );
 
   useEffect(() => {
     const unsubscribers: Array<() => void> = [];
@@ -304,7 +310,10 @@ export const SessionLobby = ({
             <div className="space-y-1 mb-4">
               {readyStatus.participants.map((p) => (
                 <div key={p.user_id} className="flex justify-between text-sm">
-                  <span className="text-ink">{p.user?.full_name || 'Unknown'}</span>
+                  <span className="text-ink">
+                    {p.user?.full_name || 'Unknown'}
+                    {botIds.has(p.user_id) && <BotBadge className="ml-1.5" />}
+                  </span>
                   <span
                     className={
                       p.is_ready
@@ -327,6 +336,19 @@ export const SessionLobby = ({
                 : `Waiting · ${readyStatus.total - readyStatus.ready} participant(s) not ready`}
             </button>
           </div>
+        )}
+
+        {/* AI teammates - Trainer only, social crisis sessions only */}
+        {isTrainer && isSocialSim && (
+          <AITeammatesPanel
+            sessionId={sessionId}
+            sessionStatus={session.status}
+            onChanged={() => {
+              loadReadyStatus();
+              loadMyTeams();
+              if (onSessionUpdate) onSessionUpdate();
+            }}
+          />
         )}
 
         {/* Join Link Panel - Trainer Only */}
@@ -437,6 +459,7 @@ export const SessionLobby = ({
                           }`}
                         >
                           {m.user?.full_name || 'Unknown'}
+                          {botIds.has(m.user_id) && <BotBadge className="ml-1.5" />}
                           {m.user_id === user?.id && (
                             <span className="text-xs text-success ml-1">(you)</span>
                           )}
@@ -479,6 +502,7 @@ export const SessionLobby = ({
                   email: p.user.email || '',
                   role: p.user.role,
                   agency_name: p.user.agency_name || '',
+                  is_bot: p.user.is_bot,
                 }
               : undefined,
           }))}

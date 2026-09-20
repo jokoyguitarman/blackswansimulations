@@ -1611,6 +1611,15 @@ router.patch(
         }
       }
 
+      // AI teammates (docs/ai-teammate-bots-plan.md §6.1): start their loops when the session
+      // goes live, stop them when it ends. The reconciler would catch both within a minute
+      // anyway; this just makes it immediate.
+      if (status && status !== previousStatus) {
+        void import('../services/teammates/teammateBotService.js')
+          .then(({ getTeammateBotService }) => getTeammateBotService().onBotsChanged(id))
+          .catch((botErr) => logger.debug({ err: botErr, sessionId: id }, 'teammate bots hook failed'));
+      }
+
       logger.info({ sessionId: id, status, userId: user.id }, 'Session updated');
       res.json({ data });
     } catch (err) {

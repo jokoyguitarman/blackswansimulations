@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { api } from '../../lib/api';
+import { BotBadge } from '../UI/BotBadge';
 
 interface TeamAssignmentModalProps {
   sessionId: string;
@@ -14,6 +15,7 @@ interface Participant {
     id: string;
     full_name: string;
     role: string;
+    is_bot?: boolean;
   };
 }
 
@@ -419,6 +421,7 @@ export const TeamAssignmentModal = ({
                 <div className="min-w-0">
                   <div className="text-sm terminal-text font-medium truncate">
                     {getUserName(participant.user_id)}
+                    {participant.user?.is_bot && <BotBadge className="ml-1.5" />}
                   </div>
                   {isUnassigned && (
                     <div className="text-[10px] terminal-text text-danger">unassigned</div>

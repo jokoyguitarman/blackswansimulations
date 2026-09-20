@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useCountUp, useMetricHistory } from '../../hooks/useCountUp';
 import { supabase } from '../../lib/supabase';
 import { AdversaryConsole } from './AdversaryConsole';
+import { TeammateConsole } from './TeammateConsole';
 import { MetricSparkline } from './MetricSparkline';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
@@ -393,6 +394,8 @@ interface LedgerPlayer {
   player_id: string;
   display_name: string;
   team_name?: string | null;
+  /** Pooled AI teammate account (docs/ai-teammate-bots-plan.md). */
+  is_bot?: boolean;
   entries: LedgerEntry[];
 }
 
@@ -2196,6 +2199,9 @@ export default function TrainerSimDashboard() {
         {/* ============ ADVERSARY CONSOLE ROW: full width ============ */}
         <AdversaryConsole sessionId={sessionId || ''} />
 
+        {/* ============ TEAMMATE CONSOLE ROW: AI allies (docs/ai-teammate-bots-plan.md) ============ */}
+        <TeammateConsole sessionId={sessionId || ''} />
+
         {/* ============ BOTTOM ROW: 2 columns (3fr + 2fr) ============ */}
         <div className="grid gap-4" style={{ gridTemplateColumns: '3fr 2fr', minHeight: 220 }}>
           {/* Panel 6 — Live Feed */}
@@ -2700,7 +2706,8 @@ export default function TrainerSimDashboard() {
                             }`,
                           }}
                         >
-                          {pl.display_name} ({pl.entries.length})
+                          {pl.display_name}
+                          {pl.is_bot ? ' · bot' : ''} ({pl.entries.length})
                         </button>
                       );
                     })}
