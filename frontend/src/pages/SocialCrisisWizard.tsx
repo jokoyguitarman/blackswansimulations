@@ -2151,7 +2151,7 @@ export const SocialCrisisWizard = () => {
           </div>
         </div>
         <div>
-          <div className="wr-cards">
+          <div className="space-y-3.5">
             {/* HQ node */}
             <div className="wr-node hq" style={{ '--g': 'var(--f-org)' } as CSSProperties}>
               <div className="kicker">
@@ -2262,15 +2262,19 @@ export const SocialCrisisWizard = () => {
               <button
                 type="button"
                 className="wr-add"
-                style={{ '--g': 'var(--f-org)' } as CSSProperties}
+                style={{ '--g': 'var(--f-org)', minHeight: 84 } as CSSProperties}
                 onClick={() =>
                   setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)])
                 }
               >
-                <div>
+                <div className="flex items-center gap-3 text-left">
                   <WrIcon name="office" size={24} />
-                  <div className="mt-2">Office, subsidiary or partner agency</div>
-                  <small>Own page, teams and contacts in its own country</small>
+                  <div>
+                    <div>Add an office, subsidiary or partner agency</div>
+                    <small className="mt-0.5">
+                      Own page, teams and contacts in its own country
+                    </small>
+                  </div>
                 </div>
               </button>
             )}
