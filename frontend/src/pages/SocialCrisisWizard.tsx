@@ -2886,6 +2886,23 @@ export const SocialCrisisWizard = () => {
               <WrIcon name="refresh" /> Retry
             </button>
           </div>
+        ) : buildStage === null && !step2Loading && !step3Loading && !step4Loading ? (
+          <div className="wr-empty mt-4" style={{ '--g': 'var(--accent)' } as CSSProperties}>
+            <div className="wr-tile">
+              <WrIcon name="bolt" size={24} />
+            </div>
+            <div>
+              <h4>The build has not started</h4>
+              <p>
+                This draft was saved at the Building step. Generation runs in your browser, so a
+                resumed draft needs a fresh start — it reads everything from the Setup page as
+                saved.
+              </p>
+            </div>
+            <button onClick={() => void generateAll()} className="wr-btn accent lg">
+              <WrIcon name="bolt" /> Build the scenario
+            </button>
+          </div>
         ) : (
           <div className="mt-4">
             <Spinner

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import { api } from '../../lib/api';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
@@ -7,6 +7,8 @@ import { TeamAssignmentModal } from '../Teams/TeamAssignmentModal';
 import { PageAssignmentModal } from '../Teams/PageAssignmentModal';
 import { AITeammatesPanel } from './AITeammatesPanel';
 import { BotBadge } from '../UI/BotBadge';
+import { WrIcon, teamIcon } from '../UI/WarRoomIcon';
+import { initialsOf } from '../UI/Collapsible';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useAuth } from '../../contexts/AuthContext';
 import { websocketClient } from '../../lib/websocketClient';
@@ -265,90 +267,161 @@ export const SessionLobby = ({
   const now = new Date();
   const timeUntilStart = scheduledTime ? scheduledTime.getTime() - now.getTime() : null;
 
+  /* ── Situation Map lobby (spec follow-up: lobby) — handlers above unchanged ─────────── */
+  const teamGroups = Array.from(
+    allAssignments.reduce((groups, a) => {
+      const list = groups.get(a.team_name) || [];
+      list.push(a);
+      groups.set(a.team_name, list);
+      return groups;
+    }, new Map<string, typeof allAssignments>()),
+  );
+  const myTeamNames = new Set(myTeams.map((t) => t.team_name));
+  const readyPct =
+    readyStatus && readyStatus.total > 0
+      ? Math.round((readyStatus.ready / readyStatus.total) * 100)
+      : 0;
+
   return (
-    <div className="space-y-6">
-      {/* Status Header */}
-      <div className="bg-surface border border-border rounded-xl shadow-sm p-6">
-        <div className="flex justify-between items-start mb-4">
+    <div className="space-y-4">
+      {/* Trainer instructions */}
+      {session.trainer_instructions && (
+        <div className="wr-lockstrip locked" style={{ marginBottom: 0 }}>
+          <WrIcon name="megaphone" size={16} className="mt-0.5 text-accent-strong" />
           <div>
-            <h2 className="text-xl font-extrabold text-brand mb-1">Session lobby</h2>
-            <p className="text-sm text-muted">Waiting for trainer to start the session…</p>
+            <div className="font-bold">Trainer instructions</div>
+            <div className="text-ink whitespace-pre-wrap">{session.trainer_instructions}</div>
           </div>
+        </div>
+      )}
+
+      <div className="wr-map">
+        {/* Readiness */}
+        <div className="wr-sech" style={{ margin: '0 0 12px' }}>
+          <h2>
+            <WrIcon name="check" size={16} /> Readiness
+            {readyStatus && (
+              <span className="n">
+                {readyStatus.ready} / {readyStatus.total}
+              </span>
+            )}
+          </h2>
+          <p>
+            {isTrainer
+              ? 'Everyone marks ready in their own lobby; start when the room is green.'
+              : 'Mark yourself ready once you have read the briefing. The trainer starts the session.'}
+          </p>
           {scheduledTime && (
-            <div className="text-right">
-              <div className="text-xs text-muted uppercase tracking-wide">Scheduled start</div>
-              <div className="text-sm font-semibold text-ink">
-                {timeUntilStart && timeUntilStart > 0
-                  ? `${Math.floor(timeUntilStart / 60000)} minutes`
-                  : scheduledTime.toLocaleString()}
-              </div>
-            </div>
+            <span className="more" style={{ color: 'var(--muted)', fontWeight: 600 }}>
+              <WrIcon name="cal" size={12} />{' '}
+              {timeUntilStart && timeUntilStart > 0
+                ? `Starts in ${Math.floor(timeUntilStart / 60000)} min`
+                : `Scheduled ${scheduledTime.toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`}
+            </span>
           )}
         </div>
 
-        {/* Trainer Instructions */}
-        {session.trainer_instructions && (
-          <div className="border-l-4 border-accent bg-accent/10 rounded-md p-4 mt-4">
-            <h3 className="text-xs font-bold uppercase tracking-wide mb-2 text-accent">
-              Trainer instructions
-            </h3>
-            <div className="text-sm text-ink whitespace-pre-wrap">
-              {session.trainer_instructions}
-            </div>
-          </div>
-        )}
-
-        {/* Ready Status for Trainer */}
         {isTrainer && readyStatus && (
-          <div className="bg-surface-2 border border-border rounded-lg p-4 mt-4">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-sm font-semibold text-ink">Ready status</span>
-              <span className="text-sm font-bold text-brand">
-                {readyStatus.ready} / {readyStatus.total} ready
-              </span>
+          <div
+            className="wr-node"
+            style={
+              { '--g': readyStatus.all_ready ? 'var(--success)' : 'var(--accent)' } as CSSProperties
+            }
+          >
+            <div className="wr-phase" style={{ marginBottom: 12 }}>
+              <span
+                style={{
+                  width: `${Math.max(2, readyPct)}%`,
+                  background: readyStatus.all_ready ? 'var(--success)' : 'var(--accent)',
+                }}
+              />
             </div>
-            <div className="space-y-1 mb-4">
-              {readyStatus.participants.map((p) => (
-                <div key={p.user_id} className="flex justify-between text-sm">
-                  <span className="text-ink">
-                    {p.user?.full_name || 'Unknown'}
-                    {botIds.has(p.user_id) && <BotBadge className="ml-1.5" />}
-                  </span>
-                  <span
-                    className={
-                      p.is_ready
-                        ? 'text-xs font-bold uppercase text-success'
-                        : 'text-xs font-bold uppercase text-muted'
-                    }
-                  >
-                    {p.is_ready ? 'Ready' : 'Not ready'}
-                  </span>
-                </div>
-              ))}
-            </div>
+            {readyStatus.participants.length === 0 ? (
+              <div className="text-xs text-muted py-2">
+                No participants yet — share the join link below, or fill seats with AI teammates.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5 mb-3">
+                {readyStatus.participants.map((p) => (
+                  <div key={p.user_id} className="wr-row" style={{ padding: '6px 8px' }}>
+                    <div className={`wr-mono av ${botIds.has(p.user_id) ? 'ai' : 'plain'}`}>
+                      {botIds.has(p.user_id) ? (
+                        <WrIcon name="sparkle" size={14} />
+                      ) : (
+                        initialsOf(p.user?.full_name)
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="nm">
+                        <span className="truncate">{p.user?.full_name || 'Unknown'}</span>
+                        {botIds.has(p.user_id) && <BotBadge />}
+                      </div>
+                    </div>
+                    <span className={`wr-p ${p.is_ready ? 'pure' : ''}`}>
+                      {p.is_ready ? 'ready' : 'not ready'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
             <button
               onClick={handleStartSession}
               disabled={!readyStatus.all_ready}
-              className="military-button w-full py-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="wr-btn accent lg w-full"
             >
+              <WrIcon name="play" />
               {readyStatus.all_ready
                 ? 'Start session'
-                : `Waiting · ${readyStatus.total - readyStatus.ready} participant(s) not ready`}
+                : `Waiting · ${readyStatus.total - readyStatus.ready} participant${readyStatus.total - readyStatus.ready === 1 ? '' : 's'} not ready`}
             </button>
+          </div>
+        )}
+
+        {!isTrainer && (
+          <div
+            className="wr-node"
+            style={
+              {
+                '--g': isReady ? 'var(--success)' : 'var(--accent)',
+                textAlign: 'center',
+                padding: 20,
+              } as CSSProperties
+            }
+          >
+            <button
+              onClick={handleToggleReady}
+              disabled={loading}
+              className={`wr-btn lg ${isReady ? 'primary' : 'accent'}`}
+              style={
+                isReady
+                  ? { background: 'var(--success)', borderColor: 'var(--success)' }
+                  : undefined
+              }
+            >
+              <WrIcon name={isReady ? 'check' : 'play'} />
+              {loading ? 'Updating…' : isReady ? 'You are ready' : 'Mark me as ready'}
+            </button>
+            <p className="text-xs text-muted mt-2.5">
+              {isReady
+                ? 'Waiting for the trainer to start the session… you can un-ready by clicking again.'
+                : 'Read the briefing below first; the trainer starts once everyone is ready.'}
+            </p>
           </div>
         )}
 
         {/* AI teammates - Trainer only, social crisis sessions only */}
         {isTrainer && isSocialSim && (
-          <AITeammatesPanel
-            sessionId={sessionId}
-            sessionStatus={session.status}
-            onChanged={() => {
-              loadReadyStatus();
-              loadMyTeams();
-              if (onSessionUpdate) onSessionUpdate();
-            }}
-          />
+          <div className="mt-4">
+            <AITeammatesPanel
+              sessionId={sessionId}
+              sessionStatus={session.status}
+              onChanged={() => {
+                loadReadyStatus();
+                loadMyTeams();
+                if (onSessionUpdate) onSessionUpdate();
+              }}
+            />
+          </div>
         )}
 
         {/* Join Link Panel - Trainer Only */}
@@ -356,167 +429,201 @@ export const SessionLobby = ({
           session.join_token &&
           session.status !== 'completed' &&
           session.status !== 'cancelled' && (
-            <JoinLinkPanel
-              sessionId={sessionId}
-              joinToken={session.join_token}
-              joinEnabled={session.join_enabled ?? true}
-              joinExpiresAt={session.join_expires_at}
-              onUpdate={onSessionUpdate}
-            />
+            <div className="mt-4">
+              <JoinLinkPanel
+                sessionId={sessionId}
+                joinToken={session.join_token}
+                joinEnabled={session.join_enabled ?? true}
+                joinExpiresAt={session.join_expires_at}
+                onUpdate={onSessionUpdate}
+              />
+            </div>
           )}
+      </div>
 
-        {/* Ready Button for Participants */}
-        {!isTrainer && (
-          <div className="mt-4">
-            <button
-              onClick={handleToggleReady}
-              disabled={loading}
-              className={`military-button w-full py-3 ${
-                isReady ? '!bg-success !border-success' : ''
-              }`}
-            >
-              {loading ? 'Updating…' : isReady ? 'Ready ✓' : 'Mark me as ready'}
-            </button>
-            {isReady && (
-              <p className="text-xs text-muted mt-2 text-center">
-                You are ready. Waiting for trainer to start the session…
-              </p>
-            )}
-          </div>
-        )}
-
-        {/* Team Assignments - Show to all participants */}
-        <div className="mt-4">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="text-sm font-bold uppercase tracking-wide text-brand">
-              Team assignments
-            </h3>
-            {isTrainer && (
-              <div className="flex gap-2">
-                {isSocialSim && (
-                  <button
-                    onClick={() => setShowPageAssignmentModal(true)}
-                    className="military-button-outline px-4 py-2 text-xs"
-                  >
-                    Manage pages
-                  </button>
-                )}
-                <button
-                  onClick={() => setShowTeamAssignmentModal(true)}
-                  className="military-button px-4 py-2 text-xs"
-                >
-                  Manage teams
+      {/* Team assignments */}
+      <div className="wr-map">
+        <div
+          className="wr-sech"
+          style={{ margin: '0 0 12px', '--g': 'var(--f-org)' } as CSSProperties}
+        >
+          <h2>
+            <WrIcon name="users" size={16} /> Team assignments
+            {teamGroups.length > 0 && <span className="n">{teamGroups.length} teams</span>}
+          </h2>
+          <p>
+            One team per player. Each team has its own storyline pressure, tasks and scoring rubric.
+          </p>
+          {isTrainer && (
+            <div className="ml-auto flex gap-2">
+              {isSocialSim && (
+                <button onClick={() => setShowPageAssignmentModal(true)} className="wr-btn">
+                  <WrIcon name="phone" /> Manage pages
                 </button>
-              </div>
-            )}
-          </div>
-
-          {myTeams.length > 0 && (
-            <div className="border-l-4 border-success bg-success/10 rounded-md p-4 mb-3">
-              <div className="space-y-2">
-                {myTeams.map((team, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <span className="text-xs text-muted uppercase tracking-wide">Your team:</span>
-                    <span className="text-sm font-bold text-ink">{team.team_name}</span>
-                    {team.team_role && (
-                      <span className="text-xs text-muted">({team.team_role})</span>
-                    )}
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted mt-2">
-                You will receive team-specific information during the session.
-              </p>
-            </div>
-          )}
-
-          {allAssignments.length > 0 ? (
-            <div className="bg-surface-2 border border-border rounded-lg p-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {Array.from(
-                  allAssignments.reduce((groups, a) => {
-                    const list = groups.get(a.team_name) || [];
-                    list.push(a);
-                    groups.set(a.team_name, list);
-                    return groups;
-                  }, new Map<string, typeof allAssignments>()),
-                ).map(([teamName, members]) => (
-                  <div key={teamName} className="border border-border rounded-md p-3 bg-surface">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-brand">
-                        {teamName}
-                      </span>
-                      <span className="text-[10px] text-muted">
-                        {members.length} member{members.length !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      {members.map((m) => (
-                        <div
-                          key={m.user_id}
-                          className={`text-sm ${
-                            m.user_id === user?.id ? 'font-bold text-ink' : 'text-ink'
-                          }`}
-                        >
-                          {m.user?.full_name || 'Unknown'}
-                          {botIds.has(m.user_id) && <BotBadge className="ml-1.5" />}
-                          {m.user_id === user?.id && (
-                            <span className="text-xs text-success ml-1">(you)</span>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-surface-2 border border-border rounded-lg p-4">
-              <p className="text-xs text-muted text-center">
-                {isTrainer
-                  ? 'No team assignments yet. Click “Manage teams” to assign teams.'
-                  : 'No team assignments yet. Waiting for trainer to assign teams…'}
-              </p>
+              )}
+              <button onClick={() => setShowTeamAssignmentModal(true)} className="wr-btn accent">
+                <WrIcon name="users" /> Manage teams
+              </button>
             </div>
           )}
         </div>
+
+        {myTeams.length > 0 && (
+          <div
+            className="wr-node mb-3"
+            style={{ '--g': 'var(--success)', borderColor: 'var(--success)' } as CSSProperties}
+          >
+            <div className="kicker">
+              <WrIcon name="check" size={12} /> Your team
+            </div>
+            <div className="flex flex-wrap gap-3">
+              {myTeams.map((team, idx) => (
+                <div key={idx} className="flex items-center gap-2.5">
+                  <div className="wr-tile" style={{ width: 36, height: 36 }}>
+                    <WrIcon name={teamIcon(team.team_name)} size={16} />
+                  </div>
+                  <div>
+                    <div className="font-extrabold text-ink">{team.team_name}</div>
+                    {team.team_role && <div className="text-xs text-muted">{team.team_role}</div>}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-muted mt-2">
+              You will receive team-specific information during the session.
+            </p>
+          </div>
+        )}
+
+        {teamGroups.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {teamGroups.map(([teamName, members]) => {
+              const mine = myTeamNames.has(teamName);
+              const bots = members.filter((m) => botIds.has(m.user_id)).length;
+              return (
+                <div
+                  key={teamName}
+                  className="wr-node"
+                  style={
+                    {
+                      '--g': mine ? 'var(--success)' : 'var(--f-org)',
+                      borderColor: mine ? 'var(--success)' : undefined,
+                    } as CSSProperties
+                  }
+                >
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <div className="wr-tile" style={{ width: 34, height: 34 }}>
+                      <WrIcon name={teamIcon(teamName)} size={15} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-extrabold text-ink text-sm truncate" title={teamName}>
+                        {teamName}
+                      </div>
+                      <div className="text-[11px] text-muted">
+                        {members.length} member{members.length !== 1 ? 's' : ''}
+                        {bots > 0 ? ` · ${bots} AI` : ''}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    {members.map((m) => (
+                      <div key={m.user_id} className="flex items-center gap-2 text-sm">
+                        <div
+                          className={`wr-mono ${botIds.has(m.user_id) ? 'ai' : 'plain'}`}
+                          style={{ width: 24, height: 24, fontSize: 9, borderRadius: 7 }}
+                        >
+                          {botIds.has(m.user_id) ? (
+                            <WrIcon name="sparkle" size={11} />
+                          ) : (
+                            initialsOf(m.user?.full_name)
+                          )}
+                        </div>
+                        <span
+                          className={`truncate ${m.user_id === user?.id ? 'font-bold text-ink' : 'text-ink'}`}
+                        >
+                          {m.user?.full_name || 'Unknown'}
+                        </span>
+                        {botIds.has(m.user_id) && <BotBadge />}
+                        {m.user_id === user?.id && <span className="wr-p pure">you</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div
+            className="wr-empty"
+            style={{ marginTop: 0, '--g': 'var(--f-org)' } as CSSProperties}
+          >
+            <div className="wr-tile">
+              <WrIcon name="users" size={24} />
+            </div>
+            <div>
+              <h4>No team assignments yet</h4>
+              <p>
+                {isTrainer
+                  ? 'Use “Manage teams” to place each player, or “Auto-balance” inside it to spread them evenly.'
+                  : 'Waiting for the trainer to assign teams…'}
+              </p>
+            </div>
+            {isTrainer && (
+              <button onClick={() => setShowTeamAssignmentModal(true)} className="wr-btn accent">
+                <WrIcon name="users" /> Manage teams
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Briefing Materials */}
-      <div className="bg-surface border border-border rounded-xl shadow-sm p-6">
-        <h3 className="text-lg font-bold text-brand mb-4">Briefing materials</h3>
+      <div className="wr-map">
+        <div
+          className="wr-sech"
+          style={{ margin: '0 0 12px', '--g': 'var(--f-crisis)' } as CSSProperties}
+        >
+          <h2>
+            <WrIcon name="doc" size={16} /> Briefing materials
+          </h2>
+          <p>
+            Read before you mark ready — the general briefing and anything specific to your team.
+          </p>
+        </div>
         <BriefingView sessionId={sessionId} />
       </div>
 
       {/* Participant Management - Trainer Only */}
       {isTrainer && (
-        <ParticipantManagement
-          sessionId={sessionId}
-          participants={(session.participants || []).map((p) => ({
-            user_id: p.user_id,
-            role: p.role,
-            user: p.user
-              ? {
-                  id: p.user.id || p.user_id,
-                  full_name: p.user.full_name,
-                  email: p.user.email || '',
-                  role: p.user.role,
-                  agency_name: p.user.agency_name || '',
-                  is_bot: p.user.is_bot,
-                }
-              : undefined,
-          }))}
-          onUpdate={() => {
-            // Reload ready status when participants are updated
-            loadReadyStatus();
-            // Reload team assignments
-            loadMyTeams();
-            // Call parent update callback if provided
-            if (onSessionUpdate) {
-              onSessionUpdate();
-            }
-          }}
-        />
+        <div className="wr-map">
+          <ParticipantManagement
+            sessionId={sessionId}
+            participants={(session.participants || []).map((p) => ({
+              user_id: p.user_id,
+              role: p.role,
+              user: p.user
+                ? {
+                    id: p.user.id || p.user_id,
+                    full_name: p.user.full_name,
+                    email: p.user.email || '',
+                    role: p.user.role,
+                    agency_name: p.user.agency_name || '',
+                    is_bot: p.user.is_bot,
+                  }
+                : undefined,
+            }))}
+            onUpdate={() => {
+              // Reload ready status when participants are updated
+              loadReadyStatus();
+              // Reload team assignments
+              loadMyTeams();
+              // Call parent update callback if provided
+              if (onSessionUpdate) {
+                onSessionUpdate();
+              }
+            }}
+          />
+        </div>
       )}
 
       {/* Team Assignment Modal */}

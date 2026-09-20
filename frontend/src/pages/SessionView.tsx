@@ -12,6 +12,9 @@ import { TrainerEnvironmentalTruths } from '../components/Session/TrainerEnviron
 import { TeamAssignmentModal } from '../components/Teams/TeamAssignmentModal';
 import { SessionLobby } from '../components/Session/SessionLobby';
 import { NotificationBell } from '../components/Notifications/NotificationBell';
+import { BrandMark } from '../components/BrandMark';
+import { WrIcon } from '../components/UI/WarRoomIcon';
+import { artFor } from '../lib/scenarioArt';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
 import { MapView } from '../components/COP/MapView';
 import { SceneCanvasView } from '../components/COP/SceneCanvasView';
@@ -575,6 +578,7 @@ interface Session {
   id: string;
   status: string;
   scenario_id: string;
+  sim_mode?: string | null;
   start_time?: string | null;
   current_state?: {
     [key: string]: unknown;
@@ -589,6 +593,7 @@ interface Session {
     id?: string;
     title: string;
     description: string;
+    category?: string;
     center_lat?: number | null;
     center_lng?: number | null;
   };
@@ -602,6 +607,7 @@ interface Session {
       email?: string;
       role: string;
       agency_name?: string;
+      is_bot?: boolean;
     };
   }>;
 }
@@ -1380,35 +1386,93 @@ export const SessionView = () => {
 
   // Show lobby if session is scheduled
   if (session.status === 'scheduled') {
+    const lobbySocial =
+      session.sim_mode === 'social_media' || session.scenarios?.category === 'social_media_crisis';
+    const participantCount = session.participants?.length ?? 0;
+    const botCount = (session.participants ?? []).filter((p) => p.user?.is_bot).length;
     return (
-      <div className="min-h-screen scanline">
-        {/* Header */}
-        <div className="sticky top-0 z-40 military-border border-b-2 border-border bg-surface shadow-md">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center h-16">
-              <div>
-                <h1 className="text-lg terminal-text uppercase">
-                  {session.scenarios?.title || 'Session'}
-                </h1>
-                <p className="text-xs terminal-text text-muted">
-                  Status: {session.status.toUpperCase().replace('_', ' ')}
-                </p>
-              </div>
-              <div className="flex items-center gap-4">
-                <NotificationBell />
-                <button
-                  onClick={() => navigate('/sessions')}
-                  className="px-4 py-2 text-xs terminal-text uppercase border border-accent text-accent hover:bg-accent/10"
-                >
-                  Back
-                </button>
-              </div>
+      <div className="min-h-screen bg-bg">
+        <header className="wr-artband wr-hero" style={{ paddingBottom: 44 }}>
+          <img
+            className="wr-art"
+            src={artFor(
+              {
+                id: session.scenario_id ?? id ?? 'lobby',
+                category:
+                  session.scenarios?.category ?? (lobbySocial ? 'social_media_crisis' : 'custom'),
+                title: session.scenarios?.title ?? '',
+              },
+              'full',
+            )}
+            alt=""
+          />
+          <div className="wr-hero-top">
+            <div className="wr-brandmark">
+              <BrandMark className="h-8 w-8" /> Black Swan{' '}
+              <span className="sub">· session lobby</span>
+            </div>
+            <div className="wr-credits">
+              <span>
+                <span className="wr-livedot" style={{ color: '#FCD34D' }} /> Scheduled
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              <NotificationBell />
+              <button onClick={() => navigate('/sessions')} className="wr-btn sm onDark">
+                <WrIcon name="arrow-l" /> Sessions
+              </button>
             </div>
           </div>
-        </div>
+          <div
+            className="wr-hero-grid"
+            style={{ gridTemplateColumns: '1fr auto', alignItems: 'end' }}
+          >
+            <div>
+              <div className="wr-eyebrow">
+                <WrIcon name={lobbySocial ? 'phone' : 'map'} size={12} />{' '}
+                {lobbySocial ? 'Corporate crisis' : 'Field operations'} · lobby
+              </div>
+              <h1>{session.scenarios?.title || 'Session'}</h1>
+              <p className="lead">
+                {isTrainer
+                  ? 'Assign teams, share the join link, fill empty seats with AI teammates, and start when everyone is ready.'
+                  : 'Read the briefing, find your team, and mark yourself ready. The trainer starts the session.'}
+              </p>
+            </div>
+            <div className="wr-facts">
+              <div className="wr-glass">
+                <b>{participantCount}</b>
+                <span>
+                  <WrIcon name="users" size={12} /> participants
+                </span>
+              </div>
+              {botCount > 0 && (
+                <div className="wr-glass">
+                  <b>{botCount}</b>
+                  <span>
+                    <WrIcon name="sparkle" size={12} /> AI teammates
+                  </span>
+                </div>
+              )}
+              {session.scheduled_start_time && (
+                <div className="wr-glass">
+                  <b>
+                    {new Date(session.scheduled_start_time).toLocaleTimeString(undefined, {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </b>
+                  <span>
+                    <WrIcon name="cal" size={12} /> scheduled start
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        </header>
 
         {/* Lobby Content */}
-        <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+        <main className="wr-wrap">
           {id && (
             <SessionLobby
               sessionId={id}
@@ -1417,7 +1481,7 @@ export const SessionView = () => {
               onSessionUpdate={loadSession}
             />
           )}
-        </div>
+        </main>
       </div>
     );
   }
