@@ -613,6 +613,7 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
           {
             decision_key: 'close_depot',
             label: 'Close the Johor depot',
+            title: 'Close the Johor depot',
             description: 'Shut the depot for 30 days',
             decidable_by_org_keys: ['primary'],
             affected_org_keys: ['org_slm_my'],
@@ -623,6 +624,7 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
                 description: 'Brief depot staff before external comms',
                 owed_to_stakeholder_ids: [pureMy.id],
                 owed_by_function: 'Sales',
+                by_function: 'Sales',
                 window_minutes: 30,
                 detection: 'stakeholder_contacted',
               },

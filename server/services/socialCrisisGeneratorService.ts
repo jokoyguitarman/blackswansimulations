@@ -365,6 +365,9 @@ async function callAI(
   try {
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
+      // A hung socket must fail the call (callers retry or fall back) rather than stall a
+      // whole generation stage; long JSON bodies at 12k tokens finish well inside this.
+      signal: AbortSignal.timeout(240_000),
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${env.openAiApiKey}`,

@@ -197,6 +197,8 @@ export interface SopObligation {
   description: string;
   owed_to_stakeholder_ids: string[];
   owed_by_function: string;
+  /** Alias of owed_by_function — the runtime contract module's field name. */
+  by_function: string;
   window_minutes: number;
   detection: 'stakeholder_contacted' | 'statement_published' | 'internal_directive_sent';
 }
@@ -204,6 +206,8 @@ export interface SopObligation {
 export interface ExecutiveDecision {
   decision_key: string;
   label: string;
+  /** Alias of label — the runtime contract module's field name. */
+  title: string;
   description: string;
   decidable_by_org_keys: string[];
   affected_org_keys: string[];
@@ -214,10 +218,11 @@ export interface ExecutiveDecision {
   public_statement_expected: boolean;
 }
 
+/** `to` holds function names and/or stakeholder ids (ids start with "stk_"). */
 export interface ChainOfCommandEdge {
   org_key: string;
   from_function: string;
-  to: Array<{ function?: string; stakeholder_id?: string }>;
+  to: string[];
 }
 
 export const DECISION_KEY_REGEX = /^[a-z0-9_]{3,60}$/;
@@ -225,6 +230,7 @@ export const DECISION_KEY_REGEX = /^[a-z0-9_]{3,60}$/;
 export const ExecutiveDecisionSchema = z.object({
   decision_key: z.string().regex(DECISION_KEY_REGEX),
   label: z.string().min(2).max(120),
+  title: z.string().min(1),
   description: z.string().min(2).max(600),
   decidable_by_org_keys: z.array(z.string()).min(1),
   affected_org_keys: z.array(z.string()).min(1),
@@ -235,6 +241,7 @@ export const ExecutiveDecisionSchema = z.object({
       description: z.string().min(2).max(300),
       owed_to_stakeholder_ids: z.array(z.string()),
       owed_by_function: z.string().min(1),
+      by_function: z.string().min(1),
       window_minutes: z.number().int().min(5).max(120),
       detection: z.enum([
         'stakeholder_contacted',

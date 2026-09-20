@@ -586,6 +586,32 @@ export function buildCompileArtifacts(
   const personas = [...body.personas];
   personas.push(...ensurePersonaTwins(stakeholders, extraInjects, personas, countryByOrg));
 
+  // Decision layer aliases (contract module names): drafts generated before the aliases
+  // existed still compile — title mirrors label, by_function mirrors owed_by_function.
+  const decisionSpace = (body.decision_space || []).map((d) => ({
+    ...d,
+    title: d.title || d.label,
+    sop_obligations: (d.sop_obligations || []).map((ob) => ({
+      ...ob,
+      by_function: ob.by_function || ob.owed_by_function,
+      owed_by_function: ob.owed_by_function || ob.by_function,
+    })),
+  }));
+  const chainOfCommand = (body.chain_of_command || []).map((edge) => ({
+    ...edge,
+    to: (edge.to as unknown[])
+      .map((t) =>
+        typeof t === 'string'
+          ? t
+          : String(
+              (t as { stakeholder_id?: string; function?: string }).stakeholder_id ||
+                (t as { function?: string }).function ||
+                '',
+            ),
+      )
+      .filter(Boolean),
+  }));
+
   return {
     charters,
     teamDefs,
@@ -595,8 +621,8 @@ export function buildCompileArtifacts(
     stakeholders,
     extraInjects,
     personas,
-    decision_space: body.decision_space,
-    chain_of_command: body.chain_of_command,
+    decision_space: decisionSpace.length > 0 ? decisionSpace : undefined,
+    chain_of_command: chainOfCommand.length > 0 ? chainOfCommand : undefined,
     sop_steps: body.sop_steps || [],
   };
 }

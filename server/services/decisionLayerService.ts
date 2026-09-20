@@ -173,6 +173,7 @@ Return ONLY valid JSON: { "decisions": [ ... ] }`,
         ).slice(0, 300),
         owed_to_stakeholder_ids: owedTo,
         owed_by_function: exists ? owedBy : fallbackFn,
+        by_function: exists ? owedBy : fallbackFn,
         window_minutes: Math.max(5, Math.min(120, Math.round(Number(ob.window_minutes) || 30))),
         detection,
       };
@@ -182,6 +183,7 @@ Return ONLY valid JSON: { "decisions": [ ... ] }`,
     decisions.push({
       decision_key: key,
       label: String(d.label || key).slice(0, 120),
+      title: String(d.label || key).slice(0, 120),
       description: String(d.description || '').slice(0, 600) || String(d.label || key),
       decidable_by_org_keys: decidable,
       affected_org_keys: affected,
@@ -502,7 +504,7 @@ export function buildChainOfCommand(
       edges.push({
         org_key: key,
         from_function: EXECUTIVE_FUNCTION,
-        to: functions.filter((f) => f !== EXECUTIVE_FUNCTION).map((f) => ({ function: f })),
+        to: functions.filter((f) => f !== EXECUTIVE_FUNCTION),
       });
     }
     for (const fn of functions) {
@@ -517,7 +519,7 @@ export function buildChainOfCommand(
         edges.push({
           org_key: key,
           from_function: fn,
-          to: internal.slice(0, 8).map((s) => ({ stakeholder_id: s.id })),
+          to: internal.slice(0, 8).map((s) => s.id),
         });
       }
     }

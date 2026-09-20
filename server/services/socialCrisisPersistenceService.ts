@@ -58,7 +58,12 @@ export type PersistableTeamCharter = TeamCharter & {
 
 export { functionKeyForTeamRow };
 
-const MISSING_ORG_COLUMN = /column .*(org_key|function_key).* does not exist/i;
+// Postgres says "column X does not exist"; PostgREST says "Could not find the 'X' column ... in the schema cache".
+const MISSING_ORG_COLUMN =
+  /(column .*(org_key|function_key).* does not exist|could not find the '(org_key|function_key)' column)/i;
+
+export const MIGRATION_197_HINT =
+  'migration 197 (scenario_teams.org_key/function_key) must be applied before multi-organisation scenarios can be compiled';
 
 /**
  * Insert scenario_teams rows carrying org_key/function_key (migration 197). If the
@@ -74,7 +79,7 @@ export async function insertTeamRowsWithOrgColumns(
   if (!error) return null;
   if (!MISSING_ORG_COLUMN.test(error.message)) return error.message;
   if (rows.some((r) => r.org_key !== null)) {
-    return `${error.message} — migration 197 (scenario_teams.org_key/function_key) must be applied before multi-organisation scenarios can be compiled`;
+    return `${error.message} — ${MIGRATION_197_HINT}`;
   }
   logger.error(
     { scenarioId },

@@ -34,7 +34,10 @@ import {
   type TeamCharter,
 } from '../services/teamCharterService.js';
 import { RESPONSE_STANDARDS } from '../config/responseStandards.js';
-import { persistSocialCrisisScenario } from '../services/socialCrisisPersistenceService.js';
+import {
+  persistSocialCrisisScenario,
+  MIGRATION_197_HINT,
+} from '../services/socialCrisisPersistenceService.js';
 import {
   organisationsSchema,
   competitorsSchema,
@@ -1237,11 +1240,15 @@ router.post(
         if (creditLedgerId) {
           await refundCredit(user.id, 'scenario', creditInvoiceId);
         }
-        // Contract §9 violations surface their rule so the trainer/editor can act on them.
+        // Contract §9 violations surface their rule so the trainer/editor can act on them;
+        // a lagging database migration is named rather than hidden behind a generic failure.
+        const message = err instanceof Error ? err.message : '';
         const error =
           err instanceof MultiOrgValidationError
             ? `Compilation failed validation — ${err.code}: ${err.message.replace(/^MO-[A-Z]+-\d+:\s*/, '')}`
-            : 'Compilation failed';
+            : /migration 197/i.test(message)
+              ? `Compilation failed: database ${MIGRATION_197_HINT}`
+              : 'Compilation failed';
         aiJobs.set(jobId, { status: 'failed', error, startedAt: Date.now() });
       }
     })();
