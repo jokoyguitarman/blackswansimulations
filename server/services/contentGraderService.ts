@@ -236,14 +236,19 @@ Evaluate the media concept as part of your grading. Include these additional fie
           { role: 'system', content: systemPrompt },
           { role: 'user', content: `Grade this ${format} response:\n\n${playerContent}` },
         ],
-        temperature: 0.3,
+        // gpt-5.5 rejects any temperature other than the default and returns a
+        // 400, which lands every response on the neutral defaultGrade below.
         max_completion_tokens: 4096,
         response_format: { type: 'json_object' },
       }),
     });
 
     if (!response.ok) {
-      logger.warn({ status: response.status }, 'OpenAI content grading failed');
+      const body = await response.text().catch(() => '');
+      logger.warn(
+        { status: response.status, body: body.slice(0, 500) },
+        'OpenAI content grading failed',
+      );
       return defaultGrade('AI grading temporarily unavailable', format);
     }
 

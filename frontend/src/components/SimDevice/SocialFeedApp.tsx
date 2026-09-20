@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
@@ -235,6 +235,12 @@ export default function SocialFeedApp({
   const [reporting, setReporting] = useState(false);
   const [reportStatus, setReportStatus] = useState<string | null>(null);
   const selectedPostRef = useRef<SocialPost | null>(null);
+  // Feed ordering: see buildFeed below. The scroll container tells us whether
+  // the reader is at the top (safe to reorder) or reading further down (not).
+  const feedScrollRef = useRef<HTMLDivElement>(null);
+  const [atFeedTop, setAtFeedTop] = useState(true);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [frozenOrder, setFrozenOrder] = useState<string[] | null>(null);
   const [threadReplies, setThreadReplies] = useState<SocialPost[]>([]);
   const [highlightReplyId, setHighlightReplyId] = useState<string | null>(null);
   const [knownHandles, setKnownHandles] = useState<Array<{ handle: string; display_name: string }>>(
@@ -265,6 +271,101 @@ export default function SocialFeedApp({
   >([]);
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   const composeRef = useRef<HTMLTextAreaElement>(null);
+
+  // --------------------------------------------------------------------------
+  // Feed ordering
+  //
+  // The ranking blends virality with a recency term that decays continuously.
+  // Evaluating that inside the sort comparator meant the order could change on
+  // any render — including renders triggered by unrelated state — so posts
+  // shuffled under the reader between polls. Worse, calling Date.now() twice per
+  // comparison can straddle a millisecond and make the comparator an
+  // inconsistent ordering, which lets the sort return arbitrary results.
+  //
+  // Fixed by evaluating "now" once per ranking pass, and only re-ranking on a
+  // one-minute bucket rather than on every render.
+  // --------------------------------------------------------------------------
+  const rankBucket = Math.floor(Date.now() / 60_000);
+
+  const rankedPosts = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    const now = rankBucket * 60_000;
+
+    const candidates = posts.filter((p) => {
+      if (p.reply_to_post_id) return false;
+      if (!q) return true;
+      const content = (p.content || '').toLowerCase();
+      const handle = (p.author_handle || '').toLowerCase();
+      const name = (p.author_display_name || '').toLowerCase();
+      const tags = (p.hashtags || []).map((t: string) => t.toLowerCase());
+      return (
+        content.includes(q) ||
+        handle.includes(q) ||
+        name.includes(q) ||
+        tags.some((t: string) => t.includes(q))
+      );
+    });
+
+    const score = (p: SocialPost): number => {
+      const recency = Math.max(0, 1 - (now - new Date(p.created_at).getTime()) / (45 * 60000));
+      return (p.virality_score || 0) * 0.6 + recency * 100 * 0.4;
+    };
+
+    return candidates.sort((a, b) => {
+      if (activeTab === 'latest') {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      const aIsPlayer = a.author_type === 'player';
+      const bIsPlayer = b.author_type === 'player';
+      if (aIsPlayer && !bIsPlayer) return -1;
+      if (!aIsPlayer && bIsPlayer) return 1;
+      if (aIsPlayer && bIsPlayer) {
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      }
+      return score(b) - score(a);
+    });
+  }, [posts, searchQuery, activeTab, rankBucket]);
+
+  /**
+   * True while the reader is doing something the feed must not disturb: reading
+   * further down, or composing a reply. Reordering underneath them is how you
+   * lose the post you were about to answer.
+   */
+  const feedEngaged = !atFeedTop || composing || Boolean(replyingTo) || Boolean(selectedPost);
+
+  // Freeze the visible order on engagement; release it when they return to the
+  // top with nothing open.
+  useEffect(() => {
+    if (feedEngaged) {
+      setFrozenOrder((prev) => prev ?? rankedPosts.map((p) => p.id));
+    } else {
+      setFrozenOrder(null);
+      setPendingCount(0);
+    }
+  }, [feedEngaged, rankedPosts]);
+
+  const visiblePosts = useMemo(() => {
+    if (!frozenOrder) return rankedPosts;
+    const byId = new Map(rankedPosts.map((p) => [p.id, p]));
+    // Keep the order the reader is looking at; anything new waits behind the pill.
+    const held = frozenOrder.map((id) => byId.get(id)).filter((p): p is SocialPost => Boolean(p));
+    const heldIds = new Set(held.map((p) => p.id));
+    const arrived = rankedPosts.filter((p) => !heldIds.has(p.id));
+    return [...held, ...arrived];
+  }, [rankedPosts, frozenOrder]);
+
+  // Count what has landed since the order froze, for the "new posts" pill.
+  useEffect(() => {
+    if (!frozenOrder) return;
+    const heldIds = new Set(frozenOrder);
+    setPendingCount(rankedPosts.filter((p) => !heldIds.has(p.id)).length);
+  }, [rankedPosts, frozenOrder]);
+
+  const showNewPosts = useCallback(() => {
+    setFrozenOrder(null);
+    setPendingCount(0);
+    feedScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
 
   const loadPosts = useCallback(async () => {
     if (!sessionId) return;
@@ -1878,7 +1979,26 @@ export default function SocialFeedApp({
       </div>
 
       {/* Feed */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden">
+      <div
+        ref={feedScrollRef}
+        onScroll={(e) => {
+          const top = (e.target as HTMLDivElement).scrollTop;
+          // Small threshold: a couple of pixels of drift should not count as
+          // "reading further down".
+          setAtFeedTop(top <= 24);
+        }}
+        className="flex-1 overflow-y-auto overflow-x-hidden relative"
+      >
+        {pendingCount > 0 && (
+          <button
+            data-testid="feed-new-posts"
+            onClick={showNewPosts}
+            className="sticky top-2 left-1/2 z-40 px-4 py-1.5 rounded-full text-[13px] font-bold text-white shadow-lg"
+            style={{ backgroundColor: '#1D9BF0', transform: 'translateX(-50%)' }}
+          >
+            {pendingCount} new post{pendingCount === 1 ? '' : 's'}
+          </button>
+        )}
         {loading ? (
           <div className="flex items-center justify-center h-32">
             <div
@@ -1910,369 +2030,446 @@ export default function SocialFeedApp({
             </p>
           </div>
         ) : (
-          posts
-            .filter((p) => {
-              if (p.reply_to_post_id) return false;
-              const q = searchQuery.toLowerCase().trim();
-              if (!q) return true;
-              const content = (p.content || '').toLowerCase();
-              const handle = (p.author_handle || '').toLowerCase();
-              const name = (p.author_display_name || '').toLowerCase();
-              const tags = (p.hashtags || []).map((t: string) => t.toLowerCase());
-              return (
-                content.includes(q) ||
-                handle.includes(q) ||
-                name.includes(q) ||
-                tags.some((t: string) => t.includes(q))
-              );
-            })
-            .sort((a, b) => {
-              if (activeTab === 'latest') {
-                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-              }
-              const aIsPlayer = a.author_type === 'player';
-              const bIsPlayer = b.author_type === 'player';
-              if (aIsPlayer && !bIsPlayer) return -1;
-              if (!aIsPlayer && bIsPlayer) return 1;
-              if (aIsPlayer && bIsPlayer) {
-                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-              }
-              const recencyA = Math.max(
-                0,
-                1 - (Date.now() - new Date(a.created_at).getTime()) / (45 * 60000),
-              );
-              const recencyB = Math.max(
-                0,
-                1 - (Date.now() - new Date(b.created_at).getTime()) / (45 * 60000),
-              );
-              const scoreA = (a.virality_score || 0) * 0.6 + recencyA * 100 * 0.4;
-              const scoreB = (b.virality_score || 0) * 0.6 + recencyB * 100 * 0.4;
-              return scoreB - scoreA;
-            })
-            .map((post) => {
-              const badge = getAuthorBadge(post.author_type);
-              return (
-                <div
-                  key={post.id}
-                  className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03]"
-                  style={{
-                    borderBottom: '1px solid #2F3336',
-                    borderLeft: isTrainer ? getSentimentBorder(post.sentiment) : undefined,
-                  }}
-                  onClick={() => openThread(post)}
-                >
-                  {isTrainer && post.requires_response && !post.responded_at && (
-                    <div className="flex items-center gap-1.5 mb-2 ml-[52px]">
-                      <span className="relative flex h-2 w-2">
-                        <span
-                          className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
-                          style={{ backgroundColor: '#F59E0B' }}
-                        />
-                        <span
-                          className="relative inline-flex rounded-full h-2 w-2"
-                          style={{ backgroundColor: '#F59E0B' }}
-                        />
-                      </span>
+          visiblePosts.map((post) => {
+            const badge = getAuthorBadge(post.author_type);
+            return (
+              <div
+                key={post.id}
+                data-testid={`feed-post-${post.id}`}
+                className="px-4 py-3 transition-colors cursor-pointer hover:bg-white/[0.03]"
+                style={{
+                  borderBottom: '1px solid #2F3336',
+                  borderLeft: isTrainer ? getSentimentBorder(post.sentiment) : undefined,
+                }}
+                onClick={() => openThread(post)}
+              >
+                {isTrainer && post.requires_response && !post.responded_at && (
+                  <div className="flex items-center gap-1.5 mb-2 ml-[52px]">
+                    <span className="relative flex h-2 w-2">
                       <span
-                        className="text-[12px] font-bold tracking-wide"
-                        style={{ color: '#F59E0B' }}
-                      >
-                        REQUIRES RESPONSE
-                      </span>
+                        className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                        style={{ backgroundColor: '#F59E0B' }}
+                      />
+                      <span
+                        className="relative inline-flex rounded-full h-2 w-2"
+                        style={{ backgroundColor: '#F59E0B' }}
+                      />
+                    </span>
+                    <span
+                      className="text-[12px] font-bold tracking-wide"
+                      style={{ color: '#F59E0B' }}
+                    >
+                      REQUIRES RESPONSE
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  {post.author_type === 'official_account' && orgPageLogos[post.author_handle] ? (
+                    <img
+                      src={orgPageLogos[post.author_handle]}
+                      alt={post.author_display_name}
+                      className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                      style={{ cursor: 'pointer' }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setViewedPageHandle(post.author_handle);
+                        setOverlayView('page');
+                      }}
+                    />
+                  ) : (
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
+                      style={{
+                        backgroundColor: getAvatarColor(post.author_display_name),
+                        cursor: post.author_type === 'official_account' ? 'pointer' : undefined,
+                      }}
+                      onClick={
+                        post.author_type === 'official_account'
+                          ? (e) => {
+                              e.stopPropagation();
+                              setViewedPageHandle(post.author_handle);
+                              setOverlayView('page');
+                            }
+                          : undefined
+                      }
+                    >
+                      {post.author_display_name.charAt(0).toUpperCase()}
                     </div>
                   )}
 
-                  <div className="flex gap-3">
-                    {post.author_type === 'official_account' && orgPageLogos[post.author_handle] ? (
-                      <img
-                        src={orgPageLogos[post.author_handle]}
-                        alt={post.author_display_name}
-                        className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                        style={{ cursor: 'pointer' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setViewedPageHandle(post.author_handle);
-                          setOverlayView('page');
-                        }}
-                      />
-                    ) : (
-                      <div
-                        className="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-[16px] flex-shrink-0"
-                        style={{
-                          backgroundColor: getAvatarColor(post.author_display_name),
-                          cursor: post.author_type === 'official_account' ? 'pointer' : undefined,
-                        }}
-                        onClick={
-                          post.author_type === 'official_account'
-                            ? (e) => {
-                                e.stopPropagation();
-                                setViewedPageHandle(post.author_handle);
-                                setOverlayView('page');
-                              }
-                            : undefined
-                        }
-                      >
-                        {post.author_display_name.charAt(0).toUpperCase()}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className="font-bold text-[15px] truncate" style={{ color: '#E7E9EA' }}>
+                        {post.author_display_name}
+                      </span>
+                      {badge && (
+                        <span className="text-[12px] flex-shrink-0" style={{ color: badge.color }}>
+                          {badge.label}
+                        </span>
+                      )}
+                      <span className="text-[15px] truncate" style={{ color: '#71767B' }}>
+                        {post.author_handle}
+                      </span>
+                      <span style={{ color: '#71767B' }}>·</span>
+                      <span className="text-[14px] flex-shrink-0" style={{ color: '#71767B' }}>
+                        {timeAgo(post.created_at)}
+                      </span>
+                      {post.is_surfaced_to_session && (
+                        <span
+                          className="text-[10px] font-bold flex-shrink-0 px-1.5 py-0.5 rounded"
+                          style={{ color: '#8FB6FF', backgroundColor: 'rgba(76,141,255,0.15)' }}
+                        >
+                          Surfaced by teammate
+                        </span>
+                      )}
+                    </div>
+                    {post.author_type === 'official_account' && post.posted_by_display_name && (
+                      <div className="text-[11px] mt-0.5" style={{ color: '#71767B' }}>
+                        Posted by {post.posted_by_display_name}
                       </div>
                     )}
 
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1 flex-wrap">
-                        <span
-                          className="font-bold text-[15px] truncate"
-                          style={{ color: '#E7E9EA' }}
+                    {post.is_repost && (
+                      <div className="flex items-center gap-1 mt-0.5" style={{ color: '#71767B' }}>
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
                         >
-                          {post.author_display_name}
-                        </span>
-                        {badge && (
-                          <span
-                            className="text-[12px] flex-shrink-0"
-                            style={{ color: badge.color }}
-                          >
-                            {badge.label}
-                          </span>
-                        )}
-                        <span className="text-[15px] truncate" style={{ color: '#71767B' }}>
-                          {post.author_handle}
-                        </span>
-                        <span style={{ color: '#71767B' }}>·</span>
-                        <span className="text-[14px] flex-shrink-0" style={{ color: '#71767B' }}>
-                          {timeAgo(post.created_at)}
-                        </span>
-                        {post.is_surfaced_to_session && (
-                          <span
-                            className="text-[10px] font-bold flex-shrink-0 px-1.5 py-0.5 rounded"
-                            style={{ color: '#8FB6FF', backgroundColor: 'rgba(76,141,255,0.15)' }}
-                          >
-                            Surfaced by teammate
-                          </span>
-                        )}
+                          <path d="M17 1l4 4-4 4" />
+                          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                          <path d="M7 23l-4-4 4-4" />
+                          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                        </svg>
+                        <span className="text-[12px]">Reposted</span>
                       </div>
-                      {post.author_type === 'official_account' && post.posted_by_display_name && (
-                        <div className="text-[11px] mt-0.5" style={{ color: '#71767B' }}>
-                          Posted by {post.posted_by_display_name}
-                        </div>
-                      )}
+                    )}
 
-                      {post.is_repost && (
-                        <div
-                          className="flex items-center gap-1 mt-0.5"
-                          style={{ color: '#71767B' }}
-                        >
-                          <svg
-                            width="12"
-                            height="12"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M17 1l4 4-4 4" />
-                            <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                            <path d="M7 23l-4-4 4-4" />
-                            <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                          </svg>
-                          <span className="text-[12px]">Reposted</span>
-                        </div>
-                      )}
-
-                      {post.post_format && FORMAT_BADGE[post.post_format] && (
-                        <span
-                          className="text-[11px] px-2 py-0.5 rounded-sm font-semibold inline-block mt-1"
-                          style={{
-                            backgroundColor: FORMAT_BADGE[post.post_format].bg,
-                            color: FORMAT_BADGE[post.post_format].fg,
-                          }}
-                        >
-                          {FORMAT_BADGE[post.post_format].label}
-                        </span>
-                      )}
-
-                      <p
-                        className="text-[15px] mt-1 whitespace-pre-wrap break-words"
-                        style={{ color: '#E7E9EA', lineHeight: '1.4' }}
+                    {post.post_format && FORMAT_BADGE[post.post_format] && (
+                      <span
+                        className="text-[11px] px-2 py-0.5 rounded-sm font-semibold inline-block mt-1"
+                        style={{
+                          backgroundColor: FORMAT_BADGE[post.post_format].bg,
+                          color: FORMAT_BADGE[post.post_format].fg,
+                        }}
                       >
-                        {String(post.content)
-                          .split(/(#\w+)/g)
-                          .map((part: string, i: number) =>
-                            part.startsWith('#') ? (
-                              <span
-                                key={i}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setSearchQuery(part);
-                                }}
-                                className="cursor-pointer hover:underline"
-                                style={{ color: '#1D9BF0' }}
-                              >
-                                {part}
-                              </span>
-                            ) : (
-                              <span key={i}>{part}</span>
-                            ),
-                          )}
-                      </p>
+                        {FORMAT_BADGE[post.post_format].label}
+                      </span>
+                    )}
 
-                      {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
-                        <div className="mt-2 relative rounded-xl">
-                          {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
-                            <video
-                              src={post.media_urls[0]}
-                              controls
-                              className="w-full rounded-xl"
-                              style={{ backgroundColor: '#000' }}
-                            />
+                    <p
+                      className="text-[15px] mt-1 whitespace-pre-wrap break-words"
+                      style={{ color: '#E7E9EA', lineHeight: '1.4' }}
+                    >
+                      {String(post.content)
+                        .split(/(#\w+)/g)
+                        .map((part: string, i: number) =>
+                          part.startsWith('#') ? (
+                            <span
+                              key={i}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSearchQuery(part);
+                              }}
+                              className="cursor-pointer hover:underline"
+                              style={{ color: '#1D9BF0' }}
+                            >
+                              {part}
+                            </span>
                           ) : (
-                            <img
-                              src={post.media_urls[0]}
-                              alt=""
-                              className="w-full rounded-xl"
-                              style={{ backgroundColor: '#16181C' }}
-                            />
-                          )}
-                          {post.post_format === 'video_concept' &&
-                            !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
-                              <div className="absolute inset-0 flex items-center justify-center">
-                                <div
-                                  className="w-14 h-14 rounded-full flex items-center justify-center"
-                                  style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
-                                >
-                                  <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
-                                    <polygon points="8,5 19,12 8,19" />
-                                  </svg>
-                                </div>
+                            <span key={i}>{part}</span>
+                          ),
+                        )}
+                    </p>
+
+                    {Array.isArray(post.media_urls) && post.media_urls.length > 0 && (
+                      <div className="mt-2 relative rounded-xl">
+                        {/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0]) ? (
+                          <video
+                            src={post.media_urls[0]}
+                            controls
+                            className="w-full rounded-xl"
+                            style={{ backgroundColor: '#000' }}
+                          />
+                        ) : (
+                          <img
+                            src={post.media_urls[0]}
+                            alt=""
+                            className="w-full rounded-xl"
+                            style={{ backgroundColor: '#16181C' }}
+                          />
+                        )}
+                        {post.post_format === 'video_concept' &&
+                          !/\.(mp4|webm|mov)(\?|$)/i.test(post.media_urls[0] || '') && (
+                            <div className="absolute inset-0 flex items-center justify-center">
+                              <div
+                                className="w-14 h-14 rounded-full flex items-center justify-center"
+                                style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}
+                              >
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
+                                  <polygon points="8,5 19,12 8,19" />
+                                </svg>
                               </div>
+                            </div>
+                          )}
+                      </div>
+                    )}
+
+                    {/* Link preview card for shared articles */}
+                    {(() => {
+                      const sa = (post.content_flags as Record<string, unknown>)?.shared_article as
+                        | Record<string, unknown>
+                        | undefined;
+                      if (!sa) return null;
+                      return (
+                        <LinkPreviewCard
+                          headline={String(sa.headline || '')}
+                          outletName={String(sa.outlet_name || '')}
+                          snippet={String(sa.snippet || '')}
+                          category={String(sa.category || '')}
+                          platform="x_twitter"
+                          onClick={() => navigate(`/sim/${sessionId}/device/news?article=${sa.id}`)}
+                        />
+                      );
+                    })()}
+
+                    {isTrainer &&
+                      !!(
+                        post.content_flags &&
+                        (post.content_flags.is_hate_speech ||
+                          post.content_flags.is_harmful_narrative ||
+                          post.content_flags.is_misinformation ||
+                          post.content_flags.is_inflammatory ||
+                          post.content_flags.incites_violence ||
+                          post.content_flags.is_organized_pressure)
+                      ) && (
+                        <div className="flex gap-1.5 mt-2 flex-wrap">
+                          {!!post.content_flags.is_hate_speech && (
+                            <span
+                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                              style={{
+                                backgroundColor: 'rgba(239,68,68,0.15)',
+                                color: '#F87171',
+                              }}
+                            >
+                              Hate Speech
+                            </span>
+                          )}
+                          {!!post.content_flags.is_harmful_narrative &&
+                            !post.content_flags.is_hate_speech && (
+                              <span
+                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                                style={{
+                                  backgroundColor: 'rgba(239,68,68,0.15)',
+                                  color: '#F87171',
+                                }}
+                              >
+                                Harmful
+                              </span>
                             )}
+                          {!!post.content_flags.is_misinformation && (
+                            <span
+                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                              style={{
+                                backgroundColor: 'rgba(249,115,22,0.15)',
+                                color: '#FB923C',
+                              }}
+                            >
+                              Misinformation
+                            </span>
+                          )}
+                          {!!post.content_flags.is_inflammatory && (
+                            <span
+                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                              style={{
+                                backgroundColor: 'rgba(249,115,22,0.15)',
+                                color: '#FB923C',
+                              }}
+                            >
+                              Inflammatory
+                            </span>
+                          )}
+                          {!!post.content_flags.incites_violence && (
+                            <span
+                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                              style={{
+                                backgroundColor: 'rgba(239,68,68,0.15)',
+                                color: '#F87171',
+                              }}
+                            >
+                              Threat
+                            </span>
+                          )}
+                          {!!post.content_flags.is_organized_pressure && (
+                            <span
+                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                              style={{
+                                backgroundColor: 'rgba(249,115,22,0.15)',
+                                color: '#FB923C',
+                              }}
+                            >
+                              Pressure Campaign
+                            </span>
+                          )}
+                          {!!post.content_flags.is_racist && (
+                            <span
+                              className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
+                              style={{
+                                backgroundColor: 'rgba(239,68,68,0.15)',
+                                color: '#F87171',
+                              }}
+                            >
+                              Racist Content
+                            </span>
+                          )}
                         </div>
                       )}
-
-                      {/* Link preview card for shared articles */}
-                      {(() => {
-                        const sa = (post.content_flags as Record<string, unknown>)
-                          ?.shared_article as Record<string, unknown> | undefined;
-                        if (!sa) return null;
-                        return (
-                          <LinkPreviewCard
-                            headline={String(sa.headline || '')}
-                            outletName={String(sa.outlet_name || '')}
-                            snippet={String(sa.snippet || '')}
-                            category={String(sa.category || '')}
-                            platform="x_twitter"
-                            onClick={() =>
-                              navigate(`/sim/${sessionId}/device/news?article=${sa.id}`)
-                            }
-                          />
-                        );
-                      })()}
-
-                      {isTrainer &&
-                        !!(
-                          post.content_flags &&
-                          (post.content_flags.is_hate_speech ||
-                            post.content_flags.is_harmful_narrative ||
-                            post.content_flags.is_misinformation ||
-                            post.content_flags.is_inflammatory ||
-                            post.content_flags.incites_violence ||
-                            post.content_flags.is_organized_pressure)
-                        ) && (
-                          <div className="flex gap-1.5 mt-2 flex-wrap">
-                            {!!post.content_flags.is_hate_speech && (
-                              <span
-                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                                style={{
-                                  backgroundColor: 'rgba(239,68,68,0.15)',
-                                  color: '#F87171',
-                                }}
-                              >
-                                Hate Speech
-                              </span>
-                            )}
-                            {!!post.content_flags.is_harmful_narrative &&
-                              !post.content_flags.is_hate_speech && (
-                                <span
-                                  className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                                  style={{
-                                    backgroundColor: 'rgba(239,68,68,0.15)',
-                                    color: '#F87171',
-                                  }}
-                                >
-                                  Harmful
-                                </span>
-                              )}
-                            {!!post.content_flags.is_misinformation && (
-                              <span
-                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                                style={{
-                                  backgroundColor: 'rgba(249,115,22,0.15)',
-                                  color: '#FB923C',
-                                }}
-                              >
-                                Misinformation
-                              </span>
-                            )}
-                            {!!post.content_flags.is_inflammatory && (
-                              <span
-                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                                style={{
-                                  backgroundColor: 'rgba(249,115,22,0.15)',
-                                  color: '#FB923C',
-                                }}
-                              >
-                                Inflammatory
-                              </span>
-                            )}
-                            {!!post.content_flags.incites_violence && (
-                              <span
-                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                                style={{
-                                  backgroundColor: 'rgba(239,68,68,0.15)',
-                                  color: '#F87171',
-                                }}
-                              >
-                                Threat
-                              </span>
-                            )}
-                            {!!post.content_flags.is_organized_pressure && (
-                              <span
-                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                                style={{
-                                  backgroundColor: 'rgba(249,115,22,0.15)',
-                                  color: '#FB923C',
-                                }}
-                              >
-                                Pressure Campaign
-                              </span>
-                            )}
-                            {!!post.content_flags.is_racist && (
-                              <span
-                                className="text-[11px] px-2 py-0.5 rounded-sm font-semibold"
-                                style={{
-                                  backgroundColor: 'rgba(239,68,68,0.15)',
-                                  color: '#F87171',
-                                }}
-                              >
-                                Racist Content
-                              </span>
-                            )}
-                          </div>
-                        )}
-                    </div>
                   </div>
+                </div>
 
-                  {/* Engagement bar */}
-                  <div
-                    className="flex items-center justify-evenly mt-2 -mx-2"
-                    style={{ color: '#71767B' }}
+                {/* Engagement bar */}
+                <div
+                  className="flex items-center justify-evenly mt-2 -mx-2"
+                  style={{ color: '#71767B' }}
+                >
+                  <button
+                    data-testid={`post-reply-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setReplyingTo(post);
+                      setComposing(true);
+                    }}
+                    className="flex items-center gap-1 group transition-colors hover:text-[#1D9BF0]"
                   >
+                    <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.reply_count > 0 ? formatCount(post.reply_count) : ''}
+                    </span>
+                  </button>
+                  <button
+                    data-testid={`post-repost-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRepost(post.id);
+                    }}
+                    className="flex items-center gap-1 group transition-colors hover:text-[#00BA7C]"
+                  >
+                    <div className="p-1 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M17 1l4 4-4 4" />
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14" />
+                        <path d="M7 23l-4-4 4-4" />
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.repost_count > 0 ? formatCount(post.repost_count) : ''}
+                    </span>
+                  </button>
+                  <button
+                    data-testid={`post-like-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleLike(post.id);
+                    }}
+                    className={`flex items-center gap-1 group transition-colors ${post.liked_by_me ? 'text-[#F91880]' : 'hover:text-[#F91880]'}`}
+                  >
+                    <div className="p-1 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill={post.liked_by_me ? '#F91880' : 'none'}
+                        stroke={post.liked_by_me ? '#F91880' : 'currentColor'}
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.like_count > 0 ? formatCount(post.like_count) : ''}
+                    </span>
+                  </button>
+                  <div className="flex items-center gap-1">
+                    <div className="p-1">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M18 20V10M12 20V4M6 20v-6" />
+                      </svg>
+                    </div>
+                    <span className="text-[11px]">
+                      {post.view_count > 0 ? formatCount(post.view_count) : ''}
+                    </span>
+                  </div>
+                  <button
+                    data-testid={`post-flag-${post.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleFlag(post.id);
+                    }}
+                    className={`flex items-center group transition-colors ${post.flagged_by_me ? 'text-[#F59E0B]' : 'hover:text-[#F59E0B]'}`}
+                  >
+                    <div className="p-1 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill={post.flagged_by_me ? '#F59E0B' : 'none'}
+                        stroke={post.flagged_by_me ? '#F59E0B' : 'currentColor'}
+                        strokeWidth="1.8"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                        <line x1="4" y1="22" x2="4" y2="15" />
+                      </svg>
+                    </div>
+                  </button>
+                  <div style={{ position: 'relative' }}>
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        setReplyingTo(post);
-                        setComposing(true);
+                        handleShareMenu(post.id);
                       }}
-                      className="flex items-center gap-1 group transition-colors hover:text-[#1D9BF0]"
+                      className="flex items-center group transition-colors hover:text-[#1D9BF0]"
                     >
                       <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
                         <svg
@@ -2285,150 +2482,29 @@ export default function SocialFeedApp({
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.reply_count > 0 ? formatCount(post.reply_count) : ''}
-                      </span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRepost(post.id);
-                      }}
-                      className="flex items-center gap-1 group transition-colors hover:text-[#00BA7C]"
-                    >
-                      <div className="p-1 rounded-full group-hover:bg-[#00BA7C]/10 transition-colors">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M17 1l4 4-4 4" />
-                          <path d="M3 11V9a4 4 0 0 1 4-4h14" />
-                          <path d="M7 23l-4-4 4-4" />
-                          <path d="M21 13v2a4 4 0 0 1-4 4H3" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.repost_count > 0 ? formatCount(post.repost_count) : ''}
-                      </span>
-                    </button>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleLike(post.id);
-                      }}
-                      className={`flex items-center gap-1 group transition-colors ${post.liked_by_me ? 'text-[#F91880]' : 'hover:text-[#F91880]'}`}
-                    >
-                      <div className="p-1 rounded-full group-hover:bg-[#F91880]/10 transition-colors">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill={post.liked_by_me ? '#F91880' : 'none'}
-                          stroke={post.liked_by_me ? '#F91880' : 'currentColor'}
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.like_count > 0 ? formatCount(post.like_count) : ''}
-                      </span>
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <div className="p-1">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M18 20V10M12 20V4M6 20v-6" />
-                        </svg>
-                      </div>
-                      <span className="text-[11px]">
-                        {post.view_count > 0 ? formatCount(post.view_count) : ''}
-                      </span>
-                    </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleFlag(post.id);
-                      }}
-                      className={`flex items-center group transition-colors ${post.flagged_by_me ? 'text-[#F59E0B]' : 'hover:text-[#F59E0B]'}`}
-                    >
-                      <div className="p-1 rounded-full group-hover:bg-[#F59E0B]/10 transition-colors">
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill={post.flagged_by_me ? '#F59E0B' : 'none'}
-                          stroke={post.flagged_by_me ? '#F59E0B' : 'currentColor'}
-                          strokeWidth="1.8"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                          <line x1="4" y1="22" x2="4" y2="15" />
+                          <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
+                          <polyline points="16 6 12 2 8 6" />
+                          <line x1="12" y1="2" x2="12" y2="15" />
                         </svg>
                       </div>
                     </button>
-                    <div style={{ position: 'relative' }}>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleShareMenu(post.id);
-                        }}
-                        className="flex items-center group transition-colors hover:text-[#1D9BF0]"
-                      >
-                        <div className="p-1 rounded-full group-hover:bg-[#1D9BF0]/10 transition-colors">
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.8"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M4 12v8a2 2 0 002 2h12a2 2 0 002-2v-8" />
-                            <polyline points="16 6 12 2 8 6" />
-                            <line x1="12" y1="2" x2="12" y2="15" />
-                          </svg>
-                        </div>
-                      </button>
-                      {shareMenuPostId === post.id && (
-                        <ShareMenu
-                          postId={post.id}
-                          sessionId={sessionId!}
-                          platform="x_twitter"
-                          authorHandle={post.author_handle}
-                          authorDisplayName={post.author_display_name}
-                          contentPreview={post.content}
-                          onClose={() => setShareMenuPostId(null)}
-                          onReposted={(repost) => handleReposted(post.id, repost)}
-                        />
-                      )}
-                    </div>
+                    {shareMenuPostId === post.id && (
+                      <ShareMenu
+                        postId={post.id}
+                        sessionId={sessionId!}
+                        platform="x_twitter"
+                        authorHandle={post.author_handle}
+                        authorDisplayName={post.author_display_name}
+                        contentPreview={post.content}
+                        onClose={() => setShareMenuPostId(null)}
+                        onReposted={(repost) => handleReposted(post.id, repost)}
+                      />
+                    )}
                   </div>
                 </div>
-              );
-            })
+              </div>
+            );
+          })
         )}
       </div>
 
@@ -2622,6 +2698,7 @@ export default function SocialFeedApp({
       {/* Compose FAB */}
       {!composing && (
         <button
+          data-testid="compose-open"
           onClick={() => setComposing(true)}
           className="absolute ios-btn-bounce flex items-center justify-center"
           style={{
@@ -2675,6 +2752,7 @@ export default function SocialFeedApp({
               style={{ borderBottom: '1px solid #2F3336' }}
             >
               <button
+                data-testid="compose-cancel"
                 onClick={() => {
                   setComposing(false);
                   setReplyingTo(null);
@@ -2685,6 +2763,7 @@ export default function SocialFeedApp({
                 Cancel
               </button>
               <button
+                data-testid="compose-submit"
                 onClick={handlePost}
                 disabled={!composeText.trim()}
                 className="px-4 py-1.5 rounded-full text-[15px] font-bold text-white disabled:opacity-40"
@@ -2707,6 +2786,7 @@ export default function SocialFeedApp({
                 {POST_FORMATS.map((fmt) => (
                   <button
                     key={fmt.value}
+                    data-testid={`compose-format-${fmt.value}`}
                     onClick={() => setSelectedFormat(fmt.value)}
                     className="px-2.5 py-1 rounded-full text-[12px] font-semibold transition-colors"
                     style={{
@@ -2729,6 +2809,7 @@ export default function SocialFeedApp({
                   Posting as:
                 </span>
                 <button
+                  data-testid="compose-as-self"
                   onClick={() => setPostingAsPage(false)}
                   className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
                   style={{
@@ -2740,6 +2821,7 @@ export default function SocialFeedApp({
                   You
                 </button>
                 <button
+                  data-testid="compose-as-page"
                   onClick={() => setPostingAsPage(true)}
                   className="px-2.5 py-1 rounded-full text-[12px] font-semibold"
                   style={{
@@ -2774,6 +2856,7 @@ export default function SocialFeedApp({
                 <div className="flex-1 relative">
                   <textarea
                     ref={composeRef}
+                    data-testid="compose-text"
                     value={composeText}
                     onChange={(e) => {
                       const val = e.target.value;

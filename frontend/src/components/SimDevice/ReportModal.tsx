@@ -90,6 +90,7 @@ export default function ReportModal({
             {VIOLATION_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
+                data-testid={`report-option-${opt.value}`}
                 onClick={() => onCategoryChange(opt.value)}
                 className="w-full text-left rounded-lg px-3 py-2.5 transition-colors"
                 style={{
@@ -116,6 +117,7 @@ export default function ReportModal({
             Add details (optional)
           </p>
           <textarea
+            data-testid="report-reason"
             value={reason}
             onChange={(e) => onReasonChange(e.target.value)}
             placeholder="Explain what policy this post violates..."
@@ -133,6 +135,7 @@ export default function ReportModal({
 
         <div className="px-5 pb-6">
           <button
+            data-testid="report-submit"
             onClick={onSubmit}
             disabled={submitting || !category}
             className="w-full py-3 rounded-full text-[15px] font-semibold text-white"

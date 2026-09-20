@@ -40,6 +40,8 @@ interface SharedPostCard {
   author_handle: string;
   author_display_name: string;
   content_preview: string;
+  /** The shared post's own photograph, when it had one. */
+  media_url?: string;
   platform: string;
 }
 
@@ -464,21 +466,35 @@ function FacebookMessengerView({ sessionId }: FacebookMessengerViewProps) {
                             style={{
                               border: `1px solid ${isMine ? 'rgba(255,255,255,0.3)' : '#CED0D4'}`,
                               borderRadius: 8,
-                              padding: '8px 10px',
+                              overflow: 'hidden',
                               marginBottom: 4,
                               backgroundColor: isMine ? 'rgba(255,255,255,0.1)' : '#FFFFFF',
                             }}
                           >
-                            <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>
-                              {shared.author_display_name}
-                            </div>
-                            <div style={{ fontSize: 12, opacity: 0.85, lineHeight: 1.3 }}>
-                              {shared.content_preview.length > 120
-                                ? shared.content_preview.slice(0, 120) + '...'
-                                : shared.content_preview}
-                            </div>
-                            <div style={{ fontSize: 10, opacity: 0.6, marginTop: 3 }}>
-                              {shared.platform === 'facebook' ? 'Fakebook' : 'Z'} post
+                            {shared.media_url && (
+                              <img
+                                src={shared.media_url}
+                                alt=""
+                                style={{
+                                  display: 'block',
+                                  width: '100%',
+                                  height: 120,
+                                  objectFit: 'cover',
+                                }}
+                              />
+                            )}
+                            <div style={{ padding: '8px 10px' }}>
+                              <div style={{ fontSize: 11, fontWeight: 600, marginBottom: 2 }}>
+                                {shared.author_display_name}
+                              </div>
+                              <div style={{ fontSize: 12, opacity: 0.85, lineHeight: 1.3 }}>
+                                {shared.content_preview.length > 120
+                                  ? shared.content_preview.slice(0, 120) + '...'
+                                  : shared.content_preview}
+                              </div>
+                              <div style={{ fontSize: 10, opacity: 0.6, marginTop: 3 }}>
+                                {shared.platform === 'facebook' ? 'Fakebook' : 'Z'} post
+                              </div>
                             </div>
                           </div>
                         );

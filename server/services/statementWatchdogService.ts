@@ -78,6 +78,23 @@ const COOLDOWN_MS = 4 * 60_000;
 const MIN_NEW_STATEMENTS = 1;
 const MAX_POSTS_PER_SESSION = 5;
 
+/**
+ * Keep only statements that belong to the response team.
+ *
+ * Rival org pages write their hostile posts with author_type 'official_account',
+ * identical to the team's own page posts, so an unfiltered read makes the
+ * watchdog score a competitor's attack as something the team itself said and
+ * then penalise the team for "contradicting itself".
+ */
+function excludeRivals<T extends { author_handle?: string | null; author_type?: string | null }>(
+  rows: T[] | null | undefined,
+  rivalHandles: Set<string>,
+): T[] {
+  return (rows ?? []).filter(
+    (r) => r.author_type === 'player' || !rivalHandles.has(String(r.author_handle ?? '')),
+  );
+}
+
 const NPC_PERSONAS = {
   legal_analyst: {
     handle: '@CrisisLawReview',
@@ -231,6 +248,18 @@ class StatementWatchdogService {
     }
   }
 
+  /** Page handles for antagonist orgs in this session, whatever drives them. */
+  private async rivalPageHandles(sessionId: string): Promise<Set<string>> {
+    const { data } = await supabaseAdmin
+      .from('sim_org_pages')
+      .select('page_handle')
+      .eq('session_id', sessionId)
+      .eq('role', 'antagonist');
+    return new Set(
+      (data ?? []).map((r) => String(r.page_handle ?? '')).filter((h) => h.length > 0),
+    );
+  }
+
   private async scanSession(sessionId: string, scenarioId: string | null): Promise<void> {
     const state = this.sessionStates.get(sessionId);
 
@@ -244,8 +273,12 @@ class StatementWatchdogService {
     const sinceTimestamp =
       state?.lastPostTimestamp || new Date(Date.now() - 5 * 60_000).toISOString();
 
+    // Rival pages post as author_type 'official_account' too, so their attacks
+    // have to be excluded before anything here is read as "the team's voice".
+    const rivalHandles = await this.rivalPageHandles(sessionId);
+
     // Fetch NEW player/official statements since last scan
-    const { data: newStatements } = await supabaseAdmin
+    const { data: newStatementsRaw } = await supabaseAdmin
       .from('social_posts')
       .select('id, content, created_at, author_handle, author_display_name, author_type')
       .eq('session_id', sessionId)
@@ -253,21 +286,31 @@ class StatementWatchdogService {
       .gt('created_at', sinceTimestamp)
       .order('created_at', { ascending: true });
 
-    if (!newStatements || newStatements.length < MIN_NEW_STATEMENTS) {
-      if (newStatements && newStatements.length > 0) {
-        this.updateState(sessionId, newStatements[newStatements.length - 1].created_at, state);
+    const newStatements = excludeRivals(newStatementsRaw, rivalHandles);
+
+    if (newStatements.length < MIN_NEW_STATEMENTS) {
+      // Advance the cursor from the unfiltered list, otherwise rival posts would
+      // be re-read on every scan forever.
+      if (newStatementsRaw && newStatementsRaw.length > 0) {
+        this.updateState(
+          sessionId,
+          newStatementsRaw[newStatementsRaw.length - 1].created_at,
+          state,
+        );
       }
       return;
     }
 
     // Load ALL prior player statements for contradiction detection
-    const { data: allStatements } = await supabaseAdmin
+    const { data: allStatementsRaw } = await supabaseAdmin
       .from('social_posts')
       .select('content, created_at, author_handle, author_type')
       .eq('session_id', sessionId)
       .in('author_type', ['official_account', 'player'])
       .order('created_at', { ascending: true })
       .limit(100);
+
+    const allStatements = excludeRivals(allStatementsRaw, rivalHandles);
 
     // Load outbound emails
     const { data: outboundEmails } = await supabaseAdmin
@@ -348,7 +391,11 @@ Analyze the NEW statements above against the confirmed facts, known claims, and 
 
     const result = await this.callAI(userPrompt);
 
-    const lastTimestamp = newStatements[newStatements.length - 1].created_at;
+    // Cursor advances past every row read, including the rival posts that were
+    // filtered out, so they are not re-fetched on each scan.
+    const lastTimestamp = (newStatementsRaw ?? newStatements)[
+      (newStatementsRaw ?? newStatements).length - 1
+    ].created_at;
 
     // Standards scoring is persisted every scan, regardless of the challenge-post cooldown.
     if (result?.standards) {

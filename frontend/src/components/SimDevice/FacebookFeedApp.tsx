@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { useCountUp } from '../../hooks/useCountUp';
 import { usePageMode } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
 import FacebookMessengerView from './FacebookMessengerView';
@@ -109,6 +110,20 @@ function formatCount(n: number): string {
   if (n >= 1000000) return `${(n / 1000000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(1)}K`;
   return String(n);
+}
+
+/**
+ * An engagement figure that climbs to its new value instead of jumping.
+ *
+ * A post going viral is one of the few things this simulation models that has
+ * a genuine felt quality, and swapping "3.3K" for "4.1K" between renders threw
+ * that away — the player saw a different number, not something happening. The
+ * count-up also draws the eye to whichever post is actually moving, which is
+ * the signal worth noticing in a busy feed.
+ */
+function LiveCount({ value }: { value: number }) {
+  const shown = useCountUp(value, 900);
+  return <span className="tabular-nums">{formatCount(Math.round(shown))}</span>;
 }
 
 function getAvatarColor(name: string): string {
@@ -1106,6 +1121,7 @@ export default function FacebookFeedApp() {
           <div className="flex items-center gap-2 flex-shrink-0">
             {/* Messenger Icon */}
             <button
+              data-testid="fb-messenger-open"
               onClick={() => {
                 setShowMessengerDropdown(!showMessengerDropdown);
                 setShowNotifPanel(false);
@@ -1195,6 +1211,7 @@ export default function FacebookFeedApp() {
                   </svg>
                 </button>
                 <button
+                  data-testid="fb-messenger-view"
                   onClick={() => {
                     setActiveView('messenger');
                     setShowMessengerDropdown(false);
@@ -1985,6 +2002,7 @@ export default function FacebookFeedApp() {
                   {playerDisplayName.charAt(0).toUpperCase()}
                 </div>
                 <button
+                  data-testid="fb-compose-open"
                   onClick={() => setComposing(true)}
                   className="flex-1 text-left px-3.5 py-2 rounded-full text-[15px]"
                   style={{ backgroundColor: '#F0F2F5', color: '#65676B' }}
@@ -2149,6 +2167,7 @@ export default function FacebookFeedApp() {
                         <div
                           key={post.id}
                           id={`fb-post-${post.id}`}
+                          data-testid={`fb-post-${post.id}`}
                           className="mt-2"
                           style={{
                             backgroundColor: '#FFFFFF',
@@ -2532,7 +2551,7 @@ export default function FacebookFeedApp() {
                               )}
                               {post.like_count > 0 && (
                                 <span className="text-[14px] ml-1" style={{ color: '#65676B' }}>
-                                  {formatCount(post.like_count)}
+                                  <LiveCount value={post.like_count} />
                                 </span>
                               )}
                             </div>
@@ -2548,11 +2567,13 @@ export default function FacebookFeedApp() {
                                   className="hover:underline"
                                   style={{ color: '#65676B' }}
                                 >
-                                  {formatCount(post.reply_count)} comments
+                                  <LiveCount value={post.reply_count} /> comments
                                 </button>
                               )}
                               {post.repost_count > 0 && (
-                                <span>{formatCount(post.repost_count)} shares</span>
+                                <span>
+                                  <LiveCount value={post.repost_count} /> shares
+                                </span>
                               )}
                             </div>
                           </div>
@@ -2582,6 +2603,7 @@ export default function FacebookFeedApp() {
                                           : '#65676B';
                                 return (
                                   <button
+                                    data-testid={`fb-react-${post.id}`}
                                     onClick={() => handleReaction(post.id, 'like')}
                                     onMouseEnter={() => {
                                       if (reactionTimeoutRef.current)
@@ -2647,6 +2669,7 @@ export default function FacebookFeedApp() {
                                   {REACTIONS.map((r) => (
                                     <button
                                       key={r.type}
+                                      data-testid={`fb-react-${post.id}-${r.type}`}
                                       onClick={() => handleReaction(post.id, r.type)}
                                       className="hover:scale-125 transition-transform leading-none bg-transparent border-0 p-0 cursor-pointer"
                                       style={{ fontSize: 28, lineHeight: 1 }}
@@ -2659,6 +2682,7 @@ export default function FacebookFeedApp() {
                               )}
                             </div>
                             <button
+                              data-testid={`fb-comment-${post.id}`}
                               onClick={() => {
                                 setExpandedComments((prev) => new Set([...prev, post.id]));
                                 setTimeout(() => commentInputRefs.current[post.id]?.focus(), 100);
@@ -2680,6 +2704,7 @@ export default function FacebookFeedApp() {
                             </button>
                             <div style={{ position: 'relative', flex: 1 }}>
                               <button
+                                data-testid={`fb-share-${post.id}`}
                                 onClick={() => handleShare(post.id)}
                                 className="flex items-center justify-center gap-1.5 w-full py-2 rounded-md hover:bg-[#F2F3F5] transition-colors"
                                 style={{ color: '#65676B' }}
@@ -3088,6 +3113,7 @@ export default function FacebookFeedApp() {
                                       ref={(el) => {
                                         commentInputRefs.current[post.id] = el;
                                       }}
+                                      data-testid={`fb-comment-input-${post.id}`}
                                       type="text"
                                       value={commentText[post.id] || ''}
                                       onChange={(e) => {
@@ -3113,6 +3139,7 @@ export default function FacebookFeedApp() {
                                     />
                                     {commentText[post.id]?.trim() && (
                                       <button
+                                        data-testid={`fb-comment-send-${post.id}`}
                                         onClick={() => {
                                           handleComment(post.id);
                                           setShowMentions(false);
@@ -3210,6 +3237,7 @@ export default function FacebookFeedApp() {
                       style={{ borderBottom: '1px solid #DADDE1', backgroundColor: '#FFFFFF' }}
                     >
                       <button
+                        data-testid="fb-compose-cancel"
                         onClick={() => setComposing(false)}
                         className="text-[15px] font-semibold"
                         style={{ color: '#65676B' }}
@@ -3220,6 +3248,7 @@ export default function FacebookFeedApp() {
                         Create post
                       </span>
                       <button
+                        data-testid="fb-compose-submit"
                         onClick={handlePost}
                         disabled={!composeText.trim()}
                         className="px-4 py-1.5 rounded-md text-[14px] font-bold text-white disabled:opacity-40"
@@ -3237,6 +3266,7 @@ export default function FacebookFeedApp() {
                       {POST_FORMATS.map((fmt) => (
                         <button
                           key={fmt.value}
+                          data-testid={`fb-format-${fmt.value}`}
                           onClick={() => setSelectedFormat(fmt.value)}
                           className="px-2.5 py-1 rounded-full text-[12px] font-semibold transition-colors"
                           style={{
@@ -3259,6 +3289,7 @@ export default function FacebookFeedApp() {
                           Posting as:
                         </span>
                         <button
+                          data-testid="fb-compose-as-self"
                           onClick={() => setPostingAsPage(false)}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
                           style={{
@@ -3270,6 +3301,7 @@ export default function FacebookFeedApp() {
                           You
                         </button>
                         <button
+                          data-testid="fb-compose-as-page"
                           onClick={() => setPostingAsPage(true)}
                           className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[12px] font-semibold"
                           style={{
@@ -3307,6 +3339,7 @@ export default function FacebookFeedApp() {
                         )}
                         <div className="flex-1 relative">
                           <textarea
+                            data-testid="fb-compose-text"
                             value={composeText}
                             onChange={(e) => {
                               const val = e.target.value;

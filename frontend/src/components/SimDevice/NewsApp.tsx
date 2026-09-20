@@ -332,6 +332,7 @@ export default function NewsApp() {
           {/* Moderation banner */}
           {selectedArticle.status === 'retracted' && (
             <div
+              data-testid="news-retracted-banner"
               className="mx-5 mb-4 p-3 rounded-lg"
               style={{ backgroundColor: '#FDECEA', border: '1px solid #F0556A' }}
             >
@@ -480,6 +481,7 @@ export default function NewsApp() {
             </div>
             {selectedArticle.status !== 'retracted' && (
               <button
+                data-testid="news-dispute-open"
                 onClick={() => openDisputeModal(selectedArticle)}
                 className="flex items-center gap-1.5 mt-3 px-3 py-2 rounded-full text-[12px] font-semibold"
                 style={{ backgroundColor: '#FCE4EC', color: '#C62828' }}
@@ -648,6 +650,7 @@ export default function NewsApp() {
                   What's wrong with this? Add any facts you have (optional)
                 </p>
                 <textarea
+                  data-testid="dispute-note"
                   value={disputeNote}
                   onChange={(e) => setDisputeNote(e.target.value)}
                   placeholder="Identify the false claim and cite any verified facts that counter it..."
@@ -663,6 +666,7 @@ export default function NewsApp() {
 
               <div className="px-5 pb-6">
                 <button
+                  data-testid="dispute-submit"
                   onClick={submitDispute}
                   disabled={disputing}
                   className="w-full py-3 rounded-xl text-[15px] font-semibold text-white"

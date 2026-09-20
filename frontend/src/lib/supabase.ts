@@ -57,3 +57,10 @@ export const supabase = createClient(
     },
   },
 );
+
+// Handle for local automation, so it can hand the client a pre-minted session
+// instead of driving 26 password logins through the UI (Supabase throttles those).
+// Off by default; the demo capture builds with VITE_ENABLE_TEST_HOOKS=true.
+if (import.meta.env.DEV || import.meta.env.VITE_ENABLE_TEST_HOOKS === 'true') {
+  (window as unknown as { __supabase?: typeof supabase }).__supabase = supabase;
+}

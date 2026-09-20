@@ -62,6 +62,7 @@ export default function DisputeModal({
             What's wrong with this? Add any facts you have (optional)
           </p>
           <textarea
+            data-testid="dispute-note"
             value={note}
             onChange={(e) => onNoteChange(e.target.value)}
             placeholder="Identify the false claim and cite any verified facts that counter it..."
@@ -79,6 +80,7 @@ export default function DisputeModal({
 
         <div className="px-5 pb-6">
           <button
+            data-testid="dispute-submit"
             onClick={onSubmit}
             disabled={submitting}
             className="w-full py-3 rounded-full text-[15px] font-semibold text-white"
