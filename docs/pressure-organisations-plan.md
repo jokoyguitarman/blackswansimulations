@@ -1,8 +1,14 @@
 # Pressure Organisations — plan & spec sheet
 
-**Status:** proposed (v1, 20 Sep 2026). Not yet scheduled.
-**Depends on:** `docs/stakeholder-contacts-contract.md` (v3), `docs/multi-org-coalition-plan.md` (shipped), `docs/stakeholder-runtime-plan.md` (shipped), migrations 177/185/188 (org pages), 197 (team identity), 200–203 (stakeholder runtime + decision layer).
-**Ownership:** generator agent owns §5 (model, wizard, generation, validation, editor); runtime agent owns §6 (contract bump, migration, seeding, engine, console, AAR). §4 is the shared contract change and needs sign-off from both before either side builds.
+**Status:** v1.1 (20 Sep 2026) — approved for build; implementation in progress on `master`.
+**Depends on:** `docs/stakeholder-contacts-contract.md` (v3.1 → v3.2 additive), `docs/multi-org-coalition-plan.md` (shipped), `docs/stakeholder-runtime-plan.md` (shipped), migrations 177/185/188 (org pages), 197 (team identity), 200–204; **migration 205** (this plan + organic decisions).
+**Ownership (v1.1):** the **generator agent owns both halves** — §5 and §6 — per the product owner's decision of 20 Sep 2026 and the runtime agent's recommendation in `docs/executive-decisions-organic-handover.md` §3. Contract changes in §4 are additive and are applied by the generator agent with the runtime agent acknowledging (handover §9).
+
+**v1.1 amendments (read with the rest):**
+
+- The menu-based decision layer is retired. Wherever this plan said "a decision routes the union's eruption to the union page", read **"a _detected_ decision's cascade (see `docs/executive-decisions-organic-plan.md` §6) routes the union's reaction to the union page"**. There is no `decision_space[]`, no authored latent grievance; the pressure page's spokesperson receives a **generated** grievance override at runtime.
+- **§11 Crisis footprint inference** and **§12 AI-operated protagonist organisations** are added below: they solve the "lazy trainer / Singapore-only class" case (Dyson HQ in SG deciding about a Malaysian factory) that this plan alone does not.
+- `posture` gains an **`aligned`** register used only for AI-operated protagonist pages (§12); pressure pages never use it.
 
 ---
 
@@ -173,7 +179,7 @@ For each pressure org, ensure exactly one stakeholder with `page_org_key = org_k
 ### 5.6 Statements and templates
 
 - Scheduled: 1–2 page-authored injects per pressure org (`delivery_config.page_org_key`, `stakeholder_id` = spokesperson, author = page), first at T+15..30 (statement), second at T+35..50 (rung 2 of the ladder), `inject_scope: 'universal'`, `country` = page country.
-- Decision layer (`decisionLayerService.ts`): when a decision affects a pressure org's target, the eruption for the spokesperson's latent grievance is routed to the **page** (`page_org_key`) instead of the personal handle; HQ follow-up and spillover unchanged.
+- Organic decisions (`docs/executive-decisions-organic-plan.md` §6.2): when a _detected_ decision's cascade plan produces a reaction for a pressure org's spokesperson, the planner routes it to the **page** (`page_org_key`, page identity as author, spokesperson as `stakeholder_id`) instead of the personal handle. No authored templates exist any more.
 - Cross-org: pressure statements are legitimate gate content for intel dependencies ("ministry notice" as the negative gate) — allowed but not required.
 
 ### 5.7 Validation (`scenarioValidationService.ts`)
@@ -204,7 +210,7 @@ For each pressure org, ensure exactly one stakeholder with `page_org_key = org_k
 
 ---
 
-## 6. Runtime side (runtime agent)
+## 6. Runtime side (generator agent, v1.1 — built alongside the organic-decision engines)
 
 ### 6.1 Migration 204 (`204_pressure_orgs.sql`)
 
@@ -284,6 +290,36 @@ Runtime (runtime agent's harness):
 - Engine posts in register; regulator never posts a rumour; union amplifies a worker post; stand-down after a satisfying reply; seized page skipped by the engine.
 
 ---
+
+## 11. Crisis footprint inference (v1.1)
+
+**Problem.** Countries, sites and third parties enter the model only through what the trainer types. The 18 Sep "VacuumGate SEA" scenario (Dyson / Singapore only) produced a Singapore-only crowd, no Malaysian institutions and no Malaysian page even though the prompt was about a Malaysian factory.
+
+**Mechanism.** One AI call at the start of `generate-npcs` (`crisisFootprintService.inferCrisisFootprint`) reads the crisis text and the organisations entered and returns, guard-railed in code:
+
+- `countries[]` with a role each: `decision_centre | incident_location | spillover_market | regulatory`;
+- `implied_organisations[]` — protagonist-side entities the text implies (Dyson Malaysia office, the regional hub), with kind, country, city, a reason and a suggested roster; ≤ 3;
+- `pressure_organisations[]` — the §5.2 proposals (one regulator per country by default; union/NGO only with a labour signal; community group when a community is named; political only with a political signal);
+- `labour_signal`, `product_safety_signal` booleans (used by the carrier rule, organic plan §4.1).
+
+Nothing is persisted from this call. The wizard shows the proposals as pre-ticked chips — _"We detected Malaysia as the incident location. Add Dyson Malaysia (office, Malaysia), operated by AI?"_ — so a lazy trainer accepts with one click; removing every proposal is valid. The manufacturing partner itself is a **supplier stakeholder**, never an organisation.
+
+**Visibility rule for countries without human players.** If a footprint country hosts no protagonist organisation with `operation: 'players'`, its crowd is still generated but its content is emitted **unscoped** (no `delivery_config.country`) so the players present (e.g. Singapore only) see the Malaysian protest footage as regional spillover. Scoping to a country only happens when humans sit in that country.
+
+## 12. AI-operated protagonist organisations (v1.1)
+
+**Problem.** A Malaysian organisation may be defined but unstaffed (Singapore-only training), or implied by the footprint with nobody to play it.
+
+**Model.** Registry `operation?: 'players' | 'ai'` on protagonist entries (default `players`); page `control_mode: 'ai'` for AI-operated orgs. Set in the wizard (toggle per additional organisation, default on for footprint-implied orgs) and **flipped automatically at session start** when an org has zero assigned players across its teams (trainer notice event `decision_propagated`/`trainer_alert`).
+
+**Behaviour of an AI-operated org.**
+
+- Its **page** is run by the pressure engine in the `aligned` register: speaks for the office, follows HQ's published line when one exists; when HQ is silent past the leak clock it issues a cautious _local holding statement first_ — the realistic pressure beat that trains HQ to coordinate.
+- Its **carriers** (site leader, HR counterpart, roster, reporter, regulator — organic plan §4.1) exist as stakeholders and answer HQ's emails/chats/calls through the existing stakeholder reply engine; their knowledge state (organic plan §6.3) evolves like anyone else's, so a decision told to the Malaysian site leader still reaches the union if HR never follows up.
+- Its **teams** are unstaffed → unscored (already handled); team-targeted injects for them are not delivered to anyone (as for any unstaffed team) but still move knowledge state when they carry `stakeholder_id`.
+- The AAR marks the organisation "AI-operated" in the organisations roll-up rather than scoring it.
+
+**Validation.** `MO-ORG-007`: `operation: 'ai'` orgs still need ≥ 2 teams (their charters drive carrier ownership) and a page. `MO-ORG-008`: at most one `aligned` page per protagonist org.
 
 ## 9. Open questions
 
