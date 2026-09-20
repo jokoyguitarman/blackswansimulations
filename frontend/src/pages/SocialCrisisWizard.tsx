@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, type CSSProperties } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,6 +24,10 @@ import {
   type PressureKind,
   type PressureRegister,
 } from '../components/Scenario/OrganisationRosterBuilder';
+import { BrandMark } from '../components/BrandMark';
+import { WrIcon, type WrIconName } from '../components/UI/WarRoomIcon';
+import { countryCode, initialsOf } from '../components/UI/Collapsible';
+import { SHELL_ART } from '../lib/scenarioArt';
 
 /* ─── Types ─────────────────────────────────────────────────────────── */
 
@@ -1766,88 +1770,129 @@ export const SocialCrisisWizard = () => {
 
   /* ─── Render ─────────────────────────────────────────────────────── */
 
-  const progressBar = (
-    <div className="military-border p-2 sm:p-3 mb-4 sm:mb-6 bg-surface flex-shrink-0 sticky top-0 z-30 shadow-md">
-      <div className="flex items-center gap-1 overflow-x-auto">
-        {VISIBLE_STEPS.map((s, i) => {
-          const isCurrent = s === step;
-          const isPast = currentStepIndex > i;
-          return (
-            <div key={s} className="flex items-center">
-              {i > 0 && (
-                <div className={`w-4 h-px mx-1 ${isPast ? 'bg-accent' : 'bg-surface-2'}`} />
-              )}
-              <div
-                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[10px] terminal-text whitespace-nowrap ${
-                  isCurrent
-                    ? 'border border-accent bg-accent/10 text-ink'
-                    : isPast
-                      ? 'text-muted'
-                      : 'text-muted'
-                }`}
-              >
-                <span
-                  className={`w-4 h-4 flex items-center justify-center rounded-full text-[9px] font-bold ${
-                    isCurrent
-                      ? 'bg-accent text-white'
-                      : isPast
-                        ? 'bg-accent/10 text-ink'
-                        : 'bg-surface-2 text-muted'
-                  }`}
-                >
-                  {isPast ? '✓' : i + 1}
-                </span>
-                <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
+  /*
+   * Situation Map shell (docs/design/warroom/variation-c-situation-map.html, spec §5).
+   * The Setup step splits into hero content (brief + footprint radar) and the map (three lanes).
+   * Every input and handler below is the same as before the redesign.
+   */
+
+  const orgCount = extraOrganisations.length + 1;
+  const teamCount =
+    teamRoster.length + extraOrganisations.reduce((n, o) => n + o.team_roster.length, 0);
+  const countrySet = new Set<string>(
+    [country, ...extraOrganisations.map((o) => o.country)].filter(Boolean),
   );
 
-  /* ── Step 1: Scenario Setup (free-form) ─────────────────────────────── */
+  /** Is a radar proposal currently present as a draft? */
+  const hasOrgProposal = (name: string) =>
+    [orgName, ...extraOrganisations.map((o) => o.display_name)].some(
+      (n) => n.trim().toLowerCase() === name.trim().toLowerCase(),
+    );
+  const hasPressureProposal = (name: string) =>
+    pressureOrgs.some((p) => p.display_name.trim().toLowerCase() === name.trim().toLowerCase());
 
-  const renderStep1 = () => (
+  const toggleOrgProposal = (o: FootprintWire['implied_organisations'][number]) => {
+    if (hasOrgProposal(o.display_name)) {
+      setExtraOrganisations((prev) =>
+        prev.filter((x) => x.display_name.trim().toLowerCase() !== o.display_name.toLowerCase()),
+      );
+      return;
+    }
+    if (extraOrganisations.length + 1 >= 6) return;
+    setExtraOrganisations((prev) => [
+      ...prev,
+      {
+        ...newOrganisationDraft(o.country),
+        display_name: o.display_name,
+        city: o.city || '',
+        kind: (['company', 'office', 'agency', 'ngo', 'other'] as const).includes(o.kind)
+          ? o.kind
+          : 'office',
+        operation: 'ai' as const,
+        proposed_reason: o.reason,
+        team_roster: rosterFromSuggestion(o.suggested_roster, presetCatalog),
+      },
+    ]);
+  };
+  const togglePressureProposal = (p: FootprintWire['pressure_organisations'][number]) => {
+    if (hasPressureProposal(p.display_name)) {
+      setPressureOrgs((prev) =>
+        prev.filter((x) => x.display_name.trim().toLowerCase() !== p.display_name.toLowerCase()),
+      );
+      return;
+    }
+    if (pressureOrgs.length >= 6) return;
+    setPressureOrgs((prev) => [
+      ...prev,
+      {
+        ...newPressureOrgDraft(p.country, p.kind),
+        display_name: p.display_name,
+        city: p.city || '',
+        register: p.register,
+        wants: p.wants || '',
+        proposed_reason: p.reason,
+      },
+    ]);
+  };
+
+  const PRESSURE_KIND_ICON: Record<PressureKind, WrIconName> = {
+    regulator: 'landmark',
+    union: 'fist',
+    ngo: 'leaf',
+    community_group: 'community',
+    political: 'podium',
+  };
+  const PRESSURE_KIND_LABEL: Record<PressureKind, string> = {
+    regulator: 'Regulator',
+    union: 'Union',
+    ngo: 'NGO',
+    community_group: 'Community group',
+    political: 'Political actor',
+  };
+
+  const pressureValidation = pressureOrgs.map(validatePressureOrg).find(Boolean);
+
+  /** Hero left column for Setup: the brief, the document and the logo. */
+  const renderSetupBrief = () => (
     <div>
-      <h2 className="text-lg terminal-text mb-4">Step 1 · Scenario setup</h2>
-      <p className="text-xs terminal-text text-muted mb-6">
-        Describe any crisis scenario in detail. The AI will analyze your description to understand
-        the crisis dynamics and generate an appropriate simulation. You can also upload a document
-        with a detailed scenario brief.
+      <div className="wr-eyebrow">Scenario setup · step 1 of {VISIBLE_STEPS.length}</div>
+      <h1>What happened?</h1>
+      <p className="lead">
+        Describe the crisis in plain language. The countries, offices and pressure groups in the
+        story are read from it and appear on the radar; everything else — contacts, crowd, injects,
+        fact sheet — is generated from it.
       </p>
-
-      <div className="mb-6">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-          Crisis Scenario Description
-        </label>
-        <textarea
-          value={context}
-          onChange={(e) => setContext(e.target.value)}
-          rows={10}
-          placeholder={SCENARIO_PLACEHOLDER}
-          className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none resize-none"
-        />
-        <div className="flex justify-between mt-1">
-          <span className="text-[9px] terminal-text text-muted">
-            {context.length < 50
-              ? `Minimum 50 characters required (${50 - context.length} more)`
-              : `${context.length} characters`}
+      <textarea
+        value={context}
+        onChange={(e) => setContext(e.target.value)}
+        rows={7}
+        placeholder={SCENARIO_PLACEHOLDER}
+        className="wr-field onDark"
+        style={{ minHeight: 150 }}
+      />
+      <div className="flex justify-between mt-1.5 text-[11px] text-white/55">
+        <span>
+          {context.length < 50
+            ? `Minimum 50 characters required (${50 - context.length} more)`
+            : `${context.length} characters`}
+        </span>
+        {uploadedDocText && (
+          <span>
+            {uploadedDocText.split(/\s+/).length.toLocaleString()} words from your document
           </span>
-        </div>
+        )}
       </div>
 
-      {/* Document Upload */}
-      <div className="mb-6">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-          Upload Scenario Document (optional)
-        </label>
+      <div className="flex flex-wrap gap-2.5 mt-3">
+        {/* Document */}
         {!uploadedDocText ? (
           <div
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
             onClick={() => fileInputRef.current?.click()}
-            className="border-2 border-dashed border-border rounded p-8 text-center cursor-pointer hover:border-accent transition-colors"
+            className="flex-1 min-w-[220px] flex items-center gap-2.5 border border-dashed border-white/25 rounded-xl px-3 py-2.5 text-xs text-white/75 cursor-pointer hover:border-white/50 hover:bg-white/5 transition-colors"
+            role="button"
+            tabIndex={0}
           >
             <input
               ref={fileInputRef}
@@ -1856,407 +1901,596 @@ export const SocialCrisisWizard = () => {
               onChange={handleFileSelect}
               className="hidden"
             />
-            {uploading ? (
-              <Spinner text="Extracting document text..." />
-            ) : (
-              <>
-                <div className="text-3xl mb-3 text-muted">+</div>
-                <div className="text-xs terminal-text text-muted mb-1">
-                  Drag & drop or click to upload
-                </div>
-                <div className="text-[10px] terminal-text text-muted">
-                  PDF, DOCX, or TXT (max 10MB)
-                </div>
-              </>
-            )}
+            <WrIcon name="doc" />
+            {uploading
+              ? 'Extracting document text…'
+              : 'Attach a document (optional) — PDF, DOCX or TXT'}
           </div>
         ) : (
-          <div className="border border-accent/30 rounded p-4 bg-accent/10">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-accent text-sm">&#128196;</span>
-                <span className="text-xs terminal-text text-accent font-bold">
-                  {uploadedDocName}
-                </span>
-              </div>
-              <button
-                onClick={() => {
-                  setUploadedDocText('');
-                  setUploadedDocName('');
-                  setUploadError(null);
-                }}
-                className="text-[10px] terminal-text text-danger hover:opacity-80 border border-danger/30 px-2 py-0.5 rounded"
-              >
-                Remove
-              </button>
-            </div>
-            <div className="text-[10px] terminal-text text-muted mb-2">
-              {uploadedDocText.split(/\s+/).length.toLocaleString()} words extracted
-            </div>
-            <div className="text-[10px] terminal-text text-muted max-h-24 overflow-y-auto border border-border rounded p-2 bg-surface-2">
-              {uploadedDocText.slice(0, 500)}
-              {uploadedDocText.length > 500 && '...'}
-            </div>
+          <div className="flex-1 min-w-[220px] flex items-center gap-2.5 border border-amber-400/50 bg-amber-400/10 rounded-xl px-3 py-2.5 text-xs text-white">
+            <WrIcon name="doc" className="text-amber-300" />
+            <span className="font-bold truncate">{uploadedDocName}</span>
+            <span className="text-white/55 truncate">
+              · {uploadedDocText.slice(0, 60)}
+              {uploadedDocText.length > 60 && '…'}
+            </span>
+            <button
+              onClick={() => {
+                setUploadedDocText('');
+                setUploadedDocName('');
+                setUploadError(null);
+              }}
+              className="ml-auto text-white/60 hover:text-white"
+              aria-label="Remove document"
+              title="Remove document"
+            >
+              <WrIcon name="x" />
+            </button>
           </div>
         )}
-        {uploadError && (
-          <div className="mt-2 text-[10px] terminal-text text-danger">{uploadError}</div>
-        )}
-      </div>
-
-      <div className="mb-4">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-          Organization Name {extraOrganisations.length === 0 ? '(optional)' : ''}
-        </label>
-        <input
-          type="text"
-          value={orgName}
-          onChange={(e) => setOrgName(e.target.value)}
-          placeholder="e.g., Meridian Technologies, Acme Corp"
-          className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
-        />
-        <div className="mt-1">
-          <span className="text-[9px] terminal-text text-muted">
-            {extraOrganisations.length === 0
-              ? 'Leave blank to let the AI generate a company name'
-              : 'Required when several organisations take part — it names the primary one'}
-          </span>
-        </div>
-      </div>
-
-      <div className="mb-4 grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <div className="sm:col-span-2">
-          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-            Country (headquarters)
-          </label>
-          <CountrySelect value={country} onChange={setCountry} />
-        </div>
-        <div>
-          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-            City (optional)
-          </label>
-          <input
-            type="text"
-            value={primaryCity}
-            onChange={(e) => setPrimaryCity(e.target.value)}
-            placeholder="e.g. Singapore"
-            className="w-full bg-transparent border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
-          />
-        </div>
-        <div>
-          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-            Type
-          </label>
-          <select
-            value={primaryKind}
-            onChange={(e) => setPrimaryKind(e.target.value as OrgKind)}
-            className="w-full bg-surface border border-border px-3 py-2 text-sm terminal-text text-ink focus:border-accent focus:outline-none"
-          >
-            {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
-              <option key={k} value={k}>
-                {ORG_KIND_LABELS[k]}
-              </option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      <div className="mb-4">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-2 block">
-          Brand Logo (optional)
-        </label>
-        <div className="flex items-center gap-3">
-          {brandLogoUrl && (
+        {/* Brand logo */}
+        <label
+          className={`flex items-center gap-2.5 border rounded-xl px-3 py-2.5 text-xs cursor-pointer transition-colors ${
+            brandLogoUrl
+              ? 'border-white/30 bg-white/5 text-white'
+              : 'border-dashed border-white/25 text-white/75 hover:border-white/50 hover:bg-white/5'
+          }`}
+        >
+          {brandLogoUrl ? (
             <img
               src={brandLogoUrl}
               alt="Brand logo"
-              className="w-12 h-12 rounded-lg object-cover border border-border"
+              className="w-6 h-6 rounded-md object-cover bg-white"
             />
-          )}
-          <label className="cursor-pointer border border-border px-3 py-2 text-sm terminal-text text-ink hover:border-accent transition-colors">
-            {uploadingLogo ? 'Uploading...' : brandLogoUrl ? 'Change Logo' : 'Upload Logo'}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp,image/gif"
-              className="hidden"
-              disabled={uploadingLogo}
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                setUploadingLogo(true);
-                try {
-                  const headers = await authHeadersMultipart();
-                  const formData = new FormData();
-                  formData.append('file', file);
-                  const res = await fetch(apiUrl('/api/warroom/social-crisis/upload-brand-logo'), {
-                    method: 'POST',
-                    headers,
-                    body: formData,
-                  });
-                  if (res.ok) {
-                    const json = await res.json();
-                    setBrandLogoUrl(json.url);
-                  }
-                } catch {
-                  /* ignore */
-                } finally {
-                  setUploadingLogo(false);
-                }
-              }}
-            />
-          </label>
-          {brandLogoUrl && (
-            <button
-              onClick={() => setBrandLogoUrl('')}
-              className="text-[10px] terminal-text text-danger hover:opacity-80"
-            >
-              Remove
-            </button>
-          )}
-        </div>
-        <div className="mt-1">
-          <span className="text-[9px] terminal-text text-muted">
-            Upload a logo for the brand&apos;s social media pages. If none is provided, the AI will
-            generate one.
-          </span>
-        </div>
-      </div>
-
-      {/* Response teams at the primary organisation: presets + the trainer's own divisions */}
-      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
-          Response Teams
-          {extraOrganisations.length > 0 ? ` — ${orgName.trim() || 'primary organisation'}` : ''} (
-          {teamRoster.length}/6)
-        </label>
-        <p className="text-[10px] terminal-text text-muted mb-3">
-          Every company divides differently — pick from the preset teams and/or add your own
-          divisions. Each team&apos;s name and description shape its storyline pressure, injects,
-          stakeholder contacts, and scoring. Mark exactly one team as the <b>public voice</b>: it
-          publishes official statements and is graded to the official-statement standard. Add{' '}
-          <b>Executive</b> when real leadership joins as players: their decisions trigger SOP
-          obligations and stakeholder reactions.
-        </p>
-        <RosterBuilder roster={teamRoster} onChange={setTeamRoster} presetCatalog={presetCatalog} />
-      </div>
-
-      {/* Additional organisations: each in its own country with its own team roster */}
-      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
-          Additional Organisations ({extraOrganisations.length + 1}/6)
-        </label>
-        <p className="text-[10px] terminal-text text-muted mb-3">
-          A crisis rarely stays inside one building. Add every organisation that responds on your
-          side — a regional office in another country, a partner agency, a subsidiary. Each gets its
-          own page, teams, stakeholder contacts, and a feed set in its own country; the War Room
-          writes the dependencies between them (what one office learns that another needs).
-        </p>
-        {extraOrganisations.length > 0 && (
-          <div className="space-y-3 mb-3">
-            {extraOrganisations.map((org, i) => (
-              <OrganisationCard
-                key={org.id}
-                org={org}
-                index={i}
-                presetCatalog={presetCatalog}
-                onChange={(next) =>
-                  setExtraOrganisations((prev) => prev.map((o) => (o.id === org.id ? next : o)))
-                }
-                onRemove={() =>
-                  setExtraOrganisations((prev) => prev.filter((o) => o.id !== org.id))
-                }
-              />
-            ))}
-          </div>
-        )}
-        <button
-          onClick={() =>
-            extraOrganisations.length + 1 < 6 &&
-            setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)])
-          }
-          disabled={extraOrganisations.length + 1 >= 6}
-          className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded disabled:opacity-40"
-        >
-          + Add an organisation
-        </button>
-        {rosterError && (
-          <div className="mt-2 text-[10px] terminal-text text-warning">{rosterError}</div>
-        )}
-      </div>
-
-      {/* Crisis footprint (pressure plan §11): implied offices, countries, pressure groups */}
-      <div className="mb-4 p-3 border border-accent/30 rounded bg-surface-2">
-        <div className="flex items-center justify-between gap-3 mb-1">
-          <label className="text-[10px] terminal-text text-muted uppercase tracking-wider block">
-            Crisis footprint
-          </label>
-          <button
-            type="button"
-            onClick={() => void detectFootprint()}
-            disabled={footprintLoading}
-            className="text-[10px] terminal-text text-accent hover:opacity-80 border border-accent/30 px-2 py-1 rounded disabled:opacity-40"
-          >
-            {footprintLoading
-              ? 'Reading your description…'
-              : footprint
-                ? 'Re-detect from description'
-                : 'Detect countries, offices & pressure groups'}
-          </button>
-        </div>
-        <p className="text-[10px] terminal-text text-muted">
-          The War Room reads your description for the countries involved, offices the story implies
-          (a factory&apos;s operating company, a regional hub) and the bodies that will apply
-          pressure — regulators, unions, NGOs, community groups. Proposals are added pre-ticked;
-          remove what does not belong. It also runs once automatically when you continue.
-        </p>
-        {footprintNotice && (
-          <div className="mt-2 text-[10px] terminal-text text-accent">{footprintNotice}</div>
-        )}
-      </div>
-
-      {/* Pressure organisations (AI-run pages with a spokesperson) */}
-      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
-          Pressure organisations (optional)
-        </label>
-        <p className="text-[10px] terminal-text text-muted mb-3">
-          Regulators, unions, NGOs, community groups and political actors. Each gets an AI-run page
-          in its own register and a contactable spokesperson your teams can engage; engage them well
-          and they stand down, ignore them and they escalate.
-        </p>
-        {pressureOrgs.length > 0 && (
-          <div className="space-y-2 mb-2">
-            {pressureOrgs.map((p) => (
-              <PressureOrgCard
-                key={p.id}
-                org={p}
-                onChange={(next) =>
-                  setPressureOrgs((prev) => prev.map((x) => (x.id === p.id ? next : x)))
-                }
-                onRemove={() => setPressureOrgs((prev) => prev.filter((x) => x.id !== p.id))}
-              />
-            ))}
-          </div>
-        )}
-        <div className="flex flex-wrap gap-2">
-          {(['regulator', 'union', 'ngo', 'community_group', 'political'] as PressureKind[]).map(
-            (k) => (
-              <button
-                key={k}
-                type="button"
-                disabled={pressureOrgs.length >= 6}
-                onClick={() =>
-                  setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, k)])
-                }
-                className="text-[10px] terminal-text text-warning hover:opacity-80 border border-warning/30 px-2 py-1 rounded disabled:opacity-40"
-              >
-                + {k === 'ngo' ? 'NGO' : k.replace('_', ' ')}
-              </button>
-            ),
-          )}
-        </div>
-        {pressureOrgs.map(validatePressureOrg).find(Boolean) && (
-          <div className="mt-2 text-[10px] terminal-text text-warning">
-            {pressureOrgs.map(validatePressureOrg).find(Boolean)}
-          </div>
-        )}
-      </div>
-
-      {/* Competitor brand pages (antagonists, AI-driven) */}
-      <div className="mb-4 p-3 border border-border rounded bg-surface-2">
-        <label className="text-[10px] terminal-text text-muted uppercase tracking-wider mb-1 block">
-          Competitor Pages (optional)
-        </label>
-        <p className="text-[10px] terminal-text text-muted mb-3">
-          Your organisations&apos; pages are generated automatically. Add rival competitor pages the
-          AI drives against you, each in its own country.
-        </p>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <input
-            value={newPageName}
-            onChange={(e) => setNewPageName(e.target.value)}
-            placeholder="Competitor name"
-            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
-          />
-          <CountrySelect
-            value={newPageCountry || country}
-            onChange={setNewPageCountry}
-            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full"
-          />
-          <input
-            value={newPageFbHandle}
-            onChange={(e) => setNewPageFbHandle(e.target.value)}
-            placeholder="@FacebookHandle"
-            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
-          />
-          <input
-            value={newPageXHandle}
-            onChange={(e) => setNewPageXHandle(e.target.value)}
-            placeholder="@XHandle"
-            className="bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
-          />
-        </div>
-        <div className="flex gap-2 mt-2">
-          <button
-            onClick={addCompetitor}
-            disabled={!newPageName.trim()}
-            className="px-4 py-1.5 text-xs terminal-text border border-danger/50 text-danger hover:bg-danger/10 rounded disabled:opacity-50"
-          >
-            Add competitor
-          </button>
-        </div>
-
-        <div className="mt-4">
-          <div className="text-[10px] terminal-text text-danger uppercase mb-1">
-            Opposition &mdash; competitor pages (AI-driven, trainer can seize)
-          </div>
-          {competitorEntries.length === 0 ? (
-            <div className="text-[10px] terminal-text text-muted">
-              {autoAntagonist
-                ? 'A hostile rival will be auto-generated. Add named competitors (up to 10) to stack the pressure.'
-                : 'No competitors. Add named competitors (up to 10).'}
-            </div>
           ) : (
-            <div className="space-y-1">
-              {competitorEntries.map((e, i) => (
-                <div
-                  key={`comp-${i}`}
-                  className="flex items-center justify-between border-b border-danger/10 py-1"
-                >
-                  <span className="text-xs terminal-text text-danger">
-                    {e.name} <span className="text-danger/60">{e.facebook_handle || ''}</span>{' '}
-                    <span className="text-muted">· {e.country}</span>
-                  </span>
-                  <button
-                    onClick={() => removeCompetitor(i)}
-                    className="text-[10px] terminal-text text-accent hover:underline"
-                  >
-                    Remove
-                  </button>
+            <WrIcon name="image" />
+          )}
+          {uploadingLogo ? 'Uploading…' : brandLogoUrl ? 'Change logo' : 'Brand logo (optional)'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="hidden"
+            disabled={uploadingLogo}
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setUploadingLogo(true);
+              try {
+                const headers = await authHeadersMultipart();
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await fetch(apiUrl('/api/warroom/social-crisis/upload-brand-logo'), {
+                  method: 'POST',
+                  headers,
+                  body: formData,
+                });
+                if (res.ok) {
+                  const json = await res.json();
+                  setBrandLogoUrl(json.url);
+                }
+              } catch {
+                /* ignore */
+              } finally {
+                setUploadingLogo(false);
+              }
+            }}
+          />
+        </label>
+        {brandLogoUrl && (
+          <button
+            onClick={() => setBrandLogoUrl('')}
+            className="text-[11px] text-white/60 hover:text-white"
+          >
+            Remove logo
+          </button>
+        )}
+      </div>
+      {uploadError && <div className="mt-2 text-[11px] text-red-300">{uploadError}</div>}
+    </div>
+  );
+
+  /** Hero right column for Setup: the crisis footprint radar. */
+  const renderFootprintRadar = () => (
+    <aside className="wr-radar wr-glass">
+      <h3>
+        <span className={footprintLoading ? 'wr-livedot' : ''} style={{ color: '#F59E0B' }}>
+          {!footprintLoading && <WrIcon name="radar" size={14} />}
+        </span>
+        Detected footprint
+        {footprint && (
+          <span className="ml-auto text-[10px] font-semibold text-white/45 tracking-normal normal-case">
+            {footprint.countries.length} countr{footprint.countries.length === 1 ? 'y' : 'ies'}
+          </span>
+        )}
+      </h3>
+      {!footprint ? (
+        <>
+          <p className="copy">
+            The War Room reads your description for the countries involved, offices the story
+            implies (a factory&apos;s operating company, a regional hub) and the bodies that will
+            apply pressure — regulators, unions, NGOs, community groups. Proposals land on the map
+            pre-ticked; remove what does not belong. It also runs once automatically when you
+            continue.
+          </p>
+          <div className="foot">
+            {footprintNotice && <span className="text-amber-300">{footprintNotice}</span>}
+            <button
+              type="button"
+              onClick={() => void detectFootprint()}
+              disabled={footprintLoading}
+              className="wr-btn sm onDark ml-auto"
+            >
+              {footprintLoading ? (
+                'Reading your description…'
+              ) : (
+                <>
+                  <WrIcon name="radar" /> Detect countries, offices &amp; pressure groups
+                </>
+              )}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          <h5>Countries</h5>
+          <div className="wr-rchips">
+            {footprint.countries.length === 0 && (
+              <span className="text-xs text-white/50">Only {country}.</span>
+            )}
+            {footprint.countries.map((c) => (
+              <span key={c.name} className="wr-rc" title={c.reason}>
+                <span className="wr-cc dark">{countryCode(c.name)}</span> {c.name}{' '}
+                <small>{c.role.replace(/_/g, ' ')}</small>
+              </span>
+            ))}
+          </div>
+          <h5>Signals</h5>
+          <div className="wr-rchips">
+            <span className={`wr-rc ${footprint.labour_signal ? 'on' : 'off'}`}>
+              {footprint.labour_signal && <WrIcon name="check" size={12} className="tick" />} Labour
+              dispute
+            </span>
+            <span className={`wr-rc ${footprint.product_safety_signal ? 'on' : 'off'}`}>
+              {footprint.product_safety_signal && (
+                <WrIcon name="check" size={12} className="tick" />
+              )}{' '}
+              Product safety
+            </span>
+          </div>
+          {(footprint.implied_organisations.length > 0 ||
+            footprint.pressure_organisations.length > 0) && (
+            <>
+              <h5>Proposed — placed on the map</h5>
+              <div className="wr-rchips">
+                {footprint.implied_organisations.map((o) => {
+                  const on = hasOrgProposal(o.display_name);
+                  return (
+                    <button
+                      type="button"
+                      key={`o-${o.display_name}`}
+                      className={`wr-rc act ${on ? 'on' : 'off'}`}
+                      title={`${o.reason}${on ? ' — click to remove' : ' — click to add back'}`}
+                      onClick={() => toggleOrgProposal(o)}
+                    >
+                      {on && <WrIcon name="check" size={12} className="tick" />} {o.display_name}{' '}
+                      <small>AI {ORG_KIND_LABELS[o.kind]?.toLowerCase() ?? 'office'}</small>
+                    </button>
+                  );
+                })}
+                {footprint.pressure_organisations.map((p) => {
+                  const on = hasPressureProposal(p.display_name);
+                  return (
+                    <button
+                      type="button"
+                      key={`p-${p.display_name}`}
+                      className={`wr-rc act ${on ? 'on' : 'off'}`}
+                      title={`${p.reason}${on ? ' — click to remove' : ' — click to add back'}`}
+                      onClick={() => togglePressureProposal(p)}
+                    >
+                      {on && <WrIcon name="check" size={12} className="tick" />} {p.display_name}{' '}
+                      <small>{PRESSURE_KIND_LABEL[p.kind]?.toLowerCase() ?? p.kind}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+          <div className="foot">
+            <span className="min-w-0">
+              {footprintNotice ??
+                (footprint.countries.some(
+                  (c) =>
+                    c.name !== country && !extraOrganisations.some((o) => o.country === c.name),
+                )
+                  ? 'A country in the story has no organisation of its own — its content will be visible to everyone as spillover.'
+                  : '')}
+            </span>
+            <button
+              type="button"
+              onClick={() => void detectFootprint()}
+              disabled={footprintLoading}
+              className="wr-btn sm onDark ml-auto"
+            >
+              <WrIcon name="refresh" /> {footprintLoading ? 'Reading…' : 'Re-detect'}
+            </button>
+          </div>
+        </>
+      )}
+    </aside>
+  );
+
+  /* ── Step 1: Scenario Setup — the map (three lanes) ─────────────────── */
+
+  const renderStep1 = () => (
+    <div>
+      {/* Lane 1 — Organisations */}
+      <div className="wr-lane" style={{ paddingTop: 0, '--g': 'var(--f-org)' } as CSSProperties}>
+        <div className="wr-lanehead">
+          <div className="wr-vignette">
+            <img src={SHELL_ART.laneOrgs} alt="" />
+            <div className="cap">Your side</div>
+          </div>
+          <div className="inner">
+            <h2>
+              <WrIcon name="building" /> Organisations
+            </h2>
+            <p>HQ and every office or partner agency responding with you.</p>
+            <span className="cnt">
+              {orgCount} of 6 · {teamCount} teams
+            </span>
+            <button
+              onClick={() =>
+                extraOrganisations.length + 1 < 6 &&
+                setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)])
+              }
+              disabled={extraOrganisations.length + 1 >= 6}
+              className="wr-btn mt-2.5 w-full"
+            >
+              <WrIcon name="plus" /> Add organisation
+            </button>
+          </div>
+        </div>
+        <div>
+          <div className="wr-cards">
+            {/* HQ node */}
+            <div className="wr-node hq" style={{ '--g': 'var(--f-org)' } as CSSProperties}>
+              <div className="kicker">
+                <WrIcon name="building" size={12} /> Headquarters · players
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 mb-3">
+                <div className="sm:col-span-6">
+                  <label className="wr-lbl">
+                    Organisation name {extraOrganisations.length === 0 ? '(optional)' : ''}
+                  </label>
+                  <input
+                    type="text"
+                    value={orgName}
+                    onChange={(e) => setOrgName(e.target.value)}
+                    placeholder="e.g., Meridian Technologies, Acme Corp"
+                    className="wr-field"
+                  />
+                  <div className="wr-help">
+                    {extraOrganisations.length === 0
+                      ? 'Leave blank to let the AI generate a company name.'
+                      : 'Required when several organisations take part — it names the primary one.'}
+                  </div>
                 </div>
+                <div className="sm:col-span-3">
+                  <label className="wr-lbl">Country (headquarters)</label>
+                  <CountrySelect value={country} onChange={setCountry} className="wr-field" />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="wr-lbl">City (optional)</label>
+                  <input
+                    type="text"
+                    value={primaryCity}
+                    onChange={(e) => setPrimaryCity(e.target.value)}
+                    placeholder="e.g. Singapore"
+                    className="wr-field"
+                  />
+                </div>
+                <div className="sm:col-span-1">
+                  <label className="wr-lbl">Type</label>
+                  <select
+                    value={primaryKind}
+                    onChange={(e) => setPrimaryKind(e.target.value as OrgKind)}
+                    className="wr-field"
+                  >
+                    {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
+                      <option key={k} value={k}>
+                        {ORG_KIND_LABELS[k]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Response teams at the primary organisation: presets + the trainer's own divisions */}
+              <div className="border-t border-dashed border-border pt-3">
+                <label className="wr-lbl">
+                  Response teams
+                  {extraOrganisations.length > 0
+                    ? ` — ${orgName.trim() || 'primary organisation'}`
+                    : ''}{' '}
+                  ({teamRoster.length}/6)
+                </label>
+                <p className="text-[11.5px] text-muted mb-2.5">
+                  Every company divides differently — pick from the preset teams and/or add your own
+                  divisions. Each team&apos;s name and description shape its storyline pressure,
+                  injects, stakeholder contacts, and scoring. Mark exactly one team as the{' '}
+                  <b>public voice</b>. Add <b>Executive</b> when real leadership joins as players:
+                  their decisions trigger SOP obligations and stakeholder reactions.
+                </p>
+                <RosterBuilder
+                  roster={teamRoster}
+                  onChange={setTeamRoster}
+                  presetCatalog={presetCatalog}
+                />
+              </div>
+            </div>
+
+            {/* Additional organisations: each in its own country with its own team roster */}
+            {extraOrganisations.map((org, i) => (
+              <div
+                key={org.id}
+                className={`wr-node ${org.operation === 'ai' ? 'ai' : ''}`}
+                style={
+                  {
+                    '--g': org.operation === 'ai' ? 'var(--f-ai)' : 'var(--f-org)',
+                  } as CSSProperties
+                }
+              >
+                <div className="kicker">
+                  <WrIcon name={org.operation === 'ai' ? 'sparkle' : 'office'} size={12} />{' '}
+                  {org.operation === 'ai' ? 'Office · AI-operated' : 'Office · players'}
+                </div>
+                <OrganisationCard
+                  org={org}
+                  index={i}
+                  presetCatalog={presetCatalog}
+                  onChange={(next) =>
+                    setExtraOrganisations((prev) => prev.map((o) => (o.id === org.id ? next : o)))
+                  }
+                  onRemove={() =>
+                    setExtraOrganisations((prev) => prev.filter((o) => o.id !== org.id))
+                  }
+                />
+              </div>
+            ))}
+
+            {extraOrganisations.length + 1 < 6 && (
+              <button
+                type="button"
+                className="wr-add"
+                style={{ '--g': 'var(--f-org)' } as CSSProperties}
+                onClick={() =>
+                  setExtraOrganisations((prev) => [...prev, newOrganisationDraft(country)])
+                }
+              >
+                <div>
+                  <WrIcon name="office" size={24} />
+                  <div className="mt-2">Office, subsidiary or partner agency</div>
+                  <small>Own page, teams and contacts in its own country</small>
+                </div>
+              </button>
+            )}
+          </div>
+          {rosterError && <div className="mt-2 text-xs text-warning">{rosterError}</div>}
+        </div>
+      </div>
+
+      {/* Lane 2 — Pressure groups */}
+      <div className="wr-lane" style={{ '--g': 'var(--f-pressure)' } as CSSProperties}>
+        <div className="wr-lanehead">
+          <div className="wr-vignette">
+            <img src={SHELL_ART.lanePressure} alt="" />
+            <div className="cap">Pressure</div>
+          </div>
+          <div className="inner">
+            <h2>
+              <WrIcon name="fist" /> Pressure groups
+            </h2>
+            <p>
+              Regulators, unions, NGOs, communities, politicians. One spokesperson each — engage
+              them and they stand down, ignore them and they escalate.
+            </p>
+            <span className="cnt">{pressureOrgs.length} of 6</span>
+            <div className="flex flex-wrap gap-1.5 mt-2.5">
+              {(
+                ['regulator', 'union', 'ngo', 'community_group', 'political'] as PressureKind[]
+              ).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  disabled={pressureOrgs.length >= 6}
+                  onClick={() =>
+                    setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, k)])
+                  }
+                  className="wr-btn sm icon"
+                  title={`Add ${PRESSURE_KIND_LABEL[k]}`}
+                  aria-label={`Add ${PRESSURE_KIND_LABEL[k]}`}
+                >
+                  <WrIcon name={PRESSURE_KIND_ICON[k]} />
+                </button>
               ))}
             </div>
+          </div>
+        </div>
+        <div>
+          <div className="wr-cards">
+            {pressureOrgs.map((p) => (
+              <div
+                key={p.id}
+                className="wr-node"
+                style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
+              >
+                <div className="kicker">
+                  <WrIcon name={PRESSURE_KIND_ICON[p.kind] ?? 'landmark'} size={12} />{' '}
+                  {PRESSURE_KIND_LABEL[p.kind] ?? p.kind} · {p.register}
+                </div>
+                <PressureOrgCard
+                  org={p}
+                  onChange={(next) =>
+                    setPressureOrgs((prev) => prev.map((x) => (x.id === p.id ? next : x)))
+                  }
+                  onRemove={() => setPressureOrgs((prev) => prev.filter((x) => x.id !== p.id))}
+                />
+              </div>
+            ))}
+            {pressureOrgs.length < 6 && (
+              <button
+                type="button"
+                className="wr-add"
+                style={{ '--g': 'var(--f-pressure)' } as CSSProperties}
+                onClick={() =>
+                  setPressureOrgs((prev) => [...prev, newPressureOrgDraft(country, 'regulator')])
+                }
+              >
+                <div>
+                  <WrIcon name="plus" size={24} />
+                  <div className="mt-2">Pressure group</div>
+                  <small>
+                    {footprint
+                      ? 'Or accept a proposal from the radar'
+                      : 'Or let the radar propose them from your description'}
+                  </small>
+                </div>
+              </button>
+            )}
+          </div>
+          {pressureValidation && (
+            <div className="mt-2 text-xs text-warning">{pressureValidation}</div>
           )}
-          <label className="flex items-center gap-2 mt-2 text-[10px] terminal-text text-muted cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoAntagonist}
-              onChange={(e) => setAutoAntagonist(e.target.checked)}
-            />
-            Auto-generate a hostile rival if no competitors are named
-          </label>
         </div>
       </div>
 
-      {crisisDescription.length >= 50 && (
-        <div className="mt-4 p-3 border border-success/30 rounded bg-success/10">
-          <p className="text-[10px] terminal-text text-success">
-            Ready: The AI will analyze your scenario and generate appropriate crisis dynamics, NPCs,
-            social media narratives, and public sentiment patterns for {country}.
-          </p>
+      {/* Lane 3 — Rival pages */}
+      <div className="wr-lane" style={{ '--g': 'var(--f-rival)' } as CSSProperties}>
+        <div className="wr-lanehead">
+          <div className="wr-vignette">
+            <img src={SHELL_ART.laneRivals} alt="" />
+            <div className="cap">Rivals</div>
+          </div>
+          <div className="inner">
+            <h2>
+              <WrIcon name="swords" /> Rival pages
+            </h2>
+            <p>Competitor pages the AI drives against you, each in its own country.</p>
+            <span className="cnt">
+              {competitorEntries.length} named
+              {autoAntagonist && competitorEntries.length === 0 ? ' · 1 auto' : ''}
+            </span>
+            <label className="flex items-start gap-2 mt-3 text-[11.5px] text-muted cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoAntagonist}
+                onChange={(e) => setAutoAntagonist(e.target.checked)}
+                className="mt-0.5"
+              />
+              Auto-generate a hostile rival if no competitors are named
+            </label>
+          </div>
         </div>
-      )}
+        <div>
+          <div className="wr-cards">
+            {competitorEntries.map((e, i) => (
+              <div
+                key={`comp-${i}`}
+                className="wr-node"
+                style={{ '--g': 'var(--f-rival)' } as CSSProperties}
+              >
+                <div className="absolute top-2.5 right-2.5">
+                  <button
+                    onClick={() => removeCompetitor(i)}
+                    className="wr-btn sm ghost icon"
+                    aria-label={`Remove ${e.name}`}
+                    title="Remove"
+                  >
+                    <WrIcon name="x" />
+                  </button>
+                </div>
+                <div className="kicker">
+                  <WrIcon name="swords" size={12} /> Competitor
+                </div>
+                <div className="flex items-center gap-2.5">
+                  <div className="wr-mono rv" style={{ width: 40, height: 40, fontSize: 13 }}>
+                    {initialsOf(e.name)}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-extrabold text-ink truncate">{e.name}</div>
+                    <div className="text-xs text-muted flex items-center gap-1.5 flex-wrap">
+                      <span className="wr-cc light">{countryCode(e.country)}</span> {e.country}
+                      {e.facebook_handle && <span>· {e.facebook_handle}</span>}
+                      {e.x_handle && <span>· {e.x_handle}</span>}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {competitorEntries.length === 0 && autoAntagonist && (
+              <div
+                className="wr-node"
+                style={{ '--g': 'var(--f-rival)', borderStyle: 'dashed' } as CSSProperties}
+              >
+                <div className="kicker">
+                  <WrIcon name="sparkle" size={12} /> Auto-generated rival
+                </div>
+                <div className="text-xs text-muted">
+                  A hostile competitor page will be invented from the story. Name real rivals here
+                  to stack the pressure (up to 10).
+                </div>
+              </div>
+            )}
+            {/* Add competitor form */}
+            <div
+              className="wr-node"
+              style={
+                {
+                  '--g': 'var(--f-rival)',
+                  borderStyle: 'dashed',
+                  background: 'rgba(255,255,255,.75)',
+                } as CSSProperties
+              }
+            >
+              <div className="kicker">
+                <WrIcon name="plus" size={12} /> Rival page
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  value={newPageName}
+                  onChange={(e) => setNewPageName(e.target.value)}
+                  placeholder="Competitor name"
+                  className="wr-field col-span-2"
+                />
+                <CountrySelect
+                  value={newPageCountry || country}
+                  onChange={setNewPageCountry}
+                  className="wr-field col-span-2"
+                />
+                <input
+                  value={newPageFbHandle}
+                  onChange={(e) => setNewPageFbHandle(e.target.value)}
+                  placeholder="@FakebookHandle"
+                  className="wr-field"
+                />
+                <input
+                  value={newPageXHandle}
+                  onChange={(e) => setNewPageXHandle(e.target.value)}
+                  placeholder="@ZHandle"
+                  className="wr-field"
+                />
+              </div>
+              <button
+                onClick={addCompetitor}
+                disabled={!newPageName.trim()}
+                className="wr-btn danger mt-2.5 w-full"
+              >
+                <WrIcon name="plus" /> Add competitor
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 
@@ -2288,7 +2522,6 @@ export const SocialCrisisWizard = () => {
     return (
       <div className="space-y-4">
         <div>
-          <h2 className="text-lg terminal-text text-ink mb-1">Blueprint Review</h2>
           <p className="text-xs terminal-text text-muted">
             Structured from your uploaded document. Empty or low-confidence fields will be
             AI-generated. Press Next to build the scenario.
@@ -2309,13 +2542,13 @@ export const SocialCrisisWizard = () => {
         {!extracting && blueprint && (
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-3 text-xs terminal-text">
-              <div className="military-border p-3">
+              <div className="wr-node p-3">
                 <div className="text-muted uppercase mb-1">Framework</div>
                 <div className="text-ink">
                   {blueprint.detected_framework_kind || 'unstructured'}
                 </div>
               </div>
-              <div className="military-border p-3">
+              <div className="wr-node p-3">
                 <div className="text-muted uppercase mb-1">Structure confidence</div>
                 <div className="text-ink">{pct(blueprint.structure_confidence)}</div>
               </div>
@@ -2339,7 +2572,7 @@ export const SocialCrisisWizard = () => {
             )}
 
             {/* Editable fields — these drive generation */}
-            <div className="military-border p-3 text-xs terminal-text space-y-4">
+            <div className="wr-node p-3 text-xs terminal-text space-y-4">
               <div>
                 <div className="text-muted uppercase">
                   Editable fields <Drives />
@@ -2441,7 +2674,7 @@ export const SocialCrisisWizard = () => {
               </div>
             </div>
 
-            <div className="military-border p-3 text-xs terminal-text">
+            <div className="wr-node p-3 text-xs terminal-text">
               <div className="text-muted uppercase mb-2">
                 Factions ({blueprint.factions?.length ?? 0})
               </div>
@@ -2459,7 +2692,7 @@ export const SocialCrisisWizard = () => {
             </div>
 
             <div className="grid grid-cols-2 gap-3 text-xs terminal-text">
-              <div className="military-border p-3">
+              <div className="wr-node p-3">
                 <div className="text-muted uppercase mb-1">
                   Timeline ({blueprint.timeline?.length ?? 0})
                 </div>
@@ -2470,7 +2703,7 @@ export const SocialCrisisWizard = () => {
                     .join(' → ') || 'AI-generated'}
                 </div>
               </div>
-              <div className="military-border p-3">
+              <div className="wr-node p-3">
                 <div className="text-muted uppercase mb-1">
                   Narrative mutations ({blueprint.narrative_mutations?.length ?? 0})
                 </div>
@@ -2481,7 +2714,7 @@ export const SocialCrisisWizard = () => {
             </div>
 
             {blueprint.unmapped_directives && blueprint.unmapped_directives.length > 0 && (
-              <div className="military-border p-3 text-xs terminal-text">
+              <div className="wr-node p-3 text-xs terminal-text">
                 <div className="text-muted uppercase mb-2">
                   Unmapped ({blueprint.unmapped_directives.length}) — kept for context
                 </div>
@@ -2525,7 +2758,6 @@ export const SocialCrisisWizard = () => {
     const errorMsg = step2Error || step3Error || step4Error;
     return (
       <div>
-        <h2 className="text-lg terminal-text mb-4">Step 2 · Building scenario</h2>
         <p className="text-xs terminal-text text-muted mb-6">
           Generating characters, storyline, convergence, and brand pages. This takes a few minutes;
           you will advance to compile automatically.
@@ -2594,8 +2826,6 @@ export const SocialCrisisWizard = () => {
 
   const renderStep7 = () => (
     <div>
-      <h2 className="text-lg terminal-text mb-4">Step 7 · Review &amp; compile</h2>
-
       {!scenarioId && !compiling && (
         <div className="space-y-6">
           <p className="text-xs terminal-text text-muted mb-4">
@@ -3181,62 +3411,154 @@ export const SocialCrisisWizard = () => {
     );
   }
 
+  const heroArtByStep: Record<number, string> = {
+    1: SHELL_ART.wizardSetup,
+    2: SHELL_ART.wizardBuild,
+    3: SHELL_ART.wizardReview,
+    7: SHELL_ART.wizardReview,
+  };
+  const stepHeadline: Record<number, { title: string; lead: string }> = {
+    2: {
+      title: 'Building your scenario',
+      lead: 'Characters, storyline, convergence and brand pages are being generated. This takes a few minutes; you will advance to review automatically.',
+    },
+    3: {
+      title: 'Blueprint review',
+      lead: 'What the War Room read from your document. Items marked "drives generation" shape the build — edit them before continuing.',
+    },
+    7: {
+      title: 'Review & compile',
+      lead: 'Read what was generated before it becomes a scenario. Everything remains editable afterwards from the library, until a session is live.',
+    },
+  };
+
   return (
-    <div className="min-h-screen scanline p-2 sm:p-6">
-      <div className="w-full px-1 sm:px-4">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => navigate('/warroom')}
-              className="text-xs terminal-text text-muted hover:text-ink border border-border px-2 py-1"
-            >
-              &#8592; War Room
-            </button>
-            <h1 className="text-2xl terminal-text">Crisis Simulation Wizard</h1>
+    <div className="min-h-screen bg-bg">
+      <header className="wr-artband wr-hero">
+        <img className="wr-art" src={heroArtByStep[step] ?? SHELL_ART.wizardSetup} alt="" />
+        <div className="wr-hero-top">
+          <button
+            type="button"
+            className="wr-brandmark"
+            onClick={() => navigate('/warroom')}
+            title="Back to the War Room"
+          >
+            <BrandMark className="h-8 w-8" /> War Room{' '}
+            <span className="sub">· Corporate crisis</span>
+          </button>
+          <div className="wr-steps" aria-label="Steps">
+            {VISIBLE_STEPS.map((s, i) => {
+              const isCurrent = s === step;
+              const isPast = currentStepIndex > i;
+              return (
+                <span key={s} className={isCurrent ? 'on' : isPast ? 'done' : ''}>
+                  <i>{isPast ? <WrIcon name="check" size={11} /> : i + 1}</i>
+                  <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
+                </span>
+              );
+            })}
           </div>
-          <span className="text-xs terminal-text text-muted">Universal Mode</span>
+          <div className="wr-credits">
+            <span>
+              <WrIcon name="save" /> Draft <b>{wizardDraftId ? 'saved' : 'not yet saved'}</b>
+            </span>
+          </div>
         </div>
 
-        {progressBar}
+        <div className="wr-hero-grid">
+          {step === 1 ? (
+            <>
+              {renderSetupBrief()}
+              {renderFootprintRadar()}
+            </>
+          ) : (
+            <div>
+              <div className="wr-eyebrow">
+                Corporate crisis · step {currentStepIndex + 1} of {VISIBLE_STEPS.length}
+              </div>
+              <h1>{stepHeadline[step]?.title ?? STEP_LABELS[step]}</h1>
+              <p className="lead">{stepHeadline[step]?.lead}</p>
+            </div>
+          )}
+        </div>
+      </header>
 
-        <div className="military-border p-4 sm:p-6 pb-8 sm:pb-10 mb-4 sm:mb-6">
+      <main className="wr-wrap">
+        <section className="wr-map">
           {step === 1 && renderStep1()}
           {step === 3 && renderBlueprintReview()}
           {step === 2 && renderBuilding()}
           {step === 7 && renderStep7()}
-        </div>
+        </section>
 
-        <div className="flex justify-between items-center flex-shrink-0 sticky bottom-0 z-30 bg-surface border-t border-border px-4 py-3 shadow-[0_-3px_8px_rgba(23,32,51,0.04)]">
-          <button
-            onClick={goBack}
-            className="px-6 py-3 text-xs terminal-text border border-border text-muted hover:border-accent"
-          >
-            {step === 1 ? '\u2190 War Room' : 'Back'}
+        <div className="wr-ctabar sticky">
+          {step === 1 && (
+            <>
+              <div className="s">
+                <b>{orgCount}</b>organisation{orgCount === 1 ? '' : 's'}
+              </div>
+              <div className="s">
+                <b>{teamCount}</b>teams
+              </div>
+              <div className="s">
+                <b>{countrySet.size}</b>countr{countrySet.size === 1 ? 'y' : 'ies'}
+              </div>
+              <div className="s">
+                <b>{pressureOrgs.length}</b>pressure
+              </div>
+              <div className="s">
+                <b>{competitorEntries.length || (autoAntagonist ? 1 : 0)}</b>rival
+                {competitorEntries.length === 1 ||
+                (competitorEntries.length === 0 && autoAntagonist)
+                  ? ''
+                  : 's'}
+              </div>
+            </>
+          )}
+          <span className="grow" />
+          <button onClick={goBack} className="wr-btn ghost">
+            <WrIcon name="arrow-l" /> {step === 1 ? 'War Room' : 'Back'}
           </button>
-          <span className="text-xs terminal-text text-muted">
-            Step {currentStepIndex + 1} of {VISIBLE_STEPS.length}
+          <span className="hint">
+            Step <b>{currentStepIndex + 1}</b> of {VISIBLE_STEPS.length}
+            {step === 1 && crisisDescription.length < 50 && <> · describe the crisis to continue</>}
+            {step === 1 && crisisDescription.length >= 50 && rosterError && <> · {rosterError}</>}
+            {step === 1 && crisisDescription.length >= 50 && !rosterError && (
+              <> · ready — the build reads everything on this page</>
+            )}
           </span>
+          {step === 1 && (
+            <button onClick={() => void saveDraftState(step)} className="wr-btn ghost">
+              <WrIcon name="save" /> Save draft
+            </button>
+          )}
           {step === 7 ? (
             scenarioId ? (
-              <a href="/scenarios" className="military-button px-8 py-3 text-center">
-                View scenarios
+              <a href="/scenarios" className="wr-btn accent lg">
+                View scenarios <WrIcon name="arrow" />
               </a>
             ) : (
-              <span className="text-xs terminal-text text-muted">
-                {compiling ? 'Compiling…' : 'Review & compile above'}
-              </span>
+              <span className="hint">{compiling ? 'Compiling…' : 'Review & compile above'}</span>
             )
           ) : (
             <button
               onClick={goNext}
-              disabled={!canProceed}
-              className="military-button px-8 py-3 disabled:opacity-30 disabled:cursor-not-allowed"
+              disabled={!canProceed || footprintLoading}
+              className="wr-btn accent lg"
             >
-              Next
+              {step === 1
+                ? footprintLoading
+                  ? 'Reading the footprint…'
+                  : footprint ||
+                      footprintRanFor.current === `${crisisDescription} ${context}`.trim()
+                    ? 'Build the scenario'
+                    : 'Detect footprint & continue'
+                : 'Next'}{' '}
+              <WrIcon name="arrow" />
             </button>
           )}
         </div>
-      </div>
+      </main>
     </div>
   );
 };
