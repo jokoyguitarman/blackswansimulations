@@ -122,11 +122,20 @@
   .orgcard .foot{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
   .pagehandles{font-size:11.5px;color:var(--muted);display:flex;gap:10px;flex-wrap:wrap}
 
-  .inj{display:grid;grid-template-columns:64px 28px 1fr auto;gap:10px;align-items:center;padding:7px 8px;border-radius:10px;font-size:12.5px}
+  .inj{display:grid;grid-template-columns:64px 92px 1fr auto;gap:10px;align-items:center;padding:7px 8px;border-radius:10px;font-size:12.5px}
   .inj:hover{background:var(--surface-2)}
   .inj .t{font-family:"JetBrains Mono",monospace;font-size:11.5px;font-weight:700;color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,#fff);border-radius:6px;padding:3px 6px;text-align:center}
   .inj .t.cond{color:var(--f-intel);background:color-mix(in srgb,var(--f-intel) 8%,#fff)}
-  .inj .app{color:var(--muted)}
+  /* channel / origin badge — same palette as the sim's apps */
+  .ch{display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10.5px;font-weight:800;letter-spacing:.03em;padding:4px 8px;border-radius:7px;color:#fff;white-space:nowrap;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .ch .ic{font-size:12px}
+  .ch.fb{background:#1877F2}
+  .ch.z{background:#16181C}
+  .ch.mail{background:#2563EB}
+  .ch.news{background:#DC2626}
+  .ch.chat{background:#16A34A}
+  .ch.call{background:#475569}
+  .ch.page{background:linear-gradient(135deg,#1877F2,#16181C)}
   .inj .ttl{font-weight:600}
   .inj .by{font-size:11.5px;color:var(--muted)}
   .inj .tags{display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap}
@@ -300,6 +309,10 @@
       <summary><div class="tile"><svg class="ic"><use href="#i-layers"/></svg></div><div><h2>Injects <span class="n">217</span></h2><p>Timed and conditional content, by phase. Stakeholder-authored items pass the reconsideration judge before firing.</p></div><div class="peek"><span class="p">202 timed</span><span class="p" style="color:var(--f-intel)">15 conditional</span><span class="p live">41 stakeholder</span><span class="p speaks">4 page statements</span></div><div class="chev"><svg class="ic ic-14"><use href="#i-chevron"/></svg></div></summary>
       <div class="body">
         <div class="phase" title="volume by phase"><span style="width:19%;background:var(--brand)"></span><span style="width:24%;background:color-mix(in srgb,var(--brand) 80%,#fff)"></span><span style="width:28%;background:color-mix(in srgb,var(--brand) 60%,#fff)"></span><span style="width:22%;background:color-mix(in srgb,var(--brand) 40%,#fff)"></span><span style="width:7%;background:var(--f-intel)"></span></div>
+        <div class="toolbar">
+          <span style="font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Origin</span>
+          <div class="seg" id="injSeg"><button class="on" data-c="all">All</button><button data-c="fb"><span class="ch fb" style="padding:2px 6px">Fakebook</span> 71</button><button data-c="z"><span class="ch z" style="padding:2px 6px">Z</span> 58</button><button data-c="mail"><span class="ch mail" style="padding:2px 6px">Mail</span> 49</button><button data-c="news"><span class="ch news" style="padding:2px 6px">News</span> 18</button><button data-c="chat"><span class="ch chat" style="padding:2px 6px">Chat</span> 14</button><button data-c="call"><span class="ch call" style="padding:2px 6px">Call</span> 7</button></div>
+        </div>
         <div id="injRoot"></div>
       </div>
     </details>
@@ -475,44 +488,44 @@ const CAST = [
 
 const INJ = [
   { phase:'T+0 – 15 · opening', total:41, sub:'the clip spreads; first calls; nothing official yet', open:true, rows:[
-    ['T+02','feed','“He just went down.” — clip reposted by @johor_nightshift','crowd · Malaysia · unscoped',['social']],
-    ['T+03','feed','Screenshot of the depot roster posted by a driver’s cousin','crowd · Malaysia',['social']],
+    ['T+02','z','“He just went down.” — clip reposted by @johor_nightshift','crowd · Malaysia · unscoped',['social']],
+    ['T+03','fb','Screenshot of the depot roster posted by a driver’s cousin','crowd · Malaysia',['social']],
     ['T+05','chat','Executive group chat: “Who has seen this?”','team chat · Executive — SL',['team']],
     ['T+06','mail','Mount Elizabeth: is tomorrow’s cold-chain run affected?','Dr Priya Nair → Fleet Operations — SL',['stakeholder','SG']],
-    ['T+07','feed','Regional logistics forum thread: “Sigma night runs are notorious”','crowd · Singapore',['social']],
+    ['T+07','fb','Regional logistics forum thread: “Sigma night runs are notorious”','crowd · Singapore',['social']],
     ['T+08','mail','Straits Times request for comment — deadline 10:30','Clara Lim → Communications — SL',['stakeholder','SG']],
     ['T+09','call','Depot manager calls: drivers are refusing the 22:00 run','Hafiz Zulkifli → Driver Relations — SLM',['stakeholder','MY']],
-    ['T+10','feed','Swift Freight: “Our drivers rest. Every run, every night.”','rival page · Swift Freight',['rival']],
+    ['T+10','z','Swift Freight: “Our drivers rest. Every run, every night.”','rival page · @swift_freight',['rival']],
     ['T+11','mail','Board chair: “Please brief me before I read it in the press.”','Dato’ Rosalind Yeo → Executive — SL',['stakeholder']],
     ['T+12','news','The Star: “Driver collapses after 19-hour shift at Johor logistics depot”','Suresh Menon · The Star',['news']],
     ['T+13','chat','Night Run Supervisor: “Do we run tonight or not?”','Azman Yusof → Driver Relations — SLM',['stakeholder','MY']],
-    ['T+14','feed','Video reaches 1.2M views; #SigmaShift trending in Malaysia','crowd · unscoped',['social']],
-    ['T+15','feed','Pay slips posted by three night-shift drivers','crowd · key personas · Malaysia',['social']],
+    ['T+14','z','Video reaches 1.2M views; #SigmaShift trending in Malaysia','crowd · unscoped',['social']],
+    ['T+15','fb','Pay slips posted by three night-shift drivers','crowd · key personas · Malaysia',['social']],
   ]},
   { phase:'T+15 – 30 · escalation', total:52, sub:'pay slips, boycott call, MOHR statement, MOM request', rows:[
     ['T+16','mail','CNA wants Sigma on camera for the evening bulletin','Daniel Foo → Communications — SL',['stakeholder','SG']],
     ['T+18','call','Dispatch: “We are being blamed for rosters we did not set.”','Marcus Lim → Fleet Operations — SL',['stakeholder']],
-    ['T+20','feed','Ministry of Human Resources: statement on the Johor depot','page statement · spokesperson Lim Chee Kiong',['page','MY']],
+    ['T+20','fb','Ministry of Human Resources: statement on the Johor depot','page statement · spokesperson Lim Chee Kiong',['page','MY']],
     ['T+22','mail','Customer service has no approved line — 40 calls waiting','Grace Ho → Fleet Operations — SL',['stakeholder']],
     ['T+24','mail','MOM requests cross-border scheduling records (90 days)','Ms Tan Hui Ling → Legal — SL',['stakeholder','SG']],
-    ['T+25','feed','Transport Workers Union: statement demanding consultation','page statement · spokesperson Mohd Firdaus Ismail',['page','MY']],
+    ['T+25','z','Transport Workers Union: statement demanding consultation','page statement · spokesperson Mohd Firdaus Ismail',['page','MY']],
     ['T+26','news','CNA: “Singapore hospital confirms spoiled shipment from Johor route”','CNA',['news']],
     ['T+27','chat','Night dispatch: “Nobody has asked us what happened.”','Kenneth Goh → Fleet Operations — SL',['stakeholder']],
     ['T+29','chat','Dispatcher blamed on the group chat for the 19-hour roster','Wei Jie Tan → Driver Relations — SLM',['stakeholder','MY']],
-    ['T+30','feed','Tenaganita calls for a boycott of Sigma until an independent audit','Glorene Das · community · unscoped',['stakeholder','MY']],
+    ['T+30','z','Tenaganita calls for a boycott of Sigma until an independent audit','Glorene Das · community · unscoped',['stakeholder','MY']],
   ]},
   { phase:'T+30 – 45 · turning point', total:60, sub:'the hospital goes public; the union sets a deadline', rows:[
     ['T+33','mail','Fatigue policy “written and never adopted”','Farid Abdullah → Driver Relations — SLM',['stakeholder','MY']],
     ['T+35','mail','Mount Elizabeth: no answer on the current route — escalating to the CEO','Dr Priya Nair → Fleet Operations — SL',['stakeholder','SG']],
-    ['T+38','feed','Malay Mail reporter posts three pay slips','Vincent Tan · media',['stakeholder','MY']],
+    ['T+38','z','Malay Mail reporter posts three pay slips','Vincent Tan · media',['stakeholder','MY']],
     ['T+40','mail','Zuellig demands written confirmation of the excursion','Jason Teo → Fleet Operations — SL',['stakeholder','SG']],
-    ['T+40','feed','MOHR: formal request for records with a 48-hour deadline','page statement',['page','MY']],
+    ['T+40','fb','MOHR: formal request for records with a 48-hour deadline','page statement',['page','MY']],
     ['T+42','news','Reuters: “Cross-border logistics firm faces twin regulatory probes”','Elaine Ng · Reuters',['news']],
-    ['T+45','feed','TWUM: notice of picket unless consultation begins within 48 hours','page statement',['page','MY']],
+    ['T+45','fb','TWUM: notice of picket unless consultation begins within 48 hours','page statement',['page','MY']],
   ]},
   { phase:'T+45 – 60 · resolution', total:49, sub:'investors, insurer, second-wave coverage', rows:[
     ['T+48','mail','Riders being lumped in with Sigma drivers','Joyce Lim → Stakeholder Engagement — SLM',['stakeholder','MY']],
-    ['T+50','feed','Freelancer decides whether to publish the driver’s roster','Hui Min · media',['stakeholder','SG']],
+    ['T+50','z','Freelancer decides whether to publish the driver’s roster','Hui Min · media',['stakeholder','SG']],
     ['T+52','mail','Subcontracted riders excluded from every statement','Puan Rohana → Stakeholder Engagement — SLM',['stakeholder','MY']],
     ['T+55','mail','Lead investor: “I heard about this from the press.”','Henrik Olsen → Executive — SL',['stakeholder']],
     ['T+58','mail','Insurer: incident notification due within 24 hours','Sarah Whitfield → Legal — SL',['stakeholder']],
@@ -520,10 +533,13 @@ const INJ = [
   { phase:'Conditional', total:15, cond:true, sub:'convergence gates and intel dependencies between the two offices', rows:[
     ['IF','mail','Johor roster export — needed by Legal — SL for the MOM response','Sigma Malaysia holds · gate: intel shared',['intel','MY→SG']],
     ['IF','mail','Mount Elizabeth quarantine memo — needed by Communications — SLM','Sigma HQ holds · gate: intel shared',['intel','SG→MY']],
-    ['IF','feed','Regional desk picks up the story (fires after the Star article)','inject_published:post_star',['chained']],
+    ['IF','z','Regional desk picks up the story (fires after the Star article)','inject_published:post_star',['chained']],
     ['IF','news','“Sigma backtracks” — fires only if a public statement contradicts the fact sheet','watchdog gate',['gate']],
   ]},
 ];
+/* channel → badge label + icon; palette mirrors the sim's apps (Fakebook #1877F2, Z #16181C, Mail, News, Group chat, Call) */
+const CHANNEL = { fb:['Fakebook','#i-feed'], z:['Z','#i-feed'], mail:['Mail','#i-mail'], news:['News','#i-news'], chat:['Chat','#i-chat'], call:['Call','#i-call'] };
+const chBadge = (c) => `<span class="ch ${c}" title="${CHANNEL[c][0]}">${svg(CHANNEL[c][1],'ic')}${CHANNEL[c][0]}</span>`;
 
 const CROWD = {
   'Singapore · 94 · 15 key · scoped to Singapore players': [
@@ -539,8 +555,6 @@ const svg = (id, cls='ic ic-14') => `<svg class="${cls}"><use href="${id}"/></sv
 const chev = `<svg class="ic ic-14 chev"><use href="#i-chevron"/></svg>`;
 const initials = (n) => n.replace(/[^A-Za-z ]/g,'').split(' ').filter(Boolean).slice(0,2).map(w=>w[0]).join('').toUpperCase() || '·';
 const monoClass = (p) => p.speaks ? 'mono pr' : p.rel==='client'||p.rel==='partner'||p.rel==='supplier' ? 'mono' : p.org.includes('Malaysia') ? 'mono ai' : p.rel==='media'||p.rel==='community'||p.rel==='investor'||p.rel==='regulator' ? 'mono plain' : 'mono';
-const APP_ICON = { feed:'#i-feed', mail:'#i-mail', call:'#i-call', news:'#i-news', chat:'#i-chat' };
-
 function personRow(p){
   const tags = [
     `<span class="p rel">${p.rel}</span>`,
@@ -577,9 +591,14 @@ function renderTeams(){
 }
 function renderInjects(){
   document.getElementById('injRoot').innerHTML = INJ.map(ph => `<details class="grp" ${ph.open?'open':''}><summary>${ph.cond?`<span class="t cond" style="font-family:'JetBrains Mono',monospace;font-size:11px;padding:2px 6px;border-radius:6px;color:var(--f-intel);background:color-mix(in srgb,var(--f-intel) 8%,#fff)">IF</span> `:''}${ph.phase} <span class="n">${ph.total}</span><span class="sub">${ph.sub}</span>${chev}</summary><div class="g">${
-    ph.rows.map(r=>`<div class="inj"><span class="t ${ph.cond?'cond':''}">${r[0]}</span>${svg(APP_ICON[r[1]],'ic ic-16 app')}<div><div class="ttl">${r[2]}</div><div class="by">${r[3]}</div></div><div class="tags">${r[4].map(t=>/^(SG|MY)$/.test(t)?`<span class="cc light">${t}</span>`:`<span class="p ${t==='stakeholder'?'live':t==='page'?'speaks':t==='rival'?'':''}" ${t==='rival'?'style="color:var(--f-rival)"':''}>${t}</span>`).join('')}</div></div>`).join('')
+    ph.rows.map(r=>`<div class="inj" data-ch="${r[1]}"><span class="t ${ph.cond?'cond':''}">${r[0]}</span>${chBadge(r[1])}<div><div class="ttl">${r[2]}</div><div class="by">${r[3]}</div></div><div class="tags">${r[4].filter(t=>!['social','team','news'].includes(t)).map(t=>/^(SG|MY)$/.test(t)?`<span class="cc light">${t}</span>`:`<span class="p ${t==='stakeholder'?'live':t==='page'?'speaks':t==='rival'?'':''}" ${t==='rival'?'style="color:var(--f-rival)"':''}>${t}</span>`).join('')}</div></div>`).join('')
   }${ph.total>ph.rows.length?`<span class="more">Show ${ph.total-ph.rows.length} more in this phase</span>`:''}</div></details>`).join('');
 }
+let injFilter='all';
+document.getElementById('injSeg').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;injFilter=b.dataset.c;[...e.currentTarget.children].forEach(x=>x.classList.toggle('on',x===b));
+  document.querySelectorAll('#injRoot .inj').forEach(r=>{r.style.display=(injFilter==='all'||r.dataset.ch===injFilter)?'':'none'});
+  if(injFilter!=='all'){document.querySelectorAll('#injRoot details.grp').forEach(d=>d.open=true);}
+});
 function renderCrowd(){
   document.getElementById('crowdRoot').innerHTML = Object.entries(CROWD).map(([k,rows],i)=>{
     const [cc] = k.split(' ');

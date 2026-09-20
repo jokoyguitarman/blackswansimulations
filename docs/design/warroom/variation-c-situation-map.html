@@ -130,6 +130,9 @@
   .peek .row div>span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}
   .peek .t{font-family:"JetBrains Mono",monospace;font-size:10.5px;font-weight:700;color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,#fff);border-radius:6px;padding:4px 0;text-align:center;width:44px}
   .peek .row.inj{grid-template-columns:44px 1fr}
+  .peek .row.inj div>span{display:flex;align-items:center;gap:6px}
+  .ch{display:inline-flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:800;letter-spacing:.04em;padding:3px 6px;border-radius:5px;color:#fff;line-height:1;flex:none;font-style:normal;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12)}
+  .ch.fb{background:#1877F2}.ch.z{background:#16181C}.ch.mail{background:#2563EB}.ch.news{background:#DC2626}.ch.chat{background:#16A34A}.ch.call{background:#475569}
   .peek .more{display:block;margin-top:8px;font-size:12px;font-weight:700;color:var(--brand)}
   .peek .grp{margin-top:10px;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
   .peek .grp:first-of-type{margin-top:0}
@@ -352,14 +355,14 @@
           </section>
           <section>
             <h5><svg class="ic ic-14"><use href="#i-layers"/></svg> Injects <span class="n">217</span></h5>
-            <div class="row inj"><span class="t">T+02</span><div><b>“He just went down.” — clip reposted</b><span>crowd · Malaysia · unscoped</span></div></div>
-            <div class="row inj"><span class="t">T+06</span><div><b>Mount Elizabeth: is tomorrow's run affected?</b><span>Dr Priya Nair → Fleet Operations</span></div></div>
-            <div class="row inj"><span class="t">T+09</span><div><b>Depot manager calls: drivers refusing the 22:00 run</b><span>Hafiz Zulkifli → Driver Relations</span></div></div>
-            <div class="row inj"><span class="t">T+12</span><div><b>The Star: driver collapses after 19-hour shift</b><span>news · Suresh Menon</span></div></div>
-            <div class="row inj"><span class="t">T+15</span><div><b>Pay slips posted by night-shift drivers</b><span>crowd · key personas</span></div></div>
-            <div class="row inj"><span class="t">T+20</span><div><b>MOHR: statement on the Johor depot</b><span>page statement · statutory</span></div></div>
-            <div class="row inj"><span class="t">T+24</span><div><b>MOM requests cross-border scheduling records</b><span>email · Legal — SL</span></div></div>
-            <div class="row inj"><span class="t">T+30</span><div><b>Tenaganita calls for a boycott</b><span>crowd · Malaysia · unscoped</span></div></div>
+            <div class="row inj"><span class="t">T+02</span><div><b>“He just went down.” — clip reposted</b><span><i class="ch z">Z</i>crowd · Malaysia · unscoped</span></div></div>
+            <div class="row inj"><span class="t">T+06</span><div><b>Mount Elizabeth: is tomorrow's run affected?</b><span><i class="ch mail">Mail</i>Dr Priya Nair → Fleet Operations</span></div></div>
+            <div class="row inj"><span class="t">T+09</span><div><b>Depot manager calls: drivers refusing the 22:00 run</b><span><i class="ch call">Call</i>Hafiz Zulkifli → Driver Relations</span></div></div>
+            <div class="row inj"><span class="t">T+12</span><div><b>The Star: driver collapses after 19-hour shift</b><span><i class="ch news">News</i>Suresh Menon · The Star</span></div></div>
+            <div class="row inj"><span class="t">T+15</span><div><b>Pay slips posted by night-shift drivers</b><span><i class="ch fb">Fakebook</i>crowd · key personas</span></div></div>
+            <div class="row inj"><span class="t">T+20</span><div><b>MOHR: statement on the Johor depot</b><span><i class="ch fb">Fakebook</i>page statement · statutory</span></div></div>
+            <div class="row inj"><span class="t">T+24</span><div><b>MOM requests cross-border scheduling records</b><span><i class="ch mail">Mail</i>Ms Tan Hui Ling → Legal — SL</span></div></div>
+            <div class="row inj"><span class="t">T+30</span><div><b>Tenaganita calls for a boycott</b><span><i class="ch z">Z</i>Glorene Das · unscoped</span></div></div>
             <a class="more" href="scenario-detail.html#injects">All 217 by phase →</a>
           </section>
           <section>
