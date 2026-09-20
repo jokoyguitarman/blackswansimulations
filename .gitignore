@@ -72,3 +72,5 @@ server/data/generated/
 # Demo/marketing capture artifacts (raw video and PNG stills, tens of GB).
 # Only the encoded assets under frontend/public/marketing/ belong in the repo.
 demo-run/output/
+# Cached Supabase sessions (access + refresh tokens) for the demo cohort.
+demo-run/.session-cache.json
