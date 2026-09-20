@@ -3,125 +3,112 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>War Room — Variation C · Situation Map</title>
+<title>War Room — Situation Map</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shared.css" />
 <style>
-  :root{
-    --bg:#FAF8F4;--surface:#FFFFFF;--surface-2:#F4F1EA;--ink:#172033;--muted:#6B7280;
-    --brand:#1E3A5F;--brand-strong:#18304E;--accent:#D97706;--accent-strong:#B45309;
-    --border:#E4DFD4;--border-strong:#D6CFC0;--success:#15803D;--warning:#D97706;--danger:#B91C1C;--deep:#0E1A2B;
-    --org:#1E3A5F;--ai:#0F766E;--pressure:#B45309;--rival:#B91C1C;--intel:#F59E0B;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.45}
-  .note{background:#111827;color:#E5E7EB;padding:10px 22px;font-size:12px}
-  .note b{color:#FCD34D}
-
-  /* dark hero: crisis + footprint */
-  .hero{background:radial-gradient(1200px 400px at 20% -20%,#1E3A5F 0%,var(--deep) 60%);color:#E5E7EB;padding:22px 28px 30px}
-  .hero .top{display:flex;align-items:center;justify-content:space-between;max-width:1380px;margin:0 auto 20px}
+  .hero{color:#E5E7EB;padding:20px 28px 34px;position:relative;overflow:hidden;
+    background:radial-gradient(1100px 420px at 18% -30%,#274A78 0%,var(--deep) 60%),var(--deep)}
+  .hero::after{content:"";position:absolute;inset:0;pointer-events:none;
+    background-image:linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px);background-size:36px 36px;
+    mask-image:linear-gradient(180deg,rgba(0,0,0,.9),transparent)}
+  .hero>*{position:relative;z-index:1}
+  .hero .top{display:flex;align-items:center;justify-content:space-between;max-width:1380px;margin:0 auto 22px}
   .brandmark{display:flex;align-items:center;gap:10px;font-weight:800;color:#fff}
-  .brandmark .dot{width:28px;height:28px;border-radius:8px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:13px}
+  .brandmark .mono{width:30px;height:30px;font-size:12px;background:linear-gradient(150deg,#F08C1C,var(--accent) 60%,var(--accent-strong))}
+  .brandmark .sub{color:rgba(255,255,255,.6);font-weight:600}
   .steps{display:flex;gap:8px}
-  .steps span{font-size:12px;font-weight:700;padding:6px 12px;border-radius:999px;border:1px solid rgba(255,255,255,.18);color:rgba(255,255,255,.7)}
-  .steps span.on{background:#fff;color:var(--deep);border-color:#fff}
-  .credits{font-size:12px;color:rgba(255,255,255,.7)}.credits b{color:#fff}
+  .steps span{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;padding:6px 12px 6px 6px;border-radius:999px;border:1px solid rgba(255,255,255,.16);color:rgba(255,255,255,.65)}
+  .steps span i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;background:rgba(255,255,255,.1)}
+  .steps span.on{background:#fff;color:var(--deep);border-color:#fff;box-shadow:0 8px 20px -10px rgba(0,0,0,.5)}
+  .steps span.on i{background:var(--deep);color:#fff}
+  .credits{font-size:12px;color:rgba(255,255,255,.65);display:flex;gap:14px}.credits b{color:#fff}
   .hero .grid{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1.25fr 1fr;gap:22px}
-  .hero h1{margin:0 0 4px;font-size:22px;font-weight:800;color:#fff}
-  .hero .lead{margin:0 0 14px;color:rgba(255,255,255,.7);font-size:13px}
-  .hero textarea{width:100%;min-height:150px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;padding:14px;font:inherit;font-size:13.5px;resize:vertical}
+  .hero h1{margin:0 0 4px;font-size:24px;font-weight:800;color:#fff;letter-spacing:-.01em}
+  .hero .lead{margin:0 0 14px;color:rgba(255,255,255,.65);font-size:13px}
+  .hero textarea{width:100%;min-height:150px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;padding:14px;font:inherit;font-size:13.5px;line-height:1.55;resize:vertical;transition:border-color .15s,box-shadow .15s,background .15s}
+  .hero textarea:focus{outline:none;border-color:rgba(245,158,11,.7);background:rgba(255,255,255,.08);box-shadow:0 0 0 4px rgba(245,158,11,.15)}
   .hero .attach{display:flex;gap:10px;margin-top:10px}
-  .hero .attach div{flex:1;border:1px dashed rgba(255,255,255,.25);border-radius:10px;padding:9px 12px;font-size:12px;color:rgba(255,255,255,.75)}
-  .radar{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:16px 18px}
-  .radar h3{margin:0;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--intel);display:flex;align-items:center;gap:8px}
-  .radar h3 .live{width:8px;height:8px;border-radius:50%;background:var(--intel);box-shadow:0 0 0 4px rgba(245,158,11,.25)}
-  .radar h5{margin:14px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55)}
+  .hero .attach div{flex:1;display:flex;align-items:center;gap:10px;border:1px dashed rgba(255,255,255,.22);border-radius:11px;padding:9px 12px;font-size:12px;color:rgba(255,255,255,.75);cursor:pointer;transition:border-color .15s,background .15s}
+  .hero .attach div:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.05)}
+  .radar{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:16px 18px;backdrop-filter:blur(6px)}
+  .radar h3{margin:0;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:#F59E0B;display:flex;align-items:center;gap:10px}
+  .radar h3 .livedot{color:#F59E0B}
+  .radar h5{margin:14px 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.5)}
   .rchips{display:flex;flex-wrap:wrap;gap:6px}
-  .rc{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.18);border-radius:999px;padding:5px 10px;font-size:12px;font-weight:600;color:#fff}
-  .rc small{font-size:10px;color:rgba(255,255,255,.6)}
-  .rc.on{background:rgba(245,158,11,.16);border-color:rgba(245,158,11,.6)}
-  .rc.off{opacity:.45;text-decoration:line-through}
-  .radar .foot{margin-top:14px;display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.65)}
-  .radar .foot button{margin-left:auto;border:1px solid rgba(255,255,255,.25);background:transparent;color:#fff;border-radius:8px;padding:6px 10px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .rc{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:5px 10px 5px 7px;font-size:12px;font-weight:600;color:#fff}
+  .rc small{font-size:10px;color:rgba(255,255,255,.55)}
+  .rc .cc{background:rgba(255,255,255,.14)}
+  .rc.on{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.55)}
+  .rc.on .tick{color:#F59E0B}
+  .rc.off{opacity:.4;text-decoration:line-through}
+  .radar .foot{margin-top:14px;display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.6)}
+  .radar .foot .btn{margin-left:auto;border-color:rgba(255,255,255,.25);background:transparent;color:#fff}
+  .radar .foot .btn:hover{background:rgba(255,255,255,.08)}
 
-  /* map body */
-  .wrap{max-width:1380px;margin:-14px auto 60px;padding:0 28px}
-  .map{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:22px;position:relative;
+  .wrap{max-width:1380px;margin:-16px auto 60px;padding:0 28px}
+  .map{background:var(--surface);border:1px solid var(--border);border-radius:20px;padding:22px;position:relative;box-shadow:var(--shadow-md);
        background-image:radial-gradient(var(--border) 1px,transparent 1px);background-size:18px 18px}
-  .lane{display:grid;grid-template-columns:200px 1fr;gap:18px;align-items:start;padding:14px 0}
+  .lane{display:grid;grid-template-columns:210px 1fr;gap:18px;align-items:start;padding:14px 0}
   .lane + .lane{border-top:1px dashed var(--border-strong)}
-  .lanehead{position:sticky;top:12px;background:#fff;border:1px solid color-mix(in srgb,var(--g) 40%,#fff);border-radius:14px;padding:14px;box-shadow:0 6px 18px -12px color-mix(in srgb,var(--g) 60%,transparent)}
-  .lanehead .tile{width:38px;height:38px;border-radius:11px;background:var(--g);color:#fff;display:grid;place-items:center;font-size:17px;margin-bottom:10px}
+  .lanehead{position:sticky;top:12px;background:#fff;border:1px solid color-mix(in srgb,var(--g) 35%,#fff);border-radius:16px;padding:14px;box-shadow:0 10px 24px -18px color-mix(in srgb,var(--g) 70%,transparent)}
+  .lanehead .tile{width:40px;height:40px;font-size:19px;margin-bottom:10px}
   .lanehead h2{margin:0;font-size:15px;font-weight:800;color:var(--g)}
   .lanehead p{margin:4px 0 10px;font-size:12px;color:var(--muted)}
   .lanehead .cnt{font-size:11px;font-weight:800;color:var(--g);background:color-mix(in srgb,var(--g) 9%,#fff);padding:3px 8px;border-radius:999px;display:inline-block}
-  .lanehead .btn{margin-top:10px;width:100%}
-  .btn{border:1px solid var(--border-strong);background:#fff;border-radius:9px;padding:7px 12px;font:inherit;font-size:12px;font-weight:700;color:var(--brand);cursor:pointer}
-  .btn.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
-  .btn.ghost{border-color:transparent;color:var(--muted)}
-  .btn.danger{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 35%,#fff)}
-  .btn.sm{padding:5px 9px;font-size:11px}
-  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+  .lanehead > .btn{margin-top:10px;width:100%}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:14px}
 
-  /* entity cards */
-  .node{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px;position:relative;box-shadow:0 1px 0 var(--border)}
-  .node.hq{border:2px solid var(--org)}
-  .node.ai{border-color:var(--ai)}
+  .node{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;position:relative;box-shadow:var(--shadow-sm)}
+  .node.hq{border:2px solid var(--f-org)}
+  .node.ai{border-color:var(--f-ai)}
   .node .kicker{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--g);display:flex;align-items:center;gap:6px;margin-bottom:8px}
-  .node .kicker .k{width:8px;height:8px;border-radius:2px;background:var(--g)}
   .node .id{display:flex;gap:10px;align-items:center;margin-bottom:10px}
-  .node .lg{width:40px;height:40px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border);display:grid;place-items:center;font-weight:800;color:var(--g)}
+  .node .mono,.node .tile{width:42px;height:42px;font-size:13px}
+  .node .tile{font-size:19px}
   .node .nm{font-weight:800}
-  .node .mt{font-size:12px;color:var(--muted)}
+  .node .mt{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;margin-top:2px}
   .node .acts{position:absolute;top:10px;right:10px;display:flex;gap:4px}
   .roster{display:flex;flex-wrap:wrap;gap:6px}
-  .tm{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 8px;border-radius:8px;background:var(--surface-2);border:1px solid var(--border)}
-  .tm.voice{background:color-mix(in srgb,var(--accent) 10%,#fff);border-color:color-mix(in srgb,var(--accent) 45%,#fff)}
-  .tm.custom{border-style:dashed}
-  .tm.add{background:#fff;color:var(--org);border-style:dashed}
   .node .foot{margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px}
-  .sw{width:30px;height:18px;border-radius:999px;background:var(--border-strong);position:relative;display:inline-block}
-  .sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff}
-  .sw.on{background:var(--ai)}.sw.on::after{left:14px}
-  .reason{font-size:11px;color:var(--ai);background:color-mix(in srgb,var(--ai) 8%,#fff);border-radius:8px;padding:6px 8px;margin-bottom:8px}
+  .reason{display:flex;gap:8px;font-size:11.5px;color:var(--f-ai);background:color-mix(in srgb,var(--f-ai) 8%,#fff);border-radius:9px;padding:7px 9px;margin-bottom:8px}
   .node .wants{margin-top:8px;font-size:12px;border-left:3px solid var(--g);padding-left:10px}
-  .node .reg{font-size:11px;font-weight:800;color:var(--g);text-transform:uppercase;letter-spacing:.08em}
-  .add{border:1.5px dashed var(--border-strong);border-radius:14px;display:grid;place-items:center;min-height:150px;color:var(--g);font-weight:700;background:rgba(255,255,255,.7);text-align:center;padding:14px}
+  .node .reg{font-size:10.5px;font-weight:800;color:var(--g);text-transform:uppercase;letter-spacing:.08em}
+  .add{border:1.5px dashed var(--border-strong);border-radius:16px;display:grid;place-items:center;min-height:150px;color:var(--g);font-weight:700;background:rgba(255,255,255,.75);text-align:center;padding:14px;cursor:pointer;transition:border-color .15s,background .15s}
+  .add:hover{border-color:var(--g);background:#fff}
   .add small{display:block;color:var(--muted);font-weight:500;margin-top:4px;font-size:11px}
   .toolbar{display:flex;flex-wrap:wrap;gap:6px}
-  .toolbar .btn{border-style:dashed}
 
-  .ctabar{margin-top:18px;display:flex;align-items:center;gap:16px;background:var(--deep);color:#fff;border-radius:16px;padding:14px 18px}
-  .ctabar .s{font-size:12px;color:rgba(255,255,255,.7)}.ctabar .s b{display:block;font-size:16px;color:#fff}
+  .ctabar{margin-top:18px;display:flex;align-items:center;gap:18px;background:var(--deep);color:#fff;border-radius:18px;padding:14px 18px;box-shadow:var(--shadow-lg)}
+  .ctabar .s{font-size:11px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.06em;font-weight:700}.ctabar .s b{display:block;font-size:18px;color:#fff;letter-spacing:0;font-variant-numeric:tabular-nums}
   .ctabar .grow{flex:1}
-  .ctabar .btn.primary{background:var(--accent);border-color:var(--accent);padding:11px 18px}
-  .ctabar .btn.ghost{color:rgba(255,255,255,.75)}
+  .ctabar .btn.ghost{color:rgba(255,255,255,.75)}.ctabar .btn.ghost:hover{background:rgba(255,255,255,.08);color:#fff}
 
-  /* poster cards */
   .library{margin-top:44px}
   .library h3{font-size:18px;font-weight:800;margin:0 0 4px}
   .library p.sub{color:var(--muted);margin:0 0 16px;font-size:13px}
   .posters{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
-  .poster{background:var(--surface);border:1px solid var(--border);border-radius:18px;overflow:hidden;display:flex;flex-direction:column}
-  .poster .band{padding:18px 18px 16px;color:#fff;background:linear-gradient(135deg,var(--g),color-mix(in srgb,var(--g) 60%,#000))}
-  .poster .band .row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-  .poster .mode{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.85}
-  .poster .status{margin-left:auto;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.18)}
-  .poster .status.live{background:#15803D}
-  .poster h4{margin:0;font-size:17px;font-weight:800;line-height:1.25}
-  .poster .desc{margin:6px 0 0;font-size:12.5px;opacity:.85;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .poster{background:var(--surface);border:1px solid var(--border);border-radius:20px;overflow:hidden;display:flex;flex-direction:column;box-shadow:var(--shadow-sm)}
+  .poster .band{padding:18px 18px 16px;color:#fff;position:relative;overflow:hidden;background:linear-gradient(140deg,color-mix(in srgb,var(--g) 85%,#fff),var(--g) 45%,color-mix(in srgb,var(--g) 65%,#000))}
+  .poster .band::after{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;border-radius:50%;background:rgba(255,255,255,.08)}
+  .poster .band .row{display:flex;align-items:center;gap:8px;margin-bottom:10px;position:relative}
+  .poster .mode{display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;opacity:.9}
+  .poster .status{margin-left:auto;display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;padding:3px 8px;border-radius:999px;background:rgba(255,255,255,.18)}
+  .poster .status.live{background:rgba(0,0,0,.25)}
+  .poster h4{margin:0;font-size:17px;font-weight:800;line-height:1.25;position:relative}
+  .poster .desc{margin:6px 0 0;font-size:12.5px;opacity:.85;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;position:relative}
   .poster .body{padding:14px 18px;display:flex;flex-direction:column;gap:12px;flex:1}
   .cast{display:flex;flex-wrap:wrap;gap:6px}
-  .cast .o{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:999px;padding:3px 8px}
-  .cast .o.hq{border-color:var(--org);color:var(--org)}.cast .o.ai{border-color:var(--ai);color:var(--ai)}.cast .o.pr{border-color:color-mix(in srgb,var(--pressure) 45%,#fff);color:var(--pressure)}.cast .o.rv{border-color:color-mix(in srgb,var(--rival) 45%,#fff);color:var(--rival)}
+  .cast .o{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;border:1px solid var(--border);border-radius:999px;padding:3px 8px 3px 4px}
+  .cast .o.hq{border-color:var(--f-org);color:var(--f-org)}.cast .o.ai{border-color:var(--f-ai);color:var(--f-ai)}.cast .o.pr{border-color:color-mix(in srgb,var(--f-pressure) 45%,#fff);color:var(--f-pressure)}.cast .o.rv{border-color:color-mix(in srgb,var(--f-rival) 45%,#fff);color:var(--f-rival)}
   .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
   .kpis div{text-align:center;background:var(--surface-2);border-radius:10px;padding:8px 4px}
-  .kpis b{display:block;font-size:15px}
+  .kpis b{display:block;font-size:15px;font-variant-numeric:tabular-nums}
   .kpis span{font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
-  .poster .meta{font-size:11px;color:var(--muted)}
+  .poster .meta{font-size:11px;color:var(--muted);display:flex;gap:6px;align-items:center}
   .poster .ft{margin-top:auto;display:flex;align-items:center;gap:6px;padding:12px 18px;border-top:1px solid var(--border);background:var(--surface-2)}
-  .lock{font-size:11px;font-weight:700;color:var(--success);flex:1}
-  .lock.locked{color:var(--accent-strong)}
+  .lock{font-size:11px;font-weight:700;color:var(--success);flex:1;display:inline-flex;align-items:center;gap:6px}
+  .lock.locked{color:var(--accent-strong)}.lock.draft{color:var(--muted)}
 
   @media (max-width:1100px){
     .hero .grid{grid-template-columns:1fr}
@@ -129,166 +116,207 @@
     .lanehead{position:static;display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center}
     .lanehead .tile{margin:0}
     .lanehead p{margin:2px 0 0}
-    .lanehead .btn,.lanehead .toolbar{grid-column:1/-1;margin-top:0}
+    .lanehead > .btn,.lanehead .toolbar{grid-column:1/-1;margin-top:0}
     .posters{grid-template-columns:repeat(2,minmax(0,1fr))}
   }
-  @media (max-width:760px){
-    .posters{grid-template-columns:1fr}
-    .ctabar{flex-wrap:wrap}
-  }
+  @media (max-width:760px){.posters{grid-template-columns:1fr}.ctabar{flex-wrap:wrap}}
 </style>
 </head>
 <body>
-<div class="note"><b>Variation C · Situation Map</b> A dark command band holds the brief and a live "radar" of what the War Room detected; below it the cast is laid out on a dotted map in three lanes — your side (navy), pressure (amber), rivals (red) — each lane with a sticky head that names it. Scenario cards become posters with a gradient band by type.</div>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16"/><path d="M14 9h5a1 1 0 0 1 1 1v11"/><path d="M8 8h2M8 12h2M8 16h2M17 13h1M17 17h1"/><path d="M2 21h20"/></symbol>
+  <symbol id="i-office" viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V8l7-4 7 4v13"/><path d="M9 21v-5h6v5"/><path d="M9 11.5h.01M15 11.5h.01M12 8.5h.01"/></symbol>
+  <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6l-5 4H4a1 1 0 0 0-1 1z"/><path d="M15 9.5a3.5 3.5 0 0 1 0 5M17.5 7a7 7 0 0 1 0 10"/></symbol>
+  <symbol id="i-scale" viewBox="0 0 24 24"><path d="M12 3v18M6 21h12M4 7h16"/><path d="M7 7l-3 7a3 3 0 0 0 6 0L7 7zM17 7l-3 7a3 3 0 0 0 6 0l-3-7z"/></symbol>
+  <symbol id="i-tie" viewBox="0 0 24 24"><path d="M9 3h6l-1 4 2 10-4 4-4-4 2-10-1-4z"/></symbol>
+  <symbol id="i-truck" viewBox="0 0 24 24"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+  <symbol id="i-handshake" viewBox="0 0 24 24"><path d="M2 10l4-4 4 3 3-1 5 3 4-3"/><path d="M2 10l4 4 3 3 3 2 3-2 3-3 4-4"/><path d="M9 13l2 2M12 11l2 2"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M15 20a4.5 4.5 0 0 1 6 0"/></symbol>
+  <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M9.5 21V10M14.5 21V10M19 21V10"/><path d="M2 10l10-6 10 6z"/></symbol>
+  <symbol id="i-fist" viewBox="0 0 24 24"><path d="M7 12V8a2 2 0 1 1 4 0v3"/><path d="M11 11V6a2 2 0 1 1 4 0v5"/><path d="M15 11V8a2 2 0 1 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-2a2 2 0 1 1 4 0"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M4 20C6 10 12 5 20 4c-1 8-6 14-16 16z"/><path d="M4 20l8-8"/></symbol>
+  <symbol id="i-community" viewBox="0 0 24 24"><circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="10" r="2"/><circle cx="19" cy="10" r="2"/><path d="M8 21a4 4 0 0 1 8 0M2 18a3 3 0 0 1 5-2M22 18a3 3 0 0 0-5-2"/></symbol>
+  <symbol id="i-podium" viewBox="0 0 24 24"><path d="M6 10h12l-1 11H7L6 10z"/><path d="M4 10h16M12 3v7M9 6l3-3 3 3"/></symbol>
+  <symbol id="i-swords" viewBox="0 0 24 24"><path d="M3 3l8 8M14 14l3 3M3 21l6-6M21 3l-8 8M10 14l-3 3M21 21l-6-6"/><path d="M6 15l3 3M15 6l3 3"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/><path d="M12 12l6-6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 16l-5-5-9 8"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.5-2"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18h2"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M13 7l4 4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></symbol>
+</svg>
+
+<div class="note"><b>DESIGN STUDY C</b> Situation Map — dark command band with the brief and a live radar; the cast on a dotted map in three lanes; posters for the library. Remove this strip before build.</div>
 
 <header class="hero">
   <div class="top">
-    <div class="brandmark"><span class="dot">BS</span> War Room · Corporate crisis</div>
-    <div class="steps"><span class="on">1 · Setup</span><span>2 · Build</span><span>3 · Review &amp; compile</span></div>
-    <div class="credits">Scenario credits <b>3</b> · Session credits <b>6</b></div>
+    <div class="brandmark"><span class="mono">BS</span> War Room <span class="sub">· Corporate crisis</span></div>
+    <div class="steps"><span class="on"><i>1</i> Setup</span><span><i>2</i> Build</span><span><i>3</i> Review &amp; compile</span></div>
+    <div class="credits"><span><svg class="ic ic-14"><use href="#i-layers"/></svg> Scenario credits <b>3</b></span><span><svg class="ic ic-14"><use href="#i-play"/></svg> Session credits <b>6</b></span></div>
   </div>
   <div class="grid">
-    <div>
+    <div class="reveal" style="--i:0">
       <h1>What happened?</h1>
-      <p class="lead">Describe the crisis in plain language. Countries, offices and pressure groups are read from it and appear on the radar to the right.</p>
+      <p class="lead">Describe the crisis in plain language. Countries, offices and pressure groups are read from it and appear on the radar.</p>
       <textarea>Sigma Logistics, a regional freight and last-mile company headquartered in Singapore with a large depot in Johor Bahru, is hit by a viral video of a driver collapsing after a 19-hour shift. Malaysian drivers post pay slips showing unpaid overtime; a Singapore hospital reports a spoiled cold-chain shipment; a Malaysian labour NGO calls for a boycott. MOHR announces an inspection; MOM asks for scheduling records…</textarea>
-      <div class="attach"><div>📄 Attach a document (optional)</div><div>🖼️ Brand logo (optional)</div></div>
+      <div class="attach"><div><svg class="ic ic-16"><use href="#i-doc"/></svg> Attach a document (optional)</div><div><svg class="ic ic-16"><use href="#i-image"/></svg> Brand logo (optional)</div></div>
     </div>
-    <aside class="radar">
-      <h3><span class="live"></span> Detected footprint</h3>
+    <aside class="radar reveal" style="--i:1">
+      <h3><span class="livedot"></span> Detected footprint</h3>
       <h5>Countries</h5>
-      <div class="rchips"><span class="rc">🇸🇬 Singapore <small>decision centre</small></span><span class="rc">🇲🇾 Malaysia <small>incident location</small></span></div>
+      <div class="rchips"><span class="rc"><span class="cc">SG</span> Singapore <small>decision centre</small></span><span class="rc"><span class="cc">MY</span> Malaysia <small>incident location</small></span></div>
       <h5>Signals</h5>
-      <div class="rchips"><span class="rc on">Labour dispute</span><span class="rc on">Product safety</span></div>
-      <h5>Proposed — placed on the map below</h5>
+      <div class="rchips"><span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Labour dispute</span><span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Product safety</span></div>
+      <h5>Proposed — placed on the map</h5>
       <div class="rchips">
-        <span class="rc on">🏢 Sigma Logistics Malaysia <small>AI office</small></span>
-        <span class="rc on">🏛️ MOHR <small>regulator</small></span>
-        <span class="rc on">🏛️ MOM <small>regulator</small></span>
-        <span class="rc on">✊ Transport Workers Union <small>union</small></span>
-        <span class="rc off">🌱 Tenaganita <small>NGO</small></span>
+        <span class="rc on reveal" style="--i:2"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Sigma Logistics Malaysia <small>AI office</small></span>
+        <span class="rc on reveal" style="--i:3"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> MOHR <small>regulator</small></span>
+        <span class="rc on reveal" style="--i:4"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> MOM <small>regulator</small></span>
+        <span class="rc on reveal" style="--i:5"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Transport Workers Union <small>union</small></span>
+        <span class="rc off reveal" style="--i:6">Tenaganita <small>NGO</small></span>
       </div>
-      <div class="foot">Malaysia has no human players → its content is visible to everyone as spillover. <button>Re-detect</button></div>
+      <div class="foot">Malaysia has no human players — its content is visible to everyone as spillover. <button class="btn sm">Re-detect</button></div>
     </aside>
   </div>
 </header>
 
 <div class="wrap">
   <div class="map">
-    <!-- LANE: YOUR SIDE -->
-    <div class="lane" style="--g:var(--org)">
-      <div class="lanehead">
-        <div class="tile">🏢</div>
+    <div class="lane" style="--g:var(--f-org)">
+      <div class="lanehead reveal" style="--i:2">
+        <div class="tile"><svg class="ic"><use href="#i-building"/></svg></div>
         <h2>Your side</h2>
-        <p>HQ and every office or partner agency responding with you. Each gets a page, teams and contacts.</p>
-        <span class="cnt">2 of 6 organisations · 7 teams</span>
-        <button class="btn">+ Add organisation</button>
+        <p>HQ and every office or partner agency responding with you.</p>
+        <span class="cnt">2 of 6 · 7 teams</span>
+        <button class="btn sm"><svg class="ic ic-14"><use href="#i-plus"/></svg> Add organisation</button>
       </div>
       <div class="cards">
-        <div class="node hq">
-          <div class="acts"><button class="btn sm ghost">Edit</button></div>
-          <div class="kicker"><span class="k"></span> Headquarters · players</div>
-          <div class="id"><div class="lg">SL</div><div><div class="nm">Sigma Logistics</div><div class="mt">🇸🇬 Singapore · Company · “SL”</div></div></div>
+        <div class="node hq lift reveal" style="--i:3">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-building"/></svg> Headquarters · players</div>
+          <div class="id"><div class="mono">SL</div><div><div class="nm">Sigma Logistics</div><div class="mt"><span class="cc">SG</span> Singapore · Company · “SL”</div></div></div>
           <div class="roster">
-            <span class="tm voice">📣 Communications · voice</span><span class="tm">⚖️ Legal</span><span class="tm">👔 Executive</span><span class="tm custom">🚚 Fleet Operations</span><span class="tm add">+ team</span>
+            <span class="tm voice"><span class="av"><svg class="ic ic-12"><use href="#i-megaphone"/></svg></span> Communications <span class="tag">voice</span></span>
+            <span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-scale"/></svg></span> Legal</span>
+            <span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-tie"/></svg></span> Executive</span>
+            <span class="tm custom"><span class="av"><svg class="ic ic-12"><use href="#i-truck"/></svg></span> Fleet Operations</span>
+            <span class="tm add"><svg class="ic ic-12"><use href="#i-plus"/></svg> team</span>
           </div>
           <div class="foot">4 of 6 teams · scored per team</div>
         </div>
-        <div class="node ai" style="--g:var(--ai)">
-          <div class="acts"><button class="btn sm ghost">Edit</button><button class="btn sm danger">×</button></div>
-          <div class="kicker"><span class="k"></span> Office · AI-operated</div>
-          <div class="id"><div class="lg">MY</div><div><div class="nm">Sigma Logistics Malaysia</div><div class="mt">🇲🇾 Johor Bahru · Office · “SLM”</div></div></div>
-          <div class="reason">Suggested from your description — the depot's operating company.</div>
-          <div class="roster"><span class="tm voice">📣 Communications</span><span class="tm">🤝 Stakeholder Eng.</span><span class="tm custom">🧑‍🔧 Driver Relations</span></div>
+        <div class="node ai lift reveal" style="--g:var(--f-ai);--i:4">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-sparkle"/></svg> Office · AI-operated</div>
+          <div class="id"><div class="mono ai">MY</div><div><div class="nm">Sigma Logistics Malaysia</div><div class="mt"><span class="cc">MY</span> Johor Bahru · Office · “SLM”</div></div></div>
+          <div class="reason"><svg class="ic ic-14" style="flex:none"><use href="#i-radar"/></svg> Suggested from your description — the depot's operating company.</div>
+          <div class="roster"><span class="tm voice"><span class="av"><svg class="ic ic-12"><use href="#i-megaphone"/></svg></span> Communications</span><span class="tm"><span class="av"><svg class="ic ic-12"><use href="#i-handshake"/></svg></span> Stakeholder Eng.</span><span class="tm custom"><span class="av"><svg class="ic ic-12"><use href="#i-users"/></svg></span> Driver Relations</span></div>
           <div class="foot"><span class="sw on"></span> Operated by AI — page follows HQ; staff answer as characters</div>
         </div>
-        <div class="add">+ Office, subsidiary or partner agency<small>Own page, teams and contacts in its own country</small></div>
+        <div class="add reveal" style="--i:5"><div><svg class="ic ic-24"><use href="#i-office"/></svg><div style="margin-top:8px">Office, subsidiary or partner agency</div><small>Own page, teams and contacts in its own country</small></div></div>
       </div>
     </div>
 
-    <!-- LANE: PRESSURE -->
-    <div class="lane" style="--g:var(--pressure)">
-      <div class="lanehead">
-        <div class="tile">✊</div>
+    <div class="lane" style="--g:var(--f-pressure)">
+      <div class="lanehead reveal" style="--i:3">
+        <div class="tile"><svg class="ic"><use href="#i-fist"/></svg></div>
         <h2>Pressure</h2>
-        <p>Regulators, unions, NGOs, communities, politicians. AI pages with one spokesperson each — engage them and they stand down.</p>
+        <p>Regulators, unions, NGOs, communities, politicians. One spokesperson each — engage them and they stand down.</p>
         <span class="cnt">2 of 6</span>
-        <div class="toolbar" style="margin-top:10px"><button class="btn sm">+ Regulator</button><button class="btn sm">+ Union</button><button class="btn sm">+ NGO</button><button class="btn sm">+ Community</button><button class="btn sm">+ Political</button></div>
+        <div class="toolbar" style="margin-top:10px">
+          <button class="btn sm dashed icon" title="Regulator"><svg class="ic ic-14"><use href="#i-landmark"/></svg></button>
+          <button class="btn sm dashed icon" title="Union"><svg class="ic ic-14"><use href="#i-fist"/></svg></button>
+          <button class="btn sm dashed icon" title="NGO"><svg class="ic ic-14"><use href="#i-leaf"/></svg></button>
+          <button class="btn sm dashed icon" title="Community group"><svg class="ic ic-14"><use href="#i-community"/></svg></button>
+          <button class="btn sm dashed icon" title="Political actor"><svg class="ic ic-14"><use href="#i-podium"/></svg></button>
+        </div>
       </div>
       <div class="cards">
-        <div class="node">
-          <div class="acts"><button class="btn sm ghost">Edit</button><button class="btn sm danger">×</button></div>
-          <div class="kicker"><span class="k"></span> Regulator · <span class="reg">statutory</span></div>
-          <div class="id"><div class="lg">🏛️</div><div><div class="nm">Ministry of Human Resources Malaysia</div><div class="mt">🇲🇾 Putrajaya</div></div></div>
+        <div class="node lift reveal" style="--i:4">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Regulator · <span class="reg">statutory</span></div>
+          <div class="id"><div class="tile"><svg class="ic"><use href="#i-landmark"/></svg></div><div><div class="nm">Ministry of Human Resources Malaysia</div><div class="mt"><span class="cc light">MY</span> Putrajaya</div></div></div>
           <div class="wants"><b>Wants:</b> scheduling records and evidence of statutory rest periods within 48 hours.</div>
         </div>
-        <div class="node">
-          <div class="acts"><button class="btn sm ghost">Edit</button><button class="btn sm danger">×</button></div>
-          <div class="kicker"><span class="k"></span> Union · <span class="reg">advocacy</span></div>
-          <div class="id"><div class="lg">✊</div><div><div class="nm">Transport Workers Union of Malaysia</div><div class="mt">🇲🇾 Johor Bahru</div></div></div>
+        <div class="node lift reveal" style="--i:5">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Union · <span class="reg">advocacy</span></div>
+          <div class="id"><div class="tile"><svg class="ic"><use href="#i-fist"/></svg></div><div><div class="nm">Transport Workers Union of Malaysia</div><div class="mt"><span class="cc light">MY</span> Johor Bahru</div></div></div>
           <div class="wants"><b>Wants:</b> consultation before any roster change and payment of all outstanding overtime.</div>
         </div>
-        <div class="add">+ Pressure group<small>Or accept a proposal from the radar</small></div>
+        <div class="add reveal" style="--i:6"><div><svg class="ic ic-24"><use href="#i-plus"/></svg><div style="margin-top:8px">Pressure group</div><small>Or accept a proposal from the radar</small></div></div>
       </div>
     </div>
 
-    <!-- LANE: RIVALS -->
-    <div class="lane" style="--g:var(--rival)">
-      <div class="lanehead">
-        <div class="tile">⚔️</div>
+    <div class="lane" style="--g:var(--f-rival)">
+      <div class="lanehead reveal" style="--i:4">
+        <div class="tile"><svg class="ic"><use href="#i-swords"/></svg></div>
         <h2>Rivals</h2>
         <p>Competitor pages the AI drives against you. Leave empty and one is invented.</p>
         <span class="cnt">1 named · auto-rival on</span>
       </div>
       <div class="cards">
-        <div class="node">
-          <div class="acts"><button class="btn sm ghost">Edit</button><button class="btn sm danger">×</button></div>
-          <div class="kicker"><span class="k"></span> Competitor</div>
-          <div class="id"><div class="lg">🏢</div><div><div class="nm">Swift Freight</div><div class="mt">🇲🇾 Malaysia · @SwiftFreightMY · @swift_freight</div></div></div>
+        <div class="node lift reveal" style="--i:5">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Competitor</div>
+          <div class="id"><div class="mono rv">SF</div><div><div class="nm">Swift Freight</div><div class="mt"><span class="cc light">MY</span> Malaysia · @SwiftFreightMY · @swift_freight</div></div></div>
         </div>
-        <div class="add">+ Rival page<small>Name, country, handles</small></div>
+        <div class="add reveal" style="--i:6"><div><svg class="ic ic-24"><use href="#i-plus"/></svg><div style="margin-top:8px">Rival page</div><small>Name, country, handles</small></div></div>
       </div>
     </div>
   </div>
 
-  <div class="ctabar">
+  <div class="ctabar reveal" style="--i:6">
     <div class="s"><b>2</b>organisations</div><div class="s"><b>7</b>teams</div><div class="s"><b>2</b>countries</div><div class="s"><b>2</b>pressure</div><div class="s"><b>1</b>rival</div>
     <div class="grow"></div>
-    <button class="btn ghost">Save draft</button>
-    <button class="btn primary">Continue → Build the scenario</button>
+    <button class="btn ghost"><svg class="ic ic-14"><use href="#i-save"/></svg> Save draft</button>
+    <button class="btn accent" style="padding:11px 18px">Build the scenario <svg class="ic ic-14"><use href="#i-arrow"/></svg></button>
   </div>
 
-  <!-- POSTER CARDS -->
   <section class="library">
-    <h3>Scenario card — redesigned as a poster</h3>
-    <p class="sub">A gradient band by type carries the title and status; the body shows the cast, the numbers and the lock state; actions sit in the footer.</p>
+    <h3>Scenario card — poster</h3>
+    <p class="sub">A gradient band by type carries the title and status; the body shows the cast, the numbers and the lock state.</p>
     <div class="posters">
-      <article class="poster" style="--g:var(--accent)">
-        <div class="band"><div class="row"><span class="mode">📱 Corporate crisis</span><span class="status">Active</span></div><h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4><p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis.</p></div>
+      <article class="poster lift reveal" style="--g:var(--accent);--i:1">
+        <div class="band"><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status"><svg class="ic ic-12"><use href="#i-check"/></svg> Active</span></div><h4>19 Hours at the Border: Sigma Logistics’ Johor Night-Run Crisis</h4><p class="desc">A viral video of a driver collapsing after a 19-hour shift turns a cross-border logistics operation into a labour, safety and cold-chain crisis.</p></div>
         <div class="body">
-          <div class="cast"><span class="o hq">🇸🇬 Sigma Logistics · HQ</span><span class="o ai">🇲🇾 Sigma Logistics MY · AI</span><span class="o pr">🏛️ MOHR</span><span class="o pr">✊ TWUM</span><span class="o rv">🏢 Swift Freight</span></div>
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> Sigma Logistics · HQ</span><span class="o ai"><span class="cc">MY</span> Sigma Logistics MY · AI</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> MOHR</span><span class="o pr"><svg class="ic ic-12"><use href="#i-fist"/></svg> TWUM</span><span class="o rv"><svg class="ic ic-12"><use href="#i-swords"/></svg> Swift Freight</span></div>
           <div class="kpis"><div><b>7</b><span>teams</span></div><div><b>85</b><span>contacts</span></div><div><b>217</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
-          <div class="meta">Compiled today 12:46 · 4 objectives · Executive decisions: organic</div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled today 12:46 · 4 objectives</div>
         </div>
-        <div class="ft"><span class="lock">🔓 Editable</span><button class="btn ghost">Preview</button><button class="btn">Edit</button><button class="btn primary">Launch</button></div>
+        <div class="ft"><span class="lock"><svg class="ic ic-14"><use href="#i-unlock"/></svg> Editable</span><button class="btn ghost sm"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Edit</button><button class="btn primary sm"><svg class="ic ic-14"><use href="#i-play"/></svg> Launch</button></div>
       </article>
-      <article class="poster" style="--g:var(--accent)">
-        <div class="band"><div class="row"><span class="mode">📱 Corporate crisis</span><span class="status live">Live · T+23</span></div><h4>VacuumGate SEA — Dyson Singapore</h4><p class="desc">Allegations of forced overtime at a Johor contract manufacturer land on Dyson's Singapore HQ while a ministry opens an inspection.</p></div>
+      <article class="poster lift reveal" style="--g:var(--accent);--i:2">
+        <div class="band"><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-phone"/></svg> Corporate crisis</span><span class="status live"><span class="livedot"></span> Live · T+23</span></div><h4>VacuumGate SEA — Dyson Singapore</h4><p class="desc">Allegations of forced overtime at a Johor contract manufacturer land on Dyson's Singapore HQ while a ministry opens an inspection.</p></div>
         <div class="body">
-          <div class="cast"><span class="o hq">🇸🇬 Dyson · HQ</span><span class="o pr">🏛️ MOHR</span><span class="o pr">🌱 Tenaganita</span></div>
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> Dyson · HQ</span><span class="o pr"><svg class="ic ic-12"><use href="#i-landmark"/></svg> MOHR</span><span class="o pr"><svg class="ic ic-12"><use href="#i-leaf"/></svg> Tenaganita</span></div>
           <div class="kpis"><div><b>4</b><span>teams</span></div><div><b>47</b><span>contacts</span></div><div><b>146</b><span>injects</span></div><div><b>60</b><span>min</span></div></div>
-          <div class="meta">Compiled 18 Sep · 1 session in progress</div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Compiled 18 Sep · 1 session in progress</div>
         </div>
-        <div class="ft"><span class="lock locked">🔒 Locked — session live</span><button class="btn ghost">Preview</button><button class="btn primary">Open session</button></div>
+        <div class="ft"><span class="lock locked"><svg class="ic ic-14"><use href="#i-lock"/></svg> Locked — session live</span><button class="btn ghost sm"><svg class="ic ic-14"><use href="#i-eye"/></svg> Preview</button><button class="btn primary sm">Open session <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
       </article>
-      <article class="poster" style="--g:var(--brand)">
-        <div class="band"><div class="row"><span class="mode">🗺️ Field operations</span><span class="status">Draft</span></div><h4>Marina Bay Sands — IED at Convention Hall B</h4><p class="desc">Improvised device discovered during a trade expo; evacuation, triage and cordon management across three response teams.</p></div>
+      <article class="poster lift reveal" style="--g:var(--brand);--i:3">
+        <div class="band"><div class="row"><span class="mode"><svg class="ic ic-12"><use href="#i-map"/></svg> Field operations</span><span class="status">Draft</span></div><h4>Marina Bay Sands — IED at Convention Hall B</h4><p class="desc">Improvised device discovered during a trade expo; evacuation, triage and cordon management across three response teams.</p></div>
         <div class="body">
-          <div class="cast"><span class="o hq">🇸🇬 SCDF · SPF · SMRT</span></div>
+          <div class="cast"><span class="o hq"><span class="cc">SG</span> SCDF · SPF · SMRT</span></div>
           <div class="kpis"><div><b>3</b><span>teams</span></div><div><b>12</b><span>hazards</span></div><div><b>38</b><span>injects</span></div><div><b>90</b><span>min</span></div></div>
-          <div class="meta">Not compiled yet</div>
+          <div class="meta"><svg class="ic ic-12"><use href="#i-clock"/></svg> Not compiled yet</div>
         </div>
-        <div class="ft"><span class="lock" style="color:var(--muted)">◌ Draft</span><button class="btn ghost">Delete</button><button class="btn primary">Resume</button></div>
+        <div class="ft"><span class="lock draft">Draft</span><button class="btn ghost sm"><svg class="ic ic-14"><use href="#i-trash"/></svg> Delete</button><button class="btn primary sm">Resume <svg class="ic ic-14"><use href="#i-arrow"/></svg></button></div>
       </article>
     </div>
   </section>
