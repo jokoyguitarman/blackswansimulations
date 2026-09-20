@@ -676,14 +676,30 @@ async function routeToGroupChat(
     channelIds = [String(channel.id)];
   }
 
+  // The NPC speaks as itself (migration 199: sender_id may be null when a stakeholder sender is
+  // set). A stakeholder-authored inject carries its id; other NPC voices get a stable `npc:` pseudo
+  // id derived from the display name so the client can key an avatar. Never attribute NPC lines to
+  // the trainer's account (docs/session-bugfix-spec-2026-09-20.md §1).
+  const senderName = (config.sender_name || config.author_display_name || 'NPC').trim();
+  const senderStakeholderId =
+    config.stakeholder_id ||
+    `npc:${
+      senderName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'npc'
+    }`;
+
   for (const channelId of channelIds) {
     const { data: message, error } = await supabaseAdmin
       .from('chat_messages')
       .insert({
         channel_id: channelId,
         session_id: sessionId,
-        sender_id: trainer.trainer_id,
-        content: `[${config.sender_name || 'NPC'}] ${inject.content}`,
+        sender_id: null,
+        sender_stakeholder_id: senderStakeholderId,
+        sender_display_name: senderName,
+        content: inject.content,
         type: 'text',
       })
       .select()

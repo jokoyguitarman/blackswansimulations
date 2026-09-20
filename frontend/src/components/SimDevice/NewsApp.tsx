@@ -1,5 +1,7 @@
-import { useState, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useState, useEffect, useRef } from 'react';
+import { useParams, useSearchParams } from 'react-router-dom';
+import { readAppIntent } from '../../lib/appIntents';
+import { useDeviceNav } from '../../lib/deviceNav';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
@@ -53,8 +55,13 @@ function getOutletColor(name: string): string {
 
 export default function NewsApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
+  const deviceNav = useDeviceNav('news');
   const [searchParams] = useSearchParams();
+  // Desktop windows receive the "open this article" intent parked by lib/appIntents (the phone
+  // uses ?article=). Read once on mount; the shell remounts the window on a new intent.
+  const intentArticleRef = useRef<string | null>(
+    readAppIntent('news', window.location.search)?.article ?? null,
+  );
   const { isTrainer } = useRoleVisibility();
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<NewsArticle | null>(null);
@@ -77,12 +84,14 @@ export default function NewsApp() {
   }, [sessionId]);
 
   useEffect(() => {
-    const articleIdParam = searchParams.get('article');
+    const articleIdParam = searchParams.get('article') ?? intentArticleRef.current;
     if (articleIdParam && articles.length > 0) {
       const target = articles.find((a) => a.id === articleIdParam);
-      if (target) openArticle(target);
+      if (target) {
+        intentArticleRef.current = null;
+        openArticle(target);
+      }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, articles]);
 
   useWebSocket({
@@ -703,7 +712,7 @@ export default function NewsApp() {
       >
         <div className="flex items-center justify-between px-4" style={{ height: 44 }}>
           <button
-            onClick={() => navigate(`/sim/${sessionId}/device/home`)}
+            onClick={() => deviceNav.goHome()}
             className="flex items-center gap-0.5 ios-btn-bounce"
             style={{ color: '#FF2D55' }}
           >

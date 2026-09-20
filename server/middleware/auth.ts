@@ -7,6 +7,12 @@ export interface AuthenticatedRequest extends Request {
     email?: string;
     role?: string;
     agency?: string;
+    /**
+     * In-game display name — `user_profiles.full_name`, the single source of truth
+     * (docs/session-bugfix-spec-2026-09-20.md §10). Prefer `displayNameOf(user)` from
+     * `lib/identity.ts` over reading `metadata.full_name`, which is a stale write-only cache.
+     */
+    displayName?: string;
     metadata?: Record<string, unknown>;
   };
 }
@@ -41,26 +47,32 @@ export const requireAuth = async (
       | string
       | undefined;
 
-    // If role not in app_metadata, check user_profiles table
-    if (!userRole) {
-      const { data: profile } = await supabaseAdmin
-        .from('user_profiles')
-        .select('role, agency_name')
-        .eq('id', data.user.id)
-        .single();
+    // The profile row is the source of truth for the in-game display name (and for role/agency
+    // when app_metadata lacks them). One primary-key lookup per request.
+    const { data: profile } = await supabaseAdmin
+      .from('user_profiles')
+      .select('role, agency_name, full_name')
+      .eq('id', data.user.id)
+      .maybeSingle();
 
-      if (profile) {
-        userRole = profile.role || undefined;
-        userAgency = profile.agency_name || undefined;
-      }
+    if (profile && !userRole) {
+      userRole = profile.role || undefined;
+      userAgency = profile.agency_name || undefined;
     }
+
+    const metadata = data.user.user_metadata as Record<string, unknown>;
+    const displayName =
+      (typeof profile?.full_name === 'string' && profile.full_name.trim()) ||
+      (typeof metadata?.full_name === 'string' && (metadata.full_name as string).trim()) ||
+      undefined;
 
     req.user = {
       id: data.user.id,
       email: data.user.email ?? undefined,
       role: userRole,
       agency: userAgency,
-      metadata: data.user.user_metadata as Record<string, unknown>,
+      displayName,
+      metadata,
     };
 
     next();

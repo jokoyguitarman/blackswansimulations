@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
+import { useDeviceNav } from '../../lib/deviceNav';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { usePageMode } from '../../contexts/PageModeContext';
@@ -134,8 +135,8 @@ export default function SocialFeedApp({
   triggerCompose,
 }: { externalFilter?: string; openPostId?: string; triggerCompose?: number } = {}) {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
   const location = useLocation();
+  const deviceNav = useDeviceNav('social');
   const { isTrainer } = useRoleVisibility();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -1791,7 +1792,7 @@ export default function SocialFeedApp({
                 </button>
                 <button
                   onClick={() => {
-                    navigate(`/sim/${sessionId}/device/home`);
+                    deviceNav.goHome();
                     setShowAvatarMenu(false);
                   }}
                   className="w-full text-left px-3 py-2.5 text-[13px] hover:bg-white/5"
@@ -1833,7 +1834,7 @@ export default function SocialFeedApp({
             )}
           </button>
           <button
-            onClick={() => navigate(`/sim/${sessionId}/device/facebook`)}
+            onClick={() => deviceNav.openApp('facebook')}
             className="ios-btn-bounce w-8 h-8 flex items-center justify-center rounded-full flex-shrink-0"
             style={{ backgroundColor: '#1877F2' }}
             title="Switch to Fakebook"
@@ -2234,7 +2235,7 @@ export default function SocialFeedApp({
                           snippet={String(sa.snippet || '')}
                           category={String(sa.category || '')}
                           platform="x_twitter"
-                          onClick={() => navigate(`/sim/${sessionId}/device/news?article=${sa.id}`)}
+                          onClick={() => deviceNav.openApp('news', { article: String(sa.id) })}
                         />
                       );
                     })()}

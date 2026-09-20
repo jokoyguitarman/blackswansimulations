@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 
@@ -109,17 +110,8 @@ router.post('/:groupId/posts', requireAuth, async (req: AuthenticatedRequest, re
       return res.status(400).json({ error: 'session_id and content are required' });
     }
 
-    let playerName = user.metadata?.full_name as string | undefined;
-    if (!playerName) {
-      const { data: profile } = await supabaseAdmin
-        .from('user_profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-      playerName = profile?.full_name || undefined;
-    }
-    const displayName = playerName || user.email || 'Player';
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    const displayName = displayNameOf(user);
+    const handle = handleFor(displayName);
 
     const { data: post, error } = await supabaseAdmin
       .from('sim_group_posts')

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 
@@ -84,17 +85,8 @@ router.post('/', requireAuth, async (req: AuthenticatedRequest, res) => {
     const user = req.user!;
     const { session_id, title, description, event_type, location, event_date, platform } = req.body;
 
-    let playerName = user.metadata?.full_name as string | undefined;
-    if (!playerName) {
-      const { data: profile } = await supabaseAdmin
-        .from('user_profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-      playerName = profile?.full_name || undefined;
-    }
-    const displayName = playerName || user.email || 'Player';
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    const displayName = displayNameOf(user);
+    const handle = handleFor(displayName);
 
     const { data: event, error } = await supabaseAdmin
       .from('sim_events')
@@ -144,16 +136,7 @@ router.post('/:eventId/respond', requireAuth, async (req: AuthenticatedRequest, 
     const { eventId } = req.params;
     const { response } = req.body;
 
-    let playerName = user.metadata?.full_name as string | undefined;
-    if (!playerName) {
-      const { data: profile } = await supabaseAdmin
-        .from('user_profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-      playerName = profile?.full_name || undefined;
-    }
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    const handle = handleFor(displayNameOf(user));
 
     // Fetch current response to compute count deltas
     const { data: existing } = await supabaseAdmin
@@ -222,17 +205,8 @@ router.post('/:eventId/discuss', requireAuth, async (req: AuthenticatedRequest, 
     const { eventId } = req.params;
     const { session_id, content } = req.body;
 
-    let playerName = user.metadata?.full_name as string | undefined;
-    if (!playerName) {
-      const { data: profile } = await supabaseAdmin
-        .from('user_profiles')
-        .select('full_name')
-        .eq('id', user.id)
-        .single();
-      playerName = profile?.full_name || undefined;
-    }
-    const displayName = playerName || user.email || 'Player';
-    const handle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    const displayName = displayNameOf(user);
+    const handle = handleFor(displayName);
 
     const { data: discussion, error } = await supabaseAdmin
       .from('sim_event_discussions')

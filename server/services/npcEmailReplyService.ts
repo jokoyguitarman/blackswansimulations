@@ -112,6 +112,85 @@ export function deriveEmailAddress(persona: {
   return `${localPart}@contacts.sim`;
 }
 
+// ─── Legacy reply budgets (docs/session-bugfix-spec-2026-09-20.md §11) ───────
+
+/** NPC replies per email thread (legacy persona path). */
+const LEGACY_THREAD_CAP = 6;
+/** NPC replies per sending player per window (legacy path). */
+const LEGACY_PER_SENDER_CAP = 4;
+/** Session ceiling per window — applies to automated (bot) senders only. */
+const LEGACY_SESSION_CEILING = 40;
+const LEGACY_WINDOW_MS = 5 * 60 * 1000;
+
+async function isBotUser(userId: string | null): Promise<boolean> {
+  if (!userId) return false;
+  const { data } = await supabaseAdmin
+    .from('user_profiles')
+    .select('is_bot')
+    .eq('id', userId)
+    .maybeSingle();
+  return !!(data as { is_bot?: boolean } | null)?.is_bot;
+}
+
+/**
+ * Per-sender budget first (a chatty player is throttled on their own), then a session ceiling
+ * that only automated senders are subject to — a human's message is never dropped because bots
+ * generated the traffic.
+ */
+async function legacyReplyBudgetExceeded(
+  sessionId: string,
+  senderUserId: string | null,
+): Promise<boolean> {
+  const since = new Date(Date.now() - LEGACY_WINDOW_MS).toISOString();
+
+  if (senderUserId) {
+    const { data: recentOutbound } = await supabaseAdmin
+      .from('sim_emails')
+      .select('id')
+      .eq('session_id', sessionId)
+      .eq('direction', 'outbound')
+      .eq('sent_by_player_id', senderUserId)
+      .gte('created_at', new Date(Date.now() - 2 * LEGACY_WINDOW_MS).toISOString());
+    const ids = (recentOutbound ?? []).map((r) => String((r as { id: string }).id));
+    if (ids.length > 0) {
+      const { count: perSender } = await supabaseAdmin
+        .from('sim_emails')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', sessionId)
+        .eq('direction', 'inbound')
+        .is('inject_id', null)
+        .in('replied_to_id', ids)
+        .gte('created_at', since);
+      if ((perSender ?? 0) >= LEGACY_PER_SENDER_CAP) {
+        logger.debug(
+          { sessionId, senderUserId },
+          `NPC email per-sender limit reached (${LEGACY_PER_SENDER_CAP}/5min), skipping`,
+        );
+        return true;
+      }
+    }
+  }
+
+  if (!(await isBotUser(senderUserId))) return false;
+
+  const { count: recentNpcCount } = await supabaseAdmin
+    .from('sim_emails')
+    .select('id', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .eq('direction', 'inbound')
+    .is('inject_id', null)
+    .is('sent_by_player_id', null)
+    .gte('created_at', since);
+  if ((recentNpcCount ?? 0) >= LEGACY_SESSION_CEILING) {
+    logger.debug(
+      { sessionId, senderUserId },
+      `NPC email session ceiling reached for bot traffic (${LEGACY_SESSION_CEILING}/5min), skipping`,
+    );
+    return true;
+  }
+  return false;
+}
+
 // ─── Multi-recipient stakeholder mail (contract v3.2, handover §10.5 R1) ─────
 
 type StakeholderRec = import('../lib/stakeholderContract.js').Stakeholder;
@@ -207,37 +286,6 @@ export async function triggerNPCEmailReply(
 
     if ((existingReplies || 0) > 0) {
       logger.debug({ emailId: playerEmail.id }, 'NPC email reply already exists, skipping');
-      return;
-    }
-
-    // Anti-loop: rate-limit NPC replies per thread (max 3)
-    const threadId = playerEmail.thread_id || playerEmail.replied_to_id || playerEmail.id;
-    const { count: threadNpcCount } = await supabaseAdmin
-      .from('sim_emails')
-      .select('id', { count: 'exact', head: true })
-      .eq('session_id', sessionId)
-      .eq('direction', 'inbound')
-      .is('inject_id', null)
-      .or(`thread_id.eq.${threadId},replied_to_id.eq.${threadId}`);
-
-    if ((threadNpcCount || 0) >= 6) {
-      logger.debug({ threadId }, 'NPC email thread reply limit reached (6), skipping');
-      return;
-    }
-
-    // Anti-loop: session-wide rate limit (max 5 NPC replies in last 5 minutes)
-    const fiveMinAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-    const { count: recentNpcCount } = await supabaseAdmin
-      .from('sim_emails')
-      .select('id', { count: 'exact', head: true })
-      .eq('session_id', sessionId)
-      .eq('direction', 'inbound')
-      .is('inject_id', null)
-      .is('sent_by_player_id', null)
-      .gte('created_at', fiveMinAgo);
-
-    if ((recentNpcCount || 0) >= 10) {
-      logger.debug({ sessionId }, 'NPC email session rate limit reached (10/5min), skipping');
       return;
     }
 
@@ -403,6 +451,30 @@ export async function triggerNPCEmailReply(
         // stakeholders are handled; the persona still gets its legacy reply below.
       }
     }
+
+    // ── Legacy-path budgets (docs/session-bugfix-spec-2026-09-20.md §11) ──────────────────────
+    // These sit AFTER the stakeholder step on purpose: workbook contacts are never starved by the
+    // legacy budget, and a human's mail is never dropped because of automated (bot) traffic.
+
+    // Anti-loop: rate-limit NPC replies per thread
+    const threadId = playerEmail.thread_id || playerEmail.replied_to_id || playerEmail.id;
+    const { count: threadNpcCount } = await supabaseAdmin
+      .from('sim_emails')
+      .select('id', { count: 'exact', head: true })
+      .eq('session_id', sessionId)
+      .eq('direction', 'inbound')
+      .is('inject_id', null)
+      .or(`thread_id.eq.${threadId},replied_to_id.eq.${threadId}`);
+
+    if ((threadNpcCount || 0) >= LEGACY_THREAD_CAP) {
+      logger.debug(
+        { threadId },
+        `NPC email thread reply limit reached (${LEGACY_THREAD_CAP}), skipping`,
+      );
+      return;
+    }
+
+    if (await legacyReplyBudgetExceeded(sessionId, playerEmail.sender_user_id ?? null)) return;
 
     // Step 1: exact match against sender registry
     const exactMatch = findExactSenderMatch(toAddress, senderRegistry);

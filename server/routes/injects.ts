@@ -25,13 +25,64 @@ const router = Router();
  * @param io - Socket.io server instance for broadcasting events
  * @returns Promise that resolves when inject is published
  */
+export interface PublishInjectOptions {
+  /**
+   * Bypass the once-per-session publication claim (trainer re-publishing on purpose). Automated
+   * callers must never set this: the claim is what stops two API processes publishing the same
+   * inject twice (docs/session-bugfix-spec-2026-09-20.md §12).
+   */
+  force?: boolean;
+}
+
+/**
+ * Claim (session, inject) in `inject_publications`. Returns false when another process (or an
+ * earlier tick) already published it. Fails open when the table is missing (pre-migration 208),
+ * so a stale deployment cannot silence injects.
+ */
+async function claimInjectPublication(
+  sessionId: string,
+  injectId: string,
+  userId: string,
+): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from('inject_publications')
+    .upsert(
+      {
+        session_id: sessionId,
+        inject_id: injectId,
+        claimed_by: /^[0-9a-f-]{36}$/i.test(userId) ? userId : null,
+      },
+      { onConflict: 'session_id,inject_id', ignoreDuplicates: true },
+    )
+    .select('inject_id');
+  if (error) {
+    logger.warn(
+      { error, sessionId, injectId },
+      'inject_publications claim failed; publishing without the guard',
+    );
+    return true;
+  }
+  return (data?.length ?? 0) > 0;
+}
+
 export async function publishInjectToSession(
   injectId: string,
   sessionId: string,
   userId: string,
   io: SocketServer,
+  options: PublishInjectOptions = {},
 ): Promise<void> {
   logger.info({ injectId, sessionId, userId }, 'publishInjectToSession called');
+
+  if (options.force) {
+    logger.info({ injectId, sessionId, userId, event: 'inject_publish_forced' }, 'Forced publish');
+  } else if (!(await claimInjectPublication(sessionId, injectId, userId))) {
+    logger.info(
+      { injectId, sessionId, event: 'inject_publish_skipped_duplicate' },
+      'Inject already published in this session; skipping duplicate publication',
+    );
+    return;
+  }
 
   // Get inject
   const { data: inject, error: injectError } = await supabaseAdmin
@@ -903,9 +954,10 @@ router.post(
         return res.status(500).json({ error: 'Server configuration error' });
       }
 
-      // Use the extracted function to publish
+      // Use the extracted function to publish. A trainer publishing by hand is deliberate, so it
+      // bypasses the once-per-session claim (re-publishing an inject is a legitimate trainer move).
       try {
-        await publishInjectToSession(id, session_id, user.id, io);
+        await publishInjectToSession(id, session_id, user.id, io, { force: true });
         logger.info(
           { injectId: id, sessionId: session_id, userId: user.id },
           'Inject published successfully',

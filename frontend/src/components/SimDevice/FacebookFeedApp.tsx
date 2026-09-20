@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useLocation } from 'react-router-dom';
+import { useDeviceNav } from '../../lib/deviceNav';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useCountUp } from '../../hooks/useCountUp';
@@ -147,8 +148,8 @@ function getReactionEmoji(reactionType: string | undefined): string {
 
 export default function FacebookFeedApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
   const location = useLocation();
+  const deviceNav = useDeviceNav('facebook');
   const { isTrainer } = useRoleVisibility();
   const [posts, setPosts] = useState<SocialPost[]>([]);
   const [disputePost, setDisputePost] = useState<SocialPost | null>(null);
@@ -1158,7 +1159,7 @@ export default function FacebookFeedApp() {
 
             {/* Switch to Z */}
             <button
-              onClick={() => navigate(`/sim/${sessionId}/device/social`)}
+              onClick={() => deviceNav.openApp('social')}
               className="w-9 h-9 rounded-full flex items-center justify-center"
               style={{ backgroundColor: '#000' }}
               title="Switch to Z"
@@ -1774,7 +1775,7 @@ export default function FacebookFeedApp() {
                       <line x1="10" y1="4" x2="10" y2="10" />
                     </svg>
                   ),
-                  onClick: () => navigate(`/sim/${sessionId}/device/news`),
+                  onClick: () => deviceNav.openApp('news'),
                 },
               ].map((item) => (
                 <button
@@ -1831,7 +1832,7 @@ export default function FacebookFeedApp() {
                 </span>
               </div>
               <button
-                onClick={() => navigate(`/sim/${sessionId}/device/email`)}
+                onClick={() => deviceNav.openApp('email')}
                 className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#E4E6EB] transition-colors"
               >
                 <svg
@@ -1850,7 +1851,7 @@ export default function FacebookFeedApp() {
                 </span>
               </button>
               <button
-                onClick={() => navigate(`/sim/${sessionId}/device/drafts`)}
+                onClick={() => deviceNav.openApp('drafts')}
                 className="flex items-center gap-3 w-full text-left px-3 py-2 rounded-lg hover:bg-[#E4E6EB] transition-colors"
               >
                 <svg
@@ -2334,7 +2335,7 @@ export default function FacebookFeedApp() {
                                   category={String(sa.category || '')}
                                   platform="facebook"
                                   onClick={() =>
-                                    navigate(`/sim/${sessionId}/device/news?article=${sa.id}`)
+                                    deviceNav.openApp('news', { article: String(sa.id) })
                                   }
                                 />
                               </div>

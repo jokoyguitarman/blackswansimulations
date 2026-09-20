@@ -172,8 +172,10 @@ export const ChatInterface = ({
     input: isWA
       ? 'flex-1 px-4 py-2 bg-wa-input text-wa-text text-sm rounded-full border-none outline-none placeholder:text-wa-text-secondary focus:ring-1 focus:ring-wa-teal/50'
       : 'flex-1 px-4 py-2 military-input terminal-text text-sm',
+    // `p-0` overrides the global `button { padding }` rule that otherwise squeezes the icon out
+    // of the 40px circle (docs/session-bugfix-spec-2026-09-20.md §4).
     sendButton: isWA
-      ? 'w-10 h-10 rounded-full bg-wa-teal flex items-center justify-center hover:bg-wa-teal-light transition-colors flex-shrink-0'
+      ? 'w-10 h-10 p-0 rounded-full bg-wa-teal flex items-center justify-center hover:bg-wa-teal-light transition-colors flex-shrink-0'
       : 'military-button px-6 py-2',
     emptyText: (isDM: boolean) =>
       isWA
@@ -1045,15 +1047,63 @@ export const ChatInterface = ({
     channelId: currentChannelId || undefined,
     eventTypes: ['message.sent'],
     onEvent: async (event: WebSocketEvent) => {
-      // Fallback: if Realtime didn't catch it, reload messages
+      // Fallback path (Realtime is primary). The server emits this BEFORE the POST response
+      // returns, so our own message must replace the optimistic `temp-` bubble rather than be
+      // appended next to it (docs/session-bugfix-spec-2026-09-20.md §5). NPC-authored rows
+      // (no sender_id) get a synthesised sender, as the Realtime path does.
       if (event.type === 'message.sent' && event.data.message) {
-        const newMessage = event.data.message as Message;
-        if (newMessage.channel_id === currentChannelId) {
-          setMessages((prev) => {
-            const exists = prev.some((m) => m.id === newMessage.id);
-            if (exists) return prev;
-            return [...prev, newMessage];
-          });
+        const raw = event.data.message as Message & {
+          sender_stakeholder_id?: string | null;
+          sender_display_name?: string | null;
+        };
+        if (raw.channel_id !== currentChannelId) return;
+        const newMessage: Message =
+          !raw.sender_id && raw.sender_stakeholder_id
+            ? {
+                ...raw,
+                sender_id: undefined,
+                sender: raw.sender ?? {
+                  id: `stk:${raw.sender_stakeholder_id}`,
+                  full_name: raw.sender_display_name || 'Contact',
+                  role: 'npc',
+                },
+              }
+            : raw;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newMessage.id)) return prev;
+          const isOwn = !!user?.id && newMessage.sender_id === user.id;
+          const withoutTemp = isOwn
+            ? prev.filter(
+                (m) =>
+                  !(
+                    m.id.startsWith('temp-') &&
+                    m.content === newMessage.content &&
+                    m.sender_id === user?.id
+                  ),
+              )
+            : prev;
+          const withSender: Message = isOwn
+            ? {
+                ...newMessage,
+                sender: newMessage.sender ?? {
+                  id: user!.id,
+                  full_name: user!.displayName || 'You',
+                  role: user!.role || 'unknown',
+                },
+              }
+            : newMessage;
+          return [...withoutTemp, withSender];
+        });
+        if (user?.id && newMessage.sender_id === user.id) {
+          if (optimisticMessageContentRef.current === newMessage.content) {
+            optimisticMessageIdRef.current = null;
+            optimisticMessageContentRef.current = null;
+            optimisticRealIdRef.current = null;
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              timeoutRef.current = null;
+            }
+          }
         }
       }
     },
@@ -1985,9 +2035,16 @@ export const ChatInterface = ({
             onTranscript={(text) => handleSendMessage(undefined, text)}
             variant={variant}
           />
-          <button type="submit" className={s.sendButton}>
+          <button type="submit" className={s.sendButton} aria-label="Send">
             {isWA ? (
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+              <svg
+                width="20"
+                height="20"
+                viewBox="0 0 24 24"
+                fill="white"
+                className="shrink-0"
+                aria-hidden="true"
+              >
                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
               </svg>
             ) : (

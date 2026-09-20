@@ -4,6 +4,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
+import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 import { gradePlayerContent } from '../services/contentGraderService.js';
@@ -332,17 +333,9 @@ router.post(
 
       const hashtags = content.match(/#\w+/g) || [];
 
-      let playerName = user.metadata?.full_name as string | undefined;
-      if (!playerName) {
-        const { data: profile } = await supabaseAdmin
-          .from('user_profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .single();
-        playerName = profile?.full_name || undefined;
-      }
-      const personalDisplayName = playerName || user.email || 'Player';
-      const personalHandle = `@${(playerName || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+      // Identity model §10: one display name (user_profiles via requireAuth), one handle derivation.
+      const personalDisplayName = displayNameOf(user);
+      const personalHandle = handleFor(personalDisplayName);
 
       let authorHandle = personalHandle;
       let authorDisplayName = personalDisplayName;
@@ -791,7 +784,7 @@ router.post('/posts/:postId/like', requireAuth, async (req: AuthenticatedRequest
         void notifyPostLike(
           post.session_id,
           likedPost.author_handle,
-          (user.metadata?.full_name as string) || user.email || 'Player',
+          displayNameOf(user),
           reactionType,
           likedPost.platform || 'x_twitter',
           isPageNotif,
@@ -1057,8 +1050,8 @@ router.post('/posts/:postId/repost', requireAuth, async (req: AuthenticatedReque
       .insert({
         session_id: session_id || original.session_id,
         platform: original.platform,
-        author_handle: `@${((user.metadata?.full_name as string) || user.email || user.id.slice(0, 8)).replace(/[@.\s+,]/g, '_').toLowerCase()}`,
-        author_display_name: (user.metadata?.full_name as string) || user.email || 'Player',
+        author_handle: handleFor(displayNameOf(user)),
+        author_display_name: displayNameOf(user),
         author_type: 'player',
         content: original.content,
         is_repost: true,
@@ -1230,7 +1223,7 @@ router.post(
           session_id,
           direction: 'outbound',
           from_address: fromAddress,
-          from_name: (user.metadata?.full_name as string) || user.email || 'Player',
+          from_name: displayNameOf(user),
           to_addresses,
           cc_addresses: cc_addresses || [],
           subject,
@@ -1386,7 +1379,7 @@ router.post(
                 to_addresses,
                 subject,
                 body_text,
-                from_name: (user.metadata?.full_name as string) || user.email || 'Player',
+                from_name: displayNameOf(user),
                 from_address: email.from_address,
                 replied_to_id: replied_to_id || null,
                 thread_id: resolvedThreadId,

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { readAppIntent } from '../../lib/appIntents';
+import { useDeviceNav } from '../../lib/deviceNav';
 import { useAuth } from '../../contexts/AuthContext';
 import { useWebRTC } from '../../hooks/useWebRTC';
 import { VoiceCallPanel } from '../Chat/VoiceCallPanel';
@@ -136,7 +137,8 @@ export default function GroupChatApp() {
     setScreen({ screen: 'list' });
   }, []);
 
-  const goHome = () => navigate(`/sim/${sessionId}/device/home`);
+  const deviceNav = useDeviceNav('chat');
+  const goHome = () => deviceNav.goHome();
 
   // ─── header ───────────────────────────────────────────────────────────────
   const headerBg = isWA ? '#075E54' : 'var(--color-surface-2, #12151b)';

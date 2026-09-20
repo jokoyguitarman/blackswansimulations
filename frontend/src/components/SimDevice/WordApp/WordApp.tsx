@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
+import { useDeviceNav } from '../../../lib/deviceNav';
 import { useAuth } from '../../../contexts/AuthContext';
 import { DocumentList } from './DocumentList';
 import { EditorMobile } from './EditorMobile';
@@ -10,7 +11,7 @@ import './word-app.css';
 
 export function WordApp({ variant }: { variant: WordAppVariant }) {
   const { sessionId } = useParams<{ sessionId: string }>();
-  const navigate = useNavigate();
+  const deviceNav = useDeviceNav('drafts');
   const { user } = useAuth();
   const draftsApi = useDrafts(sessionId);
   const [activeDocument, setActiveDocument] = useState<DraftDocument | null>(null);
@@ -217,7 +218,7 @@ export function WordApp({ variant }: { variant: WordAppVariant }) {
           currentUserId={user?.id}
           onCreate={createDocument}
           onOpen={openDocument}
-          onBack={() => navigate(`/sim/${sessionId}/device/home`)}
+          onBack={() => deviceNav.goHome()}
         />
       )}
 

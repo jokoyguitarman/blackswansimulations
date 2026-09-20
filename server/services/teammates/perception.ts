@@ -16,6 +16,7 @@ import {
 import { type BotMemory, extractCommitments, rememberGrade } from './memory.js';
 import type { BotParams } from './intellect.js';
 import type { TeamCharterView } from './types.js';
+import { isBotUser } from './accounts.js';
 
 /**
  * Perception: everything a bot reads before it decides (docs/ai-teammate-bots-plan.md §7).
@@ -312,7 +313,18 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
 
   const teamName = charter?.team_name ?? null;
   const handle = handleFor(displayName);
-  const address = simAddressFor(displayName);
+  // Addresses come from the session directory (per-organisation domains,
+  // docs/session-bugfix-spec-2026-09-20.md §10.3); the local derivation is only a fallback.
+  const addressByUser = new Map<string, string>();
+  try {
+    const { getSessionPlayerDirectory } = await import('../playerDirectoryService.js');
+    for (const d of await getSessionPlayerDirectory(sessionCtx.sessionId)) {
+      addressByUser.set(d.user_id, d.address);
+    }
+  } catch {
+    /* fall back to the local derivation */
+  }
+  const address = addressByUser.get(userId) ?? simAddressFor(displayName);
 
   // Teams and teammates.
   const teams = new Map<string, Teammate[]>();
@@ -323,7 +335,7 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
       user_id: a.user_id,
       full_name: name,
       team_name: a.team_name,
-      address: simAddressFor(name),
+      address: addressByUser.get(a.user_id) ?? simAddressFor(name),
       isMe: a.user_id === userId,
     };
     teammates.push(t);
@@ -457,7 +469,7 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     .slice(-30);
   const firstName = displayName.split(/\s+/)[0]?.toLowerCase() ?? '';
-  const mentions = recent.filter((m) => {
+  const explicitMentions = recent.filter((m) => {
     if (m.sender_id === userId || memory.seenChat.has(m.id)) return false;
     const c = (m.content ?? '').toLowerCase();
     return (
@@ -467,6 +479,22 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
       /\?\s*$/.test(c.trim())
     );
   });
+  // A human colleague speaking in MY team channel expects an answer even without naming anyone
+  // (docs/session-bugfix-spec-2026-09-20.md §3). Counted once per line (seenChat) and skipped when
+  // anybody else has already spoken after it; triage's blackboard keeps it to one responder.
+  const teamMsgsSorted = [...teamMsgs].sort(
+    (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  const humanTeamLines: ChatMessage[] = [];
+  for (let i = 0; i < teamMsgsSorted.length; i++) {
+    const m = teamMsgsSorted[i];
+    if (!m.sender_id || m.sender_id === userId || memory.seenChat.has(m.id)) continue;
+    if (explicitMentions.some((x) => x.id === m.id)) continue;
+    if (teamMsgsSorted.slice(i + 1).some((later) => later.sender_id !== m.sender_id)) continue;
+    if (await isBotUser(m.sender_id)) continue;
+    humanTeamLines.push(m);
+  }
+  const mentions = [...explicitMentions, ...humanTeamLines];
   const nudges = recent.filter(
     (m) =>
       !memory.seenChat.has(m.id) &&

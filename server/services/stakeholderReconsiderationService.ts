@@ -319,6 +319,18 @@ export function enforceVerdict(
 
 // ─── Model call ──────────────────────────────────────────────────────────────
 
+/**
+ * Who is writing to the stakeholder (docs/session-bugfix-spec-2026-09-20.md §10.4). Without this
+ * the model improvises a greeting ("Hi [Name]", or "Hi DH" lifted from the team label).
+ */
+export interface PlayerRef {
+  name: string;
+  first_name: string;
+  team_name: string | null;
+  function_key: string | null;
+  org_display: string | null;
+}
+
 interface JudgeInput {
   sessionId: string;
   stakeholder: Stakeholder;
@@ -329,6 +341,44 @@ interface JudgeInput {
   channel: 'email' | 'teamchat' | 'messenger' | 'phone' | null; // null = verdict-only at fire time
   latestPlayerMessage: string | null;
   latestSubject?: string;
+  player?: PlayerRef | null;
+}
+
+/** Functions whose instructions an internal stakeholder carries out rather than debates. */
+const SENIOR_FUNCTIONS = new Set(['Executive']);
+
+function chainOfCommandRules(
+  stakeholder: Stakeholder,
+  player: PlayerRef | null | undefined,
+): string {
+  if (stakeholder.relationship !== 'internal' || !player) return '';
+  const ownerFn = stakeholder.owning_team;
+  const isSenior =
+    (player.function_key !== null && SENIOR_FUNCTIONS.has(player.function_key)) ||
+    (player.function_key !== null && player.function_key === ownerFn) ||
+    (player.team_name !== null && player.team_name === ownerFn);
+  if (isSenior) {
+    return `- CHAIN OF COMMAND: ${player.name} is a colleague in your own organisation with authority over your work (${player.function_key ?? player.team_name ?? 'leadership'}). An instruction from them is to be CARRIED OUT: acknowledge it, say what you will do and by when, raise a risk or a required check ONCE and briefly, and ask for anything you need. Do not refuse, relitigate the decision or lecture. Refuse only if a hard constraint above genuinely applies, and then state what you CAN do instead.
+- A direct instruction or question addressed to you ALWAYS gets a reply (should_reply=true), even a two-line acknowledgement.`;
+  }
+  return `- ${player.name} is a colleague from another function (${player.function_key ?? player.team_name ?? 'another team'}). Cooperate as a peer: answer what you can, say what you need, escalate to your own lead if the request exceeds your remit. A direct question always gets a reply (should_reply=true).`;
+}
+
+/** Defensive: the model must never leak template placeholders into a delivered message. */
+export function scrubPlaceholders(
+  text: string,
+  player: PlayerRef | null | undefined,
+  stakeholderName: string,
+): string {
+  const playerFirst = player?.first_name || player?.name || 'there';
+  const npcFirst = stakeholderName.trim().split(/\s+/)[0] || stakeholderName;
+  return text
+    .replace(/\[(?:your|my) name\]/gi, npcFirst)
+    .replace(
+      /\[(?:name|first name|player(?: name)?|recipient(?: name)?|their name)\]/gi,
+      playerFirst,
+    )
+    .replace(/\{\{?\s*(?:name|first_name|player_name)\s*\}?\}/gi, playerFirst);
 }
 
 interface JudgeOutput {
@@ -381,6 +431,12 @@ ${pendingList || '(none)'}
 - "delay": you are willing to wait a little (1–${MAX_DELAY_MINUTES} minutes) for follow-through. Provide delay_minutes.
 - Never mention your planned actions, criteria or timing in the reply. Stay in character.
 ${input.channel ? `- Reply length: ${REPLY_LENGTH[input.channel]}.` : '- No reply is needed now (should_reply=false); only judge.'}
+${
+  input.player
+    ? `- You are writing to ${input.player.name}${input.player.team_name ? ` (${input.player.team_name}${input.player.org_display ? `, ${input.player.org_display}` : ''})` : ''}. Address them by name — "${input.player.first_name}" in chat and informal mail, "${input.player.name}" in a formal email greeting. NEVER write a placeholder such as [Name], [Your Name] or {name}; if you do not know something, leave it out.`
+    : '- NEVER write a placeholder such as [Name] or [Your Name]; if you do not know the name, use no name.'
+}
+${chainOfCommandRules(input.stakeholder, input.player)}
 - delay_seconds for the reply: how long a person like you would realistically take (5–90).
 
 Return ONLY valid JSON:
@@ -389,14 +445,20 @@ Return ONLY valid JSON:
 
   const logText = input.log
     .slice(-20)
-    .map(
-      (r) =>
-        `[${r.channel} · ${r.direction === 'player' ? `${r.team_name || 'player'}` : 'you'}] ${r.content.slice(0, 400)}`,
-    )
+    .map((r) => {
+      const who =
+        r.direction === 'player'
+          ? `${r.sender_name || 'a player'}${r.team_name ? ` (${r.team_name})` : ''}`
+          : 'you';
+      return `[${r.channel} · ${who}] ${r.content.slice(0, 400)}`;
+    })
     .join('\n');
+  const senderLabel = input.player
+    ? `${input.player.name}${input.player.team_name ? ` — ${input.player.team_name}` : ''}${input.player.function_key ? ` (${input.player.function_key})` : ''}${input.player.org_display ? `, ${input.player.org_display}` : ''}`
+    : 'THE PLAYER';
   const user = `CONVERSATION SO FAR (all channels, oldest first):\n${logText || '(nothing yet)'}\n\n${
     input.latestPlayerMessage
-      ? `LATEST MESSAGE FROM THE PLAYER via ${input.channel}${input.latestSubject ? ` (subject: ${input.latestSubject})` : ''}:\n${input.latestPlayerMessage}`
+      ? `LATEST MESSAGE FROM ${senderLabel} via ${input.channel}${input.latestSubject ? ` (subject: ${input.latestSubject})` : ''}:\n${input.latestPlayerMessage}`
       : 'No new message; the moment for your planned action has arrived. Decide.'
   }`;
 
@@ -429,7 +491,8 @@ Return ONLY valid JSON:
       reply?: { text?: unknown; subject?: unknown; delay_seconds?: unknown };
       verdicts?: unknown;
     };
-    const text = typeof parsed.reply?.text === 'string' ? parsed.reply.text.trim() : '';
+    const rawText = typeof parsed.reply?.text === 'string' ? parsed.reply.text.trim() : '';
+    const text = rawText ? scrubPlaceholders(rawText, input.player, input.stakeholder.name) : '';
     const delay = Math.round(Number(parsed.reply?.delay_seconds));
     return {
       plan: {
@@ -457,6 +520,8 @@ export interface DecideContext {
   latestPlayerMessage: string;
   latestSubject?: string;
   teamIdentity: TeamIdentity | null;
+  /** Who wrote the latest message (name, team, function, org) — §10.4. */
+  player?: PlayerRef | null;
 }
 
 /**
@@ -480,6 +545,7 @@ export async function decideAndReply(
       channel: ctx.channel,
       latestPlayerMessage: ctx.latestPlayerMessage,
       latestSubject: ctx.latestSubject,
+      player: ctx.player ?? null,
     });
     if (!out) return { plan: fallback, verdicts: [] };
 

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
+import { displayNameOf, handleFor } from '../lib/identity.js';
 import { getWebSocketService } from '../services/websocketService.js';
 import { recordPlayerAction } from '../services/sopCheckerService.js';
 import { getControlledOrgPage } from '../services/orgPageService.js';
@@ -17,18 +18,10 @@ router.get('/threads/:sessionId', requireAuth, async (req: AuthenticatedRequest,
     const user = req.user!;
     const platformFilter = req.query.platform as string | undefined;
 
-    const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
-
-    const playerName =
-      (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    // Strip characters that are structural in a PostgREST .or() filter (the value is
-    // wrapped in double quotes, so a literal " or \ could break out). Denylist keeps
-    // every realistic handle (letters/digits/_/.) intact.
-    const playerHandle = `@${playerName.replace(/[@.\s+,"\\]/g, '_').toLowerCase()}`;
+    // Identity model §10: display name from user_profiles (attached by requireAuth); handleFor()
+    // also strips the characters that are structural in a PostgREST .or() filter.
+    const playerName = displayNameOf(user);
+    const playerHandle = handleFor(playerName);
 
     const { data: orgPages } = await supabaseAdmin
       .from('sim_org_pages')
@@ -167,15 +160,8 @@ router.post('/send', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(400).json({ error: 'Invalid recipient handle' });
     }
 
-    const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
-
-    const playerName =
-      (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    const personalHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    const playerName = displayNameOf(user);
+    const personalHandle = handleFor(playerName);
 
     let senderHandle = personalHandle;
     let senderDisplayName = playerName;
@@ -347,15 +333,8 @@ router.get('/unread-count/:sessionId', requireAuth, async (req: AuthenticatedReq
     const user = req.user!;
     const platformFilter = req.query.platform as string | undefined;
 
-    const { data: profile } = await supabaseAdmin
-      .from('user_profiles')
-      .select('full_name')
-      .eq('id', user.id)
-      .single();
-
-    const playerName =
-      (user.metadata?.full_name as string) || profile?.full_name || user.email || 'Player';
-    const playerHandle = `@${playerName.replace(/[@.\s+,]/g, '_').toLowerCase()}`;
+    const playerName = displayNameOf(user);
+    const playerHandle = handleFor(playerName);
 
     let query = supabaseAdmin
       .from('sim_direct_messages')

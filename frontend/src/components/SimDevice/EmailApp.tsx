@@ -4,6 +4,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
 import { readAppIntent, isDesktopPath } from '../../lib/appIntents';
+import { useDeviceNav } from '../../lib/deviceNav';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -93,6 +94,7 @@ function saveDrafts(sessionId: string, drafts: EmailDraft[]): void {
 export default function EmailApp() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
+  const deviceNav = useDeviceNav('email');
   const { isTrainer } = useRoleVisibility();
   const [emails, setEmails] = useState<SimEmail[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<SimEmail | null>(null);
@@ -109,7 +111,15 @@ export default function EmailApp() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const [contacts, setContacts] = useState<
-    Array<{ address: string; name: string; source: string; team_name?: string | null }>
+    Array<{
+      address: string;
+      name: string;
+      source: string;
+      team_name?: string | null;
+      kind?: 'group';
+      member_count?: number;
+      tier?: 'roster';
+    }>
   >([]);
   const [showContactDropdown, setShowContactDropdown] = useState(false);
 
@@ -587,6 +597,10 @@ export default function EmailApp() {
                   placeholder={toChips.length === 0 ? 'Recipients (comma-separated)' : ''}
                   className="flex-1 text-[15px] outline-none min-w-[120px]"
                   style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+                  // The browser's own form history would offer addresses typed in earlier
+                  // simulations (spec §8); only this session's directory may suggest recipients.
+                  autoComplete="off"
+                  name={`sim-mail-to-${sessionId ?? 'session'}`}
                   autoFocus
                 />
               </div>
@@ -640,12 +654,36 @@ export default function EmailApp() {
                           >
                             {contact.name}
                           </span>
+                          {/* Source label so an inbox-only NPC is distinguishable from a workbook
+                              contact or a teammate before sending (spec §8). */}
                           {contact.source === 'player' && (
                             <span
                               className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
                               style={{ backgroundColor: '#E8F0FE', color: '#1A73E8' }}
                             >
                               {contact.team_name || 'Colleague'}
+                            </span>
+                          )}
+                          {contact.source === 'stakeholder' && (
+                            <span
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: '#E6F4EA', color: '#137333' }}
+                            >
+                              {contact.kind === 'group'
+                                ? `List · ${contact.member_count ?? 0}`
+                                : contact.tier === 'roster'
+                                  ? 'Roster'
+                                  : contact.team_name
+                                    ? `Contact · ${contact.team_name}`
+                                    : 'Contact'}
+                            </span>
+                          )}
+                          {(contact.source === 'previous' || contact.source === 'npc') && (
+                            <span
+                              className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0"
+                              style={{ backgroundColor: '#F1F3F4', color: '#5F6368' }}
+                            >
+                              From inbox
                             </span>
                           )}
                         </span>
@@ -680,6 +718,8 @@ export default function EmailApp() {
                 placeholder="Optional, comma-separated"
                 className="flex-1 text-[15px] outline-none"
                 style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+                autoComplete="off"
+                name={`sim-mail-cc-${sessionId ?? 'session'}`}
               />
             </div>
           </div>
@@ -693,6 +733,8 @@ export default function EmailApp() {
                 onChange={(e) => setReplyData({ ...replyData, subject: e.target.value })}
                 className="flex-1 text-[15px] outline-none"
                 style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+                autoComplete="off"
+                name={`sim-mail-subject-${sessionId ?? 'session'}`}
               />
             </div>
           </div>
@@ -955,7 +997,7 @@ export default function EmailApp() {
       >
         <div className="flex items-center justify-between px-4" style={{ height: 44 }}>
           <button
-            onClick={() => navigate(`/sim/${sessionId}/device/home`)}
+            onClick={() => deviceNav.goHome()}
             className="flex items-center gap-0.5 ios-btn-bounce"
             style={{ color: '#007AFF' }}
           >

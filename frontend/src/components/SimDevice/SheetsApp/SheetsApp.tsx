@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, type ContactRow, type ContactsWorkbook } from '../../../lib/api';
 import { openAppWithIntent } from '../../../lib/appIntents';
+import { useDeviceNav } from '../../../lib/deviceNav';
 import './sheets-app.css';
 
 export type SheetsAppVariant = 'mobile' | 'desktop';
@@ -77,6 +78,7 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
   const { sessionId } = useParams<{ sessionId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const deviceNav = useDeviceNav('contacts');
   const [workbook, setWorkbook] = useState<ContactsWorkbook | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,7 +174,7 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
   })();
   const selectedRef = selected ? `${colLetter(selected.c)}${selected.r + 2}` : '';
 
-  const back = () => navigate(`${base}/device/home`);
+  const back = () => deviceNav.goHome();
 
   const tabs = (
     <div className={`sheets-tabs ${isMobile ? '' : 'top'}`} role="tablist" aria-label="Sheets">

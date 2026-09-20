@@ -8,6 +8,7 @@ import { WordAppDesktop } from './WordApp/WordApp';
 import { SheetsAppDesktop } from './SheetsApp/SheetsApp';
 import ZDesktopLayout from './ZDesktopLayout';
 import { DESKTOP_OPEN_APP_EVENT } from '../../lib/appIntents';
+import { DESKTOP_CLOSE_APP_EVENT } from '../../lib/deviceNav';
 
 interface WindowState {
   id: string;
@@ -211,6 +212,18 @@ export default function DesktopShell() {
     window.addEventListener(DESKTOP_OPEN_APP_EVENT, handler);
     return () => window.removeEventListener(DESKTOP_OPEN_APP_EVENT, handler);
   }, [windows, nextZ]);
+
+  // An app's own "Home" / "Back out" control closes its window on the desktop instead of
+  // navigating to the phone home screen (lib/deviceNav.ts).
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const appId = (e as CustomEvent<{ appId: string }>).detail?.appId;
+      if (!appId) return;
+      setWindows((prev) => prev.filter((w) => w.app !== appId));
+    };
+    window.addEventListener(DESKTOP_CLOSE_APP_EVENT, handler);
+    return () => window.removeEventListener(DESKTOP_CLOSE_APP_EVENT, handler);
+  }, []);
 
   function closeWindow(windowId: string) {
     setWindows((prev) => prev.filter((w) => w.id !== windowId));

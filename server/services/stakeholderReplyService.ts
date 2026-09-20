@@ -11,9 +11,14 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { getSessionScenarioId, getScenarioSnapshot } from '../lib/scenarioCache.js';
 import type { Stakeholder, TeamIdentity } from '../lib/stakeholderContract.js';
+import { firstNameOf } from '../lib/identity.js';
 import { getTeamIdentity } from './orgRegistryService.js';
 import { findById } from './stakeholderService.js';
-import { decideAndReply, type ReplyPlan } from './stakeholderReconsiderationService.js';
+import {
+  decideAndReply,
+  type PlayerRef,
+  type ReplyPlan,
+} from './stakeholderReconsiderationService.js';
 import { getWebSocketService } from './websocketService.js';
 import { createNotification } from './notificationService.js';
 import { recordPlayerAction } from './sopCheckerService.js';
@@ -30,6 +35,8 @@ export interface ConversationRow {
   org_key: string | null;
   content: string;
   created_at: string;
+  /** Player display name, resolved from user_profiles when the log is read (§10.4). */
+  sender_name?: string | null;
 }
 
 // ─── Conversation log ────────────────────────────────────────────────────────
@@ -52,7 +59,62 @@ export async function getConversationLog(
     logger.warn({ error, sessionId, stakeholderId }, 'getConversationLog failed');
     return [];
   }
-  return ((data ?? []) as ConversationRow[]).reverse();
+  const rows = ((data ?? []) as ConversationRow[]).reverse();
+  const userIds = Array.from(
+    new Set(rows.filter((r) => r.direction === 'player' && r.user_id).map((r) => r.user_id!)),
+  );
+  if (userIds.length > 0) {
+    const names = await displayNamesFor(userIds);
+    for (const r of rows) if (r.user_id) r.sender_name = names.get(r.user_id) ?? null;
+  }
+  return rows;
+}
+
+/** Batch lookup of in-game display names (user_profiles.full_name — the single source, §10.1). */
+export async function displayNamesFor(userIds: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (userIds.length === 0) return out;
+  const { data } = await supabaseAdmin
+    .from('user_profiles')
+    .select('id, full_name')
+    .in('id', userIds);
+  for (const row of data ?? []) {
+    const r = row as { id: string; full_name: string | null };
+    if (r.full_name?.trim()) out.set(r.id, r.full_name.trim());
+  }
+  return out;
+}
+
+/** Who is writing: name, team, function and organisation, for the judge prompt (§10.4). */
+export async function resolvePlayerRef(
+  sessionId: string,
+  userId: string,
+  identity: TeamIdentity | null,
+): Promise<PlayerRef | null> {
+  if (!userId) return null;
+  const name = (await displayNamesFor([userId])).get(userId);
+  if (!name) return null;
+  let orgDisplay: string | null = null;
+  if (identity?.org_key) {
+    try {
+      const scenarioId = await getSessionScenarioId(sessionId);
+      if (scenarioId) {
+        const { getOrgRegistry } = await import('./orgRegistryService.js');
+        orgDisplay =
+          (await getOrgRegistry(scenarioId)).find((o) => o.org_key === identity.org_key)
+            ?.display_name ?? null;
+      }
+    } catch {
+      orgDisplay = null;
+    }
+  }
+  return {
+    name,
+    first_name: firstNameOf(name),
+    team_name: identity?.team_name ?? null,
+    function_key: identity?.function_key ?? null,
+    org_display: orgDisplay,
+  };
 }
 
 export async function appendConversation(row: {
@@ -183,7 +245,7 @@ ${claims ? `Unverified public claims: ${claims}` : ''}
 ${extra?.context ? `\nWhat you currently know and feel about recent events (this overrides your default posture where they conflict):\n${extra.context}\n` : ''}
 Conduct rules:
 - Stay in character as this specific person on every channel; you remember every previous exchange listed below regardless of channel.
-- ${s.relationship === 'internal' ? 'You are ground-level operational staff. Share verified facts, request status, flag constraints. NEVER draft public statements, talking points, suggested messaging or PR strategy for the players — they must craft their own response.' : 'Reflect your own interests and concerns; you are not on the response team and do not coach them on messaging.'}
+- ${s.relationship === 'internal' ? 'You are staff of this organisation and the players are your colleagues; leadership and your own function lead can give you instructions, which you carry out (acknowledge, act, report — flag a risk once, do not argue). Share verified facts, request status, flag constraints. NEVER draft public statements, talking points, suggested messaging or PR strategy for the players — they must craft their own response.' : 'Reflect your own interests and concerns; you are not on the response team and do not coach them on messaging.'}
 - ${s.relationship === 'media' ? 'You are a journalist: professional, guarded, you publish when you have something usable.' : 'Be authentic: a real person with limited time and their own agenda.'}
 ${s.tier === 'roster' ? '- You are one member of a larger workforce, not a spokesperson: reply briefly and personally (2-4 sentences), about your own situation, shift and family; you do not speak for colleagues or negotiate.' : ''}
 - Do not invent facts that contradict the confirmed facts. Do not reveal anything from your private situation.`;
@@ -192,7 +254,10 @@ ${s.tier === 'roster' ? '- You are one member of a larger workforce, not a spoke
 // ─── Coalescing (≤ 1 judge call per stakeholder per window) ─────────────────
 
 const WINDOW_MS = 45_000;
-const SESSION_CAP = 30;
+/** NPC replies per sending player per window. */
+const PER_SENDER_CAP = 6;
+/** Session ceiling per window — automated (bot) senders only. */
+const SESSION_CEILING_BOTS = 60;
 const SESSION_CAP_WINDOW_MS = 10 * 60_000;
 
 const lastRunAt = new Map<string, number>();
@@ -215,15 +280,50 @@ async function coalesce(key: string, run: () => Promise<void>): Promise<void> {
   return p;
 }
 
-async function underSessionCap(sessionId: string): Promise<boolean> {
+/**
+ * Reply budget (docs/session-bugfix-spec-2026-09-20.md §11): a per-sender cap first, then a
+ * session ceiling that only automated (bot) senders are subject to — a human is never silenced
+ * because nine bots were busy. NPC rows carry no user id, so "replies to this sender" is
+ * approximated as NPC replies from the stakeholders this sender wrote to inside the window.
+ */
+async function underSessionCap(sessionId: string, userId: string): Promise<boolean> {
   const since = new Date(Date.now() - SESSION_CAP_WINDOW_MS).toISOString();
+
+  if (userId) {
+    const { data: mine } = await supabaseAdmin
+      .from('stakeholder_conversations')
+      .select('stakeholder_id')
+      .eq('session_id', sessionId)
+      .eq('direction', 'player')
+      .eq('user_id', userId)
+      .gte('created_at', since);
+    const ids = Array.from(
+      new Set((mine ?? []).map((r) => String((r as { stakeholder_id: string }).stakeholder_id))),
+    );
+    if (ids.length > 0) {
+      const { count } = await supabaseAdmin
+        .from('stakeholder_conversations')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', sessionId)
+        .eq('direction', 'npc')
+        .in('stakeholder_id', ids)
+        .gte('created_at', since);
+      if ((count ?? 0) >= PER_SENDER_CAP) return false;
+    }
+  }
+
+  const { data: profile } = userId
+    ? await supabaseAdmin.from('user_profiles').select('is_bot').eq('id', userId).maybeSingle()
+    : { data: null };
+  if (!(profile as { is_bot?: boolean } | null)?.is_bot) return true;
+
   const { count } = await supabaseAdmin
     .from('stakeholder_conversations')
     .select('id', { count: 'exact', head: true })
     .eq('session_id', sessionId)
     .eq('direction', 'npc')
     .gte('created_at', since);
-  return (count ?? 0) < SESSION_CAP;
+  return (count ?? 0) < SESSION_CEILING_BOTS;
 }
 
 // ─── Core: player message → plan ─────────────────────────────────────────────
@@ -281,8 +381,11 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
   const none: ReplyPlan = { should_reply: false, text: '', delay_seconds: 30 };
   if (ctx.stakeholder.kind === 'group') return none;
   if (!env.enableStakeholderEngine || !env.openAiApiKey) return none;
-  if (!(await underSessionCap(ctx.sessionId))) {
-    logger.debug({ sessionId: ctx.sessionId }, 'Stakeholder engine session cap reached');
+  if (!(await underSessionCap(ctx.sessionId, ctx.userId))) {
+    logger.debug(
+      { sessionId: ctx.sessionId, userId: ctx.userId },
+      'Stakeholder engine reply budget reached for this sender',
+    );
     return none;
   }
 
@@ -291,9 +394,12 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
 
   let plan: ReplyPlan = none;
   await coalesce(`${ctx.sessionId}:${ctx.stakeholder.id}`, async () => {
-    const log = await getConversationLog(ctx.sessionId, ctx.stakeholder.id);
-    const scenarioCtx = await loadScenarioCtx(scenarioId);
-    const context = await resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context);
+    const [log, scenarioCtx, context, player] = await Promise.all([
+      getConversationLog(ctx.sessionId, ctx.stakeholder.id),
+      loadScenarioCtx(scenarioId),
+      resolveContext(ctx.sessionId, ctx.stakeholder, ctx.context),
+      resolvePlayerRef(ctx.sessionId, ctx.userId, identity),
+    ]);
     const result = await decideAndReply({
       sessionId: ctx.sessionId,
       stakeholder: ctx.stakeholder,
@@ -303,6 +409,7 @@ export async function handlePlayerMessage(ctx: PlayerMessageCtx): Promise<ReplyP
       latestPlayerMessage: ctx.content,
       latestSubject: ctx.subject,
       teamIdentity: identity,
+      player,
     });
     plan = result.plan;
   });
