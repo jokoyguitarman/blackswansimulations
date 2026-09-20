@@ -366,12 +366,7 @@ async function main() {
       target_teams: string[];
       inject_scope: string;
     }>;
-    const stakeholderInjects = [
-      ...timeInjects.filter((i) => i.delivery_config.stakeholder_id),
-      ...(payload.condition_injects as Array<{ delivery_config: Record<string, unknown> }>).filter(
-        (i) => i.delivery_config.decision_key,
-      ),
-    ];
+    const stakeholderInjects = timeInjects.filter((i) => i.delivery_config.stakeholder_id);
     const teamStorylines: Record<string, unknown[]> = {};
     for (const inj of timeInjects.filter(
       (i) => !i.delivery_config.stakeholder_id && i.inject_scope === 'team_specific',
@@ -401,9 +396,7 @@ async function main() {
       team_storylines: teamStorylines,
       team_charters: charters,
       shared_injects: [],
-      convergence_gates: (
-        payload.condition_injects as Array<{ delivery_config: Record<string, unknown> }>
-      ).filter((i) => !i.delivery_config.decision_key),
+      convergence_gates: payload.condition_injects,
       dimension_labels: is.dimension_labels,
       org_page: null,
       duration: 60,
@@ -413,8 +406,6 @@ async function main() {
         .map((o) => ({ name: o.display_name, country: o.country })),
       stakeholders: is.stakeholders,
       stakeholder_injects: stakeholderInjects,
-      decision_space: is.decision_space,
-      chain_of_command: is.chain_of_command,
     };
     const rc = await apiFetch('/api/warroom/social-crisis/compile', {
       method: 'POST',

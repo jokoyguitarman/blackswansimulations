@@ -1,5 +1,10 @@
 import { logger } from '../lib/logger.js';
-import type { SocialCrisisPayload, SocialInject } from './socialCrisisGeneratorService.js';
+import {
+  normalizeOrgPages,
+  type OrgConfig,
+  type SocialCrisisPayload,
+  type SocialInject,
+} from './socialCrisisGeneratorService.js';
 import type { TeamCharter } from './teamCharterService.js';
 import {
   StakeholderSchema,
@@ -7,7 +12,8 @@ import {
   resolveTeamFunction,
   type Stakeholder,
 } from '../lib/stakeholderContract.js';
-import { functionKeyForTeamRow, ExecutiveDecisionSchema } from './scenarioOrgModel.js';
+import { functionKeyForTeamRow } from './scenarioOrgModel.js';
+import { validateCast } from './castCompletenessService.js';
 
 type PersistableTeamCharter = TeamCharter & {
   org_key?: string | null;
@@ -43,6 +49,7 @@ export class MultiOrgValidationError extends Error {
 }
 
 const MIN_STAKEHOLDER_INJECT_MINUTES = 10;
+const MIN_PAGE_STATEMENT_MINUTES = 15;
 const NOTE_LEAK =
   /(\bT\+\d+|\b\d{1,3}\s*(min|mins|minutes)\b|\bwill\s+(post|publish|leak|escalate|go public)|\b(plans?|about|threaten\w*)\s+to\b)/i;
 
@@ -62,7 +69,9 @@ export function validateScenarioPayload(
   const countries = is.countries || [];
   const stakeholders = is.stakeholders || [];
   const personas = is.npc_personas || [];
-  const decisions = is.decision_space || [];
+  const pagesByKey = new Map(
+    (normalizeOrgPages(is.org_page) as Array<OrgConfig>).map((p) => [p.org_key, p]),
+  );
   const injects: SocialInject[] = [
     ...payload.time_injects,
     ...payload.condition_injects,
@@ -293,19 +302,54 @@ export function validateScenarioPayload(
           path,
           `Inject "${inj.title}": stakeholder_id ${dc.stakeholder_id} not found`,
         );
-      } else {
-        // §7A templates are authored from a LATENT grievance; only scheduled injects need the base one.
-        if (dc.decision_key) {
-          if (!s.latent_grievances?.[String(dc.decision_key)] && s.grievance === '') {
+      } else if (dc.page_org_key) {
+        // Contract v3.2 page-authored inject: author fields are the PAGE identity (exception to
+        // §4.2); the stakeholder is the page's spokesperson and governs reconsideration.
+        injectsByStakeholder.set(s.id, (injectsByStakeholder.get(s.id) || 0) + 1);
+        const page = pagesByKey.get(String(dc.page_org_key));
+        if (!page) {
+          fail(
+            'MO-PRS-005',
+            path,
+            `Inject "${inj.title}": page_org_key ${dc.page_org_key} has no page`,
+          );
+        } else {
+          if (page.spokesperson_stakeholder_id && page.spokesperson_stakeholder_id !== s.id) {
             fail(
-              'MO-DEC-004',
+              'MO-PRS-005',
               path,
-              `Template "${inj.title}": stakeholder ${s.id} has no latent grievance for decision ${dc.decision_key}`,
+              `Inject "${inj.title}": stakeholder ${s.id} is not the spokesperson of ${dc.page_org_key}`,
             );
           }
-        } else {
-          injectsByStakeholder.set(s.id, (injectsByStakeholder.get(s.id) || 0) + 1);
+          const platform = String(dc.platform || 'facebook');
+          const ident = platform === 'x_twitter' ? page.x_twitter : page.facebook;
+          if (dc.app === 'social_feed' && ident && dc.author_handle !== ident.page_handle) {
+            fail(
+              'MO-PRS-005',
+              path,
+              `Inject "${inj.title}": author_handle "${dc.author_handle}" ≠ page handle "${ident.page_handle}"`,
+            );
+          }
+          if (dc.author_type !== 'official_account') {
+            fail(
+              'MO-PRS-005',
+              path,
+              `Inject "${inj.title}": page-authored injects use author_type official_account`,
+            );
+          }
         }
+        if (
+          inj.trigger_time_minutes != null &&
+          inj.trigger_time_minutes < MIN_PAGE_STATEMENT_MINUTES
+        ) {
+          fail(
+            'MO-PRS-006',
+            path,
+            `Inject "${inj.title}": page statement at T+${inj.trigger_time_minutes} (< ${MIN_PAGE_STATEMENT_MINUTES})`,
+          );
+        }
+      } else {
+        injectsByStakeholder.set(s.id, (injectsByStakeholder.get(s.id) || 0) + 1);
         // Author fields per §4.2
         if (dc.app === 'email' && dc.from_address !== s.email)
           fail(
@@ -365,14 +409,6 @@ export function validateScenarioPayload(
     }
     if (dc.inject_key) {
       injectKeys.set(dc.inject_key, (injectKeys.get(dc.inject_key) || 0) + 1);
-      const hasCondition = !!inj.conditions_to_appear;
-      if (inj.trigger_time_minutes != null || !hasCondition) {
-        fail(
-          'MO-DEC-005',
-          path,
-          `Template "${inj.title}" would fire on the clock (templates need trigger null + a condition)`,
-        );
-      }
     }
     if (inj.inject_scope === 'team_specific') {
       for (const t of inj.target_teams || []) {
@@ -386,7 +422,7 @@ export function validateScenarioPayload(
     }
   }
   for (const [k, n] of injectKeys)
-    if (n > 1) fail('MO-DEC-007', `injects.${k}`, `Duplicate inject_key ${k}`);
+    if (n > 1) fail('MO-INJ-008', `injects.${k}`, `Duplicate inject_key ${k}`);
   for (const sid of feedAuthorsNeedingTwin) {
     const s = stakeholderById.get(sid)!;
     if (!personas.some((p) => p.handle === s.handle)) {
@@ -426,96 +462,52 @@ export function validateScenarioPayload(
     }
   }
 
-  // ── Decision layer ──
-  const decisionKeys = new Set<string>();
-  for (const d of decisions) {
-    const parsed = ExecutiveDecisionSchema.safeParse(d);
-    if (!parsed.success)
-      fail(
-        'MO-DEC-001',
-        `decisions.${d.decision_key}`,
-        `Decision ${d.decision_key}: ${parsed.error.issues[0]?.message}`,
-      );
-    if (decisionKeys.has(d.decision_key))
-      fail('MO-DEC-007', `decisions.${d.decision_key}`, `Duplicate decision_key ${d.decision_key}`);
-    decisionKeys.add(d.decision_key);
-    for (const k of [...d.decidable_by_org_keys, ...d.affected_org_keys]) {
-      if (!protagonistKeys.has(k))
-        fail(
-          'MO-DEC-001',
-          `decisions.${d.decision_key}`,
-          `Decision ${d.decision_key}: unknown org ${k}`,
-        );
-    }
-    for (const ob of d.sop_obligations) {
-      for (const sid of ob.owed_to_stakeholder_ids) {
-        if (!stakeholderById.has(sid))
-          fail(
-            'MO-DEC-002',
-            `decisions.${d.decision_key}`,
-            `Decision ${d.decision_key}: obligation owed to unknown stakeholder ${sid}`,
-          );
-      }
-      const fnExists = Array.from(teamFunctionByName.entries()).some(
-        ([name, t]) =>
-          resolveTeamFunction({ team_name: name, function_key: t.function_key }) ===
-          ob.owed_by_function,
-      );
-      if (!fnExists)
-        fail(
-          'MO-DEC-002',
-          `decisions.${d.decision_key}`,
-          `Decision ${d.decision_key}: obligation owed by unknown function ${ob.owed_by_function}`,
-        );
-    }
-    for (const k of [...d.eruption_inject_keys, ...d.spillover_inject_keys]) {
-      const tpl = injects.find((i) => i.delivery_config?.inject_key === k);
-      if (!tpl)
-        fail(
-          'MO-DEC-003',
-          `decisions.${d.decision_key}`,
-          `Decision ${d.decision_key}: template ${k} missing`,
-        );
-      else if (tpl.delivery_config?.decision_key !== d.decision_key)
-        fail(
-          'MO-DEC-003',
-          `decisions.${d.decision_key}`,
-          `Decision ${d.decision_key}: template ${k} belongs to another decision`,
-        );
-    }
-    if (d.severity === 'high') {
-      for (const orgKey of d.affected_org_keys) {
-        const reacting = stakeholders.some(
-          (s) =>
-            s.latent_grievances?.[d.decision_key] && (s.org_key === orgKey || s.org_key === null),
-        );
-        if (!reacting)
-          warn(
-            'MO-DEC-006',
-            `decisions.${d.decision_key}`,
-            `Decision ${d.decision_key}: no reacting stakeholder in ${orgKey}`,
-          );
-      }
+  // ── Cast completeness (organic decisions §4.1, MO-CAST-*) — multi-org-path scenarios only ──
+  if (stakeholders.length > 0 && orgs.length > 0) {
+    const protagonists = orgs
+      .filter((o) => o.side === 'protagonist')
+      .map((o) => ({ org_key: o.org_key, display_name: o.display_name, country: o.country }));
+    const teamsForCast = Array.from(teamFunctionByName.entries()).map(([team_name, t]) => ({
+      team_name,
+      function_key: t.function_key,
+      org_key: t.org_key,
+    }));
+    const labourSignal = !!is.decision_context?.labour_signal;
+    for (const issue of validateCast(stakeholders, teamsForCast, protagonists, {
+      labourSignal,
+      injectsByStakeholder,
+    })) {
+      fail(issue.code, issue.path, issue.message);
     }
   }
-  for (const s of stakeholders) {
-    for (const [dk, lg] of Object.entries(s.latent_grievances || {})) {
-      for (const k of lg.eruption_inject_keys) {
-        const tpl = injects.find((i) => i.delivery_config?.inject_key === k);
-        if (!tpl)
-          fail(
-            'MO-DEC-004',
-            `stakeholders.${s.id}`,
-            `Stakeholder ${s.id}: latent eruption ${k} (decision ${dk}) has no template`,
-          );
-        else if (tpl.delivery_config?.stakeholder_id !== s.id)
-          fail(
-            'MO-DEC-004',
-            `stakeholders.${s.id}`,
-            `Stakeholder ${s.id}: latent eruption ${k} not authored by them`,
-          );
-      }
+
+  // ── Pressure organisations (contract v3.2) ──
+  for (const o of orgs) {
+    if (o.side !== 'pressure') continue;
+    const path = `orgs.${o.org_key}`;
+    if (!o.spokesperson_stakeholder_id) {
+      fail('MO-PRS-004', path, `Pressure organisation ${o.display_name} has no spokesperson`);
+    } else {
+      const sp = stakeholderById.get(o.spokesperson_stakeholder_id);
+      if (!sp)
+        fail(
+          'MO-PRS-004',
+          path,
+          `Spokesperson ${o.spokesperson_stakeholder_id} of ${o.display_name} not found`,
+        );
+      else if (sp.page_org_key && sp.page_org_key !== o.org_key)
+        fail(
+          'MO-PRS-004',
+          path,
+          `Spokesperson ${sp.id} links to ${sp.page_org_key}, not ${o.org_key}`,
+        );
     }
+    if (!o.country)
+      fail('MO-PRS-002', path, `Pressure organisation ${o.display_name} has no country`);
+    const page = pagesByKey.get(o.org_key);
+    if (!page) fail('MO-PRS-007', path, `Pressure organisation ${o.display_name} has no page`);
+    else if (page.role !== 'pressure' || page.control_mode !== 'ai')
+      fail('MO-PRS-007', path, `Page ${o.org_key} must have role pressure / control_mode ai`);
   }
 
   for (const w of warnings) logger.warn({ code: w.code, path: w.path }, w.message);

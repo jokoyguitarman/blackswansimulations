@@ -714,7 +714,7 @@ function personaBlock(personas: NPCPersona[]): string {
     : '';
 }
 
-function claimId(taken: TakenIdentifiers, wanted: string): string {
+export function claimId(taken: TakenIdentifiers, wanted: string): string {
   let id = wanted.replace(/_+/g, '_');
   let n = 2;
   while (taken.ids.has(id)) id = `${wanted}_${n++}`.slice(0, 60);
@@ -722,7 +722,7 @@ function claimId(taken: TakenIdentifiers, wanted: string): string {
   return id;
 }
 
-function claimEmail(taken: TakenIdentifiers, wanted: string): string {
+export function claimEmail(taken: TakenIdentifiers, wanted: string): string {
   let email = wanted.toLowerCase().replace(/[^a-z0-9@._-]/g, '');
   const [local, domain] = email.split('@');
   let n = 2;

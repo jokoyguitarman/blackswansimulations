@@ -21,7 +21,6 @@ import {
   crisisContextFrom,
   runNpcsPipeline,
   runStorylinePipeline,
-  runDecisionLayer,
   buildCompileArtifacts,
   chartersFromWire,
 } from '../server/services/multiOrgPipeline.js';
@@ -126,26 +125,21 @@ async function main() {
   if (VALIDATE_FILE) {
     const { readFileSync } = await import('node:fs');
     const { payload, charters } = JSON.parse(readFileSync(VALIDATE_FILE, 'utf8'));
-    // Mirror compile's normalisation of older dumps (title/by_function aliases, chain `to` strings).
+    // Mirror compile's normalisation of older dumps: the retired menu decision layer is stripped.
     const is = payload.scenario.initial_state;
-    for (const d of is.decision_space || []) {
-      d.title = d.title || d.label;
-      for (const ob of d.sop_obligations || []) {
-        ob.by_function = ob.by_function || ob.owed_by_function;
-        ob.owed_by_function = ob.owed_by_function || ob.by_function;
-      }
-    }
-    for (const edge of is.chain_of_command || []) {
-      edge.to = (edge.to || []).map((t: unknown) =>
-        typeof t === 'string'
-          ? t
-          : String(
-              (t as { stakeholder_id?: string; function?: string }).stakeholder_id ||
-                (t as { function?: string }).function ||
-                '',
-            ),
+    delete is.decision_space;
+    delete is.chain_of_command;
+    for (const s of is.stakeholders || []) delete s.latent_grievances;
+    const menuGated = (i: {
+      delivery_config?: Record<string, unknown>;
+      conditions_to_appear?: { conditions?: string[] };
+    }) =>
+      !!i.delivery_config?.decision_key ||
+      (i.conditions_to_appear?.conditions || []).some((c: string) =>
+        c.startsWith('decision_recorded:'),
       );
-    }
+    payload.condition_injects = payload.condition_injects.filter((i: never) => !menuGated(i));
+    payload.time_injects = payload.time_injects.filter((i: never) => !menuGated(i));
     try {
       validateScenarioPayload(payload, charters);
       console.log('VALIDATION PASS');
@@ -414,77 +408,60 @@ async function main() {
     teamStorylines[team] = [...(teamStorylines[team] || []), ...injs];
   delete (teamStorylines as Record<string, unknown>).Shared;
 
-  // 4. Decision layer
-  console.log(`\n[4] decision layer (${stamp()})`);
+  // 4. Cast completeness (organic decisions plan §4.1) — carriers, roster, distribution lists
+  console.log(`\n[4] cast completeness (${stamp()})`);
   const charters = chartersFromWire(story.team_charters, orgsResult);
-  const decision = await runDecisionLayer(
-    orgsResult,
-    charters,
-    stks,
-    personas,
-    npc.factSheet,
-    crisis,
+  check(
+    'every stakeholder has sensitivities',
+    stks.every((s) => Array.isArray(s.sensitivities) && s.sensitivities.length > 0),
+    `${stks.filter((s) => !Array.isArray(s.sensitivities) || s.sensitivities.length === 0).length} without`,
   );
-  if (SINGLE) {
-    check('no decision layer without Executive', decision === null);
-  } else {
-    check(
-      'decision layer generated',
-      !!decision && decision.decision_space.length >= 3,
-      `${decision?.decision_space.length ?? 0} decisions, ${decision?.templates.length ?? 0} templates, ${decision?.chain_of_command.length ?? 0} chain edges, ${decision?.sop_steps.length ?? 0} SOP steps`,
-    );
-    if (decision) {
-      check(
-        'every decision has obligations',
-        decision.decision_space.every((d) => d.sop_obligations.length >= 1),
-      );
-      check(
-        'high-severity decisions affect another org',
-        decision.decision_space
-          .filter((d) => d.severity === 'high')
-          .every((d) => d.affected_org_keys.some((k) => !d.decidable_by_org_keys.includes(k))) ||
-          decision.decision_space.filter((d) => d.severity === 'high').length === 0,
-        decision.decision_space
-          .map((d) => `${d.decision_key}[${d.severity}]->${d.affected_org_keys.join('+')}`)
-          .join(', '),
-      );
-      check(
-        'templates are dormant (trigger null + condition)',
-        decision.templates.every((t) => t.trigger_time_minutes == null && !!t.conditions_to_appear),
-      );
-      check(
-        'latent grievances attached to stakeholders',
-        decision.stakeholders.some(
-          (s) => s.latent_grievances && Object.keys(s.latent_grievances).length > 0,
-        ),
-      );
-      check(
-        'spillover posts authored by other-country media',
-        decision.templates
-          .filter((t) => String(t.delivery_config.inject_key || '').startsWith('spill_'))
-          .every((t) =>
-            personas.some(
-              (p) =>
-                p.handle === t.delivery_config.author_handle &&
-                p.country === t.delivery_config.country,
-            ),
-          ),
-      );
-    }
-  }
+  const roster = stks.filter((s) => s.tier === 'roster');
+  const groups = stks.filter((s) => s.kind === 'group');
+  check(
+    'workforce roster generated per site',
+    roster.length >= 6 * orgs.length,
+    `${roster.length} roster entries`,
+  );
+  check(
+    'distribution list per site resolves to roster members',
+    groups.length >= orgs.length &&
+      groups.every(
+        (g) =>
+          (g.members || []).length > 0 &&
+          (g.members || []).every((m) => roster.some((r) => r.id === m)),
+      ),
+    `${groups.length} lists`,
+  );
+  check(
+    'site leader + HR counterpart per site',
+    orgs.every((o) =>
+      stks.some(
+        (s) =>
+          s.relationship === 'internal' &&
+          (s.org_key === o.org_key || !multiOrg) &&
+          /manager|head|lead|director/i.test(s.title) &&
+          s.tier !== 'roster',
+      ),
+    ),
+  );
+  check(
+    'notification SOP steps generated',
+    (story.sop_steps || []).length >= 2,
+    `${(story.sop_steps || []).length} steps`,
+  );
+  check('charters resolved for all teams', charters.length === expectedTeams.length);
 
   // 5. Compile artefacts + payload + validation
   console.log(`\n[5] compile artefacts + validation (${stamp()})`);
-  const stakeholderInjects: SocialInject[] = [...stkInjects, ...(decision?.templates || [])];
+  const stakeholderInjects: SocialInject[] = [...stkInjects];
   const artifacts = buildCompileArtifacts(orgsResult, {
     team_charters: story.team_charters,
-    stakeholders: decision?.stakeholders || stks,
+    stakeholders: stks,
     stakeholder_injects: stakeholderInjects,
     personas,
     org_page: null,
-    decision_space: decision?.decision_space,
-    chain_of_command: decision?.chain_of_command,
-    sop_steps: decision?.sop_steps,
+    sop_steps: story.sop_steps,
   });
   const sop = buildSOPFromResearch(RESPONSE_STANDARDS);
   sop.steps = [...sop.steps, ...artifacts.sop_steps];
@@ -513,10 +490,6 @@ async function main() {
       country: artifacts.primaryCountry,
       stakeholders: artifacts.stakeholders,
       extraInjects: artifacts.extraInjects,
-      ...(artifacts.decision_space?.length ? { decision_space: artifacts.decision_space } : {}),
-      ...(artifacts.chain_of_command?.length
-        ? { chain_of_command: artifacts.chain_of_command }
-        : {}),
     },
   );
   (payload.scenario.initial_state as Record<string, unknown>).strategic_benchmarks =
@@ -526,13 +499,12 @@ async function main() {
     'payload carries orgs/countries/stakeholders',
     (is.orgs?.length ?? 0) >= orgs.length &&
       (is.countries?.length ?? 0) === countries.length &&
-      (is.stakeholders?.length ?? 0) === (decision?.stakeholders || stks).length,
+      (is.stakeholders?.length ?? 0) === stks.length,
   );
   check('initial_state.country = primary country', is.country === primary.country);
   check(
-    'time_injects include stakeholder emails; condition_injects include templates',
-    payload.time_injects.some((i) => i.delivery_config.stakeholder_id) &&
-      (SINGLE || payload.condition_injects.some((i) => i.delivery_config.decision_key)),
+    'time_injects include stakeholder emails',
+    payload.time_injects.some((i) => i.delivery_config.stakeholder_id),
   );
   if (SINGLE) {
     check(

@@ -46,10 +46,8 @@ import {
   crisisContextFrom,
   runNpcsPipeline,
   runStorylinePipeline,
-  runDecisionLayer,
   runOrgPagePipeline,
   buildCompileArtifacts,
-  chartersFromWire,
   logCompileSummary,
   type TeamCharterWire,
 } from '../services/multiOrgPipeline.js';
@@ -58,8 +56,6 @@ import {
   EXECUTIVE_CHARTER,
   type OrganisationInput,
   type CompetitorInput,
-  type ExecutiveDecision,
-  type ChainOfCommandEdge,
 } from '../services/scenarioOrgModel.js';
 import type { Stakeholder } from '../lib/stakeholderContract.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
@@ -742,36 +738,12 @@ router.post(
           }),
         ]);
 
-        // Decision layer (§7A) only when an Executive team exists; dormant templates otherwise none.
-        let decisionLayer = null;
-        if (orgsResult && orgsResult.ok) {
-          try {
-            const charters = chartersFromWire(
-              (req.body.team_charters as TeamCharterWire[]) || [],
-              orgsResult,
-            );
-            decisionLayer = await runDecisionLayer(
-              orgsResult,
-              charters,
-              ((req.body.stakeholders as Stakeholder[]) || []).filter(
-                (s) => s && typeof s === 'object',
-              ),
-              personas as NPCPersona[],
-              fact_sheet as FactSheet,
-              crisisContextFrom({ crisis_type, context, duration, org_name: req.body.org_name }),
-            );
-          } catch (err) {
-            logger.warn({ err, jobId }, 'Decision layer generation failed (non-critical)');
-          }
-        }
-
         // Paired intel gates ride the convergence-gate bucket; intel emails are
         // returned separately so the wizard can merge them into team storylines.
         const data = {
           ...result,
           convergenceGates: [...result.convergenceGates, ...intelResult.intelGates],
           intel_injects: intelResult.intelInjects,
-          ...(decisionLayer ? { decision_layer: decisionLayer } : {}),
         };
         aiJobs.set(jobId, { status: 'completed', data, startedAt: Date.now() });
         logger.info(
@@ -901,14 +873,14 @@ router.post(
         org_page: z.unknown().optional(),
         duration: z.number().default(60),
         blueprint: z.unknown().optional(),
-        // Multi-organisation (contract §3 / §5 / §7A). Server derives orgs[]/countries[] itself.
+        // Multi-organisation (contract §3 / §5). Server derives orgs[]/countries[] itself.
         organisations: organisationsSchema.optional(),
         competitors: competitorsSchema.optional(),
         stakeholders: z.array(z.unknown()).optional(),
         stakeholder_injects: z.array(z.unknown()).optional(),
-        decision_space: z.array(z.unknown()).optional(),
-        chain_of_command: z.array(z.unknown()).optional(),
+        // Cast-generated notification SOP steps + planner hints (organic-decisions plan §4.1).
         sop_steps: z.array(z.unknown()).optional(),
+        decision_context: z.record(z.string(), z.unknown()).optional(),
       }),
     }),
   ),
@@ -999,11 +971,11 @@ router.post(
                   (body.org_page as
                     | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
                     | undefined) || null,
-                decision_space: body.decision_space as ExecutiveDecision[] | undefined,
-                chain_of_command: body.chain_of_command as ChainOfCommandEdge[] | undefined,
                 sop_steps: body.sop_steps as
                   | import('../services/socialCrisisGeneratorService.js').SOPStep[]
                   | undefined,
+                decision_context:
+                  (body.decision_context as Record<string, unknown> | undefined) ?? null,
               })
             : null;
         if (multiArtifacts) {
@@ -1090,7 +1062,8 @@ router.post(
           logger.warn({ swErr }, 'Strategy windows generation failed (non-critical)');
         }
 
-        // §7A decision-triggered SOP steps ride the scenario SOP (dormant until runtime triggers ship).
+        // Cast-generated notification / consultation SOP steps ride the scenario SOP
+        // (graded by the organic decision engine when a formal notice is detected).
         if (multiArtifacts && multiArtifacts.sop_steps.length > 0) {
           sop.steps = [...sop.steps, ...multiArtifacts.sop_steps];
         }
@@ -1128,11 +1101,8 @@ router.post(
                 country: multiArtifacts.primaryCountry,
                 stakeholders: multiArtifacts.stakeholders,
                 extraInjects: multiArtifacts.extraInjects,
-                ...(multiArtifacts.decision_space?.length
-                  ? { decision_space: multiArtifacts.decision_space }
-                  : {}),
-                ...(multiArtifacts.chain_of_command?.length
-                  ? { chain_of_command: multiArtifacts.chain_of_command }
+                ...(multiArtifacts.decision_context
+                  ? { decision_context: multiArtifacts.decision_context }
                   : {}),
               }
             : undefined,

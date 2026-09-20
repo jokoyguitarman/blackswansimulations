@@ -449,11 +449,12 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
       country: 'Singapore',
     },
   };
-  const template: SocialInject = {
+  // A second-order beat chained on the post via the generic inject_key primitive (kept).
+  const chained: SocialInject = {
     type: 'social_post',
-    title: 'Eruption',
-    content: 'Leak',
-    severity: 'critical',
+    title: 'Pickup',
+    content: 'Regional desk picks up the story.',
+    severity: 'medium',
     inject_scope: 'universal',
     target_teams: [],
     delivery_config: {
@@ -463,21 +464,13 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
       author_handle: stk.handle,
       author_display_name: stk.name,
       author_type: 'npc_media',
-      inject_key: 'erupt_close_depot_mei',
-      decision_key: 'close_depot',
+      inject_key: 'pickup_mei',
+      parent_inject_key: 'post_mei',
       country: 'Singapore',
     },
-    conditions_to_appear: { threshold: 1, conditions: ['decision_recorded:close_depot'] },
+    conditions_to_appear: { threshold: 1, conditions: ['inject_published:post_mei'] },
   };
-  stk.latent_grievances = {
-    close_depot: {
-      grievance: 'Heard about closure from drivers',
-      resolution_criteria: ['Briefed first'],
-      persuadability: 'low',
-      hard_constraints: [],
-      eruption_inject_keys: ['erupt_close_depot_mei'],
-    },
-  };
+  post.delivery_config.inject_key = 'post_mei';
   const charters: PersistableTeamCharter[] = [
     {
       team_name: 'Communications — SL',
@@ -558,6 +551,70 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
     email: 'cos.office@sigmalogistics.sim',
     handle: '@cosoffice_sl',
   };
+  // Carrier rule (MO-CAST-*): site leader + HR counterpart per organisation, media per org.
+  const carriers: Stakeholder[] = [
+    {
+      ...pure,
+      id: 'stk_sl_site_manager',
+      name: 'Adrian Koh',
+      title: 'Site Operations Manager',
+      owning_team: 'Executive',
+      email: 'adrian.koh@sigmalogistics.sim',
+      handle: '@adriank_sl',
+      site_key: 'hq_singapore',
+      sensitivities: ['Any change to depot operations or headcount in Singapore'],
+    },
+    {
+      ...pure,
+      id: 'stk_sl_hr_partner',
+      name: 'Felicia Ng',
+      title: 'HR Business Partner',
+      owning_team: 'Communications',
+      email: 'felicia.ng@sigmalogistics.sim',
+      handle: '@felician_sl',
+      site_key: 'hq_singapore',
+      sensitivities: ['Anything affecting employees, notice periods or consultation'],
+    },
+    {
+      ...pure,
+      id: 'stk_slm_depot_manager',
+      name: 'Hafiz Zulkifli',
+      title: 'Depot Manager (Johor)',
+      organisation: 'Sigma Logistics Malaysia',
+      owning_team: 'Stakeholder Engagement',
+      org_key: 'org_slm_my',
+      email: 'hafiz.zulkifli@slm.sim',
+      handle: '@hafizz_slm',
+      site_key: 'slm_johor_bahru',
+      sensitivities: ['Any change to the Johor depot, its shifts or its drivers'],
+    },
+    {
+      ...pure,
+      id: 'stk_slm_hr_partner',
+      name: 'Nadia Rahman',
+      title: 'HR Business Partner (Johor)',
+      organisation: 'Sigma Logistics Malaysia',
+      owning_team: 'Stakeholder Engagement',
+      org_key: 'org_slm_my',
+      email: 'nadia.rahman@slm.sim',
+      handle: '@nadiar_slm',
+      site_key: 'slm_johor_bahru',
+      sensitivities: ['Anything affecting Johor employees, notice or consultation'],
+    },
+    {
+      ...pure,
+      id: 'stk_slm_reporter',
+      name: 'Suresh Menon',
+      title: 'Labour Reporter',
+      organisation: 'The Star',
+      relationship: 'media',
+      owning_team: 'Communications',
+      org_key: 'org_slm_my',
+      email: 'suresh.menon@thestar.sim',
+      handle: '@sureshm_star',
+      sensitivities: ['Any decision by Sigma that affects Malaysian workers'],
+    },
+  ];
   const payload: SocialCrisisPayload = {
     scenario: {
       title: 'Fixture',
@@ -633,32 +690,7 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
           { name: 'Singapore', code: 'SG' },
           { name: 'Malaysia', code: 'MY' },
         ],
-        stakeholders: [stk, pure, legalPure, execPure, pureMy, commonPure],
-        decision_space: [
-          {
-            decision_key: 'close_depot',
-            label: 'Close the Johor depot',
-            title: 'Close the Johor depot',
-            description: 'Shut the depot for 30 days',
-            decidable_by_org_keys: ['primary'],
-            affected_org_keys: ['org_slm_my'],
-            severity: 'high',
-            sop_obligations: [
-              {
-                obligation_key: 'brief_staff',
-                description: 'Brief depot staff before external comms',
-                owed_to_stakeholder_ids: [pureMy.id],
-                owed_by_function: 'Stakeholder Engagement',
-                by_function: 'Stakeholder Engagement',
-                window_minutes: 30,
-                detection: 'stakeholder_contacted',
-              },
-            ],
-            eruption_inject_keys: ['erupt_close_depot_mei'],
-            spillover_inject_keys: [],
-            public_statement_expected: true,
-          },
-        ],
+        stakeholders: [stk, pure, legalPure, execPure, pureMy, commonPure, ...carriers],
       },
     },
     teams: charters.map((c) => ({
@@ -676,7 +708,7 @@ function fixture(): { payload: SocialCrisisPayload; charters: PersistableTeamCha
       content_guidelines: { tone: [], avoid: [], include: [], language_sensitivity: [] },
     },
     time_injects: [email, post],
-    condition_injects: [template],
+    condition_injects: [chained],
     decision_injects: [],
   };
   return { payload, charters };
@@ -767,16 +799,25 @@ expectCode('MO-ORG-002 two primaries', 'MO-ORG-002', (p) => {
 expectCode('MO-ORG-006 initial_state.country ≠ primary country', 'MO-ORG-006', (p) => {
   p.scenario.initial_state.country = 'Malaysia';
 });
-expectCode('MO-DEC-003 decision template missing', 'MO-DEC-003', (p) => {
-  p.condition_injects = [];
+expectCode('MO-INJ-008 duplicate inject_key', 'MO-INJ-008', (p) => {
+  p.condition_injects[0].delivery_config.inject_key = 'post_mei';
 });
-expectCode('MO-DEC-005 template with a trigger time', 'MO-DEC-005', (p) => {
-  p.condition_injects[0].trigger_time_minutes = 30;
+expectCode('MO-CAST-001 no site leader', 'MO-CAST-001', (p) => {
+  p.scenario.initial_state.stakeholders = p.scenario.initial_state.stakeholders!.filter(
+    (s) => s.id !== 'stk_sl_site_manager',
+  );
 });
-expectCode('MO-DEC-002 obligation owed to unknown stakeholder', 'MO-DEC-002', (p) => {
-  p.scenario.initial_state.decision_space![0].sop_obligations[0].owed_to_stakeholder_ids = [
-    'stk_ghost',
-  ];
+expectCode('MO-CAST-002 no HR counterpart', 'MO-CAST-002', (p) => {
+  p.scenario.initial_state.stakeholders = p.scenario.initial_state.stakeholders!.filter(
+    (s) => s.id !== 'stk_slm_hr_partner',
+  );
+});
+expectCode('MO-CAST-003 labour crisis without workforce representative', 'MO-CAST-003', (p) => {
+  p.scenario.initial_state.decision_context = { labour_signal: true };
+});
+expectCode('MO-CAST-007 roster entry authoring an inject', 'MO-CAST-007', (p) => {
+  const s = p.scenario.initial_state.stakeholders!.find((x) => x.id === 'stk_sl_mei_tan')!;
+  s.tier = 'roster';
 });
 
 // ─── Summary ─────────────────────────────────────────────────────────────────

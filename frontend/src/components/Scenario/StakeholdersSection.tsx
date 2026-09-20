@@ -29,7 +29,13 @@ export interface StakeholderRecord {
   resolution_criteria: string[];
   persuadability: string;
   hard_constraints: string[];
-  latent_grievances?: Record<string, { grievance: string }>;
+  // Contract v3.2 additive (cast completeness)
+  kind?: 'person' | 'group';
+  members?: string[];
+  tier?: 'principal' | 'roster';
+  site_key?: string;
+  sensitivities?: string[];
+  page_org_key?: string;
 }
 
 interface OrgEntry {
@@ -700,9 +706,19 @@ export const StakeholdersSection = ({
                             {injectCounts[s.id]} inject(s)
                           </span>
                         )}
-                        {s.latent_grievances && Object.keys(s.latent_grievances).length > 0 && (
-                          <span className="text-[10px] px-1.5 py-0.5 bg-danger/10 text-danger rounded">
-                            reacts to {Object.keys(s.latent_grievances).length} decision(s)
+                        {s.kind === 'group' && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-brand/10 text-brand rounded">
+                            distribution list · {(s.members || []).length} members
+                          </span>
+                        )}
+                        {s.tier === 'roster' && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-surface-2 text-muted rounded">
+                            roster
+                          </span>
+                        )}
+                        {s.page_org_key && (
+                          <span className="text-[10px] px-1.5 py-0.5 bg-warning/10 text-warning rounded">
+                            speaks for {s.page_org_key}
                           </span>
                         )}
                       </div>

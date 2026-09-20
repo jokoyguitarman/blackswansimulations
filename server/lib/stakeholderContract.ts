@@ -63,6 +63,12 @@ export type LatentGrievance = z.infer<typeof LatentGrievanceSchema>;
 const HANDLE_RE = /^@[a-z0-9_]{3,30}$/;
 const ID_RE = /^[a-z0-9_]+$/;
 
+// ─── v3.2 vocabularies (additive) ────────────────────────────────────────────
+export const STAKEHOLDER_KINDS = ['person', 'group'] as const;
+export type StakeholderKind = (typeof STAKEHOLDER_KINDS)[number];
+export const STAKEHOLDER_TIERS = ['principal', 'roster'] as const;
+export type StakeholderTier = (typeof STAKEHOLDER_TIERS)[number];
+
 /**
  * Non-strict on purpose: unknown keys the generator adds later are preserved, so additive
  * surface survives a round-trip through the runtime.
@@ -98,10 +104,23 @@ export const StakeholderSchema = z
     persuadability: z.enum(PERSUADABILITIES).default('medium'),
     hard_constraints: z.array(z.string()).default([]),
     // RETIRED with the menu-based decision layer (2026-09-20). Still parsed so scenarios compiled
-    // with it load, and because generator-side validation reads it; the runtime ignores it.
+    // with it load; the generator strips it at compile time; the runtime ignores it.
     // See docs/executive-decisions-organic-handover.md.
     /** @deprecated */
     latent_grievances: z.record(z.string(), LatentGrievanceSchema).optional(),
+    // ─── v3.2 additive (organic executive decisions §10.2 / pressure organisations) ───
+    /** 'group' = distribution list; mail to it reaches `members`. Default 'person'. */
+    kind: z.enum(STAKEHOLDER_KINDS).optional(),
+    /** Stakeholder ids; required when kind === 'group'. */
+    members: z.array(z.string()).optional(),
+    /** 'roster' = lightweight workforce entry: sampled replies, no own injects. Default 'principal'. */
+    tier: z.enum(STAKEHOLDER_TIERS).optional(),
+    /** Grouping within an org (plant / depot / branch) used by propagation. */
+    site_key: z.string().optional(),
+    /** Plain-language: what kinds of executive decisions this person reacts to. */
+    sensitivities: z.array(z.string()).optional(),
+    /** Spokesperson of a pressure page (reverse link to orgs[].org_key). */
+    page_org_key: z.string().optional(),
   })
   .passthrough()
   .superRefine((s, ctx) => {
@@ -178,6 +197,39 @@ export function toPlayerVisible(s: Stakeholder): PlayerVisibleStakeholder {
 
 // ─── Organisation registry (contract §5.1) ───────────────────────────────────
 
+/** v3.2: third side for unions, regulators, NGOs, community groups, political actors. */
+export const ORG_SIDES = ['protagonist', 'antagonist', 'pressure'] as const;
+export type OrgSide = (typeof ORG_SIDES)[number];
+export const ORG_KINDS = [
+  'company',
+  'office',
+  'agency',
+  'ngo',
+  'other',
+  // pressure-side kinds (v3.2)
+  'union',
+  'regulator',
+  'community_group',
+  'political',
+] as const;
+export type OrgKind = (typeof ORG_KINDS)[number];
+export const PRESSURE_KINDS = [
+  'union',
+  'regulator',
+  'ngo',
+  'community_group',
+  'political',
+] as const;
+/** Voice of an AI-run page: pressure registers + `aligned` (AI-operated protagonist offices only). */
+export const PAGE_REGISTERS = [
+  'statutory',
+  'advocacy',
+  'grassroots',
+  'political',
+  'aligned',
+] as const;
+export type PageRegister = (typeof PAGE_REGISTERS)[number];
+
 export const OrgRegistryEntrySchema = z
   .object({
     org_key: z.string().min(1),
@@ -185,9 +237,25 @@ export const OrgRegistryEntrySchema = z
     short_name: z.string().optional(),
     country: z.string().min(1).nullable().default(null),
     city: z.string().optional(),
-    kind: z.enum(['company', 'office', 'agency', 'ngo', 'other']).optional(),
-    side: z.enum(['protagonist', 'antagonist']).default('protagonist'),
+    kind: z.enum(ORG_KINDS).optional(),
+    side: z.enum(ORG_SIDES).default('protagonist'),
     is_primary: z.boolean().optional(),
+    // ─── v3.2 additive ───
+    /** Required when side === 'pressure': the contactable person who speaks for the page. */
+    spokesperson_stakeholder_id: z.string().optional(),
+    /** Protagonist orgs only: 'ai' = no human players; page + carriers are simulated. */
+    operation: z.enum(['players', 'ai']).optional(),
+    /** Sites within the org (plant / depot / branch) for cast completeness and propagation. */
+    sites: z
+      .array(
+        z.object({
+          site_key: z.string().min(1),
+          name: z.string().min(1),
+          country: z.string().min(1),
+          city: z.string().optional(),
+        }),
+      )
+      .optional(),
   })
   .passthrough();
 export type OrgRegistryEntry = z.infer<typeof OrgRegistryEntrySchema>;
@@ -279,54 +347,9 @@ export function sheetLabel(relationship: StakeholderRelationship): string {
   return RELATIONSHIP_SHEETS.find(([r]) => r === relationship)?.[1] ?? 'Other';
 }
 
-// ─── Decision layer — RETIRED menu-based surface (contract §7A, retired 2026-09-20) ──
-//
-// The runtime no longer reads any of this: the Decisions app, /sessions/:id/decision-space,
-// /sessions/:id/decisions, the `decision_recorded:*` primitive, latent-grievance swapping and
-// obligation tracking were removed in favour of the organic model described in
-// docs/executive-decisions-organic-handover.md. The schemas below are kept ONLY so generator-side
-// modules that still import them keep compiling; delete them together with the last importer.
-
-/** @deprecated Menu-based decision layer retired — see docs/executive-decisions-organic-handover.md. */
-export const DecisionOptionSchema = z
-  .object({
-    decision_key: z.string().regex(ID_RE),
-    title: z.string().min(1),
-    description: z.string().default(''),
-    decidable_by_org_keys: z.array(z.string()).default([]),
-    affected_org_keys: z.array(z.string()).default([]),
-    severity: z.enum(['low', 'medium', 'high', 'critical']).default('medium'),
-    sop_obligations: z
-      .array(
-        z.object({
-          description: z.string().default(''),
-          owed_to_stakeholder_ids: z.array(z.string()).default([]),
-          by_function: z.string().min(1),
-          window_minutes: z.number().int().positive(),
-        }),
-      )
-      .default([]),
-    eruption_inject_keys: z.array(z.string()).default([]),
-    spillover_inject_keys: z.array(z.string()).default([]),
-  })
-  .passthrough();
-/** @deprecated Menu-based decision layer retired. */
-export type DecisionOption = z.infer<typeof DecisionOptionSchema>;
-/** @deprecated Menu-based decision layer retired. */
-export const DecisionSpaceSchema = z.array(DecisionOptionSchema);
-
-/** @deprecated Menu-based decision layer retired; the organic model derives who-must-know at runtime. */
-export const ChainOfCommandLinkSchema = z
-  .object({
-    org_key: z.string().min(1),
-    from_function: z.string().min(1),
-    to: z.array(z.string()).default([]),
-  })
-  .passthrough();
-/** @deprecated Menu-based decision layer retired. */
-export type ChainOfCommandLink = z.infer<typeof ChainOfCommandLinkSchema>;
-/** @deprecated Menu-based decision layer retired. */
-export const ChainOfCommandSchema = z.array(ChainOfCommandLinkSchema);
+// The menu-based decision layer (contract §7A) was retired on 2026-09-20 and its schemas removed
+// once the generator dropped its last importer. Executive decisions are now detected at runtime
+// from what executives write — see docs/executive-decisions-organic-plan.md.
 
 /**
  * Cross-inject condition primitives keyed on `delivery_config.inject_key`. These survived the

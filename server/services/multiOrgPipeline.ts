@@ -41,10 +41,23 @@ import {
   generateCommonStakeholders,
   ensurePersonaTwins,
 } from './stakeholderGenerationService.js';
-import { generateDecisionLayer, hasExecutiveTeam } from './decisionLayerService.js';
 import { sanitizeExpectedActions, SENTIMENT_DIMENSIONS } from './teamCharterService.js';
 import type { Stakeholder, OrgRegistryEntry, CountryEntry } from '../lib/stakeholderContract.js';
-import type { ExecutiveDecision, ChainOfCommandEdge } from './scenarioOrgModel.js';
+import {
+  completeCast,
+  detectLabourSignal,
+  detectProductSafetySignal,
+  ownerFunctionFor,
+} from './castCompletenessService.js';
+
+/** Private planner hints persisted at initial_state.decision_context (organic decisions §4.1). */
+export interface DecisionContext {
+  leakiness: number;
+  labour_signal: boolean;
+  product_safety_signal: boolean;
+  statutory_notice_days?: number;
+  notification_function?: string;
+}
 
 /**
  * Multi-organisation War Room pipeline (contract §5): the per-endpoint
@@ -220,6 +233,10 @@ export interface StorylinePipelineResult {
   persona_twins: NPCPersona[];
   orgs: OrgRegistryEntry[];
   countries: CountryEntry[];
+  /** Cast-generated notification / consultation SOP steps (organic decisions §4.1). */
+  sop_steps: SOPStep[];
+  /** Private planner hints (persisted as initial_state.decision_context). */
+  decision_context: DecisionContext;
 }
 
 export async function runStorylinePipeline(
@@ -299,6 +316,50 @@ export async function runStorylinePipeline(
   const stakeholderInjects = stakeholderResults.flatMap((r) => r.injects);
   const personaTwins = stakeholderResults.flatMap((r) => r.personaTwins);
 
+  // 3b. Cast completeness (organic decisions §4.1): every path a decision can travel has a
+  // contactable carrier — site leader, HR counterpart, workforce rep, roster + distribution
+  // list, local reporter, regulator, executive shadow. Sequential so identifiers stay unique.
+  const crisisText = `${crisis.crisisType} ${crisis.context}`;
+  const labourSignal = detectLabourSignal(crisisText);
+  const castOpts = { labourSignal, multiOrg };
+  const sopSteps: SOPStep[] = [];
+  for (let i = 0; i < orgs.length; i++) {
+    const org = orgs[i];
+    write({
+      type: 'org_progress',
+      org_key: org.org_key,
+      stage: 'cast',
+      detail: 'completing carriers',
+    });
+    const r = await completeCast(
+      org,
+      chartersByOrg[i],
+      stakeholders,
+      factSheet,
+      crisis,
+      taken,
+      castOpts,
+    );
+    stakeholders.push(...r.added);
+    if (i === 0 || (r.sopSteps.length > 0 && sopSteps.length === 0)) sopSteps.push(...r.sopSteps);
+    write({
+      type: 'org_progress',
+      org_key: org.org_key,
+      stage: 'cast',
+      detail: `${r.added.length} carriers added (${r.gaps.flatMap((g) => g.missing).join(', ') || 'complete'})`,
+    });
+  }
+  const hrFunction =
+    ownerFunctionFor('hr_counterpart', allCharters) ??
+    allCharters[0]?.function_key ??
+    'Communications';
+  const decisionContext: DecisionContext = {
+    leakiness: 0.5,
+    labour_signal: labourSignal,
+    product_safety_signal: detectProductSafetySignal(crisisText),
+    notification_function: hrFunction,
+  };
+
   // 4. Universal backbone once (primary country; orgs by country in the prompt).
   const primary = orgs.find((o) => o.is_primary) ?? orgs[0];
   const teamDefs: TeamDef[] = allCharters.map((c) => ({
@@ -350,42 +411,8 @@ export async function runStorylinePipeline(
     persona_twins: personaTwins,
     orgs: registry,
     countries: buildCountries(registry),
-  };
-}
-
-// ─── generate-convergence extras (decision layer) ────────────────────────────
-
-export interface DecisionLayerWire {
-  decision_space: ExecutiveDecision[];
-  stakeholders: Stakeholder[];
-  templates: SocialInject[];
-  chain_of_command: ChainOfCommandEdge[];
-  sop_steps: SOPStep[];
-}
-
-export async function runDecisionLayer(
-  orgsResult: Extract<OrganisationsValidation, { ok: true }>,
-  charters: OrgTeamCharter[],
-  stakeholders: Stakeholder[],
-  personas: NPCPersona[],
-  factSheet: FactSheet,
-  crisis: CrisisContext,
-): Promise<DecisionLayerWire | null> {
-  if (!hasExecutiveTeam(orgsResult.orgs)) return null;
-  const r = await generateDecisionLayer(
-    orgsResult.orgs,
-    charters,
-    stakeholders,
-    personas,
-    factSheet,
-    crisis,
-  );
-  return {
-    decision_space: r.decision_space,
-    stakeholders: r.stakeholders,
-    templates: r.templates,
-    chain_of_command: r.chain_of_command,
-    sop_steps: r.sop_steps,
+    sop_steps: sopSteps,
+    decision_context: decisionContext,
   };
 }
 
@@ -518,9 +545,9 @@ export interface CompileArtifacts {
   stakeholders: Stakeholder[];
   extraInjects: SocialInject[];
   personas: NPCPersona[];
-  decision_space?: ExecutiveDecision[];
-  chain_of_command?: ChainOfCommandEdge[];
+  /** Notification / consultation SOP steps generated with the cast (organic-decisions plan §4.1). */
   sop_steps: SOPStep[];
+  decision_context?: DecisionContext;
 }
 
 export function buildCompileArtifacts(
@@ -531,9 +558,8 @@ export function buildCompileArtifacts(
     stakeholder_injects?: SocialInject[];
     personas: NPCPersona[];
     org_page?: OrgPageConfig | null;
-    decision_space?: ExecutiveDecision[];
-    chain_of_command?: ChainOfCommandEdge[];
     sop_steps?: SOPStep[];
+    decision_context?: Partial<DecisionContext> | null;
   },
 ): CompileArtifacts {
   const { orgs, competitors, multiOrg } = orgsResult;
@@ -562,8 +588,23 @@ export function buildCompileArtifacts(
   );
   const countries = buildCountries(registry);
 
-  const stakeholders = (body.stakeholders || []).filter((s) => s && typeof s === 'object');
-  const extraInjects = [...(body.stakeholder_injects || [])];
+  // Retired menu-layer fields are stripped so no new scenario carries them (handover §2.2);
+  // page-authored / stakeholder-authored injects that depended on decision_recorded:* are dropped.
+  const stakeholders = (body.stakeholders || [])
+    .filter((s) => s && typeof s === 'object')
+    .map((s) => {
+      const copy = { ...s } as Stakeholder & { latent_grievances?: unknown };
+      delete copy.latent_grievances;
+      return copy as Stakeholder;
+    });
+  const extraInjects = [...(body.stakeholder_injects || [])].filter((inj) => {
+    const dc = (inj.delivery_config || {}) as unknown as Record<string, unknown>;
+    const conds = (inj.conditions_to_appear as { conditions?: string[] } | undefined)?.conditions;
+    const menuGated =
+      Array.isArray(conds) && conds.some((c) => String(c).startsWith('decision_recorded:'));
+    if (dc.decision_key || menuGated) return false;
+    return true;
+  });
 
   // Single-org: stakeholders and injects carry no org_key/country (contract §5.3 "identical to today").
   if (!multiOrg) {
@@ -581,32 +622,6 @@ export function buildCompileArtifacts(
   const personas = [...body.personas];
   personas.push(...ensurePersonaTwins(stakeholders, extraInjects, personas, countryByOrg));
 
-  // Decision layer aliases (contract module names): drafts generated before the aliases
-  // existed still compile — title mirrors label, by_function mirrors owed_by_function.
-  const decisionSpace = (body.decision_space || []).map((d) => ({
-    ...d,
-    title: d.title || d.label,
-    sop_obligations: (d.sop_obligations || []).map((ob) => ({
-      ...ob,
-      by_function: ob.by_function || ob.owed_by_function,
-      owed_by_function: ob.owed_by_function || ob.by_function,
-    })),
-  }));
-  const chainOfCommand = (body.chain_of_command || []).map((edge) => ({
-    ...edge,
-    to: (edge.to as unknown[])
-      .map((t) =>
-        typeof t === 'string'
-          ? t
-          : String(
-              (t as { stakeholder_id?: string; function?: string }).stakeholder_id ||
-                (t as { function?: string }).function ||
-                '',
-            ),
-      )
-      .filter(Boolean),
-  }));
-
   return {
     charters,
     teamDefs,
@@ -616,10 +631,27 @@ export function buildCompileArtifacts(
     stakeholders,
     extraInjects,
     personas,
-    decision_space: decisionSpace.length > 0 ? decisionSpace : undefined,
-    chain_of_command: chainOfCommand.length > 0 ? chainOfCommand : undefined,
-    sop_steps: body.sop_steps || [],
+    sop_steps: (body.sop_steps || []).filter(
+      (s) => !(s as unknown as Record<string, unknown>).triggered_by_decision_key,
+    ),
+    decision_context: body.decision_context
+      ? {
+          leakiness: clamp01(Number(body.decision_context.leakiness ?? 0.5)),
+          labour_signal: !!body.decision_context.labour_signal,
+          product_safety_signal: !!body.decision_context.product_safety_signal,
+          ...(body.decision_context.statutory_notice_days
+            ? { statutory_notice_days: Number(body.decision_context.statutory_notice_days) }
+            : {}),
+          ...(body.decision_context.notification_function
+            ? { notification_function: String(body.decision_context.notification_function) }
+            : {}),
+        }
+      : undefined,
   };
+}
+
+function clamp01(n: number): number {
+  return Number.isFinite(n) ? Math.max(0, Math.min(1, n)) : 0.5;
 }
 
 export function logCompileSummary(
@@ -635,7 +667,7 @@ export function logCompileSummary(
       teams: a.charters.length,
       stakeholders: a.stakeholders.length,
       injects: injectCount,
-      decisions: a.decision_space?.length ?? 0,
+      sop_steps: a.sop_steps.length,
     },
     'scenario_persisted_multi_org',
   );

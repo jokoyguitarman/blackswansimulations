@@ -61,14 +61,12 @@ interface OrgRegistryWire {
   is_primary?: boolean;
 }
 
-interface ExecutiveDecisionWire {
-  decision_key: string;
-  label: string;
+/** Notification / consultation SOP step generated with the cast (graded at runtime). */
+interface SopStepWire {
+  step_id: string;
+  name: string;
   description: string;
-  severity: string;
-  decidable_by_org_keys: string[];
-  affected_org_keys: string[];
-  sop_obligations: Array<{ description: string; owed_by_function: string; window_minutes: number }>;
+  time_limit_minutes: number;
   [key: string]: unknown;
 }
 
@@ -376,14 +374,13 @@ export const SocialCrisisWizard = () => {
     [competitorEntries],
   );
 
-  /* Stakeholder characters, registry and decision layer (contract §3 / §5.1 / §7A) */
+  /* Stakeholder characters, registry and cast-generated SOP steps (contract §3 / §5.1) */
   const [stakeholders, setStakeholders] = useState<StakeholderWire[]>([]);
   const [stakeholderInjects, setStakeholderInjects] = useState<SocialInject[]>([]);
   const [orgRegistry, setOrgRegistry] = useState<OrgRegistryWire[]>([]);
   const [perCountryCounts, setPerCountryCounts] = useState<Record<string, number>>({});
-  const [decisionSpace, setDecisionSpace] = useState<ExecutiveDecisionWire[]>([]);
-  const [chainOfCommand, setChainOfCommand] = useState<unknown[]>([]);
-  const [sopSteps, setSopSteps] = useState<unknown[]>([]);
+  const [sopSteps, setSopSteps] = useState<SopStepWire[]>([]);
+  const [decisionContext, setDecisionContext] = useState<Record<string, unknown> | null>(null);
 
   /* Step 4 — Convergence + Shared Chaos */
   const [sharedInjects, setSharedInjects] = useState<SocialInject[]>([]);
@@ -474,9 +471,8 @@ export const SocialCrisisWizard = () => {
       stakeholder_injects: stakeholderInjects,
       org_registry: orgRegistry,
       per_country_counts: perCountryCounts,
-      decision_space: decisionSpace,
-      chain_of_command: chainOfCommand,
       sop_steps: sopSteps,
+      decision_context: decisionContext,
     }),
     [
       crisisDescription,
@@ -508,9 +504,8 @@ export const SocialCrisisWizard = () => {
       stakeholderInjects,
       orgRegistry,
       perCountryCounts,
-      decisionSpace,
-      chainOfCommand,
       sopSteps,
+      decisionContext,
     ],
   );
 
@@ -647,10 +642,9 @@ export const SocialCrisisWizard = () => {
           setOrgRegistry(input.org_registry as OrgRegistryWire[]);
         if (input.per_country_counts && typeof input.per_country_counts === 'object')
           setPerCountryCounts(input.per_country_counts as Record<string, number>);
-        if (Array.isArray(input.decision_space))
-          setDecisionSpace(input.decision_space as ExecutiveDecisionWire[]);
-        if (Array.isArray(input.chain_of_command)) setChainOfCommand(input.chain_of_command);
-        if (Array.isArray(input.sop_steps)) setSopSteps(input.sop_steps);
+        if (Array.isArray(input.sop_steps)) setSopSteps(input.sop_steps as SopStepWire[]);
+        if (input.decision_context && typeof input.decision_context === 'object')
+          setDecisionContext(input.decision_context as Record<string, unknown>);
 
         setStep(validStep);
       } catch (err) {
@@ -828,9 +822,8 @@ export const SocialCrisisWizard = () => {
     // A fresh build resets everything downstream that hangs off the crowd.
     setStakeholders([]);
     setStakeholderInjects([]);
-    setDecisionSpace([]);
-    setChainOfCommand([]);
     setSopSteps([]);
+    setDecisionContext(null);
     try {
       const headers = await authHeaders();
       const res = await fetchJSON(apiUrl('/api/warroom/social-crisis/generate-npcs'), {
@@ -1013,6 +1006,9 @@ export const SocialCrisisWizard = () => {
                     setStakeholderInjects(msg.stakeholder_injects as SocialInject[]);
                   if (twins.length > 0) setPersonas(mergedPersonas);
                   if (Array.isArray(msg.orgs)) setOrgRegistry(msg.orgs as OrgRegistryWire[]);
+                  if (Array.isArray(msg.sop_steps)) setSopSteps(msg.sop_steps as SopStepWire[]);
+                  if (msg.decision_context && typeof msg.decision_context === 'object')
+                    setDecisionContext(msg.decision_context as Record<string, unknown>);
                   if (stks.length > 0)
                     setStep3Progress((prev) => [
                       ...prev,
@@ -1068,36 +1064,6 @@ export const SocialCrisisWizard = () => {
       setStep4Error(null);
 
       const apply = (d: Record<string, unknown>) => {
-        // Decision layer (§7A): decisions, stakeholders with latent grievances, dormant templates.
-        const decisionLayer = d.decision_layer as
-          | {
-              decision_space?: ExecutiveDecisionWire[];
-              stakeholders?: StakeholderWire[];
-              templates?: SocialInject[];
-              chain_of_command?: unknown[];
-              sop_steps?: unknown[];
-            }
-          | undefined;
-        if (decisionLayer && typeof decisionLayer === 'object') {
-          if (Array.isArray(decisionLayer.decision_space))
-            setDecisionSpace(decisionLayer.decision_space);
-          if (Array.isArray(decisionLayer.stakeholders) && decisionLayer.stakeholders.length > 0)
-            setStakeholders(decisionLayer.stakeholders);
-          const templates = decisionLayer.templates;
-          if (Array.isArray(templates) && templates.length > 0)
-            setStakeholderInjects((prev) => [
-              ...prev.filter(
-                (i) =>
-                  !(
-                    i.delivery_config && (i.delivery_config as Record<string, unknown>).decision_key
-                  ),
-              ),
-              ...templates,
-            ]);
-          if (Array.isArray(decisionLayer.chain_of_command))
-            setChainOfCommand(decisionLayer.chain_of_command);
-          if (Array.isArray(decisionLayer.sop_steps)) setSopSteps(decisionLayer.sop_steps);
-        }
         const si = (d.sharedInjects || d.shared_injects) as SocialInject[] | undefined;
         if (Array.isArray(si)) setSharedInjects(si);
         const cg = (d.convergenceGates || d.convergence_gates) as SocialInject[] | undefined;
@@ -1367,14 +1333,13 @@ export const SocialCrisisWizard = () => {
           org_page: orgPage,
           duration: 60,
           blueprint: blueprint ?? undefined,
-          // Multi-organisation (contract §3 / §5 / §7A) — the server derives orgs[]/countries[].
+          // Multi-organisation (contract §3 / §5) — the server derives orgs[]/countries[].
           organisations: organisationsPayload,
           competitors: competitorsPayload,
           stakeholders: stakeholders.length > 0 ? stakeholders : undefined,
           stakeholder_injects: stakeholderInjects.length > 0 ? stakeholderInjects : undefined,
-          decision_space: decisionSpace.length > 0 ? decisionSpace : undefined,
-          chain_of_command: chainOfCommand.length > 0 ? chainOfCommand : undefined,
           sop_steps: sopSteps.length > 0 ? sopSteps : undefined,
+          decision_context: decisionContext ?? undefined,
         }),
       });
 
@@ -1459,9 +1424,8 @@ export const SocialCrisisWizard = () => {
     competitorsPayload,
     stakeholders,
     stakeholderInjects,
-    decisionSpace,
-    chainOfCommand,
     sopSteps,
+    decisionContext,
   ]);
 
   /* ─── Step transition ────────────────────────────────────────────── */
@@ -2321,13 +2285,12 @@ export const SocialCrisisWizard = () => {
                   </div>
                 )}
               </div>
-              {decisionSpace.length > 0 && (
+              {sopSteps.length > 0 && (
                 <div className="border border-border rounded p-3 text-center">
-                  <div className="text-[10px] text-muted uppercase">Executive decisions</div>
-                  <div className="text-ink font-bold text-lg">{decisionSpace.length}</div>
+                  <div className="text-[10px] text-muted uppercase">Notification SOP steps</div>
+                  <div className="text-ink font-bold text-lg">{sopSteps.length}</div>
                   <div className="text-[9px] text-muted mt-0.5">
-                    {stakeholderInjects.filter((i) => i.trigger_time_minutes == null).length}{' '}
-                    dormant consequences
+                    graded when leadership decisions are communicated
                   </div>
                 </div>
               )}
@@ -2434,51 +2397,24 @@ export const SocialCrisisWizard = () => {
               );
             })()}
 
-          {decisionSpace.length > 0 && (
+          {sopSteps.length > 0 && (
             <div className="border border-border rounded p-4 mb-4">
               <h3 className="text-xs terminal-text text-muted uppercase mb-3">
-                Executive decision space ({decisionSpace.length})
+                Notification &amp; consultation SOP ({sopSteps.length} steps)
               </h3>
               <p className="text-[10px] terminal-text text-muted mb-3">
-                Nothing here is scripted. These are the decisions leadership could take during the
-                exercise; each carries the SOP obligations that follow and the stakeholders who
-                react if leadership skips them.
+                Leadership decides by communicating — an email, a chat line, a call. When the
+                simulation detects a decision, these steps are what the HR / people-facing teams are
+                graded against: who they told, in what order, how quickly, and how humanely.
               </p>
-              <div className="space-y-2">
-                {decisionSpace.map((d) => (
-                  <div key={d.decision_key} className="border border-border rounded p-2.5">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[11px] terminal-text text-ink font-bold">
-                        {d.label}
-                      </span>
-                      <span
-                        className={`text-[9px] terminal-text px-1.5 py-0.5 rounded border ${
-                          d.severity === 'high'
-                            ? 'border-danger/40 text-danger'
-                            : d.severity === 'medium'
-                              ? 'border-warning/40 text-warning'
-                              : 'border-border text-muted'
-                        }`}
-                      >
-                        {d.severity}
-                      </span>
-                      <span className="text-[9px] terminal-text text-muted">
-                        affects {d.affected_org_keys.join(', ')}
-                      </span>
-                    </div>
-                    <div className="text-[10px] terminal-text text-muted">{d.description}</div>
-                    {d.sop_obligations.length > 0 && (
-                      <ul className="mt-1 space-y-0.5">
-                        {d.sop_obligations.map((ob, i) => (
-                          <li key={i} className="text-[10px] terminal-text text-muted">
-                            · {ob.owed_by_function} within {ob.window_minutes} min: {ob.description}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
+              <ul className="space-y-1">
+                {sopSteps.map((s) => (
+                  <li key={s.step_id} className="text-[10px] terminal-text text-muted">
+                    <span className="text-ink font-bold">{s.name}</span> — {s.description} (
+                    {s.time_limit_minutes} min)
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
 
