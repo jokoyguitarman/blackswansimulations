@@ -14,7 +14,7 @@ import {
 } from './intellect.js';
 import { createBoard, type TeamBoard } from './memory.js';
 import { budgetStatus, forgetBudget } from './llmQueue.js';
-import { forgetSessionContext, loadSessionContext } from './perception.js';
+import { forgetSessionContext, handleFor, loadSessionContext } from './perception.js';
 import type { BotStats, BotStatus } from './types.js';
 
 /**
@@ -29,6 +29,12 @@ import type { BotStats, BotStatus } from './types.js';
 const TICK_MS = 60_000;
 const INTELLECT_TTL_MS = 10_000;
 
+interface ChannelMeta {
+  type: string;
+  teamName: string | null;
+  members: string[];
+}
+
 interface SessionRuntime {
   sessionId: string;
   bots: Map<string, PlayerBot>;
@@ -36,6 +42,11 @@ interface SessionRuntime {
   /** Cross-team claims: an email or DM to the whole organisation is answered once. */
   sessionBoard: TeamBoard;
   eventHandler: ((event: WebSocketEvent) => void) | null;
+  /**
+   * Chat channels we listen to. Chat broadcasts go to `channel:<id>` on the internal bus, not to
+   * the session room, so each team / all-teams / 1:1 channel needs its own subscription.
+   */
+  channelSubs: Map<string, { handler: (event: WebSocketEvent) => void; meta: ChannelMeta }>;
   intellect: { value: number; loadedAt: number } | null;
   startedAt: number;
   /** Order bots were added in; the first bot on a team is that team's lead. */
@@ -165,6 +176,7 @@ class TeammateBotService {
         boards: new Map(),
         sessionBoard: createBoard('*'),
         eventHandler: null,
+        channelSubs: new Map(),
         intellect: null,
         startedAt: Date.now(),
         order: [],
@@ -174,6 +186,8 @@ class TeammateBotService {
       await ensurePageHolder(sessionId);
       logger.info({ sessionId, bots: rows.length }, 'teammates: runtime started');
     }
+    // New team channels and 1:1 chats appear during a session; pick them up every tick.
+    await this.syncChannelSubscriptions(rt);
 
     // Add missing bots, staggered so they do not all fire at once.
     let added = 0;
@@ -235,6 +249,10 @@ class TeammateBotService {
     if (!rt) return;
     for (const bot of rt.bots.values()) bot.stop();
     if (rt.eventHandler) getWebSocketService().offSessionEvent(sessionId, rt.eventHandler);
+    for (const [channelId, sub] of rt.channelSubs) {
+      getWebSocketService().offChannelEvent(channelId, sub.handler);
+    }
+    rt.channelSubs.clear();
     this.runtimes.delete(sessionId);
     forgetBudget(sessionId);
     forgetSessionContext(sessionId);
@@ -315,25 +333,36 @@ class TeammateBotService {
         for (const bot of rt.bots.values()) bot.wake('hostile content', delay() * 1.5);
         return;
       }
-      case 'sim_email.received': {
-        const email = (data.email ?? {}) as { recipient_user_ids?: string[] | null };
+      // NPC / inject mail arrives as sim_email.received; a human's mail to a bot arrives as
+      // sim_email.sent (routes/socialMedia.ts POST /emails). Both address concrete recipients.
+      case 'sim_email.received':
+      case 'sim_email.sent': {
+        const email = (data.email ?? {}) as {
+          recipient_user_ids?: string[] | null;
+          sent_by_player_id?: string | null;
+        };
         const recipients = email.recipient_user_ids ?? null;
         for (const bot of rt.bots.values()) {
+          if (email.sent_by_player_id === bot.userId) continue;
+          if (event.type === 'sim_email.sent' && !recipients?.includes(bot.userId)) continue;
           if (!recipients || recipients.includes(bot.userId)) bot.wake('new email', delay());
         }
         return;
       }
       case 'messenger.received': {
-        for (const bot of rt.bots.values()) bot.wake('new direct message', delay());
-        return;
-      }
-      case 'message.sent': {
-        const message = (data.message ?? {}) as { content?: string; sender_id?: string };
-        const content = (message.content ?? '').toLowerCase();
+        const message = (data.message ?? {}) as {
+          recipient_handle?: string;
+          sender_handle?: string;
+        };
+        const to = (message.recipient_handle ?? '').toLowerCase();
+        const from = (message.sender_handle ?? '').toLowerCase();
         for (const bot of rt.bots.values()) {
-          if (message.sender_id === bot.userId) continue;
-          const first = bot.name.split(/\s+/)[0]?.toLowerCase() ?? '';
-          if (first && content.includes(first)) bot.wake('a chat mention', delay() * 0.6);
+          const mine = handleFor(bot.name).toLowerCase();
+          if (from === mine) continue; // my own outbound message
+          // Addressed to me: answer promptly. Anything else (a thread with the organisation
+          // page, someone else's DM) is left to perception, which knows who holds the page.
+          if (to === mine) bot.wake('a direct message to me', delay() * 0.6);
+          else bot.wake('a direct message', delay());
         }
         return;
       }
@@ -342,6 +371,93 @@ class TeammateBotService {
         return;
       default:
         return;
+    }
+  }
+
+  // ─── Chat channel subscriptions ───────────────────────────────────────────
+
+  /**
+   * Chat lines are broadcast per channel (`websocketService.messageSent` → `channel:<id>`), never
+   * to the session room, so every channel a bot might be spoken to in gets its own listener:
+   * the team channels, "All Teams", and 1:1 chats that include a bot. Re-run every reconcile tick
+   * so channels created mid-session (a human opening a chat with a bot) are picked up.
+   */
+  private async syncChannelSubscriptions(rt: SessionRuntime): Promise<void> {
+    if (!env.teammateBotsReactive) return;
+    try {
+      const { data: channels } = await supabaseAdmin
+        .from('chat_channels')
+        .select('id, type, team_name, members')
+        .eq('session_id', rt.sessionId)
+        .in('type', ['team', 'inter_agency', 'direct']);
+      const botIds = new Set(rt.bots.keys());
+      const live = new Set<string>();
+      for (const row of channels ?? []) {
+        const c = row as {
+          id: string;
+          type: string;
+          team_name: string | null;
+          members: string[] | null;
+        };
+        const members = Array.isArray(c.members) ? c.members.map(String) : [];
+        // 1:1 chats only matter when one side is a bot.
+        if (c.type === 'direct' && !members.some((m) => botIds.has(m))) continue;
+        live.add(c.id);
+        const existing = rt.channelSubs.get(c.id);
+        const meta: ChannelMeta = { type: c.type, teamName: c.team_name, members };
+        if (existing) {
+          existing.meta = meta;
+          continue;
+        }
+        const handler = (event: WebSocketEvent) => {
+          try {
+            void this.handleChannelEvent(rt, c.id, event);
+          } catch (err) {
+            logger.debug({ err, channelId: c.id }, 'teammates: channel handler failed');
+          }
+        };
+        rt.channelSubs.set(c.id, { handler, meta });
+        getWebSocketService().onChannelEvent(c.id, handler);
+      }
+      for (const [channelId, sub] of rt.channelSubs) {
+        if (live.has(channelId)) continue;
+        getWebSocketService().offChannelEvent(channelId, sub.handler);
+        rt.channelSubs.delete(channelId);
+      }
+    } catch (err) {
+      logger.debug({ err, sessionId: rt.sessionId }, 'teammates: channel subscription sync failed');
+    }
+  }
+
+  private async handleChannelEvent(
+    rt: SessionRuntime,
+    channelId: string,
+    event: WebSocketEvent,
+  ): Promise<void> {
+    if (event.type !== 'message.sent' || rt.bots.size === 0) return;
+    const sub = rt.channelSubs.get(channelId);
+    if (!sub) return;
+    const message = ((event.data ?? {}).message ?? {}) as { content?: string; sender_id?: string };
+    if (!message.sender_id || rt.bots.has(message.sender_id)) return; // bots do not wake bots
+    const params: BotParams = intellectToParams(await this.getIntellect(rt.sessionId));
+    const delay = () => pickSeconds(params.reactionDelaySec) * 1000;
+    const content = (message.content ?? '').toLowerCase();
+    const { meta } = sub;
+
+    if (meta.type === 'direct') {
+      // A private message: wake the bot on the other side, promptly.
+      for (const bot of rt.bots.values()) {
+        if (meta.members.includes(bot.userId)) bot.wake('a private chat message', delay() * 0.5);
+      }
+      return;
+    }
+    for (const bot of rt.bots.values()) {
+      const first = bot.name.split(/\s+/)[0]?.toLowerCase() ?? '';
+      const named = first.length > 2 && new RegExp(`\\b${first}\\b`).test(content);
+      const myTeamChannel = meta.type === 'team' && meta.teamName === bot.teamName;
+      if (named) bot.wake('a chat mention', delay() * 0.6);
+      else if (myTeamChannel) bot.wake('a line in my team channel', delay());
+      // All-Teams lines that name nobody are picked up on cadence.
     }
   }
 

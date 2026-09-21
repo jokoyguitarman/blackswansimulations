@@ -293,14 +293,19 @@ export async function execute(action: BotAction, ctx: ExecContext): Promise<Exec
       }
 
       case 'chat': {
-        const channelId = sit.chat.teamChannelId ?? sit.chat.allTeamsChannelId;
+        // Reply where the conversation is: a 1:1 chat, the channel the mention came from,
+        // or the team channel for self-initiated lines.
+        const channelId = action.channelId ?? sit.chat.teamChannelId ?? sit.chat.allTeamsChannelId;
         if (!channelId) return skip('no team channel');
         const text = guardText(action.text, 1500);
         if (!text) return skip('no chat text');
         await api.sendChat(channelId, text);
         mem.lastChatAt = Date.now();
-        if (action.targetId && action.targetId !== 'plan' && action.targetId !== 'status') {
+        const synthetic = /^(plan|status|esc:|nudge:)/.test(action.targetId ?? '');
+        if (action.targetId && !synthetic) {
+          // Answered: remember it and claim it so a teammate bot does not answer the same line.
           mem.seenChat.add(action.targetId);
+          stamp(action.targetId);
         }
         if (action.targetId === 'plan' && board) {
           board.plan = text;

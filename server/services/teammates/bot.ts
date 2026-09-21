@@ -243,8 +243,9 @@ export class PlayerBot {
       this.stats.llmCalls += brainStats.calls - before.calls;
       this.stats.llmFallbacks += brainStats.fallbacks - before.fallbacks;
 
-      // Every mention considered this turn is now "seen", answered or not.
-      for (const m of sit.chat.mentions) this.memory.seenChat.add(m.id);
+      // Mentions and 1:1 lines stay open until this bot (or a teammate, via the blackboard)
+      // actually answers them; perception drops them after CHAT_FRESH_MS so nothing lingers.
+      // Trainer nudges are one-shot: considered once, whether or not the model picked them.
       for (const m of sit.chat.nudges) this.memory.seenChat.add(m.id);
 
       const result = await execute(action, {

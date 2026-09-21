@@ -29,6 +29,8 @@ export interface TriageItem {
   subject?: string;
   /** For dm_reply: the counterpart handle. */
   recipientHandle?: string;
+  /** For chat: the channel the reply belongs in (mention origin or a 1:1 chat). */
+  channelId?: string;
   /** Present when the item satisfies a charter expected action. */
   detectionActionType?: string;
 }
@@ -164,23 +166,47 @@ export function triage(input: TriageInput): TriageItem[] {
     });
   }
 
-  // 2. Trainer nudges and teammate mentions / questions in chat.
+  // 2. Trainer nudges, 1:1 chats, and teammate mentions / questions in chat.
   for (const m of sit.chat.nudges) {
+    if (claimed(m.id)) continue;
     items.push({
       priority: 5,
       kind: 'chat',
       targetId: m.id,
+      channelId: m.channel_id,
       reason: `trainer instruction: "${m.content.slice(0, 160)}"`,
       context: m.content,
     });
   }
+  // A private message to me is the most personal thing on the desk: answer it before the room.
+  for (const d of sit.chat.directs) {
+    if (claimed(d.lastFromOther.id)) continue;
+    if (untrained && rolls.neglect() < 0.3) continue;
+    const transcript = d.messages
+      .map(
+        (m) =>
+          `${m.sender_id === sit.me.userId ? 'me' : d.withName}: ${(m.content ?? '').replace(/\s+/g, ' ').slice(0, 200)}`,
+      )
+      .join('\n');
+    items.push({
+      priority: 12,
+      kind: 'chat',
+      targetId: d.lastFromOther.id,
+      channelId: d.channelId,
+      reason: `private chat from ${d.withName}${d.withTeam ? ` (${d.withTeam})` : ''}: "${d.lastFromOther.content.slice(0, 140)}"`,
+      context: `PRIVATE 1:1 CHAT with ${d.withName}. Reply to them directly.\n${transcript}`,
+      detectionActionType: 'chat_message_sent',
+    });
+  }
   for (const m of sit.chat.mentions) {
     if (sit.chat.nudges.some((n) => n.id === m.id)) continue;
+    if (claimed(m.id)) continue;
     if (untrained && rolls.neglect() < 0.5) continue;
     items.push({
       priority: 20,
       kind: 'chat',
       targetId: m.id,
+      channelId: m.channel_id,
       reason: `${m.sender?.full_name ?? 'a teammate'} said: "${m.content.slice(0, 160)}"`,
       context: m.content,
       detectionActionType: 'chat_message_sent',

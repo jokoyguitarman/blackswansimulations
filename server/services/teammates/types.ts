@@ -59,6 +59,8 @@ export interface BotAction {
   /** Email recipients (email_reply / email_forward). */
   to?: string[] | null;
   verdict?: 'approve' | 'request_changes' | null;
+  /** Chat channel to post in (mention origin or a 1:1 chat); defaults to the team channel. */
+  channelId?: string | null;
   /** Why the bot chose this; logged, never shown in the UI. */
   reason?: string;
   /** Where the decision came from. */

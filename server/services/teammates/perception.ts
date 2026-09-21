@@ -57,6 +57,18 @@ export interface Teammate {
   isMe: boolean;
 }
 
+export interface DirectChat {
+  channelId: string;
+  withUserId: string;
+  withName: string;
+  withTeam: string | null;
+  lastFromOther: ChatMessage;
+  messages: ChatMessage[];
+}
+
+/** Chat lines older than this no longer count as something to answer. */
+export const CHAT_FRESH_MS = 15 * 60_000;
+
 export interface Situation {
   now: number;
   elapsedMinutes: number;
@@ -88,6 +100,8 @@ export interface Situation {
     recent: ChatMessage[];
     mentions: ChatMessage[];
     nudges: ChatMessage[];
+    /** Unanswered 1:1 chats (TeamChat app) with a human or a teammate. */
+    directs: DirectChat[];
   };
   drafts: {
     toReview: Draft[];
@@ -298,12 +312,13 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
     ? Math.max(0, Math.floor((now - sessionCtx.startTime) / 60_000))
     : 0;
 
-  const [posts, emails, dmThreads, channels, drafts, state, news, pages, assignments] =
+  const [posts, emails, dmThreads, channels, dmChannels, drafts, state, news, pages, assignments] =
     await Promise.all([
       api.posts(),
       api.emails(),
       api.dmThreads(),
       api.channels(),
+      api.dmChannels(),
       api.drafts(),
       api.socialState(),
       api.news(),
@@ -444,10 +459,12 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
   const unread = inboundToMe.filter((e) => !e.is_read && !memory.readEmails.has(e.id));
   const intel = inboundToMe.filter(isIntel);
 
-  // DMs: threads whose latest message is not from me (or my page).
+  // DMs: threads whose latest message is not from me (or my page). Threads addressed to the
+  // organisation page belong to whoever holds the page; everyone else leaves them alone.
   const dms = dmThreads.filter((t) => {
     const last = t.latest_message;
     if (!last) return false;
+    if (t.is_org_page_thread && !myPage) return false;
     const fromMe =
       last.sender_handle === handle || (pageHandle && last.sender_handle === pageHandle);
     if (fromMe) return false;
@@ -469,8 +486,10 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
     .slice(-30);
   const firstName = displayName.split(/\s+/)[0]?.toLowerCase() ?? '';
+  // Lines older than this are stale: a question from twenty minutes ago has moved on.
+  const isFresh = (m: ChatMessage) => now - new Date(m.created_at).getTime() < CHAT_FRESH_MS;
   const explicitMentions = recent.filter((m) => {
-    if (m.sender_id === userId || memory.seenChat.has(m.id)) return false;
+    if (m.sender_id === userId || memory.seenChat.has(m.id) || !isFresh(m)) return false;
     const c = (m.content ?? '').toLowerCase();
     return (
       c.includes(displayName.toLowerCase()) ||
@@ -488,7 +507,8 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
   const humanTeamLines: ChatMessage[] = [];
   for (let i = 0; i < teamMsgsSorted.length; i++) {
     const m = teamMsgsSorted[i];
-    if (!m.sender_id || m.sender_id === userId || memory.seenChat.has(m.id)) continue;
+    if (!m.sender_id || m.sender_id === userId || memory.seenChat.has(m.id) || !isFresh(m))
+      continue;
     if (explicitMentions.some((x) => x.id === m.id)) continue;
     if (teamMsgsSorted.slice(i + 1).some((later) => later.sender_id !== m.sender_id)) continue;
     if (await isBotUser(m.sender_id)) continue;
@@ -498,10 +518,37 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
   const nudges = recent.filter(
     (m) =>
       !memory.seenChat.has(m.id) &&
+      isFresh(m) &&
       m.sender_id !== userId &&
       (m.sender?.role === 'trainer' || m.sender?.role === 'admin') &&
       (m.content ?? '').toLowerCase().includes(firstName),
   );
+
+  // 1:1 chats in the TeamChat app (type 'direct'): a private message to me that I have not
+  // answered. NPC chats (npc_direct) are human↔NPC space and are left alone.
+  const directs: DirectChat[] = [];
+  const openDirects = dmChannels.filter(
+    (c) => (c.type ?? 'direct') === 'direct' && c.last_message && c.recipient,
+  );
+  const directMessages = await Promise.all(
+    openDirects.slice(0, 6).map((c) => api.channelMessages(c.id, 12)),
+  );
+  openDirects.slice(0, 6).forEach((c, i) => {
+    const msgs = [...directMessages[i]].sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    const last = msgs[msgs.length - 1];
+    if (!last || last.sender_id === userId || !last.sender_id) return;
+    if (memory.seenChat.has(last.id) || !isFresh(last)) return;
+    directs.push({
+      channelId: c.id,
+      withUserId: c.recipient!.id,
+      withName: c.recipient!.full_name || last.sender?.full_name || 'a colleague',
+      withTeam: c.recipient!.team_name ?? last.sender?.team_name ?? null,
+      lastFromOther: last,
+      messages: msgs.slice(-8),
+    });
+  });
 
   // Drafts.
   const toReview = drafts.filter(
@@ -599,6 +646,7 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
       recent,
       mentions,
       nudges,
+      directs,
     },
     drafts: { toReview, mine, approvedUnpublished, changesRequested },
     news: unreadNews,

@@ -397,6 +397,17 @@ Deviations from the approved design, and what the first live runs showed. Each i
 
 **Not built / deferred.** Per-bot intellect override (D8 explicitly single-slider); AAR "exclude bots" toggle (the ledger now carries `is_bot` and the trainer dashboard labels bot players, which was the main need); Socket.io reactivity to per-user `emitToUser` events (bots pick those up on cadence; session-level `sim_email.received` / `messenger.received` broadcasts do wake them).
 
+**Amends D10 and §7 — talking to a bot (21 Sep).** Audit of the four ways a human can address a bot, after the first live sessions (see also `docs/session-bugfix-spec-2026-09-20.md` §3):
+
+- _Fakebook Messenger_ was wired end to end (thread perception, `messenger.received` wake). Added: threads addressed to the organisation page are now handled only by the page holder; a DM addressed to a bot's own handle wakes it with the short reaction delay.
+- _Email_ worked but only on cadence: a human's mail to a bot is broadcast as `sim_email.sent` (POST `/emails`), not `sim_email.received`. The service now wakes the addressed bots on both.
+- _TeamChat team channel_ worked on cadence only, because chat lines are broadcast per channel (`websocketService.messageSent` → `channel:<id>`) and never reach the session bus. The runtime now subscribes to every team / All-Teams / bot-member 1:1 channel of the session (`syncChannelSubscriptions`, refreshed each reconcile tick so chats opened mid-session are picked up) and wakes the named bot, or the bots of that team for an unnamed line in their own channel. Replies go to the channel the line came from (`BotAction.channelId`) rather than always to the team channel.
+- _TeamChat 1:1 chats_ (`direct` channels) were not read at all. Perception now lists the bot's direct channels (`GET /channels/session/:id/dms`), reads the last messages, and offers an unanswered human line as a priority-12 item (above urgent email), answered in that channel with the transcript as context.
+- Mentions and 1:1 lines are claimed on the team blackboard when answered, so two bots on one team no longer answer the same question; they stay open until answered or 15 minutes old (`CHAT_FRESH_MS`) instead of being marked seen after one turn regardless of what the model chose.
+- Not covered: voice calls (`call_answered`) and NPC group chats (`npc_direct` is human↔NPC space). A human's reply to a _bot's_ email is visible to the bot (addressed mail), but a human answering an NPC email is still invisible to bots (§9.3 caveat above).
+
+Verification is on the deployed server only: a dev process with `RUN_BACKGROUND_ENGINES=true` would run a second copy of the bots (and every scheduler) against the shared database (`session-bugfix-spec` §2). Checklist: DM a bot in Messenger → reply within its reaction delay; email a bot's address → reply within one cadence or sooner; write the bot's first name in All Teams → it answers _there_; open a 1:1 chat from TeamChat and write anything → it answers within ~30–90 s at intellect 80; two bots on the same team never both answer one line.
+
 ---
 
 ## 19. Operating guide

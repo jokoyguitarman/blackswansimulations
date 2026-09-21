@@ -213,7 +213,7 @@ const ITEM_GUIDANCE: Record<string, string> = {
     'Write the document text (120-260 words) that will go to review before publication. Put the title in `subject`.',
   draft_review:
     'Set `verdict` to approve or request_changes and write the review note in `text` (1-3 sentences: legal risk, factual accuracy, commitments).',
-  chat: 'Write one or two sentences for the team channel. If the item is TEAM PLAN, list who does what next. If STATUS UPDATE, one line on what you are handling.',
+  chat: 'Write one to three sentences of chat. If someone asked you something or messaged you privately, answer THEM specifically (what you know, what you will do, by when). If the item is TEAM PLAN, list who does what next. If STATUS UPDATE, one line on what you are handling.',
   dispute:
     'Write the factual rebuttal that will be submitted with the dispute (2-4 sentences citing confirmed facts).',
   report: 'Optionally write a one-line reason for the report.',
@@ -337,6 +337,7 @@ export async function decide(input: BrainInput): Promise<BotAction> {
     subject: clean(out.subject) ?? item.subject ?? null,
     to: item.to ?? null,
     verdict: item.kind === 'draft_review' ? (out.verdict ?? 'approve') : null,
+    channelId: item.channelId ?? null,
     reason: out.reason || item.reason,
     source: 'llm',
   };
@@ -445,6 +446,10 @@ function fallback(input: BrainInput, item: TriageItem, why: string): BotAction {
             : 'Still catching up on the feed.';
         if (item.context?.startsWith('Flag for the team'))
           return `${item.context.slice(0, 260)} — needs a factual counter from the voice team.`;
+        if (item.context?.startsWith('PRIVATE 1:1 CHAT'))
+          return drilled
+            ? `Got your message. What I can confirm right now: ${fact ?? 'the matter is under review'}. I'll come back to you here as soon as I have more.`
+            : 'Saw this, will get back to you.';
         return drilled ? 'Noted. Handling it now and will report back here.' : 'Noted.';
       case 'dispute':
         return `This content is inaccurate. Confirmed position: ${fact ?? 'the matter is under formal review'}. Requesting correction or removal on that basis.`;
@@ -461,6 +466,7 @@ function fallback(input: BrainInput, item: TriageItem, why: string): BotAction {
     subject: item.subject ?? null,
     to: item.to ?? null,
     verdict: item.kind === 'draft_review' ? 'approve' : null,
+    channelId: item.channelId ?? null,
     reason: `${item.reason} (fallback: ${why})`,
     source: 'fallback',
   };

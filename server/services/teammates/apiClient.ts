@@ -96,6 +96,10 @@ export class BotApi {
   channels() {
     return this.safeGet<Channel[]>(`/api/channels/session/${this.sessionId}`, []);
   }
+  /** 1:1 chats in the TeamChat app (type 'direct' between participants, 'npc_direct' with NPCs). */
+  dmChannels() {
+    return this.safeGet<DmChannel[]>(`/api/channels/session/${this.sessionId}/dms`, []);
+  }
   channelMessages(channelId: string, limit = 30) {
     return this.safeGet<ChatMessage[]>(
       `/api/channels/${channelId}/messages?page=1&limit=${limit}`,
@@ -316,11 +320,20 @@ export interface Channel {
 
 export interface ChatMessage {
   id: string;
+  channel_id?: string;
   sender_id: string | null;
   content: string;
   type?: string;
   created_at: string;
   sender?: { id: string; full_name: string; role: string; team_name?: string } | null;
+}
+
+export interface DmChannel {
+  id: string;
+  type?: 'direct' | 'npc_direct';
+  recipient: { id: string; full_name: string; role: string; team_name?: string } | null;
+  last_message: { content: string; created_at: string; sender_name?: string } | null;
+  unread_count?: number;
 }
 
 export interface Draft {

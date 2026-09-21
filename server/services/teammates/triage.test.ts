@@ -147,6 +147,7 @@ function situation(over: Partial<Situation> = {}, team = 'Communications'): Situ
       recent: [],
       mentions: [],
       nudges: [],
+      directs: [],
     },
     drafts: { toReview: [], mine: [], approvedUnpublished: [], changesRequested: [] },
     news: [],
@@ -263,6 +264,7 @@ describe('triage ordering', () => {
             sender: { id: 'trainer', full_name: 'Trainer', role: 'trainer' },
           },
         ],
+        directs: [],
       },
       drafts: {
         toReview: [draft({ team_name: 'Communications' })],
@@ -506,6 +508,98 @@ describe('triage coordination', () => {
     assert.equal(dmItems.length, 1);
     assert.equal(dmItems[0].targetId, 'thread-2');
     assert.equal(dmItems[0].recipientHandle, '@customer');
+  });
+
+  test('a private 1:1 chat outranks an urgent email and is answered in its own channel', () => {
+    const line = {
+      id: 'dm-msg-1',
+      channel_id: 'chan-direct-1',
+      sender_id: 'human-1',
+      content: 'Nurul, can you confirm what we are allowed to say about the regulator?',
+      created_at: new Date(NOW - 20_000).toISOString(),
+      sender: { id: 'human-1', full_name: 'Grace', role: 'participant', team_name: 'Legal' },
+    };
+    const sit = situation({
+      emails: { unanswered: [email()], unread: [email()], intel: [], all: [email()] },
+      chat: {
+        teamChannelId: 'chan-team',
+        allTeamsChannelId: 'chan-all',
+        recent: [],
+        mentions: [],
+        nudges: [],
+        directs: [
+          {
+            channelId: 'chan-direct-1',
+            withUserId: 'human-1',
+            withName: 'Grace',
+            withTeam: 'Legal',
+            lastFromOther: line,
+            messages: [line],
+          },
+        ],
+      },
+    });
+    const items = triage({
+      sit,
+      params: expert,
+      mem: createMemory(),
+      board: null,
+      isLead: false,
+      rolls: steady,
+    });
+    assert.equal(items[0].kind, 'chat');
+    assert.equal(items[0].channelId, 'chan-direct-1', 'reply goes to the 1:1 channel');
+    assert.equal(items[0].targetId, 'dm-msg-1');
+    assert.match(items[0].context ?? '', /PRIVATE 1:1 CHAT/);
+    assert.equal(items[1].kind, 'email_reply');
+  });
+
+  test('a mention carries its origin channel and is skipped once a teammate has claimed it', () => {
+    const line = {
+      id: 'all-msg-1',
+      channel_id: 'chan-all',
+      sender_id: 'human-2',
+      content: 'Nurul do we have a holding statement yet?',
+      created_at: new Date(NOW - 30_000).toISOString(),
+      sender: { id: 'human-2', full_name: 'Alvin', role: 'participant' },
+    };
+    const sit = situation({
+      chat: {
+        teamChannelId: 'chan-team',
+        allTeamsChannelId: 'chan-all',
+        recent: [line],
+        mentions: [line],
+        nudges: [],
+        directs: [],
+      },
+    });
+    const open = triage({
+      sit,
+      params: expert,
+      mem: createMemory(),
+      board: null,
+      isLead: false,
+      rolls: steady,
+    });
+    const mention = open.find((it) => it.targetId === 'all-msg-1');
+    assert.ok(mention, 'mention offered');
+    assert.equal(
+      mention?.channelId,
+      'chan-all',
+      'answered where it was asked, not in the team channel',
+    );
+
+    const board = createBoard('Communications');
+    claim(board, 'all-msg-1', { by: 'bot-2', byName: 'Daniel', kind: 'chat', at: NOW });
+    const taken = triage({
+      sit,
+      params: expert,
+      mem: createMemory(),
+      board,
+      isLead: false,
+      rolls: steady,
+    });
+    assert.ok(!taken.some((it) => it.targetId === 'all-msg-1'), 'a teammate already answered');
   });
 
   test('always ends with idle so a turn never has nothing to pick', () => {
