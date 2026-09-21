@@ -24,6 +24,7 @@ can be recognised next time. Three of the findings are systemic and get their ow
 | 7   | Desktop Back / Home / cross-app icon drops into mobile view                                                                                                  | Shared apps `navigate()` to `/device/...` routes instead of the desktop-aware intent helper                                                                                                                              | §7            |
 | 8   | To-field suggests addresses "from other simulations"; `@crisisresponse.sim` teammates                                                                        | Browser autofill on the To input (no `autoComplete="off"`); platform-wide hard-coded player domain                                                                                                                       | §8            |
 | 9   | "Participant, 1" on Z/Fakebook, "Sandwichman" in chat, "DH" / "[Name]" in NPC emails; an internal NPC argues instead of executing an executive's instruction | Two name stores (auth metadata vs `user_profiles`); NPC prompt never told who is writing; no chain-of-command rule for internal staff                                                                                    | §9, §10       |
+| 10  | Email notification shows details, Mail app is empty (21 Sep)                                                                                                 | Notifications announced every inject to every participant while the email was delivered only to the owning team                                                                                                          | §14           |
 
 ---
 
@@ -355,3 +356,48 @@ now(), claimed_by uuid null, PRIMARY KEY (session_id, inject_id))`, RLS enabled,
 8. Z post by the human shows "Sandwichman" / `@sandwichman`; NPC email greets "Hi Sandwichman"
    (or first name), no "[Name]", no "DH"; "Proceed immediately" to an internal NPC gets an
    acknowledgement that commits to action and flags risk once.
+
+---
+
+## 14. Email notification with details, empty Mail app (21 Sep, second session)
+
+**Symptom.** A notification shows an incoming email (sender, subject, first lines); opening Mail
+shows "No Mail".
+
+**Evidence.** Render request logs: every browser call to `GET /api/social/emails/session/:id`
+returned `304` with ETag `W/"b-…"` — 11 bytes, i.e. `{"data":[]}` — while a bot's loopback call
+for the same session returned 200 with 16 KB. Database: 20 inbound emails, every one scoped by
+`recipient_user_ids` to a single bot user (Legal, Stakeholder Engagement, HR, Shareholder
+Engagement, Supply Chain, Executive teams); both humans sit on Communications teams, which no
+inject had targeted yet. Notification types present in the session: `inject_published` and
+`chat_message` only.
+
+**Root cause.** Two independent scoping paths. The feed engine delivers an email inject to the
+owning team only (`resolveInjectTargeting` + the `stakeholder_team` routing preference →
+`recipient_user_ids`). `publishInjectToSession` creates `inject_published` notifications with the
+legacy field-ops logic — `inject_scope: 'universal'` → **every participant**, with the inject
+title and first 200 characters — and knows nothing about `delivery_config`. Every player was told
+about every email; only the owning team could open it. (The `team_specific` branch matched team
+names against `user_profiles.role`, so team-scoped injects produced no notifications at all in
+social sessions.)
+
+**Fix.** `feedEngineService.resolveInjectRecipients()` mirrors delivery targeting (team scope,
+`org_key` for private apps, email `stakeholder_team`); `publishInjectToSession` uses it whenever
+the inject has a `delivery_config`: recipients get the notification, an undeliverable inject
+notifies nobody, session-wide content still notifies everyone. Titles are app-specific ("New email
+from Joanna Tan (CNA): …", "Incoming call: …", "Breaking news: …").
+
+**Verify.** Player on Communications receives no notification for a Legal-routed email; the Legal
+member receives one and finds the email in Mail; a feed post inject still notifies the session.
+
+---
+
+## 15. Other live errors seen in Render logs while investigating (owners noted)
+
+| Log line                                                                                                                  | Where                                                              | Effect                                                                                                                                             | Owner                   |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------- |
+| `session_events insert failed — Could not find the 'user_id' column of 'session_events'` (`eventType: decision_detected`) | `services/decisions/sessionEventEmitter.ts`                        | Organic-decision detections are never recorded in the trainer timeline (`session_events.actor_id` is the column)                                   | generator agent         |
+| `cascade inject insert failed — invalid input syntax for type integer: "57.34045"`                                        | `services/decisions/decisionCascadeService.ts`                     | Cascade reactions are dropped: `trigger_time_minutes` / `eligible_after_minutes` are `INTEGER`; the planner writes fractional minutes — round them | generator agent         |
+| `Ambient AI call failed — Unterminated string in JSON at position ~4500` (every few minutes)                              | `services/ambientContentService.ts` `generateFacebookAmbientPosts` | Model output truncated → JSON parse fails → Fakebook ambient posts skipped that tick; raise `max_tokens` or ask for fewer posts per call           | runtime agent           |
+| `Failed to send invitation email — 535 BadCredentials` (Gmail SMTP)                                                       | invitation mailer                                                  | Session invitations never arrive; the Gmail app password in Render env is invalid/revoked                                                          | product owner (env)     |
+| `Grok video start API error — team … has used all available credits`                                                      | video generation                                                   | Generated video assets fail until credits are added                                                                                                | product owner (billing) |

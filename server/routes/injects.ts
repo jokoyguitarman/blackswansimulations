@@ -12,7 +12,11 @@ import {
 import { logAndBroadcastEvent } from '../services/eventService.js';
 import { runPathwayOutcomesOnInjectPublished } from '../services/pathwayOutcomesService.js';
 import { applyInjectPublishEffects } from '../services/injectPublishEffectsService.js';
-import { routeInjectToApp } from '../services/feedEngineService.js';
+import {
+  resolveInjectRecipients,
+  routeInjectToApp,
+  type DeliveryConfig,
+} from '../services/feedEngineService.js';
 import type { Server as SocketServer } from 'socket.io';
 
 const router = Router();
@@ -243,7 +247,59 @@ export async function publishInjectToSession(
     };
     const priority = priorityMap[inject.severity] || 'medium';
 
-    if (injectScope === 'universal') {
+    const notifDeliveryConfig = (inject as Record<string, unknown>).delivery_config as
+      | DeliveryConfig
+      | null
+      | undefined;
+
+    if (notifDeliveryConfig && typeof notifDeliveryConfig === 'object') {
+      // Simulated-device inject (email / feed / news / chat / call): the notification must reach
+      // exactly the people whose apps receive the content. A private email routed to one team's
+      // inboxes used to be announced — with its subject and first lines — to every participant,
+      // who then opened an empty Mail app (docs/session-bugfix-spec-2026-09-20.md §14).
+      const recipients = await resolveInjectRecipients(sessionId, {
+        delivery_config: notifDeliveryConfig,
+        inject_scope: injectScope,
+        target_teams: targetTeams,
+      });
+      let userIds: string[];
+      if (recipients === null) {
+        const { data: participants } = await supabaseAdmin
+          .from('session_participants')
+          .select('user_id')
+          .eq('session_id', sessionId);
+        userIds = (participants ?? []).map((p) => p.user_id).filter((id): id is string => !!id);
+      } else {
+        userIds = recipients;
+      }
+      if (userIds.length > 0) {
+        const app = notifDeliveryConfig.app;
+        const title =
+          app === 'email'
+            ? `New email${notifDeliveryConfig.from_name ? ` from ${notifDeliveryConfig.from_name}` : ''}: ${inject.title}`
+            : app === 'phone_call'
+              ? `Incoming call: ${inject.title}`
+              : app === 'group_chat'
+                ? `New chat message: ${inject.title}`
+                : app === 'news'
+                  ? `Breaking news: ${inject.title}`
+                  : `New post: ${inject.title}`;
+        await createNotificationsForUsers(userIds, {
+          sessionId,
+          type: 'inject_published',
+          title,
+          message: inject.content.substring(0, 200) + (inject.content.length > 200 ? '...' : ''),
+          priority,
+          metadata: { inject_id: injectId, app },
+          actionUrl: `/sessions/${sessionId}#injects`,
+        });
+      } else {
+        logger.info(
+          { sessionId, injectId, app: notifDeliveryConfig.app },
+          'Inject has no deliverable recipients; no notifications created',
+        );
+      }
+    } else if (injectScope === 'universal') {
       // Notify all participants in the session
       const { data: participants } = await supabaseAdmin
         .from('session_participants')

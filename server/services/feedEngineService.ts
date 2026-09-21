@@ -155,6 +155,45 @@ async function emitScoped(
   }
 }
 
+/**
+ * Who will actually receive this inject in their apps. Mirrors the targeting `routeInjectToApp`
+ * and `routeToEmail` apply (team scope, org_key for private apps, the email `stakeholder_team`
+ * routing preference), so notifications can follow delivery instead of announcing a private
+ * email to the whole session (docs/session-bugfix-spec-2026-09-20.md §14).
+ *
+ * Returns null for session-wide delivery, [] when the target teams are unstaffed (undeliverable —
+ * nobody should be notified), otherwise the concrete recipient user ids.
+ */
+export async function resolveInjectRecipients(
+  sessionId: string,
+  inject: {
+    delivery_config: DeliveryConfig | null;
+    inject_scope?: string;
+    target_teams?: string[] | null;
+  },
+): Promise<string[] | null> {
+  const config = inject.delivery_config;
+  if (!config) return null;
+  const privateApp =
+    config.app === 'email' || config.app === 'phone_call' || config.app === 'group_chat';
+  const targeting = await resolveInjectTargeting(
+    sessionId,
+    inject.inject_scope,
+    inject.target_teams ?? undefined,
+    privateApp ? (config.org_key ?? null) : null,
+  );
+  if (targeting) return targeting.playerIds ?? [];
+  if (config.app === 'email' && config.stakeholder_team) {
+    try {
+      const members = await resolveTeamMembers(sessionId, [config.stakeholder_team]);
+      if (members.length > 0) return members;
+    } catch (err) {
+      logger.debug({ err, sessionId }, 'stakeholder_team recipient resolution failed');
+    }
+  }
+  return null;
+}
+
 export async function routeInjectToApp(
   sessionId: string,
   injectId: string,
