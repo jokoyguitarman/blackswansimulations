@@ -1432,7 +1432,13 @@ router.get('/contacts/session/:sessionId', requireAuth, async (req: Authenticate
     const teamFilter = typeof req.query.team === 'string' ? req.query.team : null;
     const orgFilter = typeof req.query.org_key === 'string' ? req.query.org_key : null;
 
-    type Row = ReturnType<typeof toPlayerVisible> & { org_display?: string };
+    type Row = ReturnType<typeof toPlayerVisible> & {
+      org_display?: string;
+      /** Colleague rows (players) carry the user id so the client can open a TeamChat DM. */
+      player_user_id?: string;
+      /** Trainer view only. */
+      is_bot?: boolean;
+    };
     let rows: Row[] = [];
     let source: 'stakeholders' | 'fallback' | 'none' = 'none';
 
@@ -1490,6 +1496,74 @@ router.get('/contacts/session/:sessionId', requireAuth, async (req: Authenticate
       );
     if (rosterRows.length > 0)
       sheets.push({ relationship: 'roster', label: 'Roster', rows: rosterRows });
+
+    // Colleagues: every player in the session — human or AI teammate, own office or another
+    // protagonist office — so a Singapore Executive can find the Malaysian HR lead without
+    // guessing an address. First tab. The requester is omitted; the trainer additionally sees
+    // who is an AI teammate (players are not told, per the teammate-bots design).
+    try {
+      const { getSessionTeams } = await import('../services/orgRegistryService.js');
+      const { handleFor } = await import('../lib/identity.js');
+      const [directory, sessionTeams] = await Promise.all([
+        getSessionPlayerDirectory(sessionId),
+        getSessionTeams(sessionId),
+      ]);
+      const teamByName = new Map(sessionTeams.map((t) => [t.team_name, t]));
+      const others = directory.filter((p) => p.user_id !== user.id);
+      const botIds = new Set<string>();
+      if (isTrainer && others.length > 0) {
+        const { data: profiles } = await supabaseAdmin
+          .from('user_profiles')
+          .select('id, is_bot')
+          .in(
+            'id',
+            others.map((p) => p.user_id),
+          );
+        for (const p of profiles ?? []) {
+          if ((p as { is_bot?: boolean }).is_bot) botIds.add(String((p as { id: string }).id));
+        }
+      }
+      const colleagueRows: Row[] = others.map((p) => {
+        const team = p.team_name ? teamByName.get(p.team_name) : undefined;
+        const orgKey = team?.org_key ?? p.org_key ?? null;
+        const orgEntry = orgKey ? registry.find((o) => o.org_key === orgKey) : undefined;
+        const office = orgEntry
+          ? `${orgEntry.display_name}${orgEntry.country ? ` · ${orgEntry.country}` : ''}`
+          : orgKey || '';
+        return {
+          id: `player:${p.user_id}`,
+          name: p.full_name,
+          title: team?.function_key ?? p.team_name ?? 'Participant',
+          organisation: office,
+          relationship: 'colleague' as Row['relationship'],
+          owning_team: p.team_name ?? '',
+          org_key: orgKey,
+          email: p.address,
+          phone: null,
+          handle: handleFor(p.full_name),
+          note: p.team_name ? `Team: ${p.team_name}` : '',
+          player_user_id: p.user_id,
+          ...(isTrainer
+            ? { org_display: orgEntry?.display_name ?? orgKey ?? '', is_bot: botIds.has(p.user_id) }
+            : {}),
+        };
+      });
+      colleagueRows.sort(
+        (a, b) =>
+          a.organisation.localeCompare(b.organisation) ||
+          a.owning_team.localeCompare(b.owning_team) ||
+          a.name.localeCompare(b.name),
+      );
+      if (colleagueRows.length > 0) {
+        sheets.unshift({
+          relationship: 'colleague',
+          label: multiOrg ? 'Colleagues (all offices)' : 'Colleagues',
+          rows: colleagueRows,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, sessionId }, 'Colleagues sheet unavailable');
+    }
 
     const org = identity?.org_key
       ? (() => {

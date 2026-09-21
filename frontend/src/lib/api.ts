@@ -28,8 +28,12 @@ export interface ContactRow {
   /** Contract v3.2: 'roster' = rank-and-file workforce entry (own "Roster" sheet). */
   tier?: 'principal' | 'roster';
   site_key?: string;
+  /** Colleague rows (session players, human or AI, any office): the user id for TeamChat DMs. */
+  player_user_id?: string;
   /** Trainer view only */
   org_display?: string;
+  /** Trainer view only: AI teammate marker on colleague rows. */
+  is_bot?: boolean;
 }
 
 export interface ContactsWorkbook {

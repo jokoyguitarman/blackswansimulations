@@ -34,6 +34,16 @@ const PLAYER_COLUMNS: Column[] = [
   { key: 'note', label: 'Notes', width: 320 },
 ];
 
+/** Colleagues sheet: every player in the session (human or AI teammate, every office). */
+const COLLEAGUE_COLUMNS: Column[] = [
+  { key: 'name', label: 'Name', width: 190 },
+  { key: 'title', label: 'Team', width: 190 },
+  { key: 'organisation', label: 'Office', width: 240 },
+  { key: 'email', label: 'Email', width: 250, action: 'email' },
+  { key: 'handle', label: 'Chat', width: 150, action: 'chat' },
+  { key: 'note', label: 'Notes', width: 260 },
+];
+
 /** Roster sheet (contract v3.2 `tier: 'roster'`): rank-and-file, grouped by site. */
 const ROSTER_COLUMNS: Column[] = [
   { key: 'name', label: 'Name', width: 170 },
@@ -56,6 +66,10 @@ function cellText(col: Column, row: ContactRow): string {
     return `${value}${badge}${count > 0 ? ` · ${count} members` : ''}`;
   }
   if (col.key === 'title' && row.kind === 'group' && value === '') return 'Distribution list';
+  // Trainer-only marker on colleague rows (players are not told who is an AI teammate).
+  if (col.key === 'note' && row.player_user_id && row.is_bot) {
+    return value ? `${value} · AI teammate` : 'AI teammate';
+  }
   return value;
 }
 
@@ -119,10 +133,16 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
   const sheet = workbook?.sheets[activeSheet] ?? null;
   const rows: ContactRow[] = sheet?.rows ?? [];
   const isRosterSheet = sheet?.relationship === 'roster';
+  const isColleagueSheet = sheet?.relationship === 'colleague';
   const columns = useMemo(() => {
-    const baseCols = isRosterSheet ? ROSTER_COLUMNS : PLAYER_COLUMNS;
-    return workbook?.is_trainer ? [...baseCols, ...TRAINER_EXTRA] : baseCols;
-  }, [workbook?.is_trainer, isRosterSheet]);
+    const baseCols = isColleagueSheet
+      ? COLLEAGUE_COLUMNS
+      : isRosterSheet
+        ? ROSTER_COLUMNS
+        : PLAYER_COLUMNS;
+    // Colleague rows already show team and office; the trainer extras would repeat them.
+    return workbook?.is_trainer && !isColleagueSheet ? [...baseCols, ...TRAINER_EXTRA] : baseCols;
+  }, [workbook?.is_trainer, isRosterSheet, isColleagueSheet]);
 
   const teamLabel = workbook?.team?.function_key || workbook?.team?.team_name || null;
   const fileName = `Contacts_${(teamLabel || (workbook?.is_trainer ? 'AllTeams' : 'Team')).replace(/[^\w]+/g, '')}.xlsx`;
@@ -159,7 +179,10 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
         return;
       }
       try {
-        const res = await api.channels.createNpcDM(sessionId, row.id);
+        // Colleagues (players, human or AI) get a player-to-player DM; NPC contacts an NPC DM.
+        const res = row.player_user_id
+          ? await api.channels.createDM(sessionId, row.player_user_id)
+          : await api.channels.createNpcDM(sessionId, row.id);
         openAppWithIntent(navigate, base, location.pathname, 'chat', { channel: res.data.id });
       } catch {
         showToast('Could not open a chat with this contact');
@@ -371,7 +394,7 @@ export function SheetsApp({ variant }: { variant: SheetsAppVariant }) {
       <div className="sheets-status-bar">
         <span>
           {sheet
-            ? `${sheet.label} · ${rows.length} contact${rows.length === 1 ? '' : 's'}`
+            ? `${sheet.label} · ${rows.length} ${isColleagueSheet ? 'colleague' : 'contact'}${rows.length === 1 ? '' : 's'}`
             : 'Ready'}
         </span>
         <span>{workbook?.source === 'fallback' ? 'Built from correspondence' : '100%'}</span>
