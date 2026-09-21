@@ -504,7 +504,9 @@ export async function assessNotice(
     await supabaseAdmin
       .from('scenario_injects')
       .update({
-        trigger_time_minutes: Math.max(now + 10, detail.detected_at_minute + n.delay_minutes + 10),
+        trigger_time_minutes: Math.round(
+          Math.max(now + 10, detail.detected_at_minute + n.delay_minutes + 10),
+        ),
       })
       .eq('id', n.inject_id!)
       .eq('session_id', ctx.session.id)

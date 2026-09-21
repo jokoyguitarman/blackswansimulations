@@ -61,9 +61,15 @@ export async function getSessionInfo(sessionId: string): Promise<SessionInfo | n
   };
 }
 
+/**
+ * Whole minutes since session start. Integer on purpose: `detected_at_minute` feeds
+ * `scenario_injects.trigger_time_minutes` / `eligible_after_minutes` and the `at_minute` columns
+ * of `decision_knowledge` / `decision_events`, all INTEGER — a fractional value made every
+ * cascade insert fail with `invalid input syntax for type integer` (spec §15).
+ */
 export function elapsedMinutesOf(session: SessionInfo): number {
   if (!session.start_time) return 0;
-  return Math.max(0, (Date.now() - new Date(session.start_time).getTime()) / 60000);
+  return Math.max(0, Math.floor((Date.now() - new Date(session.start_time).getTime()) / 60000));
 }
 
 export async function loadDecisionContext(

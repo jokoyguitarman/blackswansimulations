@@ -905,7 +905,7 @@ Elapsed: ${elapsedMinutes}min
 
 ${npcList ? `KNOWN USERS (use these OR create new ones):\n${npcList}\n` : ''}
 
-Generate 3-5 Facebook posts. Use a DIFFERENT author for each post -- rotate through the NPC list. These should feel different from what's on Twitter. Facebook posts are longer (3-6 sentences), more personal, and more emotional.
+Generate 3-4 Facebook posts. Use a DIFFERENT author for each post -- rotate through the NPC list. These should feel different from what's on Twitter. Facebook posts are longer (3-5 sentences), more personal, and more emotional. Keep each "image_prompt" under 25 words.
 
 IMPORTANT: Facebook is a very visual platform. At least 2 out of 3 posts MUST include an "image_prompt" field with a description of the image or video. For video content, start the description with "video clip:" or "footage:" (e.g. "video clip: CCTV-style overhead view of emergency responders at station entrance"). Only leave image_prompt as "" for purely text-based status updates.
 
@@ -920,7 +920,9 @@ Leave content_flags as {} for neutral/supportive posts.
 Return ONLY valid JSON:
 { "posts": [{ "author_handle": "@user", "author_display_name": "Name", "author_type": "npc_public", "content": "text", "sentiment": "neutral|negative|supportive|hateful|inflammatory", "virality_score": 5, "platform": "facebook", "content_flags": {}, "image_prompt": "" }] }`,
       'Generate Facebook ambient posts.',
-      1000,
+      // 3-4 long posts + flags + image prompts ran to ~4,500 characters and were being cut off at
+      // 1,000 tokens, failing JSON.parse every tick ("Unterminated string in JSON", spec §15).
+      2500,
     );
 
     const postsArray = Array.isArray(result)
@@ -1279,7 +1281,7 @@ Crisis context: ${crisisDescription.substring(0, 200)}
 Return ONLY valid JSON:
 { "replies": [{ "author_handle": "@exact_handle", "author_display_name": "Exact Name", "content": "reply text", "sentiment": "neutral|negative|supportive|hateful" }] }`,
     'Continue the thread conversation.',
-    1000,
+    1500, // 3-5 threaded replies; 1,000 tokens was borderline for the same truncation
   );
 
   const replies = (result?.replies as Array<Record<string, unknown>>) || [];

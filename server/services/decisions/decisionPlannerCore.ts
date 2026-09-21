@@ -315,12 +315,13 @@ export function injectRowForNode(
     requires_coordination: false,
     ai_generated: true,
     generation_source: 'decision_response',
-    // Chained nodes wait for their parent to publish; roots fire on the clock.
-    trigger_time_minutes: parentKey ? null : ctx.detectedAtMinute + node.delay_minutes,
+    // Chained nodes wait for their parent to publish; roots fire on the clock. Minute columns are
+    // INTEGER, so round defensively even though the context already supplies whole minutes.
+    trigger_time_minutes: parentKey ? null : Math.round(ctx.detectedAtMinute + node.delay_minutes),
     ...(parentKey
       ? {
           conditions_to_appear: { threshold: 1, conditions: [`inject_published:${parentKey}`] },
-          eligible_after_minutes: ctx.detectedAtMinute + node.delay_minutes,
+          eligible_after_minutes: Math.round(ctx.detectedAtMinute + node.delay_minutes),
         }
       : {}),
   };

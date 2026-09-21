@@ -54,7 +54,11 @@ async function tick(): Promise<void> {
       const id = String(s.id);
       if (inFlight.has(id)) continue;
       inFlight.add(id);
-      const elapsed = Math.max(0, (Date.now() - new Date(String(s.start_time)).getTime()) / 60000);
+      // Whole minutes: downstream writes go into INTEGER minute columns (spec §15).
+      const elapsed = Math.max(
+        0,
+        Math.floor((Date.now() - new Date(String(s.start_time)).getTime()) / 60000),
+      );
       try {
         if (!startHandled.has(id) && elapsed <= START_GRACE_MINUTES + 1) {
           startHandled.add(id);

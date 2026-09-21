@@ -17,12 +17,13 @@ export async function emitSessionEvent(
   const metadata = { ...(body.metadata || {}) };
   const supported = typeSupported.get(eventType);
   if (supported !== false) {
+    // `session_events` has no `user_id`; the actor column is `actor_id` (spec §15).
     const { error } = await supabaseAdmin.from('session_events').insert({
       session_id: sessionId,
       event_type: eventType,
       description: body.description,
       metadata,
-      ...(body.user_id ? { user_id: body.user_id } : {}),
+      ...(body.user_id ? { actor_id: body.user_id } : {}),
     });
     if (!error) {
       typeSupported.set(eventType, true);
@@ -46,7 +47,7 @@ export async function emitSessionEvent(
     event_type: fallbackType,
     description: body.description,
     metadata: { ...metadata, kind: metadata.kind ?? eventType },
-    ...(body.user_id ? { user_id: body.user_id } : {}),
+    ...(body.user_id ? { actor_id: body.user_id } : {}),
   });
   if (error)
     logger.warn({ error, eventType, fallbackType }, 'session_events fallback insert failed');
