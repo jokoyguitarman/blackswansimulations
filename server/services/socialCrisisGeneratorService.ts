@@ -416,6 +416,10 @@ async function callAI(
     // A hung socket must fail the call (callers retry or fall back) rather than stall a
     // whole generation stage; long JSON bodies at 12k tokens finish well inside this.
     timeoutMs: 240_000,
+    // Generation shares the OpenAI quota with live sessions (schedulers, bots, watchdog). A
+    // burst of 429s must not kill a four-minute stage: five attempts, 2s·n back-off, and the
+    // client honours Retry-After (capped at 60s) on top of that.
+    retry: { attempts: 5, baseDelayMs: 2_000 },
     label: 'socialCrisisGenerator',
   });
 }

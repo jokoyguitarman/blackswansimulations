@@ -206,6 +206,10 @@ interface TeamCharterWire {
 // wizard behaves exactly as before.
 const DOC_BLUEPRINT_ENABLED = import.meta.env.VITE_ENABLE_DOC_BLUEPRINT === 'true';
 
+/** Shown when a generation job disappears from the server (restart or deploy mid-build). */
+const JOB_LOST_MESSAGE =
+  'The server restarted while generating (a deploy or a restart) and the job was lost. Retry to rebuild this stage — your Setup is saved in the draft.';
+
 const STEP_LABELS: Record<number, string> = {
   1: 'Scenario Setup',
   3: 'Blueprint Review',
@@ -1065,13 +1069,22 @@ export const SocialCrisisWizard = () => {
         return null;
       }
 
-      for (let i = 0; i < 120; i++) {
+      // Multi-organisation character generation runs several AI passes (footprint, cast,
+      // personas per country, fact sheet) and shares the server with live sessions: allow
+      // 15 minutes. A 404 means the server lost the in-memory job (restart / deploy) — say so
+      // at once rather than waiting out the clock.
+      for (let i = 0; i < 300; i++) {
         await new Promise((r) => setTimeout(r, 3000));
         try {
           const pollRes = await fetchJSON(
             apiUrl(`/api/warroom/social-crisis/generate-npcs/status/${jobId}`),
             { headers },
           );
+          if (pollRes.status === 404 && i > 2) {
+            setStep2Error(JOB_LOST_MESSAGE);
+            setStep2Loading(false);
+            return null;
+          }
           if (!pollRes.ok) continue;
           const pollJson = await pollRes.json();
           if (pollJson.status === 'completed' && pollJson.data) {
@@ -1088,7 +1101,9 @@ export const SocialCrisisWizard = () => {
           /* continue polling */
         }
       }
-      setStep2Error('NPC generation timed out. Try again.');
+      setStep2Error(
+        'Character generation is taking longer than 15 minutes. The server may be under load from a live session — retry, or try again once the session ends.',
+      );
     } catch {
       setStep2Error('Network error generating NPCs.');
     }
@@ -1380,6 +1395,11 @@ export const SocialCrisisWizard = () => {
               apiUrl(`/api/warroom/social-crisis/job-status/${jobId}`),
               { headers },
             );
+            if (pollRes.status === 404 && i > 2) {
+              setStep4Error(JOB_LOST_MESSAGE);
+              setStep4Loading(false);
+              return false;
+            }
             if (!pollRes.ok) continue;
             const pollJson = await pollRes.json();
             if (pollJson.status === 'completed' && pollJson.data) {
@@ -1660,6 +1680,11 @@ export const SocialCrisisWizard = () => {
             apiUrl(`/api/warroom/social-crisis/job-status/${jobId}`),
             { headers },
           );
+          if (pollRes.status === 404 && i > 2) {
+            addProgress(`Error: ${JOB_LOST_MESSAGE}`);
+            setCompiling(false);
+            return;
+          }
           if (!pollRes.ok) continue;
           const pollJson = await pollRes.json();
           if (pollJson.status === 'completed' && pollJson.data) {

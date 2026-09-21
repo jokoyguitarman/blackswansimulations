@@ -81,6 +81,8 @@ export interface ChatResult {
 }
 
 export class AiCallError extends Error {
+  /** Server-suggested wait before retrying (from `Retry-After` on 429/503), in ms. */
+  public retryAfterMs?: number;
   constructor(
     message: string,
     public readonly status?: number,
@@ -90,6 +92,17 @@ export class AiCallError extends Error {
     super(message);
     this.name = 'AiCallError';
   }
+}
+
+/** Longest we will honour a provider's Retry-After before giving up on the attempt. */
+const MAX_RETRY_AFTER_MS = 60_000;
+
+function parseRetryAfter(header: string | null): number | undefined {
+  if (!header) return undefined;
+  const secs = Number(header);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const at = Date.parse(header);
+  return Number.isFinite(at) ? Math.max(0, at - Date.now()) : undefined;
 }
 
 export interface AiCallStats {
@@ -192,9 +205,11 @@ async function post(
       } catch {
         // keep the generic message
       }
+      const error = new AiCallError(message, response.status, text.slice(0, 500), label);
+      error.retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
       return {
         ok: false,
-        error: new AiCallError(message, response.status, text.slice(0, 500), label),
+        error,
         retryable: isRetryableStatus(response.status),
       };
     }
@@ -319,7 +334,16 @@ async function execute(opts: ChatOptions): Promise<ChatResult | null> {
         continue;
       }
       if (result.retryable && attempt < attempts) {
-        await sleep(baseDelay * attempt);
+        // Rate limits: wait what the provider asked for (capped), never less than our back-off.
+        const suggested = result.error.retryAfterMs ?? 0;
+        const wait = Math.min(MAX_RETRY_AFTER_MS, Math.max(baseDelay * attempt, suggested));
+        if (suggested > 0) {
+          logger.info(
+            { label: opts.label, status: result.error.status, waitMs: wait, attempt },
+            'ai.chat rate limited; honouring Retry-After',
+          );
+        }
+        await sleep(wait);
         continue;
       }
       return fail(opts, result.error);

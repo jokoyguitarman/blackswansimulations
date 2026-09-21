@@ -399,13 +399,33 @@ router.post(
         logger.error({ err, jobId }, 'NPC generation failed');
         aiJobs.set(jobId, {
           status: 'failed',
-          error: 'Failed to generate NPCs and fact sheet',
+          error: describeGenerationFailure(err, 'characters and fact sheet'),
           startedAt: Date.now(),
         });
       }
     })();
   },
 );
+
+/**
+ * Turn a generation error into something the trainer can act on. Generation shares the AI
+ * quota and the server with live sessions, so the two common causes are rate limits and
+ * timeouts — both are transient and worth naming.
+ */
+function describeGenerationFailure(err: unknown, stage: string): string {
+  const e = err as { status?: number; message?: string; name?: string } | null;
+  const msg = e?.message ?? '';
+  if (e?.status === 429 || /rate limit|429/i.test(msg)) {
+    return `The AI provider rate-limited the ${stage} stage — the server is busy (a live session shares the same quota). Wait a minute and retry.`;
+  }
+  if (e?.name === 'TimeoutError' || /timed out|timeout/i.test(msg)) {
+    return `The AI took too long answering the ${stage} stage and the call timed out. Retry — it usually completes the second time.`;
+  }
+  if (/budget exhausted/i.test(msg)) {
+    return `The hourly AI budget is exhausted. Retry after the top of the hour.`;
+  }
+  return `Failed to generate ${stage}${msg ? ` — ${msg.slice(0, 160)}` : ''}. Retry to rebuild this stage.`;
+}
 
 // Poll for any async AI job status
 router.get('/job-status/:jobId', requireAuth, async (req: AuthenticatedRequest, res) => {
@@ -811,7 +831,7 @@ router.post(
         logger.error({ err, jobId }, 'Convergence generation failed');
         aiJobs.set(jobId, {
           status: 'failed',
-          error: 'Failed to generate convergence layer',
+          error: describeGenerationFailure(err, 'convergence layer'),
           startedAt: Date.now(),
         });
       }
@@ -1629,7 +1649,7 @@ router.post(
         logger.error({ err, jobId }, 'Blueprint extraction failed');
         aiJobs.set(jobId, {
           status: 'failed',
-          error: 'Failed to extract blueprint',
+          error: describeGenerationFailure(err, 'blueprint extraction'),
           startedAt: Date.now(),
         });
       }
