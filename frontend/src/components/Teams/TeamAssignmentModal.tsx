@@ -42,6 +42,31 @@ interface PendingChange {
   teamName: string;
 }
 
+/** Organisation identity for the group band (from /sessions/:id/orgs). */
+interface OrgInfo {
+  org_key: string;
+  display_name: string;
+  short_name?: string;
+  country?: string | null;
+  is_primary?: boolean;
+  /** 'players' | 'ai' — whether people or the engine run this organisation. */
+  operation?: string;
+}
+
+/* ─── Layout constants (px) ──────────────────────────────────────────── */
+/** Participant name column. */
+const NAME_COL = 184;
+/** Narrowest a team column may get before the matrix scrolls sideways
+ *  (fits "Communications" on one line at the header's 11px bold). */
+const TEAM_COL_MIN = 104;
+/** Modal width bounds: max-w-5xl by default, widening (to just under a 1366px
+ *  laptop viewport) when the scenario has more teams than fit at TEAM_COL_MIN. */
+const MODAL_MIN = 1024;
+const MODAL_MAX = 1320;
+/** Horizontal chrome around the matrix: modal padding (2 × 24) + room for a
+ *  vertical scrollbar so it never tips the matrix into sideways scrolling. */
+const MODAL_CHROME = 48 + 20;
+
 export const TeamAssignmentModal = ({
   sessionId,
   onClose,
@@ -52,6 +77,7 @@ export const TeamAssignmentModal = ({
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [teamAssignments, setTeamAssignments] = useState<TeamAssignment[]>([]);
   const [scenarioTeams, setScenarioTeams] = useState<ScenarioTeam[]>([]);
+  const [orgsByKey, setOrgsByKey] = useState<Record<string, OrgInfo>>({});
   const [isSocialSim, setIsSocialSim] = useState(false);
 
   // Multi-team mode (field ops): granular add/remove changes.
@@ -88,6 +114,26 @@ export const TeamAssignmentModal = ({
         setScenarioTeams([]);
       }
 
+      // Organisation names for the group band. Best-effort: the matrix falls
+      // back to the raw org_key if this endpoint is unavailable.
+      try {
+        const orgsResult = await api.sessions.orgs(sessionId);
+        const map: Record<string, OrgInfo> = {};
+        for (const o of orgsResult.data?.orgs ?? []) {
+          map[o.org_key] = {
+            org_key: o.org_key,
+            display_name: o.display_name,
+            short_name: o.short_name,
+            country: o.country,
+            is_primary: o.is_primary,
+            operation: (o as { operation?: string }).operation,
+          };
+        }
+        setOrgsByKey(map);
+      } catch {
+        setOrgsByKey({});
+      }
+
       const teamsResult = await api.teams.getSessionTeams(sessionId);
       setTeamAssignments(teamsResult.data || []);
       setPendingChanges([]);
@@ -100,16 +146,21 @@ export const TeamAssignmentModal = ({
     }
   };
 
-  // Multi-org scenarios: columns grouped by organisation (org_key), then by name.
-  const sortedTeams = useMemo(
-    () =>
-      [...scenarioTeams].sort(
-        (a, b) =>
-          (a.org_key ?? '').localeCompare(b.org_key ?? '') ||
-          a.team_name.localeCompare(b.team_name),
-      ),
-    [scenarioTeams],
-  );
+  // Multi-org scenarios: columns grouped by organisation — the players' own
+  // (primary) organisation first, then the others by name — then by team name.
+  const sortedTeams = useMemo(() => {
+    const orgRank = (key: string | null | undefined): string => {
+      if (key === null || key === undefined) return '0';
+      const o = orgsByKey[key];
+      const primary = o ? o.is_primary === true : key === 'primary';
+      return `${primary ? '1' : '2'}:${(o?.display_name ?? key).toLowerCase()}`;
+    };
+    return [...scenarioTeams].sort(
+      (a, b) =>
+        orgRank(a.org_key).localeCompare(orgRank(b.org_key)) ||
+        a.team_name.localeCompare(b.team_name),
+    );
+  }, [scenarioTeams, orgsByKey]);
   const availableTeams = useMemo(() => sortedTeams.map((t) => t.team_name), [sortedTeams]);
   const orgGroups = useMemo(() => {
     const groups: Array<{ org_key: string | null; count: number }> = [];
@@ -128,6 +179,52 @@ export const TeamAssignmentModal = ({
     for (const t of scenarioTeams) map.set(t.team_name, t);
     return map;
   }, [scenarioTeams]);
+
+  /** Index of the org group each team column belongs to (for alternating tint). */
+  const orgIndexByTeam = useMemo(() => {
+    const map = new Map<string, number>();
+    let i = 0;
+    let col = 0;
+    for (const g of orgGroups) {
+      for (let k = 0; k < g.count; k++) map.set(availableTeams[col++], i);
+      i += 1;
+    }
+    return map;
+  }, [orgGroups, availableTeams]);
+
+  const orgLabel = (orgKey: string | null): string => {
+    if (orgKey === null) return 'All organisations';
+    const o = orgsByKey[orgKey];
+    if (!o) return orgKey;
+    return o.operation === 'ai' ? `${o.display_name} · AI-operated` : o.display_name;
+  };
+  const orgTitle = (orgKey: string | null): string => {
+    if (orgKey === null) return 'Teams shared by every organisation';
+    const o = orgsByKey[orgKey];
+    if (!o) return orgKey;
+    const parts = [o.display_name];
+    if (o.country) parts.push(o.country);
+    if (o.operation === 'ai') parts.push('run by the engine — seats here are usually AI teammates');
+    return parts.join(' · ');
+  };
+
+  /** Column heading. In multi-org scenarios team names carry an org suffix
+   *  ("Communications — DH"); the org band already says which organisation,
+   *  so the column shows just the function. The full name stays in the tooltip. */
+  const columnLabel = (teamName: string): string => {
+    if (!isMultiOrg) return teamName;
+    const def = teamByName.get(teamName);
+    if (def?.function_key && teamName.startsWith(def.function_key)) return def.function_key;
+    return teamName.replace(/\s+—\s+[^—]*$/, '');
+  };
+
+  // Widen the modal (up to MODAL_MAX) so every team column keeps at least
+  // TEAM_COL_MIN; beyond that the matrix scrolls sideways as one unit.
+  const modalMaxWidth = Math.min(
+    MODAL_MAX,
+    Math.max(MODAL_MIN, MODAL_CHROME + NAME_COL + availableTeams.length * TEAM_COL_MIN),
+  );
+  const gridTemplateColumns = `${NAME_COL}px repeat(${Math.max(availableTeams.length, 1)}, minmax(${TEAM_COL_MIN}px, 1fr))`;
 
   const getUserName = (userId: string): string => {
     const participant = participants.find((p) => p.user_id === userId);
@@ -309,9 +406,17 @@ export const TeamAssignmentModal = ({
     onClose();
   };
 
+  // Note: the app's colour tokens are plain CSS variables, so Tailwind opacity
+  // modifiers such as `bg-ink/40` resolve to transparent. The backdrop uses the
+  // dedicated --overlay token instead.
+  const backdropStyle = { background: 'var(--overlay)' } as const;
+
   if (loading) {
     return (
-      <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div
+        className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50"
+        style={backdropStyle}
+      >
         <div className="bg-surface border border-border rounded-2xl shadow-lg p-8">
           <p className="terminal-text text-ink">Loading…</p>
         </div>
@@ -325,178 +430,232 @@ export const TeamAssignmentModal = ({
   const assignedCount = participants.length - unassignedCount;
 
   return (
-    <div className="fixed inset-0 bg-ink/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-surface border border-border rounded-2xl shadow-lg p-6 max-w-5xl w-full max-h-[90vh] flex flex-col">
-        <div className="flex justify-between items-center mb-1">
-          <h2 className="text-xl terminal-text">Team assignments</h2>
-          <div className="flex items-center gap-2">
+    <div
+      className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+      style={backdropStyle}
+    >
+      <div
+        className="bg-surface border border-border rounded-2xl shadow-lg p-6 w-full max-h-[90vh] flex flex-col"
+        style={{ maxWidth: modalMaxWidth }}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="team-assignments-title"
+      >
+        <div className="flex justify-between items-start gap-4 mb-1">
+          <div>
+            <h2 id="team-assignments-title" className="text-xl terminal-text">
+              Team assignments
+            </h2>
+            {isSocialSim && (
+              <p className="text-xs text-muted mt-0.5">
+                One team per player. Each team has its own storyline pressure, tasks and scoring
+                rubric — hover a team name for its mission.
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {changeCount > 0 && <span className="wr-p live">{changeCount} unsaved</span>}
             {isSocialSim && (
               <button
+                type="button"
                 onClick={autoBalance}
                 disabled={saving || unassignedCount === 0}
-                className="text-xs terminal-text px-3 py-1.5 border border-accent text-accent rounded hover:bg-accent/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="wr-btn sm"
                 title="Distribute unassigned players evenly across the teams"
               >
                 Auto-balance
               </button>
             )}
-            {changeCount > 0 && (
-              <span className="text-xs terminal-text text-accent px-2 py-1 border border-accent/50 rounded">
-                {changeCount} unsaved change{changeCount !== 1 ? 's' : ''}
-              </span>
-            )}
           </div>
         </div>
-        {isSocialSim && (
-          <p className="text-[10px] terminal-text text-muted mb-4">
-            One team per player. Each team has its own storyline pressure, tasks, and scoring rubric
-            — hover a team name for its mission.
-          </p>
-        )}
 
-        <div className="flex-1 overflow-y-auto min-h-0 space-y-1 pr-1 mt-2">
-          {/* Organisation group row (multi-org scenarios only) */}
-          {isMultiOrg && (
+        {/* The matrix: one grid for the org band, the team header and every row,
+            so the columns are shared and stay aligned. Scrolls both ways. */}
+        <div className="flex-1 overflow-auto min-h-0 mt-3">
+          {availableTeams.length === 0 ? (
+            <p className="text-sm text-muted py-8 text-center">
+              This scenario has no teams defined yet.
+            </p>
+          ) : (
             <div
-              className="grid gap-2 items-end sticky top-0 bg-surface z-20 pt-1"
-              style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
+              className={`wr-matrix${isMultiOrg ? ' has-orgs' : ''}`}
+              style={{ gridTemplateColumns }}
             >
-              <div />
-              {orgGroups.map((g, i) => (
-                <div
-                  key={`${g.org_key ?? 'all'}-${i}`}
-                  className="text-[10px] terminal-text text-accent uppercase text-center border-b border-accent/40 pb-0.5 truncate"
-                  style={{ gridColumn: `span ${g.count}` }}
-                  title={g.org_key ?? 'All organisations'}
-                >
-                  {g.org_key ?? 'All organisations'}
-                </div>
-              ))}
+              {/* Organisation band (multi-org scenarios only) */}
+              {isMultiOrg && (
+                <>
+                  <div className="c org name" aria-hidden="true" />
+                  {orgGroups.map((g, i) => (
+                    <div
+                      key={`${g.org_key ?? 'all'}-${i}`}
+                      className={`c org${i % 2 === 1 ? ' alt' : ''}`}
+                      style={{ gridColumn: `span ${g.count}` }}
+                      title={orgTitle(g.org_key)}
+                    >
+                      <span>{orgLabel(g.org_key)}</span>
+                    </div>
+                  ))}
+                </>
+              )}
+
+              {/* Team header */}
+              <div className="c th name">
+                <span className="t">Participant</span>
+              </div>
+              {availableTeams.map((team) => {
+                const def = teamByName.get(team);
+                const count = isSocialSim ? headcount(team) : undefined;
+                const min = def?.min_participants ?? 1;
+                const max = def?.max_participants ?? null;
+                const understaffed = isSocialSim && (count || 0) < min;
+                const alt = (orgIndexByTeam.get(team) ?? 0) % 2 === 1;
+                return (
+                  <div
+                    key={team}
+                    className={`c th${alt ? ' alt' : ''}`}
+                    title={def?.team_description ? `${team}\n\n${def.team_description}` : team}
+                  >
+                    <span className="t">{columnLabel(team)}</span>
+                    {isSocialSim && (
+                      <span className={`n${understaffed ? ' low' : ''}`}>
+                        {count}/{max ?? '∞'}
+                        {understaffed ? ' · unstaffed' : ''}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Participant rows */}
+              {participants.map((participant) => {
+                const name = getUserName(participant.user_id);
+                const effectiveSingle = isSocialSim ? effectiveTeamOf(participant.user_id) : null;
+                const effectiveMulti = isSocialSim ? [] : getEffectiveTeams(participant.user_id);
+                const isUnassigned = isSocialSim
+                  ? effectiveSingle === null
+                  : effectiveMulti.length === 0;
+
+                return (
+                  <div
+                    key={participant.user_id}
+                    className="row"
+                    role={isSocialSim ? 'radiogroup' : 'group'}
+                    aria-label={`${name} — team`}
+                  >
+                    <div className="c name">
+                      <div className="min-w-0">
+                        <div className="who">
+                          <span title={name}>{name}</span>
+                          {participant.user?.is_bot && <BotBadge />}
+                        </div>
+                        {isUnassigned && <div className="sub">Unassigned</div>}
+                      </div>
+                    </div>
+
+                    {availableTeams.map((team) => {
+                      const isActive = isSocialSim
+                        ? effectiveSingle === team
+                        : effectiveMulti.includes(team);
+                      const hasPending = isSocialSim
+                        ? participant.user_id in pendingTeamByUser &&
+                          (pendingTeamByUser[participant.user_id] === team ||
+                            (serverTeamOf(participant.user_id) === team &&
+                              pendingTeamByUser[participant.user_id] !== team))
+                        : pendingChanges.some(
+                            (c) => c.userId === participant.user_id && c.teamName === team,
+                          );
+                      const alt = (orgIndexByTeam.get(team) ?? 0) % 2 === 1;
+                      const pickClass = [
+                        'pick',
+                        isSocialSim ? '' : 'sq',
+                        isActive ? 'on' : 'off',
+                        hasPending ? 'pending' : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ');
+
+                      return (
+                        <div key={team} className={`c${alt ? ' alt' : ''}`}>
+                          <button
+                            type="button"
+                            role={isSocialSim ? 'radio' : 'checkbox'}
+                            aria-checked={isActive}
+                            aria-label={`${name}: ${team}`}
+                            disabled={saving}
+                            onClick={() =>
+                              isSocialSim
+                                ? handleSelectTeam(participant.user_id, team)
+                                : handleToggleTeam(participant.user_id, team)
+                            }
+                            className={pickClass}
+                            title={
+                              isActive ? `Remove ${name} from ${team}` : `Assign ${name} to ${team}`
+                            }
+                          >
+                            {isSocialSim ? (
+                              <span className="dot" aria-hidden="true" />
+                            ) : (
+                              <svg
+                                className="tick"
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M3 8.5l3.2 3L13 4.5" />
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
             </div>
           )}
-          {/* Header row */}
-          <div
-            className={`grid gap-2 items-center sticky bg-surface z-10 py-2 border-b border-border ${isMultiOrg ? 'top-5' : 'top-0'}`}
-            style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
-          >
-            <div className="text-xs terminal-text text-muted uppercase">Participant</div>
-            {availableTeams.map((team) => {
-              const def = teamByName.get(team);
-              const count = isSocialSim ? headcount(team) : undefined;
-              const min = def?.min_participants ?? 1;
-              const max = def?.max_participants ?? null;
-              const understaffed = isSocialSim && (count || 0) < min;
-              return (
-                <div key={team} className="text-center px-1" title={def?.team_description || team}>
-                  <div className="text-xs terminal-text text-muted uppercase truncate">{team}</div>
-                  {isSocialSim && (
-                    <div
-                      className={`text-[9px] terminal-text ${
-                        understaffed ? 'text-danger' : 'text-muted'
-                      }`}
-                    >
-                      {count}/{max ?? '∞'}
-                      {understaffed ? ' · unstaffed' : ''}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          {/* Participant rows */}
-          {participants.map((participant) => {
-            const effectiveSingle = isSocialSim ? effectiveTeamOf(participant.user_id) : null;
-            const effectiveMulti = isSocialSim ? [] : getEffectiveTeams(participant.user_id);
-            const isUnassigned = isSocialSim
-              ? effectiveSingle === null
-              : effectiveMulti.length === 0;
-
-            return (
-              <div
-                key={participant.user_id}
-                className="grid gap-2 items-center py-2 border-b border-border"
-                style={{ gridTemplateColumns: `200px repeat(${availableTeams.length}, 1fr)` }}
-              >
-                <div className="min-w-0">
-                  <div className="text-sm terminal-text font-medium truncate">
-                    {getUserName(participant.user_id)}
-                    {participant.user?.is_bot && <BotBadge className="ml-1.5" />}
-                  </div>
-                  {isUnassigned && (
-                    <div className="text-[10px] terminal-text text-danger">unassigned</div>
-                  )}
-                </div>
-
-                {availableTeams.map((team) => {
-                  const isActive = isSocialSim
-                    ? effectiveSingle === team
-                    : effectiveMulti.includes(team);
-                  const hasPending = isSocialSim
-                    ? participant.user_id in pendingTeamByUser &&
-                      (pendingTeamByUser[participant.user_id] === team ||
-                        (serverTeamOf(participant.user_id) === team &&
-                          pendingTeamByUser[participant.user_id] !== team))
-                    : pendingChanges.some(
-                        (c) => c.userId === participant.user_id && c.teamName === team,
-                      );
-
-                  return (
-                    <div key={team} className="flex justify-center">
-                      <button
-                        onClick={() =>
-                          isSocialSim
-                            ? handleSelectTeam(participant.user_id, team)
-                            : handleToggleTeam(participant.user_id, team)
-                        }
-                        className={`w-8 h-8 border text-xs font-bold transition-all ${
-                          isSocialSim ? 'rounded-full' : 'rounded'
-                        } ${
-                          isActive
-                            ? hasPending
-                              ? 'border-success bg-success/20 text-success ring-1 ring-success/50'
-                              : 'border-accent bg-accent/10 text-accent'
-                            : hasPending
-                              ? 'border-danger/60 bg-danger/10 text-danger ring-1 ring-danger/30'
-                              : 'border-border text-muted hover:border-accent/40 hover:bg-accent/5'
-                        }`}
-                        title={
-                          isActive
-                            ? `Remove ${getUserName(participant.user_id)} from ${team}`
-                            : `Assign ${getUserName(participant.user_id)} to ${team}`
-                        }
-                      >
-                        {isActive ? (isSocialSim ? '●' : '✓') : ''}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })}
         </div>
 
-        {/* Summary */}
-        {(unassignedCount > 0 || assignedCount > 0) && (
-          <div className="flex gap-4 text-[10px] terminal-text text-muted mt-3 pt-2 border-t border-border">
-            <span>{assignedCount} assigned</span>
-            {unassignedCount > 0 && (
-              <span className="text-danger">
-                {unassignedCount} unassigned
-                {isSocialSim ? ' — they will miss team-specific content and scoring' : ''}
+        {/* Summary + legend */}
+        {participants.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1 text-xs text-muted mt-3 pt-2 border-t border-border">
+            <div className="flex gap-4">
+              <span>{assignedCount} assigned</span>
+              {unassignedCount > 0 && (
+                <span className="text-danger font-semibold">
+                  {unassignedCount} unassigned
+                  {isSocialSim ? ' — they will miss team-specific content and scoring' : ''}
+                </span>
+              )}
+            </div>
+            <div className="wr-matrix-legend">
+              <span className="k">
+                <i className={isSocialSim ? '' : 'sq'} /> assigned
               </span>
-            )}
+              {changeCount > 0 && (
+                <>
+                  <span className="k">
+                    <i className={`new${isSocialSim ? '' : ' sq'}`} /> will be assigned
+                  </span>
+                  <span className="k">
+                    <i className={`rm${isSocialSim ? '' : ' sq'}`} /> will be removed
+                  </span>
+                </>
+              )}
+            </div>
           </div>
         )}
 
         {/* Actions */}
-        <div className="flex gap-4 pt-4 mt-2 border-t border-border flex-shrink-0">
+        <div className="flex gap-3 pt-4 mt-2 border-t border-border flex-shrink-0">
           <button
+            type="button"
             onClick={handleSaveAll}
             disabled={saving}
-            className={`military-button px-6 py-3 flex-1 ${
-              changeCount > 0 ? '' : 'opacity-70'
-            } disabled:opacity-50`}
+            className={`wr-btn lg flex-1 ${changeCount > 0 ? 'accent' : ''}`}
           >
             {saving
               ? 'Saving…'
@@ -506,9 +665,10 @@ export const TeamAssignmentModal = ({
           </button>
           {changeCount > 0 && (
             <button
+              type="button"
               onClick={handleCancel}
               disabled={saving}
-              className="military-button-outline px-6 py-3 flex-1 border border-accent text-accent disabled:opacity-50"
+              className="wr-btn lg flex-1"
             >
               Discard changes
             </button>

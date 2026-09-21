@@ -2754,6 +2754,252 @@ details.wr-sub[open] > summary .chev {
   color: var(--muted);
 }
 
+/* ── team assignment matrix (TeamAssignmentModal) ──────────────────────── */
+/* One grid carries the organisation band, the team header AND every
+   participant row, so all three share the same column tracks and cannot
+   drift apart (three separate grids with `1fr` columns did, because `1fr`
+   floors at each header's text width while the circle rows did not).
+   Header cells and the name column are sticky inside the scroller; with more
+   teams than fit at the minimum column width the grid scrolls sideways as a
+   single unit. Column gaps are deliberately 0 so the sticky bands are solid. */
+.wr-matrix {
+  display: grid;
+  align-items: stretch;
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.wr-matrix .row {
+  display: contents;
+}
+.wr-matrix .c {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 6px 4px;
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+}
+.wr-matrix .c.alt {
+  background: color-mix(in srgb, var(--brand) 4%, #fff);
+}
+.wr-matrix .row:hover > .c {
+  background: var(--surface-2);
+}
+.wr-matrix .row:hover > .c.alt {
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface-2));
+}
+/* participant name column */
+.wr-matrix .name {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  justify-content: flex-start;
+  padding-left: 6px;
+  padding-right: 12px;
+  box-shadow: inset -1px 0 0 var(--border);
+}
+.wr-matrix .name .who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13px;
+}
+.wr-matrix .name .who > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wr-matrix .name .sub {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--danger);
+  margin-top: 1px;
+}
+/* organisation band (multi-org scenarios) */
+.wr-matrix .org {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 26px;
+  padding: 0 6px;
+  border-bottom: 0;
+  align-items: flex-end;
+}
+.wr-matrix .org > span {
+  display: block;
+  width: 100%;
+  padding-bottom: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--brand);
+  border-bottom: 2px solid color-mix(in srgb, var(--brand) 35%, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* team header */
+.wr-matrix .th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 8px 5px 7px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-strong);
+}
+.wr-matrix.has-orgs .th {
+  top: 26px;
+}
+.wr-matrix .th .t {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ink);
+  /* wrap between words; only split a word if it alone is wider than the column */
+  overflow-wrap: break-word;
+}
+.wr-matrix .th .n {
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.wr-matrix .th .n.low {
+  color: var(--danger);
+}
+.wr-matrix .th.name {
+  z-index: 4;
+  align-items: flex-start;
+  text-align: left;
+}
+.wr-matrix .th.name .t {
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.wr-matrix .org.name {
+  z-index: 4;
+  box-shadow: none;
+}
+/* the pick control: a real radio (circle) or checkbox (square) with a
+   2px ring at ~28% ink so it reads on the cream surface, and a 14px filled
+   dot instead of a text glyph so the selection is unmistakable. */
+.wr-matrix .pick {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 2px solid color-mix(in srgb, var(--ink) 28%, #fff);
+  background: #fff;
+  color: var(--accent);
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    background 0.15s,
+    box-shadow 0.15s;
+}
+.wr-matrix .pick.sq {
+  border-radius: 8px;
+}
+.wr-matrix .pick:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+}
+.wr-matrix .pick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.wr-matrix .pick .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: currentColor;
+  transform: scale(0);
+  transition: transform 0.15s var(--wr-ease);
+}
+.wr-matrix .pick .tick {
+  width: 16px;
+  height: 16px;
+  opacity: 0;
+  transform: scale(0.6);
+  transition:
+    opacity 0.12s,
+    transform 0.15s var(--wr-ease);
+}
+.wr-matrix .pick.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, #fff);
+}
+.wr-matrix .pick.on .dot {
+  transform: scale(1);
+}
+.wr-matrix .pick.on .tick {
+  opacity: 1;
+  transform: scale(1);
+}
+/* unsaved: green = will be assigned, dashed red = will be removed */
+.wr-matrix .pick.on.pending {
+  color: var(--success);
+  border-color: var(--success);
+  background: color-mix(in srgb, var(--success) 10%, #fff);
+}
+.wr-matrix .pick.off.pending {
+  border-color: var(--danger);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--danger) 6%, #fff);
+}
+.wr-matrix .pick:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+/* legend under the matrix */
+.wr-matrix-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.wr-matrix-legend .k {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.wr-matrix-legend .k i {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2px #fff;
+}
+.wr-matrix-legend .k i.new {
+  border-color: var(--success);
+  background: var(--success);
+}
+.wr-matrix-legend .k i.rm {
+  border-color: var(--danger);
+  border-style: dashed;
+  background: transparent;
+  box-shadow: none;
+}
+.wr-matrix-legend .k i.sq {
+  border-radius: 3px;
+}
+
 /* ── responsive ────────────────────────────────────────────────────────── */
 @media (max-width: 1100px) {
   .wr-hero-grid,
