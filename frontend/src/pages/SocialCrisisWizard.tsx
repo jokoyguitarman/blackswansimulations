@@ -206,6 +206,10 @@ interface TeamCharterWire {
 // wizard behaves exactly as before.
 const DOC_BLUEPRINT_ENABLED = import.meta.env.VITE_ENABLE_DOC_BLUEPRINT === 'true';
 
+/** Shown when a streaming stage ends without a result: the connection was cut upstream. */
+const STREAM_DROPPED_MESSAGE =
+  'The connection dropped before the storyline finished — a proxy or network timeout while the server was still generating. Retry; the server now sends keep-alives to prevent this.';
+
 /** Shown when a generation job disappears from the server (restart or deploy mid-build). */
 const JOB_LOST_MESSAGE =
   'The server restarted while generating (a deploy or a restart) and the job was lost. Retry to rebuild this stage — your Setup is saved in the draft.';
@@ -1173,6 +1177,7 @@ export const SocialCrisisWizard = () => {
           const reader = res.body.getReader();
           const decoder = new TextDecoder();
           let buffer = '';
+          let streamErrored = false;
 
           while (true) {
             const { done, value } = await reader.read();
@@ -1185,7 +1190,9 @@ export const SocialCrisisWizard = () => {
               if (!line.trim()) continue;
               try {
                 const msg = JSON.parse(line);
-                if (msg.type === 'progress') {
+                if (msg.type === 'heartbeat') {
+                  /* keep-alive from the server; nothing to show */
+                } else if (msg.type === 'progress') {
                   setStep3Progress((prev) => [...prev, String(msg.message)]);
                 } else if (msg.type === 'org_progress') {
                   setStep3Progress((prev) => [
@@ -1261,6 +1268,7 @@ export const SocialCrisisWizard = () => {
                       `${stks.length} stakeholder contacts created (${stks.filter((s) => s.grievance).length} with a live concern)`,
                     ]);
                 } else if (msg.type === 'error') {
+                  streamErrored = true;
                   setStep3Error(String(msg.message || 'Storyline generation failed'));
                 }
               } catch {
@@ -1268,8 +1276,17 @@ export const SocialCrisisWizard = () => {
               }
             }
           }
+          // The stream closed without a `complete` or `error` line: the connection was cut
+          // upstream (proxy idle timeout, network) while the server was still generating.
+          if (!result && !streamErrored) {
+            setStep3Error(STREAM_DROPPED_MESSAGE);
+          }
         } else {
-          setStep3Error('Failed to generate storyline.');
+          setStep3Error(
+            res.ok
+              ? 'Failed to generate storyline.'
+              : `Failed to start storyline generation (HTTP ${res.status}).`,
+          );
         }
       } catch {
         setStep3Error('Network error generating storyline.');

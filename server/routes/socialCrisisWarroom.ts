@@ -258,6 +258,30 @@ router.get('/team-catalog', requireAuth, (_req: AuthenticatedRequest, res) => {
   });
 });
 
+/**
+ * Start an NDJSON stream and keep it alive. The generation routes hold one HTTP response open
+ * for minutes while AI calls of 40–120s run back to back; Cloudflare (in front of onrender.com)
+ * closes any response that goes 100s without bytes, and the browser then sees the stream end
+ * with no `complete` line — a stage "fails" while the server logs nothing. A heartbeat every
+ * 15s keeps the proxy happy; clients ignore the `heartbeat` type. Returns a stop function that
+ * must be called before `res.end()`.
+ */
+function beginNdjson(res: import('express').Response): () => void {
+  res.setHeader('Content-Type', 'application/x-ndjson');
+  res.setHeader('Transfer-Encoding', 'chunked');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders?.();
+  const timer = setInterval(() => {
+    if (!res.writableEnded && !res.destroyed) {
+      res.write(JSON.stringify({ type: 'heartbeat', t: Date.now() }) + '\n');
+    }
+  }, 15_000);
+  const stop = () => clearInterval(timer);
+  res.on('close', stop);
+  return stop;
+}
+
 // In-memory job store for async AI generation tasks
 const aiJobs = new Map<
   string,
@@ -527,8 +551,7 @@ router.post(
           .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
       }
       if (orgsResult && orgsResult.ok) {
-        res.setHeader('Content-Type', 'application/x-ndjson');
-        res.setHeader('Transfer-Encoding', 'chunked');
+        const stopHeartbeat = beginNdjson(res);
         const write = (msg: Record<string, unknown>) => res.write(JSON.stringify(msg) + '\n');
         try {
           const result = await runStorylinePipeline(
@@ -544,6 +567,7 @@ router.post(
           logger.error({ err }, 'Multi-org storyline generation failed');
           write({ type: 'error', message: 'Storyline generation failed' });
         }
+        stopHeartbeat();
         res.end();
         return;
       }
@@ -558,8 +582,7 @@ router.post(
       }
       const roster = rosterCheck.roster;
 
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
+      beginNdjson(res);
 
       const crisisContext = {
         crisisType: crisis_type,
@@ -676,8 +699,7 @@ router.post(
       const { crisis_type, location, country, context, duration, teams, personas, fact_sheet } =
         req.body;
 
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
+      beginNdjson(res);
 
       const crisisContext = { crisisType: crisis_type, location, country, context, duration };
 
@@ -863,8 +885,7 @@ router.post(
   ),
   async (req: AuthenticatedRequest, res) => {
     try {
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
+      beginNdjson(res);
 
       const { crisis_type, context, teams, team_storylines } = req.body;
 
@@ -1435,8 +1456,7 @@ router.post(
           .json({ error: orgsResult.message, code: orgsResult.code, details: orgsResult.details });
       }
 
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Transfer-Encoding', 'chunked');
+      beginNdjson(res);
 
       const {
         crisis_description,
