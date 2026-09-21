@@ -389,7 +389,7 @@ class TeammateBotService {
         .from('chat_channels')
         .select('id, type, team_name, members')
         .eq('session_id', rt.sessionId)
-        .in('type', ['team', 'inter_agency', 'direct']);
+        .in('type', ['team', 'inter_agency', 'command', 'public', 'direct']);
       const botIds = new Set(rt.bots.keys());
       const live = new Set<string>();
       for (const row of channels ?? []) {

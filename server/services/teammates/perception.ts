@@ -69,6 +69,13 @@ export interface DirectChat {
 /** Chat lines older than this no longer count as something to answer. */
 export const CHAT_FRESH_MS = 15 * 60_000;
 
+/** Group chats every participant can read (createDefaultChannels): All Teams, Command, Public. */
+export const ORG_WIDE_CHANNEL_TYPES: ReadonlySet<string> = new Set([
+  'inter_agency',
+  'command',
+  'public',
+]);
+
 export interface Situation {
   now: number;
   elapsedMinutes: number;
@@ -475,16 +482,19 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
     return true;
   });
 
-  // Chat.
+  // Chat. My team channel in depth, plus every organisation-wide group chat the TeamChat app
+  // shows (All Teams, Command, Public) so a mention or question in any of them is seen.
   const teamChannel = channels.find((c) => c.type === 'team' && c.team_name === teamName) ?? null;
   const allTeams = channels.find((c) => c.type === 'inter_agency') ?? null;
-  const [teamMsgs, allMsgs] = await Promise.all([
+  const orgWide = channels.filter((c) => ORG_WIDE_CHANNEL_TYPES.has(c.type)).slice(0, 4);
+  const [teamMsgs, ...orgWideMsgs] = await Promise.all([
     teamChannel ? api.channelMessages(teamChannel.id, 30) : Promise.resolve([] as ChatMessage[]),
-    allTeams ? api.channelMessages(allTeams.id, 15) : Promise.resolve([] as ChatMessage[]),
+    ...orgWide.map((c) => api.channelMessages(c.id, 12)),
   ]);
+  const allMsgs = orgWideMsgs.flat();
   const recent = [...teamMsgs, ...allMsgs]
     .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-    .slice(-30);
+    .slice(-40);
   const firstName = displayName.split(/\s+/)[0]?.toLowerCase() ?? '';
   // Lines older than this are stale: a question from twenty minutes ago has moved on.
   const isFresh = (m: ChatMessage) => now - new Date(m.created_at).getTime() < CHAT_FRESH_MS;
