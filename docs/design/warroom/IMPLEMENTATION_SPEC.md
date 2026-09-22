@@ -132,7 +132,7 @@ Three round-trips total (teams, injects, sessions) using `.in('scenario_id', ids
 ```
 <div class="min-h-screen">
   <header class="wr-artband wr-hero">                 // art: 40-timeline-wall.webp
-    top: <BrandMark/> "Black Swan · trainer|participant" — nav pills (Dashboard, Scenarios[here], Sessions, Clients & billing, War Room[cta, trainers]) — replaces lines 120–156
+    top: <BrandMark/> "Prophyion · trainer|participant" — nav pills (Dashboard, Scenarios[here], Sessions, Clients & billing, War Room[cta, trainers]) — replaces lines 120–156
     grid: eyebrow "Scenario library" · h1 "{n} scenarios, ready to run" · lead — stats glass tiles: corporate, field ops, live now, session credits (trainers)
   </header>
   <main class="max-w-[1380px] mx-auto px-7 -mt-4">

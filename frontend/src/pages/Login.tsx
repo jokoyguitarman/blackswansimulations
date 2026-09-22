@@ -47,7 +47,7 @@ export const Login = () => {
           {/* Header */}
           <div className="text-center">
             <BrandMark className="w-12 h-12 mx-auto mb-4" />
-            <h2 className="text-2xl font-extrabold text-brand mb-1">Black Swan Simulations</h2>
+            <h2 className="text-2xl font-extrabold text-brand mb-1">Prophyion</h2>
             <p className="text-sm text-muted">Unified Simulation Environment</p>
           </div>
 
@@ -118,7 +118,7 @@ export const Login = () => {
           {/* Footer */}
           <div className="text-center pt-2">
             <p className="text-xs text-muted">Secure connection established</p>
-            <p className="text-xs text-muted/70 mt-1">© 2026 Black Swan Simulations</p>
+            <p className="text-xs text-muted/70 mt-1">© 2026 Prophyion</p>
           </div>
         </div>
       </div>

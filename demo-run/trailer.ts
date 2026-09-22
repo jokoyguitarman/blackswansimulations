@@ -282,7 +282,10 @@ async function contentScore(video: string, atSec: number, crop?: Rect): Promise<
   // Decode one tiny greyscale frame and measure it here. signalstats publishes
   // YAVG/YMIN/YMAX but no standard deviation, so deriving it from raw pixels is
   // both simpler and not dependent on ffmpeg's metadata key names.
-  const tmp = path.join(os.tmpdir(), `vet-${process.pid}-${Math.random().toString(36).slice(2)}.gray`);
+  const tmp = path.join(
+    os.tmpdir(),
+    `vet-${process.pid}-${Math.random().toString(36).slice(2)}.gray`,
+  );
   const W = 48;
   const H = 27;
   try {
@@ -290,13 +293,19 @@ async function contentScore(video: string, atSec: number, crop?: Rect): Promise<
       'ffmpeg',
       [
         '-hide_banner',
-        '-loglevel', 'error',
+        '-loglevel',
+        'error',
         '-y',
-        '-ss', atSec.toFixed(2),
-        '-i', video,
-        '-frames:v', '1',
-        '-vf', `${cropExpr}scale=${W}:${H},format=gray`,
-        '-f', 'rawvideo',
+        '-ss',
+        atSec.toFixed(2),
+        '-i',
+        video,
+        '-frames:v',
+        '1',
+        '-vf',
+        `${cropExpr}scale=${W}:${H},format=gray`,
+        '-f',
+        'rawvideo',
         tmp,
       ],
       { maxBuffer: 1 << 22 },
@@ -442,7 +451,10 @@ const heroDir = arg('hero', expertDir);
  */
 const takesDir = arg('takes', '');
 const preset = arg('preset', 'trailer') as PresetName;
-const musicFile = arg('music', 'Detective Background Music _ Crime Scene, Spy, Investigation _ Royalty Free [b0bRw1faiws].mp3');
+const musicFile = arg(
+  'music',
+  'Detective Background Music _ Crime Scene, Spy, Investigation _ Royalty Free [b0bRw1faiws].mp3',
+);
 
 const P = PRESETS[preset];
 const ASPECT = P.w / P.h;
@@ -461,7 +473,9 @@ console.log(`Bar = ${barSec.toFixed(3)}s, music from ${musicStart.toFixed(2)}s`)
 const nov = loadRun(noviceDir);
 const exp = loadRun(expertDir);
 const hero = heroDir === expertDir ? exp : loadRun(heroDir);
-console.log(`novice: ${nov.shots.length} screens with shots, T+0 at ${nov.leadSec}s into trainer video`);
+console.log(
+  `novice: ${nov.shots.length} screens with shots, T+0 at ${nov.leadSec}s into trainer video`,
+);
 console.log(`expert: ${exp.shots.length} screens with shots, T+0 at ${exp.leadSec}s`);
 console.log(`hero:   ${hero.shots.length} screens with shots, T+0 at ${hero.leadSec}s`);
 
@@ -520,9 +534,7 @@ function shotGeometry(p: Pick): { sec: number; crop: Rect } {
   const r = p.event.rect!;
   const rect: Rect = s === 1 ? r : { x: r.x / s, y: r.y / s, w: r.w / s, h: r.h / s };
   const into =
-    p.event.kind === 'type' && p.event.durMs
-      ? Math.min((p.event.durMs / 1000) * 0.35, 3)
-      : -0.4;
+    p.event.kind === 'type' && p.event.durMs ? Math.min((p.event.durMs / 1000) * 0.35, 3) : -0.4;
   return {
     sec: Math.max(0, p.event.atMs / 1000 + into),
     crop: sanitiseCrop(rect, p.agent.viewport.width / s, p.agent.viewport.height / s, ASPECT),
@@ -605,7 +617,14 @@ push({
   cardHtml: card(`<div class="head"><em>Untrained.</em></div>`),
 });
 trainerShot(novTrainer, nov.leadSec, 22, 2, 'Four of five teams scoring zero', 'novice dashboard');
-trainerShot(novTrainer, nov.leadSec, 28, 1, 'Nothing flagged. Nothing verified.', 'novice dashboard');
+trainerShot(
+  novTrainer,
+  nov.leadSec,
+  28,
+  1,
+  'Nothing flagged. Nothing verified.',
+  'novice dashboard',
+);
 push({
   kind: 'card',
   bars: 2,
@@ -665,7 +684,7 @@ push({
   bars: 3,
   label: 'card: end',
   cardHtml: card(
-    `<div class="head">Black Swan<br/>Simulations</div>
+    `<div class="head">Prophyion</div>
      <div class="rule"></div>
      <div class="sub">Rehearse the crisis before it arrives.</div>`,
   ),
@@ -699,7 +718,11 @@ for (const c of clips) {
     const head = (c.cardHtml ?? '').match(/class="head">([\s\S]*?)<\/div>/)?.[1] ?? '';
     console.log(
       `${stamp}  ${String(c.bars).padStart(4)}  CARD   ${(c.label ?? '').padEnd(30)} ` +
-        `"${head.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 44)}"`,
+        `"${head
+          .replace(/<[^>]+>/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 44)}"`,
     );
   } else {
     const crop = c.crop ? `crop ${c.crop.w}x${c.crop.h}` : 'full frame';
@@ -732,10 +755,14 @@ for (let i = 0; i < clips.length; i++) {
   if (c.kind === 'card') {
     await ffmpeg(
       [
-        '-loop', '1',
-        '-t', dur.toFixed(3),
-        '-i', cardFiles.get(String(i))!,
-        '-vf', `fps=25,scale=${P.w}:${P.h},format=yuv420p`,
+        '-loop',
+        '1',
+        '-t',
+        dur.toFixed(3),
+        '-i',
+        cardFiles.get(String(i))!,
+        '-vf',
+        `fps=25,scale=${P.w}:${P.h},format=yuv420p`,
         ...CODEC,
         '-an',
         out,
@@ -746,9 +773,7 @@ for (let i = 0; i < clips.length; i++) {
     // Static tight crop onto the element. crop evaluates w/h once at filter
     // configuration and only re-evaluates x/y per frame, so it can pan but
     // cannot zoom â€” attempting an animated w/h yields blank frames.
-    const cropExpr = c.crop
-      ? `crop=${c.crop.w}:${c.crop.h}:${c.crop.x}:${c.crop.y},`
-      : '';
+    const cropExpr = c.crop ? `crop=${c.crop.w}:${c.crop.h}:${c.crop.x}:${c.crop.y},` : '';
 
     // Motion comes from a slow drift instead: overscan slightly, then move the
     // output window across it using the per-frame x/y expressions.
@@ -772,9 +797,12 @@ for (let i = 0; i < clips.length; i++) {
 
     await ffmpeg(
       [
-        '-ss', (c.startSec ?? 0).toFixed(3),
-        '-t', dur.toFixed(3),
-        '-i', c.source!,
+        '-ss',
+        (c.startSec ?? 0).toFixed(3),
+        '-t',
+        dur.toFixed(3),
+        '-i',
+        c.source!,
         '-vf',
         `${cropExpr}scale=${P.w}:${P.h}:force_original_aspect_ratio=increase,` +
           `crop=${P.w}:${P.h},fps=25${zoom}${caption},format=yuv420p`,
@@ -804,10 +832,14 @@ const videoSec = total * barSec;
 const finalOut = path.join(outRoot, `${P.label}.mp4`);
 await ffmpeg(
   [
-    '-i', silent,
-    '-ss', musicStart.toFixed(3),
-    '-t', videoSec.toFixed(3),
-    '-i', musicFile,
+    '-i',
+    silent,
+    '-ss',
+    musicStart.toFixed(3),
+    '-t',
+    videoSec.toFixed(3),
+    '-i',
+    musicFile,
     '-filter_complex',
     // Kill the music under "Same people." and slam it back on the next downbeat.
     // Cheap, and the silence does more work than any amount of scoring.
@@ -816,11 +848,16 @@ await ffmpeg(
         ? `,volume=enable='between(t\\,${musicOutFrom.toFixed(2)}\\,${musicOutTo!.toFixed(2)})':volume=0`
         : '') +
       `,afade=t=out:st=${(videoSec - 2).toFixed(2)}:d=2,loudnorm=I=-14:TP=-1.5[a]`,
-    '-map', '0:v',
-    '-map', '[a]',
-    '-c:v', 'copy',
-    '-c:a', 'aac',
-    '-b:a', '192k',
+    '-map',
+    '0:v',
+    '-map',
+    '[a]',
+    '-c:v',
+    'copy',
+    '-c:a',
+    'aac',
+    '-b:a',
+    '192k',
     '-shortest',
     finalOut,
   ],

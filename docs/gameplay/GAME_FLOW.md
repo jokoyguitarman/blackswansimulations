@@ -1,4 +1,4 @@
-# Black Swan Simulations — Master Game Flow
+# Prophyion — Master Game Flow
 
 ## RTS Crisis Management Simulation
 
@@ -8,7 +8,7 @@
 
 ## 1. Game Overview
 
-Black Swan Simulations is a real-time strategy (RTS) crisis management training tool. Participants command responder units on a live map while a crowd evacuation simulation runs continuously underneath. The game tests multi-agency coordination, doctrinal compliance, prioritization under pressure, and adaptive decision-making.
+Prophyion is a real-time strategy (RTS) crisis management training tool. Participants command responder units on a live map while a crowd evacuation simulation runs continuously underneath. The game tests multi-agency coordination, doctrinal compliance, prioritization under pressure, and adaptive decision-making.
 
 The core principle: **the game never blocks a player from acting. It shows them what happens because they acted — or didn't.**
 

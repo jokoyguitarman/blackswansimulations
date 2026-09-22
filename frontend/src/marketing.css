@@ -40,20 +40,18 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
 }
 
-/* The logo PNG is transparent with a near-black swan, so it needs the white
-   disc behind it to stay legible on the dark hero. */
+/* The Prophyion tile carries its own navy background and rounded corners, so
+   it sits directly on the dark hero and on light surfaces alike. The radius
+   here only shapes the shadow to match the tile's corners (14/64). */
 .brand-mark {
   display: inline-block;
   flex: 0 0 auto;
-  border-radius: 9999px;
-  background-color: #ffffff;
-  background-image: url('/brand/black-swan-logo.png');
+  border-radius: 22%;
+  background-image: url('/brand/prophyion-tile.svg');
   background-position: center;
   background-repeat: no-repeat;
-  background-size: cover;
-  box-shadow:
-    0 0 0 1px rgba(228, 223, 212, 0.9),
-    0 2px 8px rgba(14, 26, 43, 0.12);
+  background-size: contain;
+  box-shadow: 0 2px 8px rgba(14, 26, 43, 0.12);
 }
 
 .deep-grid {
@@ -200,9 +198,6 @@ body {
 }
 #site-header.is-solid .hdr-title {
   color: #172033;
-}
-#site-header.is-solid .hdr-sub {
-  color: #6b7280;
 }
 
 /* Scroll reveal is gated behind the `js` class that marketing.ts sets on

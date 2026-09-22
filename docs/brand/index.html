@@ -1,0 +1,1122 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prophyion — Brand kit v1.0</title>
+    <link rel="icon" type="image/svg+xml" href="../../frontend/public/brand/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #faf8f4;
+        --surface: #ffffff;
+        --surface-2: #f4f1ea;
+        --ink: #172033;
+        --muted: #6b7280;
+        --brand: #1e3a5f;
+        --brand-strong: #18304e;
+        --deep: #0e1a2b;
+        --accent: #d97706;
+        --accent-strong: #b45309;
+        --border: #e4dfd4;
+        --border-strong: #d6cfc0;
+        --success: #15803d;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--brand); }
+      code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.86em; }
+      .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+      .eyebrow {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+      h1, h2, h3, h4 { margin: 0; letter-spacing: -0.02em; line-height: 1.15; }
+      h1 { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; }
+      h2 { font-size: 30px; font-weight: 800; margin-top: 10px; }
+      h3 { font-size: 19px; font-weight: 700; }
+      h4 { font-size: 14px; font-weight: 700; }
+      p { margin: 0 0 12px; }
+      .lede { font-size: 17px; color: rgba(23, 32, 51, 0.8); max-width: 62ch; }
+      .muted { color: var(--muted); }
+      .small { font-size: 13px; }
+
+      /* Header band */
+      .band {
+        background:
+          radial-gradient(ellipse 80% 60% at 20% -10%, rgba(217, 119, 6, 0.18), transparent 70%),
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(160deg, #0e1a2b 0%, #16293f 55%, #18304e 100%);
+        background-size: 100% 100%, 64px 64px, 64px 64px, 100% 100%;
+        color: #fff;
+        padding: 72px 0 64px;
+      }
+      .band h1 { color: #fff; }
+      .band .lede { color: rgba(255, 255, 255, 0.72); }
+      .band .eyebrow { color: #f3b04a; }
+      .band-grid { display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: center; }
+      .band-logo { width: 420px; max-width: 100%; }
+      .meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 26px; font-size: 13px; color: rgba(255, 255, 255, 0.6); }
+      .meta b { color: #fff; font-weight: 600; }
+
+      /* Sticky nav */
+      .nav {
+        position: sticky; top: 0; z-index: 20;
+        background: rgba(250, 248, 244, 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav .wrap { display: flex; gap: 4px; align-items: center; height: 52px; overflow-x: auto; }
+      .nav a {
+        text-decoration: none; color: var(--muted); font-weight: 600; font-size: 13px;
+        padding: 6px 10px; border-radius: 8px; white-space: nowrap;
+      }
+      .nav a:hover { background: var(--surface-2); color: var(--brand); }
+      .nav .home { display: flex; align-items: center; gap: 8px; margin-right: 10px; color: var(--ink); }
+      .nav .home img { width: 22px; height: 22px; }
+
+      section { padding: 64px 0 24px; }
+      section + section { border-top: 1px solid var(--border); }
+      .sec-head { margin-bottom: 28px; }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 22px 24px;
+        box-shadow: 0 1px 2px rgba(23, 32, 51, 0.04);
+      }
+      .grid { display: grid; gap: 18px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      @media (max-width: 860px) { .g2, .g3, .g4 { grid-template-columns: 1fr 1fr; } .band-grid { grid-template-columns: 1fr; } }
+      @media (max-width: 560px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+      /* Name section */
+      .syll { display: flex; gap: 12px; flex-wrap: wrap; margin: 18px 0 8px; }
+      .syll div {
+        background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+        padding: 14px 18px; min-width: 150px;
+      }
+      .syll .big { font-size: 30px; font-weight: 800; letter-spacing: -0.03em; color: var(--brand); line-height: 1; }
+      .syll .big.acc { color: var(--accent); }
+      .syll .greek { font-size: 12px; color: var(--muted); margin-top: 6px; }
+      .syll .gloss { font-weight: 600; margin-top: 4px; }
+      .pron { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
+      .pron span { color: var(--accent); }
+      .rule-list { margin: 0; padding-left: 0; list-style: none; }
+      .rule-list li { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: baseline; }
+      .rule-list li:last-child { border-bottom: 0; }
+      .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; padding: 3px 7px; border-radius: 6px; text-transform: uppercase; flex: none; }
+      .tag.ok { background: rgba(21, 128, 61, 0.1); color: var(--success); }
+      .tag.no { background: rgba(185, 28, 28, 0.08); color: var(--danger); }
+
+      /* Logo concepts */
+      .concept { margin-bottom: 26px; overflow: hidden; padding: 0; }
+      .concept-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 24px; border-bottom: 1px solid var(--border); }
+      .concept-head .title { display: flex; align-items: center; gap: 12px; }
+      .concept-head .letter { width: 34px; height: 34px; border-radius: 9px; background: var(--brand); color: #fff; font-weight: 800; display: grid; place-items: center; }
+      .badge { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 4px 9px; border-radius: 999px; background: rgba(217, 119, 6, 0.12); color: var(--accent-strong); }
+      .concept-body { display: grid; grid-template-columns: 300px 1fr; gap: 0; }
+      @media (max-width: 860px) { .concept-body { grid-template-columns: 1fr; } }
+      .concept-story { padding: 20px 24px; border-right: 1px solid var(--border); background: var(--surface); }
+      .concept-story p { font-size: 14px; color: rgba(23, 32, 51, 0.82); }
+      .concept-story .dl { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+      .concept-story .dl a { font-family: 'JetBrains Mono', monospace; font-size: 11px; text-decoration: none; border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px; color: var(--brand); background: var(--surface-2); }
+      .concept-story .dl a:hover { border-color: var(--brand); }
+      .concept-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0; background: var(--surface); }
+      .concept-tiles > div { display: grid; place-items: center; min-height: 170px; border-left: 1px solid var(--border); position: relative; }
+      .concept-tiles > div:first-child { border-left: 0; }
+      .concept-tiles .lab { position: absolute; left: 12px; bottom: 10px; font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
+      .on-light { background: var(--bg); }
+      .on-white { background: #fff; }
+      .on-navy { background: var(--brand); }
+      .on-navy .lab { color: rgba(255, 255, 255, 0.5); }
+      .on-deep { background: var(--deep); }
+      .on-deep .lab { color: rgba(255, 255, 255, 0.5); }
+      .concept-tiles img { display: block; }
+      .concept-locks { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); }
+      .concept-locks > div { padding: 22px 28px; display: flex; align-items: center; justify-content: center; min-height: 110px; }
+      .concept-locks img { height: 44px; }
+      .concept-locks > div + div { border-left: 1px solid var(--border); }
+      .sizes { display: flex; align-items: flex-end; gap: 14px; }
+      .sizes figure { margin: 0; text-align: center; }
+      .sizes figcaption { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 6px; }
+
+      /* Anatomy / usage */
+      .anatomy { display: grid; grid-template-columns: 260px 1fr; gap: 28px; align-items: center; }
+      @media (max-width: 760px) { .anatomy { grid-template-columns: 1fr; } }
+      .anatomy svg { width: 100%; height: auto; }
+      .callouts { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+      .callouts li { display: flex; gap: 12px; align-items: flex-start; }
+      .callouts .n { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; margin-top: 2px; }
+      .dont { display: grid; place-items: center; height: 120px; background: var(--bg); border-radius: 10px; border: 1px solid var(--border); position: relative; overflow: hidden; }
+      .dont::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top right, transparent calc(50% - 1px), rgba(185, 28, 28, 0.55), transparent calc(50% + 1px)); pointer-events: none; }
+      .dont img { height: 56px; }
+      .dont-cap { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+      /* Colour */
+      .swatch { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); cursor: copy; }
+      .swatch .chip { height: 84px; }
+      .swatch .info { padding: 10px 12px; }
+      .swatch .name { font-weight: 700; font-size: 13.5px; }
+      .swatch .hex { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--ink); }
+      .swatch .role { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .swatch .var { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted); }
+      .ratio { display: flex; height: 44px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+      .ratio div { display: grid; place-items: center; }
+
+      /* Type */
+      .type-sample { border-bottom: 1px solid var(--border); padding: 14px 0; display: grid; grid-template-columns: 170px 1fr; gap: 16px; align-items: baseline; }
+      .type-sample:last-child { border-bottom: 0; }
+      .type-sample .spec { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); line-height: 1.5; }
+
+      table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+      th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+      td code { font-size: 12px; }
+
+      footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 40px; }
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all 0.25s; pointer-events: none; }
+      .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    </style>
+  </head>
+  <body>
+    <header class="band">
+      <div class="wrap band-grid">
+        <div>
+          <div class="eyebrow">Brand kit · v1.0 · September 2026</div>
+          <h1 style="margin-top: 14px">Prophyion</h1>
+          <p class="lede" style="margin-top: 14px">
+            The small move made before the crisis emerges. This kit covers the name, the logo (ten candidate
+            marks; <b style="color: #fff">J — Promotion · cut</b> is the selected mark and is wired into the
+            product), the colour system carried over from the previous site, typography, and the asset files
+            that ship with the app.
+          </p>
+          <div class="meta">
+            <span><b>Pronounced</b> Pro-Fai-Yeon</span>
+            <span><b>Formerly</b> Black Swan Simulations</span>
+            <span><b>Tagline</b> Crisis simulated. Readiness proven.</span>
+          </div>
+        </div>
+        <img class="band-logo" src="logos/j-promotion-cut/logo-horizontal-on-dark.svg" alt="Prophyion — horizontal lockup on dark" />
+      </div>
+    </header>
+
+    <nav class="nav">
+      <div class="wrap">
+        <a class="home" href="#top"><img src="logos/j-promotion-cut/tile.svg" alt="" /> Prophyion</a>
+        <a href="#name">Name</a>
+        <a href="#logo">Logo concepts</a>
+        <a href="#usage">Logo usage</a>
+        <a href="#colour">Colour</a>
+        <a href="#type">Typography</a>
+        <a href="#voice">Voice</a>
+        <a href="#assets">Assets</a>
+      </div>
+    </nav>
+
+    <main id="top">
+      <!-- ─────────────────────────── NAME ─────────────────────────── -->
+      <section id="name">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">01 · The name</div>
+            <h2>Before it emerges</h2>
+          </div>
+          <div class="grid g2">
+            <div class="card">
+              <h3>Where it comes from</h3>
+              <p style="margin-top: 10px">
+                <b>Prophylaxis</b> is the quiet move in chess: a small, unspectacular move that prevents the
+                opponent's massive attack before it can be built. The same word was adopted by medicine for
+                prevention before onset, and by the brand names of vaccines. Prophyion keeps the essential of that
+                word and builds a new name from it.
+              </p>
+              <div class="syll">
+                <div>
+                  <div class="big">Pro</div>
+                  <div class="greek">Greek πρό</div>
+                  <div class="gloss">Before</div>
+                </div>
+                <div>
+                  <div class="big acc">phy</div>
+                  <div class="greek">Greek φυ- · phyein</div>
+                  <div class="gloss">Emerging</div>
+                </div>
+                <div>
+                  <div class="big">ion</div>
+                  <div class="greek">suffix</div>
+                  <div class="gloss">The thing that does it</div>
+                </div>
+              </div>
+              <p class="small muted" style="margin-top: 8px">
+                Prophy = “before emerging”. Prophyion is the act, and the actor, of getting there first.
+              </p>
+            </div>
+            <div class="card">
+              <h3>How to say it, how to write it</h3>
+              <div class="pron" style="margin-top: 12px">Pro · <span>Fai</span> · Yeon</div>
+              <p class="small muted">
+                The middle syllable is the Greek letter <b>Φ</b> (phi, “fai”) — concept A below plays on it;
+                the selected mark tells the chess side of the story instead.
+              </p>
+              <ul class="rule-list" style="margin-top: 14px">
+                <li><span class="tag ok">Do</span><span><b>Prophyion</b> — capital P, one word, in running text and titles.</span></li>
+                <li><span class="tag ok">Do</span><span><b>PROPHYION</b> — only inside uppercase eyebrow labels and kickers.</span></li>
+                <li><span class="tag ok">Do</span><span>Use the same name for the company and the platform.</span></li>
+                <li><span class="tag no">Don't</span><span>“Prophyion Simulations”, “Prophyion Sim”, or any suffix. The name stands alone.</span></li>
+                <li><span class="tag no">Don't</span><span>“ProPhyion”, “prophyion”, “Prophyon”, “Prophion”.</span></li>
+                <li><span class="tag no">Don't</span><span>Translate or hyphenate it (“Pro-phyion”) outside of pronunciation guides.</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────── LOGO ─────────────────────────── -->
+      <section id="logo">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">02 · Logo concepts</div>
+            <h2>Ten marks, one wordmark</h2>
+            <p class="lede" style="margin-top: 12px">
+              Every concept shares the same wordmark (Inter Bold, tracked −2.2%) and the same two-colour logic:
+              navy for the structure, amber for the single decisive element. Each is drawn on a 64-unit grid and
+              ships as SVG in light, dark, mono and tile forms. <b>Concept J (Promotion · cut) is the selected
+              mark and is wired into the product</b>; A–I are kept here as the record of the exploration, and
+              swapping is a file copy (see <a href="#assets">Assets</a>).
+            </p>
+          </div>
+
+          <!-- A -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">A</span>
+                <div><h3>Phi</h3><div class="small muted">Pro · Φ · ion</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  The disc is the event, whole and about to emerge. The amber bar is the prophylactic move: placed
+                  through it, before it, extending past it on both sides. Together they form the Greek Φ — the
+                  “fai” in Pro-fai-yeon — so the mark spells the middle of the name.
+                </p>
+                <p>Reads as a single confident glyph at favicon size; the two-tone survives greyscale.</p>
+                <div class="dl">
+                  <a href="logos/a-phi/mark.svg">mark.svg</a>
+                  <a href="logos/a-phi/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/a-phi/mark-mono.svg">mono</a>
+                  <a href="logos/a-phi/tile.svg">tile</a>
+                  <a href="logos/a-phi/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/a-phi/logo-stacked.svg">stacked</a>
+                  <a href="logos/a-phi/logo-horizontal-accent-i.svg">accent-i</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/a-phi/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/a-phi/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/a-phi/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/a-phi/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/a-phi/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/a-phi/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/a-phi/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/a-phi/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/a-phi/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- B -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">B</span>
+                <div><h3>Horizon</h3><div class="small muted">Before emerging, literally</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  An amber sun still below the line, and a navy canopy already in place above it. The most literal
+                  reading of “pro-phy”: readiness that exists before the thing it is ready for.
+                </p>
+                <p>Warm and approachable; slightly softer than the others, and closest to conventional “safety” iconography.</p>
+                <div class="dl">
+                  <a href="logos/b-horizon/mark.svg">mark.svg</a>
+                  <a href="logos/b-horizon/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/b-horizon/mark-mono.svg">mono</a>
+                  <a href="logos/b-horizon/tile.svg">tile</a>
+                  <a href="logos/b-horizon/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/b-horizon/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/b-horizon/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/b-horizon/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/b-horizon/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/b-horizon/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/b-horizon/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/b-horizon/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/b-horizon/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/b-horizon/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/b-horizon/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- C -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">C</span>
+                <div><h3>Pawn</h3><div class="small muted">The quiet move</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  Prophylaxis in chess is usually a pawn move: modest, easy to overlook, and the reason the attack
+                  never lands. A geometric pawn on an amber square — the square it is about to leave.
+                </p>
+                <p>The most direct nod to the origin story. Instantly legible, but it does carry a “game” association into a room of risk professionals.</p>
+                <div class="dl">
+                  <a href="logos/c-pawn/mark.svg">mark.svg</a>
+                  <a href="logos/c-pawn/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/c-pawn/mark-mono.svg">mono</a>
+                  <a href="logos/c-pawn/tile.svg">tile</a>
+                  <a href="logos/c-pawn/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/c-pawn/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/c-pawn/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/c-pawn/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/c-pawn/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/c-pawn/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/c-pawn/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/c-pawn/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/c-pawn/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/c-pawn/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/c-pawn/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- D -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">D</span>
+                <div><h3>Wedge</h3><div class="small muted">The small move that holds the massive one</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  A large navy mass held in place by one small amber wedge. The proportions carry the argument:
+                  what stops the crisis is not bigger than the crisis, it is earlier and better placed.
+                </p>
+                <p>Strong, physical, unusual. Slightly less balanced than A at 16 px, and less obviously “tech”.</p>
+                <div class="dl">
+                  <a href="logos/d-wedge/mark.svg">mark.svg</a>
+                  <a href="logos/d-wedge/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/d-wedge/mark-mono.svg">mono</a>
+                  <a href="logos/d-wedge/tile.svg">tile</a>
+                  <a href="logos/d-wedge/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/d-wedge/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/d-wedge/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/d-wedge/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/d-wedge/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/d-wedge/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/d-wedge/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/d-wedge/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/d-wedge/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/d-wedge/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/d-wedge/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- ── Chess family ── -->
+          <div class="sec-head" style="margin-top: 40px">
+            <div class="eyebrow">02b · Chess family</div>
+            <h2 style="font-size: 24px">Pawn and rook, six ways</h2>
+            <p class="lede" style="margin-top: 10px">
+              Variations on the chess origin: where the amber sits on the pawn, the rook as the giant of the set,
+              the two together, and the pawn promoting into the rook. All share the same base heights so they can
+              be mixed across touchpoints (e.g. rook as the app tile, Promotion in the wordmark lockup).
+            </p>
+          </div>
+
+          <!-- E -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">E</span>
+                <div><h3>Rook</h3><div class="small muted">The giant · amber base</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  Battlements, a wide column, a heavy two-step base. The rook holds a file and closes a rank; it is
+                  the piece prophylaxis is usually protecting, and the one that looks most like a fortress. The amber
+                  base is the square it holds.
+                </p>
+                <p>Reads better than the pawn at 16 px — the crenellations are unmistakable. Sober enough for government and defence audiences.</p>
+                <div class="dl">
+                  <a href="logos/e-rook/mark.svg">mark.svg</a>
+                  <a href="logos/e-rook/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/e-rook/mark-mono.svg">mono</a>
+                  <a href="logos/e-rook/tile.svg">tile</a>
+                  <a href="logos/e-rook/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/e-rook/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/e-rook/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/e-rook/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/e-rook/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/e-rook/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/e-rook/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/e-rook/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/e-rook/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/e-rook/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/e-rook/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- F -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">F</span>
+                <div><h3>Rook · amber crown</h3><div class="small muted">The battlements carry the accent</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  The same rook with the crown lit: the defensive structure itself is the decisive element. More
+                  heraldic, a little louder; the amber is at the top of the mark, which pairs well with the
+                  wordmark's cap height.
+                </p>
+                <p>Best of the family on dark backgrounds, where the cream column and amber crown separate cleanly.</p>
+                <div class="dl">
+                  <a href="logos/f-rook-crown/mark.svg">mark.svg</a>
+                  <a href="logos/f-rook-crown/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/f-rook-crown/mark-mono.svg">mono</a>
+                  <a href="logos/f-rook-crown/tile.svg">tile</a>
+                  <a href="logos/f-rook-crown/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/f-rook-crown/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/f-rook-crown/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/f-rook-crown/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/f-rook-crown/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/f-rook-crown/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/f-rook-crown/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/f-rook-crown/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/f-rook-crown/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/f-rook-crown/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/f-rook-crown/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- G -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">G</span>
+                <div><h3>Pawn · amber head</h3><div class="small muted">The small piece that sees ahead</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  Concept C with the accent moved from the base to the head. The pawn becomes a figure rather than a
+                  piece on a square — the one who looked up first. Slightly friendlier; the amber dot echoes the
+                  tittle of the “i” in the display wordmark.
+                </p>
+                <p>At 16 px the amber head is a two-pixel dot, so the tile leans on the silhouette alone.</p>
+                <div class="dl">
+                  <a href="logos/g-pawn-head/mark.svg">mark.svg</a>
+                  <a href="logos/g-pawn-head/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/g-pawn-head/mark-mono.svg">mono</a>
+                  <a href="logos/g-pawn-head/tile.svg">tile</a>
+                  <a href="logos/g-pawn-head/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/g-pawn-head/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/g-pawn-head/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/g-pawn-head/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/g-pawn-head/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/g-pawn-head/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/g-pawn-head/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/g-pawn-head/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/g-pawn-head/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/g-pawn-head/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/g-pawn-head/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- H -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">H</span>
+                <div><h3>Guard</h3><div class="small muted">The small move in front of the giant</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  Pawn and rook on one baseline: the small amber piece stands in front, the navy mass it protects
+                  stands behind. This is the prophylaxis story told in one frame — the modest move that keeps the
+                  big piece safe.
+                </p>
+                <p>The richest narrative and the widest mark; it wants at least 32 px, so the tile should be the rook alone (E) with Guard used in lockups and hero placements.</p>
+                <div class="dl">
+                  <a href="logos/h-guard/mark.svg">mark.svg</a>
+                  <a href="logos/h-guard/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/h-guard/mark-mono.svg">mono</a>
+                  <a href="logos/h-guard/tile.svg">tile</a>
+                  <a href="logos/h-guard/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/h-guard/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/h-guard/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/h-guard/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/h-guard/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/h-guard/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/h-guard/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/h-guard/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/h-guard/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/h-guard/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/h-guard/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- I -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">I</span>
+                <div><h3>Promotion</h3><div class="small muted">The pawn inside the rook it is becoming</div></div>
+              </div>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  An amber pawn set inside the navy rook, its head already up in the crown. In chess a pawn that
+                  reaches the far rank is promoted; here the small piece is shown mid-way, still enclosed by the
+                  giant it is turning into. Pro-phy — before emerging — in one silhouette.
+                </p>
+                <p>
+                  The thin gap around the pawn is a knockout, so it is whatever sits behind the mark; in mono it
+                  becomes the outline that keeps both pieces readable. Legible from 24 px; at 16 px use the plain
+                  rook tile (E).
+                </p>
+                <div class="dl">
+                  <a href="logos/i-promotion/mark.svg">mark.svg</a>
+                  <a href="logos/i-promotion/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/i-promotion/mark-mono.svg">mono</a>
+                  <a href="logos/i-promotion/tile.svg">tile</a>
+                  <a href="logos/i-promotion/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/i-promotion/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/i-promotion/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/i-promotion/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/i-promotion/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/i-promotion/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/i-promotion/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/i-promotion/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/i-promotion/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/i-promotion/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/i-promotion/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <!-- J -->
+          <article class="card concept">
+            <div class="concept-head">
+              <div class="title">
+                <span class="letter">J</span>
+                <div><h3>Promotion · cut</h3><div class="small muted">The pawn as negative space</div></div>
+              </div>
+              <span class="badge">Selected · in product</span>
+            </div>
+            <div class="concept-body">
+              <div class="concept-story">
+                <p>
+                  The same idea in pure negative space: the pawn is the hole the rook grew around. Whatever is behind
+                  the mark shows through — navy on the tile, cream on the page, white on paper — so it needs no
+                  second colour and prints in one pass. Amber stays on the base, matching the pawn (C) and rook (E).
+                </p>
+                <p>Quieter than I and the most flexible of the chess family for embroidery, engraving and one-colour print.</p>
+                <div class="dl">
+                  <a href="logos/j-promotion-cut/mark.svg">mark.svg</a>
+                  <a href="logos/j-promotion-cut/mark-on-dark.svg">on-dark</a>
+                  <a href="logos/j-promotion-cut/mark-mono.svg">mono</a>
+                  <a href="logos/j-promotion-cut/tile.svg">tile</a>
+                  <a href="logos/j-promotion-cut/logo-horizontal.svg">horizontal</a>
+                  <a href="logos/j-promotion-cut/logo-stacked.svg">stacked</a>
+                </div>
+              </div>
+              <div class="concept-tiles">
+                <div class="on-light"><img src="logos/j-promotion-cut/mark.svg" width="96" height="96" alt="" /><span class="lab">On light</span></div>
+                <div class="on-navy"><img src="logos/j-promotion-cut/mark-on-dark.svg" width="96" height="96" alt="" /><span class="lab">On navy</span></div>
+                <div class="on-white"><img src="logos/j-promotion-cut/tile.svg" width="96" height="96" alt="" /><span class="lab">Tile</span></div>
+                <div class="on-white">
+                  <div class="sizes">
+                    <figure><img src="logos/j-promotion-cut/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                    <figure><img src="logos/j-promotion-cut/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                    <figure><img src="logos/j-promotion-cut/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                    <figure><img src="logos/j-promotion-cut/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  </div>
+                  <span class="lab">Small sizes</span>
+                </div>
+                <div class="concept-locks">
+                  <div class="on-light"><img src="logos/j-promotion-cut/logo-horizontal.svg" alt="Prophyion" /></div>
+                  <div class="on-deep"><img src="logos/j-promotion-cut/logo-horizontal-on-dark.svg" alt="Prophyion" /></div>
+                </div>
+              </div>
+            </div>
+          </article>
+
+          <div class="grid g2" style="margin-top: 8px">
+            <div class="card">
+              <h3>The wordmark</h3>
+              <p class="small muted" style="margin-top: 6px">Inter Bold · tracking −0.022 em · outlined to paths, no font dependency.</p>
+              <div class="on-light" style="padding: 26px; border-radius: 10px; border: 1px solid var(--border); display: grid; place-items: center">
+                <img src="logos/wordmark.svg" alt="Prophyion" style="height: 40px" />
+              </div>
+              <p class="small" style="margin-top: 12px">
+                Use the wordmark alone only where the mark already appears nearby (page footers, document
+                headers, slide masters). It is never set in a live font: always place the SVG.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Display variant: the amber tittle</h3>
+              <p class="small muted" style="margin-top: 6px">For hero moments and print only — the dot disappears below 24 px.</p>
+              <div class="on-light" style="padding: 26px; border-radius: 10px; border: 1px solid var(--border); display: grid; place-items: center">
+                <img src="logos/wordmark-accent-i.svg" alt="Prophyion" style="height: 40px" />
+              </div>
+              <p class="small" style="margin-top: 12px">
+                The dot of the <b>i</b> picks up the amber of the mark, tying the two halves of the lockup
+                together. Available for every concept as <code>logo-horizontal-accent-i.svg</code>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────── USAGE ─────────────────────────── -->
+      <section id="usage">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">03 · Logo usage</div>
+            <h2>Construction, clear space, minimum size</h2>
+          </div>
+          <div class="card">
+            <div class="anatomy">
+              <svg viewBox="-8 -8 80 80" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <rect x="-2" y="-2" width="68" height="68" fill="none" stroke="#D6CFC0" stroke-dasharray="2 2" stroke-width="0.6" />
+                <rect x="15" y="8" width="34" height="48" fill="none" stroke="#1D9BF0" stroke-width="0.5" stroke-dasharray="1.5 1.5" />
+                <mask id="anat-hole" maskUnits="userSpaceOnUse" x="0" y="0" width="64" height="64">
+                  <rect width="64" height="64" fill="#fff" />
+                  <g transform="translate(12.8 10.1) scale(0.6)" fill="#000">
+                    <circle cx="32" cy="15" r="7.5" />
+                    <rect x="28.5" y="20" width="7" height="6" />
+                    <rect x="23" y="25" width="18" height="4.5" rx="2.25" />
+                    <path d="M27 29.5H37C37 36 39 41 42 46H22C25 41 27 36 27 29.5Z" />
+                    <rect x="17" y="46" width="30" height="8" rx="3" />
+                  </g>
+                </mask>
+                <g mask="url(#anat-hole)">
+                  <path fill="#1E3A5F" d="M16 8H23V13H28.5V8H35.5V13H41V8H48V21H16Z" />
+                  <rect x="20" y="21" width="24" height="23" fill="#1E3A5F" />
+                  <rect x="18" y="44" width="28" height="4" fill="#1E3A5F" />
+                  <rect x="15" y="48" width="34" height="8" rx="2.5" fill="#D97706" />
+                </g>
+                <g font-family="JetBrains Mono, monospace" font-size="4" fill="#6B7280">
+                  <text x="-2" y="-4">clear space = ¼ mark height</text>
+                  <text x="53" y="12" fill="#1E3A5F" font-weight="700">1</text>
+                  <text x="53" y="34" fill="#1E3A5F" font-weight="700">2</text>
+                  <text x="53" y="54" fill="#B45309" font-weight="700">3</text>
+                </g>
+              </svg>
+              <div>
+                <ul class="callouts">
+                  <li><span class="n">1</span><div><b>The crown</b> — three merlons, 32 units wide on a 64 grid, on a solid bar. Always the “primary” colour (navy on light, cream on dark).</div></li>
+                  <li><span class="n">2</span><div><b>The cutout</b> — the pawn at 60% scale, centred in the column with its head in the crown. It is a hole, not a fill: whatever is behind the mark shows through. Never fill it, never outline it.</div></li>
+                  <li><span class="n">3</span><div><b>The base</b> — two steps; the lower step is the only amber element in the mark. In mono versions it takes the primary colour like everything else.</div></li>
+                </ul>
+                <div class="grid g3" style="margin-top: 18px">
+                  <div>
+                    <h4>Clear space</h4>
+                    <p class="small muted">One quarter of the mark's height on all sides (the dashed outer box). Nothing else, including the wordmark, enters it — the lockups already respect it.</p>
+                  </div>
+                  <div>
+                    <h4>Minimum size</h4>
+                    <p class="small muted">Cutout legible from 24 px / 8 mm. The silhouette alone holds to 16 px; at that size use the plain rook (E) — the shipped <code>favicon-16.png</code> already does. Horizontal lockup: 120 px / 30 mm wide.</p>
+                  </div>
+                  <div>
+                    <h4>Which file</h4>
+                    <p class="small muted">Light backgrounds → <code>mark.svg</code>. Navy or photo → <code>mark-on-dark.svg</code>. App icons, avatars, favicons → <code>tile.svg</code>. One-colour print → <code>mark-mono.svg</code>.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid g3" style="margin-top: 18px">
+            <div>
+              <div class="dont"><img src="logos/j-promotion-cut/mark.svg" alt="" style="transform: rotate(35deg)" /></div>
+              <div class="dont-cap">Don't rotate or tilt the mark.</div>
+            </div>
+            <div>
+              <div class="dont"><img src="logos/j-promotion-cut/mark.svg" alt="" style="transform: scaleX(1.6)" /></div>
+              <div class="dont-cap">Don't stretch or condense it.</div>
+            </div>
+            <div>
+              <div class="dont"><img src="logos/j-promotion-cut/mark.svg" alt="" style="filter: hue-rotate(120deg) saturate(1.4)" /></div>
+              <div class="dont-cap">Don't recolour outside the palette.</div>
+            </div>
+            <div>
+              <div class="dont" style="background: var(--brand)"><img src="logos/j-promotion-cut/mark.svg" alt="" /></div>
+              <div class="dont-cap">Don't put the light version on navy — use on-dark.</div>
+            </div>
+            <div>
+              <div class="dont"><img src="logos/i-promotion/mark.svg" alt="" /></div>
+              <div class="dont-cap">Don't fill the pawn cutout — not even amber. The pawn is negative space; the filled version (I) is a separate concept, not a variant.</div>
+            </div>
+            <div>
+              <div class="dont"><span style="display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px #e4dfd4"><img src="logos/j-promotion-cut/mark.svg" alt="" style="height: 44px" /></span></div>
+              <div class="dont-cap">Don't add the old white disc behind it. The tile replaces that job.</div>
+            </div>
+            <div>
+              <div class="dont"><img src="logos/j-promotion-cut/mark.svg" alt="" style="filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.45))" /></div>
+              <div class="dont-cap">Don't add drop shadows, glows or outlines.</div>
+            </div>
+            <div>
+              <div class="dont" style="font-weight: 800; font-size: 20px; letter-spacing: -0.02em; color: var(--brand)">Prophyion <span class="muted" style="font-weight: 500; font-size: 12px">Simulations</span></div>
+              <div class="dont-cap">Don't append “Simulations” or any descriptor to the name.</div>
+            </div>
+            <div>
+              <div class="dont" style="font-family: Georgia, serif; font-style: italic; font-size: 24px; color: var(--brand)">Prophyion</div>
+              <div class="dont-cap">Don't re-typeset the wordmark. Always place the SVG.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────── COLOUR ─────────────────────────── -->
+      <section id="colour">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">04 · Colour</div>
+            <h2>Navy structure, amber decision, cream ground</h2>
+            <p class="lede" style="margin-top: 12px">
+              Carried over unchanged from the existing site and app tokens (<code>frontend/src/style.css</code>,
+              <code>marketing.css</code>, <code>tailwind.config.js</code>). Click any swatch to copy its hex.
+            </p>
+          </div>
+
+          <h3 style="margin-bottom: 12px">Core</h3>
+          <div class="grid g4">
+            <div class="swatch" data-hex="#1E3A5F"><div class="chip" style="background: #1e3a5f"></div><div class="info"><div class="name">Navy</div><div class="hex">#1E3A5F · 30 58 95</div><div class="role">Primary brand colour. Navigation, dark bands, headings on light.</div><div class="var">--brand · bg-brand</div></div></div>
+            <div class="swatch" data-hex="#18304E"><div class="chip" style="background: #18304e"></div><div class="info"><div class="name">Navy strong</div><div class="hex">#18304E · 24 48 78</div><div class="role">Hover and pressed states of navy.</div><div class="var">--brand-strong</div></div></div>
+            <div class="swatch" data-hex="#0E1A2B"><div class="chip" style="background: #0e1a2b"></div><div class="info"><div class="name">Deep navy</div><div class="hex">#0E1A2B · 14 26 43</div><div class="role">Marketing hero and footer bands, OG image ground.</div><div class="var">deep · bg-deep</div></div></div>
+            <div class="swatch" data-hex="#172033"><div class="chip" style="background: #172033"></div><div class="info"><div class="name">Ink</div><div class="hex">#172033 · 23 32 51</div><div class="role">Body text. Also the mono-logo colour.</div><div class="var">--ink</div></div></div>
+            <div class="swatch" data-hex="#D97706"><div class="chip" style="background: #d97706"></div><div class="info"><div class="name">Amber</div><div class="hex">#D97706 · 217 119 6</div><div class="role">The accent. One primary action per view, eyebrow labels, the bar in the mark.</div><div class="var">--accent · bg-accent</div></div></div>
+            <div class="swatch" data-hex="#B45309"><div class="chip" style="background: #b45309"></div><div class="info"><div class="name">Amber strong</div><div class="hex">#B45309 · 180 83 9</div><div class="role">Hover state of amber; amber text on light when it must pass AA.</div><div class="var">--accent-strong</div></div></div>
+            <div class="swatch" data-hex="#FAF8F4"><div class="chip" style="background: #faf8f4; border-bottom: 1px solid #e4dfd4"></div><div class="info"><div class="name">Cream</div><div class="hex">#FAF8F4 · 250 248 244</div><div class="role">Page background. The “primary” of the mark on dark.</div><div class="var">--bg</div></div></div>
+            <div class="swatch" data-hex="#F4F1EA"><div class="chip" style="background: #f4f1ea; border-bottom: 1px solid #e4dfd4"></div><div class="info"><div class="name">Cream 2</div><div class="hex">#F4F1EA · 244 241 234</div><div class="role">Secondary surfaces, hover fills, inset panels.</div><div class="var">--surface-2</div></div></div>
+          </div>
+
+          <h3 style="margin: 26px 0 12px">Supporting</h3>
+          <div class="grid g4">
+            <div class="swatch" data-hex="#FFFFFF"><div class="chip" style="background: #fff; border-bottom: 1px solid #e4dfd4"></div><div class="info"><div class="name">White</div><div class="hex">#FFFFFF</div><div class="role">Cards and raised surfaces.</div><div class="var">--surface</div></div></div>
+            <div class="swatch" data-hex="#6B7280"><div class="chip" style="background: #6b7280"></div><div class="info"><div class="name">Muted</div><div class="hex">#6B7280 · 107 114 128</div><div class="role">Secondary text, captions.</div><div class="var">--muted</div></div></div>
+            <div class="swatch" data-hex="#E4DFD4"><div class="chip" style="background: #e4dfd4"></div><div class="info"><div class="name">Border</div><div class="hex">#E4DFD4 · 228 223 212</div><div class="role">Hairlines and card edges.</div><div class="var">--border</div></div></div>
+            <div class="swatch" data-hex="#D6CFC0"><div class="chip" style="background: #d6cfc0"></div><div class="info"><div class="name">Border strong</div><div class="hex">#D6CFC0 · 214 207 192</div><div class="role">Dividers that must hold on cream.</div><div class="var">--border-strong</div></div></div>
+            <div class="swatch" data-hex="#15803D"><div class="chip" style="background: #15803d"></div><div class="info"><div class="name">Success</div><div class="hex">#15803D · 21 128 61</div><div class="role">Confirmed, contained, passed.</div><div class="var">--success</div></div></div>
+            <div class="swatch" data-hex="#D97706"><div class="chip" style="background: #d97706"></div><div class="info"><div class="name">Warning</div><div class="hex">#D97706</div><div class="role">Shares the amber. Pair with an icon so it is never confused with an action.</div><div class="var">--warning</div></div></div>
+            <div class="swatch" data-hex="#B91C1C"><div class="chip" style="background: #b91c1c"></div><div class="info"><div class="name">Danger</div><div class="hex">#B91C1C · 185 28 28</div><div class="role">Errors, destructive actions, deteriorating metrics.</div><div class="var">--danger</div></div></div>
+            <div class="swatch" data-hex="#1D9BF0"><div class="chip" style="background: #1d9bf0"></div><div class="info"><div class="name">Verification blue</div><div class="hex">#1D9BF0 · 29 155 240</div><div class="role">In-simulation only: the social feed's verified badge. Never in brand material.</div><div class="var">zblue</div></div></div>
+          </div>
+
+          <div class="grid g2" style="margin-top: 26px">
+            <div class="card">
+              <h3>Proportion</h3>
+              <p class="small muted" style="margin-top: 6px">Roughly how a screen or page should weigh out.</p>
+              <div class="ratio">
+                <div style="flex: 60; background: #faf8f4; color: #6b7280">cream / white · 60</div>
+                <div style="flex: 30; background: #1e3a5f; color: #fff">navy · 30</div>
+                <div style="flex: 10; background: #d97706; color: #fff">10</div>
+              </div>
+              <p class="small" style="margin-top: 12px">
+                Amber is a decision, not a decoration. If a view has two amber things competing, one of them
+                is wrong.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Contrast</h3>
+              <ul class="rule-list small" style="margin-top: 6px">
+                <li><span class="tag ok">AAA</span><span>Ink on cream (15.3:1) · Cream on navy (10.8:1) · Navy on cream (10.8:1) · White on deep navy (17.5:1)</span></li>
+                <li><span class="tag ok">AA</span><span>Amber strong on cream (4.7:1) — amber text at body sizes uses <code>--accent-strong</code></span></li>
+                <li><span class="tag no">Graphic only</span><span>Amber on cream (3.0:1), amber on navy (3.6:1), white on amber (3.2:1): fine for the mark, large button labels, and ≥ 11 px semibold uppercase eyebrows; not for body copy.</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────── TYPE ─────────────────────────── -->
+      <section id="type">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">05 · Typography</div>
+            <h2>Inter for everything you read, JetBrains Mono for everything you scan</h2>
+          </div>
+          <div class="card">
+            <div class="type-sample"><div class="spec">Display<br />Inter 800 · 48–56 px<br />tracking −0.028 em</div><div style="font-size: 44px; font-weight: 800; letter-spacing: -0.028em; line-height: 1.05">Crisis simulated.<br />Readiness proven.</div></div>
+            <div class="type-sample"><div class="spec">H1<br />Inter 800 · 36 px<br />tracking −0.02 em</div><div style="font-size: 36px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1">Rehearse the crisis before it arrives</div></div>
+            <div class="type-sample"><div class="spec">H2<br />Inter 700 · 28 px</div><div style="font-size: 28px; font-weight: 700; letter-spacing: -0.02em">Where the response breaks, measured</div></div>
+            <div class="type-sample"><div class="spec">H3<br />Inter 700 · 19 px</div><div style="font-size: 19px; font-weight: 700">Scenario library</div></div>
+            <div class="type-sample"><div class="spec">Body<br />Inter 400 · 15–16 px<br />line-height 1.6</div><div style="max-width: 60ch">Live, AI-scored crisis exercises built on your organisation's own risks, plans and operating procedures. Leave with measured evidence of where your response breaks.</div></div>
+            <div class="type-sample"><div class="spec">Small<br />Inter 500 · 13 px</div><div class="small" style="font-weight: 500; color: var(--muted)">Scenarios are fictional and non-operational.</div></div>
+            <div class="type-sample"><div class="spec">Eyebrow / kicker<br />JetBrains Mono 600 · 11 px<br />uppercase · tracking 0.14–0.18 em</div><div class="eyebrow">Implementation plan · Sep 2026</div></div>
+            <div class="type-sample"><div class="spec">Data / codes<br />JetBrains Mono 400–500 · 12–13 px</div><div class="mono" style="font-size: 13px">T+00:14:32 · INJ-0041 · sentiment −0.42</div></div>
+          </div>
+          <p class="small muted" style="margin-top: 12px">
+            Weights in use: Inter 400, 500, 600, 700, 800 · JetBrains Mono 400, 500, 600, 700. Both are loaded
+            from Google Fonts on the marketing pages and bundled in the app. Fallback stack:
+            <code>system-ui, -apple-system, 'Segoe UI', sans-serif</code>.
+          </p>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────── VOICE ─────────────────────────── -->
+      <section id="voice">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">06 · Voice</div>
+            <h2>Calm, exact, ahead of it</h2>
+          </div>
+          <div class="grid g3">
+            <div class="card">
+              <h3>Lines already in use</h3>
+              <ul class="rule-list small" style="margin-top: 8px">
+                <li><span>“Crisis simulated. Readiness proven.” — primary tagline, title tags, OG image.</span></li>
+                <li><span>“Rehearse the crisis before it arrives.” — trailer close, secondary line.</span></li>
+                <li><span>“Leave with measured evidence of where your response breaks.” — meta description.</span></li>
+                <li><span>“Unified Simulation Environment” — product descriptor under the name in the app and footer.</span></li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Sounds like</h3>
+              <p class="small" style="margin-top: 8px">
+                An incident commander reading the log back to the room. Short declaratives, concrete nouns,
+                numbers where numbers exist. The name's premise is “before”, so copy talks about what was
+                prevented and what was measured, not about how advanced the technology is.
+              </p>
+            </div>
+            <div class="card">
+              <h3>Avoid</h3>
+              <ul class="rule-list small" style="margin-top: 8px">
+                <li><span class="tag no">No</span><span>“Revolutionary”, “next-gen”, “AI-powered” as adjectives.</span></li>
+                <li><span class="tag no">No</span><span>Exclamation marks. Fear-selling.</span></li>
+                <li><span class="tag no">No</span><span>Swan metaphors. The old name is retired; “black swan event” stays only where it is a term of art inside a scenario.</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─────────────────────────── ASSETS ─────────────────────────── -->
+      <section id="assets">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">07 · Assets</div>
+            <h2>What ships where</h2>
+          </div>
+          <div class="grid g2">
+            <div class="card">
+              <h3>In the product — <code>frontend/public/brand/</code></h3>
+              <p class="small muted" style="margin: 6px 0 10px">Served at <code>/brand/…</code>. Concept J (Promotion · cut).</p>
+              <table>
+                <tr><th>File</th><th>Use</th></tr>
+                <tr><td><code>prophyion-tile.svg</code></td><td>App nav (<code>BrandMark</code>), marketing header and footer (<code>.brand-mark</code>)</td></tr>
+                <tr><td><code>favicon.svg</code> · <code>favicon-16/32/64.png</code></td><td>Browser tabs (SVG first, PNG fallback). <code>favicon-16.png</code> is the plain rook (E) — the cutout is sub-pixel at that size.</td></tr>
+                <tr><td><code>apple-touch-icon.png</code> 180 · <code>icon-192.png</code> · <code>icon-512.png</code></td><td>Home-screen and PWA icons, social avatars</td></tr>
+                <tr><td><code>og-image.png</code> 1200×630</td><td>Link previews (<code>og:image</code>, Twitter large card)</td></tr>
+                <tr><td><code>prophyion-mark.svg</code> · <code>-on-dark</code> · <code>-mono</code> · <code>prophyion-mark-512.png</code></td><td>Bare mark for documents, slides, e-mail</td></tr>
+                <tr><td><code>prophyion-logo.svg</code> · <code>-on-dark</code> · <code>prophyion-logo.png</code></td><td>Horizontal lockup</td></tr>
+                <tr><td><code>prophyion-logo-stacked.svg</code> · <code>-on-dark</code></td><td>Stacked lockup for square placements</td></tr>
+                <tr><td><code>prophyion-wordmark.svg</code> · <code>-on-dark</code></td><td>Wordmark alone</td></tr>
+              </table>
+            </div>
+            <div class="card">
+              <h3>In this kit — <code>docs/brand/logos/</code></h3>
+              <p class="small muted" style="margin: 6px 0 10px">Every concept, every variant, plus the shared wordmarks.</p>
+              <table>
+                <tr><th>Path</th><th>Contents</th></tr>
+                <tr><td><code>a-phi/</code> · <code>b-horizon/</code> · <code>c-pawn/</code> · <code>d-wedge/</code> · <code>e-rook/</code> · <code>f-rook-crown/</code> · <code>g-pawn-head/</code> · <code>h-guard/</code> · <code>i-promotion/</code> · <code>j-promotion-cut/</code></td><td><code>mark</code>, <code>mark-on-dark</code>, <code>mark-mono</code>, <code>mark-mono-white</code>, <code>tile</code>, <code>logo-horizontal</code> (+ <code>-on-dark</code>, <code>-mono</code>, <code>-accent-i</code>), <code>logo-stacked</code> (+ <code>-on-dark</code>), <code>tile-512.png</code>, <code>mark-512.png</code></td></tr>
+                <tr><td><code>wordmark*.svg</code></td><td>light, on-dark, mono, accent-i</td></tr>
+                <tr><td><code>../previews/</code></td><td><code>logo-concepts.png</code> (all concepts) · <code>chess-variants.png</code> (pawn and rook family) · one OG render per concept</td></tr>
+                <tr><td>Other copies</td><td><code>demo-run/assets/icons/prophyion-mark.png</code> (trailer end card) · <code>docs/design/warroom/art/prophyion-mark.png</code> (design mockups)</td></tr>
+              </table>
+              <h4 style="margin-top: 16px">Switching the product to another concept</h4>
+              <p class="small muted" style="margin-top: 4px">
+                Copy that concept's <code>mark*.svg</code>, <code>tile.svg</code>, <code>logo-horizontal*.svg</code>
+                and <code>logo-stacked*.svg</code> over the matching <code>prophyion-*</code> files, re-export the
+                PNG sizes from <code>tile.svg</code>, and regenerate <code>og-image.png</code>. No code changes are
+                needed; every reference goes through those filenames.
+              </p>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 18px">
+            <h3>Social and print sizes</h3>
+            <table style="margin-top: 8px">
+              <tr><th>Placement</th><th>Asset</th><th>Size</th></tr>
+              <tr><td>Link preview (OG / LinkedIn / X)</td><td><code>og-image.png</code></td><td>1200 × 630</td></tr>
+              <tr><td>Profile avatar (LinkedIn, X, YouTube, Slack)</td><td><code>icon-512.png</code> (tile)</td><td>512 × 512, platforms crop to circle — the tile's 22% radius survives that</td></tr>
+              <tr><td>Email signature</td><td><code>prophyion-logo.png</code></td><td>Display at 140–160 px wide</td></tr>
+              <tr><td>Slide master</td><td><code>prophyion-mark.svg</code> + <code>prophyion-wordmark.svg</code></td><td>Mark 28 pt in the corner; lockup on title slide only</td></tr>
+              <tr><td>Print, one colour</td><td><code>mark-mono.svg</code> / <code>logo-horizontal-mono.svg</code></td><td>Any size ≥ 5 mm; ink or 100% black</td></tr>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap" style="display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap">
+        <span>Prophyion brand kit v1.0 · September 2026 · <code>docs/brand/index.html</code></span>
+        <span>Colours unchanged from the previous identity by design; revisit once the new mark has settled.</span>
+      </div>
+    </footer>
+    <div class="toast" id="toast">Copied</div>
+
+    <script>
+      const toast = document.getElementById('toast');
+      let t;
+      document.querySelectorAll('.swatch').forEach((el) => {
+        el.addEventListener('click', async () => {
+          const hex = el.dataset.hex;
+          try {
+            await navigator.clipboard.writeText(hex);
+            toast.textContent = 'Copied ' + hex;
+          } catch {
+            toast.textContent = hex;
+          }
+          toast.classList.add('show');
+          clearTimeout(t);
+          t = setTimeout(() => toast.classList.remove('show'), 1400);
+        });
+      });
+    </script>
+  </body>
+</html>

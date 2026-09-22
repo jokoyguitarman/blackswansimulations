@@ -154,7 +154,10 @@ export function fbPost(key: string, o: PostOpts = {}): string {
   const id = o.id ?? `post-${key}`;
 
   const body = o.highlight
-    ? nl2br(s.content).replace(nl2br(o.highlight), `<mark class="lens">${nl2br(o.highlight)}</mark>`)
+    ? nl2br(s.content).replace(
+        nl2br(o.highlight),
+        `<mark class="lens">${nl2br(o.highlight)}</mark>`,
+      )
     : nl2br(s.content);
 
   const media = (s.mediaUrls ?? [])
@@ -223,11 +226,7 @@ export function fbFeed(cards: string[], opts: { id?: string; composer?: boolean 
   </div>`;
 }
 
-export function fbCompose(o: {
-  pageName: string;
-  textId: string;
-  attachment?: string;
-}): string {
+export function fbCompose(o: { pageName: string; textId: string; attachment?: string }): string {
   return `
   <div class="fb-app">
     <div class="cmp">
@@ -327,7 +326,9 @@ export function messenger(o: {
     })
     .join('');
 
-  const threads = (o.threads ?? [{ name: o.from, preview: o.messages[0]?.text ?? '', unread: true, active: true }])
+  const threads = (
+    o.threads ?? [{ name: o.from, preview: o.messages[0]?.text ?? '', unread: true, active: true }]
+  )
     .map(
       (t) => `
       <div class="dm-thread${t.active ? ' active' : ''}">
@@ -415,7 +416,14 @@ export function pageNotifications(items: { who: string; what: string; id?: strin
  * about.
  */
 export function newsList(o: {
-  items: { outlet: string; headline: string; time: string; photo?: string; tag?: string; id?: string }[];
+  items: {
+    outlet: string;
+    headline: string;
+    time: string;
+    photo?: string;
+    tag?: string;
+    id?: string;
+  }[];
   scrollId?: string;
 }): string {
   return `
@@ -654,10 +662,15 @@ export function mosaic(tiles = 25): string {
   return `<div class="mosaic">${Array.from({ length: tiles }, (_, i) => `<div class="tile" id="tile-${i}"></div>`).join('')}</div>`;
 }
 
-export function card(o: { kicker?: string; lines: string[]; sub?: string; logo?: boolean }): string {
+export function card(o: {
+  kicker?: string;
+  lines: string[];
+  sub?: string;
+  logo?: boolean;
+}): string {
   return `
   <div class="endcard">
-    ${o.logo ? `<div class="ec-logo" id="ec-logo"><img src="${asset('black-swan-logo.png')}" alt=""/></div>` : ''}
+    ${o.logo ? `<div class="ec-logo" id="ec-logo"><img src="${asset('prophyion-mark.png')}" alt=""/></div>` : ''}
     ${o.kicker ? `<div class="ec-kicker" id="ec-kicker">${esc(o.kicker)}</div>` : ''}
     ${o.lines.map((l, i) => `<div class="ec-line" id="ec-line-${i}">${esc(l)}</div>`).join('')}
     ${o.sub ? `<div class="ec-sub" id="ec-sub">${esc(o.sub)}</div>` : ''}
@@ -745,7 +758,14 @@ export function orgPage(o: {
   handle: string;
   bio: string;
   followers: string;
-  posts: { text: string; time: string; likes: string; comments: string; photo?: string; id?: string }[];
+  posts: {
+    text: string;
+    time: string;
+    likes: string;
+    comments: string;
+    photo?: string;
+    id?: string;
+  }[];
   composerId?: string;
 }): string {
   return `

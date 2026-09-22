@@ -1,6 +1,6 @@
 # Vercel Deployment Guide
 
-This guide will help you deploy your Black Swan Simulations application to Vercel.
+This guide will help you deploy your Prophyion application to Vercel.
 
 ## ⚠️ Important Limitations
 

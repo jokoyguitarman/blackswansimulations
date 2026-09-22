@@ -1,4 +1,4 @@
-# Security Threat Summary — Black Swan Simulations
+# Security Threat Summary — Prophyion
 
 Findings from a codebase security review, ranked **Severe → Mild**.
 

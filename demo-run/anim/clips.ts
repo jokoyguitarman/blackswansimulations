@@ -36,8 +36,20 @@ import {
 
 export interface Track {
   prop:
-    | 'opacity' | 'x' | 'y' | 'scale' | 'rotate' | 'scroll' | 'type' | 'number'
-    | 'widthPct' | 'classAt' | 'draw' | 'spark' | 'visible' | 'cursor';
+    | 'opacity'
+    | 'x'
+    | 'y'
+    | 'scale'
+    | 'rotate'
+    | 'scroll'
+    | 'type'
+    | 'number'
+    | 'widthPct'
+    | 'classAt'
+    | 'draw'
+    | 'spark'
+    | 'visible'
+    | 'cursor';
   sel?: string;
   keys?: [number, number][];
   /** spark only: plot box and value range. */
@@ -95,27 +107,105 @@ const minBtn: [number, number] = [WIN.x + WIN.w - 74, WIN.y + 22];
 
 /** A window opening: the shell's own 0.25s scale-and-fade. */
 const windowOpen = (app: string, at: number): Track[] => [
-  { prop: 'opacity', sel: `#win-${app}`, keys: [[at - 1, 0], [at, 0], [at + 260, 1]], ease: 'out' },
-  { prop: 'scale', sel: `#win-${app}`, keys: [[at - 1, 0.93], [at, 0.93], [at + 260, 1]], ease: 'back' },
+  {
+    prop: 'opacity',
+    sel: `#win-${app}`,
+    keys: [
+      [at - 1, 0],
+      [at, 0],
+      [at + 260, 1],
+    ],
+    ease: 'out',
+  },
+  {
+    prop: 'scale',
+    sel: `#win-${app}`,
+    keys: [
+      [at - 1, 0.93],
+      [at, 0.93],
+      [at + 260, 1],
+    ],
+    ease: 'back',
+  },
 ];
 
 /** A window collapsing to the taskbar. */
 const windowMin = (app: string, at: number): Track[] => [
-  { prop: 'opacity', sel: `#win-${app}`, keys: [[at, 1], [at + 240, 0]], ease: 'in' },
-  { prop: 'scale', sel: `#win-${app}`, keys: [[at, 1], [at + 240, 0.9]], ease: 'in' },
-  { prop: 'y', sel: `#win-${app}`, keys: [[at, 0], [at + 240, 120]], ease: 'in' },
+  {
+    prop: 'opacity',
+    sel: `#win-${app}`,
+    keys: [
+      [at, 1],
+      [at + 240, 0],
+    ],
+    ease: 'in',
+  },
+  {
+    prop: 'scale',
+    sel: `#win-${app}`,
+    keys: [
+      [at, 1],
+      [at + 240, 0.9],
+    ],
+    ease: 'in',
+  },
+  {
+    prop: 'y',
+    sel: `#win-${app}`,
+    keys: [
+      [at, 0],
+      [at + 240, 120],
+    ],
+    ease: 'in',
+  },
 ];
 
 /** A post dropping into the top of a feed. */
 const arrive = (sel: string, at: number): Track[] => [
-  { prop: 'opacity', sel, keys: [[at - 1, 0], [at, 0], [at + 300, 1]], ease: 'out' },
-  { prop: 'y', sel, keys: [[at - 1, -26], [at, -26], [at + 380, 0]], ease: 'back' },
+  {
+    prop: 'opacity',
+    sel,
+    keys: [
+      [at - 1, 0],
+      [at, 0],
+      [at + 300, 1],
+    ],
+    ease: 'out',
+  },
+  {
+    prop: 'y',
+    sel,
+    keys: [
+      [at - 1, -26],
+      [at, -26],
+      [at + 380, 0],
+    ],
+    ease: 'back',
+  },
 ];
 
 /** A comment bubble appearing in a thread. */
 const pop = (sel: string, at: number): Track[] => [
-  { prop: 'opacity', sel, keys: [[at - 1, 0], [at, 0], [at + 220, 1]], ease: 'out' },
-  { prop: 'y', sel, keys: [[at - 1, 14], [at, 14], [at + 320, 0]], ease: 'back' },
+  {
+    prop: 'opacity',
+    sel,
+    keys: [
+      [at - 1, 0],
+      [at, 0],
+      [at + 220, 1],
+    ],
+    ease: 'out',
+  },
+  {
+    prop: 'y',
+    sel,
+    keys: [
+      [at - 1, 14],
+      [at, 14],
+      [at + 320, 0],
+    ],
+    ease: 'back',
+  },
 ];
 
 /** Type `text` into `sel` between two times, at a readable rate. */
@@ -165,13 +255,33 @@ const sideMove = (
   clipMs: number,
 ): Track[] => [
   ...Object.keys(to).flatMap((k) => [
-    { prop: 'number' as const, sel: `#sg-${k}`, keys: [[t0, from[k]], [t1, to[k]]] as [number, number][], ease: 'out' as const },
-    { prop: 'widthPct' as const, sel: `#sgb-${k}`, keys: [[t0, from[k]], [t1, to[k]]] as [number, number][], ease: 'out' as const },
+    {
+      prop: 'number' as const,
+      sel: `#sg-${k}`,
+      keys: [
+        [t0, from[k]],
+        [t1, to[k]],
+      ] as [number, number][],
+      ease: 'out' as const,
+    },
+    {
+      prop: 'widthPct' as const,
+      sel: `#sgb-${k}`,
+      keys: [
+        [t0, from[k]],
+        [t1, to[k]],
+      ] as [number, number][],
+      ease: 'out' as const,
+    },
   ]),
   {
     prop: 'spark' as const,
     sel: '#side-spark-path',
-    keys: [[0, from.trust], [t0, from.trust], [t1, to.trust]] as [number, number][],
+    keys: [
+      [0, from.trust],
+      [t0, from.trust],
+      [t1, to.trust],
+    ] as [number, number][],
     from: 0,
     to: clipMs,
     w: 420,
@@ -206,17 +316,33 @@ const AMP_PAGE = 'AMP (Association for Muslim Professionals)';
  * animate in, and the view stays pinned near the bottom.
  */
 const CHAT_HISTORY = [
-  { from: 'Devi (Compliance)', text: 'Logging this as a live incident. Case file open, nothing cleared for release yet.' },
-  { from: 'Shahrizal (Legal)', text: 'Do not confirm any figure. We have one internal number and it is not verified.' },
-  { from: 'Daniel (Comms)', text: 'Three false claims trending now — frozen assistance, $1m shortfall, and a hotel photo.' },
-  { from: 'Nurul Aisyah', text: 'Noted. Working on a holding line. Nobody replies to anything without me seeing it.', me: true },
+  {
+    from: 'Devi (Compliance)',
+    text: 'Logging this as a live incident. Case file open, nothing cleared for release yet.',
+  },
+  {
+    from: 'Shahrizal (Legal)',
+    text: 'Do not confirm any figure. We have one internal number and it is not verified.',
+  },
+  {
+    from: 'Daniel (Comms)',
+    text: 'Three false claims trending now — frozen assistance, $1m shortfall, and a hotel photo.',
+  },
+  {
+    from: 'Nurul Aisyah',
+    text: 'Noted. Working on a holding line. Nobody replies to anything without me seeing it.',
+    me: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------
 // ACT I
 // ---------------------------------------------------------------------------
 
-const calmFeed = fbFeed(CALM.map((k) => fbPost(k, { id: `post-${k}` })), { composer: true });
+const calmFeed = fbFeed(
+  CALM.map((k) => fbPost(k, { id: `post-${k}` })),
+  { composer: true },
+);
 
 const clip01: Clip = {
   id: 'seq01',
@@ -226,8 +352,23 @@ const clip01: Clip = {
   html: desktop({ windows: [{ app: 'facebook', body: calmFeed, ...WIN }], taskbar: ['facebook'] }),
   tracks: [
     // The window is not there until she opens it.
-    { prop: 'opacity', sel: '#win-facebook', keys: [[0, 0], [5600, 0]] },
-    { prop: 'opacity', sel: '#task-facebook', keys: [[0, 0], [5600, 0], [5900, 1]] },
+    {
+      prop: 'opacity',
+      sel: '#win-facebook',
+      keys: [
+        [0, 0],
+        [5600, 0],
+      ],
+    },
+    {
+      prop: 'opacity',
+      sel: '#task-facebook',
+      keys: [
+        [0, 0],
+        [5600, 0],
+        [5900, 1],
+      ],
+    },
     ...windowOpen('facebook', 5700),
     // Idle, then cross to the Fakebook icon, then double-click.
     cursor(
@@ -239,7 +380,16 @@ const clip01: Clip = {
       ],
       [5150, 5330],
     ),
-    { prop: 'scale', sel: '#ic-facebook .dk-tile', keys: [[4600, 1], [4900, 1.08], [5400, 1.08], [5700, 1]] },
+    {
+      prop: 'scale',
+      sel: '#ic-facebook .dk-tile',
+      keys: [
+        [4600, 1],
+        [4900, 1.08],
+        [5400, 1.08],
+        [5700, 1],
+      ],
+    },
   ],
 };
 
@@ -250,7 +400,17 @@ const clip02: Clip = {
   durationMs: 13000,
   html: desktop({ windows: [{ app: 'facebook', body: calmFeed, ...WIN }], taskbar: ['facebook'] }),
   tracks: [
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [5800, 420], [7200, 420], [11500, 980]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [5800, 420],
+        [7200, 420],
+        [11500, 980],
+      ],
+      ease: 'inOut',
+    },
     cursor([
       [0, 980, 520],
       [5800, 1010, 600],
@@ -276,10 +436,13 @@ const clip03a: Clip = {
     windows: [
       {
         app: 'facebook',
-        body: fbFeedWithToast(CALM.map((k) => fbPost(k, { id: `post-${k}` })), {
-          badge: true,
-          toast: { from: 'Aisyah Kamal', preview: 'eh… is this about your company or not? 😬' },
-        }),
+        body: fbFeedWithToast(
+          CALM.map((k) => fbPost(k, { id: `post-${k}` })),
+          {
+            badge: true,
+            toast: { from: 'Aisyah Kamal', preview: 'eh… is this about your company or not? 😬' },
+          },
+        ),
         ...WIN,
       },
     ],
@@ -287,11 +450,54 @@ const clip03a: Clip = {
   }),
   tracks: [
     // Badge pops on the messenger icon, then the banner slides in from the right.
-    { prop: 'opacity', sel: '#fb-badge', keys: [[0, 0], [1200, 0], [1500, 1]], ease: 'out' },
-    { prop: 'scale', sel: '#fb-badge', keys: [[1200, 0], [1700, 1]], ease: 'back' },
-    { prop: 'opacity', sel: '#fb-toast', keys: [[0, 0], [1500, 0], [1900, 1], [7400, 1], [7900, 0]] },
-    { prop: 'x', sel: '#fb-toast', keys: [[1500, 60], [2100, 0]], ease: 'back' },
-    { prop: 'scroll', sel: '#feed', keys: [[0, 120], [1400, 200]], ease: 'inOut' },
+    {
+      prop: 'opacity',
+      sel: '#fb-badge',
+      keys: [
+        [0, 0],
+        [1200, 0],
+        [1500, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'scale',
+      sel: '#fb-badge',
+      keys: [
+        [1200, 0],
+        [1700, 1],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'opacity',
+      sel: '#fb-toast',
+      keys: [
+        [0, 0],
+        [1500, 0],
+        [1900, 1],
+        [7400, 1],
+        [7900, 0],
+      ],
+    },
+    {
+      prop: 'x',
+      sel: '#fb-toast',
+      keys: [
+        [1500, 60],
+        [2100, 0],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 120],
+        [1400, 200],
+      ],
+      ease: 'inOut',
+    },
     // She reaches for the banner and clicks it.
     cursor(
       [
@@ -315,7 +521,8 @@ const dmBody = messenger({
       time: '2m',
       shared: {
         author: 'CNA Local Updates',
-        preview: 'AMP confirms financial mismanagement in one community programme following an internal review.',
+        preview:
+          'AMP confirms financial mismanagement in one community programme following an internal review.',
         photo: PHOTOS.newsBuilding,
       },
     },
@@ -330,9 +537,23 @@ const clip03: Clip = {
   durationMs: 11000,
   html: desktop({ windows: [{ app: 'facebook', body: dmBody, ...WIN }], taskbar: ['facebook'] }),
   tracks: [
-    { prop: 'opacity', sel: '#dm-1', keys: [[0, 0], [700, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#dm-1',
+      keys: [
+        [0, 0],
+        [700, 0],
+      ],
+    },
     ...pop('#dm-1', 800),
-    { prop: 'opacity', sel: '#dm-2', keys: [[0, 0], [6200, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#dm-2',
+      keys: [
+        [0, 0],
+        [6200, 0],
+      ],
+    },
     ...pop('#dm-2', 6300),
     cursor([
       [0, 1490, 205],
@@ -409,8 +630,23 @@ const clip04: Clip = {
   }),
   tracks: [
     ...windowMin('facebook', 900),
-    { prop: 'opacity', sel: '#win-news', keys: [[0, 0], [4300, 0]] },
-    { prop: 'opacity', sel: '#task-news', keys: [[0, 0], [4300, 0], [4600, 1]] },
+    {
+      prop: 'opacity',
+      sel: '#win-news',
+      keys: [
+        [0, 0],
+        [4300, 0],
+      ],
+    },
+    {
+      prop: 'opacity',
+      sel: '#task-news',
+      keys: [
+        [0, 0],
+        [4300, 0],
+        [4600, 1],
+      ],
+    },
     ...windowOpen('news', 4400),
     cursor(
       [
@@ -421,7 +657,16 @@ const clip04: Clip = {
       ],
       [800, 3900, 4080],
     ),
-    { prop: 'scale', sel: '#ic-news .dk-tile', keys: [[3400, 1], [3700, 1.08], [4200, 1.08], [4400, 1]] },
+    {
+      prop: 'scale',
+      sel: '#ic-news .dk-tile',
+      keys: [
+        [3400, 1],
+        [3700, 1.08],
+        [4200, 1.08],
+        [4400, 1],
+      ],
+    },
   ],
 };
 
@@ -432,12 +677,24 @@ const clip05a: Clip = {
   title: 'The newswire',
   durationMs: 9000,
   html: desktop({
-    windows: [{ app: 'news', body: newsList({ items: NEWS_WIRE }), x: 380, y: 130, w: 1180, h: 820 }],
+    windows: [
+      { app: 'news', body: newsList({ items: NEWS_WIRE }), x: 380, y: 130, w: 1180, h: 820 },
+    ],
     taskbar: ['facebook', 'news'],
     minimised: ['facebook'],
   }),
   tracks: [
-    { prop: 'scroll', sel: '#news-list', keys: [[0, 0], [2400, 0], [6000, 330], [7600, 60]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#news-list',
+      keys: [
+        [0, 0],
+        [2400, 0],
+        [6000, 330],
+        [7600, 60],
+      ],
+      ease: 'inOut',
+    },
     cursor(
       [
         [0, 700, 300],
@@ -464,7 +721,16 @@ const clip05: Clip = {
     minimised: ['facebook'],
   }),
   tracks: [
-    { prop: 'scroll', sel: '#news-scroll', keys: [[0, 0], [3400, 0], [9400, 620]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#news-scroll',
+      keys: [
+        [0, 0],
+        [3400, 0],
+        [9400, 620],
+      ],
+      ease: 'inOut',
+    },
     // The guided read: down the copy with a slight horizontal wander.
     cursor(
       [
@@ -508,29 +774,101 @@ const clip06: Clip = {
   }),
   tracks: [
     // Fakebook comes back up over the News window.
-    { prop: 'opacity', sel: '#win-facebook', keys: [[0, 0], [1200, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#win-facebook',
+      keys: [
+        [0, 0],
+        [1200, 0],
+      ],
+    },
     ...windowOpen('facebook', 1300),
     // Posts land while she is reading, each one pushing the feed down.
-    { prop: 'opacity', sel: '#p-frozen', keys: [[0, 0], [5600, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#p-frozen',
+      keys: [
+        [0, 0],
+        [5600, 0],
+      ],
+    },
     ...arrive('#p-frozen', 5700),
-    { prop: 'opacity', sel: '#p-million', keys: [[0, 0], [8400, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#p-million',
+      keys: [
+        [0, 0],
+        [8400, 0],
+      ],
+    },
     ...arrive('#p-million', 8500),
-    { prop: 'opacity', sel: '#p-luxury', keys: [[0, 0], [12200, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#p-luxury',
+      keys: [
+        [0, 0],
+        [12200, 0],
+      ],
+    },
     ...arrive('#p-luxury', 12300),
-    { prop: 'opacity', sel: '#p-crowd', keys: [[0, 0], [15000, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#p-crowd',
+      keys: [
+        [0, 0],
+        [15000, 0],
+      ],
+    },
     ...arrive('#p-crowd', 15100),
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [4200, 0], [11000, 300], [17600, 1180]], ease: 'inOut' },
-    cursor([
-      [0, taskX(0), TASK_Y],
-      [900, taskX(0), TASK_Y],
-      [2600, 1000, 500],
-      [11000, 1030, 560],
-      [18000, 1060, 600],
-    ], [1000]),
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [4200, 0],
+        [11000, 300],
+        [17600, 1180],
+      ],
+      ease: 'inOut',
+    },
+    cursor(
+      [
+        [0, taskX(0), TASK_Y],
+        [900, taskX(0), TASK_Y],
+        [2600, 1000, 500],
+        [11000, 1030, 560],
+        [18000, 1060, 600],
+      ],
+      [1000],
+    ),
     // Engagement on the accusation climbing through the whole clip.
-    { prop: 'number', sel: '#p-acc-likes', keys: [[0, 2140], [18000, 5980]], ease: 'linear' },
-    { prop: 'number', sel: '#p-acc-shares', keys: [[0, 1870], [18000, 4410]], ease: 'linear' },
-    { prop: 'number', sel: '#p-acc-views', keys: [[0, 184000], [18000, 402000]], ease: 'linear' },
+    {
+      prop: 'number',
+      sel: '#p-acc-likes',
+      keys: [
+        [0, 2140],
+        [18000, 5980],
+      ],
+      ease: 'linear',
+    },
+    {
+      prop: 'number',
+      sel: '#p-acc-shares',
+      keys: [
+        [0, 1870],
+        [18000, 4410],
+      ],
+      ease: 'linear',
+    },
+    {
+      prop: 'number',
+      sel: '#p-acc-views',
+      keys: [
+        [0, 184000],
+        [18000, 402000],
+      ],
+      ease: 'linear',
+    },
   ],
 };
 
@@ -539,7 +877,10 @@ const clip06: Clip = {
 // ---------------------------------------------------------------------------
 
 const ECHOES = [
-  ['Rohana Bte Salleh', 'Sama. Saya apply bulan lepas, sampai sekarang tak dengar apa-apa. Anak saya Sec 3.'],
+  [
+    'Rohana Bte Salleh',
+    'Sama. Saya apply bulan lepas, sampai sekarang tak dengar apa-apa. Anak saya Sec 3.',
+  ],
   ['Zulkarnain', 'Just tell us yes or no lah. We can plan. It is the not knowing that kills.'],
   ['Mdm Kalthom', 'Saya call office tiga kali. Tiada orang angkat.'],
   ['Hakim', 'My sister works there. Even she doesn’t know what to tell people.'],
@@ -584,17 +925,48 @@ const clip07: Clip = {
       14200,
       15000,
     ),
-    { prop: 'opacity', sel: '#side-panel', keys: [[0, 0], [900, 0], [1600, 1]], ease: 'out' },
-    { prop: 'x', sel: '#side-panel', keys: [[900, 40], [1700, 0]], ease: 'out' },
+    {
+      prop: 'opacity',
+      sel: '#side-panel',
+      keys: [
+        [0, 0],
+        [900, 0],
+        [1600, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'x',
+      sel: '#side-panel',
+      keys: [
+        [900, 40],
+        [1700, 0],
+      ],
+      ease: 'out',
+    },
     ...ECHOES.flatMap((_, i) => [
-      { prop: 'opacity' as const, sel: `#ec-${i}`, keys: [[0, 0], [7600 + i * 1400, 0]] as [number, number][] },
+      {
+        prop: 'opacity' as const,
+        sel: `#ec-${i}`,
+        keys: [
+          [0, 0],
+          [7600 + i * 1400, 0],
+        ] as [number, number][],
+      },
       ...pop(`#ec-${i}`, 7700 + i * 1400),
     ]),
     // Do not move. Her name, her question, the photo and the first replies all
     // fit the frame at rest, and any creep at all clips the post header — which
     // costs the audience the face and handle behind the words. The later
     // comments arriving off the bottom edge is a cheaper loss than that.
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [15000, 0]] },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [15000, 0],
+      ],
+    },
   ],
 };
 
@@ -636,12 +1008,53 @@ const clip08: Clip = {
       12000,
       15000,
     ),
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [3400, 1500], [4200, 1180], [15000, 1180]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [3400, 1500],
+        [4200, 1180],
+        [15000, 1180],
+      ],
+      ease: 'inOut',
+    },
     // Counters climbing while he looks at it. This is the cost of the pause.
-    { prop: 'number', sel: '#p-frozen-likes', keys: [[4400, 3310], [11000, 7940]], ease: 'linear' },
-    { prop: 'number', sel: '#p-frozen-shares', keys: [[4400, 2940], [11000, 6213]], ease: 'linear' },
-    { prop: 'number', sel: '#p-frozen-views', keys: [[4400, 297000], [11000, 512884]], ease: 'linear' },
-    { prop: 'opacity', sel: '#p-rival', keys: [[0, 0], [11600, 0]] },
+    {
+      prop: 'number',
+      sel: '#p-frozen-likes',
+      keys: [
+        [4400, 3310],
+        [11000, 7940],
+      ],
+      ease: 'linear',
+    },
+    {
+      prop: 'number',
+      sel: '#p-frozen-shares',
+      keys: [
+        [4400, 2940],
+        [11000, 6213],
+      ],
+      ease: 'linear',
+    },
+    {
+      prop: 'number',
+      sel: '#p-frozen-views',
+      keys: [
+        [4400, 297000],
+        [11000, 512884],
+      ],
+      ease: 'linear',
+    },
+    {
+      prop: 'opacity',
+      sel: '#p-rival',
+      keys: [
+        [0, 0],
+        [11600, 0],
+      ],
+    },
     ...arrive('#p-rival', 11700),
   ],
 };
@@ -676,15 +1089,64 @@ const clip09: Clip = {
     taskbar: ['facebook'],
   }),
   tracks: [
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [3000, 150]], ease: 'inOut' },
-    { prop: 'number', sel: '#p-lux-likes', keys: [[5000, 4120], [13000, 9880]], ease: 'linear' },
-    { prop: 'number', sel: '#p-lux-shares', keys: [[5000, 3380], [13000, 8104]], ease: 'linear' },
-    { prop: 'number', sel: '#p-lux-views', keys: [[5000, 312000], [13000, 411203]], ease: 'linear' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [3000, 150],
+      ],
+      ease: 'inOut',
+    },
+    {
+      prop: 'number',
+      sel: '#p-lux-likes',
+      keys: [
+        [5000, 4120],
+        [13000, 9880],
+      ],
+      ease: 'linear',
+    },
+    {
+      prop: 'number',
+      sel: '#p-lux-shares',
+      keys: [
+        [5000, 3380],
+        [13000, 8104],
+      ],
+      ease: 'linear',
+    },
+    {
+      prop: 'number',
+      sel: '#p-lux-views',
+      keys: [
+        [5000, 312000],
+        [13000, 411203],
+      ],
+      ease: 'linear',
+    },
     ...PRESSURE.flatMap((_, i) => [
-      { prop: 'opacity' as const, sel: `#pr-${i}`, keys: [[0, 0], [6800 + i * 1300, 0]] as [number, number][] },
+      {
+        prop: 'opacity' as const,
+        sel: `#pr-${i}`,
+        keys: [
+          [0, 0],
+          [6800 + i * 1300, 0],
+        ] as [number, number][],
+      },
       ...pop(`#pr-${i}`, 6900 + i * 1300),
     ]),
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [3000, 150], [7200, 330], [13600, 880]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [3000, 150],
+        [7200, 330],
+        [13600, 880],
+      ],
+      ease: 'inOut',
+    },
   ],
 };
 
@@ -696,15 +1158,36 @@ const clip10a: Clip = {
   durationMs: 9000,
   html: desktop({
     windows: [
-      { app: 'email', body: mailInbox({ focus: 'email-press', arrivingId: 'mail-new' }), x: 420, y: 120, w: 1100, h: 840 },
+      {
+        app: 'email',
+        body: mailInbox({ focus: 'email-press', arrivingId: 'mail-new' }),
+        x: 420,
+        y: 120,
+        w: 1100,
+        h: 840,
+      },
     ],
     taskbar: ['email'],
   }),
   tracks: [
-    { prop: 'opacity', sel: '#win-email', keys: [[0, 0], [900, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#win-email',
+      keys: [
+        [0, 0],
+        [900, 0],
+      ],
+    },
     ...windowOpen('email', 1000),
     // The press deadline drops into the list while she is looking at it.
-    { prop: 'opacity', sel: '#mail-new', keys: [[0, 0], [3400, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#mail-new',
+      keys: [
+        [0, 0],
+        [3400, 0],
+      ],
+    },
     ...arrive('#mail-new', 3500),
     cursor(
       [
@@ -727,11 +1210,29 @@ const clip10: Clip = {
   title: 'The deadline',
   durationMs: 11000,
   html: desktop({
-    windows: [{ app: 'email', body: mailRead('email-press', { highlight: 'Our deadline is 6pm today.' }), x: 420, y: 120, w: 1100, h: 840 }],
+    windows: [
+      {
+        app: 'email',
+        body: mailRead('email-press', { highlight: 'Our deadline is 6pm today.' }),
+        x: 420,
+        y: 120,
+        w: 1100,
+        h: 840,
+      },
+    ],
     taskbar: ['email'],
   }),
   tracks: [
-    { prop: 'scroll', sel: '#mail-scroll', keys: [[0, 0], [2400, 0], [9200, 340]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#mail-scroll',
+      keys: [
+        [0, 0],
+        [2400, 0],
+        [9200, 340],
+      ],
+      ease: 'inOut',
+    },
     cursor(
       [
         [0, 640, 300],
@@ -767,9 +1268,24 @@ const clip11: Clip = {
     taskbar: ['facebook'],
   }),
   tracks: [
-    { prop: 'opacity', sel: '#p-crowd', keys: [[0, 0], [600, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#p-crowd',
+      keys: [
+        [0, 0],
+        [600, 0],
+      ],
+    },
     ...arrive('#p-crowd', 700),
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [6600, 220]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [6600, 220],
+      ],
+      ease: 'inOut',
+    },
   ],
 };
 
@@ -788,8 +1304,24 @@ const gaugeMove = (
   t1: number,
 ): Track[] =>
   Object.keys(to).flatMap((k) => [
-    { prop: 'number' as const, sel: `#g-${k}`, keys: [[t0, from[k]], [t1, to[k]]] as [number, number][], ease: 'out' as const },
-    { prop: 'widthPct' as const, sel: `#gb-${k}`, keys: [[t0, from[k]], [t1, to[k]]] as [number, number][], ease: 'out' as const },
+    {
+      prop: 'number' as const,
+      sel: `#g-${k}`,
+      keys: [
+        [t0, from[k]],
+        [t1, to[k]],
+      ] as [number, number][],
+      ease: 'out' as const,
+    },
+    {
+      prop: 'widthPct' as const,
+      sel: `#gb-${k}`,
+      keys: [
+        [t0, from[k]],
+        [t1, to[k]],
+      ] as [number, number][],
+      ease: 'out' as const,
+    },
   ]);
 
 const clip12: Clip = {
@@ -797,7 +1329,12 @@ const clip12: Clip = {
   seq: 12,
   title: 'The drop',
   durationMs: 6000,
-  html: dashboard({ gauges: GAUGES_FALL, overall: 48, trend: 'falling', alert: 'ESCALATION RISK HIGH' }),
+  html: dashboard({
+    gauges: GAUGES_FALL,
+    overall: 48,
+    trend: 'falling',
+    alert: 'ESCALATION RISK HIGH',
+  }),
   tracks: [
     ...gaugeMove(
       { trust: 71, safety: 78, narrative: 64, risk: 22, overall: 71 },
@@ -805,9 +1342,34 @@ const clip12: Clip = {
       600,
       4200,
     ),
-    { prop: 'draw', sel: '#spark-path', keys: [[600, 0], [4400, 1]], ease: 'out' },
-    { prop: 'opacity', sel: '#dash-alert', keys: [[0, 0], [3600, 0], [4000, 1]], ease: 'out' },
-    { prop: 'scale', sel: '#dash-alert', keys: [[3600, 0.96], [4200, 1]], ease: 'back' },
+    {
+      prop: 'draw',
+      sel: '#spark-path',
+      keys: [
+        [600, 0],
+        [4400, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'opacity',
+      sel: '#dash-alert',
+      keys: [
+        [0, 0],
+        [3600, 0],
+        [4000, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'scale',
+      sel: '#dash-alert',
+      keys: [
+        [3600, 0.96],
+        [4200, 1],
+      ],
+      ease: 'back',
+    },
   ],
 };
 
@@ -834,7 +1396,16 @@ const clip13: Clip = {
     taskbar: ['facebook'],
   }),
   tracks: [
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [5200, 380], [9000, 380]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [5200, 380],
+        [9000, 380],
+      ],
+      ease: 'inOut',
+    },
     cursor(
       [
         [0, 620, 300],
@@ -871,10 +1442,28 @@ const clip13b: Clip = {
           channel: 'Crisis Cell — Comms + Legal',
           messages: [
             ...CHAT_HISTORY,
-            { from: 'Grace (Legal)', text: 'Two claims going round I want to kill. Freeze notice — do we have one?', me: true, id: 'v1' },
-            { from: 'Shahrizal (Legal)', text: 'No. Nothing received, nothing issued. I have the Finance confirmation in writing.', id: 'v2' },
-            { from: 'Grace (Legal)', text: 'And can I quote the case reference publicly?', me: true, id: 'v3' },
-            { from: 'Shahrizal (Legal)', text: 'Yes. AMP-IR-2026-014 is cleared for release. Scope is Community Uplift only.', id: 'v4' },
+            {
+              from: 'Grace (Legal)',
+              text: 'Two claims going round I want to kill. Freeze notice — do we have one?',
+              me: true,
+              id: 'v1',
+            },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'No. Nothing received, nothing issued. I have the Finance confirmation in writing.',
+              id: 'v2',
+            },
+            {
+              from: 'Grace (Legal)',
+              text: 'And can I quote the case reference publicly?',
+              me: true,
+              id: 'v3',
+            },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'Yes. AMP-IR-2026-014 is cleared for release. Scope is Community Uplift only.',
+              id: 'v4',
+            },
           ],
         }),
         x: 460,
@@ -887,24 +1476,50 @@ const clip13b: Clip = {
     minimised: ['facebook'],
   }),
   tracks: [
-    { prop: 'opacity', sel: '#win-chat', keys: [[0, 0], [800, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#win-chat',
+      keys: [
+        [0, 0],
+        [800, 0],
+      ],
+    },
     ...windowOpen('chat', 900),
-    { prop: 'scroll', sel: '#chat-scroll', keys: [[0, 900], [2400, 1000], [13000, 1400]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#chat-scroll',
+      keys: [
+        [0, 900],
+        [2400, 1000],
+        [13000, 1400],
+      ],
+      ease: 'inOut',
+    },
     ...[
       ['#v1', 2400],
       ['#v2', 5600],
       ['#v3', 9200],
       ['#v4', 12200],
     ].flatMap(([sel, at]) => [
-      { prop: 'opacity' as const, sel: sel as string, keys: [[0, 0], [at as number, 0]] as [number, number][] },
+      {
+        prop: 'opacity' as const,
+        sel: sel as string,
+        keys: [
+          [0, 0],
+          [at as number, 0],
+        ] as [number, number][],
+      },
       ...pop(sel as string, (at as number) + 100),
     ]),
-    cursor([
-      [0, ICON.chat[0], ICON.chat[1]],
-      [700, ICON.chat[0], ICON.chat[1]],
-      [2000, 900, 940],
-      [16000, 900, 940],
-    ], [800, 980]),
+    cursor(
+      [
+        [0, ICON.chat[0], ICON.chat[1]],
+        [700, ICON.chat[0], ICON.chat[1]],
+        [2000, 900, 940],
+        [16000, 900, 940],
+      ],
+      [800, 980],
+    ),
   ],
 };
 
@@ -922,14 +1537,48 @@ const clip14: Clip = {
       taskbar: ['facebook'],
     }) + reportSheet({ selected: 'misinformation', reasonId: 'rp-reason' }),
   tracks: [
-    { prop: 'opacity', sel: '#report-sheet', keys: [[0, 0], [1500, 0], [1900, 1]], ease: 'out' },
-    { prop: 'scale', sel: '#report-sheet', keys: [[1500, 0.95], [1900, 1]], ease: 'back' },
+    {
+      prop: 'opacity',
+      sel: '#report-sheet',
+      keys: [
+        [0, 0],
+        [1500, 0],
+        [1900, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'scale',
+      sel: '#report-sheet',
+      keys: [
+        [1500, 0.95],
+        [1900, 1],
+      ],
+      ease: 'back',
+    },
     { prop: 'classAt', sel: '#opt-misinformation', class: 'on', at: 3900 },
     typeInto('#rp-reason', REPORT_REASON, 5400, 12200),
     // Submit, sheet away, and the post's report icon left amber.
-    { prop: 'opacity', sel: '#report-sheet', keys: [[13200, 1], [13600, 0]], ease: 'in' },
+    {
+      prop: 'opacity',
+      sel: '#report-sheet',
+      keys: [
+        [13200, 1],
+        [13600, 0],
+      ],
+      ease: 'in',
+    },
     { prop: 'classAt', sel: '#p-f-report', class: 'flagged', at: 13600 },
-    { prop: 'scale', sel: '#p-f-report', keys: [[13600, 1], [13900, 1.5], [14400, 1]], ease: 'back' },
+    {
+      prop: 'scale',
+      sel: '#p-f-report',
+      keys: [
+        [13600, 1],
+        [13900, 1.5],
+        [14400, 1],
+      ],
+      ease: 'back',
+    },
     cursor(
       [
         [0, 1240, 300],
@@ -971,13 +1620,54 @@ const clip15: Clip = {
       minimised: ['facebook'],
     }) + disputeSheet({ noteId: 'dp-note' }),
   tracks: [
-    { prop: 'opacity', sel: '#win-news', keys: [[0, 0], [2200, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#win-news',
+      keys: [
+        [0, 0],
+        [2200, 0],
+      ],
+    },
     ...windowOpen('news', 2300),
-    { prop: 'scroll', sel: '#news-scroll', keys: [[0, 0], [4200, 0], [7400, 330]], ease: 'inOut' },
-    { prop: 'opacity', sel: '#dispute-sheet', keys: [[0, 0], [9200, 0], [9600, 1]], ease: 'out' },
-    { prop: 'scale', sel: '#dispute-sheet', keys: [[9200, 0.95], [9600, 1]], ease: 'back' },
+    {
+      prop: 'scroll',
+      sel: '#news-scroll',
+      keys: [
+        [0, 0],
+        [4200, 0],
+        [7400, 330],
+      ],
+      ease: 'inOut',
+    },
+    {
+      prop: 'opacity',
+      sel: '#dispute-sheet',
+      keys: [
+        [0, 0],
+        [9200, 0],
+        [9600, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'scale',
+      sel: '#dispute-sheet',
+      keys: [
+        [9200, 0.95],
+        [9600, 1],
+      ],
+      ease: 'back',
+    },
     typeInto('#dp-note', DISPUTE_NOTE, 10600, 18400),
-    { prop: 'opacity', sel: '#dispute-submit', keys: [[19400, 1], [19700, 0.5], [20000, 1]] },
+    {
+      prop: 'opacity',
+      sel: '#dispute-submit',
+      keys: [
+        [19400, 1],
+        [19700, 0.5],
+        [20000, 1],
+      ],
+    },
     cursor(
       [
         [0, 200, 700],
@@ -1022,9 +1712,35 @@ const clip16: Clip = {
     minimised: ['facebook'],
   }),
   tracks: [
-    { prop: 'opacity', sel: '#retract-banner', keys: [[0, 0], [1400, 0], [1900, 1]], ease: 'out' },
-    { prop: 'y', sel: '#retract-banner', keys: [[1400, -18], [2000, 0]], ease: 'back' },
-    { prop: 'opacity', sel: '.news-h1', keys: [[0, 1], [2200, 1], [3000, 0.6]], ease: 'out' },
+    {
+      prop: 'opacity',
+      sel: '#retract-banner',
+      keys: [
+        [0, 0],
+        [1400, 0],
+        [1900, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'y',
+      sel: '#retract-banner',
+      keys: [
+        [1400, -18],
+        [2000, 0],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'opacity',
+      sel: '.news-h1',
+      keys: [
+        [0, 1],
+        [2200, 1],
+        [3000, 0.6],
+      ],
+      ease: 'out',
+    },
   ],
 };
 
@@ -1036,10 +1752,28 @@ const chatArgument = chat({
   channel: 'Crisis Cell — Comms + Legal',
   messages: [
     ...CHAT_HISTORY,
-    { from: 'Nurul Aisyah', text: 'We are 40 minutes into silence. Something has to go out.', me: true, id: 'm1' },
-    { from: 'Shahrizal (Legal)', text: 'Not until I have the case reference. We cannot confirm a figure we do not have.', id: 'm2' },
-    { from: 'Nurul Aisyah', text: 'Then a holding line. Just put something out now.', me: true, id: 'm3' },
-    { from: 'Shahrizal (Legal)', text: 'A holding line that says nothing will be read as a dodge.', id: 'm4' },
+    {
+      from: 'Nurul Aisyah',
+      text: 'We are 40 minutes into silence. Something has to go out.',
+      me: true,
+      id: 'm1',
+    },
+    {
+      from: 'Shahrizal (Legal)',
+      text: 'Not until I have the case reference. We cannot confirm a figure we do not have.',
+      id: 'm2',
+    },
+    {
+      from: 'Nurul Aisyah',
+      text: 'Then a holding line. Just put something out now.',
+      me: true,
+      id: 'm3',
+    },
+    {
+      from: 'Shahrizal (Legal)',
+      text: 'A holding line that says nothing will be read as a dodge.',
+      id: 'm4',
+    },
   ],
 });
 
@@ -1053,24 +1787,50 @@ const clip17: Clip = {
     taskbar: ['chat'],
   }),
   tracks: [
-    { prop: 'opacity', sel: '#win-chat', keys: [[0, 0], [1000, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#win-chat',
+      keys: [
+        [0, 0],
+        [1000, 0],
+      ],
+    },
     ...windowOpen('chat', 1100),
-    { prop: 'scroll', sel: '#chat-scroll', keys: [[0, 900], [2600, 1000], [14000, 1400]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#chat-scroll',
+      keys: [
+        [0, 900],
+        [2600, 1000],
+        [14000, 1400],
+      ],
+      ease: 'inOut',
+    },
     ...[
       ['#m1', 2600],
       ['#m2', 6400],
       ['#m3', 10000],
       ['#m4', 13600],
     ].flatMap(([sel, at]) => [
-      { prop: 'opacity' as const, sel: sel as string, keys: [[0, 0], [at as number, 0]] as [number, number][] },
+      {
+        prop: 'opacity' as const,
+        sel: sel as string,
+        keys: [
+          [0, 0],
+          [at as number, 0],
+        ] as [number, number][],
+      },
       ...pop(sel as string, (at as number) + 100),
     ]),
-    cursor([
-      [0, ICON.chat[0], ICON.chat[1]],
-      [800, ICON.chat[0], ICON.chat[1]],
-      [2200, 900, 940],
-      [17000, 900, 940],
-    ], [900, 1080]),
+    cursor(
+      [
+        [0, ICON.chat[0], ICON.chat[1]],
+        [800, ICON.chat[0], ICON.chat[1]],
+        [2200, 900, 940],
+        [17000, 900, 940],
+      ],
+      [900, 1080],
+    ),
   ],
 };
 
@@ -1082,18 +1842,53 @@ const clip18: Clip = {
   seq: 18,
   title: 'Typing it anyway',
   durationMs: 17000,
-  html:
-    desktop({
-      windows: [{ app: 'facebook', body: fbCompose({ pageName: AMP_PAGE, textId: 'cmp-a' }), ...WIN }],
-      taskbar: ['facebook', 'chat'],
-      minimised: ['chat'],
-    }),
+  html: desktop({
+    windows: [
+      { app: 'facebook', body: fbCompose({ pageName: AMP_PAGE, textId: 'cmp-a' }), ...WIN },
+    ],
+    taskbar: ['facebook', 'chat'],
+    minimised: ['chat'],
+  }),
   tracks: [
-    { prop: 'opacity', sel: '#cmp-aspage', keys: [[0, 0.35], [2400, 0.35], [2800, 1]], ease: 'out' },
-    { prop: 'scale', sel: '#cmp-aspage', keys: [[2400, 0.94], [2900, 1]], ease: 'back' },
+    {
+      prop: 'opacity',
+      sel: '#cmp-aspage',
+      keys: [
+        [0, 0.35],
+        [2400, 0.35],
+        [2800, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'scale',
+      sel: '#cmp-aspage',
+      keys: [
+        [2400, 0.94],
+        [2900, 1],
+      ],
+      ease: 'back',
+    },
     typeInto('#cmp-a', WEAK, 3800, 13000),
-    { prop: 'scale', sel: '#cmp-post', keys: [[14200, 1], [14400, 0.93], [14700, 1]], ease: 'back' },
-    { prop: 'opacity', sel: '.cmp', keys: [[15200, 1], [15700, 0]], ease: 'in' },
+    {
+      prop: 'scale',
+      sel: '#cmp-post',
+      keys: [
+        [14200, 1],
+        [14400, 0.93],
+        [14700, 1],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'opacity',
+      sel: '.cmp',
+      keys: [
+        [15200, 1],
+        [15700, 0],
+      ],
+      ease: 'in',
+    },
     cursor(
       [
         [0, 1300, 260],
@@ -1151,12 +1946,28 @@ const clip19: Clip = {
       12000,
     ),
     ...CALLOUTS.flatMap((_, i) => [
-      { prop: 'opacity' as const, sel: `#co-${i}`, keys: [[0, 0], [2400 + i * 1500, 0]] as [number, number][] },
+      {
+        prop: 'opacity' as const,
+        sel: `#co-${i}`,
+        keys: [
+          [0, 0],
+          [2400 + i * 1500, 0],
+        ] as [number, number][],
+      },
       ...pop(`#co-${i}`, 2500 + i * 1500),
     ]),
     // Same discipline: keep the statement they are tearing apart on screen, or
     // the replies are just angry text with nothing to be angry at.
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [2600, 120], [11600, 560]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [2600, 120],
+        [11600, 560],
+      ],
+      ease: 'inOut',
+    },
   ],
 };
 
@@ -1183,8 +1994,27 @@ const clip20: Clip = {
       300,
       2600,
     ),
-    { prop: 'draw', sel: '#spark-path', keys: [[300, 0], [3000, 1]], ease: 'out' },
-    { prop: 'opacity', sel: '#dash-alert', keys: [[0, 0], [2400, 0], [2700, 1], [3000, 0.4], [3300, 1]], ease: 'out' },
+    {
+      prop: 'draw',
+      sel: '#spark-path',
+      keys: [
+        [300, 0],
+        [3000, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'opacity',
+      sel: '#dash-alert',
+      keys: [
+        [0, 0],
+        [2400, 0],
+        [2700, 1],
+        [3000, 0.4],
+        [3300, 1],
+      ],
+      ease: 'out',
+    },
   ],
 };
 
@@ -1196,11 +2026,28 @@ const chatCleared = chat({
   channel: 'Crisis Cell — Comms + Legal',
   messages: [
     ...CHAT_HISTORY,
-    { from: 'Nurul Aisyah', text: 'Statement is out and it is being taken apart. I need something specific, now.', me: true },
+    {
+      from: 'Nurul Aisyah',
+      text: 'Statement is out and it is being taken apart. I need something specific, now.',
+      me: true,
+    },
     { from: 'Shahrizal (Legal)', text: 'Case ref AMP-IR-2026-014 cleared for release.', id: 'c1' },
-    { from: 'Shahrizal (Legal)', text: 'Scope is the Community Uplift Initiative only. No account freeze notice exists.', id: 'c2' },
-    { from: 'Shahrizal (Legal)', text: 'Bursary disbursement schedule unaffected — confirmed with Finance.', id: 'c3' },
-    { from: 'Nurul Aisyah', text: 'Good. Rewriting now. Naming the programme and the reference.', me: true, id: 'c4' },
+    {
+      from: 'Shahrizal (Legal)',
+      text: 'Scope is the Community Uplift Initiative only. No account freeze notice exists.',
+      id: 'c2',
+    },
+    {
+      from: 'Shahrizal (Legal)',
+      text: 'Bursary disbursement schedule unaffected — confirmed with Finance.',
+      id: 'c3',
+    },
+    {
+      from: 'Nurul Aisyah',
+      text: 'Good. Rewriting now. Naming the programme and the reference.',
+      me: true,
+      id: 'c4',
+    },
   ],
 });
 
@@ -1223,7 +2070,14 @@ const clip21: Clip = {
       ['#c3', 3900],
       ['#c4', 6200],
     ].flatMap(([sel, at]) => [
-      { prop: 'opacity' as const, sel: sel as string, keys: [[0, 0], [at as number, 0]] as [number, number][] },
+      {
+        prop: 'opacity' as const,
+        sel: sel as string,
+        keys: [
+          [0, 0],
+          [at as number, 0],
+        ] as [number, number][],
+      },
       ...pop(sel as string, (at as number) + 100),
     ]),
   ],
@@ -1257,10 +2111,27 @@ const clip21b: Clip = {
     minimised: ['chat'],
   }),
   tracks: [
-    { prop: 'opacity', sel: '#win-email', keys: [[0, 0], [800, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#win-email',
+      keys: [
+        [0, 0],
+        [800, 0],
+      ],
+    },
     ...windowOpen('email', 900),
     // Read down the approved list, then the do-not-say list.
-    { prop: 'scroll', sel: '#mail-scroll', keys: [[0, 0], [3400, 0], [9000, 300], [14200, 560]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#mail-scroll',
+      keys: [
+        [0, 0],
+        [3400, 0],
+        [9000, 300],
+        [14200, 560],
+      ],
+      ease: 'inOut',
+    },
     cursor(
       [
         [0, ICON.email[0], ICON.email[1]],
@@ -1300,15 +2171,44 @@ const clip22: Clip = {
   tracks: [
     typeInto('#cmp-b', STATEMENT, 600, 13000),
     // The photograph that answers the photograph.
-    { prop: 'opacity', sel: '#cmp-attach', keys: [[0, 0], [13400, 0], [14000, 1]], ease: 'out' },
-    { prop: 'y', sel: '#cmp-attach', keys: [[13400, 18], [14100, 0]], ease: 'back' },
-    { prop: 'scale', sel: '#cmp-post', keys: [[15600, 1], [15800, 0.93], [16100, 1]], ease: 'back' },
-    cursor([
-      [0, 700, 430],
-      [13000, 700, 430],
-      [15200, 1420, 300],
-      [18000, 1420, 300],
-    ], [15600]),
+    {
+      prop: 'opacity',
+      sel: '#cmp-attach',
+      keys: [
+        [0, 0],
+        [13400, 0],
+        [14000, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'y',
+      sel: '#cmp-attach',
+      keys: [
+        [13400, 18],
+        [14100, 0],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'scale',
+      sel: '#cmp-post',
+      keys: [
+        [15600, 1],
+        [15800, 0.93],
+        [16100, 1],
+      ],
+      ease: 'back',
+    },
+    cursor(
+      [
+        [0, 700, 430],
+        [13000, 700, 430],
+        [15200, 1420, 300],
+        [18000, 1420, 300],
+      ],
+      [15600],
+    ),
   ],
 };
 
@@ -1348,15 +2248,26 @@ const clip22b: Clip = {
   }),
   tracks: [
     ...PAGE_NOTIFS.flatMap((_, i) => [
-      { prop: 'opacity' as const, sel: `#nt-${i}`, keys: [[0, 0], [700 + i * 620, 0]] as [number, number][] },
+      {
+        prop: 'opacity' as const,
+        sel: `#nt-${i}`,
+        keys: [
+          [0, 0],
+          [700 + i * 620, 0],
+        ] as [number, number][],
+      },
       ...pop(`#nt-${i}`, 800 + i * 620),
     ]),
-    cursor([
-      [0, 1200, 300],
-      [2400, 900, 420],
-      [7000, 940, 620],
-      [13000, 960, 700],
-    ], [], true),
+    cursor(
+      [
+        [0, 1200, 300],
+        [2400, 900, 420],
+        [7000, 940, 620],
+        [13000, 960, 700],
+      ],
+      [],
+      true,
+    ),
   ],
 };
 
@@ -1373,14 +2284,27 @@ const clip22c: Clip = {
           from: 'Puan Siti Rahimah',
           asPage: 'AMP',
           threads: [
-            { name: 'Puan Siti Rahimah', preview: 'Anak saya dapat bantuan atau tidak?', unread: true, active: true },
+            {
+              name: 'Puan Siti Rahimah',
+              preview: 'Anak saya dapat bantuan atau tidak?',
+              unread: true,
+              active: true,
+            },
             { name: 'Masjid Al-Nur', preview: 'Should we continue referrals?', unread: true },
             { name: 'StraitBay Foundation', preview: 'Tranche 2 remains on hold', unread: true },
             { name: 'Rohana Bte Salleh', preview: 'Saya apply bulan lepas…', unread: true },
           ],
           messages: [
-            { text: 'Assalamualaikum. Saya tanya sekali lagi — anak saya dapat bantuan sekolah atau tidak?', id: 'pm-1', time: '4m' },
-            { text: 'Sekolah buka minggu depan. Saya perlu tahu hari ini.', id: 'pm-2', time: '1m' },
+            {
+              text: 'Assalamualaikum. Saya tanya sekali lagi — anak saya dapat bantuan sekolah atau tidak?',
+              id: 'pm-1',
+              time: '4m',
+            },
+            {
+              text: 'Sekolah buka minggu depan. Saya perlu tahu hari ini.',
+              id: 'pm-2',
+              time: '1m',
+            },
           ],
         }),
         ...WIN,
@@ -1389,16 +2313,34 @@ const clip22c: Clip = {
     taskbar: ['facebook'],
   }),
   tracks: [
-    { prop: 'opacity', sel: '#pm-1', keys: [[0, 0], [1400, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#pm-1',
+      keys: [
+        [0, 0],
+        [1400, 0],
+      ],
+    },
     ...pop('#pm-1', 1500),
-    { prop: 'opacity', sel: '#pm-2', keys: [[0, 0], [6400, 0]] },
+    {
+      prop: 'opacity',
+      sel: '#pm-2',
+      keys: [
+        [0, 0],
+        [6400, 0],
+      ],
+    },
     ...pop('#pm-2', 6500),
-    cursor([
-      [0, 1300, 260],
-      [1800, 560, 300],
-      [5200, 880, 520],
-      [12000, 900, 580],
-    ], [2000], true),
+    cursor(
+      [
+        [0, 1300, 260],
+        [1800, 560, 300],
+        [5200, 880, 520],
+        [12000, 900, 580],
+      ],
+      [2000],
+      true,
+    ),
   ],
 };
 
@@ -1461,16 +2403,35 @@ const clip22a: Clip = {
   }),
   tracks: [
     // Down through what the page has already said, then back to the composer.
-    { prop: 'scroll', sel: '#page-scroll', keys: [[0, 0], [2200, 0], [6400, 620], [9600, 1180], [12400, 340]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#page-scroll',
+      keys: [
+        [0, 0],
+        [2200, 0],
+        [6400, 620],
+        [9600, 1180],
+        [12400, 340],
+      ],
+      ease: 'inOut',
+    },
     // Then the specific statement, typed as the organisation.
-    typeInto('#pg-compose', 'The review concerns one programme: the Community Uplift Initiative. Case reference AMP-IR-2026-014.', 12800, 15600),
-    cursor([
-      [0, 1200, 260],
-      [2400, 980, 500],
-      [9600, 1010, 620],
-      [12600, 720, 470],
-      [16000, 720, 470],
-    ], [12700]),
+    typeInto(
+      '#pg-compose',
+      'The review concerns one programme: the Community Uplift Initiative. Case reference AMP-IR-2026-014.',
+      12800,
+      15600,
+    ),
+    cursor(
+      [
+        [0, 1200, 260],
+        [2400, 980, 500],
+        [9600, 1010, 620],
+        [12600, 720, 470],
+        [16000, 720, 470],
+      ],
+      [12700],
+    ),
   ],
 };
 
@@ -1495,13 +2456,24 @@ const clip23: Clip = {
     taskbar: ['facebook'],
   }),
   tracks: [
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [2400, 520]], ease: 'inOut' },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [2400, 520],
+      ],
+      ease: 'inOut',
+    },
     typeInto('#cm-in', CORRECTION, 3000, 10200),
-    cursor([
-      [0, 900, 700],
-      [2600, 760, 820],
-      [11000, 760, 820],
-    ], [2700]),
+    cursor(
+      [
+        [0, 900, 700],
+        [2600, 760, 820],
+        [11000, 760, 820],
+      ],
+      [2700],
+    ),
   ],
 };
 
@@ -1515,18 +2487,37 @@ const clip24: Clip = {
   durationMs: 14000,
   html: desktop({
     windows: [
-      { app: 'email', body: mailRead('email-press', { replyId: 'rp-body' }), x: 420, y: 120, w: 1100, h: 840 },
+      {
+        app: 'email',
+        body: mailRead('email-press', { replyId: 'rp-body' }),
+        x: 420,
+        y: 120,
+        w: 1100,
+        h: 840,
+      },
     ],
     taskbar: ['email'],
   }),
   tracks: [
     typeInto('#rp-body', REPLY_TEXT, 900, 11400),
-    { prop: 'scale', sel: '.mail-send', keys: [[12200, 1], [12400, 0.93], [12700, 1]], ease: 'back' },
-    cursor([
-      [0, 760, 420],
-      [11800, 640, 700],
-      [14000, 640, 700],
-    ], [12200]),
+    {
+      prop: 'scale',
+      sel: '.mail-send',
+      keys: [
+        [12200, 1],
+        [12400, 0.93],
+        [12700, 1],
+      ],
+      ease: 'back',
+    },
+    cursor(
+      [
+        [0, 760, 420],
+        [11800, 640, 700],
+        [14000, 640, 700],
+      ],
+      [12200],
+    ),
   ],
 };
 
@@ -1552,7 +2543,15 @@ const clip25: Clip = {
       500,
       4400,
     ),
-    { prop: 'draw', sel: '#spark-path', keys: [[500, 0], [4600, 1]], ease: 'out' },
+    {
+      prop: 'draw',
+      sel: '#spark-path',
+      keys: [
+        [500, 0],
+        [4600, 1],
+      ],
+      ease: 'out',
+    },
   ],
 };
 
@@ -1598,8 +2597,24 @@ const clip26: Clip = {
       8400,
       9000,
     ),
-    { prop: 'scroll', sel: '#feed', keys: [[0, 0], [2600, 300], [8400, 620]], ease: 'inOut' },
-    { prop: 'opacity', sel: '#amp-reply', keys: [[0, 0], [3400, 0]] },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 0],
+        [2600, 300],
+        [8400, 620],
+      ],
+      ease: 'inOut',
+    },
+    {
+      prop: 'opacity',
+      sel: '#amp-reply',
+      keys: [
+        [0, 0],
+        [3400, 0],
+      ],
+    },
     ...pop('#amp-reply', 3500),
   ],
 };
@@ -1633,8 +2648,23 @@ const clip27: Clip = {
     shellWipe(8000),
     // Framed so her question and her answer are in the same shot. That pairing
     // is the whole film; splitting them across a scroll would waste it.
-    { prop: 'scroll', sel: '#feed', keys: [[0, 430], [8000, 500]], ease: 'inOut' },
-    { prop: 'opacity', sel: '#siti-reply', keys: [[0, 0], [1600, 0]] },
+    {
+      prop: 'scroll',
+      sel: '#feed',
+      keys: [
+        [0, 430],
+        [8000, 500],
+      ],
+      ease: 'inOut',
+    },
+    {
+      prop: 'opacity',
+      sel: '#siti-reply',
+      keys: [
+        [0, 0],
+        [1600, 0],
+      ],
+    },
     ...pop('#siti-reply', 1700),
     // Then nothing moves. The hold is the point.
   ],
@@ -1647,8 +2677,25 @@ const clip28: Clip = {
   durationMs: 5000,
   html: mosaic(25),
   tracks: Array.from({ length: 25 }, (_, i) => [
-    { prop: 'opacity' as const, sel: `#tile-${i}`, keys: [[0, 0], [i * 90, 0], [i * 90 + 400, 1]] as [number, number][], ease: 'out' as const },
-    { prop: 'scale' as const, sel: `#tile-${i}`, keys: [[i * 90, 0.9], [i * 90 + 500, 1]] as [number, number][], ease: 'back' as const },
+    {
+      prop: 'opacity' as const,
+      sel: `#tile-${i}`,
+      keys: [
+        [0, 0],
+        [i * 90, 0],
+        [i * 90 + 400, 1],
+      ] as [number, number][],
+      ease: 'out' as const,
+    },
+    {
+      prop: 'scale' as const,
+      sel: `#tile-${i}`,
+      keys: [
+        [i * 90, 0.9],
+        [i * 90 + 500, 1],
+      ] as [number, number][],
+      ease: 'back' as const,
+    },
   ]).flat(),
 };
 
@@ -1659,12 +2706,60 @@ const clip29: Clip = {
   durationMs: 4500,
   html: card({ kicker: 'Same crisis. Same people.', lines: ['Two days', 'of training.'] }),
   tracks: [
-    { prop: 'opacity', sel: '#ec-kicker', keys: [[0, 0], [500, 1]], ease: 'out' },
-    { prop: 'y', sel: '#ec-kicker', keys: [[0, 12], [600, 0]], ease: 'out' },
-    { prop: 'opacity', sel: '#ec-line-0', keys: [[600, 0], [1100, 1]], ease: 'out' },
-    { prop: 'y', sel: '#ec-line-0', keys: [[600, 18], [1200, 0]], ease: 'back' },
-    { prop: 'opacity', sel: '#ec-line-1', keys: [[1000, 0], [1500, 1]], ease: 'out' },
-    { prop: 'y', sel: '#ec-line-1', keys: [[1000, 18], [1600, 0]], ease: 'back' },
+    {
+      prop: 'opacity',
+      sel: '#ec-kicker',
+      keys: [
+        [0, 0],
+        [500, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'y',
+      sel: '#ec-kicker',
+      keys: [
+        [0, 12],
+        [600, 0],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'opacity',
+      sel: '#ec-line-0',
+      keys: [
+        [600, 0],
+        [1100, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'y',
+      sel: '#ec-line-0',
+      keys: [
+        [600, 18],
+        [1200, 0],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'opacity',
+      sel: '#ec-line-1',
+      keys: [
+        [1000, 0],
+        [1500, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'y',
+      sel: '#ec-line-1',
+      keys: [
+        [1000, 18],
+        [1600, 0],
+      ],
+      ease: 'back',
+    },
   ],
 };
 
@@ -1674,18 +2769,66 @@ const clip30: Clip = {
   title: 'Logo',
   durationMs: 4000,
   html: card({
-    kicker: 'Black Swan Simulations',
+    kicker: 'Prophyion',
     lines: ['Rehearse the crisis.'],
     sub: 'For teams who cannot afford to rehearse in public.',
     logo: true,
   }),
   tracks: [
-    { prop: 'opacity', sel: '#ec-logo', keys: [[0, 0], [600, 1]], ease: 'out' },
-    { prop: 'scale', sel: '#ec-logo', keys: [[0, 0.86], [700, 1]], ease: 'back' },
-    { prop: 'opacity', sel: '#ec-kicker', keys: [[400, 0], [900, 1]], ease: 'out' },
-    { prop: 'opacity', sel: '#ec-line-0', keys: [[800, 0], [1400, 1]], ease: 'out' },
-    { prop: 'y', sel: '#ec-line-0', keys: [[800, 16], [1500, 0]], ease: 'back' },
-    { prop: 'opacity', sel: '#ec-sub', keys: [[1400, 0], [2000, 1]], ease: 'out' },
+    {
+      prop: 'opacity',
+      sel: '#ec-logo',
+      keys: [
+        [0, 0],
+        [600, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'scale',
+      sel: '#ec-logo',
+      keys: [
+        [0, 0.86],
+        [700, 1],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'opacity',
+      sel: '#ec-kicker',
+      keys: [
+        [400, 0],
+        [900, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'opacity',
+      sel: '#ec-line-0',
+      keys: [
+        [800, 0],
+        [1400, 1],
+      ],
+      ease: 'out',
+    },
+    {
+      prop: 'y',
+      sel: '#ec-line-0',
+      keys: [
+        [800, 16],
+        [1500, 0],
+      ],
+      ease: 'back',
+    },
+    {
+      prop: 'opacity',
+      sel: '#ec-sub',
+      keys: [
+        [1400, 0],
+        [2000, 1],
+      ],
+      ease: 'out',
+    },
   ],
 };
 
@@ -1700,13 +2843,42 @@ const clip30: Clip = {
  * film shows that.
  */
 export const CLIPS: Clip[] = [
-  clip01, clip02, clip03a, clip03, clip04, clip05a, clip05, clip06,
+  clip01,
+  clip02,
+  clip03a,
+  clip03,
+  clip04,
+  clip05a,
+  clip05,
+  clip06,
   clip07,
-  clip08, clip09, clip10a, clip10, clip11,
-  clip13, clip13b, clip14, clip15, clip16,
-  clip17, clip18, clip19, clip20,
-  clip21, clip21b, clip22a, clip22, clip22b, clip22c, clip23, clip24,
-  clip26, clip27, clip28, clip29, clip30,
+  clip08,
+  clip09,
+  clip10a,
+  clip10,
+  clip11,
+  clip13,
+  clip13b,
+  clip14,
+  clip15,
+  clip16,
+  clip17,
+  clip18,
+  clip19,
+  clip20,
+  clip21,
+  clip21b,
+  clip22a,
+  clip22,
+  clip22b,
+  clip22c,
+  clip23,
+  clip24,
+  clip26,
+  clip27,
+  clip28,
+  clip29,
+  clip30,
 ];
 
 // Retired from the reel but kept renderable: full-screen stats duplicated the

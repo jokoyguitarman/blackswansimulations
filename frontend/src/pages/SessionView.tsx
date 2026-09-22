@@ -1408,7 +1408,7 @@ export const SessionView = () => {
           />
           <div className="wr-hero-top">
             <div className="wr-brandmark">
-              <BrandMark className="h-8 w-8" /> Black Swan{' '}
+              <BrandMark className="h-8 w-8" /> Prophyion{' '}
               <span className="sub">· session lobby</span>
             </div>
             <div className="wr-credits">

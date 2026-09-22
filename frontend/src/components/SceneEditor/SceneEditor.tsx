@@ -686,7 +686,7 @@ export function SceneEditor({
         if (map) map.setView([gLat, gLng], 16);
         fetch(
           `https://nominatim.openstreetmap.org/reverse?lat=${gLat}&lon=${gLng}&format=json&zoom=3`,
-          { headers: { 'User-Agent': 'BlackSwanSimulations/1.0' } },
+          { headers: { 'User-Agent': 'Prophyion/1.0' } },
         )
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
@@ -732,7 +732,7 @@ export function SceneEditor({
             params.set('bounded', '0');
           }
           const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-            headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
+            headers: { 'User-Agent': 'Prophyion/1.0' },
           });
           if (resp.ok) {
             const data = await resp.json();
@@ -1004,7 +1004,10 @@ export function SceneEditor({
       const snapped = snapToStud(sim);
       const sp = snapped.pos;
       const ctx = (snapped.stud?.spatialContext ?? undefined) as
-        'inside_building' | 'road' | 'open_air' | undefined;
+        | 'inside_building'
+        | 'road'
+        | 'open_air'
+        | undefined;
       if (drag.type === 'blastSite') {
         setBlastSite(sp);
         // Move zones that haven't been individually repositioned

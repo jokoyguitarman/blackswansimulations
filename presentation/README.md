@@ -1,6 +1,6 @@
-# Black Swan Simulations – Client Pitch Deck
+# Prophyion – Client Pitch Deck
 
-Client-facing pitch deck for organisations (companies, agencies, special forces) who want to run crisis simulation exercises with Black Swan Simulations. Emphasises AI-driven scoring, branching outcomes, timeliness of decisions, and efficiency over tabletop exercises.
+Client-facing pitch deck for organisations (companies, agencies, special forces) who want to run crisis simulation exercises with Prophyion. Emphasises AI-driven scoring, branching outcomes, timeliness of decisions, and efficiency over tabletop exercises.
 
 ## How to Run
 
@@ -17,7 +17,7 @@ On mobile, the demo opens in the lower half (top/bottom split).
 
 ## Slide Structure
 
-1. Title — Black Swan Simulations + tagline
+1. Title — Prophyion + tagline
 2. Problem — Crisis coordination gaps, tabletop limitations
 3. Why Us — Secure, AI-assisted platform
 4. AI & Scoring — Decision latency, coordination, robustness, impact matrix

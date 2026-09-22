@@ -1,4 +1,4 @@
-# Black Swan Simulations — RTS Gameplay Mechanics
+# Prophyion — RTS Gameplay Mechanics
 
 ## Evacuation Team
 
@@ -8,7 +8,7 @@
 
 ## 1. Overview
 
-Black Swan Simulations uses a real-time strategy (RTS) model where participants command responder units on a live map while a crowd evacuation simulation runs continuously. The evacuation team manages the movement of civilians from a compromised building to designated safe assembly points. Unlike traditional tabletop exercises where participants describe what they would do, this system requires participants to **execute decisions in real time** against a crowd that behaves autonomously and reacts to both the environment and player interventions.
+Prophyion uses a real-time strategy (RTS) model where participants command responder units on a live map while a crowd evacuation simulation runs continuously. The evacuation team manages the movement of civilians from a compromised building to designated safe assembly points. Unlike traditional tabletop exercises where participants describe what they would do, this system requires participants to **execute decisions in real time** against a crowd that behaves autonomously and reacts to both the environment and player interventions.
 
 The crowd does not wait for the player to decide. Every second of deliberation is a second the crowd is at risk.
 

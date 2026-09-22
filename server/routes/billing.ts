@@ -294,7 +294,7 @@ router.post(
         amountCents,
         currency: 'sgd',
         description:
-          'Black Swan crisis simulation training engagement - 1 bespoke scenario, 2 live training sessions, after-action report',
+          'Prophyion crisis simulation training engagement - 1 bespoke scenario, 2 live training sessions, after-action report',
         organisationId: org.id,
         trainerId: user.id,
       });
@@ -1036,7 +1036,7 @@ router.post(
         .upsert({ trainer_id: newUserId, onboarding_status: 'none' }, { onConflict: 'trainer_id' });
 
       const enrolledByName =
-        (user.metadata?.full_name as string | undefined) || user.email || 'the Black Swan team';
+        (user.metadata?.full_name as string | undefined) || user.email || 'the Prophyion team';
       const emailSent = await sendTrainerEnrollmentEmail({
         to: email,
         toName: full_name,

@@ -41,7 +41,7 @@ async function nominatimSearch(query: string, limit: number): Promise<NominatimR
 
     const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
       headers: {
-        'User-Agent': 'BlackSwanSimulations/1.0 (warroom-geocoding)',
+        'User-Agent': 'Prophyion/1.0 (warroom-geocoding)',
       },
     });
 

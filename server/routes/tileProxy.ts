@@ -14,7 +14,7 @@ router.get('/:z/:x/:y.png', async (req, res) => {
 
   try {
     const resp = await fetch(url, {
-      headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
+      headers: { 'User-Agent': 'Prophyion/1.0' },
     });
 
     if (!resp.ok) {

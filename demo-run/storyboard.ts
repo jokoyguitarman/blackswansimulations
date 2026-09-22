@@ -113,7 +113,14 @@ export type Panel =
       /** Window title for the front window. */
       windowTitle?: string;
     }
-  | { kind: 'news'; outlet: string; headline: string; sub: string; body: string; highlight?: string }
+  | {
+      kind: 'news';
+      outlet: string;
+      headline: string;
+      sub: string;
+      body: string;
+      highlight?: string;
+    }
   | {
       kind: 'fbPost';
       postKey: string;
@@ -188,7 +195,11 @@ export type Panel =
 // ---------------------------------------------------------------------------
 
 export const ACTS = [
-  { n: 1, title: 'An ordinary afternoon', note: 'A desk, a wallpaper, a normal feed. Then someone sends you a link.' },
+  {
+    n: 1,
+    title: 'An ordinary afternoon',
+    note: 'A desk, a wallpaper, a normal feed. Then someone sends you a link.',
+  },
   { n: 2, title: 'The question', note: 'One mother asks the thing the whole film has to answer.' },
   { n: 3, title: 'The lie outruns the truth', note: 'Volume, not argument. Nobody is answering.' },
   { n: 4, title: 'Fighting back', note: 'Read it, prove it false, report it, get it retracted.' },
@@ -504,11 +515,24 @@ export const SEQUENCES: Sequence[] = [
           kind: 'fbPost',
           postKey: 'question',
           comments: [
-            { name: 'Rohana Bte Salleh', text: 'Sama. Saya apply bulan lepas, sampai sekarang tak dengar apa-apa. Anak saya Sec 3.' },
-            { name: 'Zulkarnain', text: 'Just tell us yes or no lah. We can plan. It is the not knowing that kills.' },
+            {
+              name: 'Rohana Bte Salleh',
+              text: 'Sama. Saya apply bulan lepas, sampai sekarang tak dengar apa-apa. Anak saya Sec 3.',
+            },
+            {
+              name: 'Zulkarnain',
+              text: 'Just tell us yes or no lah. We can plan. It is the not knowing that kills.',
+            },
             { name: 'Mdm Kalthom', text: 'Saya call office tiga kali. Tiada orang angkat.' },
-            { name: 'Hakim', text: 'My sister works there. Even she doesn’t know what to tell people.' },
-            { name: 'Nur Ain', text: 'Sekolah buka minggu depan. Tolonglah jawab satu soalan sahaja.', highlight: true },
+            {
+              name: 'Hakim',
+              text: 'My sister works there. Even she doesn’t know what to tell people.',
+            },
+            {
+              name: 'Nur Ain',
+              text: 'Sekolah buka minggu depan. Tolonglah jawab satu soalan sahaja.',
+              highlight: true,
+            },
           ],
         },
       },
@@ -596,10 +620,20 @@ export const SEQUENCES: Sequence[] = [
           postKey: 'lie-luxury',
           counters: { views: '411,203', likes: '9,880', shares: '8,104' },
           comments: [
-            { name: 'Rosli B.', text: 'And they still ask for donations every Ramadan. Shameless.' },
-            { name: 'Accountability Watch SG', text: 'Still no statement. Silence is an answer too.' },
+            {
+              name: 'Rosli B.',
+              text: 'And they still ask for donations every Ramadan. Shameless.',
+            },
+            {
+              name: 'Accountability Watch SG',
+              text: 'Still no statement. Silence is an answer too.',
+            },
             { name: 'Jenn Low', text: 'Cancelled my monthly giro this morning. Enough.' },
-            { name: 'Hafizah', text: 'My mother queued four hours last week. FOUR HOURS.', highlight: true },
+            {
+              name: 'Hafizah',
+              text: 'My mother queued four hours last week. FOUR HOURS.',
+              highlight: true,
+            },
           ],
         },
       },
@@ -637,7 +671,11 @@ export const SEQUENCES: Sequence[] = [
         motion: 'cursor',
         sec: 6,
         how: 'readAlong(), subtle style. Cut on the pointer arriving.',
-        panel: { kind: 'emailRead', emailKey: 'email-press', highlight: 'Our deadline is 6pm today.' },
+        panel: {
+          kind: 'emailRead',
+          emailKey: 'email-press',
+          highlight: 'Our deadline is 6pm today.',
+        },
       },
     ],
   },
@@ -662,7 +700,11 @@ export const SEQUENCES: Sequence[] = [
         what: '“Nobody is coming out to talk to them. This is what silence does.”',
         motion: 'hold',
         sec: 3,
-        panel: { kind: 'fbPost', postKey: 'crowd', highlight: 'nobody is coming out to talk to them' },
+        panel: {
+          kind: 'fbPost',
+          postKey: 'crowd',
+          highlight: 'nobody is coming out to talk to them',
+        },
       },
     ],
   },
@@ -925,7 +967,11 @@ export const SEQUENCES: Sequence[] = [
           live: true,
           channel: 'Crisis Cell — Comms + Legal',
           messages: [
-            { from: 'Nurul Aisyah', text: 'We are 40 minutes into silence. Something has to go out.', me: true },
+            {
+              from: 'Nurul Aisyah',
+              text: 'We are 40 minutes into silence. Something has to go out.',
+              me: true,
+            },
           ],
         },
       },
@@ -940,8 +986,15 @@ export const SEQUENCES: Sequence[] = [
           live: true,
           channel: 'Crisis Cell — Comms + Legal',
           messages: [
-            { from: 'Nurul Aisyah', text: 'We are 40 minutes into silence. Something has to go out.', me: true },
-            { from: 'Shahrizal (Legal)', text: 'Not until I have the case reference. We cannot confirm a figure we do not have.' },
+            {
+              from: 'Nurul Aisyah',
+              text: 'We are 40 minutes into silence. Something has to go out.',
+              me: true,
+            },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'Not until I have the case reference. We cannot confirm a figure we do not have.',
+            },
           ],
         },
       },
@@ -955,9 +1008,20 @@ export const SEQUENCES: Sequence[] = [
           live: true,
           channel: 'Crisis Cell — Comms + Legal',
           messages: [
-            { from: 'Shahrizal (Legal)', text: 'Not until I have the case reference. We cannot confirm a figure we do not have.' },
-            { from: 'Nurul Aisyah', text: 'Then a holding line. Just put something out now.', me: true, highlight: true },
-            { from: 'Shahrizal (Legal)', text: 'A holding line that says nothing will be read as a dodge.' },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'Not until I have the case reference. We cannot confirm a figure we do not have.',
+            },
+            {
+              from: 'Nurul Aisyah',
+              text: 'Then a holding line. Just put something out now.',
+              me: true,
+              highlight: true,
+            },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'A holding line that says nothing will be read as a dodge.',
+            },
           ],
         },
       },
@@ -991,7 +1055,14 @@ export const SEQUENCES: Sequence[] = [
         what: 'She opens the composer and flips identity. “Posting as: AMP” lights up.',
         motion: 'press',
         sec: 3,
-        panel: { kind: 'fbCompose', asPage: true, pageName: AMP_PAGE, author: 'Nurul Aisyah Rahim', text: '', typedChars: 0 },
+        panel: {
+          kind: 'fbCompose',
+          asPage: true,
+          pageName: AMP_PAGE,
+          author: 'Nurul Aisyah Rahim',
+          text: '',
+          typedChars: 0,
+        },
       },
       {
         label: 'Real keystrokes',
@@ -1049,10 +1120,17 @@ export const SEQUENCES: Sequence[] = [
           kind: 'fbPost',
           postKey: 'accusation',
           comments: [
-            { name: 'Accountability Watch SG', text: 'This is not an answer. Which programme? How much? You had all day.' },
+            {
+              name: 'Accountability Watch SG',
+              text: 'This is not an answer. Which programme? How much? You had all day.',
+            },
             { name: 'Rosli B.', text: '“In due course” = we are still deciding what to admit.' },
             { name: 'Jenn Low', text: 'Zero numbers. Zero names. Zero dates. Try again.' },
-            { name: 'Puan Siti Rahimah', text: 'Saya baca tiga kali. Masih tak tahu anak saya dapat bantuan atau tidak.', highlight: true },
+            {
+              name: 'Puan Siti Rahimah',
+              text: 'Saya baca tiga kali. Masih tak tahu anak saya dapat bantuan atau tidak.',
+              highlight: true,
+            },
             { name: 'Hakim', text: 'A mother asked you one question. Answer the mother.' },
           ],
         },
@@ -1110,9 +1188,19 @@ export const SEQUENCES: Sequence[] = [
           live: true,
           channel: 'Crisis Cell — Comms + Legal',
           messages: [
-            { from: 'Shahrizal (Legal)', text: 'Case ref AMP-IR-2026-014 cleared for release.', highlight: true },
-            { from: 'Shahrizal (Legal)', text: 'Scope is the Community Uplift Initiative only. No account freeze notice exists.' },
-            { from: 'Shahrizal (Legal)', text: 'Bursary disbursement schedule unaffected — confirmed with Finance.' },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'Case ref AMP-IR-2026-014 cleared for release.',
+              highlight: true,
+            },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'Scope is the Community Uplift Initiative only. No account freeze notice exists.',
+            },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'Bursary disbursement schedule unaffected — confirmed with Finance.',
+            },
           ],
         },
       },
@@ -1126,8 +1214,16 @@ export const SEQUENCES: Sequence[] = [
           live: true,
           channel: 'Crisis Cell — Comms + Legal',
           messages: [
-            { from: 'Shahrizal (Legal)', text: 'Bursary disbursement schedule unaffected — confirmed with Finance.' },
-            { from: 'Nurul Aisyah', text: 'Good. Rewriting now. Naming the programme and the reference.', me: true, highlight: true },
+            {
+              from: 'Shahrizal (Legal)',
+              text: 'Bursary disbursement schedule unaffected — confirmed with Finance.',
+            },
+            {
+              from: 'Nurul Aisyah',
+              text: 'Good. Rewriting now. Naming the programme and the reference.',
+              me: true,
+              highlight: true,
+            },
           ],
         },
       },
@@ -1179,7 +1275,11 @@ export const SEQUENCES: Sequence[] = [
         what: 'The post appears in the feed with the case reference and the photo.',
         motion: 'arrive',
         sec: 4,
-        panel: { kind: 'fbPost', postKey: 'accusation', highlight: 'Case reference AMP-IR-2026-014' },
+        panel: {
+          kind: 'fbPost',
+          postKey: 'accusation',
+          highlight: 'Case reference AMP-IR-2026-014',
+        },
       },
     ],
   },
@@ -1277,7 +1377,14 @@ export const SEQUENCES: Sequence[] = [
         what: 'The figure counts up and the trend line changes direction on screen.',
         motion: 'count',
         sec: 6,
-        panel: { kind: 'dashboard', trust: 66, safety: 72, narrative: 58, risk: 34, trend: 'rising' },
+        panel: {
+          kind: 'dashboard',
+          trust: 66,
+          safety: 72,
+          narrative: 58,
+          risk: 34,
+          trend: 'rising',
+        },
       },
     ],
   },
@@ -1342,7 +1449,12 @@ export const SEQUENCES: Sequence[] = [
           kind: 'fbPost',
           postKey: 'question',
           comments: [
-            { name: 'Puan Siti Rahimah', text: 'Alhamdulillah. Terima kasih sebab jawab. Itu saja yang kami minta.', likes: 921, highlight: true },
+            {
+              name: 'Puan Siti Rahimah',
+              text: 'Alhamdulillah. Terima kasih sebab jawab. Itu saja yang kami minta.',
+              likes: 921,
+              highlight: true,
+            },
           ],
         },
       },
@@ -1355,7 +1467,11 @@ export const SEQUENCES: Sequence[] = [
           kind: 'fbPost',
           postKey: 'question',
           comments: [
-            { name: 'Puan Siti Rahimah', text: 'Alhamdulillah. Terima kasih sebab jawab. Itu saja yang kami minta.', likes: 921 },
+            {
+              name: 'Puan Siti Rahimah',
+              text: 'Alhamdulillah. Terima kasih sebab jawab. Itu saja yang kami minta.',
+              likes: 921,
+            },
           ],
         },
       },
@@ -1408,7 +1524,7 @@ export const SEQUENCES: Sequence[] = [
         sec: 3,
         panel: {
           kind: 'card',
-          kicker: 'Black Swan Simulations',
+          kicker: 'Prophyion',
           lines: ['Rehearse the crisis.'],
           sub: 'For teams who cannot afford to rehearse in public.',
           logo: true,
@@ -1418,10 +1534,7 @@ export const SEQUENCES: Sequence[] = [
   },
 ];
 
-export const TOTAL_SEC = SEQUENCES.reduce(
-  (t, s) => t + s.beats.reduce((b, x) => b + x.sec, 0),
-  0,
-);
+export const TOTAL_SEC = SEQUENCES.reduce((t, s) => t + s.beats.reduce((b, x) => b + x.sec, 0), 0);
 
 export const seqSec = (s: Sequence): number => s.beats.reduce((t, b) => t + b.sec, 0);
 

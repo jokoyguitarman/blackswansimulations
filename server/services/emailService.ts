@@ -214,7 +214,7 @@ export const sendTrainerEnrollmentEmail = async (
     const loginUrl = `${env.clientUrl}/login`;
 
     const emailContent = `
-You have been enrolled as a trainer on Black Swan Simulations by ${data.enrolledByName}.
+You have been enrolled as a trainer on Prophyion by ${data.enrolledByName}.
 
 Your trainer account is ready:
 
@@ -228,12 +228,12 @@ training engagements, build scenarios in the War Room, and run live training
 sessions. Please change your password after your first sign-in.
 
 ---
-This is an automated message from Black Swan Simulations.
+This is an automated message from Prophyion.
 `;
 
     if (!transporter) {
       logger.info(
-        { to: data.to, subject: 'Your Black Swan Simulations trainer account' },
+        { to: data.to, subject: 'Your Prophyion trainer account' },
         'Email would be sent (email disabled)',
       );
       return false; // credentials NOT delivered - caller must surface them to the admin
@@ -242,11 +242,11 @@ This is an automated message from Black Swan Simulations.
     const info = await transporter.sendMail({
       from: `"${env.emailFromName}" <${env.emailFrom}>`,
       to: data.to,
-      subject: 'Your Black Swan Simulations trainer account',
+      subject: 'Your Prophyion trainer account',
       text: emailContent,
       html: `
         <div style="font-family: -apple-system, 'Segoe UI', sans-serif; color: #172033; padding: 24px; border: 1px solid #E4DFD4; border-radius: 12px; max-width: 520px;">
-          <h2 style="color: #1E3A5F; margin-top: 0;">Welcome to Black Swan Simulations</h2>
+          <h2 style="color: #1E3A5F; margin-top: 0;">Welcome to Prophyion</h2>
           <p>You have been enrolled as a <strong>trainer</strong> by ${data.enrolledByName}.</p>
           <div style="margin: 20px 0; padding: 14px 16px; background-color: #F4F1EA; border-left: 3px solid #D97706; border-radius: 6px;">
             <p style="margin: 4px 0;"><strong>Email:</strong> ${data.to}</p>

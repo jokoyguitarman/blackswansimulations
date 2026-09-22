@@ -341,7 +341,7 @@ export function DebugRTSSim() {
         // Detect country from GPS
         fetch(
           `https://nominatim.openstreetmap.org/reverse?lat=${gLat}&lon=${gLng}&format=json&zoom=3`,
-          { headers: { 'User-Agent': 'BlackSwanSimulations/1.0' } },
+          { headers: { 'User-Agent': 'Prophyion/1.0' } },
         )
           .then((r) => (r.ok ? r.json() : null))
           .then((d) => {
@@ -855,7 +855,7 @@ export function DebugRTSSim() {
             params.set('bounded', '0');
           }
           const resp = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
-            headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
+            headers: { 'User-Agent': 'Prophyion/1.0' },
           });
           if (resp.ok) {
             const data = await resp.json();
@@ -1161,7 +1161,8 @@ export function DebugRTSSim() {
       setBlastSite(sc.blast_site);
       // Backward compatibility: convert old casualty_clusters to individual pins
       const rawPins = (sc as unknown as Record<string, unknown>).casualty_pins as
-        CasualtyPin[] | undefined;
+        | CasualtyPin[]
+        | undefined;
       const rawClusters = sc.casualty_clusters as CasualtyCluster[] | undefined;
       if (rawPins && rawPins.length > 0) {
         setCasualtyPins(

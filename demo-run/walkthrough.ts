@@ -48,7 +48,7 @@ export const SCRIPT: Beat[] = [
   {
     id: '03-product',
     visual: 'Trainer dashboard, gauges live',
-    line: 'Black Swan Simulations puts a real team inside a real crisis. This one is called Amanah Under Fire. Twenty five people, five departments, one organisation under investigation.',
+    line: 'Prophyion puts a real team inside a real crisis. This one is called Amanah Under Fire. Twenty five people, five departments, one organisation under investigation.',
   },
   {
     id: '04-world',
@@ -88,7 +88,7 @@ export const SCRIPT: Beat[] = [
   {
     id: '11-close',
     visual: 'End card',
-    line: 'Black Swan Simulations. Rehearse the crisis before it arrives.',
+    line: 'Prophyion. Rehearse the crisis before it arrives.',
   },
 ];
 
@@ -101,7 +101,9 @@ if (process.argv.includes('--script')) {
     console.log(`\n[${b.id}]  ${b.visual}`);
     console.log(`  ${b.line}`);
   }
-  console.log(`\n${SCRIPT.length} beats, ${words} words (~${Math.round((words / 150) * 60)}s at 150 wpm)`);
+  console.log(
+    `\n${SCRIPT.length} beats, ${words} words (~${Math.round((words / 150) * 60)}s at 150 wpm)`,
+  );
   process.exit(0);
 }
 
@@ -131,14 +133,19 @@ for (const beat of SCRIPT) {
   fs.writeFileSync(file, Buffer.from(await res.arrayBuffer()));
 
   const { stdout } = await run('ffprobe', [
-    '-v', 'error',
-    '-show_entries', 'format=duration',
-    '-of', 'csv=p=0',
+    '-v',
+    'error',
+    '-show_entries',
+    'format=duration',
+    '-of',
+    'csv=p=0',
     file,
   ]);
   const sec = Number(stdout.trim());
   durations.push({ id: beat.id, file, sec, words: beat.line.split(/\s+/).length });
-  console.log(`  ${beat.id.padEnd(12)} ${sec.toFixed(2)}s  (${beat.line.split(/\s+/).length} words)`);
+  console.log(
+    `  ${beat.id.padEnd(12)} ${sec.toFixed(2)}s  (${beat.line.split(/\s+/).length} words)`,
+  );
 }
 
 const total = durations.reduce((n, d) => n + d.sec, 0);
@@ -148,9 +155,15 @@ const withGaps = total + GAP * (durations.length - 1);
 
 fs.writeFileSync(
   path.join('demo-run', 'output', 'walkthrough', 'vo-timing.json'),
-  JSON.stringify({ voice: VOICE, model: MODEL, gapSec: GAP, beats: durations, totalSec: withGaps }, null, 2),
+  JSON.stringify(
+    { voice: VOICE, model: MODEL, gapSec: GAP, beats: durations, totalSec: withGaps },
+    null,
+    2,
+  ),
 );
 
 console.log(`\nvoice     ${VOICE} (${MODEL})`);
-console.log(`narration ${total.toFixed(1)}s + ${GAP}s gaps = ${withGaps.toFixed(1)}s (${Math.floor(withGaps / 60)}:${String(Math.round(withGaps % 60)).padStart(2, '0')})`);
+console.log(
+  `narration ${total.toFixed(1)}s + ${GAP}s gaps = ${withGaps.toFixed(1)}s (${Math.floor(withGaps / 60)}:${String(Math.round(withGaps % 60)).padStart(2, '0')})`,
+);
 console.log(`wrote     ${outDir}`);

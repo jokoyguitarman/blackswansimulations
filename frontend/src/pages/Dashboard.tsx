@@ -25,7 +25,7 @@ export const Dashboard = () => {
             <div className="flex items-center gap-3">
               <BrandMark className="w-9 h-9" />
               <h1 className="text-base font-bold leading-tight">
-                Black Swan
+                Prophyion
                 <span className="block text-[11px] font-normal text-white/60">
                   Unified Simulation Environment
                 </span>
@@ -160,9 +160,7 @@ export const Dashboard = () => {
 
         {/* Footer */}
         <div className="mt-6 text-center">
-          <p className="text-xs text-muted">
-            Black Swan Simulations v2.0 · Secure connection established
-          </p>
+          <p className="text-xs text-muted">Prophyion v2.0 · Secure connection established</p>
         </div>
       </main>
     </div>

@@ -173,7 +173,7 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
         if (countryCode) params.set('countrycodes', countryCode.toLowerCase());
 
         const res = await fetch(`${NOMINATIM_URL}?${params.toString()}`, {
-          headers: { 'User-Agent': 'BlackSwanSimulations/1.0' },
+          headers: { 'User-Agent': 'Prophyion/1.0' },
         });
         if (!res.ok) {
           setResults([]);
@@ -295,7 +295,7 @@ export function LocationPicker({ onLocationChange, initialLocation }: Props) {
         try {
           const resp = await fetch(
             `https://nominatim.openstreetmap.org/reverse?lat=${pos.coords.latitude}&lon=${pos.coords.longitude}&format=json&zoom=3`,
-            { headers: { 'User-Agent': 'BlackSwanSimulations/1.0' } },
+            { headers: { 'User-Agent': 'Prophyion/1.0' } },
           );
           if (resp.ok) {
             const data = await resp.json();

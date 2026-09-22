@@ -9,7 +9,7 @@ import './marketing.css';
  */
 
 /** Enquiries fall back to this address whenever the API cannot be reached. */
-const CONTACT_EMAIL = 'hello@blackswansimulations.com';
+const CONTACT_EMAIL = 'kenneth@prophyion.com';
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 

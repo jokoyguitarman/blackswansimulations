@@ -283,7 +283,7 @@ export const Sessions = () => {
           <img className="wr-art" src={SHELL_ART.sessions} alt="" />
           <div className="wr-hero-top">
             <div className="wr-brandmark">
-              <BrandMark className="h-8 w-8" /> Black Swan
+              <BrandMark className="h-8 w-8" /> Prophyion
             </div>
           </div>
           <div className="wr-hero-grid">
@@ -318,7 +318,7 @@ export const Sessions = () => {
         <img className="wr-art" src={SHELL_ART.sessions} alt="" />
         <div className="wr-hero-top">
           <div className="wr-brandmark">
-            <BrandMark className="h-8 w-8" /> Black Swan{' '}
+            <BrandMark className="h-8 w-8" /> Prophyion{' '}
             <span className="sub">· {isTrainer ? 'trainer' : 'participant'}</span>
           </div>
           <nav className="wr-nav" aria-label="Primary">

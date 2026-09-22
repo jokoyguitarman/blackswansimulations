@@ -309,7 +309,7 @@ function mosaic(p: Extract<Panel, { kind: 'mosaic' }>): string {
 function cardPanel(p: Extract<Panel, { kind: 'card' }>): string {
   return `
   <div class="endcard${p.light ? ' light' : ''}">
-    ${p.logo ? `<div class="ec-logo"><img src="${asset('black-swan-logo.png')}" alt="Black Swan"/></div>` : ''}
+    ${p.logo ? `<div class="ec-logo"><img src="${asset('prophyion-mark.png')}" alt="Prophyion"/></div>` : ''}
     ${p.kicker ? `<div class="ec-kicker">${esc(p.kicker)}</div>` : ''}
     ${p.lines.map((l, i) => `<div class="ec-line" style="animation-delay:${(0.25 + i * 0.28).toFixed(2)}s">${esc(l)}</div>`).join('')}
     ${p.sub ? `<div class="ec-sub">${esc(p.sub)}</div>` : ''}
@@ -890,7 +890,7 @@ function html(): string {
 <div class="wrap">
 
   <header class="masthead">
-    <div class="kicker">BLACK SWAN SIMULATIONS · TRAILER · SHOT PLAN v3 — LIVE ACTION</div>
+    <div class="kicker">PROPHYION · TRAILER · SHOT PLAN v3 — LIVE ACTION</div>
     <h1>Amanah Under Fire</h1>
     <p class="sub">Continuous takes of the real interface being used, not stills with camera moves
     painted on. Every beat below has something physically moving in it, and each panel is drawn from
@@ -1028,4 +1028,6 @@ console.log(`Prose version:      ${md}`);
 console.log(
   `${SEQUENCES.length} sequences · ${BEAT_COUNT} beats · ${Math.floor(TOTAL_SEC / 60)}m ${TOTAL_SEC % 60}s`,
 );
-console.log(`${LIVE_BEATS.length} beats arrive live · ${TYPING_BEATS.length} typing · ${HOLD_BEATS.length} holds`);
+console.log(
+  `${LIVE_BEATS.length} beats arrive live · ${TYPING_BEATS.length} typing · ${HOLD_BEATS.length} holds`,
+);

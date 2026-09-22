@@ -10,7 +10,7 @@ import { resolveScenarioCenter } from './scenarioCenterService.js';
 
 const OSM_TILE_BASE = 'https://tile.openstreetmap.org';
 const TILE_SIZE = 256;
-const USER_AGENT = 'BlackSwanSimulations/1.0 scenario-map-generator';
+const USER_AGENT = 'Prophyion/1.0 scenario-map-generator';
 
 interface ScenarioRow {
   id: string;

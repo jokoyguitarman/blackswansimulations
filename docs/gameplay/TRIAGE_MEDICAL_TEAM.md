@@ -1,4 +1,4 @@
-# Black Swan Simulations — RTS Gameplay Mechanics
+# Prophyion — RTS Gameplay Mechanics
 
 ## Triage / Medical Team
 
