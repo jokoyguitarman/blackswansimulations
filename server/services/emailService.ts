@@ -271,6 +271,142 @@ This is an automated message from Prophyion.
   }
 };
 
+interface EnquiryNotificationData {
+  enquiryId: string;
+  organisation: string;
+  sector?: string | null;
+  contactName: string;
+  contactEmail: string;
+  teamSize?: string | null;
+  message?: string | null;
+  source?: string | null;
+}
+
+/**
+ * Notify the team that a scoping-call enquiry has arrived.
+ *
+ * The enquiry is already stored before this runs, so a false return means the
+ * notification failed rather than the enquiry being lost.
+ */
+export const sendEnquiryNotificationEmail = async (
+  data: EnquiryNotificationData,
+): Promise<boolean> => {
+  const subject = `Scoping call enquiry: ${data.organisation}`;
+  const emailContent = `New scoping-call enquiry from the marketing site.
+
+Organisation: ${data.organisation}
+Contact:      ${data.contactName} <${data.contactEmail}>
+Sector:       ${data.sector || 'not given'}
+Participants: ${data.teamSize || 'not given'}
+Submitted on: ${data.source || 'unknown page'}
+
+What they want to rehearse:
+${data.message?.trim() || 'Nothing written.'}
+
+---
+Reply directly to ${data.contactEmail}.
+Enquiry reference: ${data.enquiryId}
+`;
+
+  try {
+    if (!transporter) {
+      logger.info(
+        { to: env.enquiryNotifyEmail, subject, content: emailContent },
+        'Enquiry notification would be sent (email disabled)',
+      );
+      return true;
+    }
+
+    const info = await transporter.sendMail({
+      from: `"${env.emailFromName}" <${env.emailFrom}>`,
+      to: env.enquiryNotifyEmail,
+      // Lets the team hit reply and reach the enquirer directly.
+      replyTo: `"${data.contactName}" <${data.contactEmail}>`,
+      subject,
+      text: emailContent,
+    });
+
+    logger.info(
+      { messageId: info.messageId, enquiryId: data.enquiryId },
+      'Enquiry notification email sent',
+    );
+    return true;
+  } catch (error) {
+    logger.error({ error, enquiryId: data.enquiryId }, 'Failed to send enquiry notification');
+    return false;
+  }
+};
+
+/**
+ * Acknowledge the enquiry to the person who sent it.
+ *
+ * Separate from the internal notification on purpose: this one is read by a
+ * prospect, so it carries the reference they can quote and sets the expectation
+ * for when a human replies. Failure is never surfaced to the visitor, because the
+ * enquiry is already safely stored by the time this runs.
+ */
+export const sendEnquiryAcknowledgementEmail = async (
+  data: EnquiryNotificationData,
+): Promise<boolean> => {
+  const reference = data.enquiryId.slice(0, 8).toUpperCase();
+  const subject = 'We have your enquiry — Prophyion';
+  const emailContent = `Dear ${data.contactName},
+
+Thank you for getting in touch. We have your enquiry about a crisis simulation
+for ${data.organisation}, and a risk consultant is reading it rather than an
+automated system.
+
+What happens next:
+
+  1. We review what you told us and come back to arrange a scoping call.
+     Expect to hear from us within one business day.
+  2. The call takes about thirty minutes. We use it to understand your exposure,
+     who would be involved, and what you need to be able to prove.
+  3. We then send a scenario outline and a recommended format. Nothing gets
+     built until you have approved it.
+
+If anything has changed, or you would like to add to what you sent, simply reply
+to this email and it will reach us directly.
+
+Your reference is ${reference}.
+
+Kind regards,
+Prophyion
+
+---
+Prophyion — Unified Simulation Environment
+Exercise scenarios are fictional and non-operational.
+`;
+
+  try {
+    if (!transporter) {
+      logger.info(
+        { to: data.contactEmail, subject, content: emailContent },
+        'Enquiry acknowledgement would be sent (email disabled)',
+      );
+      return true;
+    }
+
+    const info = await transporter.sendMail({
+      from: `"${env.emailFromName}" <${env.emailFrom}>`,
+      to: data.contactEmail,
+      // Replies go to the team, not to the unattended from-address.
+      replyTo: env.enquiryNotifyEmail,
+      subject,
+      text: emailContent,
+    });
+
+    logger.info(
+      { messageId: info.messageId, enquiryId: data.enquiryId },
+      'Enquiry acknowledgement email sent',
+    );
+    return true;
+  } catch (error) {
+    logger.error({ error, enquiryId: data.enquiryId }, 'Failed to send enquiry acknowledgement');
+    return false;
+  }
+};
+
 /**
  * Test email configuration
  */

@@ -89,8 +89,13 @@ export const env = {
   smtpSecure: process.env.SMTP_SECURE === 'true',
   smtpUser: process.env.SMTP_USER,
   smtpPass: process.env.SMTP_PASS,
-  emailFrom: process.env.EMAIL_FROM ?? 'noreply@simulator.local',
-  emailFromName: process.env.EMAIL_FROM_NAME ?? 'Simulation Environment',
+  emailFrom: process.env.EMAIL_FROM ?? 'kenneth@prophyion.com',
+  emailFromName: process.env.EMAIL_FROM_NAME ?? 'Prophyion',
+  // Where scoping-call enquiries from the public marketing pages are sent. Falls
+  // back to the address already published on those pages as the manual route.
+  enquiryNotifyEmail: process.env.ENQUIRY_NOTIFY_EMAIL ?? 'kenneth@prophyion.com',
+  // Origin of the marketing site, allowed through CORS so the enquiry form can post.
+  marketingUrl: process.env.MARKETING_URL,
   // ---------- Background engines master switch ----------
   // The process boots six loops that act on every active session in the database: inject
   // scheduler, AI inject scheduler, chat surveillance, statement watchdog, generator engines

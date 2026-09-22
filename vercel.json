@@ -38,6 +38,14 @@
       "destination": "/simulations/corporate-crisis.html"
     },
     {
+      "source": "/simulations/thank-you",
+      "destination": "/simulations/thank-you.html"
+    },
+    {
+      "source": "/simulations/thank-you/",
+      "destination": "/simulations/thank-you.html"
+    },
+    {
       "source": "/presentation",
       "destination": "/presentation/index.html"
     },

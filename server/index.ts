@@ -27,6 +27,7 @@ import { teamsRouter } from './routes/teams.js';
 import { objectivesRouter } from './routes/objectives.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { joinRouter } from './routes/join.js';
+import { contactRouter } from './routes/contact.js';
 import { warroomRouter } from './routes/warroom.js';
 import placementsRouter from './routes/placements.js';
 import hazardsRouter from './routes/hazards.js';
@@ -117,6 +118,9 @@ app.use(
 // CORS configuration with origin validation
 const allowedOrigins = [
   env.clientUrl,
+  // The marketing site posts the enquiry form cross-origin when it is served from
+  // its own domain rather than alongside the app.
+  ...(env.marketingUrl ? [env.marketingUrl] : []),
   'http://localhost:3000',
   'http://localhost:3002',
   'http://localhost:3003',
@@ -200,6 +204,22 @@ const joinLimiter = rateLimit({
 });
 app.use('/api/join', joinLimiter);
 
+// Enquiries are public and write to the database, so they get a tighter cap than
+// the join endpoints: a genuine visitor submits once.
+const contactLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 5,
+  message: 'Too many enquiries from this address. Please email us instead.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+    if (ip === 'unknown') return 'unknown';
+    return ipKeyGenerator(ip);
+  },
+});
+app.use('/api/contact', contactLimiter);
+
 // Request logging (with sensitive data redaction)
 app.use(pinoHttp({ logger }));
 
@@ -213,6 +233,9 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Smaller body limit for join endpoints (prevents abuse)
 app.use('/api/join', express.json({ limit: '1kb' }));
+
+// The enquiry form's longest field is capped at 5000 characters.
+app.use('/api/contact', express.json({ limit: '16kb' }));
 
 // API routes
 app.use('/api/health', healthRouter);
@@ -237,6 +260,7 @@ app.use('/api/teams', teamsRouter);
 app.use('/api/objectives', objectivesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/join', joinRouter);
+app.use('/api/contact', contactRouter);
 app.use('/api/warroom', warroomRouter);
 app.use('/api', placementsRouter);
 app.use('/api', hazardsRouter);

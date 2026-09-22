@@ -13,6 +13,9 @@ const CONTACT_EMAIL = 'kenneth@prophyion.com';
 
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
+/** Conversion confirmation page. A real URL, so analytics can anchor on it. */
+const THANK_YOU_PATH = '/simulations/thank-you';
+
 // Unlocks the scroll-reveal CSS. Kept here rather than in the stylesheet so a
 // blocked or failed script leaves every section visible instead of blank.
 document.documentElement.classList.add('js');
@@ -524,8 +527,17 @@ if (form) {
 
       if (!response.ok) throw new Error(`Request failed with ${response.status}`);
 
+      // Redirect to a real URL so the conversion has something to be measured
+      // against. The inline panel stays as the fallback for anyone who lands here
+      // with navigation blocked.
+      const body = (await response.json().catch(() => null)) as { id?: string } | null;
+      const target = body?.id
+        ? `${THANK_YOU_PATH}?ref=${encodeURIComponent(body.id)}`
+        : THANK_YOU_PATH;
+
       form.classList.add('hidden');
       successPanel?.classList.remove('hidden');
+      window.location.assign(target);
     } catch {
       // Never a dead end: surface a real address the visitor can use instead.
       errorPanel?.classList.remove('hidden');
@@ -542,3 +554,15 @@ document.querySelectorAll<HTMLAnchorElement>('[data-contact-email]').forEach((el
   el.href = `mailto:${CONTACT_EMAIL}`;
   el.textContent = CONTACT_EMAIL;
 });
+
+/* ── Thank-you page: show the enquiry reference if we were given one ── */
+const referenceBlock = document.getElementById('enquiry-reference');
+if (referenceBlock) {
+  const reference = new URLSearchParams(window.location.search).get('ref');
+  const slot = referenceBlock.querySelector('[data-reference-value]');
+  // Only ever render a plain UUID, never arbitrary text from the query string.
+  if (reference && slot && /^[0-9a-f-]{8,36}$/i.test(reference)) {
+    slot.textContent = reference.slice(0, 8).toUpperCase();
+    referenceBlock.classList.remove('hidden');
+  }
+}
