@@ -1,0 +1,85 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install",
+  "framework": "vite",
+
+  "redirects": [
+    {
+      "source": "/simulations",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/simulations/consultants",
+      "destination": "/consultants",
+      "permanent": true
+    },
+    {
+      "source": "/simulations/corporate-crisis",
+      "destination": "/corporate-crisis",
+      "permanent": true
+    },
+    {
+      "source": "/simulations/founder",
+      "destination": "/founder",
+      "permanent": true
+    },
+    {
+      "source": "/simulations/thank-you",
+      "destination": "/thank-you",
+      "permanent": true
+    },
+    {
+      "source": "/simulations/:path*",
+      "destination": "/:path*",
+      "permanent": true
+    },
+    {
+      "source": "/login",
+      "destination": "https://simulations.prophyion.com/login",
+      "permanent": false
+    },
+    {
+      "source": "/signup",
+      "destination": "https://simulations.prophyion.com/signup",
+      "permanent": false
+    },
+    {
+      "source": "/dashboard/:path*",
+      "destination": "https://simulations.prophyion.com/dashboard/:path*",
+      "permanent": false
+    }
+  ],
+
+  "rewrites": [
+    { "source": "/consultants", "destination": "/consultants.html" },
+    { "source": "/consultants/", "destination": "/consultants.html" },
+    { "source": "/corporate-crisis", "destination": "/corporate-crisis.html" },
+    { "source": "/corporate-crisis/", "destination": "/corporate-crisis.html" },
+    { "source": "/founder", "destination": "/founder.html" },
+    { "source": "/founder/", "destination": "/founder.html" },
+    { "source": "/thank-you", "destination": "/thank-you.html" },
+    { "source": "/thank-you/", "destination": "/thank-you.html" }
+  ],
+
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
+        { "key": "X-Frame-Options", "value": "SAMEORIGIN" }
+      ]
+    },
+    {
+      "source": "/marketing/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    },
+    {
+      "source": "/brand/(.*)",
+      "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
+    }
+  ]
+}

@@ -10,22 +10,9 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, '../shared'),
     },
   },
-  build: {
-    rollupOptions: {
-      input: {
-        // The app shell. Stays at index.html so the SPA catch-all rewrite in
-        // vercel.json keeps working untouched.
-        app: path.resolve(__dirname, 'index.html'),
-        // Public marketing pages. Static, and they load marketing.ts only, so
-        // none of the application bundle ships with them.
-        simulations: path.resolve(__dirname, 'simulations/index.html'),
-        simulationsConsultants: path.resolve(__dirname, 'simulations/consultants.html'),
-        simulationsFounder: path.resolve(__dirname, 'simulations/founder.html'),
-        simulationsCorporateCrisis: path.resolve(__dirname, 'simulations/corporate-crisis.html'),
-        simulationsThankYou: path.resolve(__dirname, 'simulations/thank-you.html'),
-      },
-    },
-  },
+  // The marketing pages used to build from here as extra entries. They now live
+  // in ../marketing as their own Vercel project, so this builds the app alone and
+  // index.html is the only entry the SPA catch-all needs.
   server: {
     port: 3002,
     strictPort: false, // Allow Vite to try another port if 3002 is in use

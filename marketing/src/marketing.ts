@@ -14,7 +14,7 @@ const CONTACT_EMAIL = 'kenneth@prophyion.com';
 const API_BASE = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
 
 /** Conversion confirmation page. A real URL, so analytics can anchor on it. */
-const THANK_YOU_PATH = '/simulations/thank-you';
+const THANK_YOU_PATH = '/thank-you';
 
 // Unlocks the scroll-reveal CSS. Kept here rather than in the stylesheet so a
 // blocked or failed script leaves every section visible instead of blank.

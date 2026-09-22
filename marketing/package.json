@@ -1,0 +1,20 @@
+{
+  "name": "prophyion-marketing",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Public marketing site for prophyion.com. Deliberately separate from the app: static HTML, no React, no application bundle.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.18",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.2"
+  }
+}

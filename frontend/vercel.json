@@ -1,50 +1,11 @@
 {
-  "version": 2,
-  "buildCommand": "mkdir -p frontend/public/presentation && cp presentation/index.html frontend/public/presentation/ && cd frontend && npm install && npm run build",
-  "outputDirectory": "frontend/dist",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": "vite",
+
   "rewrites": [
-    {
-      "source": "/simulations",
-      "destination": "/simulations/index.html"
-    },
-    {
-      "source": "/simulations/",
-      "destination": "/simulations/index.html"
-    },
-    {
-      "source": "/simulations/consultants",
-      "destination": "/simulations/consultants.html"
-    },
-    {
-      "source": "/simulations/consultants/",
-      "destination": "/simulations/consultants.html"
-    },
-    {
-      "source": "/simulations/founder",
-      "destination": "/simulations/founder.html"
-    },
-    {
-      "source": "/simulations/founder/",
-      "destination": "/simulations/founder.html"
-    },
-    {
-      "source": "/simulations/corporate-crisis",
-      "destination": "/simulations/corporate-crisis.html"
-    },
-    {
-      "source": "/simulations/corporate-crisis/",
-      "destination": "/simulations/corporate-crisis.html"
-    },
-    {
-      "source": "/simulations/thank-you",
-      "destination": "/simulations/thank-you.html"
-    },
-    {
-      "source": "/simulations/thank-you/",
-      "destination": "/simulations/thank-you.html"
-    },
     {
       "source": "/presentation",
       "destination": "/presentation/index.html"
@@ -58,6 +19,20 @@
       "destination": "/index.html"
     }
   ],
+
+  "redirects": [
+    {
+      "source": "/simulations",
+      "destination": "https://prophyion.com/",
+      "permanent": true
+    },
+    {
+      "source": "/simulations/:path*",
+      "destination": "https://prophyion.com/:path*",
+      "permanent": true
+    }
+  ],
+
   "headers": [
     {
       "source": "/(.*)",
