@@ -136,3 +136,29 @@ Anything already shared or indexed keeps working and passes its ranking signal t
 the new URL. Bookmarked app routes (`/login`, `/signup`, `/dashboard/*`) hit the
 marketing project and are forwarded to the app subdomain with a temporary
 redirect, since those are not canonical content.
+
+---
+
+## Why each project has an `ignoreCommand`
+
+Both projects watch the same branch, so by default a change to either one would
+rebuild both. The `ignoreCommand` in each `vercel.json` skips the build when
+nothing relevant changed. Exit code 0 skips, non-zero builds.
+
+| Project                | Command                                      | Watches                   |
+| ---------------------- | -------------------------------------------- | ------------------------- |
+| `prophyion-web`        | `git diff --quiet HEAD^ HEAD -- .`           | `marketing/`              |
+| `blackswansimulations` | `git diff --quiet HEAD^ HEAD -- . ../shared` | `frontend/` and `shared/` |
+
+The app also watches `shared/` because `frontend/src` imports from
+`@shared/{types,countries,roleVisibility}`. Without it, a shared-types change
+would ship a stale app.
+
+If `HEAD^` is unavailable the command errors rather than returning 0, so the
+build proceeds. That is the safe direction: a redundant build costs a minute, a
+skipped one ships nothing.
+
+**Do not add explanatory `"//key"` entries to `vercel.json`.** Its schema sets
+`additionalProperties: false`, so an unrecognised top-level key fails the
+deployment immediately with a 0ms build and no logs. That is why this rationale
+lives here instead.
