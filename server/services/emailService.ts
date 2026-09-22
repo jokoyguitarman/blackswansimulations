@@ -349,7 +349,7 @@ export const sendEnquiryAcknowledgementEmail = async (
   data: EnquiryNotificationData,
 ): Promise<boolean> => {
   const reference = data.enquiryId.slice(0, 8).toUpperCase();
-  const subject = 'We have your enquiry — Prophyion';
+  const subject = 'We have your enquiry | Prophyion';
   const emailContent = `Dear ${data.contactName},
 
 Thank you for getting in touch. We have your enquiry about a crisis simulation
@@ -374,7 +374,7 @@ Kind regards,
 Prophyion
 
 ---
-Prophyion — Unified Simulation Environment
+Prophyion | Unified Simulation Environment
 Exercise scenarios are fictional and non-operational.
 `;
 

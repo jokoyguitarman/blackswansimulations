@@ -5,6 +5,9 @@
   "installCommand": "npm install",
   "framework": "vite",
 
+  "//ignoreCommand": "Skip the build when neither frontend/ nor shared/ changed, so a marketing-only push does not rebuild the app. shared/ is included because src imports @shared/{types,countries,roleVisibility}; omitting it would ship a stale app after a shared-types change.",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- . ../shared",
+
   "rewrites": [
     {
       "source": "/presentation",

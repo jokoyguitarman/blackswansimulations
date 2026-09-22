@@ -41,7 +41,7 @@ const tweenTo = (
   const running = tweenFrames.get(el);
   if (running) cancelAnimationFrame(running);
   if (!Number.isFinite(target)) {
-    el.textContent = '—';
+    el.textContent = '-';
     return;
   }
   if (reducedMotion()) {
@@ -174,128 +174,6 @@ document.querySelectorAll<HTMLElement>('.reveal-card').forEach((card) => {
   card.addEventListener('mouseleave', () => setOpen(false));
 });
 
-/* ── Exercise replay storyboard ─────────────────────────────────────
-   Six boards, each replacing the last. Five hold for 3.8s and the peak for
-   5s, which comes to the twenty-four seconds the section heading claims. */
-const storyboard = document.querySelector<HTMLElement>('[data-storyboard]');
-if (storyboard) {
-  const boards = [...storyboard.querySelectorAll<HTMLElement>('[data-board]')];
-  const ticks = [...storyboard.querySelectorAll<HTMLElement>('.step-tick > span')];
-  const dots = [...storyboard.querySelectorAll<HTMLButtonElement>('[data-goto]')];
-  const indexLabel = storyboard.querySelector<HTMLElement>('[data-board-index]');
-  const fill = storyboard.querySelector<HTMLElement>('[data-pressure-fill]');
-  const pressureValue = storyboard.querySelector<HTMLElement>('[data-pressure-value]');
-  const mentionsEl = storyboard.querySelector<HTMLElement>('[data-metric-mentions]');
-  const trustEl = storyboard.querySelector<HTMLElement>('[data-metric-trust]');
-  const latencyEl = storyboard.querySelector<HTMLElement>('[data-metric-latency]');
-  const toggle = storyboard.querySelector<HTMLButtonElement>('[data-replay-toggle]');
-  const stage = storyboard.querySelector<HTMLElement>('.board-stage');
-
-  const DEFAULT_HOLD = 3800;
-  const TEMP_COLOUR: Record<string, string> = {
-    calm: '#15803D',
-    watch: '#D97706',
-    critical: '#B91C1C',
-    recover: '#15803D',
-  };
-
-  let current = -1;
-  let timer: number | undefined;
-  let paused = false;
-  let started = false;
-
-  const show = (next: number) => {
-    if (next === current) return;
-    const board = boards[next];
-    if (!board) return;
-
-    boards.forEach((b, i) => {
-      b.classList.toggle('is-active', i === next);
-      b.classList.toggle('is-leaving', i === current);
-      b.setAttribute('aria-hidden', i === next ? 'false' : 'true');
-    });
-
-    const temp = board.dataset.temp ?? 'calm';
-    storyboard.dataset.temp = temp;
-
-    const pressure = Number(board.dataset.pressure ?? 0);
-    if (fill) {
-      fill.style.width = `${pressure}%`;
-      fill.style.backgroundColor = TEMP_COLOUR[temp];
-    }
-    tweenTo(pressureValue, pressure, (n) => String(n));
-    tweenTo(mentionsEl, Number(board.dataset.mentions), (n) => n.toLocaleString());
-    tweenTo(trustEl, Number(board.dataset.trust), (n) => String(n));
-    if (latencyEl) latencyEl.textContent = board.dataset.latency ?? '—';
-
-    ticks.forEach((tick, i) => {
-      tick.style.width = i <= next ? '100%' : '0%';
-      tick.style.backgroundColor = i === next ? TEMP_COLOUR[temp] : 'rgba(255,255,255,0.45)';
-    });
-    dots.forEach((dot, i) => {
-      dot.classList.toggle('bg-white', i === next);
-      dot.classList.toggle('bg-white/25', i !== next);
-    });
-    if (indexLabel) indexLabel.textContent = String(next + 1);
-
-    current = next;
-  };
-
-  // Each advance re-arms the next, so the chain keeps running.
-  const queue = () => {
-    window.clearTimeout(timer);
-    if (paused) return;
-    const wait = Number(boards[current]?.dataset.hold) || DEFAULT_HOLD;
-    timer = window.setTimeout(() => {
-      show((current + 1) % boards.length);
-      queue();
-    }, wait);
-  };
-
-  const goto = (index: number, fromUser = false) => {
-    show(index);
-    if (fromUser) {
-      paused = false;
-      if (toggle) toggle.textContent = 'Pause';
-    }
-    queue();
-  };
-
-  dots.forEach((dot, i) => dot.addEventListener('click', () => goto(i, true)));
-
-  toggle?.addEventListener('click', () => {
-    paused = !paused;
-    toggle.textContent = paused ? 'Play' : 'Pause';
-    if (paused) window.clearTimeout(timer);
-    else queue();
-  });
-
-  // Reading a board should not have it yanked away mid-sentence.
-  storyboard.addEventListener('mouseenter', () => window.clearTimeout(timer));
-  storyboard.addEventListener('mouseleave', () => queue());
-  storyboard.addEventListener('focusin', () => window.clearTimeout(timer));
-
-  // Start when it is seen, not on load, so the opening board is not already
-  // three moments old by the time the reader scrolls to it.
-  if ('IntersectionObserver' in window && stage) {
-    const io = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && !started) {
-            started = true;
-            goto(0);
-            io.disconnect();
-          }
-        });
-      },
-      { threshold: 0.35 },
-    );
-    io.observe(stage);
-  } else {
-    goto(0);
-  }
-}
-
 /* ── Recorded clips ─────────────────────────────────────────────────
    Marked preload="none" in the markup, so nothing is fetched until a clip is
    actually scrolled to. Playing only what is on screen matters on the storyboard
@@ -338,7 +216,7 @@ if (clips.length > 0) {
 /* ── Corporate Crisis storyboard ────────────────────────────────────
    Seven acts down the page against a rail that tracks whichever one is being
    read. The scoring readouts belong to the act, not to the scroll position, so
-   they move in one step per act rather than interpolating continuously — the
+   they move in one step per act rather than interpolating continuously. The
    numbers are scores from a real session, and sliding between them would imply a
    precision the exercise does not claim. */
 const ccRail = document.querySelector<HTMLElement>('[data-cc-rail]');
@@ -408,75 +286,6 @@ if (ccRail) {
   } else {
     showScene(0);
   }
-}
-
-/* ── "Try a decision": one inject, graded on the visitor's own response ── */
-const tryPanel = document.getElementById('try-inject');
-const tryResult = document.getElementById('try-result');
-const tryTimer = document.getElementById('try-timer');
-
-if (tryPanel && tryResult && tryTimer) {
-  let shownAt = Date.now();
-  let tickId: number | undefined;
-
-  const clock = (ms: number) => {
-    const total = Math.floor(ms / 1000);
-    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-  };
-
-  const startClock = () => {
-    shownAt = Date.now();
-    tryTimer.textContent = '00:00';
-    window.clearInterval(tickId);
-    tickId = window.setInterval(() => {
-      tryTimer.textContent = clock(Date.now() - shownAt);
-    }, 1000);
-  };
-
-  // The clock must start when the visitor first sees the inject, not on page
-  // load. Starting it on load punishes anyone who reads the page first, and a
-  // wildly inflated latency reads as the product being unfair rather than as
-  // decisions being timed.
-  const armWhenSeen = new IntersectionObserver(
-    (entries) => {
-      entries.forEach((entry) => {
-        if (entry.isIntersecting) {
-          startClock();
-          armWhenSeen.disconnect();
-        }
-      });
-    },
-    { threshold: 0.4 },
-  );
-  armWhenSeen.observe(tryPanel);
-
-  document.querySelectorAll<HTMLButtonElement>('.try-option').forEach((option) => {
-    option.addEventListener('click', () => {
-      window.clearInterval(tickId);
-      const seconds = Math.max(1, Math.round((Date.now() - shownAt) / 1000));
-      const set = (id: string, value: string) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = value;
-      };
-
-      set('try-score', option.dataset.score ?? '');
-      set('try-verdict', option.dataset.verdict ?? '');
-      set('try-consequence', option.dataset.consequence ?? '');
-      set(
-        'try-latency',
-        seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s`,
-      );
-
-      tryPanel.classList.add('hidden');
-      tryResult.classList.remove('hidden');
-    });
-  });
-
-  document.getElementById('try-reset')?.addEventListener('click', () => {
-    tryResult.classList.add('hidden');
-    tryPanel.classList.remove('hidden');
-    startClock();
-  });
 }
 
 /* ── Enquiry form ── */

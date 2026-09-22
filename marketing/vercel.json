@@ -5,6 +5,9 @@
   "installCommand": "npm install",
   "framework": "vite",
 
+  "//ignoreCommand": "Both projects watch the same branch, so without this a change to the app would also rebuild the marketing site. Exit 0 skips the build, so we skip when nothing under marketing/ changed. If HEAD^ is unavailable the command errors, which builds rather than skips - the safe direction.",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- .",
+
   "redirects": [
     {
       "source": "/simulations",

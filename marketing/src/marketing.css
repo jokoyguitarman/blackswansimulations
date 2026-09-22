@@ -67,6 +67,65 @@ body {
     100% 100%;
 }
 
+/* ── Dark section bands ───────────────────────────────────────────
+   Replaces the gradient-and-grid treatment with scenario artwork. The image
+   comes from a custom property so one rule serves every band:
+
+     <section class="section-art" style="--art: url('/marketing/sections/x.webp')">
+
+   Two pseudo-elements rather than stacked background layers, because the scrim
+   needs to be a separate layer we can tune for legibility without re-encoding
+   the artwork. Both sit behind the content via the isolated stacking context. */
+.section-art {
+  position: relative;
+  isolation: isolate;
+  background-color: #0e1a2b;
+}
+.section-art::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-image: var(--art);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+}
+/* Two layers: a readable floor under the text column on the left, thinning out
+   to the right so the artwork is genuinely visible rather than a flat wash. Any
+   heavier and the image may as well not be there. */
+.section-art::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(
+      100deg,
+      rgba(14, 26, 43, 0.92) 0%,
+      rgba(14, 26, 43, 0.78) 45%,
+      rgba(14, 26, 43, 0.55) 100%
+    ),
+    linear-gradient(rgba(14, 26, 43, 0.35), rgba(14, 26, 43, 0.35));
+}
+
+/* Art panel: a band nested inside a light section rather than a full-width one.
+   The right-hand content sits on its own dark chips, so the scrim can thin out
+   further than a full section allows and actually show the artwork. */
+.art-panel::before {
+  background-position: 76% center;
+}
+.art-panel::after {
+  background:
+    linear-gradient(
+      100deg,
+      rgba(14, 26, 43, 0.95) 0%,
+      rgba(14, 26, 43, 0.84) 40%,
+      rgba(14, 26, 43, 0.4) 100%
+    ),
+    linear-gradient(rgba(14, 26, 43, 0.2), rgba(14, 26, 43, 0.2));
+}
+
 /* ── Hero ─────────────────────────────────────────────────────────
    Texture laid over the hero photograph: keeps a hint of the tactical
    grid without losing the room behind it. */
@@ -268,148 +327,10 @@ body {
   animation: bar-grow 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* ── Exercise replay storyboard ───────────────────────────────────
-   One board at a time, each replacing the last. Without JS the boards
-   read as a plain vertical list, so the whole story stays in the HTML
-   for crawlers and for anyone whose script never runs. */
-/* All boards occupy the same grid cell, so the stage sizes itself to the tallest
-   one at whatever the current width happens to be. No reserved height to guess
-   at, and no jump when boards swap. */
-.js .board-stage {
-  display: grid;
-}
-.js .board {
-  grid-area: 1 / 1;
-  opacity: 0;
-  visibility: hidden;
-  transform: translateY(10px) scale(0.995);
-  transition:
-    opacity 0.65s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.65s cubic-bezier(0.16, 1, 0.3, 1),
-    visibility 0.65s;
-  pointer-events: none;
-}
-.js .board.is-active {
-  opacity: 1;
-  visibility: visible;
-  transform: none;
-  pointer-events: auto;
-}
-/* The outgoing board leaves upward, so the sequence reads as time moving
-   forward rather than as a slideshow shuffling. */
-.js .board.is-leaving {
-  opacity: 0;
-  transform: translateY(-10px) scale(0.995);
-}
-.board + .board {
-  margin-top: 1rem;
-}
-.js .board + .board {
-  margin-top: 0;
-}
-
-/* The panel itself warms as the situation deteriorates. */
-.stage-shell {
-  transition: box-shadow 0.8s ease;
-}
-.stage-shell[data-temp='calm'] {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-}
-.stage-shell[data-temp='watch'] {
-  box-shadow: inset 0 0 0 1px rgba(217, 119, 6, 0.35);
-}
-.stage-shell[data-temp='critical'] {
-  box-shadow:
-    inset 0 0 0 1px rgba(185, 28, 28, 0.55),
-    0 0 60px -20px rgba(185, 28, 28, 0.45);
-}
-.stage-shell[data-temp='recover'] {
-  box-shadow: inset 0 0 0 1px rgba(21, 128, 61, 0.4);
-}
-
-/* Board art. The tint keeps six separately generated illustrations sitting in
-   one palette, and deepens as the situation does. */
-.board-art {
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
-}
+/* Decorative tint over illustration images, so separately generated artwork
+   sits in one palette. Used on the founder page. */
 .art-tint {
   background: linear-gradient(160deg, rgba(14, 26, 43, 0.15), rgba(14, 26, 43, 0.55));
-  transition: background 0.8s ease;
-}
-[data-temp='watch'] .art-tint {
-  background: linear-gradient(160deg, rgba(217, 119, 6, 0.12), rgba(14, 26, 43, 0.5));
-}
-[data-temp='critical'] .art-tint {
-  background: linear-gradient(160deg, rgba(185, 28, 28, 0.22), rgba(14, 26, 43, 0.42));
-}
-[data-temp='recover'] .art-tint {
-  background: linear-gradient(160deg, rgba(21, 128, 61, 0.12), rgba(14, 26, 43, 0.5));
-}
-
-/* A slow push on whichever board is showing, so the image is never quite still.
-   Only the active board animates, so five idle images cost nothing. */
-@keyframes art-drift {
-  from {
-    transform: scale(1);
-  }
-  to {
-    transform: scale(1.06);
-  }
-}
-.js .board.is-active .board-art img {
-  animation: art-drift 9s ease-out forwards;
-}
-/* The peak gets a faster push and a red pulse over the top. */
-.js .board.is-active .board-art-critical img {
-  animation-duration: 5.5s;
-}
-@keyframes art-alarm {
-  0%,
-  100% {
-    opacity: 0;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-.board-art-critical::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 50% 60%, rgba(185, 28, 28, 0.4), transparent 70%);
-  opacity: 0;
-  pointer-events: none;
-}
-.js .board.is-active .board-art-critical::after {
-  animation: art-alarm 2.2s ease-in-out infinite;
-}
-
-.pressure-fill {
-  transition:
-    width 0.9s cubic-bezier(0.16, 1, 0.3, 1),
-    background-color 0.9s ease;
-}
-.step-tick > span {
-  transition:
-    width 0.4s ease,
-    background-color 0.4s ease;
-}
-
-@keyframes alarm-sweep {
-  0% {
-    transform: translateX(-100%);
-  }
-  100% {
-    transform: translateX(300%);
-  }
-}
-.alarm-sweep::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  width: 33%;
-  background: linear-gradient(90deg, transparent, rgba(185, 28, 28, 0.16), transparent);
-  animation: alarm-sweep 2.6s linear infinite;
 }
 
 /* ── Reveal cards ─────────────────────────────────────────────────
