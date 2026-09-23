@@ -11,8 +11,10 @@ import {
   type SocialInject,
   type TeamDef,
   type OrgPageConfig,
+  type OrgConfig,
   type SOPStep,
 } from './socialCrisisGeneratorService.js';
+import { repairOrgPageKeys } from './orgNameMatch.js';
 import {
   validateOrganisations,
   buildOrgRegistry,
@@ -706,15 +708,11 @@ export async function runOrgPagePipeline(
     { country: primary.country, city: primary.city },
   );
 
-  // AI-operated offices (pressure plan §12): their page is AI-run in the `aligned` register.
-  for (const cfg of orgPage.orgs || []) {
-    const org = orgs.find((o) => o.org_key === cfg.org_key);
-    if (org && org.operation === 'ai' && cfg.role === 'protagonist') {
-      cfg.control_mode = 'ai';
-      cfg.operation = 'ai';
-      cfg.posture = alignedPostureFor(org, primary);
-    }
-  }
+  // Every page must carry a registry key (MO-ORG-005). The generator assigns keys from the
+  // roster; this repairs anything that still slipped through (an older payload, a model that
+  // ignored its ref) and drops what cannot be placed, instead of failing at compile.
+  orgPage.orgs = applyOrgPageKeyRepair(orgPage.orgs || [], orgs, competitors, 'pages_stage');
+  stampAiOperatedPages(orgPage.orgs, orgs);
 
   // Pressure organisations: pages with posture + page-authored statements.
   let pressureInjects: SocialInject[] = [];
@@ -782,6 +780,45 @@ export interface CompileArtifacts {
   /** Notification / consultation SOP steps generated with the cast (organic-decisions plan §4.1). */
   sop_steps: SOPStep[];
   decision_context?: DecisionContext;
+  /** The wizard's org_page with every page pointing at a registry key (or dropped). */
+  orgPage: OrgPageConfig | null;
+}
+
+/**
+ * Repair page keys against the registry and log what changed. Shared by the pages stage and
+ * compile so a payload generated before this fix still compiles.
+ */
+function applyOrgPageKeyRepair(
+  pages: OrgConfig[],
+  orgs: NormalisedOrg[],
+  competitors: NormalisedCompetitor[],
+  where: string,
+): OrgConfig[] {
+  const r = repairOrgPageKeys(pages, orgs, competitors);
+  for (const f of r.fixes) {
+    logger.warn({ where, ...f }, 'org_page_key_repaired');
+  }
+  for (const d of r.dropped) {
+    logger.warn({ where, ...d }, 'org_page_dropped');
+  }
+  return r.pages;
+}
+
+/**
+ * AI-operated offices (pressure plan §12): their page is AI-run in the `aligned` register.
+ * Idempotent; runs after key repair so a page that only just acquired its registry key is
+ * stamped too (before the fix, a mismatched key silently left such a page player-controlled).
+ */
+function stampAiOperatedPages(pages: OrgConfig[], orgs: NormalisedOrg[]): void {
+  const primary = orgs.find((o) => o.is_primary) ?? orgs[0];
+  for (const cfg of pages) {
+    const org = orgs.find((o) => o.org_key === cfg.org_key);
+    if (org && org.operation === 'ai' && cfg.role === 'protagonist') {
+      cfg.control_mode = 'ai';
+      cfg.operation = 'ai';
+      if (!cfg.posture) cfg.posture = alignedPostureFor(org, primary);
+    }
+  }
 }
 
 export function buildCompileArtifacts(
@@ -805,15 +842,25 @@ export function buildCompileArtifacts(
     max_participants: c.max_participants,
   }));
 
-  const autoRival = body.org_page
-    ? normalizeOrgPages(body.org_page).find((o) => o.role === 'antagonist' && o.auto_generated)
-    : undefined;
+  // Pages must point at registry keys (MO-ORG-005); repair before anything reads them.
+  const orgPage: OrgPageConfig | null = body.org_page
+    ? {
+        ...body.org_page,
+        orgs: applyOrgPageKeyRepair(
+          normalizeOrgPages(body.org_page),
+          orgs,
+          competitors as NormalisedCompetitor[],
+          'compile',
+        ),
+      }
+    : null;
+  if (orgPage?.orgs) stampAiOperatedPages(orgPage.orgs, orgs);
+  const pages = orgPage ? normalizeOrgPages(orgPage) : [];
+  const autoRival = pages.find((o) => o.role === 'antagonist' && o.auto_generated);
   const primary = orgs.find((o) => o.is_primary) ?? orgs[0];
   // Pressure orgs: spokesperson ids come back from the wizard (filled by the storyline stage);
   // if a page config carries one and the input does not, take the page's.
-  const pagesByKey = new Map(
-    (body.org_page ? normalizeOrgPages(body.org_page) : []).map((p) => [p.org_key, p]),
-  );
+  const pagesByKey = new Map(pages.map((p) => [p.org_key, p]));
   for (const p of orgsResult.pressureOrgs) {
     if (!p.spokesperson_stakeholder_id) {
       const page = pagesByKey.get(p.org_key);
@@ -888,6 +935,7 @@ export function buildCompileArtifacts(
     stakeholders,
     extraInjects,
     personas,
+    orgPage,
     sop_steps: (body.sop_steps || []).filter(
       (s) => !(s as unknown as Record<string, unknown>).triggered_by_decision_key,
     ),

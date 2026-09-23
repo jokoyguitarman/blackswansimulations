@@ -13,6 +13,7 @@ import {
   type TeamCharter,
 } from './teamCharterService.js';
 import type { Stakeholder, OrgRegistryEntry, CountryEntry } from '../lib/stakeholderContract.js';
+import { matchGeneratedOrgsToRoster } from './orgNameMatch.js';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -2062,9 +2063,13 @@ async function generateSecondaryOrgPages(
 
   const locLine = (e: OrgRosterEntry) =>
     e.country ? ` — ${e.city ? `${e.city}, ` : ''}${e.country}${e.kind ? ` (${e.kind})` : ''}` : '';
-  const allyLines = allies.map((a, i) => `  ALLY ${i + 1}: ${a.name}${locLine(a)}`).join('\n');
+  // Each requested organisation carries a ref (A1, C2) the model must echo back. Identity is
+  // then assigned from the roster, never from the model's paraphrase of the name.
+  const allyLines = allies
+    .map((a, i) => `  ALLY ${i + 1} [ref A${i + 1}]: ${a.name}${locLine(a)}`)
+    .join('\n');
   const compLines = competitors
-    .map((c, i) => `  COMPETITOR ${i + 1}: ${c.name}${locLine(c)}`)
+    .map((c, i) => `  COMPETITOR ${i + 1} [ref C${i + 1}]: ${c.name}${locLine(c)}`)
     .join('\n');
 
   const result = await callAI(
@@ -2079,9 +2084,12 @@ ${allyLines || '  (none)'}
 
 ANTAGONIST COMPETITORS (rival brands that will pressure the primary org; their voice should be competitive and opportunistic):
 ${compLines || '  (none)'}
-${inventAntagonist ? '\nNO competitors were named: INVENT exactly ONE realistic rival/competitor brand appropriate to this crisis. Mark it auto_generated.' : ''}
+${inventAntagonist ? '\nNO competitors were named: INVENT exactly ONE realistic rival/competitor brand appropriate to this crisis. Mark it auto_generated and give it ref "NEW".' : ''}
+
+Produce exactly one entry per organisation listed (plus the invented rival if asked). Do not add organisations that were not listed.
 
 For each org provide:
+- ref: the ref shown in brackets for that organisation, echoed EXACTLY (e.g. "A1", "C2"); "NEW" only for an invented rival
 - org_role: "protagonist" for allies, "antagonist" for competitors/invented rival
 - display_name
 - facebook: { page_name, page_handle, page_bio, follower_count }
@@ -2091,7 +2099,7 @@ For each org provide:
 - branded_history: 4-8 pre-crisis posts: { content, platform ("facebook"|"x_twitter"), post_format ("text"|"infographic"|"video_concept"), days_ago (1-30), media_description }
 
 Return ONLY valid JSON:
-{ "orgs": [{ "org_role": "antagonist", "display_name": "...", "facebook": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 40000 }, "x_twitter": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 25000 }, "stance": "...", "auto_generated": false, "branded_history": [{ "content": "...", "platform": "facebook", "post_format": "text", "days_ago": 7, "media_description": "" }] }] }`,
+{ "orgs": [{ "ref": "C1", "org_role": "antagonist", "display_name": "...", "facebook": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 40000 }, "x_twitter": { "page_name": "...", "page_handle": "@...", "page_bio": "...", "follower_count": 25000 }, "stance": "...", "auto_generated": false, "branded_history": [{ "content": "...", "platform": "facebook", "post_format": "text", "days_ago": 7, "media_description": "" }] }] }`,
     `Crisis scenario: ${crisisDescription.substring(0, 500)}`,
     9000,
     0.8,
@@ -2099,17 +2107,30 @@ Return ONLY valid JSON:
 
   const rawOrgs = (result?.orgs as Array<Record<string, unknown>>) || [];
 
-  // Map requested handles by name so trainer-provided handles win where given.
-  const handleByName = new Map<string, OrgRosterEntry>();
-  for (const a of allies) handleByName.set(a.name.toLowerCase(), a);
-  for (const c of competitors) handleByName.set(c.name.toLowerCase(), c);
+  // Pair every generated page with the organisation it was generated for (ref → name →
+  // position). The model paraphrases names, so identity comes from the roster, not from
+  // `display_name`; a page that stands for nothing is dropped rather than shipped with a key
+  // the registry does not know (that failed compile with MO-ORG-005).
+  const matched = matchGeneratedOrgsToRoster(rawOrgs, allies, competitors, inventAntagonist);
+  for (const d of matched.dropped) {
+    logger.warn({ reason: d.reason }, 'secondary_org_page_dropped');
+  }
+  for (const u of matched.unmatched) {
+    logger.warn(
+      { role: u.role, name: u.requested.name, org_key: u.requested.org_key },
+      'secondary_org_page_missing',
+    );
+  }
 
   const orgs: OrgConfig[] = [];
-  for (let i = 0; i < rawOrgs.length; i++) {
+  for (const m of matched.matches) {
+    const i = m.index;
     const o = rawOrgs[i];
-    const role: OrgRole = o.org_role === 'antagonist' ? 'antagonist' : 'protagonist';
-    const displayName = String(o.display_name || `Organization ${i + 1}`);
-    const requested = handleByName.get(displayName.toLowerCase());
+    const role: OrgRole = m.role;
+    const requested = m.requested ?? undefined;
+    // The trainer's name is the organisation's identity (registry, team names, feeds); the
+    // model's wording survives as the page name inside the platform configs.
+    const displayName = requested?.name || String(o.display_name || `Organization ${i + 1}`);
     const fbCfg = (o.facebook as OrgPagePlatformConfig) || {
       page_name: displayName,
       page_handle: `@${displayName.replace(/[^\w]/g, '')}`,
@@ -2135,7 +2156,9 @@ Return ONLY valid JSON:
       role,
       control_mode: role === 'antagonist' ? 'ai' : 'player',
       stance: o.stance ? String(o.stance) : undefined,
-      auto_generated: o.auto_generated === true,
+      // Only a page that stands for no requested organisation is an invented rival.
+      auto_generated: !requested,
+      ...(requested?.kind ? { kind: requested.kind } : {}),
       facebook: fbCfg,
       x_twitter: twCfg,
       branded_history: (o.branded_history as BrandedHistoryPost[]) || [],
@@ -2148,6 +2171,9 @@ Return ONLY valid JSON:
     {
       allies: orgs.filter((o) => o.role === 'protagonist').length,
       antagonists: orgs.filter((o) => o.role === 'antagonist').length,
+      matched_via: matched.matches.map((m) => m.via),
+      dropped: matched.dropped.length,
+      missing: matched.unmatched.length,
     },
     'Secondary org pages generated',
   );

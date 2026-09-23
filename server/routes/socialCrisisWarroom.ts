@@ -1185,9 +1185,12 @@ router.post(
           strategyWindows,
           body.storyline_injects as SocialInject[] | undefined,
           body.dimension_labels || null,
-          (body.org_page as
-            | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
-            | undefined) || null,
+          // Multi-org: pages with their keys repaired against the registry (MO-ORG-005).
+          multiArtifacts
+            ? multiArtifacts.orgPage
+            : (body.org_page as
+                | import('../services/socialCrisisGeneratorService.js').OrgPageConfig
+                | undefined) || null,
           body.org_name || undefined,
           env.enableDocumentBlueprint && body.blueprint ? coerceBlueprint(body.blueprint) : null,
           multiArtifacts
