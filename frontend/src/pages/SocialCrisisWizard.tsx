@@ -634,6 +634,8 @@ export const SocialCrisisWizard = () => {
   /* Step 7 — Compile */
   const [compiling, setCompiling] = useState(false);
   const [compileProgress, setCompileProgress] = useState<string[]>([]);
+  /** Injects the server actually persisted (compile result `inject_count`); null until compiled. */
+  const [compiledInjectCount, setCompiledInjectCount] = useState<number | null>(null);
   const [scenarioId, setScenarioId] = useState<string | null>(null);
   const [scenarioTitle, setScenarioTitle] = useState('');
 
@@ -1624,6 +1626,7 @@ export const SocialCrisisWizard = () => {
     if (!crisisDescription) return;
     setCompiling(true);
     setCompileProgress([]);
+    setCompiledInjectCount(null);
 
     const addProgress = (msg: string) => setCompileProgress((prev) => [...prev, msg]);
     addProgress('Initiating scenario compilation...');
@@ -1676,7 +1679,10 @@ export const SocialCrisisWizard = () => {
         setScenarioId(String(d.scenario_id));
         if (d.title) setScenarioTitle(String(d.title));
         addProgress(`Scenario created successfully! ID: ${String(d.scenario_id).slice(0, 8)}`);
-        if (d.inject_count != null) addProgress(`Total injects: ${Number(d.inject_count)}`);
+        if (d.inject_count != null) {
+          setCompiledInjectCount(Number(d.inject_count));
+          addProgress(`Total injects: ${Number(d.inject_count)}`);
+        }
         setCompiling(false);
         return;
       }
@@ -1709,7 +1715,10 @@ export const SocialCrisisWizard = () => {
             setScenarioId(String(d.scenario_id));
             if (d.title) setScenarioTitle(String(d.title));
             addProgress(`Scenario created successfully! ID: ${String(d.scenario_id).slice(0, 8)}`);
-            if (d.inject_count != null) addProgress(`Total injects: ${Number(d.inject_count)}`);
+            if (d.inject_count != null) {
+              setCompiledInjectCount(Number(d.inject_count));
+              addProgress(`Total injects: ${Number(d.inject_count)}`);
+            }
             setCompiling(false);
             return;
           }
@@ -1803,6 +1812,35 @@ export const SocialCrisisWizard = () => {
   const totalTeamInjects = useMemo(() => {
     return Object.values(teamStorylines).reduce((sum, injects) => sum + injects.length, 0);
   }, [teamStorylines]);
+
+  /**
+   * Every inject the wizard will send to compile, in the same layers the server persists them:
+   * universal storyline, team storylines, shared (convergence) injects, convergence gates, and the
+   * stakeholder- and page-authored injects (carriers' emails and calls, pressure-page statements).
+   * The server adds the strategy-window beats on top at compile, so the persisted count
+   * (`compiledInjectCount`) can be a little higher than this.
+   */
+  const authoredInjects = useMemo(() => {
+    const pageAuthored = stakeholderInjects.filter(
+      (i) => !!(i.delivery_config as Record<string, unknown> | undefined)?.page_org_key,
+    ).length;
+    const stakeholderAuthored = stakeholderInjects.length - pageAuthored;
+    const total =
+      storylineInjects.length +
+      totalTeamInjects +
+      sharedInjects.length +
+      convergenceGates.length +
+      stakeholderInjects.length;
+    const parts = [
+      `${storylineInjects.length} storyline`,
+      `${totalTeamInjects} team`,
+      `${sharedInjects.length} shared`,
+      `${convergenceGates.length} gates`,
+    ];
+    if (stakeholderAuthored > 0) parts.push(`${stakeholderAuthored} from contacts`);
+    if (pageAuthored > 0) parts.push(`${pageAuthored} page statements`);
+    return { total, breakdown: parts.join(' · ') };
+  }, [storylineInjects, totalTeamInjects, sharedInjects, convergenceGates, stakeholderInjects]);
 
   const crisisLabel = useMemo(() => {
     if (!crisisDescription) return 'Not specified';
@@ -3082,9 +3120,9 @@ export const SocialCrisisWizard = () => {
                   'var(--f-intel)',
                 )}
                 {kpi(
-                  storylineInjects.length + totalTeamInjects + sharedInjects.length,
+                  authoredInjects.total,
                   'injects',
-                  `${storylineInjects.length} storyline · ${totalTeamInjects} team · ${sharedInjects.length} shared`,
+                  `${authoredInjects.breakdown} · strategy beats added at compile`,
                   'var(--brand)',
                 )}
                 {kpi(
@@ -3777,7 +3815,8 @@ export const SocialCrisisWizard = () => {
               </div>
               <div className="wr-kpis onDark mx-auto mt-5" style={{ maxWidth: 560 }}>
                 <div>
-                  <b>{storylineInjects.length + totalTeamInjects + sharedInjects.length}</b>
+                  {/* What the server persisted; falls back to the wizard's own total pre-result. */}
+                  <b>{compiledInjectCount ?? authoredInjects.total}</b>
                   <span>injects</span>
                 </div>
                 <div>
