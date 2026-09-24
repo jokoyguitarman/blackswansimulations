@@ -10,6 +10,9 @@ import { IncomingCallToast } from './IncomingCallToast';
 import { useWebRTC } from '../../hooks/useWebRTC';
 import { LinkPreviewCard } from '../SimDevice/LinkPreviewCard';
 
+// Several lines per message received; production consoles retain every logged object.
+const debugLog: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
+
 interface Channel {
   id: string;
   name: string;
@@ -410,7 +413,7 @@ export const ChatInterface = ({
           optimisticMessageContentRef.current === payload.content);
 
       if (isOptimisticMatch) {
-        console.log('[ChatInterface] Realtime message matches optimistic message, replacing:', {
+        debugLog('[ChatInterface] Realtime message matches optimistic message, replacing:', {
           optimisticContent: optimisticMessageContentRef.current,
           realMessageId: payload.id,
         });
@@ -492,7 +495,7 @@ export const ChatInterface = ({
                 (payload.sender_id === user?.id && m.sender_id === user?.id);
 
               if (contentMatch && senderMatch) {
-                console.log('[ChatInterface] Removing optimistic message in replacement:', {
+                debugLog('[ChatInterface] Removing optimistic message in replacement:', {
                   optimisticId: m.id,
                   realId: payload.id,
                   content: m.content,
@@ -506,12 +509,12 @@ export const ChatInterface = ({
           // Check if real message already exists
           const exists = filtered.some((m) => m.id === payload.id);
           if (exists) {
-            console.log('[ChatInterface] Real message already exists, skipping:', payload.id);
+            debugLog('[ChatInterface] Real message already exists, skipping:', payload.id);
             return filtered;
           }
 
           // Add real message
-          console.log('[ChatInterface] Replacing optimistic with real message:', {
+          debugLog('[ChatInterface] Replacing optimistic with real message:', {
             optimisticContent: optimisticMessageContentRef.current,
             realId: payload.id,
             senderName: message.sender?.full_name || 'Unknown',
@@ -541,7 +544,7 @@ export const ChatInterface = ({
       // Hard requirement: Message must be for current session
       if (payload.session_id !== sessionId) {
         if (import.meta.env.DEV)
-          console.log('[ChatInterface] Message rejected - not for current session:', {
+          debugLog('[ChatInterface] Message rejected - not for current session:', {
             messageSession: payload.session_id,
             currentSession: sessionId,
           });
@@ -577,7 +580,7 @@ export const ChatInterface = ({
           } else {
             // Participants list might not be loaded yet - try to fetch via API
             // Use the channels API endpoint which has proper access
-            console.log('[ChatInterface] Sender not in participants list, fetching via API:', {
+            debugLog('[ChatInterface] Sender not in participants list, fetching via API:', {
               senderId: payload.sender_id,
               currentParticipantsCount: participants.length,
             });
@@ -585,7 +588,7 @@ export const ChatInterface = ({
             try {
               const result = await api.channels.getParticipants(sessionId);
               const allParticipants = result.data || [];
-              console.log('[ChatInterface] Fetched participants via API:', {
+              debugLog('[ChatInterface] Fetched participants via API:', {
                 totalParticipants: allParticipants.length,
                 senderId: payload.sender_id,
               });
@@ -595,7 +598,7 @@ export const ChatInterface = ({
               );
 
               if (foundParticipant) {
-                console.log('[ChatInterface] Found sender in API response:', {
+                debugLog('[ChatInterface] Found sender in API response:', {
                   id: foundParticipant.id,
                   full_name: foundParticipant.full_name,
                   role: foundParticipant.role,
@@ -611,7 +614,7 @@ export const ChatInterface = ({
                 // Update participants list for future messages
                 setParticipants((prev) => {
                   if (!prev.find((p) => p.id === foundParticipant.id)) {
-                    console.log(
+                    debugLog(
                       '[ChatInterface] Adding sender to participants list:',
                       foundParticipant.full_name,
                     );
@@ -640,7 +643,7 @@ export const ChatInterface = ({
                   const trainerInfo = session?.trainer || null;
 
                   if (trainerId === payload.sender_id && trainerInfo) {
-                    console.log('[ChatInterface] Sender is trainer, using trainer info:', {
+                    debugLog('[ChatInterface] Sender is trainer, using trainer info:', {
                       id: trainerInfo.id || trainerId,
                       full_name: trainerInfo.full_name,
                       role: trainerInfo.role || 'trainer',
@@ -656,7 +659,7 @@ export const ChatInterface = ({
                     setParticipants((prev) => {
                       const trainerParticipantId = trainerInfo.id || trainerId;
                       if (!prev.find((p) => p.id === trainerParticipantId)) {
-                        console.log('[ChatInterface] Adding trainer to participants list');
+                        debugLog('[ChatInterface] Adding trainer to participants list');
                         return [
                           ...prev,
                           {
@@ -702,7 +705,7 @@ export const ChatInterface = ({
 
       if (shouldQueue) {
         // Queue message for later - channel not selected or doesn't match
-        console.log('[ChatInterface] Queueing message - channel not selected or mismatch:', {
+        debugLog('[ChatInterface] Queueing message - channel not selected or mismatch:', {
           messageChannel: payload.channel_id,
           currentChannel,
           hasCurrentChannel: !!currentChannel,
@@ -743,7 +746,7 @@ export const ChatInterface = ({
                   // Check if message already queued (prevent duplicates)
                   if (!channelQueue.some((m) => m.id === message.id)) {
                     newQueue.set(payload.channel_id, [...channelQueue, message]);
-                    console.log('[ChatInterface] Message queued for channel:', {
+                    debugLog('[ChatInterface] Message queued for channel:', {
                       channelId: payload.channel_id,
                       queueSize: channelQueue.length + 1,
                       hasSender: !!message.sender,
@@ -774,7 +777,7 @@ export const ChatInterface = ({
               const channelQueue = newQueue.get(payload.channel_id) || [];
               if (!channelQueue.some((m) => m.id === message.id)) {
                 newQueue.set(payload.channel_id, [...channelQueue, message]);
-                console.log('[ChatInterface] Message queued for channel:', {
+                debugLog('[ChatInterface] Message queued for channel:', {
                   channelId: payload.channel_id,
                   queueSize: channelQueue.length + 1,
                 });
@@ -792,7 +795,7 @@ export const ChatInterface = ({
       }
 
       // Channel matches - add message immediately
-      console.log('[ChatInterface] Processing message for current channel:', {
+      debugLog('[ChatInterface] Processing message for current channel:', {
         messageChannel: payload.channel_id,
         currentChannel,
         messageId: payload.id,
@@ -800,7 +803,7 @@ export const ChatInterface = ({
 
       createMessage()
         .then((message) => {
-          console.log('[ChatInterface] Created message with sender info:', {
+          debugLog('[ChatInterface] Created message with sender info:', {
             messageId: message.id,
             senderId: message.sender_id,
             senderName: message.sender?.full_name || 'Unknown',
@@ -883,7 +886,7 @@ export const ChatInterface = ({
                 );
 
                 if (foundParticipant) {
-                  console.log('[ChatInterface] Found sender info after retry, updating message:', {
+                  debugLog('[ChatInterface] Found sender info after retry, updating message:', {
                     messageId: message.id,
                     senderName: foundParticipant.full_name,
                     retryCount,
@@ -1003,14 +1006,14 @@ export const ChatInterface = ({
             );
           } else {
             const messageCount = data?.length || 0;
-            console.log('[ChatInterface] RLS allows SELECT - can read', messageCount, 'messages');
-            console.log(
+            debugLog('[ChatInterface] RLS allows SELECT - can read', messageCount, 'messages');
+            debugLog(
               '[ChatInterface] Realtime should work. If INSERT events do not arrive, check:',
             );
-            console.log(
+            debugLog(
               '[ChatInterface]    1. Realtime is enabled: SELECT * FROM pg_publication_tables WHERE pubname = supabase_realtime AND tablename = chat_messages',
             );
-            console.log('[ChatInterface]    2. Both users are participants in the session');
+            debugLog('[ChatInterface]    2. Both users are participants in the session');
           }
         } catch (err) {
           console.error('[ChatInterface] Failed to test RLS access:', err);
@@ -1020,7 +1023,7 @@ export const ChatInterface = ({
       // Run test once when connected
       testRLSAccess();
 
-      console.log(`[ChatInterface] Realtime subscription status:`, {
+      debugLog(`[ChatInterface] Realtime subscription status:`, {
         sessionId,
         connected: realtimeConnected,
         error: realtimeError?.message || null,
@@ -1028,10 +1031,10 @@ export const ChatInterface = ({
       });
 
       if (realtimeConnected) {
-        console.log('[ChatInterface] ✅ Realtime is connected - waiting for INSERT events');
-        console.log('[ChatInterface] 💡 When a message is sent, you should see:');
-        console.log('[ChatInterface]   1. [useRealtime] ✅✅✅ INSERT event received');
-        console.log('[ChatInterface]   2. [ChatInterface] ✅✅✅ Realtime INSERT event received');
+        debugLog('[ChatInterface] ✅ Realtime is connected - waiting for INSERT events');
+        debugLog('[ChatInterface] 💡 When a message is sent, you should see:');
+        debugLog('[ChatInterface]   1. [useRealtime] ✅✅✅ INSERT event received');
+        debugLog('[ChatInterface]   2. [ChatInterface] ✅✅✅ Realtime INSERT event received');
       } else if (realtimeError) {
         console.error('[ChatInterface] ❌ Realtime subscription error:', realtimeError);
         console.error(
@@ -1123,7 +1126,7 @@ export const ChatInterface = ({
       return; // No messages need updating
     }
 
-    console.log('[ChatInterface] Found messages without sender info:', {
+    debugLog('[ChatInterface] Found messages without sender info:', {
       count: messagesWithoutSender.length,
       participantsCount: participants.length,
       messageIds: messagesWithoutSender.map((m) => m.id),
@@ -1132,7 +1135,7 @@ export const ChatInterface = ({
 
     // If participants list is empty, fetch it first
     if (participants.length === 0) {
-      console.log('[ChatInterface] Participants list empty, fetching participants');
+      debugLog('[ChatInterface] Participants list empty, fetching participants');
       loadParticipants();
       return; // Will retry after participants load
     }
@@ -1143,7 +1146,7 @@ export const ChatInterface = ({
       if (!m.sender && m.sender_id) {
         const participant = participants.find((p) => p.id === m.sender_id);
         if (participant) {
-          console.log('[ChatInterface] Found sender in participants list, updating message:', {
+          debugLog('[ChatInterface] Found sender in participants list, updating message:', {
             messageId: m.id,
             senderName: participant.full_name,
           });
@@ -1164,14 +1167,14 @@ export const ChatInterface = ({
 
     // Update messages if we found any senders in participants list
     if (hasUpdates) {
-      console.log('[ChatInterface] Updating messages with sender info from participants list');
+      debugLog('[ChatInterface] Updating messages with sender info from participants list');
       setMessages(updatedMessages);
     }
 
     // For messages still without sender info, try fetching via API
     const stillMissing = updatedMessages.filter((m) => !m.sender && m.sender_id);
     if (stillMissing.length > 0) {
-      console.log('[ChatInterface] Some senders still not found, fetching via API:', {
+      debugLog('[ChatInterface] Some senders still not found, fetching via API:', {
         count: stillMissing.length,
         senderIds: stillMissing.map((m) => m.sender_id),
       });
@@ -1181,7 +1184,7 @@ export const ChatInterface = ({
         .getParticipants(sessionId)
         .then((result) => {
           const allParticipants = result.data || [];
-          console.log('[ChatInterface] Fetched participants via API in useEffect:', {
+          debugLog('[ChatInterface] Fetched participants via API in useEffect:', {
             totalParticipants: allParticipants.length,
             missingSenderIds: stillMissing.map((m) => m.sender_id),
           });
@@ -1193,7 +1196,7 @@ export const ChatInterface = ({
                 (p: Participant) => p.id === m.sender_id,
               );
               if (foundParticipant) {
-                console.log('[ChatInterface] Found sender via API, updating message:', {
+                debugLog('[ChatInterface] Found sender via API, updating message:', {
                   messageId: m.id,
                   senderName: foundParticipant.full_name,
                 });
@@ -1221,7 +1224,7 @@ export const ChatInterface = ({
                 (p: Participant) => !prev.find((existing) => existing.id === p.id),
               );
               if (newParticipants.length > 0) {
-                console.log(
+                debugLog(
                   '[ChatInterface] Adding',
                   newParticipants.length,
                   'new participants to list',
@@ -1254,7 +1257,7 @@ export const ChatInterface = ({
                   const trainerMessages = stillMissing.filter((m) => m.sender_id === trainerId);
 
                   if (trainerMessages.length > 0) {
-                    console.log('[ChatInterface] Found trainer, updating messages:', {
+                    debugLog('[ChatInterface] Found trainer, updating messages:', {
                       trainerId,
                       trainerName: trainerInfo.full_name,
                       messageCount: trainerMessages.length,
@@ -1341,7 +1344,7 @@ export const ChatInterface = ({
       const result = await api.channels.getParticipants(sessionId);
       const loadedParticipants = result.data || [];
       setParticipants(loadedParticipants);
-      console.log('[ChatInterface] Loaded participants:', loadedParticipants.length);
+      debugLog('[ChatInterface] Loaded participants:', loadedParticipants.length);
     } catch (error) {
       console.error('Failed to load participants:', error);
     }
@@ -1378,7 +1381,7 @@ export const ChatInterface = ({
         const channelQueue = prev.get(channelId);
 
         if (channelQueue && channelQueue.length > 0) {
-          console.log('[ChatInterface] Processing queued messages after loadMessages:', {
+          debugLog('[ChatInterface] Processing queued messages after loadMessages:', {
             channelId,
             queuedCount: channelQueue.length,
             loadedCount: loadedMessages.length,
@@ -1389,7 +1392,7 @@ export const ChatInterface = ({
           const newMessages = channelQueue.filter((m) => !loadedIds.has(m.id));
 
           if (newMessages.length > 0) {
-            console.log(
+            debugLog(
               '[ChatInterface] Merging',
               newMessages.length,
               'queued messages with loaded messages',
@@ -1555,7 +1558,7 @@ export const ChatInterface = ({
       const result = await api.channels.sendMessage(channelId, messageContent);
       const realMessageId = (result.data as { id?: string })?.id || null;
       optimisticRealIdRef.current = realMessageId;
-      console.log('[ChatInterface] Message sent successfully, waiting for Realtime:', {
+      debugLog('[ChatInterface] Message sent successfully, waiting for Realtime:', {
         messageId: realMessageId,
         tempId,
         content: messageContent,

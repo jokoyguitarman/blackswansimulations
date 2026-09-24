@@ -376,7 +376,7 @@ textarea.wr-field {
 }
 .wr-reveal {
   animation: wr-fadeUp 0.5s var(--wr-ease) both;
-  animation-delay: calc(var(--i, 0) * 60ms);
+  animation-delay: calc(var(--i, 0) * 20ms);
 }
 @keyframes wr-fadeUp {
   from {

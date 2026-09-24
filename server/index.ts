@@ -1,4 +1,5 @@
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
@@ -9,6 +10,7 @@ import { logger } from './lib/logger.js';
 import { healthRouter } from './routes/health.js';
 import { scenariosRouter } from './routes/scenarios.js';
 import { scenarioStakeholdersRouter } from './routes/scenarioStakeholders.js';
+import { dashboardRouter } from './routes/dashboard.js';
 import { execDecisionsRouter } from './routes/execDecisions.js';
 import { sessionsRouter } from './routes/sessions.js';
 import { channelsRouter } from './routes/channels.js';
@@ -152,6 +154,10 @@ app.use(
   }),
 );
 
+// Streaming (NDJSON) routes must send `Cache-Control: no-transform`, which compression honours;
+// otherwise their progress lines are buffered until the response ends.
+app.use(compression());
+
 // Per-user rate limiting - significantly increased limits
 // Each authenticated user gets their own limit, preventing one user from affecting others
 const limiter = rateLimit({
@@ -241,6 +247,7 @@ app.use('/api/contact', express.json({ limit: '16kb' }));
 app.use('/api/health', healthRouter);
 app.use('/api/scenarios', scenariosRouter);
 app.use('/api/scenarios', scenarioStakeholdersRouter);
+app.use('/api/dashboard', dashboardRouter);
 app.use('/api/sessions/:id/bots', teammateBotsRouter); // AI teammates (before the generic router)
 app.use('/api/sessions', sessionsRouter);
 app.use('/api/sessions', execDecisionsRouter); // organic executive decisions (generator agent)

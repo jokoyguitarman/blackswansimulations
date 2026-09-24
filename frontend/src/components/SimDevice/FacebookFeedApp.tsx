@@ -430,7 +430,8 @@ export default function FacebookFeedApp() {
       }
     };
     fetchCount();
-    const interval = setInterval(fetchCount, 15000);
+    // Safety net only: notification.created over the socket keeps the badge current.
+    const interval = setInterval(fetchCount, 60000);
     return () => clearInterval(interval);
   }, [sessionId, pageMode, activeView]);
 

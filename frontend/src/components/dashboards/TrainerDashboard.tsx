@@ -1,13 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
+import { getDashboardStats } from '../../lib/dashboardApi';
 import { useAuth } from '../../contexts/AuthContext';
-
-// Mirrors the session shape used in pages/Sessions.tsx (participants included by the API).
-interface SessionRow {
-  status?: string;
-  participants?: Array<{ user_id: string }>;
-}
 
 interface DashboardStats {
   scenarios: number | null;
@@ -27,32 +22,20 @@ export function TrainerDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    Promise.allSettled([api.scenarios.list(), api.sessions.list(1, 50)]).then(
-      ([scenariosResult, sessionsResult]) => {
-        if (cancelled) return;
-        const next: DashboardStats = {
-          scenarios: null,
-          activeSessions: null,
-          totalSessions: null,
-          participants: null,
-        };
-        if (scenariosResult.status === 'fulfilled') {
-          next.scenarios = (scenariosResult.value.data || []).length;
+    getDashboardStats()
+      .then((next) => {
+        if (!cancelled) setStats(next);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setStats({
+            scenarios: null,
+            activeSessions: null,
+            totalSessions: null,
+            participants: null,
+          });
         }
-        if (sessionsResult.status === 'fulfilled') {
-          const rows = (sessionsResult.value.data || []) as SessionRow[];
-          next.totalSessions = sessionsResult.value.count ?? rows.length;
-          next.activeSessions = rows.filter((s) => s.status === 'in_progress').length;
-          const hasParticipants = rows.some((s) => Array.isArray(s.participants));
-          if (hasParticipants) {
-            const uniqueIds = new Set<string>();
-            rows.forEach((s) => s.participants?.forEach((p) => uniqueIds.add(p.user_id)));
-            next.participants = uniqueIds.size;
-          }
-        }
-        setStats(next);
-      },
-    );
+      });
     return () => {
       cancelled = true;
     };

@@ -25,6 +25,15 @@ import { consumeCredit, refundCredit, isAdmin } from '../services/creditService.
 
 const router = Router();
 
+// What the invitation emails read about a session.
+const INVITE_EMAIL_SESSION_COLUMNS =
+  'scheduled_start_time, scenarios(title), trainer:user_profiles!sessions_trainer_id_fkey(full_name)';
+interface InviteEmailSession {
+  scheduled_start_time: string | null;
+  scenarios: { title: string } | null;
+  trainer: { full_name?: string } | null;
+}
+
 // Validation schemas
 const createSessionSchema = z.object({
   body: z.object({
@@ -79,10 +88,12 @@ router.get(
         'Fetching sessions list',
       );
 
+      // Only what the session cards render. Embedding scenarios(*) pulled each scenario's multi-MB
+      // initial_state into every row.
       let query = supabaseAdmin
         .from('sessions')
         .select(
-          '*, scenarios(*), trainer:user_profiles!sessions_trainer_id_fkey(*), session_participants(*, user:user_profiles(*))',
+          'id, status, scenario_id, trainer_id, start_time, end_time, join_token, created_at, scenarios(title, category, difficulty), trainer:user_profiles!sessions_trainer_id_fkey(full_name), participants:session_participants(user_id)',
           { count: 'exact' },
         )
         .order('created_at', { ascending: false });
@@ -1159,6 +1170,7 @@ router.get('/:id', requireAuth, validate(schemas.id), async (req: AuthenticatedR
     const { id } = req.params;
     const user = req.user!;
 
+    // eslint-disable-next-line no-restricted-syntax -- full row: the session screens read current_state
     const { data: session, error: sessionError } = await supabaseAdmin
       .from('sessions')
       .select(
@@ -1754,9 +1766,9 @@ router.post(
       // Get session and trainer details for email
       const { data: sessionDetails } = await supabaseAdmin
         .from('sessions')
-        .select('*, scenarios(title), trainer:user_profiles!sessions_trainer_id_fkey(full_name)')
+        .select(INVITE_EMAIL_SESSION_COLUMNS)
         .eq('id', id)
-        .single();
+        .single<InviteEmailSession>();
 
       // Send invitation email (non-blocking)
       if (participantUser?.email && sessionDetails) {
@@ -1931,11 +1943,9 @@ router.post(
           // Send invitation email
           const { data: sessionDetails } = await supabaseAdmin
             .from('sessions')
-            .select(
-              '*, scenarios(title), trainer:user_profiles!sessions_trainer_id_fkey(full_name)',
-            )
+            .select(INVITE_EMAIL_SESSION_COLUMNS)
             .eq('id', id)
-            .single();
+            .single<InviteEmailSession>();
 
           const { data: participantUser } = await supabaseAdmin
             .from('user_profiles')
@@ -1988,9 +1998,9 @@ router.post(
         // Send invitation email
         const { data: sessionDetails } = await supabaseAdmin
           .from('sessions')
-          .select('*, scenarios(title), trainer:user_profiles!sessions_trainer_id_fkey(full_name)')
+          .select(INVITE_EMAIL_SESSION_COLUMNS)
           .eq('id', id)
-          .single();
+          .single<InviteEmailSession>();
 
         const { data: participantUser } = await supabaseAdmin
           .from('user_profiles')
@@ -2053,9 +2063,9 @@ router.post(
         // Send invitation email
         const { data: sessionDetails } = await supabaseAdmin
           .from('sessions')
-          .select('*, scenarios(title), trainer:user_profiles!sessions_trainer_id_fkey(full_name)')
+          .select(INVITE_EMAIL_SESSION_COLUMNS)
           .eq('id', id)
-          .single();
+          .single<InviteEmailSession>();
 
         if (sessionDetails && data) {
           sendPendingInvitationEmail({
@@ -2111,9 +2121,9 @@ router.post(
       // Send invitation email
       const { data: sessionDetails } = await supabaseAdmin
         .from('sessions')
-        .select('*, scenarios(title), trainer:user_profiles!sessions_trainer_id_fkey(full_name)')
+        .select(INVITE_EMAIL_SESSION_COLUMNS)
         .eq('id', id)
-        .single();
+        .single<InviteEmailSession>();
 
       if (sessionDetails && data) {
         sendPendingInvitationEmail({

@@ -201,7 +201,7 @@ export default function OrgPageView({
         }),
       });
       setComposeText('');
-      setTimeout(loadPage, 1000);
+      loadPage();
     } catch {
       /* ignore */
     }
@@ -242,7 +242,7 @@ export default function OrgPageView({
       });
       setCommentInput('');
       setReplyingToComment(null);
-      setTimeout(() => openComments(selectedPost), 800);
+      openComments(selectedPost);
     } catch {
       /* ignore */
     }

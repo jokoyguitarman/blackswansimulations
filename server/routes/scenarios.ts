@@ -158,43 +158,50 @@ const updateScenarioSchema = z.object({
   }),
 });
 
+// Card fields only. initial_state and insider_knowledge run to several MB across the library;
+// the detail routes load them per scenario.
+const LIST_COLUMNS =
+  'id, title, description, category, difficulty, duration_minutes, objectives, is_active, created_at, country:initial_state->>country';
+// Read for ?include=summary and stripped before the response.
+const SUMMARY_SOURCE_COLUMNS =
+  'summary_stakeholders:initial_state->stakeholders, summary_orgs:initial_state->orgs';
+
+interface CastPreviewMember {
+  id?: string;
+  name?: string;
+  title?: string;
+  org_key: string | null;
+  page_org_key: string | null;
+  relationship?: string;
+}
+
 /**
- * Template-inject counts per scenario for the library summary. A grouped `IN` select would be
- * capped at PostgREST's 1000-row limit (97 scenarios × ~150 injects), so count per scenario
- * with HEAD requests in parallel batches and cache the result briefly.
+ * The expanded library card shows principals (no roster entries or groups) from the first three
+ * organisations, four per organisation, so only that much of the cast is sent.
  */
-const injectCountCache = new Map<string, { at: number; n: number }>();
-const INJECT_COUNT_TTL_MS = 60_000;
-async function injectCountsFor(ids: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  const now = Date.now();
-  const stale = ids.filter((id) => {
-    const hit = injectCountCache.get(id);
-    if (hit && now - hit.at < INJECT_COUNT_TTL_MS) {
-      out.set(id, hit.n);
-      return false;
+function castPreview(stakeholders: Array<Record<string, unknown>>) {
+  const groups = new Map<string, { key: string; count: number; members: CastPreviewMember[] }>();
+  for (const st of stakeholders) {
+    if (st.tier === 'roster' || st.kind === 'group') continue;
+    const key = (st.org_key as string | null | undefined) ?? '__common';
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, count: 0, members: [] };
+      groups.set(key, group);
     }
-    return true;
-  });
-  const BATCH = 12;
-  for (let i = 0; i < stale.length; i += BATCH) {
-    const chunk = stale.slice(i, i + BATCH);
-    const results = await Promise.all(
-      chunk.map((id) =>
-        supabaseAdmin
-          .from('scenario_injects')
-          .select('id', { count: 'exact', head: true })
-          .eq('scenario_id', id)
-          .is('session_id', null),
-      ),
-    );
-    results.forEach((r, j) => {
-      const n = r.count ?? 0;
-      out.set(chunk[j], n);
-      injectCountCache.set(chunk[j], { at: now, n });
-    });
+    group.count += 1;
+    if (group.members.length < 4) {
+      group.members.push({
+        id: st.id as string | undefined,
+        name: st.name as string | undefined,
+        title: st.title as string | undefined,
+        org_key: (st.org_key as string | null | undefined) ?? null,
+        page_org_key: (st.page_org_key as string | null | undefined) ?? null,
+        relationship: st.relationship as string | undefined,
+      });
+    }
   }
-  return out;
+  return [...groups.values()].slice(0, 3);
 }
 
 // Get all scenarios (active only for non-trainers)
@@ -202,10 +209,11 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
     const isTrainer = user.role === 'trainer' || user.role === 'admin';
+    const withSummary = req.query.include === 'summary';
 
     let query = supabaseAdmin
       .from('scenarios')
-      .select('*')
+      .select(withSummary ? `${LIST_COLUMNS}, ${SUMMARY_SOURCE_COLUMNS}` : LIST_COLUMNS)
       .order('created_at', { ascending: false });
 
     // Visibility: admins see every scenario; trainers see only their own
@@ -224,32 +232,35 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to fetch scenarios' });
     }
 
-    // ?include=summary — per-card counts for the scenario library (spec §2.1). Additive:
-    // without the flag the payload is unchanged. Three grouped queries, aggregated in memory.
-    if (req.query.include === 'summary' && data && data.length > 0) {
+    const rows = (data ?? []) as unknown as Array<Record<string, unknown>>;
+
+    // ?include=summary — per-card counts for the scenario library (spec §2.1).
+    if (withSummary && rows.length > 0) {
       try {
-        const rows = data as Array<Record<string, unknown>>;
         const ids = rows.map((r) => r.id as string);
-        const [teamsRes, sessionsRes, injectCounts] = await Promise.all([
-          supabaseAdmin
-            .from('scenario_teams')
-            .select('scenario_id')
-            .in('scenario_id', ids)
-            .limit(5000),
+        const [countsRes, sessionsRes] = await Promise.all([
+          supabaseAdmin.rpc('scenario_library_counts', { p_scenario_ids: ids }),
           supabaseAdmin
             .from('sessions')
             .select('id, scenario_id, status, start_time, created_at')
             .in('scenario_id', ids)
             .order('created_at', { ascending: false })
             .limit(5000),
-          injectCountsFor(ids),
         ]);
-        const countBy = (list: Array<{ scenario_id: string }> | null) => {
-          const m = new Map<string, number>();
-          for (const r of list ?? []) m.set(r.scenario_id, (m.get(r.scenario_id) ?? 0) + 1);
-          return m;
-        };
-        const teamCounts = countBy(teamsRes.data as Array<{ scenario_id: string }> | null);
+        if (countsRes.error) throw countsRes.error;
+        const counts = new Map<string, { teams: number; injects: number; crowd: number }>();
+        for (const c of (countsRes.data ?? []) as Array<{
+          scenario_id: string;
+          teams: number;
+          injects: number;
+          crowd: number;
+        }>) {
+          counts.set(c.scenario_id, {
+            teams: Number(c.teams),
+            injects: Number(c.injects),
+            crowd: Number(c.crowd),
+          });
+        }
         const sessionsByScenario = new Map<
           string,
           Array<{ id: string; status: string; start_time: string | null; created_at: string }>
@@ -268,11 +279,11 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
         const LIVE = new Set(['in_progress', 'paused']);
         for (const row of rows) {
           const id = row.id as string;
-          const is = (row.initial_state ?? {}) as Record<string, unknown>;
-          const stakeholders = Array.isArray(is.stakeholders) ? is.stakeholders : [];
-          const personas = Array.isArray(is.npc_personas) ? is.npc_personas : [];
-          const registry = Array.isArray(is.orgs)
-            ? (is.orgs as Array<Record<string, unknown>>)
+          const stakeholders = Array.isArray(row.summary_stakeholders)
+            ? (row.summary_stakeholders as Array<Record<string, unknown>>)
+            : [];
+          const registry = Array.isArray(row.summary_orgs)
+            ? (row.summary_orgs as Array<Record<string, unknown>>)
             : [];
           const orgs = registry
             .map((o) => ({
@@ -294,12 +305,14 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
             .filter(Boolean)
             .sort()
             .pop();
+          const c = counts.get(id);
           row.summary = {
-            teams: teamCounts.get(id) ?? 0,
-            injects: injectCounts.get(id) ?? 0,
+            teams: c?.teams ?? 0,
+            injects: c?.injects ?? 0,
             contacts: stakeholders.length,
-            crowd: personas.length,
+            crowd: c?.crowd ?? 0,
             orgs,
+            cast: castPreview(stakeholders),
             live_session_id: live?.id ?? null,
             live_session_started_at: live?.start_time ?? null,
             sessions_run: completed.length,
@@ -307,12 +320,16 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
           };
         }
       } catch (summaryErr) {
-        // Never fail the list because of the summary — the library degrades to client-side counts.
+        // Never fail the list because of the summary; cards render without counts.
         logger.warn({ error: summaryErr, userId: user.id }, 'Scenario summary aggregation failed');
+      }
+      for (const row of rows) {
+        delete row.summary_stakeholders;
+        delete row.summary_orgs;
       }
     }
 
-    res.json({ data });
+    res.json({ data: rows });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios');
     res.status(500).json({ error: 'Internal server error' });
@@ -325,6 +342,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
     const { id } = req.params;
     const user = req.user!;
 
+    // eslint-disable-next-line no-restricted-syntax -- full row: several detail screens read it whole
     const { data, error } = await supabaseAdmin.from('scenarios').select('*').eq('id', id).single();
 
     if (error) {
@@ -927,7 +945,6 @@ router.post(
         { injectId: data.id, scenarioId: id, userId: req.user!.id },
         'Inject created by trainer',
       );
-      injectCountCache.delete(id);
       res.status(201).json({ data });
     } catch (err) {
       logger.error({ error: err }, 'Error in POST /scenarios/:id/injects');
@@ -960,7 +977,6 @@ router.delete('/:id/injects/:injectId', requireAuth, async (req: AuthenticatedRe
     }
 
     logger.info({ injectId, scenarioId: id, userId: req.user!.id }, 'Inject deleted by trainer');
-    injectCountCache.delete(id);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ error: err }, 'Error in DELETE /scenarios/:id/injects/:injectId');
@@ -1755,6 +1771,7 @@ router.post(
       const { title: customTitle } = req.body;
 
       // Get the original scenario
+      // eslint-disable-next-line no-restricted-syntax -- full row: every column is copied
       const { data: originalScenario, error: fetchError } = await supabaseAdmin
         .from('scenarios')
         .select('*')
@@ -1866,10 +1883,9 @@ router.post(
         }
       }
 
-      // Fetch the complete cloned scenario with injects
       const { data: completeScenario } = await supabaseAdmin
         .from('scenarios')
-        .select('*')
+        .select(LIST_COLUMNS)
         .eq('id', newScenario.id)
         .single();
 

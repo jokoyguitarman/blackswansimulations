@@ -2,6 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
+// Fires per event with object payloads; production consoles retain every one.
+const debugLog: typeof console.log = import.meta.env.DEV ? console.log.bind(console) : () => {};
+
 /**
  * React Hook for Supabase Realtime subscriptions
  * Handles subscribing to table changes with filtering and automatic cleanup
@@ -77,7 +80,7 @@ export const useRealtime = <T = Record<string, unknown>>(
       } = await supabase.auth.getSession();
       if (session?.access_token) {
         supabase.realtime.setAuth(session.access_token);
-        console.log(`[useRealtime] Set Realtime auth token for ${table}`);
+        debugLog(`[useRealtime] Set Realtime auth token for ${table}`);
       } else {
         console.warn(`[useRealtime] No session found - Realtime may not work with RLS`);
       }
@@ -113,7 +116,7 @@ export const useRealtime = <T = Record<string, unknown>>(
           ...filterConfig,
         },
         (payload) => {
-          console.log(`[useRealtime] ✅✅✅ INSERT event received for ${table}!`, {
+          debugLog(`[useRealtime] ✅✅✅ INSERT event received for ${table}!`, {
             event: 'INSERT',
             table,
             filter,
@@ -125,7 +128,7 @@ export const useRealtime = <T = Record<string, unknown>>(
           // Prevent duplicate processing
           const id = (payload.new as { id?: string })?.id;
           if (id && processedIdsRef.current.has(id)) {
-            console.log(`[useRealtime] Skipping duplicate ID: ${id}`);
+            debugLog(`[useRealtime] Skipping duplicate ID: ${id}`);
             return;
           }
           if (id) {
@@ -139,7 +142,7 @@ export const useRealtime = <T = Record<string, unknown>>(
 
           // Use ref to get latest callback
           if (onInsertRef.current) {
-            console.log(`[useRealtime] Calling onInsert handler for ${table}`);
+            debugLog(`[useRealtime] Calling onInsert handler for ${table}`);
             try {
               onInsertRef.current(payload.new as T);
             } catch (err) {
@@ -190,7 +193,7 @@ export const useRealtime = <T = Record<string, unknown>>(
         },
       )
       .subscribe((status, err) => {
-        console.log(
+        debugLog(
           `[useRealtime] Subscription status for ${table}${filter ? ` (filter: ${filter})` : ''}:`,
           status,
           err ? { error: err } : '',
@@ -198,10 +201,10 @@ export const useRealtime = <T = Record<string, unknown>>(
         setIsConnected(status === 'SUBSCRIBED');
         if (status === 'SUBSCRIBED') {
           setError(null);
-          console.log(
+          debugLog(
             `[useRealtime] ✅ Successfully subscribed to ${table}${filter ? ` with filter ${filter}` : ' (no filter - subscribing to all)'}`,
           );
-          console.log(
+          debugLog(
             `[useRealtime] 💡 Waiting for INSERT events. When a row is inserted, you should see: "[useRealtime] ✅ INSERT event received"`,
           );
         } else if (status === 'CHANNEL_ERROR') {

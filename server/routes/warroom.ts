@@ -388,6 +388,7 @@ router.post(
 
       res.setHeader('Content-Type', 'application/x-ndjson');
       res.setHeader('Transfer-Encoding', 'chunked');
+      res.setHeader('Cache-Control', 'no-cache, no-transform');
       res.flushHeaders?.();
 
       const onProgress = (phase: WarroomProgressPhase, message: string) => {

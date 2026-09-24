@@ -49,13 +49,20 @@ class WebSocketClient {
         : import.meta.env.VITE_API_URL || window.location.origin;
 
       this.socket = io(wsUrl, {
-        auth: {
-          token: session.access_token,
+        // Called on every (re)connect: a token captured once expires after an hour, and the server
+        // rejecting it stops socket.io from reconnecting at all.
+        auth: (cb) => {
+          supabase.auth
+            .getSession()
+            .then(({ data }) => cb({ token: data.session?.access_token ?? session.access_token }))
+            .catch(() => cb({ token: session.access_token }));
         },
         transports: ['websocket', 'polling'],
         reconnection: true,
+        reconnectionAttempts: Infinity,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
+        reconnectionDelayMax: 30000,
+        randomizationFactor: 0.5,
       });
 
       this.socket.on('connect', () => {

@@ -25,5 +25,16 @@ export default tseslint.config(js.configs.recommended, ...tseslint.configs.recom
       'error',
       { args: 'after-used', argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
     ],
+    // sessions and scenarios rows carry multi-MB JSON (current_state, initial_state,
+    // insider_knowledge). Genuine full-row reads opt out with an eslint-disable comment.
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector:
+          "CallExpression[callee.property.name='select'][callee.object.callee.property.name='from'][callee.object.arguments.0.value=/^(sessions|scenarios)$/][arguments.0.value=/^\\s*\\*/]",
+        message:
+          "Don't select('*') from sessions or scenarios: list the columns the route needs.",
+      },
+    ],
   },
 });

@@ -67,7 +67,7 @@ const orgIcon = (o: ScenarioSummaryOrg) => {
 const CastChips = ({ s, onDark = false }: { s: Scenario; onDark?: boolean }) => {
   const orgs = s.summary?.orgs ?? [];
   if (orgs.length === 0) {
-    const country = s.country ?? (s.initial_state?.country as string | undefined);
+    const country = s.country;
     if (!country) return null;
     return (
       <div className={`wr-cast ${onDark ? 'onDark' : ''}`}>
@@ -504,7 +504,7 @@ export const Scenarios = () => {
               {liveScenarios.map((s) => (
                 <div key={s.id} className="wr-liverow">
                   <div className="band wr-artband">
-                    <img className="wr-art" src={artFor(s, 'sm')} alt="" />
+                    <img className="wr-art" src={artFor(s, 'sm')} alt="" loading="lazy" />
                     <span className="live">
                       <span className="wr-livedot" /> Live
                     </span>
@@ -608,7 +608,7 @@ export const Scenarios = () => {
                     return (
                       <tr key={s.id}>
                         <td>
-                          <img className="wr-thumb" src={artFor(s, 'sm')} alt="" />
+                          <img className="wr-thumb" src={artFor(s, 'sm')} alt="" loading="lazy" />
                         </td>
                         <td>
                           <button
@@ -851,7 +851,7 @@ const Poster = ({
   return (
     <article
       className="wr-poster wr-reveal"
-      style={{ '--g': family, '--i': Math.min(index, 8) } as CSSProperties}
+      style={{ '--g': family, '--i': Math.min(index, 4) } as CSSProperties}
     >
       <div className="band wr-artband center" onClick={onExpand} role="button" tabIndex={0}>
         <img className="wr-art" src={artFor(s, 'sm')} alt="" loading="lazy" />
@@ -929,17 +929,6 @@ const Poster = ({
   );
 };
 
-interface PeekStakeholder {
-  id?: string;
-  name?: string;
-  title?: string;
-  org_key?: string | null;
-  page_org_key?: string | null;
-  relationship?: string;
-  tier?: string;
-  kind?: string;
-}
-
 const ExpandedPoster = ({
   s,
   lock,
@@ -972,22 +961,11 @@ const ExpandedPoster = ({
     };
   }, [s.id, onCollapse]);
 
-  const initialState = (s.initial_state ?? {}) as Record<string, unknown>;
-  const stakeholders = (
-    Array.isArray(initialState.stakeholders) ? initialState.stakeholders : []
-  ) as PeekStakeholder[];
+  const contacts = s.summary?.contacts ?? 0;
   const orgs = s.summary?.orgs ?? [];
   const orgName = (key: string | null | undefined) =>
     orgs.find((o) => o.org_key === key)?.name ?? (key ? key : 'Common');
-  const castGroups = useMemo(() => {
-    const principals = stakeholders.filter((st) => st.tier !== 'roster' && st.kind !== 'group');
-    const map = new Map<string, PeekStakeholder[]>();
-    for (const st of principals) {
-      const k = st.org_key ?? '__common';
-      map.set(k, [...(map.get(k) ?? []), st]);
-    }
-    return [...map.entries()].slice(0, 3);
-  }, [stakeholders]);
+  const castGroups = s.summary?.cast ?? [];
 
   const sortedInjects = useMemo(
     () =>
@@ -1004,7 +982,7 @@ const ExpandedPoster = ({
   return (
     <article className="wr-poster expanded" style={{ '--g': family } as CSSProperties}>
       <div className="band wr-artband center">
-        <img className="wr-art" src={artFor(s, 'sm')} alt="" />
+        <img className="wr-art" src={artFor(s, 'sm')} alt="" loading="lazy" />
         <div className="row">
           <span className="mode">
             <WrIcon name={social ? 'phone' : 'map'} size={12} />{' '}
@@ -1048,8 +1026,7 @@ const ExpandedPoster = ({
       <div className="wr-peek">
         <section>
           <h5>
-            <WrIcon name="users" /> Cast{' '}
-            <span className="n">{s.summary?.contacts ?? stakeholders.length}</span>
+            <WrIcon name="users" /> Cast <span className="n">{contacts}</span>
           </h5>
           {castGroups.length === 0 && (
             <div className="empty">
@@ -1058,12 +1035,12 @@ const ExpandedPoster = ({
                 : 'Field-ops scenarios have no contact cast.'}
             </div>
           )}
-          {castGroups.map(([key, list]) => (
+          {castGroups.map(({ key, count, members }) => (
             <div key={key}>
               <div className="grp">
-                {key === '__common' ? 'Common to every organisation' : orgName(key)} · {list.length}
+                {key === '__common' ? 'Common to every organisation' : orgName(key)} · {count}
               </div>
-              {list.slice(0, 4).map((st, i) => {
+              {members.map((st, i) => {
                 const org = orgs.find((o) => o.org_key === st.org_key);
                 const cls = st.page_org_key ? 'pr' : org?.operation === 'ai' ? 'ai' : '';
                 return (
@@ -1085,9 +1062,9 @@ const ExpandedPoster = ({
               })}
             </div>
           ))}
-          {stakeholders.length > 0 && (
+          {contacts > 0 && (
             <button className="more" onClick={onOpen}>
-              All {stakeholders.length} contacts, grouped by organisation →
+              All {contacts} contacts, grouped by organisation →
             </button>
           )}
         </section>

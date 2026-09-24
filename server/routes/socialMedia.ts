@@ -62,6 +62,30 @@ async function resolveCountryScope(
 }
 
 /**
+ * Whether any post in the session carries a country. Most sessions have none, and then the
+ * country filter excludes nothing but can still push the planner off the ordered feed index.
+ * A "no" is cached briefly because generation can add country-scoped posts mid-exercise.
+ */
+const countryPostsCache = new Map<string, { has: boolean; at: number }>();
+const NO_COUNTRY_POSTS_TTL_MS = 30_000;
+async function sessionHasCountryPosts(sessionId: string): Promise<boolean> {
+  const hit = countryPostsCache.get(sessionId);
+  if (hit && (hit.has || Date.now() - hit.at < NO_COUNTRY_POSTS_TTL_MS)) return hit.has;
+  // The order by keeps this on idx_social_posts_country; without it the planner may scan the table.
+  const { data, error } = await supabaseAdmin
+    .from('social_posts')
+    .select('id')
+    .eq('session_id', sessionId)
+    .not('country', 'is', null)
+    .order('country')
+    .limit(1);
+  if (error) return true;
+  const has = (data?.length ?? 0) > 0;
+  countryPostsCache.set(sessionId, { has, at: Date.now() });
+  return has;
+}
+
+/**
  * Surface a targeted post (echo-chamber / NPC-bubble) to the entire session.
  *
  * When a player engages (react / flag / comment / repost) with a post that was only
@@ -137,7 +161,7 @@ router.get('/posts/session/:sessionId', requireAuth, async (req: AuthenticatedRe
     // Country scoping (contract §4.1): players see their own country's content plus global
     // content; trainers see everything, optionally narrowed with ?country=.
     const countryScope = await resolveCountryScope(sessionId, user, req.query.country);
-    if (countryScope) {
+    if (countryScope && (await sessionHasCountryPosts(sessionId))) {
       postsQuery = postsQuery.or(`country.is.null,country.eq.${countryScope}`);
     }
 

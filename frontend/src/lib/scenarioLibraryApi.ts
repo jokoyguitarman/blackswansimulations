@@ -29,12 +29,29 @@ export interface ScenarioSummaryOrg {
   kind?: string;
 }
 
+export interface ScenarioCastMember {
+  id?: string;
+  name?: string;
+  title?: string;
+  org_key: string | null;
+  page_org_key: string | null;
+  relationship?: string;
+}
+
+/** First three organisations' principals, up to four each; `count` is the organisation's total. */
+export interface ScenarioCastGroup {
+  key: string;
+  count: number;
+  members: ScenarioCastMember[];
+}
+
 export interface ScenarioSummary {
   teams: number;
   injects: number;
   contacts: number;
   crowd: number;
   orgs: ScenarioSummaryOrg[];
+  cast?: ScenarioCastGroup[];
   live_session_id: string | null;
   live_session_started_at: string | null;
   sessions_run: number;
@@ -52,7 +69,6 @@ export interface LibraryScenario {
   is_active: boolean;
   created_at: string;
   country?: string | null;
-  initial_state?: Record<string, unknown> | null;
   summary?: ScenarioSummary;
 }
 

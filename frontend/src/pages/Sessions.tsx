@@ -52,22 +52,23 @@ export const Sessions = () => {
   );
 
   useEffect(() => {
-    const initialize = async () => {
-      // Process any pending invitations first (for participants who signed up before trigger fix)
-      if (!isTrainer) {
-        try {
-          await api.sessions.processInvitations();
-        } catch (err) {
+    // Invitation processing only matters for participants whose signup trigger missed an invite,
+    // so don't hold the list for it; reload only if it added the user to a session.
+    if (!isTrainer) {
+      api.sessions
+        .processInvitations()
+        .then((res) => {
+          if (res.data.processed > 0) loadSessions();
+        })
+        .catch((err) => {
           // Silently fail - this is just a convenience feature
           console.debug('Failed to process invitations:', err);
-        }
-      }
-      await loadSessions();
-      if (isTrainer) {
-        loadScenarios();
-      }
-    };
-    initialize();
+        });
+    }
+    loadSessions();
+    if (isTrainer) {
+      loadScenarios();
+    }
   }, [isTrainer]);
 
   const loadSessions = async () => {

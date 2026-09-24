@@ -401,7 +401,11 @@ export default function SocialFeedApp({
     }
   }, [loadPosts, sessionId]);
 
+  // Reload on navigating back to the feed; the mount load above already covers the first render.
+  const lastPathnameRef = useRef(location.pathname);
   useEffect(() => {
+    if (lastPathnameRef.current === location.pathname) return;
+    lastPathnameRef.current = location.pathname;
     if (location.pathname.includes('/social')) loadPosts();
   }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -433,7 +437,8 @@ export default function SocialFeedApp({
       }
     };
     fetchCount();
-    const interval = setInterval(fetchCount, 15000);
+    // Safety net only: notification.created over the socket keeps the badge current.
+    const interval = setInterval(fetchCount, 60000);
     return () => clearInterval(interval);
   }, [sessionId, overlayView]);
 
@@ -653,7 +658,13 @@ export default function SocialFeedApp({
       setPostingAsPage(false);
 
       if (wasReplyingTo && selectedPost) {
-        setTimeout(() => openThread(selectedPost), 800);
+        // The live event skips the player's own posts, so show the saved reply straight away.
+        if (createdPost?.reply_to_post_id === selectedPost.id) {
+          setThreadReplies((prev) =>
+            prev.some((r) => r.id === createdPost.id) ? prev : [...prev, createdPost],
+          );
+        }
+        openThread(selectedPost, undefined, true);
       }
     } catch {
       /* ignore */
@@ -757,10 +768,10 @@ export default function SocialFeedApp({
     }
   }
 
-  async function openThread(post: SocialPost, highlightId?: string) {
+  async function openThread(post: SocialPost, highlightId?: string, keepReplies = false) {
     setSelectedPost(post);
     selectedPostRef.current = post;
-    setThreadReplies([]);
+    if (!keepReplies) setThreadReplies([]);
     setHighlightReplyId(highlightId || null);
     try {
       const headers = await getAuthHeaders();
