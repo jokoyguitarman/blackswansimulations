@@ -94,6 +94,11 @@ export const env = {
   // Where scoping-call enquiries from the public marketing pages are sent. Falls
   // back to the address already published on those pages as the manual route.
   enquiryNotifyEmail: process.env.ENQUIRY_NOTIFY_EMAIL ?? 'kenneth@prophyion.com',
+  // Where consultant applications and signed agreements are announced for review.
+  trainerApplicationsNotifyEmail:
+    process.env.TRAINER_APPLICATIONS_NOTIFY_EMAIL ??
+    process.env.ENQUIRY_NOTIFY_EMAIL ??
+    'kenneth@prophyion.com',
   // Origin of the marketing site, allowed through CORS so the enquiry form can post.
   marketingUrl: process.env.MARKETING_URL,
   // ---------- Background engines master switch ----------

@@ -32,6 +32,7 @@ logs/
 
 # Misc
 *.tsbuildinfo
+tmp/
 
 # Sensitive reference corpus (do NOT commit) + large media
 docs/Sample of Radical Messages*/
@@ -39,6 +40,8 @@ docs/Sample of Radical Messages*.zip
 
 # Local working documents & ad-hoc explainers (not for repo)
 *.docx
+# ...except the Consultant Agreement masters the template build reads
+!server/assets/consultant-agreement/**/*.docx
 Abbott_Formula_Recall_SEA_Scenario.txt
 frontend/*-preview.html
 docs/blueprint-review-explained.html

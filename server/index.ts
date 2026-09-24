@@ -49,6 +49,7 @@ import { socialEventsRouter } from './routes/socialEvents.js';
 import { socialCrisisWarroomRouter } from './routes/socialCrisisWarroom.js';
 import { billingRouter } from './routes/billing.js';
 import { billingWebhookRouter } from './routes/billingWebhook.js';
+import { trainerAgreementsRouter } from './routes/trainerAgreements.js';
 import { playerDraftsRouter } from './routes/playerDrafts.js';
 import { teammateBotsRouter } from './routes/teammateBots.js';
 import { getTeammateBotService } from './services/teammates/teammateBotService.js';
@@ -286,6 +287,7 @@ app.use('/api/social/groups', socialGroupsRouter);
 app.use('/api/social/events', socialEventsRouter);
 app.use('/api/warroom/social-crisis', socialCrisisWarroomRouter);
 app.use('/api/billing', billingRouter);
+app.use('/api/trainer-agreements', trainerAgreementsRouter);
 app.use('/api/drafts', playerDraftsRouter);
 
 // 404 handler

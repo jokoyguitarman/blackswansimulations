@@ -1,6 +1,10 @@
 import nodemailer from 'nodemailer';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
+import {
+  APPLICATION_REVIEW_TIME,
+  type TrainerAgreementPurpose,
+} from '../../shared/trainerAgreements.js';
 
 /**
  * Email Service - Handles sending emails via SMTP
@@ -227,6 +231,9 @@ As a trainer you can enroll your client organisations, invoice them for
 training engagements, build scenarios in the War Room, and run live training
 sessions. Please change your password after your first sign-in.
 
+Before your first engagement, please review and sign the Prophyion Consultant
+Agreement: ${env.clientUrl}/apply
+
 ---
 This is an automated message from Prophyion.
 `;
@@ -259,6 +266,7 @@ This is an automated message from Prophyion.
           </p>
           <p style="font-size: 13px; color: #6B7280;">As a trainer you can enroll your client organisations, invoice them for training engagements, build scenarios in the War Room, and run live training sessions.</p>
           <p style="font-size: 13px; color: #6B7280;">Please change your password after your first sign-in.</p>
+          <p style="font-size: 13px; color: #6B7280;">Before your first engagement, please review and sign the <a href="${env.clientUrl}/apply" style="color: #1E3A5F;">Prophyion Consultant Agreement</a>.</p>
         </div>
       `,
     });
@@ -405,6 +413,209 @@ Exercise scenarios are fictional and non-operational.
     logger.error({ error, enquiryId: data.enquiryId }, 'Failed to send enquiry acknowledgement');
     return false;
   }
+};
+
+// ---------------------------------------------------------------------------
+// Consultant Agreement: applications and signed agreements
+// ---------------------------------------------------------------------------
+
+interface PlainEmail {
+  to: string;
+  subject: string;
+  text: string;
+  replyTo?: string;
+}
+
+/** Returns false when the email was not delivered, including when email is switched off. */
+async function deliver(
+  message: PlainEmail,
+  label: string,
+  context: Record<string, unknown>,
+): Promise<boolean> {
+  if (!transporter) {
+    logger.info(
+      { ...context, to: message.to, subject: message.subject },
+      `${label} email would be sent (email disabled)`,
+    );
+    return false;
+  }
+  try {
+    const info = await transporter.sendMail({
+      from: `"${env.emailFromName}" <${env.emailFrom}>`,
+      ...message,
+    });
+    logger.info({ ...context, messageId: info.messageId }, `${label} email sent`);
+    return true;
+  } catch (error) {
+    logger.error({ ...context, error }, `Failed to send ${label.toLowerCase()} email`);
+    return false;
+  }
+}
+
+interface AgreementEmailData {
+  to: string;
+  toName: string;
+  reference: string;
+  purpose: TrainerAgreementPurpose;
+}
+
+/** Confirm to the uploader that their signed agreement arrived and say what happens next. */
+export const sendAgreementReceivedEmail = async (data: AgreementEmailData): Promise<boolean> => {
+  const isApplication = data.purpose === 'application';
+  const next = isApplication
+    ? `We review every application personally and aim to respond within
+${APPLICATION_REVIEW_TIME}. We will email you at this address when your consultant
+account is approved, or if anything needs changing first.`
+    : `We will check it and confirm by email once it is on file. Your trainer
+access carries on as normal in the meantime.`;
+
+  return deliver(
+    {
+      to: data.to,
+      replyTo: env.trainerApplicationsNotifyEmail,
+      subject: isApplication
+        ? 'We have your consultant application | Prophyion'
+        : 'We have your signed agreement | Prophyion',
+      text: `Dear ${data.toName},
+
+Thank you. We have received your signed Prophyion Consultant Agreement
+(reference ${data.reference}).
+
+${next}
+
+You can check where things stand at any time: ${env.clientUrl}/apply
+
+Kind regards,
+Prophyion
+`,
+    },
+    'Agreement receipt',
+    { reference: data.reference },
+  );
+};
+
+interface AgreementSubmittedData {
+  reference: string;
+  purpose: TrainerAgreementPurpose;
+  fullName: string;
+  email: string;
+  contactNumber: string | null;
+  organisation: string | null;
+  address: string | null;
+  pageCount: number;
+  expectedPages: number | null;
+  hasReference: boolean | null;
+}
+
+/** Tell the team a signed agreement is waiting in the Business console. */
+export const sendAgreementSubmittedNotificationEmail = async (
+  data: AgreementSubmittedData,
+): Promise<boolean> => {
+  const isApplication = data.purpose === 'application';
+  const pages = data.expectedPages
+    ? `${data.pageCount} of ${data.expectedPages} expected`
+    : String(data.pageCount);
+  const referenceCheck =
+    data.hasReference === null
+      ? 'not readable (a scanned copy, check it by eye)'
+      : data.hasReference
+        ? 'found'
+        : 'NOT found, check this is the agreement we issued';
+
+  return deliver(
+    {
+      to: env.trainerApplicationsNotifyEmail,
+      replyTo: `"${data.fullName}" <${data.email}>`,
+      subject: isApplication
+        ? `Consultant application: ${data.fullName}`
+        : `Signed agreement from trainer: ${data.fullName}`,
+      text: `${isApplication ? 'A new consultant application' : 'A signed agreement from an existing trainer'} is ready for review.
+
+Name:          ${data.fullName}
+Email:         ${data.email}
+Contact:       ${data.contactNumber || 'not given'}
+Organisation:  ${data.organisation || 'not given'}
+Address:       ${data.address || 'not given'}
+Reference:     ${data.reference}
+Pages:         ${pages}
+Reference in the file: ${referenceCheck}
+
+Review it in the Business console: ${env.clientUrl}/admin/trainers
+
+---
+Reply directly to ${data.email}.
+`,
+    },
+    'Agreement review notification',
+    { reference: data.reference },
+  );
+};
+
+interface AgreementDecisionData extends AgreementEmailData {
+  decision: 'approved' | 'changes_requested' | 'rejected';
+  note: string | null;
+}
+
+/** Tell the uploader what the reviewer decided. */
+export const sendAgreementDecisionEmail = async (data: AgreementDecisionData): Promise<boolean> => {
+  const isApplication = data.purpose === 'application';
+  const note = data.note?.trim() || null;
+  let subject: string;
+  let body: string;
+
+  switch (data.decision) {
+    case 'approved':
+      if (isApplication) {
+        subject = 'Your Prophyion consultant account is approved';
+        body = `Your application has been approved and your account now has consultant access.
+
+Sign in here: ${env.clientUrl}/login
+
+Before your first engagement, set up your payout account from the Clients &
+billing page so Stripe can pay your Consultant Share.`;
+      } else {
+        subject = 'Your Prophyion Consultant Agreement is on file';
+        body = `Your signed Prophyion Consultant Agreement (reference ${data.reference}) is
+now on file. Nothing else is needed from you.`;
+      }
+      if (note) body += `\n\nA note from the reviewer:\n${note}`;
+      break;
+    case 'changes_requested':
+      subject = 'Your Prophyion agreement needs a change';
+      body = `We have looked at the signed agreement you sent (reference ${data.reference})
+and need a change before we can ${isApplication ? 'approve your application' : 'put it on file'}.
+${note ? `\nWhat to change:\n${note}\n` : ''}
+Update your details if needed, sign the agreement again and upload it here:
+${env.clientUrl}/apply`;
+      break;
+    case 'rejected':
+      subject = isApplication
+        ? 'Your Prophyion consultant application'
+        : 'Your Prophyion Consultant Agreement';
+      body = isApplication
+        ? 'Thank you for applying to become a Prophyion consultant. We are not able to\napprove your application at this time.'
+        : `We were not able to accept the signed agreement you sent (reference ${data.reference}).`;
+      if (note) body += `\n\n${note}`;
+      body += '\n\nIf you have any questions, reply to this email.';
+      break;
+  }
+
+  return deliver(
+    {
+      to: data.to,
+      replyTo: env.trainerApplicationsNotifyEmail,
+      subject,
+      text: `Dear ${data.toName},
+
+${body}
+
+Kind regards,
+Prophyion
+`,
+    },
+    'Agreement decision',
+    { reference: data.reference, decision: data.decision },
+  );
 };
 
 /**

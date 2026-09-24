@@ -81,23 +81,26 @@ async function apiCall(
 async function main() {
   console.log(`\n=== Payment portal E2E (run ${RUN_ID}) ===\n`);
 
-  // ── 1. Trainer signup ────────────────────────────────────────────────
-  console.log('1. Trainer self-signup');
+  // ── 1. Trainer account ───────────────────────────────────────────────
+  // Trainer access now comes from an approved Consultant Agreement, which
+  // scripts/trainer-application-e2e.ts exercises; this run promotes directly.
+  console.log('1. Trainer account');
   const trainer = await createUser(TRAINER_EMAIL);
   const become = await apiCall('POST', '/api/profile/become-trainer', trainer.token);
-  expect(become.status === 200, `become-trainer returns 200 (got ${become.status})`);
+  expect(become.status !== 200, `self-service trainer upgrade is refused (got ${become.status})`);
+  await admin.from('user_profiles').update({ role: 'trainer' }).eq('id', trainer.userId);
+  await admin
+    .from('trainer_billing')
+    .upsert(
+      { trainer_id: trainer.userId, onboarding_status: 'none' },
+      { onConflict: 'trainer_id' },
+    );
   const { data: profile } = await admin
     .from('user_profiles')
     .select('role')
     .eq('id', trainer.userId)
     .single();
   expect(profile?.role === 'trainer', `profile role is trainer (got ${profile?.role})`);
-  // Repeat call is idempotent; non-participant accounts are rejected elsewhere.
-  const again = await apiCall('POST', '/api/profile/become-trainer', trainer.token);
-  expect(
-    again.status === 200 && again.json.alreadyTrainer === true,
-    'repeat become-trainer is a no-op',
-  );
 
   // ── 2. Paywall before payment ────────────────────────────────────────
   console.log('\n2. Credit gates before payment');

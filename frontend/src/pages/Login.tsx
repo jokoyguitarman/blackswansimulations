@@ -2,7 +2,9 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
 import { BrandMark } from '../components/BrandMark';
+import { loadAgreementDraft } from '../components/agreement/AgreementDetailsFields';
 
 export const Login = () => {
   const [email, setEmail] = useState('');
@@ -23,20 +25,28 @@ export const Login = () => {
       setError(error.message);
       setLoading(false);
     } else {
-      // Complete a trainer signup that couldn't be finished at signup time
-      // (e.g. when email confirmation deferred the first session).
-      if (localStorage.getItem('bsw_pending_trainer_upgrade')) {
-        try {
-          await api.profile.becomeTrainer();
-          localStorage.removeItem('bsw_pending_trainer_upgrade');
-          // Full reload so the auth context picks up the new role.
-          window.location.href = '/clients';
-          return;
-        } catch {
-          localStorage.removeItem('bsw_pending_trainer_upgrade');
+      // Someone part-way through a consultant application picks it up where they left off,
+      // including right after confirming their email, before any agreement has been issued.
+      let next = '/dashboard';
+      try {
+        const { current } = (await api.trainerAgreements.mine()).data;
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const applying =
+          session?.user.user_metadata?.applying_as_consultant === true ||
+          loadAgreementDraft() !== null;
+        if (
+          current?.status === 'awaiting_signature' ||
+          current?.status === 'changes_requested' ||
+          (!current && applying)
+        ) {
+          next = '/apply';
         }
+      } catch {
+        // The dashboard shows the same status.
       }
-      navigate('/dashboard');
+      navigate(next);
     }
   };
 

@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { api } from '../../lib/api';
 import { getDashboardStats } from '../../lib/dashboardApi';
 import { useAuth } from '../../contexts/AuthContext';
+import { useMyAgreement } from '../../hooks/useMyAgreement';
+import { AgreementStatusCard } from '../agreement/AgreementStatusCard';
 
 interface DashboardStats {
   scenarios: number | null;
@@ -18,7 +20,9 @@ export function TrainerDashboard() {
   const [credits, setCredits] = useState<{ scenario: number; session: number } | null>(null);
   const [clientCount, setClientCount] = useState<number | null>(null);
   const [pendingPayouts, setPendingPayouts] = useState<number | null>(null);
+  const [applicationsAwaiting, setApplicationsAwaiting] = useState<number | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const { mine: agreement } = useMyAgreement(!isAdminUser);
 
   useEffect(() => {
     let cancelled = false;
@@ -48,6 +52,10 @@ export function TrainerDashboard() {
         .listPayouts('pending_release')
         .then((res) => setPendingPayouts(res.data.length))
         .catch(() => setPendingPayouts(0));
+      api.trainerAgreements
+        .list('review')
+        .then((res) => setApplicationsAwaiting(res.data.counts.review))
+        .catch(() => setApplicationsAwaiting(0));
       return;
     }
     api.billing
@@ -75,6 +83,8 @@ export function TrainerDashboard() {
             : 'Full system visibility · exercise oversight mode'}
         </p>
       </div>
+
+      {agreement && <AgreementStatusCard mine={agreement} role={user?.role} />}
 
       {/* Full visibility notice */}
       <div className="border-l-4 border-accent bg-accent/10 rounded-md p-4 mb-6">
@@ -131,9 +141,16 @@ export function TrainerDashboard() {
                   ? `${pendingPayouts} payout${pendingPayouts === 1 ? '' : 's'} awaiting your review.`
                   : 'Trainers, clients, engagements and payouts. No payouts awaiting review.'}
             </p>
+            {(applicationsAwaiting ?? 0) > 0 && (
+              <p className="text-xs font-semibold text-warning mb-3">
+                {applicationsAwaiting} consultant application
+                {applicationsAwaiting === 1 ? '' : 's'} awaiting your review.
+              </p>
+            )}
             <div className="flex flex-wrap gap-2">
               <Link to="/admin/trainers" className="military-button inline-block px-4 py-2 text-xs">
-                Trainer directory →
+                Trainer directory
+                {(applicationsAwaiting ?? 0) > 0 ? ` (${applicationsAwaiting} to review)` : ''} →
               </Link>
               <Link
                 to="/admin/payouts"

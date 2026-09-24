@@ -1,4 +1,13 @@
 import { supabase } from './supabase';
+import type {
+  AdminAgreementList,
+  AdminAgreementView,
+  AgreementInfo,
+  AgreementSummary,
+  MyAgreementResponse,
+  TrainerAgreement,
+  TrainerAgreementStatus,
+} from '@shared/trainerAgreements';
 
 /**
  * API Client - Centralized API calls with authentication
@@ -81,6 +90,12 @@ const getAuthHeaders = async () => {
   };
 };
 
+/** For multipart uploads: the browser must set Content-Type itself to add the boundary. */
+const getAuthHeadersMultipart = async () => {
+  const { Authorization } = await getAuthHeaders();
+  return { Authorization };
+};
+
 const handleResponse = async <T>(response: Response): Promise<T> => {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -119,6 +134,11 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
     return {} as T;
   }
   return response.json();
+};
+
+const handleBlobResponse = async (response: Response): Promise<Blob> => {
+  if (!response.ok) await handleResponse<never>(response);
+  return response.blob();
 };
 
 // ---------- AI teammate bots ----------
@@ -238,6 +258,13 @@ export interface AdminTrainerSummary {
     released_cents: number;
     held_cents: number;
   };
+  agreement: AgreementSummary;
+}
+
+export interface AgreementDecisionResult {
+  status: TrainerAgreementStatus;
+  promoted: boolean;
+  emailed: boolean;
 }
 
 export const api = {
@@ -264,13 +291,6 @@ export const api = {
           headers,
           body: JSON.stringify(body),
         }),
-      );
-    },
-
-    becomeTrainer: async () => {
-      const headers = await getAuthHeaders();
-      return handleResponse<{ data: { role: string } }>(
-        await fetch(apiUrl('/api/profile/become-trainer'), { method: 'POST', headers }),
       );
     },
   },
@@ -2672,6 +2692,138 @@ export const api = {
           method: 'POST',
           headers,
           body: JSON.stringify(body),
+        }),
+      );
+    },
+  },
+
+  // Consultant Agreement: trainer applications and signed agreements
+  trainerAgreements: {
+    current: async () =>
+      handleResponse<{ data: AgreementInfo }>(
+        await fetch(apiUrl('/api/trainer-agreements/current')),
+      ),
+
+    mine: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: MyAgreementResponse }>(
+        await fetch(apiUrl('/api/trainer-agreements/mine'), { headers }),
+      );
+    },
+
+    /** Start the agreement, or re-issue it with corrected details. */
+    saveMine: async (body: {
+      full_name: string;
+      contact_number: string;
+      address?: string | null;
+      organisation?: string | null;
+    }) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: TrainerAgreement }>(
+        await fetch(apiUrl('/api/trainer-agreements/mine'), {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify(body),
+        }),
+      );
+    },
+
+    /** The agreement PDF issued to the signed-in user, pre-filled with their details. */
+    document: async () => {
+      const headers = await getAuthHeaders();
+      return handleBlobResponse(
+        await fetch(apiUrl('/api/trainer-agreements/mine/document'), { headers }),
+      );
+    },
+
+    uploadSigned: async (file: File) => {
+      const headers = await getAuthHeadersMultipart();
+      const body = new FormData();
+      body.append('file', file);
+      return handleResponse<{ data: TrainerAgreement }>(
+        await fetch(apiUrl('/api/trainer-agreements/mine/signed'), {
+          method: 'POST',
+          headers,
+          body,
+        }),
+      );
+    },
+
+    /** A short-lived link to the signed copy the user uploaded. */
+    mySignedUrl: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { url: string } }>(
+        await fetch(apiUrl('/api/trainer-agreements/mine/signed'), { headers }),
+      );
+    },
+
+    // Admin
+    list: async (view: AdminAgreementView) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: AdminAgreementList }>(
+        await fetch(apiUrl(`/api/trainer-agreements/admin?view=${view}`), { headers }),
+      );
+    },
+
+    signedUrl: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { url: string } }>(
+        await fetch(apiUrl(`/api/trainer-agreements/admin/${id}/signed`), { headers }),
+      );
+    },
+
+    /** The agreement as it was issued, before signing, for comparison with the upload. */
+    issuedDocument: async (id: string) => {
+      const headers = await getAuthHeaders();
+      return handleBlobResponse(
+        await fetch(apiUrl(`/api/trainer-agreements/admin/${id}/document`), { headers }),
+      );
+    },
+
+    approve: async (id: string, note?: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: AgreementDecisionResult }>(
+        await fetch(apiUrl(`/api/trainer-agreements/admin/${id}/approve`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ note: note || null }),
+        }),
+      );
+    },
+
+    requestChanges: async (id: string, note: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: AgreementDecisionResult }>(
+        await fetch(apiUrl(`/api/trainer-agreements/admin/${id}/request-changes`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ note }),
+        }),
+      );
+    },
+
+    reject: async (id: string, note?: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: AgreementDecisionResult }>(
+        await fetch(apiUrl(`/api/trainer-agreements/admin/${id}/reject`), {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ note: note || null }),
+        }),
+      );
+    },
+
+    /** File a copy the trainer signed outside the platform. */
+    attach: async (userId: string, file: File, note?: string) => {
+      const headers = await getAuthHeadersMultipart();
+      const body = new FormData();
+      body.append('file', file);
+      if (note) body.append('note', note);
+      return handleResponse<{ data: { id: string } }>(
+        await fetch(apiUrl(`/api/trainer-agreements/admin/trainers/${userId}/attach`), {
+          method: 'POST',
+          headers,
+          body,
         }),
       );
     },

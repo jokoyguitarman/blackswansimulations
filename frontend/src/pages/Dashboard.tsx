@@ -5,11 +5,15 @@ import { TrainerDashboard } from '../components/dashboards/TrainerDashboard';
 import { AgencyDashboard } from '../components/dashboards/AgencyDashboard';
 import { NotificationBell } from '../components/Notifications/NotificationBell';
 import { BrandMark } from '../components/BrandMark';
+import { AgreementStatusCard } from '../components/agreement/AgreementStatusCard';
+import { useMyAgreement } from '../hooks/useMyAgreement';
 
 export const Dashboard = () => {
-  const { user, signOut } = useAuth();
+  const { user, session, signOut } = useAuth();
   const navigate = useNavigate();
   const { isTrainer } = useRoleVisibility();
+  // Trainers see their agreement status on the trainer dashboard itself.
+  const { mine } = useMyAgreement(Boolean(user) && !isTrainer);
 
   const handleSignOut = async () => {
     await signOut();
@@ -106,6 +110,16 @@ export const Dashboard = () => {
             </div>
           </div>
         </div>
+
+        {mine && !isTrainer && (
+          <div className="mb-6">
+            <AgreementStatusCard
+              mine={mine}
+              role={user?.role}
+              applying={session?.user.user_metadata?.applying_as_consultant === true}
+            />
+          </div>
+        )}
 
         {/* Dashboard Content */}
         <div className="bg-surface border border-border rounded-xl shadow-sm p-6">

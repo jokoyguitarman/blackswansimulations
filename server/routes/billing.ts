@@ -21,6 +21,11 @@ import { getBalances } from '../services/creditService.js';
 import { createNotification } from '../services/notificationService.js';
 import { sendTrainerEnrollmentEmail } from '../services/emailService.js';
 import { nanoid } from 'nanoid';
+import {
+  summariseAgreement,
+  type AgreementSummary,
+  type TrainerAgreementStatus,
+} from '../../shared/trainerAgreements.js';
 
 const router = Router();
 
@@ -820,7 +825,7 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
       return res.json({ data: [] });
     }
 
-    const [orgsRes, invoicesRes, ledgerRes, payoutsRes, sessionsRes, billingRes] =
+    const [orgsRes, invoicesRes, ledgerRes, payoutsRes, sessionsRes, billingRes, agreementsRes] =
       await Promise.all([
         supabaseAdmin
           .from('client_organisations')
@@ -843,6 +848,10 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
           .from('trainer_billing')
           .select('trainer_id, onboarding_status')
           .in('trainer_id', trainerIds),
+        supabaseAdmin
+          .from('trainer_agreements')
+          .select('id, user_id, status, agreement_version, reviewed_at, created_at')
+          .in('user_id', trainerIds),
       ]);
 
     interface TrainerSummary {
@@ -863,6 +872,7 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
         released_cents: number;
         held_cents: number;
       };
+      agreement: AgreementSummary;
     }
 
     const byTrainer = new Map<string, TrainerSummary>();
@@ -885,7 +895,34 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
           released_cents: 0,
           held_cents: 0,
         },
+        agreement: summariseAgreement([]),
       });
+    }
+
+    const agreementRows = new Map<
+      string,
+      Array<{
+        id: string;
+        status: TrainerAgreementStatus;
+        agreement_version: string;
+        reviewed_at: string | null;
+        created_at: string;
+      }>
+    >();
+    for (const a of agreementsRes.data ?? []) {
+      const rows = agreementRows.get(a.user_id as string) ?? [];
+      rows.push({
+        id: a.id as string,
+        status: a.status as TrainerAgreementStatus,
+        agreement_version: a.agreement_version as string,
+        reviewed_at: (a.reviewed_at as string | null) ?? null,
+        created_at: a.created_at as string,
+      });
+      agreementRows.set(a.user_id as string, rows);
+    }
+    for (const [trainerId, rows] of agreementRows) {
+      const t = byTrainer.get(trainerId);
+      if (t) t.agreement = summariseAgreement(rows);
     }
 
     for (const b of billingRes.data ?? []) {

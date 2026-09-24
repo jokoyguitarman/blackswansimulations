@@ -1,6 +1,8 @@
-import { useState, useEffect, Fragment } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { Link } from 'react-router-dom';
 import { api, type AdminTrainerSummary } from '../lib/api';
+import { openInNewTab } from '../lib/openInNewTab';
+import { TrainerApplicationsPanel } from '../components/admin/TrainerApplicationsPanel';
 
 /**
  * Admin business console - every trainer with their clients, paid
@@ -35,6 +37,110 @@ const onboardingBadge = (status: AdminTrainerSummary['onboarding_status']) => {
       );
   }
 };
+
+const agreementBadge = (agreement: AdminTrainerSummary['agreement']) => {
+  const base = 'text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full';
+  switch (agreement.status) {
+    case 'signed':
+      return <span className={`${base} bg-success/10 text-success`}>Agreement signed</span>;
+    case 'under_review':
+      return <span className={`${base} bg-warning/10 text-warning`}>Agreement under review</span>;
+    case 'changes_requested':
+    case 'awaiting_signature':
+      return <span className={`${base} bg-warning/10 text-warning`}>Agreement in progress</span>;
+    default:
+      return <span className={`${base} bg-danger/10 text-danger`}>No agreement on file</span>;
+  }
+};
+
+function TrainerAgreementDetails({
+  trainer,
+  onChanged,
+}: {
+  trainer: AdminTrainerSummary;
+  onChanged: () => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const { agreement } = trainer;
+
+  const attach = async (file: File | undefined) => {
+    const reset = () => {
+      if (inputRef.current) inputRef.current.value = '';
+    };
+    if (!file) return;
+    const name = trainer.full_name || trainer.username;
+    if (!window.confirm(`Attach "${file.name}" as the signed Consultant Agreement for ${name}?`)) {
+      reset();
+      return;
+    }
+    setBusy(true);
+    setMessage(null);
+    try {
+      await api.trainerAgreements.attach(trainer.id, file);
+      setMessage({ ok: true, text: 'Signed copy attached.' });
+      onChanged();
+    } catch (err) {
+      setMessage({
+        ok: false,
+        text: err instanceof Error ? err.message : 'Could not attach the file',
+      });
+    } finally {
+      setBusy(false);
+      reset();
+    }
+  };
+
+  const openSigned = (id: string) =>
+    openInNewTab(async () => (await api.trainerAgreements.signedUrl(id)).data.url).catch(
+      (err: unknown) =>
+        setMessage({
+          ok: false,
+          text: err instanceof Error ? err.message : 'Could not open the file',
+        }),
+    );
+
+  return (
+    <div>
+      <div className="font-bold text-muted uppercase tracking-wide text-[10px] mt-2 mb-1">
+        Consultant agreement
+      </div>
+      {agreement.status === 'signed' && agreement.id ? (
+        <div className="text-ink">
+          Signed, v{agreement.version}
+          {agreement.signed_at && `, ${formatDate(agreement.signed_at)}`}.{' '}
+          <button onClick={() => openSigned(agreement.id!)} className="underline text-brand">
+            Open
+          </button>
+        </div>
+      ) : agreement.status === 'none' ? (
+        <div>
+          <div className="text-muted">No agreement on file.</div>
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="mt-1 block text-left underline text-brand disabled:opacity-50"
+          >
+            {busy ? 'Attaching…' : 'Attach a copy signed on paper'}
+          </button>
+          <input
+            ref={inputRef}
+            type="file"
+            accept="application/pdf,.pdf"
+            className="hidden"
+            onChange={(e) => void attach(e.target.files?.[0])}
+          />
+        </div>
+      ) : (
+        <div className="text-muted">In progress: see Consultant applications above.</div>
+      )}
+      {message && (
+        <div className={`mt-1 ${message.ok ? 'text-success' : 'text-danger'}`}>{message.text}</div>
+      )}
+    </div>
+  );
+}
 
 export const AdminTrainers = () => {
   const [trainers, setTrainers] = useState<AdminTrainerSummary[]>([]);
@@ -257,6 +363,8 @@ export const AdminTrainers = () => {
           </div>
         )}
 
+        <TrainerApplicationsPanel onChanged={loadTrainers} />
+
         {/* Business totals */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <div className="bg-surface border border-border rounded-xl shadow-sm p-4">
@@ -338,7 +446,10 @@ export const AdminTrainers = () => {
                           <div className="text-[11px] text-muted">
                             joined {formatDate(t.created_at)}
                           </div>
-                          <div className="mt-1">{onboardingBadge(t.onboarding_status)}</div>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {onboardingBadge(t.onboarding_status)}
+                            {agreementBadge(t.agreement)}
+                          </div>
                         </td>
                         <td className="px-5 py-3.5">
                           <div className="font-semibold text-ink">{t.client_count}</div>
@@ -434,6 +545,7 @@ export const AdminTrainers = () => {
                                 </div>
                                 <div className="text-ink">{t.agency_name ?? '-'}</div>
                                 <div className="text-muted">{t.username}</div>
+                                <TrainerAgreementDetails trainer={t} onChanged={loadTrainers} />
                               </div>
                             </div>
                           </td>

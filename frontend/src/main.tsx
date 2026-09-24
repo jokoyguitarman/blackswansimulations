@@ -9,6 +9,7 @@ import { Clients } from './pages/Clients';
 import { AdminPayouts } from './pages/AdminPayouts';
 import { AdminTrainers } from './pages/AdminTrainers';
 import { AccountSettings } from './pages/AccountSettings';
+import { Apply } from './pages/Apply';
 import { Scenarios } from './pages/Scenarios';
 import { WarRoom } from './pages/WarRoom';
 import { SocialCrisisWizard } from './pages/SocialCrisisWizard';
@@ -94,6 +95,14 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <AccountSettings />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/apply"
+              element={
+                <ProtectedRoute>
+                  <Apply />
                 </ProtectedRoute>
               }
             />

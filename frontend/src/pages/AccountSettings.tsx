@@ -2,7 +2,10 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { openInNewTab } from '../lib/openInNewTab';
 import { useAuth } from '../contexts/AuthContext';
+import { useMyAgreement } from '../hooks/useMyAgreement';
+import { AgreementStatusCard } from '../components/agreement/AgreementStatusCard';
 
 /**
  * Account settings - name, organisation (trainers), password, and a shortcut
@@ -40,6 +43,10 @@ export const AccountSettings = () => {
   const [connectStatus, setConnectStatus] = useState<'none' | 'pending' | 'complete' | null>(null);
   const [openingStripe, setOpeningStripe] = useState(false);
   const [payoutMsg, setPayoutMsg] = useState<string | null>(null);
+
+  // Consultant agreement
+  const { mine: agreement } = useMyAgreement(user?.role !== 'admin');
+  const [agreementMsg, setAgreementMsg] = useState<string | null>(null);
 
   useEffect(() => {
     api.profile
@@ -333,6 +340,32 @@ export const AccountSettings = () => {
             {savingPassword ? 'Changing…' : 'Change password'}
           </button>
         </form>
+
+        {/* Consultant agreement (trainers, and anyone who has applied) */}
+        {agreement && (isTrainerRole || agreement.current) && (
+          <div className="bg-surface border border-border rounded-xl shadow-sm p-6 mb-6">
+            <div className="text-sm font-bold text-brand mb-3">Consultant agreement</div>
+            <AgreementStatusCard mine={agreement} role={user?.role} showOnFile>
+              {agreement.onFile && (
+                <button
+                  onClick={() =>
+                    openInNewTab(
+                      async () => (await api.trainerAgreements.mySignedUrl()).data.url,
+                    ).catch((err: unknown) =>
+                      setAgreementMsg(
+                        err instanceof Error ? err.message : 'Could not open the file',
+                      ),
+                    )
+                  }
+                  className="mt-3 text-xs font-semibold text-brand underline"
+                >
+                  View your signed copy
+                </button>
+              )}
+            </AgreementStatusCard>
+            {agreementMsg && <div className="text-xs text-danger mt-3">{agreementMsg}</div>}
+          </div>
+        )}
 
         {/* Payout account (trainers only) */}
         {isTrainerRole && (

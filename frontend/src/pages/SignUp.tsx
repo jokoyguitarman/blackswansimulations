@@ -2,6 +2,17 @@ import { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { BrandMark } from '../components/BrandMark';
+import { api } from '../lib/api';
+import { supabase } from '../lib/supabase';
+import { ApplicationSteps } from '../components/agreement/ApplicationSteps';
+import {
+  AgreementDetailsFields,
+  clearAgreementDraft,
+  emptyAgreementDetails,
+  saveAgreementDraft,
+  type AgreementDetails,
+} from '../components/agreement/AgreementDetailsFields';
+import type { ApplyLocationState } from './Apply';
 
 interface InvitationInfo {
   sessionTitle: string;
@@ -18,17 +29,22 @@ export const SignUp = () => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [agencyName, setAgencyName] = useState('');
-  // 'trainer' = free trainer account (payment portal); 'participant' = invited player.
+  // 'trainer' = a consultant applying for trainer access; 'participant' = invited player.
   const [accountType, setAccountType] = useState<'trainer' | 'participant'>(
     inviteToken ? 'participant' : 'trainer',
   );
+  const [details, setDetails] = useState<AgreementDetails>(emptyAgreementDetails);
+  const [requiresAddress, setRequiresAddress] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [confirmEmailFirst, setConfirmEmailFirst] = useState(false);
+  const [applyState, setApplyState] = useState<ApplyLocationState | null>(null);
   const [invitationInfo, setInvitationInfo] = useState<InvitationInfo | null>(null);
   const [loadingInvitation, setLoadingInvitation] = useState(false);
-  const { signUp } = useAuth();
+  const { signUp, user } = useAuth();
   const navigate = useNavigate();
+  const isConsultant = accountType === 'trainer' && !inviteToken;
 
   // Load invitation details if token is present
   useEffect(() => {
@@ -36,6 +52,19 @@ export const SignUp = () => {
       loadInvitationInfo();
     }
   }, [inviteToken]);
+
+  useEffect(() => {
+    if (!isConsultant) return;
+    api.trainerAgreements
+      .current()
+      .then((res) => setRequiresAddress(res.data.fields.includes('address')))
+      .catch(() => {});
+  }, [isConsultant]);
+
+  // The auth context resolves the new account asynchronously, and /apply needs it resolved.
+  useEffect(() => {
+    if (applyState && user) navigate('/apply', { replace: true, state: applyState });
+  }, [applyState, user, navigate]);
 
   const loadInvitationInfo = async () => {
     setLoadingInvitation(true);
@@ -66,13 +95,15 @@ export const SignUp = () => {
     setError(null);
     setLoading(true);
 
-    // SECURITY: do not send a self-selected role in metadata. New accounts
-    // default to the least-privileged role server-side. Trainer accounts are
-    // upgraded through the explicit become-trainer endpoint below, which only
-    // ever grants 'trainer' (all cost-incurring features are credit-gated).
+    // SECURITY: do not send a self-selected role in metadata. New accounts default to the
+    // least-privileged role server-side; trainer access comes only from an admin approving
+    // the signed Consultant Agreement. `applying_as_consultant` only steers navigation.
     const { error } = await signUp(email, password, {
       full_name: fullName,
-      agency_name: agencyName,
+      agency_name: isConsultant
+        ? details.organisation.trim() || 'Independent Consultant'
+        : agencyName,
+      ...(isConsultant ? { applying_as_consultant: true } : {}),
     });
 
     if (error) {
@@ -81,31 +112,49 @@ export const SignUp = () => {
       return;
     }
 
-    if (accountType === 'trainer' && !inviteToken) {
-      // If Supabase established a session immediately, upgrade now; otherwise
-      // the Login page finishes the upgrade after first sign-in.
-      localStorage.setItem('bsw_pending_trainer_upgrade', '1');
-      try {
-        const { api } = await import('../lib/api');
-        await api.profile.becomeTrainer();
-        localStorage.removeItem('bsw_pending_trainer_upgrade');
-      } catch {
-        // No session yet (e.g. email confirmation required) - handled at login.
-      }
+    if (!isConsultant) {
+      setSuccess(true);
+      // If they signed up via invitation, redirect to sessions after a delay
+      setTimeout(() => {
+        if (inviteToken) {
+          navigate('/sessions');
+        } else {
+          navigate('/login');
+        }
+      }, 2000);
+      return;
     }
 
-    setSuccess(true);
-    // If they signed up via invitation, redirect to sessions after a delay
-    setTimeout(() => {
-      if (inviteToken) {
-        navigate('/sessions');
-      } else {
-        navigate('/login');
-      }
-    }, 2000);
+    const draft: AgreementDetails = { ...details, full_name: fullName };
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      // Email confirmation is required before the first sign-in; /apply picks the draft up then.
+      saveAgreementDraft(draft);
+      setConfirmEmailFirst(true);
+      setLoading(false);
+      return;
+    }
+    try {
+      await api.trainerAgreements.saveMine({
+        full_name: draft.full_name.trim(),
+        contact_number: draft.contact_number.trim(),
+        address: draft.address.trim() || null,
+        organisation: draft.organisation.trim() || null,
+      });
+      clearAgreementDraft();
+      setApplyState({});
+    } catch (err) {
+      // The account exists now, so carry on at /apply, which shows the problem with the form.
+      saveAgreementDraft(draft);
+      setApplyState({
+        detailsError: err instanceof Error ? err.message : 'Could not save your details',
+      });
+    }
   };
 
-  if (success) {
+  if (success || confirmEmailFirst) {
     return (
       <div className="min-h-screen flex items-center justify-center relative px-4">
         <div className="max-w-md w-full relative z-10">
@@ -120,9 +169,26 @@ export const SignUp = () => {
                 />
               </svg>
             </div>
-            <h2 className="text-2xl font-extrabold text-brand mb-2">Access request approved</h2>
-            <p className="text-sm text-muted mb-4">Your credentials have been registered.</p>
-            <p className="text-xs text-muted">Redirecting to sign in…</p>
+            {confirmEmailFirst ? (
+              <>
+                <h2 className="text-2xl font-extrabold text-brand mb-2">Confirm your email</h2>
+                <p className="text-sm text-muted mb-4">
+                  We sent a confirmation link to {email}. Open it, then sign in to continue your
+                  application.
+                </p>
+                <Link to="/login" className="military-button inline-block px-6 py-2 text-sm">
+                  Go to sign in
+                </Link>
+              </>
+            ) : (
+              <>
+                <h2 className="text-2xl font-extrabold text-brand mb-2">Account created</h2>
+                <p className="text-sm text-muted mb-4">Your account is ready.</p>
+                <p className="text-xs text-muted">
+                  {inviteToken ? 'Taking you to your session…' : 'Redirecting to sign in…'}
+                </p>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -137,10 +203,18 @@ export const SignUp = () => {
           <div className="text-center">
             <BrandMark className="w-12 h-12 mx-auto mb-4" />
             <h2 className="text-2xl font-extrabold text-brand mb-1">
-              {inviteToken ? 'Accept invitation' : 'Request access'}
+              {inviteToken
+                ? 'Accept invitation'
+                : isConsultant
+                  ? 'Apply as a consultant'
+                  : 'Create your account'}
             </h2>
-            <p className="text-sm text-muted">New user registration</p>
+            <p className="text-sm text-muted">
+              {isConsultant ? 'Prophyion consultant application' : 'New user registration'}
+            </p>
           </div>
+
+          {isConsultant && <ApplicationSteps current={1} compact />}
 
           {/* Invitation Info */}
           {inviteToken && invitationInfo && (
@@ -199,7 +273,7 @@ export const SignUp = () => {
                   <div
                     className={`text-sm font-bold ${accountType === 'trainer' ? 'text-brand' : 'text-muted'}`}
                   >
-                    Trainer
+                    Consultant
                   </div>
                   <div className="text-[11px] text-muted mt-0.5">
                     I run crisis trainings for clients
@@ -226,8 +300,8 @@ export const SignUp = () => {
               </div>
               {accountType === 'trainer' && (
                 <p className="text-[11px] text-muted mt-2">
-                  Free forever to enroll clients. The War Room unlocks when a client pays an
-                  engagement invoice.
+                  Prophyion approves every consultant account. After this step you review and sign
+                  the Prophyion Consultant Agreement, then upload the signed copy.
                 </p>
               )}
             </div>
@@ -237,18 +311,26 @@ export const SignUp = () => {
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div>
               <label htmlFor="fullName" className="block text-xs font-semibold text-ink mb-2">
-                Full name
+                {isConsultant ? 'Full legal name' : 'Full name'}
               </label>
               <input
                 id="fullName"
                 name="fullName"
                 type="text"
                 required
+                minLength={isConsultant ? 2 : undefined}
+                maxLength={isConsultant ? 120 : undefined}
+                autoComplete="name"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 className="w-full px-4 py-3 military-input text-sm"
-                placeholder="Last, First M."
+                placeholder={isConsultant ? 'Tan Mei Ling' : 'Last, First M.'}
               />
+              {isConsultant && (
+                <p className="mt-1 text-xs text-muted">
+                  As on your NRIC or passport, in English letters. It is printed on your agreement.
+                </p>
+              )}
             </div>
 
             <div>
@@ -287,28 +369,41 @@ export const SignUp = () => {
               <p className="mt-1 text-xs text-muted">Minimum 6 characters.</p>
             </div>
 
-            <div>
-              <label htmlFor="agencyName" className="block text-xs font-semibold text-ink mb-2">
-                Agency / organization
-              </label>
-              <input
-                id="agencyName"
-                name="agencyName"
-                type="text"
-                required
-                value={agencyName}
-                onChange={(e) => setAgencyName(e.target.value)}
-                className="w-full px-4 py-3 military-input text-sm"
-                placeholder="e.g. Ministry of Defence"
+            {isConsultant ? (
+              <AgreementDetailsFields
+                value={details}
+                onChange={setDetails}
+                requiresAddress={requiresAddress}
+                showName={false}
               />
-            </div>
+            ) : (
+              <div>
+                <label htmlFor="agencyName" className="block text-xs font-semibold text-ink mb-2">
+                  Agency / organization
+                </label>
+                <input
+                  id="agencyName"
+                  name="agencyName"
+                  type="text"
+                  required
+                  value={agencyName}
+                  onChange={(e) => setAgencyName(e.target.value)}
+                  className="w-full px-4 py-3 military-input text-sm"
+                  placeholder="e.g. Ministry of Defence"
+                />
+              </div>
+            )}
 
             <button
               type="submit"
               disabled={loading}
               className="w-full military-button py-3 px-4 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {loading ? 'Processing…' : 'Submit request'}
+              {loading
+                ? 'Processing…'
+                : isConsultant
+                  ? 'Continue to the agreement'
+                  : 'Create account'}
             </button>
           </form>
 
