@@ -1,0 +1,1226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Performance Bugs Explained &mdash; What's Slow, Why, and the Fix</title>
+<style>
+  :root {
+    --bg:#0a0e14; --bg2:#0f1620; --panel:#131c28; --panel2:#182030;
+    --line:#233143; --ink:#e8eef6; --muted:#8aa0b8; --dim:#5d7186;
+    --cyan:#2dd4bf; --cyan2:#22d3ee; --amber:#f5b942; --violet:#a78bfa;
+    --pink:#f472b6; --green:#34d399; --red:#f87171; --orange:#fb923c;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.65; overflow-x:hidden; }
+  a { color:var(--cyan); }
+  h1,h2,h3 { font-weight:700; letter-spacing:-0.01em; line-height:1.25; }
+  code,.mono,pre { font-family:"SF Mono","JetBrains Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace; }
+  .wrap { max-width:1080px; margin:0 auto; padding:0 24px; }
+  section { padding:54px 0; border-top:1px solid var(--line); }
+  .sec-num { font-size:12.5px; color:var(--cyan); letter-spacing:0.25em; text-transform:uppercase; margin-bottom:10px; font-weight:700; }
+  .sec-title { font-size:27px; margin:0 0 10px; }
+  .sec-sub { color:var(--muted); margin:0 0 26px; max-width:820px; }
+
+  header.hero { position:relative; min-height:56vh; display:flex; align-items:center; overflow:hidden; }
+  .hero-bg { position:absolute; inset:0; z-index:0;
+    background:radial-gradient(1000px 500px at 15% 5%, rgba(248,113,113,0.16), transparent 60%),
+      radial-gradient(900px 520px at 90% 20%, rgba(245,185,66,0.14), transparent 60%),
+      radial-gradient(900px 600px at 55% 100%, rgba(45,212,191,0.10), transparent 60%); }
+  .grid-lines { position:absolute; inset:0; z-index:0; opacity:0.22;
+    background-image:linear-gradient(var(--line) 1px,transparent 1px),linear-gradient(90deg,var(--line) 1px,transparent 1px);
+    background-size:46px 46px; mask-image:radial-gradient(ellipse at 50% 40%, #000 35%, transparent 78%); }
+  .hero-content { position:relative; z-index:2; }
+  .kicker { display:inline-flex; align-items:center; gap:9px; font-size:12px; letter-spacing:0.2em; text-transform:uppercase; color:var(--amber); border:1px solid #5a4a1a; padding:6px 14px; border-radius:999px; background:rgba(245,185,66,0.06); margin-bottom:22px; }
+  .pulse-dot { width:8px; height:8px; border-radius:50%; background:var(--amber); animation:pulse 2s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(245,185,66,0.6);} 70%{box-shadow:0 0 0 12px rgba(245,185,66,0);} 100%{box-shadow:0 0 0 0 rgba(245,185,66,0);} }
+  .hero h1 { font-size:clamp(30px,5vw,46px); margin:0 0 18px; max-width:920px; }
+  .hero h1 .grad { background:linear-gradient(100deg,var(--red),var(--amber) 50%,var(--cyan) 95%); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .hero p.lead { font-size:18px; color:var(--muted); max-width:760px; margin:0 0 26px; }
+  .hero-stats { display:flex; flex-wrap:wrap; gap:12px; }
+  .stat { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:13px 18px; min-width:118px; }
+  .stat b { font-size:21px; display:block; }
+  .stat span { font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:0.07em; }
+  .stat.red b{color:var(--red);} .stat.amber b{color:var(--amber);} .stat.green b{color:var(--green);} .stat.cyan b{color:var(--cyan);}
+
+  nav.toc { position:sticky; top:0; z-index:50; backdrop-filter:blur(10px); background:rgba(10,14,20,0.86); border-bottom:1px solid var(--line); }
+  nav.toc .wrap { display:flex; gap:6px; overflow-x:auto; padding:10px 24px; scrollbar-width:none; }
+  nav.toc .wrap::-webkit-scrollbar { display:none; }
+  nav.toc a { color:var(--muted); text-decoration:none; font-size:12.5px; padding:7px 12px; border-radius:8px; white-space:nowrap; }
+  nav.toc a:hover { color:var(--ink); background:var(--panel2); }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+  .grid { display:grid; gap:16px; }
+  .g2 { grid-template-columns:repeat(2,1fr); }
+  .g3 { grid-template-columns:repeat(3,1fr); }
+  @media (max-width:900px){ .g2,.g3 { grid-template-columns:1fr; } }
+
+  .analogy { border-left:3px solid var(--violet); background:rgba(167,139,250,0.06); padding:14px 18px; border-radius:0 10px 10px 0; margin:18px 0; color:#d8c9f7; }
+  .analogy b { color:var(--violet); }
+  .takeaway { border-left:3px solid var(--green); background:rgba(52,211,153,0.06); padding:14px 18px; border-radius:0 10px 10px 0; margin:18px 0; }
+  .takeaway b { color:var(--green); }
+  .warnbox { border-left:3px solid var(--amber); background:rgba(245,185,66,0.07); padding:14px 18px; border-radius:0 10px 10px 0; margin:18px 0; }
+  .warnbox b { color:var(--amber); }
+  .keybox { border:1px solid #5a4a1a; background:linear-gradient(180deg,rgba(245,185,66,0.10),rgba(245,185,66,0.03)); padding:20px 22px; border-radius:14px; margin:22px 0; }
+  .keybox .hd { font-size:12px; letter-spacing:0.18em; text-transform:uppercase; color:var(--amber); font-weight:700; margin-bottom:8px; }
+
+  /* severity */
+  .sev { display:inline-block; font-size:11px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; padding:3px 9px; border-radius:6px; vertical-align:middle; }
+  .sev.crit{background:rgba(248,113,113,0.16); color:#fca5a5; border:1px solid #5a2a2a;}
+  .sev.high{background:rgba(251,146,60,0.16); color:#fdba74; border:1px solid #5a3a1a;}
+  .sev.med{background:rgba(245,185,66,0.14); color:#fcd34d; border:1px solid #5a4a1a;}
+  .sev.low{background:rgba(138,160,184,0.14); color:#b6c4d6; border:1px solid #2c3a4a;}
+  .sev.ok{background:rgba(52,211,153,0.14); color:#6ee7b7; border:1px solid #1a4a3a;}
+
+  /* bug blocks */
+  .bug { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--red); border-radius:0 14px 14px 0; padding:20px 22px; margin:18px 0; }
+  .bug.high { border-left-color:var(--orange); }
+  .bug.med { border-left-color:var(--amber); }
+  .bug.low { border-left-color:var(--dim); }
+  .bug.good { border-left-color:var(--green); }
+  .bug h3 { margin:0 0 4px; font-size:18.5px; display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .bug .id { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:var(--dim); border:1px solid var(--line); padding:2px 7px; border-radius:5px; }
+  .bug .where { font-size:12.5px; color:var(--dim); margin:2px 0 12px; font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .bug p { margin:10px 0; }
+  .bug .fixline { border-top:1px dashed var(--line); margin-top:16px; padding-top:14px; }
+  .bug .fixline .lbl2 { font-size:11.5px; letter-spacing:0.12em; text-transform:uppercase; color:var(--green); font-weight:700; }
+
+  /* proportional bars */
+  .bars { margin:16px 0 4px; }
+  .barrow { display:grid; grid-template-columns:190px 1fr 120px; gap:12px; align-items:center; margin-bottom:9px; font-size:13px; }
+  @media (max-width:760px){ .barrow { grid-template-columns:1fr; gap:3px; } }
+  .barrow .nm { color:var(--muted); }
+  .bartrack { background:#0b1119; border:1px solid var(--line); border-radius:6px; height:22px; overflow:hidden; position:relative; }
+  .barfill { height:100%; border-radius:5px 0 0 5px; display:flex; align-items:center; }
+  .barfill.red { background:linear-gradient(90deg,#7f1d1d,#f87171); }
+  .barfill.amber { background:linear-gradient(90deg,#78350f,#f5b942); }
+  .barfill.green { background:linear-gradient(90deg,#065f46,#34d399); }
+  .barfill.cyan { background:linear-gradient(90deg,#0f766e,#2dd4bf); }
+  .barrow .vl { text-align:right; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.5px; }
+  .barrow .vl.red{color:#fca5a5;} .barrow .vl.green{color:#6ee7b7;} .barrow .vl.amber{color:#fcd34d;}
+  .minbar { min-width:3px; }
+
+  /* waterfall */
+  .wf { margin:18px 0 6px; }
+  .wfrow { display:grid; grid-template-columns:230px 1fr; gap:12px; align-items:center; margin-bottom:7px; font-size:13px; }
+  @media (max-width:760px){ .wfrow { grid-template-columns:1fr; gap:2px; } }
+  .wfrow .nm { color:var(--muted); font-size:12.5px; }
+  .wftrack { position:relative; height:24px; background:#0b1119; border:1px solid var(--line); border-radius:6px; }
+  .wfseg { position:absolute; top:3px; bottom:3px; border-radius:4px; display:flex; align-items:center; padding:0 7px; font-size:11px; color:#0a0e14; font-weight:700; white-space:nowrap; overflow:hidden; }
+  .wfseg.wait { background:#3f4a5a; color:#b6c4d6; }
+  .wfseg.net { background:linear-gradient(90deg,#b45309,#f5b942); }
+  .wfseg.db { background:linear-gradient(90deg,#7f1d1d,#f87171); }
+  .wfseg.js { background:linear-gradient(90deg,#4c1d95,#a78bfa); }
+  .wfseg.ok { background:linear-gradient(90deg,#065f46,#34d399); }
+
+  /* terminal / code */
+  .shot { border-radius:11px; overflow:hidden; border:1px solid var(--line); margin:14px 0 0; box-shadow:0 10px 30px rgba(0,0,0,0.35); }
+  .shot .bar { display:flex; align-items:center; gap:8px; padding:9px 13px; background:#1a2230; border-bottom:1px solid var(--line); font-size:12px; color:var(--muted); }
+  .dot { width:11px; height:11px; border-radius:50%; }
+  .dot.r{background:#ff5f56;} .dot.y{background:#ffbd2e;} .dot.g{background:#27c93f;}
+  .shot .bar .title { margin-left:8px; color:var(--dim); font-family:ui-monospace,Menlo,Consolas,monospace; }
+  .shot.bad { border-color:#5a2a2a; } .shot.bad .bar { background:#241519; }
+  .shot.good { border-color:#1a4a3a; } .shot.good .bar { background:#0f1f1a; }
+  .term { background:#0b1119; padding:15px 16px; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12.6px; line-height:1.62; white-space:pre-wrap; word-break:break-word; color:#cfe0f0; margin:0; overflow-x:auto; }
+  .term .c{color:var(--dim);} .term .ok{color:var(--green);} .term .bad{color:var(--red);}
+  .term .warn{color:var(--amber);} .term .k{color:var(--violet);} .term .s{color:#fcd34d;}
+  .term .fn{color:#7dd3fc;}
+  .term .hi{background:rgba(248,113,113,0.20); color:#fecaca; border-radius:3px; padding:0 3px;}
+  .term .hiok{background:rgba(52,211,153,0.16); color:#a7f3d0; border-radius:3px; padding:0 3px;}
+
+  .duo { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-top:14px; }
+  @media (max-width:980px){ .duo { grid-template-columns:1fr; } }
+  .lbl { font-size:12px; font-weight:700; letter-spacing:0.1em; text-transform:uppercase; margin:16px 0 2px; display:flex; align-items:center; gap:8px; }
+  .lbl.bad { color:var(--red); } .lbl.good { color:var(--green); }
+
+  table.t { width:100%; border-collapse:collapse; margin-top:16px; font-size:13.4px; }
+  table.t th, table.t td { text-align:left; padding:10px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.t th { color:var(--cyan); font-size:11.5px; text-transform:uppercase; letter-spacing:0.08em; }
+  table.t td code { color:#fcd34d; font-size:12px; }
+  table.t tr:hover td { background:rgba(255,255,255,0.02); }
+  .num { font-family:ui-monospace,Menlo,Consolas,monospace; text-align:right; }
+  .num.red{color:#fca5a5;} .num.green{color:#6ee7b7;} .num.amber{color:#fcd34d;}
+
+  .steps { counter-reset:s; list-style:none; padding:0; margin:14px 0 0; }
+  .steps li { position:relative; padding:7px 0 7px 40px; color:var(--muted); }
+  .steps li::before { counter-increment:s; content:counter(s); position:absolute; left:0; top:6px; width:25px; height:25px; border-radius:50%; background:var(--panel2); border:1px solid var(--line); color:var(--cyan); font-size:12px; font-weight:700; display:flex; align-items:center; justify-content:center; }
+  .steps li b { color:var(--ink); }
+
+  .pill { display:inline-block; font-size:11px; padding:2px 8px; border-radius:999px; background:var(--panel2); border:1px solid var(--line); color:var(--muted); }
+  .footer { padding:40px 0 70px; color:var(--dim); font-size:13px; text-align:center; }
+  hr.soft { border:none; border-top:1px dashed var(--line); margin:26px 0; }
+  .ratio { font-family:ui-monospace,Menlo,Consolas,monospace; font-weight:700; color:var(--red); }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-bg"></div>
+  <div class="grid-lines"></div>
+  <div class="wrap hero-content">
+    <div class="kicker"><span class="pulse-dot"></span> Performance Audit &mdash; 27 Findings, All Measured</div>
+    <h1>The app is slow because it moves <span class="grad">megabytes to draw kilobytes</span> &mdash; here is every bug, and the fix</h1>
+    <p class="lead">Every number on this page was measured against the live database and the real built bundle. Nothing is estimated. The headline: your database is fast, and almost every problem is an over-fetch, a missing index, or a wait that didn't need to happen.</p>
+    <div class="hero-stats">
+      <div class="stat red"><b>27 MB</b><span>to draw 4 numbers</span></div>
+      <div class="stat red"><b>6.8 s</b><span>to open a feed</span></div>
+      <div class="stat amber"><b>2.77 MB</b><span>single JS bundle</span></div>
+      <div class="stat amber"><b>0</b><span>lazy-loaded routes</span></div>
+      <div class="stat cyan"><b>0.4 ms</b><span>actual DB time</span></div>
+      <div class="stat green"><b>99.94%</b><span>reads from memory: no upgrade</span></div>
+      <div class="stat green"><b>27</b><span>findings, 8 non-issues</span></div>
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#tldr">The 60-second version</a>
+    <a href="#notdb">Not the database</a>
+    <a href="#load">Part 1 &middot; Loading the app</a>
+    <a href="#sim">Part 2 &middot; Inside a simulation</a>
+    <a href="#old">Part 3 &middot; Old data being read</a>
+    <a href="#insight">The trap</a>
+    <a href="#risks">Drawbacks of the fixes</a>
+    <a href="#good">Already correct</a>
+    <a href="#plan">The fix plan</a>
+    <a href="#verify">How we prove it</a>
+  </div>
+</nav>
+
+<section id="tldr">
+  <div class="wrap">
+    <div class="sec-num">Section 00</div>
+    <h2 class="sec-title">The 60-second version</h2>
+    <p class="sec-sub">If you read nothing else, read this. There are two separate slowness problems with two different root causes.</p>
+
+    <div class="grid g2">
+      <div class="card">
+        <h3 style="margin:0 0 8px; color:var(--amber); font-size:17px;">Problem 1 &mdash; Getting into the app</h3>
+        <p style="color:var(--muted); margin:0 0 12px;">Scenario cards and session cards are slow because the API sends the entire contents of every scenario and session, including giant blobs the cards never display.</p>
+        <p style="margin:0;"><b>The dashboard &mdash; your landing page &mdash; downloads 27 MB to display four integers.</b> The scenario library downloads 13 MB to draw cards that need 129 KB.</p>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 8px; color:var(--red); font-size:17px;">Problem 2 &mdash; Inside a simulation</h3>
+        <p style="color:var(--muted); margin:0 0 12px;">Opening the social feed runs a database query that reads 30,706 rows in order to show 1,000, because one filter accidentally disables the index built for exactly this query.</p>
+        <p style="margin:0;"><b>On a cold cache that takes 6.8 seconds.</b> And sending a message shows the player nothing at all until three network round trips finish.</p>
+      </div>
+    </div>
+
+    <div class="keybox">
+      <div class="hd">Two things that will mislead you</div>
+      <p style="margin:0 0 12px;"><b>1. Shrinking the page size does not fix the slowness.</b> I measured it: dropping the limit from 1000 to 50 leaves the work the database does <em>completely unchanged</em> (7,456 buffers either way). It fixes the download size, not the wait.</p>
+      <p style="margin:0 0 12px;"><b>2. But adding an index isn't the answer either.</b> The right index already exists &mdash; forcing Postgres to use it gives <b>81.7 ms</b>. The actual bug is that the planner mis-estimates the row count by 94&times; and picks the wrong plan. The fix is to <em>delete</em> a predicate that does nothing, not to add anything.</p>
+      <p style="margin:0;">Both details are in <a href="#insight">the trap</a>, and the knock-on risks of every proposed fix are in <a href="#risks">drawbacks</a>.</p>
+    </div>
+
+    <div class="takeaway"><b>And you don't need a bigger Supabase plan yet.</b> 99.94% of reads already come from memory. The waste is a few queries that read finished exercises' data to answer questions about the current one, fixable with three index migrations. See <a href="#old">Part 3</a>.</div>
+  </div>
+</section>
+
+<section id="notdb">
+  <div class="wrap">
+    <div class="sec-num">Section 01</div>
+    <h2 class="sec-title">First, ruling out the usual suspect</h2>
+    <p class="sec-sub">Before blaming anything, I profiled the queries behind every slow screen. The database is not the problem on the card pages &mdash; it is roughly a thousand times faster than the thing it feeds.</p>
+
+    <table class="t">
+      <thead><tr><th>Query behind the screen</th><th class="num">Execution time</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td>Trainer session list (20 rows, sorted)</td><td class="num green">0.399 ms</td><td><span class="sev ok">Fine</span></td></tr>
+        <tr><td>Full scenario list (99 rows, sorted)</td><td class="num green">0.390 ms</td><td><span class="sev ok">Fine</span></td></tr>
+        <tr><td>One scenario's template-inject count</td><td class="num green">0.235 ms</td><td><span class="sev ok">Fine</span></td></tr>
+      </tbody>
+    </table>
+
+    <div class="takeaway">
+      <b>Conclusion:</b> the time is not spent finding the data. It is spent <em>serialising, transferring, and parsing</em> data nobody asked to see &mdash; and, inside simulations, on one query whose index has been accidentally disabled. Those are the two things this document is about.
+    </div>
+
+    <p style="color:var(--muted);">A consequence worth stating up front: <b>adding indexes to <code>sessions</code> or <code>session_participants</code> would be wasted work.</b> Those tables hold 265 rows and a handful respectively. The planner scans them in a fraction of a millisecond. Indexes there would cost write performance and buy nothing. There <em>is</em> one genuinely missing index, and one accidentally-useless one &mdash; both covered below.</p>
+  </div>
+</section>
+
+<section id="load">
+  <div class="wrap">
+    <div class="sec-num">Section 02</div>
+    <h2 class="sec-title">Part 1 &mdash; Why the cards are slow to appear</h2>
+    <p class="sec-sub">Twelve findings, ordered by how much they cost you. The pattern behind most of them is a single line of code: <code>select('*')</code>.</p>
+
+    <h3 style="font-size:19px; margin:30px 0 4px; color:var(--cyan2);">The root cause: three enormous columns nobody looks at</h3>
+    <p style="color:var(--muted); max-width:820px;">Three JSONB columns dominate every payload. None of them is read by any card. They are only needed when you open a single scenario in detail, or when a live session is running.</p>
+
+    <div class="bars">
+      <div class="barrow"><span class="nm"><code>scenarios.insider_knowledge</code></span><div class="bartrack"><div class="barfill red" style="width:100%"></div></div><span class="vl red">87 KB / row</span></div>
+      <div class="barrow"><span class="nm"><code>sessions.current_state</code></span><div class="bartrack"><div class="barfill red" style="width:100%"></div></div><span class="vl red">209 KB / row</span></div>
+      <div class="barrow"><span class="nm"><code>scenarios.initial_state</code></span><div class="bartrack"><div class="barfill amber" style="width:51%"></div></div><span class="vl amber">44 KB / row</span></div>
+      <div class="barrow"><span class="nm">Everything a card displays</span><div class="bartrack"><div class="barfill green minbar" style="width:1.5%"></div></div><span class="vl green">~1.3 KB / row</span></div>
+    </div>
+
+    <p style="color:var(--muted); font-size:13.5px;">I verified these are unused on the card path: searching the frontend for <code>insider_knowledge</code> returns only three detail-view files, and <code>current_state</code> appears nowhere in the sessions page.</p>
+
+    <div class="bug">
+      <h3><span class="id">BUG-01</span> The dashboard downloads 27 MB to display four integers <span class="sev crit">Critical</span></h3>
+      <div class="where">frontend/src/components/dashboards/TrainerDashboard.tsx:30</div>
+      <p>This is the worst finding in the codebase, and it is on the <b>first screen after login</b> &mdash; <code>/</code> redirects to <code>/dashboard</code>.</p>
+      <div class="shot bad">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">TrainerDashboard.tsx &mdash; line 30</span></div>
+<pre class="term"><span class="k">Promise</span>.allSettled([<span class="hi">api.scenarios.list()</span>, <span class="hi">api.sessions.list(1, 50)</span>])
+<span class="c">//          ^^^^^^^^^^^^^ 13 MB        ^^^^^^^^^^^^^^^^ 14 MB</span>
+
+<span class="c">// ...and this is everything it does with all 27 MB:</span>
+next.scenarios      = (scenariosResult.value.data || []).length;  <span class="c">// a count</span>
+next.totalSessions  = sessionsResult.value.<span class="ok">count</span>;              <span class="c">// already a number!</span>
+next.activeSessions = rows.filter((s) =&gt; s.status === <span class="s">'in_progress'</span>).length;
+next.participants   = uniqueIds.size;</pre>
+      </div>
+      <p style="margin-top:14px;">Note <code>next.totalSessions</code> reads <code>count</code> &mdash; a scalar the API <em>already returns separately</em>. The 14 MB of session rows is downloaded and then used only to filter by status and count participant ids.</p>
+      <div class="fixline">
+        <span class="lbl2">Fix</span>
+        <p style="margin:6px 0 0;">Add <code>GET /api/dashboard/stats</code> returning those four numbers as counts computed in the database. <b>27 MB &rarr; under 1 KB.</b> Also audit <code>AgencyDashboard</code>, which non-trainers see, for the same pattern.</p>
+      </div>
+    </div>
+
+    <div class="bug">
+      <h3><span class="id">BUG-02</span> The scenario library ships 13 MB to draw 129 KB of cards <span class="sev crit">Critical</span></h3>
+      <div class="where">server/routes/scenarios.ts:207 &mdash; <code>.select('*')</code></div>
+      <p>The library endpoint returns every column of every scenario. I measured what the cards actually render versus what arrives:</p>
+      <div class="bars">
+        <div class="barrow"><span class="nm">Sent today</span><div class="bartrack"><div class="barfill red" style="width:100%"></div></div><span class="vl red">13 MB</span></div>
+        <div class="barrow"><span class="nm">&mdash; of which <code>insider_knowledge</code></span><div class="bartrack"><div class="barfill red" style="width:65%"></div></div><span class="vl red">8,454 KB</span></div>
+        <div class="barrow"><span class="nm">&mdash; of which <code>initial_state</code></span><div class="bartrack"><div class="barfill amber" style="width:33%"></div></div><span class="vl amber">4,308 KB</span></div>
+        <div class="barrow"><span class="nm">What the cards need</span><div class="bartrack"><div class="barfill green minbar" style="width:1%"></div></div><span class="vl green">129 KB</span></div>
+      </div>
+      <p style="margin-top:6px;"><span class="ratio">~100&times; reduction available.</span></p>
+      <div class="fixline">
+        <span class="lbl2">Fix &mdash; with one trap</span>
+        <p style="margin:6px 0 0;">Replace <code>select('*')</code> with an explicit list of the 10 fields cards use. <b>The trap:</b> there is <em>no <code>country</code> column</em> on <code>scenarios</code> (I checked all 22 columns). The frontend type declares <code>country</code> but it is always undefined, and the cast chips silently fall back to <code>initial_state.country</code>. The projection must derive it as <code>country:initial_state-&gt;&gt;country</code> or country chips and country search break.</p>
+      </div>
+    </div>
+
+    <div class="bug">
+      <h3><span class="id">BUG-03</span> The session list ships 8.2 MB to draw 9.3 KB of cards <span class="sev crit">Critical</span></h3>
+      <div class="where">server/routes/sessions.ts:84&ndash;87</div>
+      <p>The select string embeds the <em>entire</em> scenario row inside every session, plus two full user-profile expansions:</p>
+      <div class="shot bad">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">sessions.ts &mdash; line 85</span></div>
+<pre class="term"><span class="s">'*, <span class="hi">scenarios(*)</span>, trainer:user_profiles!sessions_trainer_id_fkey(<span class="hi">*</span>), session_participants(<span class="hi">*</span>, user:user_profiles(<span class="hi">*</span>))'</span></pre>
+      </div>
+      <p style="margin-top:14px;">Meanwhile the page's own TypeScript interface declares it needs exactly three fields from the scenario:</p>
+      <div class="shot good">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">pages/Sessions.tsx &mdash; lines 21&ndash;25</span></div>
+<pre class="term">scenarios?: {
+  <span class="hiok">title</span>: string;
+  <span class="hiok">category</span>: string;
+  <span class="hiok">difficulty</span>: string;
+};</pre>
+      </div>
+      <p style="margin-top:14px;">Half the payload is <code>sessions.current_state</code> (209 KB/row), half is the embedded scenario. Both are discarded.</p>
+      <p><span class="ratio">~900&times; reduction available</span> &mdash; 8.2 MB down to 9.3 KB for a 20-session page.</p>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-04</span> The participants join is paid for and then thrown away &mdash; and three stats are silently broken <span class="sev med">Medium &middot; latent bug</span></h3>
+      <div class="where">server/routes/sessions.ts:85 vs pages/Sessions.tsx:29</div>
+      <p>The query selects <code>session_participants(...)</code>, so the JSON key is <code>session_participants</code>. But the frontend reads <code>s.participants</code>. <b>Nothing aliases it on the list endpoint</b> &mdash; though the single-session endpoint at line 1217 does alias it correctly.</p>
+      <p>So <code>s.participants</code> is permanently <code>undefined</code>, which means:</p>
+      <ul style="color:var(--muted);">
+        <li>The participant count chip on each session card never renders</li>
+        <li>The "participants" tile on the Sessions page is always 0</li>
+        <li>The dashboard participants stat is always null</li>
+      </ul>
+      <p>...while the app faithfully transfers the full participants join <em>plus</em> a nested <code>user_profiles(*)</code> for every participant.</p>
+      <div class="fixline"><span class="lbl2">Fix</span><p style="margin:6px 0 0;">Alias it to <code>participants:session_participants(user_id)</code> in the slim select. One change fixes the bug and drops the weight simultaneously.</p></div>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-05</span> No compression anywhere <span class="sev high">High</span></h3>
+      <div class="where">server/index.ts &mdash; no <code>compression</code> middleware</div>
+      <p>I searched the entire server and the Vercel config. Every JSON response above crosses the wire <b>raw</b>. JSON of this shape compresses roughly 10&times;.</p>
+      <div class="takeaway"><b>This is one line of code</b> for an order-of-magnitude improvement on every single endpoint, and it multiplies every other fix in this document.</div>
+      <div class="warnbox"><b>One caution:</b> the war-room build routes stream NDJSON and hold a response open for minutes (<code>socialCrisisWarroom.ts:270</code>, <code>warroom.ts:389</code>). Compression buffers by default, which would break incremental streaming. They must be excluded &mdash; they already set <code>Cache-Control: no-transform</code>, so a filter can honour that.</div>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-06</span> One 2.77 MB JavaScript bundle, zero code splitting <span class="sev high">High</span></h3>
+      <div class="where">frontend/src/main.tsx:5&ndash;36 &middot; frontend/vite.config.ts</div>
+      <p>There is <b>not a single <code>React.lazy</code> in the entire frontend</b>. <code>main.tsx</code> statically imports all 19 pages plus every simulated-device component, so the login screen downloads and parses all of this:</p>
+      <table class="t">
+        <thead><tr><th>Loaded on every page, including login</th><th class="num">Weight</th><th>Needed to draw a card?</th></tr></thead>
+        <tbody>
+          <tr><td><code>leaflet</code> (maps, 29 importers)</td><td class="num red">1,431 KB</td><td><span class="sev low">No</span></td></tr>
+          <tr><td><code>matter-js</code> (physics, 1 importer)</td><td class="num red">807 KB</td><td><span class="sev low">No</span></td></tr>
+          <tr><td><code>@tiptap</code> + <code>prosemirror</code> (editors)</td><td class="num red">716 KB</td><td><span class="sev low">No</span></td></tr>
+          <tr><td><code>socket.io-client</code></td><td class="num red">416 KB</td><td><span class="sev low">No</span></td></tr>
+          <tr><td><code>DebugRTSSim.tsx</code> (4,932 lines)</td><td class="num red">219 KB</td><td><span class="sev low">No</span></td></tr>
+          <tr><td><code>SocialCrisisWizard.tsx</code> (3,844 lines)</td><td class="num red">163 KB</td><td><span class="sev low">No</span></td></tr>
+          <tr><td><code>SessionView.tsx</code> (3,015 lines)</td><td class="num red">126 KB</td><td><span class="sev low">No</span></td></tr>
+          <tr><td><code>WarRoomLegacy.tsx</code> (2,632 lines)</td><td class="num red">120 KB</td><td><span class="sev low">No</span></td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px;">Built output: <b>2.77 MB raw / 767 KB gzipped</b> in one file. There is also no <code>manualChunks</code> in the Vite config, so every deploy invalidates the cached vendor code along with your app code.</p>
+      <div class="fixline"><span class="lbl2">Fix</span><p style="margin:6px 0 0;">Route-level <code>React.lazy</code> for the heavy pages, keeping <code>Login</code>, <code>Dashboard</code>, <code>Scenarios</code> and <code>Sessions</code> eager (splitting those would <em>add</em> a round trip to the screens we're speeding up). Plus vendor chunking. Target: under 200 KB gzipped on the card path.</p></div>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-07</span> Two round trips of dead waiting before the cards are even requested <span class="sev high">High</span></h3>
+      <div class="where">frontend/src/contexts/AuthContext.tsx:40, 124 &middot; main.tsx:50</div>
+      <p>Nothing fetches card data until this entire chain finishes, strictly in order:</p>
+      <div class="wf">
+        <div class="wfrow"><span class="nm">1. Download + parse bundle</span><div class="wftrack"><div class="wfseg js" style="left:0.5%; width:30%">767 KB gzipped</div></div></div>
+        <div class="wfrow"><span class="nm">2. <code>supabase.auth.getSession()</code></span><div class="wftrack"><div class="wfseg net" style="left:31%; width:14%">round trip</div></div></div>
+        <div class="wfrow"><span class="nm">3. <code>await fetch('/api/profile')</code></span><div class="wftrack"><div class="wfseg net" style="left:45.5%; width:18%">round trip</div></div></div>
+        <div class="wfrow"><span class="nm">4. <code>loading=false</code>, page mounts</span><div class="wftrack"><div class="wfseg wait" style="left:64%; width:7%">&nbsp;</div></div></div>
+        <div class="wfrow"><span class="nm">5. <code>useEffect</code> fires the list request</span><div class="wftrack"><div class="wfseg db" style="left:71.5%; width:28%">finally asking for cards</div></div></div>
+      </div>
+      <p style="margin-top:10px;">Steps 2 and 3 are pure latency before the request that actually matters is even issued. <code>Sessions.tsx</code> adds a <em>third</em> for participants: <code>initialize()</code> at line 55 <code>await</code>s <code>processInvitations()</code> &mdash; described in its own comment as "just a convenience feature" that fails silently &mdash; before calling <code>loadSessions()</code>.</p>
+      <div class="warnbox"><b>Handle with care.</b> The comment at <code>AuthContext.tsx:94&ndash;99</code> is explicit that the user's role must <em>not</em> come from client-editable metadata, and defaults to least-privilege. Rendering optimistically must not weaken that. The safe version adds a separate <code>roleResolved</code> flag rather than flipping <code>loading</code> early, so role-gated pages don't bounce to <code>/dashboard</code> on reload. This is the highest-risk item in the plan.</div>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-08</span> Every API request pays two extra round trips server-side <span class="sev high">High</span></h3>
+      <div class="where">server/middleware/auth.ts:38, 52</div>
+      <div class="shot bad">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">middleware/auth.ts &mdash; requireAuth</span></div>
+<pre class="term"><span class="c">// Line 38 — an outbound HTTP call to Supabase Auth, on EVERY request</span>
+const { data, error } = <span class="k">await</span> supabaseAdmin.auth.<span class="hi">getUser(token)</span>;
+
+<span class="c">// Line 52 — then a SECOND, separate query, serially</span>
+const { data: profile } = <span class="k">await</span> supabaseAdmin
+  .from(<span class="s">'user_profiles'</span>).select(<span class="s">'role, agency_name, full_name'</span>)
+  .eq(<span class="s">'id'</span>, data.user.id).maybeSingle();</pre>
+      </div>
+      <p style="margin-top:14px;">The JWT is cryptographically signed. Verifying it in-process takes microseconds instead of a network hop. This matters even more <em>inside</em> a simulation, where every player action is its own small request.</p>
+      <div class="fixline">
+        <span class="lbl2">Fix &mdash; with a verified prerequisite</span>
+        <p style="margin:6px 0 0;">I checked your JWKS endpoint: <code>.../auth/v1/.well-known/jwks.json</code> returns <code>{"keys":[]}</code>. That means the project is still on the <b>legacy shared HS256 secret</b>, and <code>server/env.ts</code> has no JWT secret variable at all. So either add <code>SUPABASE_JWT_SECRET</code> (fast, not rotatable without redeploy) or migrate to asymmetric signing keys (Supabase's recommended direction, rotatable). Either way this touches token validation &mdash; worth a security review on the diff.</p>
+      </div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-09</span> The scenario library makes 99 separate count requests, in 9 sequential waves <span class="sev med">Medium</span></h3>
+      <div class="where">server/routes/scenarios.ts:168&ndash;198</div>
+      <p><code>injectCountsFor</code> issues one PostgREST HEAD count <em>per scenario</em>, batched 12 at a time. 99 scenarios means <b>9 sequential waves</b> of network calls, recurring every time the 60-second cache expires. Each individual query is fast (0.235 ms) &mdash; the cost is entirely round trips.</p>
+      <p style="color:var(--muted); font-size:13.5px;">The code comment correctly explains <em>why</em> it was written this way: a grouped <code>IN</code> query would hit PostgREST's 1000-row cap. That reasoning is sound; the answer is a database function, which sidesteps the cap entirely.</p>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-10</span> One genuinely missing index &mdash; and the existing one is backwards <span class="sev med">Medium</span></h3>
+      <div class="where">Table <code>scenario_injects</code> &mdash; 33,071 rows / 23 MB</div>
+      <p>The single grouped query that would replace BUG-09's 99 calls is currently slow:</p>
+      <div class="shot bad">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">EXPLAIN ANALYZE &mdash; grouped template-inject count</span></div>
+<pre class="term">HashAggregate  (actual time=373.734..373.756 rows=99)
+  -&gt;  <span class="bad">Seq Scan on scenario_injects</span>  (actual time=0.019..372.254 rows=7156)
+        Filter: (session_id IS NULL)
+        <span class="bad">Rows Removed by Filter: 25915</span>
+<span class="bad">Execution Time: 373.905 ms</span></pre>
+      </div>
+      <p style="margin-top:14px;">Why: the index that exists is <code>idx_scenario_injects_session_id ... WHERE session_id IS <b>NOT</b> NULL</code> &mdash; <b>the exact inverse</b> of what a template-inject count needs. Nothing serves <code>session_id IS NULL</code>.</p>
+      <div class="fixline"><span class="lbl2">Fix</span><p style="margin:6px 0 0;">A partial index on <code>(scenario_id) WHERE session_id IS NULL</code>, then collapse the 99 calls into one grouped query via a database function.</p></div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-11</span> Nothing is cached, so every navigation refetches everything <span class="sev med">Medium</span></h3>
+      <div class="where">No react-query / SWR / sessionStorage layer anywhere</div>
+      <p>Dashboard &rarr; Scenarios &rarr; Sessions &rarr; Scenarios refetches all of it from scratch. The shimmer skeleton appears on <em>every single visit</em> even when nothing has changed. This is the difference between "fast" and the "almost instantaneous" you asked for &mdash; instant on a repeat visit is only achievable with a cache.</p>
+      <div class="warnbox"><b>Security note for whoever builds this:</b> cache keys must include the user id and must be cleared on sign-out, or one user's cards can flash on screen for the next user on a shared machine.</div>
+    </div>
+
+    <div class="bug low">
+      <h3><span class="id">BUG-12</span> Cards fade in for a second after the data has already arrived <span class="sev low">Low &middot; pure perception</span></h3>
+      <div class="where">frontend/src/design/warroom.css:377 &middot; Scenarios.tsx:854</div>
+<pre class="term">.wr-reveal { animation: wr-fadeUp <span class="warn">0.5s</span> both;
+             animation-delay: calc(var(--i, 0) * <span class="warn">60ms</span>); }
+<span class="c">// --i is capped at 8  →  8 × 60ms + 500ms ≈ 980ms for the last visible card</span></pre>
+      <p style="margin-top:14px;">Nearly a full second of staged fade-in <em>after</em> the data is in hand. Costs nothing to shorten.</p>
+      <p style="color:var(--muted); font-size:13.5px;">Your card artwork, by contrast, is in good shape and needs no work: 30&ndash;50 KB WebP thumbnails, lazy-loaded on the main grid. Only three stray <code>&lt;img&gt;</code> tags are missing <code>loading="lazy"</code> (Scenarios.tsx lines 507, 611, 1007).</p>
+    </div>
+  </div>
+</section>
+
+<section id="sim">
+  <div class="wrap">
+    <div class="sec-num">Section 03</div>
+    <h2 class="sec-title">Part 2 &mdash; Why the simulation feels sluggish</h2>
+    <p class="sec-sub">Twelve more findings. This half has a completely different root cause from Part 1 &mdash; here the rows are already lean, and the problem is how many of them get touched.</p>
+
+    <div class="bug">
+      <h3><span class="id">BUG-13</span> Opening a feed reads 30,706 rows to return 1,000 <span class="sev crit">Critical</span></h3>
+      <div class="where">server/routes/socialMedia.ts:141 &middot; measured on the busiest session (54,865 posts)</div>
+      <p>This is the reason a simulated app feels slow to open. Four measurements of the same query:</p>
+      <div class="bars">
+        <div class="barrow"><span class="nm">As written, <b>cold cache</b></span><div class="bartrack"><div class="barfill red" style="width:100%"></div></div><span class="vl red">6,811 ms</span></div>
+        <div class="barrow"><span class="nm">As written, warm cache</span><div class="bartrack"><div class="barfill amber" style="width:1.3%"></div></div><span class="vl amber">88 ms</span></div>
+        <div class="barrow"><span class="nm">Without the country filter</span><div class="bartrack"><div class="barfill cyan" style="width:2.5%"></div></div><span class="vl amber">168 ms</span></div>
+        <div class="barrow"><span class="nm">As written, but <code>limit=50</code></span><div class="bartrack"><div class="barfill amber" style="width:1.1%"></div></div><span class="vl amber">78 ms</span></div>
+      </div>
+
+      <p style="margin-top:16px;">The culprit is one line that adds a country scope:</p>
+      <div class="shot bad">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">socialMedia.ts &mdash; line 141</span></div>
+<pre class="term">postsQuery = postsQuery.<span class="hi">or(`country.is.null,country.eq.${countryScope}`)</span>;</pre>
+      </div>
+
+      <p style="margin-top:14px;">That <code>OR</code> makes Postgres throw away the index built for exactly this query &mdash; <code>idx_social_posts_virality (session_id, virality_score DESC)</code> &mdash; and take a bitmap path instead:</p>
+
+      <div class="duo">
+        <div>
+          <div class="lbl bad">&#9679; Today &mdash; bitmap path</div>
+          <div class="shot bad">
+            <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">EXPLAIN (ANALYZE, BUFFERS)</span></div>
+<pre class="term">Limit (actual time=6810..6810 rows=1000)
+  Buffers: hit=99 <span class="bad">read=7357</span>
+  -&gt; <span class="bad">Sort</span> (top-N heapsort, 1991kB)
+     -&gt; <span class="bad">Bitmap Heap Scan</span>
+        <span class="bad">rows=30706</span>  <span class="c">(to return 1000!)</span>
+        Rows Removed by Filter: <span class="bad">24159</span>
+        Heap Blocks: exact=<span class="bad">7400</span>
+        -&gt; <span class="bad">BitmapOr</span>
+           -&gt; idx_social_posts_country
+<span class="bad">Execution Time: 6811.262 ms</span></pre>
+          </div>
+        </div>
+        <div>
+          <div class="lbl good">&#9679; Same query, no country filter</div>
+          <div class="shot good">
+            <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">EXPLAIN (ANALYZE, BUFFERS)</span></div>
+<pre class="term">Limit (actual time=27..168 rows=1000)
+  Buffers: <span class="ok">hit=2670</span> read=108
+  -&gt; <span class="ok">Index Scan</span> using
+     <span class="ok">idx_social_posts_virality</span>
+     <span class="c">(no Sort node at all —</span>
+     <span class="c"> the index is already ordered,</span>
+     <span class="c"> so it stops after 1000 rows)</span>
+     Rows Removed by Filter: 1741
+<span class="ok">Execution Time: 168.372 ms</span></pre>
+          </div>
+        </div>
+      </div>
+
+      <p style="margin-top:16px;">Two details make this worse than it first appears:</p>
+      <ul style="color:var(--muted);">
+        <li><b>The planner is wrong by 94&times;.</b> It estimates <code>rows=325</code>; reality is 30,706. The <code>OR</code> destroys its ability to estimate selectivity, so every downstream cost decision is mis-planned.</li>
+        <li><b>The cold number is the one users feel.</b> The 6.8 s run shows <code>read=7357</code> &mdash; 7,357 blocks fetched from disk. The 88 ms run shows <code>hit=7456</code> &mdash; all cached. With <code>social_posts</code> at 212 MB across 103 sessions competing for the same cache, the first open of a session that hasn't been touched recently is a cold one.</li>
+      </ul>
+    </div>
+
+    <div class="bug">
+      <h3><span class="id">BUG-14</span> The filter that costs 40&times; excludes almost nothing <span class="sev crit">Critical</span></h3>
+      <div class="where">server/routes/socialMedia.ts:43&ndash;62 &mdash; <code>resolveCountryScope</code></div>
+      <p>Having found the expensive predicate, I checked how much work it actually does:</p>
+      <table class="t">
+        <thead><tr><th>Measure</th><th class="num">Value</th></tr></thead>
+        <tbody>
+          <tr><td>Posts with a non-null <code>country</code></td><td class="num red">629 of 220,372 &mdash; <b>0.29%</b></td></tr>
+          <tr><td>Sessions containing any country-scoped post</td><td class="num red">4 of 103</td></tr>
+          <tr><td>In the 6.8-second session: <code>country IS NULL</code></td><td class="num">54,865 rows</td></tr>
+          <tr><td>In the 6.8-second session: <code>country = 'Singapore'</code></td><td class="num red">0 rows</td></tr>
+        </tbody>
+      </table>
+      <div class="takeaway" style="margin-top:16px;"><b>In the session that takes 6.8 seconds to open, this filter excludes precisely nothing.</b> It exists for a multi-country feature that 96% of sessions never use &mdash; and it is the single reason the feed is slow.</div>
+      <p style="margin-top:14px;">I also tested the obvious rewrite, <code>coalesce(country,'~any~') IN ('~any~','Singapore')</code>, hoping to dodge the <code>OR</code>. It does <b>not</b> help: 89 ms warm, 7,450 buffers, same Bitmap Heap Scan. The planner still can't push a non-equality country condition into an ordered index walk. <em>The rewrite is a dead end &mdash; don't spend time on it.</em></p>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-15</span> The client asks for 1,000 posts when the server default is 50 <span class="sev high">High</span></h3>
+      <table class="t">
+        <thead><tr><th>Caller</th><th>Line</th><th class="num">Requests</th></tr></thead>
+        <tbody>
+          <tr><td><code>SocialFeedApp.tsx</code></td><td>376</td><td class="num red">limit=1000</td></tr>
+          <tr><td><code>FacebookFeedApp.tsx</code></td><td>339</td><td class="num red">limit=1000</td></tr>
+          <tr><td><code>OrgPageView.tsx</code></td><td>136</td><td class="num red">limit=500</td></tr>
+          <tr><td><code>socialMedia.ts</code> &mdash; server default</td><td>120</td><td class="num green">limit=50</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px;">At ~1,399 bytes per row that's <b>~1.4 MB per feed open</b>, uncompressed (see BUG-05), plus 1,000 React nodes to render. The client overrides the sensible server default by 20&times;.</p>
+    </div>
+
+    <div class="bug good">
+      <h3><span class="id">NON-ISSUE</span> Do <em>not</em> narrow the columns on this endpoint <span class="sev ok">Verified fine</span></h3>
+      <p>Because BUG-02 and BUG-03 were solved by column pruning, the instinct is to do the same here. <b>It would buy almost nothing.</b> I measured the row shape: <code>content</code> averages 220 bytes, the uuid and timestamp columns 34&ndash;38 bytes each, <code>content_flags</code> 22 bytes. Total ~1,399 bytes with no fat JSONB column anywhere.</p>
+      <div class="takeaway"><b>In Part 1 the lever was column count. In Part 2 the lever is row count.</b> Same symptom, opposite fix. Worth internalising before anyone starts optimising.</div>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-16</span> Sending a message shows the player nothing for three round trips <span class="sev high">High</span></h3>
+      <div class="where">frontend/src/components/SimDevice/FacebookMessengerView.tsx:266&ndash;301</div>
+      <div class="shot bad">
+        <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">FacebookMessengerView.tsx &mdash; handleSend</span></div>
+<pre class="term"><span class="hi">setNewMessage('');</span>                       <span class="c">// input clears — text is now GONE</span>
+<span class="k">try</span> {
+  const res = <span class="k">await</span> fetch(<span class="s">'/api/social/messenger/send'</span>, {...});  <span class="c">// ① wait…</span>
+  <span class="k">if</span> (res.ok) {
+    <span class="hi">fetchMessages(selectedThread);</span>        <span class="c">// ② refetch the whole thread</span>
+    <span class="hi">fetchThreads();</span>                       <span class="c">// ③ refetch the whole list</span>
+  }
+} <span class="k">catch</span> { <span class="c">/* silently fail — the message just vanishes */</span> }</pre>
+      </div>
+      <p style="margin-top:14px;">There is <b>no optimistic message</b>. The typed text disappears and nothing replaces it until a POST plus a refetch complete. On a slow connection the player types, hits enter, and stares at an empty thread.</p>
+      <div class="warnbox"><b>And the refetches are redundant.</b> The server already broadcasts <code>messenger.received</code> over the WebSocket (<code>socialMessenger.ts:247</code>), and this component is <em>already subscribed</em> via <code>useWebSocket</code>. Both refetches are re-fetching something that is about to arrive on its own.</div>
+      <p>Two more papercuts in the same file: <code>openThread</code> (line 340) and <code>goBack</code> (line 345) both call <code>setMessages([])</code>, blanking the thread to empty while it reloads.</p>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-17</span> The instant-feedback pattern exists &mdash; it just wasn't applied consistently <span class="sev med">Medium</span></h3>
+      <p>This is not a case of nobody knowing how to do it. The correct pattern is in the codebase twice already:</p>
+      <table class="t">
+        <thead><tr><th>Surface</th><th>Optimistic?</th><th>Realtime?</th><th>How it feels</th></tr></thead>
+        <tbody>
+          <tr><td>TeamChat (<code>ChatInterface.tsx</code>)</td><td><span class="sev ok">Yes</span></td><td>Supabase Realtime</td><td><b style="color:var(--green)">Instant</b></td></tr>
+          <tr><td>Post flag (<code>SocialFeedApp:814</code>)</td><td><span class="sev ok">Yes</span> &mdash; with rollback</td><td>n/a</td><td><b style="color:var(--green)">Instant</b></td></tr>
+          <tr><td>Post / reply (<code>SocialFeedApp:609</code>)</td><td><span class="sev crit">No</span> &mdash; waits for POST</td><td>WebSocket</td><td><b style="color:var(--red)">Laggy</b></td></tr>
+          <tr><td>Messenger DM</td><td><span class="sev crit">No</span></td><td>WebSocket (unused on send)</td><td><b style="color:var(--red)">Laggy</b></td></tr>
+          <tr><td>Org-page comment (<code>OrgPageView</code>)</td><td><span class="sev crit">No</span></td><td><span class="sev crit">None</span></td><td><b style="color:var(--red)">Very laggy</b></td></tr>
+        </tbody>
+      </table>
+      <div class="warnbox" style="margin-top:16px;"><b>One caveat when copying TeamChat.</b> Its reconciliation logic works but is extremely convoluted &mdash; it matches messages by <em>content string</em> against three separate refs plus a timeout fallback (lines 378&ndash;539). Don't copy it verbatim. Have the server echo back a client-generated id, and all of that comparison logic disappears.</div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-18</span> Roughly a second of deliberate, hard-coded delay per interaction <span class="sev med">Medium</span></h3>
+      <table class="t">
+        <thead><tr><th>File</th><th>Line</th><th>Delay</th></tr></thead>
+        <tbody>
+          <tr><td><code>SocialFeedApp.tsx</code></td><td>656</td><td><code>setTimeout(() =&gt; openThread(...), <b>800</b>)</code> after posting a reply</td></tr>
+          <tr><td><code>OrgPageView.tsx</code></td><td>204</td><td><code>setTimeout(loadPage, <b>1000</b>)</code> after commenting</td></tr>
+          <tr><td><code>OrgPageView.tsx</code></td><td>245</td><td><code>setTimeout(() =&gt; openComments(...), <b>800</b>)</code></td></tr>
+          <tr><td><code>ShareMenu.tsx</code></td><td>100, 125, 143, 197</td><td><code>setTimeout(onClose, <b>1200</b>)</code> &times;4</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px;">These look like waits inserted to let the server settle before a refetch. With optimistic updates they have nothing to wait for.</p>
+      <div class="warnbox"><b>Check each one individually.</b> A delay may be masking a real ordering bug &mdash; if removing it breaks something, fix the ordering rather than restoring the delay.</div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-19</span> Telemetry blocks the send response <span class="sev med">Medium</span></h3>
+      <div class="where">server/routes/socialMessenger.ts:253 &middot; server/services/sopCheckerService.ts:119&ndash;146</div>
+      <p>Everything a DM send waits for, in order, before the player's client hears back:</p>
+      <ol class="steps">
+        <li><b><code>requireAuth</code></b> &mdash; two network round trips (BUG-08)</li>
+        <li>Org-page lookup, when sending as a page</li>
+        <li>Existing-thread lookup</li>
+        <li>Shared-post lookup, when forwarding</li>
+        <li>The actual insert</li>
+        <li>WebSocket broadcast</li>
+        <li><b><code>await recordPlayerAction(...)</code></b> &mdash; which is itself <em>two more</em> queries: <code>getPlayerTeamName()</code> then an insert</li>
+        <li>Respond <code>201</code></li>
+      </ol>
+      <p style="margin-top:12px;">Step 7 is pure telemetry the client never reads. Steps 2, 3 and 4 are independent of each other and could run in parallel.</p>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-20</span> A serial fifth query carrying 1,000 UUIDs in the URL <span class="sev med">Medium</span></h3>
+      <div class="where">server/routes/socialMedia.ts:226&ndash;229</div>
+      <p>The endpoint correctly batches four queries into a <code>Promise.all</code> (line 160), then runs a <b>fifth afterwards, serially</b>:</p>
+<pre class="term">.from(<span class="s">'social_post_likes'</span>).select(<span class="s">'post_id, reaction_type'</span>).in(<span class="s">'post_id'</span>, <span class="hi">postIds</span>)
+<span class="c">// postIds holds up to 1000 UUIDs → roughly a 37 KB URL to PostgREST</span></pre>
+      <p style="margin-top:14px;">Both an avoidable round trip and a real risk of hitting URL-length limits. Fixing BUG-15 shrinks the list to 50 as a side effect; fetching by <code>session_id</code> instead removes the dependency entirely.</p>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-21</span> Polling stacked on top of realtime that already works <span class="sev med">Medium</span></h3>
+      <table class="t">
+        <thead><tr><th>Component</th><th>Polls every</th><th>What</th><th>Already has realtime?</th></tr></thead>
+        <tbody>
+          <tr><td><code>TrainerSimDashboard</code></td><td class="num red">12 s</td><td><code>loadAll()</code> &mdash; everything</td><td><span class="sev crit">Yes</span></td></tr>
+          <tr><td><code>SocialFeedApp</code></td><td class="num red">15 s</td><td>notifications, limit=100</td><td><span class="sev crit">Yes</span></td></tr>
+          <tr><td><code>FacebookFeedApp</code></td><td class="num red">15 s</td><td>notifications, limit=100</td><td><span class="sev crit">Yes</span></td></tr>
+          <tr><td><code>HomeScreen</code></td><td class="num amber">15 s</td><td>badge counts, limit=100</td><td><span class="sev med">No</span></td></tr>
+          <tr><td><code>TeammateConsole</code></td><td class="num amber">10 s</td><td>teammate state</td><td><span class="sev med">No</span></td></tr>
+          <tr><td><code>AdversaryConsole</code> / <code>ZDesktopLayout</code> / <code>useDrafts</code></td><td class="num amber">15 s</td><td>various</td><td><span class="sev med">No</span></td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px;">The rows marked <b>Yes</b> are pure waste &mdash; both feed apps already receive <code>notification.created</code> over the WebSocket and increment their counters from it (line 600). Meanwhile <code>notifications</code> is 89,259 rows / 59 MB and gets polled at <code>limit=100</code> every 15 seconds <em>per player, per open app</em>.</p>
+      <p style="color:var(--muted); font-size:13.5px;">The <b>No</b> rows are the opposite problem: <code>HomeScreen</code> has no realtime at all, so a player stares at a stale unread badge for up to 15 seconds. Same for <code>OrgPageView</code>, <code>GroupChatApp</code>, and the Facebook Events and Groups views.</p>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-22</span> The feed app can fire that 6.8-second query twice <span class="sev med">Medium</span></h3>
+      <div class="where">frontend/src/components/SimDevice/SocialFeedApp.tsx:390&ndash;402 and 404&ndash;406</div>
+<pre class="term"><span class="k">useEffect</span>(() =&gt; { <span class="hi">loadPosts()</span>; ... }, [loadPosts, sessionId]);          <span class="c">// on mount</span>
+
+<span class="k">useEffect</span>(() =&gt; {
+  <span class="k">if</span> (location.pathname.includes(<span class="s">'/social'</span>)) <span class="hi">loadPosts()</span>;             <span class="c">// AND on path change</span>
+}, [location.pathname]);</pre>
+      <p style="margin-top:14px;">Two independent effects both calling <code>loadPosts()</code>. Navigating into the app satisfies both. And nothing caches between app switches, so every trip from the home screen back into an app is a fresh cold fetch.</p>
+    </div>
+
+    <div class="bug low">
+      <h3><span class="id">BUG-23</span> Console logging on the realtime hot path <span class="sev low">Low</span></h3>
+      <table class="t">
+        <thead><tr><th>File</th><th class="num">console.* calls</th><th class="num">Guarded by DEV</th></tr></thead>
+        <tbody>
+          <tr><td><code>ChatInterface.tsx</code></td><td class="num red">67</td><td class="num red">1</td></tr>
+          <tr><td><code>useRealtime.ts</code></td><td class="num red">15</td><td class="num red">0</td></tr>
+          <tr><td><code>websocketClient.ts</code></td><td class="num amber">9</td><td class="num">1</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px;"><code>useRealtime</code> logs on every subscription status change <em>and every INSERT event</em>, with object payloads &mdash; entirely unguarded. <code>ChatInterface</code> logs several times per message received. In a busy session that is real main-thread cost, and DevTools retains every logged object so memory climbs too.</p>
+    </div>
+
+    <div class="bug low">
+      <h3><span class="id">BUG-24</span> <code>EmailApp</code> fetches every email with no limit <span class="sev low">Low &middot; future</span></h3>
+      <div class="where">frontend/src/components/SimDevice/EmailApp.tsx:282&ndash;291</div>
+      <p><code>sim_emails</code> is only 1,529 rows / 4 MB today, so this is not yet a problem. It is unbounded by construction, though, and will become one.</p>
+    </div>
+  </div>
+</section>
+
+<section id="old">
+  <div class="wrap">
+    <div class="sec-num">Section 04</div>
+    <h2 class="sec-title">Part 3 &mdash; Old exercises' data being read, and why you don't need a bigger plan</h2>
+    <p class="sec-sub">Added 24 Sep 2026. The question was whether the database needs a bigger Supabase compute size. It doesn't, yet. The waste comes from a few specific queries that read finished exercises' data to answer questions about the current one.</p>
+
+    <div class="keybox">
+      <div class="hd">The capacity answer</div>
+      <p style="margin:0;">Your database serves <b>99.94%</b> of all reads from fast memory: 1.73 billion hits against 984,370 disk reads. Supabase considers anything above 99% healthy. That is on a server with roughly <b>1 GB</b> of memory (inferred from its settings) holding a <b>1.76 GB</b> database. <b>No compute upgrade is needed now.</b> Upgrade only if that rate falls below 99%.</p>
+    </div>
+
+    <table class="t">
+      <thead><tr><th>Table</th><th class="num">Table hit rate</th><th class="num">Index hit rate</th><th class="num">Pages read from disk</th></tr></thead>
+      <tbody>
+        <tr><td><code>session_events</code></td><td class="num">99.57%</td><td class="num">99.69%</td><td class="num red">389,754</td></tr>
+        <tr><td><code>social_posts</code></td><td class="num green">99.91%</td><td class="num green">99.87%</td><td class="num amber">215,943</td></tr>
+        <tr><td><code>session_escalation_factors</code></td><td class="num amber">93.88%</td><td class="num">98.84%</td><td class="num">52,384</td></tr>
+        <tr><td><code>post_engagement_log</code></td><td class="num amber">96.81%</td><td class="num green">99.87%</td><td class="num">26,465</td></tr>
+        <tr><td><code>scenario_state_history</code></td><td class="num amber">94.68%</td><td class="num">99.62%</td><td class="num">3,738</td></tr>
+      </tbody>
+    </table>
+    <p style="color:var(--muted); font-size:13.5px; margin-top:10px;">The 99.94% is a lifetime average, since these counters have never been reset. RISK-13 covers how to watch recent behaviour without resetting them.</p>
+
+    <h3 style="font-size:19px; margin:30px 0 4px; color:var(--cyan2);">What actually fills the database</h3>
+    <p style="color:var(--muted); max-width:860px;">The posts table isn't the biggest thing in the database. The per-exercise history tables are, and <b>every row checked in every one of them belongs to an exercise that has already ended.</b></p>
+    <div class="bars">
+      <div class="barrow"><span class="nm"><code>scenario_state_history</code></span><div class="bartrack"><div class="barfill amber" style="width:100%"></div></div><span class="vl amber">319 MB</span></div>
+      <div class="barrow"><span class="nm"><code>social_posts</code></span><div class="bartrack"><div class="barfill amber" style="width:66%"></div></div><span class="vl amber">212 MB</span></div>
+      <div class="barrow"><span class="nm"><code>session_escalation_factors</code></span><div class="bartrack"><div class="barfill amber" style="width:52%"></div></div><span class="vl amber">167 MB</span></div>
+      <div class="barrow"><span class="nm"><code>session_events</code></span><div class="bartrack"><div class="barfill amber" style="width:47%"></div></div><span class="vl amber">151 MB</span></div>
+      <div class="barrow"><span class="nm"><code>session_pathway_outcomes</code></span><div class="bartrack"><div class="barfill amber" style="width:36%"></div></div><span class="vl amber">116 MB</span></div>
+      <div class="barrow"><span class="nm"><code>post_engagement_log</code></span><div class="bartrack"><div class="barfill amber" style="width:16%"></div></div><span class="vl amber">51 MB</span></div>
+    </div>
+    <p style="color:var(--muted); font-size:13.5px;">The largest, <code>scenario_state_history</code>, stores a full ~17 KB snapshot of the scenario state on every change, and only the after-action review reads it. Old and new posts also share disk pages: the pages holding your busiest exercise's 54,865 posts contain another <b>25,062 posts from other exercises</b>.</p>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-25</span> The statement watchdog reads every finished exercise to find the current one <span class="sev high">High &middot; grows every exercise</span></h3>
+      <div class="where">server/services/statementWatchdogService.ts:306&ndash;312</div>
+      <p>During every exercise, the watchdog keeps asking for "this exercise's oldest 100 official and player posts":</p>
+<pre class="term">.from(<span class="s">'social_posts'</span>)
+.eq(<span class="s">'session_id'</span>, sessionId)
+.in(<span class="s">'author_type'</span>, [<span class="s">'official_account'</span>, <span class="s">'player'</span>])
+.<span class="hi">order('created_at', { ascending: true })</span>
+.limit(100);</pre>
+      <p style="margin-top:14px;">There is no index on <b>exercise + time</b>, so on a large exercise Postgres walks the <em>whole table's</em> time index from the very first post ever written:</p>
+<pre class="term">all posts, in time order ──────────────────────────────────────────►
+[ exercise 1 ][ exercise 2 ][ ... ][ exercise 96 ][ the current exercise ]
+ <span class="bad">▲ starts here, discards everything ...</span>           <span class="ok">▲ ...finds what it wanted</span></pre>
+      <table class="t">
+        <thead><tr><th>Exercise</th><th>Plan</th><th class="num">Posts discarded</th><th class="num">Pages</th><th class="num">Time</th></tr></thead>
+        <tbody>
+          <tr><td>Newest (401 posts)</td><td>session + type indexes</td><td class="num">&mdash;</td><td class="num green">52</td><td class="num green">5 ms</td></tr>
+          <tr><td><b>Busiest (54,865 posts)</b></td><td>table-wide time index</td><td class="num red">104,364</td><td class="num red">85,545</td><td class="num red">576 ms</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:14px;">Across its 2,800 recorded runs, it averaged 26,348 pages each. It gets slower with every exercise you run, because the history in front of the current one keeps growing.</p>
+      <div class="fixline"><span class="lbl2">Fix</span><p style="margin:6px 0 0;">An index on <code>social_posts (session_id, created_at)</code>, replacing the plain session index so the index count doesn't grow. The database then jumps straight to this exercise's posts in time order and stops at 100.</p></div>
+    </div>
+
+    <div class="warnbox">
+      <b>The trap: "only read posts since this exercise started".</b> It looks like a one-line fix and measures well: 10.7 ms and 1,261 pages. But <b>2,681 posts across 82 exercises are dated before their own exercise was created.</b> 2,458 of them are official-account posts, deliberately backdated up to 30 days (<code>ambientContentService.ts</code> 402&ndash;425) to give each organisation's page a pre-crisis history, and the watchdog reads official posts. That condition would silently hide them. This is why the fix is an index, not a date condition.
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">BUG-26</span> The events table sweeps every exercise's events of a type <span class="sev high">High &middot; top disk reader</span></h3>
+      <div class="where">Table <code>session_events</code> &mdash; indexes on <code>(session_id)</code> and <code>(event_type)</code> only</div>
+      <p><code>session_events</code> is the table read most from disk (389,754 pages). Its heaviest queries filter by exercise <em>and</em> event type (32,610 runs at 767 pages each; 16,125 more at 2,915 pages each), but there are only separate indexes for each. So the database intersects this exercise's events with <b>every exercise's</b> events of that type: 70,767 entries of one type, to find one exercise's.</p>
+      <div class="fixline"><span class="lbl2">Fix</span><p style="margin:6px 0 0;">One combined index on <code>(session_id, event_type, created_at)</code>, replacing the plain session index. The index count stays the same.</p></div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">BUG-27</span> Deleting a post scans the whole posts table <span class="sev med">Medium &middot; blocks archiving</span></h3>
+      <div class="where">Foreign key <code>social_posts_original_post_id_fkey</code> &mdash; no index</div>
+      <p><code>original_post_id</code> links a repost to its original, and nothing indexes it. So every time a post is deleted, the database scans the whole table to check that no repost points at it. The 28 recorded deletions averaged <b>902 ms and 169,157 pages each</b>, which is very likely also where the table's 1,416 full scans come from. All the other links (replies, likes, flags, engagement log) are already indexed.</p>
+      <div class="fixline"><span class="lbl2">Fix</span><p style="margin:6px 0 0;">A tiny partial index on <code>original_post_id</code> (only 10 posts are reposts). This is <b>required before any archive job</b>, which deletes posts in bulk.</p></div>
+    </div>
+
+    <div class="takeaway"><b>So, no bigger plan for now.</b> Three index migrations stop live exercises from reading finished exercises' data. Archiving finished exercises (the plan's &sect;7a.5) is the long-term tidy-up, but it carries real risks, covered in the drawbacks section as RISK-08 to RISK-12.</div>
+  </div>
+</section>
+
+<section id="insight">
+  <div class="wrap">
+    <div class="sec-num">Section 05</div>
+    <h2 class="sec-title">The trap: why the obvious fix doesn't work</h2>
+    <p class="sec-sub">This is the most important page in the document. Get this wrong and you will ship a fix, see no improvement, and conclude the diagnosis was wrong.</p>
+
+    <div class="keybox">
+      <div class="hd">Measured, not theorised</div>
+      <p style="margin:0 0 14px;">Everyone's first instinct on BUG-13 is: <em>"it asks for 1,000 posts, so ask for 50."</em> I measured exactly that. Here is what happens to the work the database does:</p>
+      <table class="t" style="margin-top:4px;">
+        <thead><tr><th>Query</th><th class="num">Buffers touched</th><th class="num">Rows read</th><th class="num">Time (warm)</th></tr></thead>
+        <tbody>
+          <tr><td><code>limit=1000</code> + country filter</td><td class="num red">7,456</td><td class="num red">30,706</td><td class="num">88 ms</td></tr>
+          <tr><td><code>limit=50</code> + country filter</td><td class="num red">7,456</td><td class="num red">30,706</td><td class="num">78 ms</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:16px 0 0;"><b>Identical.</b> The <code>LIMIT</code> changes nothing about the work performed, because a <code>Sort</code> cannot emit its first row until it has seen <em>every</em> input row. The bitmap scan must materialise all 30,706 matches regardless of how many you eventually want. The <code>LIMIT</code> only trims what gets serialised and sent.</p>
+    </div>
+
+    <div class="grid g2" style="margin-top:22px;">
+      <div class="card" style="border-color:#5a3a1a;">
+        <h3 style="margin:0 0 8px; font-size:16px; color:var(--amber);">Smaller page size fixes&hellip;</h3>
+        <ul style="color:var(--muted); margin:0; padding-left:20px;">
+          <li>~1.4 MB download &rarr; ~70 KB</li>
+          <li>1,000 React nodes &rarr; 50</li>
+          <li>The 37 KB URL in BUG-20</li>
+        </ul>
+        <p style="margin:12px 0 0; color:var(--red);"><b>Does not fix:</b> the 6.8-second wait.</p>
+      </div>
+      <div class="card" style="border-color:#1a4a3a;">
+        <h3 style="margin:0 0 8px; font-size:16px; color:var(--green);">Getting the right plan fixes&hellip;</h3>
+        <ul style="color:var(--muted); margin:0; padding-left:20px;">
+          <li>7,456 buffers &rarr; ~2,670</li>
+          <li>The <code>Sort</code> node disappears entirely</li>
+          <li>The 6.8-second cold open</li>
+        </ul>
+        <p style="margin:12px 0 0; color:var(--red);"><b>Does not fix:</b> the 1.4 MB payload.</p>
+      </div>
+    </div>
+
+    <div class="takeaway" style="margin-top:20px;"><b>Do both</b> &mdash; they address different problems and neither substitutes for the other. If you can only do one, fix the query plan first: the multi-second stall is what makes the product feel broken, and it is the cheaper of the two.</div>
+
+    <h3 style="font-size:18px; margin:30px 0 8px;">The second surprise: no new index is needed at all</h3>
+    <p style="color:var(--muted); max-width:860px;">The first draft of the fix plan proposed adding a composite index. Further measurement showed that was wrong. I forced Postgres to do an ordered walk on the index that <b>already exists</b>, leaving the country filter in place to be applied inline:</p>
+
+    <div class="shot good">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">enable_bitmapscan = off; enable_sort = off; &mdash; same feed query</span></div>
+<pre class="term">Limit (actual time=13.742..<span class="ok">81.526</span> rows=1000)
+  Buffers: <span class="ok">hit=2669 read=109</span>
+  -&gt; <span class="ok">Index Scan using idx_social_posts_virality</span>   <span class="c">← already exists!</span>
+       Index Cond: (session_id = '...')
+       Filter: (NOT platform_removed) AND (country IS NULL OR country = 'Singapore')
+       Rows Removed by Filter: <span class="ok">1741</span>    <span class="c">← not 24,159</span>
+  <span class="c">(no Sort node — the index supplies the order, so it stops at 1000)</span>
+<span class="ok">Execution Time: 81.725 ms</span></pre>
+    </div>
+
+    <p style="margin-top:14px;"><b>81.7 ms, using an index you already have.</b> So what is actually broken is not the index &mdash; it is the planner's row estimate. It predicts 325 rows where reality is 30,706, and with a cost model that wrong it reaches for the bitmap.</p>
+
+    <p>I confirmed the planner will not find the good plan on its own: disabling <em>only</em> the bitmap scan made it choose <code>idx_social_posts_platform</code> and filter 94,132 rows &mdash; <b>5,557 ms, worse than today.</b></p>
+
+    <div class="takeaway">
+      <b>So the real fix is deletion, not addition.</b> Removing the country predicate when the session has no country-scoped content (true for 99 of 103 sessions) lets the planner pick the good plan unaided &mdash; measured at 168 ms. No migration, no new index, no write-amplification cost. <b>That is the primary fix.</b>
+    </div>
+
+    <div class="warnbox">
+      <b>Still open:</b> the 4 sessions that genuinely use country scoping keep the bad plan, because they actually need the predicate. Options there are extended statistics to repair the row estimate, restructuring the predicate to preserve an equality, or accepting it given how small those sessions are. Resolve before calling the feed fixed.
+    </div>
+
+    <h3 style="font-size:18px; margin:30px 0 8px;">Index hygiene, found along the way</h3>
+    <p style="color:var(--muted);">While measuring, the usage statistics turned up real waste. <code>social_posts</code> carries <b>16 indexes &mdash; 78 MB of index against 134 MB of heap (58%)</b>.</p>
+    <table class="t">
+      <thead><tr><th>Index</th><th class="num">Scans ever</th><th class="num">Size</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td><code>idx_social_posts_target_player_ids</code></td><td class="num red">0</td><td class="num">872 kB</td><td>Dead &mdash; but see below</td></tr>
+        <tr><td><code>idx_social_posts_surfaced</code></td><td class="num red">0</td><td class="num">16 kB</td><td>Dead &mdash; but see below</td></tr>
+        <tr><td><code>idx_social_posts_shared_article</code></td><td class="num red">0</td><td class="num">16 kB</td><td>Droppable</td></tr>
+        <tr><td><code>idx_social_posts_algorithm_sort</code></td><td class="num">14,404</td><td class="num red">25 MB</td><td><b>Redundant &mdash; drop</b></td></tr>
+        <tr><td><code>idx_social_posts_virality</code></td><td class="num">16,842</td><td class="num">17 MB</td><td><b style="color:var(--green)">Keep &mdash; this is the one that works</b></td></tr>
+      </tbody>
+    </table>
+    <p style="margin-top:14px;"><code>idx_social_posts_virality</code> is a strict <em>prefix</em> of <code>idx_social_posts_algorithm_sort</code>, and only one query in the codebase orders by <code>virality_score</code> &mdash; without using <code>created_at</code> as a tiebreaker. So the longer index's third column earns nothing.</p>
+    <p><b>Why that matters beyond disk space:</b> the engagement engine rewrites <code>virality_score</code> for every recent post every 30 seconds, and each of those updates must maintain <em>both</em> virality indexes. Dropping one halves that write cost.</p>
+    <div class="warnbox"><b>Do not drop the two zero-scan targeting indexes yet.</b> They exist for exactly the visibility filter that currently runs in JavaScript instead of SQL (see the next section). They are unused <em>because</em> of that bug. Fix it first, then re-check their scan counts &mdash; they should start earning their keep.</div>
+  </div>
+</section>
+
+<section id="risks">
+  <div class="wrap">
+    <div class="sec-num">Section 06</div>
+    <h2 class="sec-title">Drawbacks &mdash; what these fixes break</h2>
+    <p class="sec-sub">A deliberate review of the second-order effects. Four of these were serious enough to change the plan; two are failure modes the fixes would newly introduce.</p>
+
+    <div class="bug">
+      <h3><span class="id">RISK-01</span> Shrinking the page size would break post visibility <span class="sev crit">Blocker</span></h3>
+      <div class="where">server/routes/socialMedia.ts:158 (limit) vs 204&ndash;221 (filter)</div>
+      <p>The endpoint applies the <code>LIMIT</code> in SQL, then filters the returned rows <b>in JavaScript</b> on <code>is_surfaced_to_session</code>, <code>target_player_ids</code> and <code>target_demographics</code>. Filtering after paginating is a classic bug, currently masked by the huge page size.</p>
+      <table class="t">
+        <thead><tr><th>Measure (busiest session)</th><th class="num">Value</th></tr></thead>
+        <tbody>
+          <tr><td>Candidate posts</td><td class="num">30,706</td></tr>
+          <tr><td><code>is_surfaced_to_session</code></td><td class="num">0</td></tr>
+          <tr><td>Has <code>target_player_ids</code></td><td class="num">1,160</td></tr>
+          <tr><td>Has <code>target_demographics</code></td><td class="num">368</td></tr>
+          <tr><td><b>Filtered out for a typical player</b></td><td class="num red"><b>1,528 (~5%)</b></td></tr>
+        </tbody>
+      </table>
+      <ul style="color:var(--muted); margin-top:14px;">
+        <li>At <code>limit=1000</code>, ~50 rows vanish silently. Nobody notices.</li>
+        <li>At <code>limit=50</code>, each page loses 2&ndash;3 rows, so <b>pages come back different sizes</b> and scroll stutters.</li>
+        <li><b><code>count</code> is the pre-filter count</b>, so any "are there more pages" logic is wrong by construction.</li>
+        <li>A player whose page is mostly targeted content could get a near-empty page while plenty of visible content exists below.</li>
+      </ul>
+      <div class="fixline"><span class="lbl2">Resolution &mdash; measured, and better than expected</span>
+        <p style="margin:6px 0 10px;">The rule looked hard to express in SQL because the JavaScript handles arbitrary keys and arrays. <b>The real data is far simpler:</b> <code>target_player_ids</code> is a native <code>uuid[]</code> (not JSONB), and <code>target_demographics</code> only ever contains one key, <code>race</code>, always a string &mdash; <b>3,653 strings, zero arrays.</b></p>
+        <div class="shot good">
+          <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">the whole visibility rule, in plain SQL</span></div>
+<pre class="term">is_surfaced_to_session
+<span class="k">or</span> (target_player_ids <span class="k">is not null</span> <span class="k">and</span> :uid = <span class="k">any</span>(target_player_ids))
+<span class="k">or</span> (target_player_ids <span class="k">is null</span> <span class="k">and</span> target_demographics <span class="k">is null</span>)
+<span class="k">or</span> (target_player_ids <span class="k">is null</span> <span class="k">and</span> target_demographics <span class="k">is not null</span>
+    <span class="k">and</span> lower(target_demographics-&gt;&gt;<span class="s">'race'</span>) = lower(:player_race))</pre>
+        </div>
+        <p style="margin:12px 0 0;">Measured with this filter in SQL and the country predicate dropped: <b style="color:var(--green)">30.1 ms at 1,203 buffers</b>, returning 50 posts that are all genuinely visible. With the case fix below, <b style="color:var(--green)">4.8 ms</b>.</p>
+      </div>
+    </div>
+
+    <div class="bug">
+      <h3><span class="id">RISK-02</span> Sorting by a constantly-rewritten column makes pagination unstable <span class="sev crit">Blocker</span></h3>
+      <div class="where">server/services/engagementAlgorithmService.ts:330&ndash;360</div>
+      <p><code>virality_score</code> is rewritten every 30 seconds for every top-level post from the last 45 minutes. Offset pagination over a volatile sort key means <b>a post can move between page 1 and page 2 while the player scrolls</b> &mdash; producing duplicates or skipped items.</p>
+      <p>The existing <code>frozenOrder</code> mechanism freezes the feed against <em>new arrivals</em>. It does <b>not</b> protect against <em>reordering of rows already fetched</em>.</p>
+      <div class="fixline"><span class="lbl2">Resolution</span>
+        <p style="margin:6px 0 10px;">Keyset pagination on <code>(virality_score, id)</code>, which is trivial inside a database function and awkward outside one:</p>
+<pre class="term"><span class="k">and</span> (:after_score <span class="k">is null</span> <span class="k">or</span> (p.virality_score, p.id) &lt; (:after_score, :after_id))
+<span class="k">order by</span> p.virality_score <span class="k">desc</span>, p.id <span class="k">desc</span></pre>
+        <p style="margin:10px 0 0;"><b>One check at implementation time:</b> adding <code>id</code> as a tiebreaker makes the sort <code>(virality_score DESC, id DESC)</code> while the index is <code>(session_id, virality_score DESC)</code>. Verify the planner still does an ordered walk rather than re-sorting. If it doesn't, the tiebreaker moves into the index &mdash; the one scenario where a migration comes back into scope.</p>
+      </div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">RISK-02b</span> Fixing the demographic case bug changes what players see <span class="sev med">Deliberate change</span></h3>
+      <p>Moving the filter into SQL surfaces a latent bug: the JavaScript compares with <code>===</code>, so a player whose race is recorded as <code>Chinese</code> never matches the 1,267 posts targeting <code>chinese</code>. Per review decision this is fixed in the same change rather than deferred &mdash; so <b>slightly more content becomes visible</b>, which must not look like a regression.</p>
+      <p>I quantified the blast radius before recommending it:</p>
+      <table class="t">
+        <thead><tr><th>Measure</th><th class="num">Value</th></tr></thead>
+        <tbody>
+          <tr><td>Distinct target races</td><td class="num">20 (18 lowercased)</td></tr>
+          <tr><td><b>Players affected</b></td><td class="num green"><b>4 of 155</b></td></tr>
+          <tr><td>Total post-views newly visible</td><td class="num green">15</td></tr>
+          <tr><td>Worst single player</td><td class="num green">gains 10 posts</td></tr>
+          <tr><td>Performance cost of <code>lower()</code></td><td class="num green">none &mdash; 4.8 ms, same plan</td></tr>
+        </tbody>
+      </table>
+      <div class="fixline"><span class="lbl2">Resolution</span><p style="margin:6px 0 0;">Safe to fix in the same change &mdash; the effect is 15 post-views across 4 players. Every target race already matches <em>some</em> player, so nothing is orphaned wholesale. <b>Call it out in the release note</b> so the extra visible content reads as a fix rather than a bug.</p></div>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">RISK-03</span> Code splitting adds a whole-app crash that cannot happen today <span class="sev high">High</span></h3>
+      <div class="where">frontend/src/components/ErrorBoundary.tsx &mdash; one global boundary</div>
+      <p><code>ErrorBoundary</code> is a <b>single top-level boundary</b>. When it fires it replaces the entire application with a full-screen "Something went wrong" and a manual Reload button. There are no per-route boundaries.</p>
+      <p>With one bundle a chunk cannot fail <em>after</em> load &mdash; all code is already in memory. Splitting changes that twice over:</p>
+      <ul style="color:var(--muted);">
+        <li><b>Flaky network on a lazy route</b> &rarr; the dynamic import rejects &rarr; the player loses the whole screen mid-exercise.</li>
+        <li><b>Deploying while someone has the app open</b> &rarr; their entry chunk references the old hashed filenames. If those assets are gone, navigating anywhere new 404s into the same full-screen error. For a trainer running a live session, severe.</li>
+      </ul>
+      <div class="fixline"><span class="lbl2">Resolution &mdash; Vite has a built-in hook for exactly this</span>
+        <div class="shot good">
+          <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">main.tsx &mdash; register before createRoot</span></div>
+<pre class="term">window.addEventListener(<span class="s">'vite:preloadError'</span>, (event) =&gt; {
+  event.preventDefault();      <span class="c">// stop it reaching the global ErrorBoundary</span>
+  window.location.reload();    <span class="c">// fetch the current index + chunk manifest</span>
+});</pre>
+        </div>
+        <p style="margin:12px 0 0;">Vite fires this event when a dynamic import fails &mdash; precisely the stale-chunk-after-deploy case. It turns "trainer loses the whole screen mid-exercise" into "the page reloads". Guard against a reload loop with a <code>sessionStorage</code> flag so it self-reloads at most once. Pair it with per-route error boundaries so a genuinely broken route doesn't take down the app shell.</p>
+      </div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">RISK-04</span> Removing the polls creates permanent staleness <span class="sev med">Medium</span></h3>
+      <div class="where">frontend/src/lib/websocketClient.ts &mdash; <code>reconnectionAttempts: 5</code></div>
+      <p>After five failed reconnects the socket client <b>stops trying, permanently</b>. Today the 15-second poll hides that: a player whose socket dropped still gets fresh badges.</p>
+      <p>Remove the poll and rely on the WebSocket alone, and a single network blip leaves that player <b>permanently stale with no recovery short of a manual reload</b> &mdash; during a live exercise.</p>
+      <div class="fixline"><span class="lbl2">Resolution &mdash; do both, they're cheap</span>
+<pre class="term"><span class="c">// websocketClient.ts</span>
+reconnection: <span class="k">true</span>,
+reconnectionAttempts: <span class="hiok">Infinity</span>,   <span class="c">// was 5 — this was the cliff</span>
+reconnectionDelay: 1000,
+reconnectionDelayMax: <span class="hiok">30000</span>,      <span class="c">// back off instead of hammering</span>
+randomizationFactor: 0.5,</pre>
+        <p style="margin:12px 0 0;">Then keep a <b>slow</b> poll at 60&ndash;120 s rather than deleting it &mdash; still a 4&ndash;8&times; reduction, and it also covers the case where the socket is "connected" but the server has stopped broadcasting. Surface <code>isConnected</code> in the device chrome so a stuck player can see why nothing is arriving.</p>
+      </div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">RISK-05</span> Optimistic send re-opens a race that TeamChat fights with 160 lines <span class="sev med">Medium</span></h3>
+      <p>Adding a local temp row while a WebSocket broadcast of the same message is in flight is exactly the race <code>ChatInterface</code> handles by matching <em>content strings</em> across three refs plus a timeout fallback (lines 378&ndash;539). Repeating that in three more places triples the surface area for duplicate and ghost messages.</p>
+      <div class="fixline"><span class="lbl2">Resolution &mdash; verified viable against the schema</span>
+        <p style="margin:6px 0 10px;">I checked all four message tables. Every one has a <code>uuid</code> primary key with a <code>uuid_generate_v4()</code> default &mdash; and <b>a column default only applies when the column is omitted</b>. So a client-supplied id is accepted as-is:</p>
+        <table class="t" style="margin-top:0;">
+          <thead><tr><th>Table</th><th><code>id</code> type</th><th>Default</th><th>Client can supply?</th></tr></thead>
+          <tbody>
+            <tr><td><code>social_posts</code></td><td>uuid</td><td><code>uuid_generate_v4()</code></td><td><span class="sev ok">Yes</span></td></tr>
+            <tr><td><code>sim_direct_messages</code></td><td>uuid</td><td><code>uuid_generate_v4()</code></td><td><span class="sev ok">Yes</span></td></tr>
+            <tr><td><code>chat_messages</code></td><td>uuid</td><td><code>uuid_generate_v4()</code></td><td><span class="sev ok">Yes</span></td></tr>
+            <tr><td><code>sim_emails</code></td><td>uuid</td><td><code>uuid_generate_v4()</code></td><td><span class="sev ok">Yes</span></td></tr>
+          </tbody>
+        </table>
+        <p style="margin:12px 0 0;">So: <code>crypto.randomUUID()</code> on the client, send it as <code>id</code>, reconcile with <code>m.id === payload.id</code>. That one change lets you <b>delete the ~160 lines of content-string matching</b> in <code>ChatInterface</code> rather than replicate it. Validate the id is a well-formed uuid server-side and let the primary key reject replays.</p>
+      </div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">RISK-06</span> The profile cache collides with a live role-change flow <span class="sev med">Medium</span></h3>
+      <div class="where">server/routes/profile.ts:85 &middot; <code>become-trainer</code></div>
+      <p>With a 30&ndash;60 s cache keyed by user id, a freshly upgraded trainer keeps participant-level UI until it expires. <b>Confusing, not dangerous</b> &mdash; the staleness is toward <em>less</em> privilege and authorization stays server-side.</p>
+      <p>But the cache is <b>per-container</b>, and Render may run several. Invalidating on the container that handled the update does nothing for the others.</p>
+      <div class="fixline"><span class="lbl2">Resolution &mdash; skip the cache entirely</span>
+        <p style="margin:6px 0 10px;">Put the role in Supabase <code>app_metadata</code>, which travels <em>inside the signed JWT</em> and is server-controlled. <code>AuthContext.tsx</code> already documents this as safe but unused:</p>
+        <div class="analogy" style="margin:0 0 10px;"><b>From the codebase:</b> "<code>app_metadata.role</code> is server-controlled and safe to honor if present, but it is currently unused, so the backend profile is the source of truth."</div>
+        <p style="margin:0;">With the role in the token, <code>requireAuth</code> needs <b>zero</b> database lookups once local JWT verification lands &mdash; no cache, no TTL, no multi-container divergence, and one fewer round trip than even the cached version. Requires writing <code>app_metadata.role</code> wherever the role changes, and calling <code>refreshSession()</code> client-side so it takes effect immediately rather than at token expiry.</p>
+      </div>
+    </div>
+
+    <div class="bug low">
+      <h3><span class="id">RISK-07</span> Compression touches binary and streaming paths <span class="sev low">Low, but verify</span></h3>
+      <ul style="color:var(--muted); margin-top:4px;">
+        <li><b>NDJSON war-room builds</b> use <code>res.write</code> + <code>flushHeaders()</code>. Compression buffers, stalling stage-by-stage progress. Must be <em>excluded</em>, not merely tuned.</li>
+        <li><b><code>tileProxy</code></b> returns already-compressed <code>image/png</code> buffers. The default <code>compressible</code> filter should skip them &mdash; verify rather than assume.</li>
+        <li><b><code>Content-Length</code> is replaced</b> by chunked encoding. No client reads it today; grep before shipping.</li>
+      </ul>
+      <div class="fixline"><span class="lbl2">Resolution &mdash; no route list to maintain</span>
+        <p style="margin:6px 0 10px;">The streaming routes already send <code>Cache-Control: no-transform</code>, which is the standard HTTP header meaning "do not compress me". Key the filter off it rather than hard-coding paths:</p>
+<pre class="term">app.use(
+  compression({
+    filter: (req, res) =&gt; {
+      <span class="k">const</span> cc = res.getHeader(<span class="s">'Cache-Control'</span>);
+      <span class="k">if</span> (<span class="k">typeof</span> cc === <span class="s">'string'</span> &amp;&amp; cc.includes(<span class="s">'no-transform'</span>)) <span class="k">return</span> <span class="k">false</span>;
+      <span class="k">return</span> compression.filter(req, res); <span class="c">// also skips images via `compressible`</span>
+    },
+  }),
+);</pre>
+        <p style="margin:10px 0 0;"><code>warroom.ts</code> L389&ndash;395 does <b>not</b> set <code>no-transform</code> today &mdash; add it there so the filter covers both streaming routes automatically.</p>
+      </div>
+    </div>
+
+    <div class="bug good">
+      <h3><span class="id">CLEAR</span> The consumer audit for the slimming changes came back clean <span class="sev ok">Verified</span></h3>
+      <p>I specifically looked for things that would break when the two card endpoints get narrowed, and found none beyond what the plan already lists:</p>
+      <ul style="color:var(--muted);">
+        <li>No server-side code consumes either list endpoint.</li>
+        <li><code>loadtest/session.ts</code> only POSTs and PATCHes sessions; it never reads the list.</li>
+        <li>No script in <code>scripts/</code> or <code>demo_scripts/</code> consumes them.</li>
+        <li><code>ScenarioDetailView</code> refetches the full row by id, so detail editing is unaffected.</li>
+        <li>The engagement engine reads <code>scenarios.initial_state</code> <b>directly</b> server-side, not via the list, so background engines are unaffected.</li>
+      </ul>
+      <p style="margin-bottom:0;">The one real dependency remains <code>ExpandedPoster</code>'s use of <code>initial_state.stakeholders</code>, which the plan already handles.</p>
+    </div>
+
+    <h3 style="font-size:19px; margin:34px 0 4px; color:var(--cyan2);">New issues the Part 3 fixes can cause (added 24 Sep 2026)</h3>
+    <p style="color:var(--muted); max-width:860px;">I checked the index and archive fixes against the live project before recommending them. The indexes are low-risk. <b>The archive job carries more risk than it first appeared</b>, and two of these would have shipped real problems.</p>
+
+    <div class="bug">
+      <h3><span class="id">RISK-08</span> An archive table would be readable with the public key <span class="sev crit">Security</span></h3>
+      <div class="where">Default privileges on schema <code>public</code></div>
+      <p>Measured on this project: <b>every new table created in <code>public</code> automatically grants the public roles (<code>anon</code>, <code>authenticated</code>) permission to read, insert, update, delete and truncate it.</b> The live tables are only safe because each has row-level security switched on, most with zero policies, which means deny-all. But copying a table's structure (<code>CREATE TABLE &hellip; (LIKE &hellip;)</code>) does <b>not</b> copy its row-level security. The public key ships inside the app, so a plainly created archive table would expose every archived post, message and state snapshot to anyone, for reading and for writing.</p>
+      <p>Views have a trap of their own. A plain view that combines live and archive rows runs with its owner's rights and ignores row-level security, so it would expose the <b>live</b> tables as well.</p>
+      <div class="fixline"><span class="lbl2">Resolution</span>
+<pre class="term"><span class="k">create schema if not exists</span> archive;          <span class="c">-- not exposed through the API</span>
+<span class="k">create table</span> archive.social_posts (<span class="k">like</span> public.social_posts <span class="k">including defaults</span>);
+<span class="k">alter table</span> archive.social_posts <span class="hiok">enable row level security</span>;
+<span class="k">revoke all on</span> archive.social_posts <span class="k">from</span> anon, authenticated;
+<span class="c">-- and any combined view:  create view ... with (security_invoker = true)</span></pre>
+        <p style="margin:10px 0 0;">Do this in the same migration that creates the tables, <b>before any data is copied in</b>.</p>
+      </div>
+    </div>
+
+    <div class="bug high">
+      <h3><span class="id">RISK-09</span> Archived exercises would go blank on most screens <span class="sev high">High</span></h3>
+      <p>The first draft of the archive plan listed five places that read finished exercises. But <b>any API route that takes a session id can be pointed at a finished exercise</b>, whether by review mode, the trainer dashboard or an old link. The events table alone is read in <b>35 server files</b>, including routes like <code>events.ts</code>, <code>sessions.ts</code>, <code>decisions.ts</code> and <code>injects.ts</code>. After archiving, every one that still points at the live tables silently shows an empty exercise.</p>
+      <div class="fixline"><span class="lbl2">Resolution &mdash; pick one</span>
+        <p style="margin:6px 0 0;"><b>(a) Repoint every reader</b> to a combined view, which is the largest change. <b>(b) Restore on open:</b> when someone opens an archived exercise, move its rows back first. No code that reads the data has to change, and the first open takes a few seconds. <b>(c) Archive only after the review window</b>, and make the after-action review the only supported view of an archived exercise. <b>Recommended: (b).</b> This is open question 10 in the plan.</p>
+      </div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">RISK-10</span> The index migrations can't run through the normal migration path <span class="sev med">Medium</span></h3>
+      <p>Building an index without blocking writes (<code>CREATE INDEX CONCURRENTLY</code>) cannot run inside a transaction. But Supabase's migration tooling applies each file inside one, and pasting a multi-statement file into the SQL editor runs it as one too. No migration in this repo has ever actually done it: migration 108 only mentions it in a comment. If a build fails partway, it also leaves an <b>invalid index</b> that slows every write but is never used.</p>
+      <div class="fixline"><span class="lbl2">Resolution</span><p style="margin:6px 0 0;">Run each <code>CONCURRENTLY</code> statement on its own, one per SQL-editor run. Or, when no exercise is running, use a plain <code>CREATE INDEX</code>, which works in the normal runner and blocks writes to that one table for only a few seconds. Before any retry, check <code>select indexrelid::regclass from pg_index where not indisvalid;</code> and drop what it lists.</p></div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">RISK-11</span> Disk space goes up before it comes down <span class="sev med">Medium &middot; cost</span></h3>
+      <p>Copying before deleting means both copies exist at once, so the first full run needs roughly <b>1.2 GB of extra disk</b>, the combined size of the per-exercise tables. Deleting rows also doesn't give space back on its own: the live tables keep their size as mostly empty pages until the space is reclaimed. Disk growth is billed and may not shrink back by itself. And on smaller Supabase compute sizes, disk throughput is limited, so big jobs like index builds, the first archive run and a repack can slow everything else while they run.</p>
+      <div class="fixline"><span class="lbl2">Resolution</span><p style="margin:6px 0 0;">Check disk headroom in the Supabase dashboard first. Reclaim the space once after the first run with <code>pg_repack</code> (available here, not yet installed), which works mostly online. Run all of it off-hours, and watch the Disk IO metric while it runs.</p></div>
+    </div>
+
+    <div class="bug med">
+      <h3><span class="id">RISK-12</span> A big exercise means a big, noisy transaction <span class="sev med">Medium</span></h3>
+      <p>Archiving the 54,865-post exercise in one transaction would hold locks and write a large burst of change records. <code>session_events</code> is also published to Supabase Realtime, so a mass delete is a burst Realtime has to process, which could delay live chat and incident updates if it runs during an exercise.</p>
+      <div class="fixline"><span class="lbl2">Resolution</span><p style="margin:6px 0 0;">Move one table at a time, and record a state on the exercise (<code>copying &rarr; copied &rarr; deleting &rarr; archived</code>) so a failure midway can be re-run safely. Run it off-hours. A free win on the side: nothing subscribes to <code>session_events</code> through Realtime (no frontend or server subscription), so removing it from the Realtime publication would stop that processing for every event insert. Confirm that first.</p></div>
+    </div>
+
+    <div class="bug low">
+      <h3><span class="id">RISK-13</span> The 99.94% figure is a lifetime average <span class="sev low">Low &middot; measurement</span></h3>
+      <p>These counters have never been reset, so the hit rate blends months of history and could hide a recent decline. The obvious fix, resetting statistics with <code>pg_stat_reset()</code>, is the wrong one: autovacuum relies on the same counters to decide when to clean tables.</p>
+      <div class="fixline"><span class="lbl2">Resolution</span><p style="margin:6px 0 0;">Save <code>blks_hit</code> and <code>blks_read</code> once a week and compute the rate over the difference between snapshots.</p></div>
+    </div>
+
+    <div class="bug good">
+      <h3><span class="id">CLEAR</span> No link between posts crosses exercises <span class="sev ok">Verified</span></h3>
+      <p style="margin-bottom:0;">If a reply or repost pointed at a post in another exercise, archiving one exercise at a time would break that link. I checked: <b>0 replies and 0 reposts</b> cross exercises (only 10 reposts exist in total), so per-exercise archiving is safe on that front.</p>
+    </div>
+
+    <h3 style="font-size:19px; margin:30px 0 8px; color:var(--cyan2);">What none of these fixes address</h3>
+    <div class="grid g2">
+      <div class="card">
+        <h3 style="margin:0 0 8px; font-size:16px; color:var(--amber);">The engagement tick is itself an over-fetch</h3>
+        <p style="margin:0; color:var(--muted);"><code>runEngagementTick</code> does <code>select('*')</code> over a 45-minute window, then issues <b>one UPDATE per post, serially</b>, every 30 seconds. On a busy session that's hundreds of round trips per tick, competing for the same database and buffer cache the feed fix is trying to exploit. Probably the largest remaining background-load problem once this plan lands.</p>
+      </div>
+      <div class="card">
+        <h3 style="margin:0 0 8px; font-size:16px; color:var(--amber);"><code>select('*')</code> will keep coming back</h3>
+        <p style="margin:0; color:var(--muted);">Slimming two endpoints fixes two endpoints. The root cause is that <code>insider_knowledge</code> and <code>current_state</code> sit on hot rows. Until they move to side tables, every new query is one <code>select('*')</code> away from re-creating the same bug somewhere else.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="good">
+  <div class="wrap">
+    <div class="sec-num">Section 07</div>
+    <h2 class="sec-title">What is already correct &mdash; do not "fix" these</h2>
+    <p class="sec-sub">Just as useful as the bug list. These look like problems, or are places someone would naturally start optimising, and they are fine. Time spent here is wasted.</p>
+
+    <div class="grid g2">
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Correct</span> All expensive AI work is already non-blocking</h3>
+        <p style="margin:8px 0 0;">Post grading, media generation, NPC DM replies and NPC email replies all use <code>void (async () =&gt; …)</code> fire-and-forget. Nobody waits on a language model. This is genuinely well built.</p>
+      </div>
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Intentional</span> The 3&ndash;10 second NPC reply delay</h3>
+        <p style="margin:8px 0 0;"><code>socialMessenger.ts:279</code> deliberately randomises a delay so NPCs don't reply inhumanly fast. That is realism, not latency. Leave it alone.</p>
+      </div>
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Harmless</span> The "unbounded" likes and flags queries</h3>
+        <p style="margin:8px 0 0;">These query by <code>player_id</code> with no session filter, which looks alarming. The tables hold <b>140 and 147 rows in total</b>. Ignore them.</p>
+      </div>
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Fine</span> Indexes on <code>sessions</code> / <code>session_participants</code></h3>
+        <p style="margin:8px 0 0;">Technically missing, genuinely irrelevant at 265 rows &mdash; the planner scans them in 0.4 ms. Adding indexes would cost writes and buy nothing.</p>
+      </div>
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Fine</span> Card artwork and lazy loading</h3>
+        <p style="margin:8px 0 0;">30&ndash;50 KB WebP thumbnails with <code>loading="lazy"</code> on the main grid. Only three stray <code>&lt;img&gt;</code> tags need the attribute added.</p>
+      </div>
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Fine</span> Row shape of <code>social_posts</code></h3>
+        <p style="margin:8px 0 0;">No fat JSONB column; ~1,399 bytes per row. Column pruning here &mdash; the fix that worked so well in Part 1 &mdash; would achieve almost nothing.</p>
+      </div>
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Not needed yet</span> A bigger Supabase compute size</h3>
+        <p style="margin:8px 0 0;">99.94% of reads already come from memory, above Supabase's 99% healthy mark. The waste is in specific queries (Part 3), not a lack of memory. Upgrade only if that rate drops below 99%.</p>
+      </div>
+      <div class="bug good" style="margin:0;">
+        <h3 style="font-size:16px;"><span class="sev ok">Not needed</span> Moving heavy columns into side tables</h3>
+        <p style="margin:8px 0 0;">Postgres already stores <code>current_state</code> and <code>insider_knowledge</code> out of line. The sessions table's main storage is 128 kB, with 7 MB held separately. Explicit column lists plus a lint rule get the same benefit without a migration.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="plan">
+  <div class="wrap">
+    <div class="sec-num">Section 08</div>
+    <h2 class="sec-title">The fix plan, in order</h2>
+    <p class="sec-sub">Ordered by value per unit of effort. The first four rows are small, low-risk changes that between them remove almost all of the waste.</p>
+
+    <table class="t">
+      <thead><tr><th>#</th><th>Fix</th><th>Addresses</th><th>Effort</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><b>1</b></td><td>Slim the two <code>select('*')</code> card queries</td><td>BUG-02, 03, 04</td><td><span class="pill">S</span></td><td><b style="color:var(--green)">13 MB&rarr;129 KB; 8.2 MB&rarr;9.3 KB</b></td></tr>
+        <tr><td><b>2</b></td><td>Enable compression</td><td>BUG-05</td><td><span class="pill">S</span></td><td><b style="color:var(--green)">~10&times; on everything</b></td></tr>
+        <tr><td><b>3</b></td><td><b>Rebuild the feed query as one Postgres function</b> &mdash; visibility in SQL, no country predicate, keyset pagination</td><td>BUG-13, 14, 15, 20 + RISK-01, 02</td><td><span class="pill">M</span></td><td><b style="color:var(--green)">6,811 ms &rarr; 4.8 ms measured.</b> Fixes 2 correctness bugs and collapses 5 round trips to 1. No migration.</td></tr>
+        <tr><td><b>3b</b></td><td>Drop the redundant <code>idx_social_posts_algorithm_sort</code></td><td>Index hygiene</td><td><span class="pill">S</span></td><td>Reclaims 25 MB; halves virality write churn</td></tr>
+        <tr><td><b>3c</b></td><td>Index posts by exercise + time (replaces the plain session index)</td><td>BUG-25</td><td><span class="pill">S</span></td><td><b style="color:var(--green)">Watchdog stops reading every finished exercise</b> (576 ms today); keeps seeded history</td></tr>
+        <tr><td><b>3d</b></td><td>Index events by exercise + type + time (replaces the plain session index)</td><td>BUG-26</td><td><span class="pill">S</span></td><td>The top disk reader stops sweeping every exercise's events</td></tr>
+        <tr><td><b>3e</b></td><td>Tiny partial index on <code>original_post_id</code></td><td>BUG-27</td><td><span class="pill">XS</span></td><td>Post deletions stop scanning the table (902 ms today); <b>required before 15</b></td></tr>
+        <tr><td><b>4</b></td><td><code>/api/dashboard/stats</code> endpoint</td><td>BUG-01</td><td><span class="pill">S</span></td><td><b style="color:var(--green)">27 MB &rarr; &lt;1 KB</b></td></tr>
+        <tr><td><b>5</b></td><td>Verify JWT in-process + cache the profile</td><td>BUG-08</td><td><span class="pill">M</span></td><td>2 round trips off <em>every</em> request</td></tr>
+        <tr><td><b>6</b></td><td>Optimistic send; delete redundant refetches</td><td>BUG-16, 17</td><td><span class="pill">M</span></td><td><b style="color:var(--green)">Sending feels instant</b></td></tr>
+        <tr><td><b>7</b></td><td>Page size 1000&rarr;50 + infinite scroll</td><td>BUG-15, 20</td><td><span class="pill">M</span></td><td>1.4 MB &rarr; ~70 KB; 20&times; less rendering</td></tr>
+        <tr><td><b>8</b></td><td>Delete the hard-coded <code>setTimeout</code> delays</td><td>BUG-18</td><td><span class="pill">XS</span></td><td>~1 s off each interaction</td></tr>
+        <tr><td><b>9</b></td><td>Route-level code splitting + vendor chunks</td><td>BUG-06</td><td><span class="pill">M</span></td><td>767 KB &rarr; &lt;200 KB gzipped</td></tr>
+        <tr><td><b>10</b></td><td>Partial index + one grouped inject count</td><td>BUG-09, 10</td><td><span class="pill">S</span></td><td>9 network waves &rarr; 1; kills a 374 ms scan</td></tr>
+        <tr><td><b>11</b></td><td>Unblock the auth waterfall</td><td>BUG-07</td><td><span class="pill">M&ndash;L</span></td><td>1&ndash;2 round trips before first fetch <span class="sev med">risky</span></td></tr>
+        <tr><td><b>12</b></td><td>Drop polls that duplicate realtime; add it where missing</td><td>BUG-21, 22</td><td><span class="pill">M</span></td><td>Less load, fresher badges</td></tr>
+        <tr><td><b>13</b></td><td>Stale-while-revalidate cache</td><td>BUG-11</td><td><span class="pill">M</span></td><td><b style="color:var(--green)">Repeat visits instant</b></td></tr>
+        <tr><td><b>14</b></td><td>Gate the console logging; shorten the reveal stagger</td><td>BUG-23, 12</td><td><span class="pill">XS</span></td><td>Main-thread relief; ~1 s perceived</td></tr>
+        <tr><td><b>15</b></td><td>Archive finished exercises, with row-level security, restore-on-open and disk headroom</td><td>Part 3, RISK-08 to 12</td><td><span class="pill">M&ndash;L</span></td><td>Live tables stay small; do it when convenient, not urgently</td></tr>
+        <tr><td>&mdash;</td><td><b>Bigger Supabase compute size</b></td><td>Part 3</td><td><span class="pill">None</span></td><td><b style="color:var(--green)">Not needed now:</b> 99.94% of reads from memory; revisit only below 99%</td></tr>
+      </tbody>
+    </table>
+
+    <div class="keybox" style="margin-top:26px;">
+      <div class="hd">If only two things ever get done</div>
+      <p style="margin:0;"><b>Fix 1 and Fix 2.</b> Together they are two <code>select</code> strings and one <code>app.use(compression())</code>, they carry almost no risk because the detail views already refetch full rows independently, and they remove roughly 95% of the bytes moving through the app. <b>Then Fix 3</b> for the simulation &mdash; which turned out to be a <em>deletion</em> rather than an addition, so it needs no migration and no new index at all.</p>
+    </div>
+
+    <h3 style="font-size:18px; margin:30px 0 8px;">Dependencies and warnings</h3>
+    <ul style="color:var(--muted);">
+      <li><b>Fix 5 before Fix 11.</b> A fast <code>/api/profile</code> makes the waterfall change far less urgent and less risky.</li>
+      <li><b>Fix 3 must be validated first</b> &mdash; it is the only item in this list resting on an unproven hypothesis.</li>
+      <li><b>Fix 11 touches the authorization UI path.</b> Read the least-privilege comment at <code>AuthContext.tsx:94&ndash;99</code> before starting, and use a separate <code>roleResolved</code> flag rather than flipping <code>loading</code> early.</li>
+      <li><b>Fix 5 touches token validation.</b> Verification must be strict &mdash; algorithm allow-list, <code>exp</code>, <code>aud</code>, issuer &mdash; and must fail closed. Worth a security review on the diff.</li>
+      <li><b>Fixes 1&ndash;4 are independent</b> and can land in any order, in parallel, by different people.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="verify">
+  <div class="wrap">
+    <div class="sec-num">Section 09</div>
+    <h2 class="sec-title">How we prove it worked</h2>
+    <p class="sec-sub">Capture a baseline before touching anything, or the improvements are assertions rather than facts.</p>
+
+    <ol class="steps">
+      <li><b>Payload sizes.</b> <code>curl -s -o /dev/null -w '%{size_download} %{time_total}'</code> against the scenario list, session list and feed endpoints &mdash; with and without <code>Accept-Encoding: gzip</code>, authenticated as a trainer.</li>
+      <li><b>Bundle size.</b> Record <code>frontend/dist/assets</code> sizes plus the gzipped entry chunk. Add <code>rollup-plugin-visualizer</code> for a before/after treemap.</li>
+      <li><b>Query plans.</b> <code>EXPLAIN (ANALYZE, BUFFERS)</code> on the feed query for the busiest session, <b>both cold and warm</b>. Distinguish them by comparing <code>read=</code> versus <code>hit=</code> in the buffers line &mdash; the cold number is the one users feel.</li>
+      <li><b>Time to first card.</b> DevTools performance trace of a cold <code>/dashboard</code>, <code>/scenarios</code> and <code>/sessions</code>. Record time-to-first-card, total transferred, and main-thread <code>JSON.parse</code> time.</li>
+      <li><b>Keypress to visible.</b> Trace sending a DM and posting a reply. Measure from keypress to the message appearing. After Fix 6 this should be a single frame.</li>
+      <li><b>Main-thread profile</b> of a two-minute window in a live session with realtime active, before and after the logging cleanup.</li>
+    </ol>
+
+    <h3 style="font-size:18px; margin:30px 0 8px;">Regression surface</h3>
+    <p style="color:var(--muted);">The slimming changes in Fix 1 touch shared endpoints, so exercise all of it: scenario library (every filter, all four sort orders, search by title / description / category / organisation / <b>country</b>, card and list views, expand, delete, launch), the create-session modal, the sessions page (all three groups, status filter, start session, open lobby, view AAR), trainer dashboard tiles, <b>participant (non-trainer) views of both pages</b>, and the trainer scenario detail view including the <code>insider_knowledge</code> doctrine editor.</p>
+    <p style="color:var(--muted);">For the simulation changes: both feeds (ranking order, the "new posts" pill, scroll restoration, engagement counts, flag / report / repost / share), threads and replies, Messenger (send, compose, thread switching, unread counts, page-context sending), org pages, email, <b>TeamChat &mdash; which must not regress, it is the reference implementation</b>, the trainer dashboard, and specifically <b>one of the four multi-country sessions</b> for the country-scope change.</p>
+    <div class="takeaway"><code>npm run lint</code>, <code>npm run typecheck</code> and <code>npm test</code> stay green; the frontend build passes <code>tsc &amp;&amp; vite build</code>.</div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-num">Appendix</div>
+    <h2 class="sec-title">Scale of the data, for context</h2>
+    <p class="sec-sub">Everything above was measured against these. Useful for judging which findings will get worse over time.</p>
+    <table class="t">
+      <thead><tr><th>Table</th><th class="num">Rows</th><th class="num">Total size</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code>social_posts</code></td><td class="num red">220,372</td><td class="num red">212 MB</td><td>Busiest single session holds 54,865</td></tr>
+        <tr><td><code>notifications</code></td><td class="num amber">89,259</td><td class="num amber">59 MB</td><td>Polled at limit=100 every 15 s per app</td></tr>
+        <tr><td><code>chat_messages</code></td><td class="num">40,814</td><td class="num">15 MB</td><td>Realtime, healthy</td></tr>
+        <tr><td><code>scenario_injects</code></td><td class="num">33,071</td><td class="num">23 MB</td><td>7,156 are templates (<code>session_id IS NULL</code>)</td></tr>
+        <tr><td><code>sim_emails</code></td><td class="num green">1,529</td><td class="num green">4 MB</td><td>Fetched unbounded, but small</td></tr>
+        <tr><td><code>sessions</code></td><td class="num green">265</td><td class="num green">&mdash;</td><td><code>current_state</code> averages 209 KB/row</td></tr>
+        <tr><td><code>scenarios</code></td><td class="num green">99</td><td class="num green">&mdash;</td><td><code>insider_knowledge</code> averages 87 KB/row</td></tr>
+        <tr><td><code>social_post_likes</code> / <code>_flags</code></td><td class="num green">140 / 147</td><td class="num green">&mdash;</td><td>Non-issue, despite appearances</td></tr>
+      </tbody>
+    </table>
+    <div class="warnbox" style="margin-top:20px;"><b>The structural questions, now answered (24 Sep 2026).</b> The per-exercise tables keep every finished exercise forever, and every row checked in them belongs to one. The answer is an <b>archive job</b>, not partitioning, done with row-level security on the archive tables and restore-on-open (Part 3; RISK-08 to RISK-12). The heavy columns (<code>current_state</code>, <code>insider_knowledge</code>) do <b>not</b> need side tables: Postgres already stores them separately, so the fix is explicit column lists plus a lint rule that blocks <code>select('*')</code> on those tables. And none of this requires a bigger compute size yet.</div>
+  </div>
+</section>
+
+<div class="footer">
+  <div class="wrap">
+    <p>Performance audit &mdash; 27 findings, 8 verified non-issues. Every figure measured against the live database and the built bundle unless marked estimated.</p>
+    <p>Companion plans: <code>docs/app-load-performance-plan.md</code> (Part 1) &middot; <code>docs/simulation-runtime-performance-plan.md</code> (Part 2)</p>
+    <p style="color:var(--amber);">Nothing in this document has been implemented. Revised twice after further measurement. On 23 Sep 2026, an earlier recommendation to add a feed index was withdrawn as unnecessary. On 24 Sep 2026, Part 3 and risks RISK-08 to RISK-13 were added, and the advice to move heavy columns into side tables was withdrawn, because Postgres already stores them separately.</p>
+  </div>
+</div>
+
+</body>
+</html>

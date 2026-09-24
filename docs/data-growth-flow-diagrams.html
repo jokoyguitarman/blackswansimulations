@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>How your data flows, and where each fix plugs in</title>
+<style>
+  :root {
+    --bg:#0a0e14; --panel:#131c28; --panel2:#182030; --line:#233143;
+    --ink:#e8eef6; --muted:#8aa0b8; --dim:#5d7186;
+    --cyan:#2dd4bf; --amber:#f5b942; --green:#34d399; --red:#f87171; --blue:#60a5fa;
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:16px; line-height:1.65; }
+  code { font-family:"SF Mono","Cascadia Code",ui-monospace,Menlo,Consolas,monospace; font-size:0.9em; color:#fcd34d; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 24px; }
+
+  header.hero { padding:60px 0 34px; background:
+      radial-gradient(900px 420px at 10% 0%, rgba(52,211,153,0.10), transparent 60%),
+      radial-gradient(900px 420px at 90% 10%, rgba(96,165,250,0.10), transparent 60%); }
+  .kicker { display:inline-block; font-size:12px; letter-spacing:0.2em; text-transform:uppercase; color:var(--green);
+    border:1px solid #1a4a3a; padding:6px 14px; border-radius:999px; background:rgba(52,211,153,0.06); margin-bottom:18px; }
+  h1 { font-size:clamp(28px,4.4vw,42px); line-height:1.2; margin:0 0 16px; max-width:900px; }
+  .lead { font-size:18px; color:var(--muted); max-width:780px; margin:0 0 24px; }
+
+  .legend { display:flex; flex-wrap:wrap; gap:10px 22px; font-size:14px; color:var(--muted); }
+  .legend span { display:inline-flex; align-items:center; gap:8px; }
+  .sw { width:16px; height:16px; border-radius:4px; border:2px solid; display:inline-block; }
+  .sw.fix { background:#0f2a20; border-color:#34d399; }
+  .sw.problem { background:#2a1519; border-color:#f87171; }
+  .sw.data { background:#12233a; border-color:#60a5fa; }
+  .sw.step { background:#1b2636; border-color:#4b5d75; }
+
+  .desk { border:1px solid var(--line); background:var(--panel); border-radius:14px; padding:16px 20px; margin-top:26px; max-width:900px; }
+  .desk b { color:var(--ink); }
+
+  nav.toc { position:sticky; top:0; z-index:50; backdrop-filter:blur(10px); background:rgba(10,14,20,0.9); border-bottom:1px solid var(--line); border-top:1px solid var(--line); }
+  nav.toc .wrap { display:flex; gap:6px; overflow-x:auto; padding:10px 24px; scrollbar-width:none; }
+  nav.toc a { color:var(--muted); text-decoration:none; font-size:13px; padding:7px 12px; border-radius:8px; white-space:nowrap; }
+  nav.toc a:hover { color:var(--ink); background:var(--panel2); }
+
+  section { padding:46px 0; border-bottom:1px solid var(--line); }
+  .num { font-size:12.5px; color:var(--cyan); letter-spacing:0.22em; text-transform:uppercase; font-weight:700; margin-bottom:8px; }
+  h2 { font-size:26px; margin:0 0 10px; }
+  .sub { color:var(--muted); max-width:860px; margin:0 0 20px; }
+  .sub b { color:var(--ink); }
+
+  .diagram { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px 18px; overflow-x:auto; }
+  .diagram svg { display:block; margin:0 auto; max-width:100%; height:auto; }
+  .diagram .status { color:var(--muted); font-size:14px; margin:0; }
+  .diagram .status.err { color:var(--red); }
+
+  .fixspot { border:1px solid #1a4a3a; background:rgba(52,211,153,0.07); border-radius:12px; padding:14px 18px; margin-top:16px; }
+  .fixspot .hd { font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--green); font-weight:700; margin-bottom:4px; }
+  .fixspot p { margin:6px 0 0; }
+  .warn { border:1px solid #5a2a2a; background:rgba(248,113,113,0.07); border-radius:12px; padding:14px 18px; margin-top:16px; }
+  .warn .hd { font-size:12px; letter-spacing:0.16em; text-transform:uppercase; color:var(--red); font-weight:700; margin-bottom:4px; }
+  .warn p { margin:6px 0 0; }
+
+  details.src { margin-top:12px; }
+  details.src summary { cursor:pointer; color:var(--dim); font-size:13px; }
+  details.src pre { background:#0b1119; border:1px solid var(--line); border-radius:10px; padding:14px; font-size:12.5px; color:#cfe0f0; overflow-x:auto; white-space:pre; }
+
+  table.t { width:100%; border-collapse:collapse; margin-top:20px; font-size:14px; }
+  table.t th, table.t td { text-align:left; padding:11px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  table.t th { color:var(--cyan); font-size:11.5px; text-transform:uppercase; letter-spacing:0.08em; }
+  table.t td:first-child { font-weight:600; }
+  .pill { display:inline-block; font-size:11.5px; padding:2px 9px; border-radius:999px; background:var(--panel2); border:1px solid var(--line); color:var(--muted); white-space:nowrap; }
+
+  footer { padding:36px 0 70px; color:var(--dim); font-size:13px; text-align:center; }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">Flow diagrams &middot; measured on your live database</div>
+    <h1>What happens to your data, step by step, and where each fix plugs in</h1>
+    <p class="lead">Eight diagrams, read top to bottom. Each one shows what actually happens, in order, and the numbers show that order. Green boxes and green notes are the exact spots where a fix plugs in.</p>
+    <div class="legend">
+      <span><i class="sw fix"></i>Where a fix plugs in</span>
+      <span><i class="sw problem"></i>Where time, memory or data is wasted</span>
+      <span><i class="sw data"></i>A database table</span>
+      <span><i class="sw step"></i>A normal step</span>
+    </div>
+    <div class="desk">
+      <b>Two words used throughout.</b> <b>Fast memory</b> is the database's desk: anything already on it comes back instantly. <b>Disk</b> is the filing cabinet in the back room: anything in there needs a slow trip. Your database server has roughly <b>1 GB of memory</b> (inferred from its settings) for a <b>1.76 GB database</b>, so not everything fits on the desk. Even so, <b>99.94% of reads are already served from the desk</b> today, so you do not need a bigger one yet. The waste comes from a few specific queries, shown in Diagram 7.
+    </div>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#d1">1 &middot; Life of an exercise's data</a>
+    <a href="#d2">2 &middot; How the database fetches data</a>
+    <a href="#d3">3 &middot; Opening the Z app</a>
+    <a href="#d4">4 &middot; What select('*') does</a>
+    <a href="#d5">5 &middot; Why it keeps coming back</a>
+    <a href="#d6">6 &middot; Archiving safely</a>
+    <a href="#d7">7 &middot; The watchdog reads old exercises</a>
+    <a href="#d8">8 &middot; Every fix on one map</a>
+  </div>
+</nav>
+
+<section id="d1">
+  <div class="wrap">
+    <div class="num">Diagram 1</div>
+    <h2>The life of an exercise's data</h2>
+    <p class="sub">While an exercise runs, the game writes into several tables at once: a full snapshot of the scenario state every time it changes, every post and reply, every event, and every 30 seconds the engagement engine rewrites post scores and logs each change. <b>When the exercise ends, nothing happens to any of those rows.</b> They stay in the same tables the next exercise writes into, so the tables only ever grow. Right now, every row in these tables belongs to an exercise that has already ended.</p>
+    <div class="diagram" data-diagram="lifecycle"><p class="status">Drawing diagram&hellip;</p></div>
+    <div class="fixspot">
+      <div class="hd">Fix spot</div>
+      <p><b>Right after step 4, the moment an exercise ends.</b> That is the natural point to move its rows out of the live tables (Fix 3, detailed in Diagram 6). Today there is simply no step there, so the answer to "what happens to this exercise's rows?" is "nothing".</p>
+    </div>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="lifecycle"></pre></details>
+  </div>
+</section>
+
+<section id="d2">
+  <div class="wrap">
+    <div class="num">Diagram 2</div>
+    <h2>How the database fetches data (the desk and the filing cabinet)</h2>
+    <p class="sub">The database never fetches a single row. It fetches whole 8 KB <b>pages</b>, each holding many rows. Every page is either already in fast memory (a <b>hit</b>) or has to be read from disk (a <b>miss</b>). On your own feed query, a hit cost about <b>0.01 ms</b> per page and a miss about <b>0.9 ms</b>, roughly 80 times slower (88 ms for 7,456 pages warm, versus 6,811 ms when 7,357 of them came from disk). When memory is full, something has to be thrown out to make room. <b>The more pages there are competing for the same memory, the more often the page you need has been thrown out.</b></p>
+    <div class="diagram" data-diagram="memory"><p class="status">Drawing diagram&hellip;</p></div>
+    <div class="fixspot">
+      <div class="hd">Three fix spots on this diagram</div>
+      <p><b>Need fewer pages per request</b> (the feed as one database function: 7,456 pages down to 1,203; and the new indexes in Diagram 7). <b>Have fewer pages competing</b> (Fix 3: archive finished exercises so the live tables stay small). <b>Make the desk bigger</b> (Fix 2: a larger server) is <b>not needed yet</b>: 99.94% of reads are hits today. Only upgrade if that drops below 99%.</p>
+    </div>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="memory"></pre></details>
+  </div>
+</section>
+
+<section id="d3">
+  <div class="wrap">
+    <div class="num">Diagram 3</div>
+    <h2>What happens when a player opens the Z app, today</h2>
+    <p class="sub">This is the real path a feed request takes right now, in order. The red block is where the time goes: whether the pages are warm or cold decides whether the player waits 88 ms or nearly 7 seconds. Each green note marks a fix and the exact step it changes.</p>
+    <div class="diagram" data-diagram="feed"><p class="status">Drawing diagram&hellip;</p></div>
+    <div class="fixspot">
+      <div class="hd">Fix spots, by step</div>
+      <p><b>Steps 2&ndash;5:</b> check the login token on the server itself instead of making two network round trips. <b>Step 6:</b> the feed as one database function, which drops the unused country filter, applies visibility rules in the database, returns 50 posts and touches 1,203 pages instead of 7,456; it also makes step 12 unnecessary. <b>Steps 7&ndash;10:</b> archiving makes the warm path more likely. A bigger server would too, but it isn't needed yet (99.94% of reads are already hits). <b>Step 14:</b> compression makes the response roughly 10 times smaller.</p>
+    </div>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="feed"></pre></details>
+  </div>
+</section>
+
+<section id="d4">
+  <div class="wrap">
+    <div class="num">Diagram 4</div>
+    <h2>What <code>select('*')</code> actually does, on the Sessions page</h2>
+    <p class="sub">The database already keeps big values, like each session's 209.5 KB <code>current_state</code>, in a <b>separate storage area</b> and leaves only a small pointer in the row. So a query that doesn't ask for them never touches them. <code>select('*')</code> means "every column", so the database follows every pointer, fetches every big value, unpacks it and ships it, even though the page only shows a status, a time and a title.</p>
+    <div class="diagram" data-diagram="selectstar"><p class="status">Drawing diagram&hellip;</p></div>
+    <div class="fixspot">
+      <div class="hd">Fix spot</div>
+      <p><b>Step 2, the query itself</b> (Fix 1). Asking only for the columns the page shows means <b>steps 4 to 7 never happen</b>: about 9 KB comes back instead of 8.2 MB. No database change is needed, because the big values are already stored separately.</p>
+    </div>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="selectstar"></pre></details>
+  </div>
+</section>
+
+<section id="d5">
+  <div class="wrap">
+    <div class="num">Diagram 5</div>
+    <h2>Why <code>select('*')</code> keeps coming back</h2>
+    <p class="sub">Fixing one query does not stop the next one. <code>select('*')</code> is the easiest thing to type, it looks harmless in review, and it is fast at first because there is little data yet. It only turns slow weeks later, when nobody remembers why. The loop below only breaks if the check is automatic.</p>
+    <div class="diagram" data-diagram="comesback"><p class="status">Drawing diagram&hellip;</p></div>
+    <div class="fixspot">
+      <div class="hd">Fix spot</div>
+      <p><b>At the commit, before the code ever ships</b> (the rest of Fix 1). Your pre-commit hook already runs ESLint on server code with zero warnings allowed. Adding one rule that rejects <code>select('*')</code> on the <code>sessions</code> and <code>scenarios</code> tables means a new offender cannot even be committed.</p>
+    </div>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="comesback"></pre></details>
+  </div>
+</section>
+
+<section id="d6">
+  <div class="wrap">
+    <div class="num">Diagram 6</div>
+    <h2>Fix 3 in detail: archiving a finished exercise safely</h2>
+    <p class="sub">This is the job that fills the empty step in Diagram 1. It runs off-hours, one finished exercise at a time, and moves that exercise's rows into matching archive tables. <b>Two things must be in place before the first run, and the order of the steps is what makes it safe.</b> Checking this design against the live project turned up three ways it can go wrong, shown as the red paths.</p>
+    <div class="diagram" data-diagram="archive"><p class="status">Drawing diagram&hellip;</p></div>
+    <div class="warn">
+      <div class="hd">Red path 1 &middot; wrong order destroys after-action data</div>
+      <p>Likes, flags and the engagement log are set to <b>delete themselves automatically</b> when their post is deleted. So "just delete the old posts" silently wipes every like, flag and engagement record with them. The job must copy those rows to the archive <b>first</b>.</p>
+    </div>
+    <div class="warn">
+      <div class="hd">Red path 2 &middot; a plain archive table is readable with the public key</div>
+      <p>On this project, every new table automatically gives the public roles permission to read, change and delete it, and copying a table's structure does <b>not</b> copy its row-level security. The public key ships inside the app, so a plainly created archive table would expose every archived post and message to anyone. The archive tables must be created with row-level security switched on, before any data goes in.</p>
+    </div>
+    <div class="warn">
+      <div class="hd">Red path 3 &middot; archived exercises go blank</div>
+      <p>Far more code reads finished exercises than the after-action review: the events table alone is read in 35 server files, including routes that review mode and the trainer dashboard call. Any screen that still points at the live tables shows an empty exercise. <b>Restore on open</b> (move an exercise back when someone opens it) avoids changing any of that code.</p>
+    </div>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="archive"></pre></details>
+  </div>
+</section>
+
+<section id="d7">
+  <div class="wrap">
+    <div class="num">Diagram 7</div>
+    <h2>The statement watchdog reads every finished exercise to find the current one</h2>
+    <p class="sub">During every exercise, the statement watchdog keeps asking for "this exercise's oldest 100 official and player posts". There is no index on <b>exercise + time</b>, so on a large exercise the database walks the whole table's time index <b>from the first post ever written</b>, discarding every other exercise's posts until it reaches this one. On your busiest exercise it discarded <b>104,364 posts</b> each time: 85,545 page reads and 576 ms per scan. It also gets slower with every exercise you run, because the history in front of the current one keeps growing. This is the clearest case of old exercises' data being read for no reason.</p>
+    <div class="diagram" data-diagram="watchdog"><p class="status">Drawing diagram&hellip;</p></div>
+    <div class="fixspot">
+      <div class="hd">Fix spot</div>
+      <p><b>Step 2.</b> Add an index on <code>social_posts (session_id, created_at)</code>, replacing the plain session index, so the database jumps straight to this exercise's posts in time order and stops at 100. The events table gets the same treatment (<code>session_id, event_type, created_at</code>): it sweeps every exercise's events of a type in the same way, and it is the table read most from disk. A third, tiny index on <code>original_post_id</code> stops every post deletion from scanning the whole table (902 ms each today).</p>
+    </div>
+    <div class="warn">
+      <div class="hd">The trap (the red path on the right)</div>
+      <p>"Only read posts since this exercise started" looks like a one-line fix, and it measures well (10.7 ms). But <b>2,458 official posts are deliberately backdated up to 30 days</b>, to give each organisation's page a pre-crisis history, and the watchdog reads official posts. That condition would silently hide them. The index fixes the speed without changing what the watchdog sees.</p>
+    </div>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="watchdog"></pre></details>
+  </div>
+</section>
+
+<section id="d8">
+  <div class="wrap">
+    <div class="num">Diagram 8</div>
+    <h2>Every fix on one map</h2>
+    <p class="sub">The same flows as above, joined together. The numbered path is what happens every time a page opens; the side branch is what happens during every exercise, feeding the tables that step 4 reads. Each green box sits beside the exact step it changes.</p>
+    <div class="diagram" data-diagram="map"><p class="status">Drawing diagram&hellip;</p></div>
+    <table class="t">
+      <thead><tr><th>Fix</th><th>Where it plugs in</th><th>What changes</th><th>Effort</th></tr></thead>
+      <tbody>
+        <tr><td>Name the columns + lint rule (Fix 1)</td><td>The server builds the query</td><td>Sessions page: 8.2 MB down to about 9 KB, and it cannot quietly come back</td><td><span class="pill">Small</span></td></tr>
+        <tr><td>Feed as one database function</td><td>The server builds the query</td><td>7,456 pages down to 1,203; about 5 ms warm, about 1 s even if fully cold (estimated)</td><td><span class="pill">Medium</span></td></tr>
+        <tr><td>Three new indexes</td><td>The database finds the pages</td><td>Watchdog stops reading every finished exercise (576 ms today); events stop sweeping all exercises; post deletions stop scanning the table (902 ms today)</td><td><span class="pill">Small</span></td></tr>
+        <tr><td>Bigger server memory (Fix 2)</td><td>Fast memory</td><td><b>Not needed yet.</b> 99.94% of reads are already hits; upgrade only if that drops below 99%</td><td><span class="pill">None for now</span></td></tr>
+        <tr><td>Archive finished exercises (Fix 3)</td><td>When an exercise ends</td><td>Live tables stay small, so fewer pages compete for memory. Needs row-level security on the archive tables, restore-on-open, and about 1.2 GB of temporary disk headroom</td><td><span class="pill">Medium to large</span></td></tr>
+        <tr><td>Check the login token on the server</td><td>The login check</td><td>Two network round trips off every single request</td><td><span class="pill">Medium</span></td></tr>
+        <tr><td>Compression</td><td>Sending to the browser</td><td>Responses roughly 10 times smaller</td><td><span class="pill">Small</span></td></tr>
+      </tbody>
+    </table>
+    <details class="src"><summary>Show the Mermaid source</summary><pre data-src="map"></pre></details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p>All figures measured on the live database on 24 Sep 2026 unless marked estimated. The ~1 GB server memory is inferred from its cache settings; the Supabase dashboard shows the exact size.</p>
+    <p>Companion documents: <code>docs/app-load-performance-plan.md</code> &middot; <code>docs/simulation-runtime-performance-plan.md</code> &middot; <code>docs/performance-bugs-explained.html</code></p>
+    <p>Nothing described here has been implemented yet.</p>
+  </div>
+</footer>
+
+<script type="module">
+const diagrams = {
+lifecycle: `
+flowchart TD
+    S1(["1 · An exercise starts"]) --> S2["2 · Players and NPCs act"]
+    S2 --> S3["3 · The game writes as it goes<br/>a full ~17 KB state snapshot on every change<br/>every post and reply · every event<br/>every 30 s: rewritten post scores + a log entry"]
+    S3 -->|"stored in"| T[("The live tables<br/>scenario_state_history · 319 MB<br/>social_posts · 212 MB<br/>session_events · 151 MB<br/>post_engagement_log · 51 MB")]
+    S3 --> S4(["4 · The exercise ends"])
+    S4 --> Q{{"What happens to<br/>this exercise's rows?"}}
+    Q -->|"today: nothing"| S6["They stay in the live tables forever<br/>today, 100% of rows are from finished exercises"]
+    S6 --> S7["5 · The next exercise writes into<br/>the same, bigger tables"]
+    S7 -.->|"repeats every exercise"| S2
+    Q -.->|"FIX 3 plugs in here"| F3["Archive job moves this exercise's<br/>rows out of the live tables"]
+    classDef problem fill:#2a1519,stroke:#f87171,color:#fecaca,stroke-width:1.5px
+    classDef fix fill:#0f2a20,stroke:#34d399,color:#d1fae5,stroke-width:2px
+    classDef data fill:#12233a,stroke:#60a5fa,color:#dbeafe
+    class S6,S7 problem
+    class F3 fix
+    class T data
+`,
+memory: `
+flowchart TD
+    A["A page asks the server for data"] --> B["The database works out which<br/>8 KB pages hold that data"]
+    B --> C{"Is each page already<br/>in fast memory?"}
+    C -->|"yes"| D["Hit<br/>about 0.01 ms per page"]
+    C -->|"no"| E["Miss: read it from disk<br/>about 0.9 ms per page"]
+    E --> F{"Is fast memory full?"}
+    F -->|"no"| G["Keep the page in memory"]
+    F -->|"yes"| H["Throw out the page<br/>used least recently"]
+    H --> G
+    G --> I["Next time, this page is a hit"]
+    B -.- FQ["FIX · feed as one database function<br/>7,456 pages down to 1,203"]
+    F -.- F2["FIX 2 · bigger server: not needed yet<br/>99.94% of reads are hits today<br/>upgrade only if it drops below 99%"]
+    H -.- GROW[["Every exercise adds pages<br/>competing for the same ~1 GB"]]
+    GROW -.- F3["FIX 3 · archive finished exercises<br/>fewer pages competing"]
+    classDef problem fill:#2a1519,stroke:#f87171,color:#fecaca,stroke-width:1.5px
+    classDef fix fill:#0f2a20,stroke:#34d399,color:#d1fae5,stroke-width:2px
+    class E,H,GROW problem
+    class FQ,F2,F3 fix
+`,
+feed: `
+sequenceDiagram
+    autonumber
+    actor P as Player's browser
+    participant S as Server
+    participant A as Supabase Auth
+    participant D as Database
+    participant M as Fast memory
+    participant K as Disk
+    P->>S: Open the Z feed<br/>(up to 1,000 posts)
+    S->>A: Is this login<br/>token valid?
+    A-->>S: Yes (round trip 1)
+    S->>D: Get this user's profile
+    D-->>S: Profile (round trip 2)
+    Note over S,A: FIX · check the token<br/>on the server itself
+    S->>D: Find this exercise's posts,<br/>with the country filter
+    Note over S,D: FIX · one database function<br/>no unused country filter<br/>50 posts · 1,203 pages
+    rect rgba(248,113,113,0.14)
+    D->>M: Need 7,456 pages
+    alt Warm: pages already in memory
+        M-->>D: About 88 ms
+    else Cold: pages not in memory
+        D->>K: Read 7,357 pages
+        K-->>D: About 6,811 ms
+    end
+    end
+    Note over M,K: FIX 2 bigger memory<br/>FIX 3 smaller live tables<br/>= warm more often
+    D-->>S: 1,000 posts
+    S->>D: Reactions for<br/>1,000 post ids
+    D-->>S: Reactions
+    S-->>P: About 1.4 MB,<br/>uncompressed
+    Note over P,S: FIX · compression<br/>roughly 10x smaller
+    P->>P: Draws 1,000 posts
+`,
+selectstar: `
+sequenceDiagram
+    autonumber
+    actor T as Trainer's browser
+    participant S as Server
+    participant R as Main row storage
+    participant X as Big-value storage
+    T->>S: Open the Sessions page<br/>(latest 20 sessions)
+    S->>R: select('*') for 20 sessions<br/>+ every scenario column
+    R->>R: Read 20 small rows, 0.7 KB each<br/>(big values are only pointers here)
+    rect rgba(248,113,113,0.14)
+    R->>X: '*' means every column,<br/>so fetch all 20 current_state
+    X-->>R: 20 x 209.5 KB, unpacked
+    R->>X: Same for each scenario's<br/>big columns
+    X-->>R: About 4 MB more
+    end
+    R-->>S: About 8.2 MB in total
+    S-->>T: About 8.2 MB
+    T->>T: Shows status, time and<br/>title: a few KB
+    Note over S,X: FIX 1 · name the columns the page needs<br/>Steps 4 to 7 never happen<br/>About 9 KB instead of 8.2 MB
+`,
+comesback: `
+flowchart TD
+    A["A developer adds a new feature"] --> B{"Which columns does<br/>the new query ask for?"}
+    B -->|"easiest"| C["select('*'): every column comes back,<br/>including 209 KB current_state"]
+    B -->|"names them"| OK["Only what the screen needs"]
+    C --> D["Looks harmless in review,<br/>gets merged"]
+    D --> E["Fast at first,<br/>while there is little data"]
+    E --> F["Weeks later,<br/>the page is slow"]
+    F --> G["Someone tracks it down<br/>and fixes that one query"]
+    G -.->|"the next new feature"| A
+    C -.- L[["FIX 1 · lint rule in<br/>the pre-commit hook"]]
+    L --> M["Commit is blocked:<br/>list the columns instead"]
+    M --> OK
+    classDef problem fill:#2a1519,stroke:#f87171,color:#fecaca,stroke-width:1.5px
+    classDef fix fill:#0f2a20,stroke:#34d399,color:#d1fae5,stroke-width:2px
+    class C,D,E,F,G problem
+    class L,M,OK fix
+`,
+archive: `
+flowchart TD
+    P0["Before the first run<br/>index original_post_id<br/>create archive tables with row-level security on"] --> A(["An exercise ends"])
+    P0 -.->|"plain copy of a table"| S1["No row-level security:<br/>the public key can read and change it"]
+    A --> B["Optional grace period<br/>your call, for example one week"]
+    B --> C["The archive job picks ONE finished<br/>exercise, off-hours"]
+    C --> E["1 · Copy its likes, flags and<br/>engagement log to the archive"]
+    E --> F["2 · Copy its posts, state snapshots, events,<br/>escalation factors and outcomes"]
+    F --> G["3 · Delete those rows from the live tables"]
+    G --> H["4 · Mark the exercise archived<br/>safe to re-run if it stops midway"]
+    C -.->|"WRONG ORDER"| X1["Delete the old posts first"]
+    X1 --> X2["Likes, flags and engagement log are<br/>deleted automatically, gone for good"]
+    H --> RC["Once, after the first big run:<br/>pg_repack gives the disk space back"]
+    H --> O{"Later, someone opens<br/>this exercise"}
+    O -->|"restore on open"| R["Move its rows back first:<br/>every screen works as before"]
+    O -.->|"screen not repointed"| BL["That screen shows<br/>an empty exercise"]
+    classDef problem fill:#2a1519,stroke:#f87171,color:#fecaca,stroke-width:1.5px
+    classDef fix fill:#0f2a20,stroke:#34d399,color:#d1fae5,stroke-width:2px
+    class P0,E,F,G,H,RC,R fix
+    class S1,X1,X2,BL problem
+`,
+watchdog: `
+flowchart TD
+    A["1 · Every scan during an exercise, the watchdog asks for<br/>this exercise's oldest 100 official and player posts"] --> B{"2 · Is there an index on<br/>exercise + time?"}
+    B -->|"today: no"| C["3 · Walk the time index of the whole table,<br/>starting from the first post ever written"]
+    C --> D["Exercise 1's posts: discard"]
+    D --> E["Exercise 2's posts: discard"]
+    E --> F["...every other finished exercise: discard..."]
+    F --> G["4 · Finally reach this exercise<br/>busiest: 104,364 posts discarded<br/>85,545 pages · 576 ms"]
+    B -.->|"FIX: add the index"| H["Jump straight to this exercise<br/>in time order and stop at 100"]
+    A -.->|"TRAP: only since it started"| T["Also hides 2,458 seeded official posts<br/>backdated up to 30 days"]
+    classDef problem fill:#2a1519,stroke:#f87171,color:#fecaca,stroke-width:1.5px
+    classDef fix fill:#0f2a20,stroke:#34d399,color:#d1fae5,stroke-width:2px
+    class C,D,E,F,G,T problem
+    class H fix
+`,
+map: `
+flowchart TD
+    P["1 · A page asks for data"] --> AUTH["2 · Server checks the login<br/>two network round trips"]
+    AUTH --> QRY["3 · Server builds the query"]
+    QRY --> DB["4 · Database finds the pages"]
+    DB --> MEM{"5 · In fast memory?"}
+    MEM -->|"yes"| RES["6 · Result"]
+    MEM -->|"no"| DSK["Slow read from disk"]
+    DSK --> RES
+    RES --> NET["7 · Sent to the browser"]
+    AUTH -.- FJ["FIX · for step 2<br/>check the token on the server"]
+    QRY -.- F1["FIX 1 + feed function · for step 3<br/>name the columns, add a lint rule<br/>feed as one database function"]
+    DB -.- F4["FIX · for step 4<br/>indexes: posts by exercise + time,<br/>events by exercise + type"]
+    MEM -.- F2["FIX 2 · for step 5<br/>bigger server: not needed yet<br/>99.94% of reads are hits"]
+    NET -.- FC["FIX · for step 7<br/>compression"]
+    W["During every exercise,<br/>the game writes rows"] --> TBL[("Live tables<br/>that grow forever")]
+    TBL -.->|"read in step 4"| DB
+    TBL -.- F3["FIX 3 · for the live tables<br/>archive finished exercises"]
+    classDef problem fill:#2a1519,stroke:#f87171,color:#fecaca,stroke-width:1.5px
+    classDef fix fill:#0f2a20,stroke:#34d399,color:#d1fae5,stroke-width:2px
+    classDef data fill:#12233a,stroke:#60a5fa,color:#dbeafe
+    class FJ,F1,F2,F3,F4,FC fix
+    class AUTH,DSK problem
+    class TBL data
+`,
+};
+
+for (const [key, source] of Object.entries(diagrams)) {
+  const pre = document.querySelector('pre[data-src="' + key + '"]');
+  if (pre) pre.textContent = source.trim();
+}
+
+function showStatus(message) {
+  document.querySelectorAll('.diagram .status').forEach((p) => {
+    p.textContent = message;
+    p.classList.add('err');
+  });
+}
+
+let mermaid;
+try {
+  ({ default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'));
+} catch (err) {
+  showStatus('These diagrams are drawn by Mermaid, which loads from the internet. Connect and reload the page, or open "Show the Mermaid source" and paste it into mermaid.live.');
+}
+
+if (mermaid) {
+  mermaid.initialize({
+    startOnLoad: false,
+    theme: 'base',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
+    themeVariables: {
+      darkMode: true,
+      background: '#131c28',
+      fontSize: '15px',
+      primaryColor: '#1b2636',
+      primaryTextColor: '#e8eef6',
+      primaryBorderColor: '#4b5d75',
+      secondaryColor: '#182030',
+      tertiaryColor: '#101722',
+      lineColor: '#8aa0b8',
+      textColor: '#e8eef6',
+      mainBkg: '#1b2636',
+      nodeBorder: '#4b5d75',
+      clusterBkg: '#0f1620',
+      clusterBorder: '#2c3a4d',
+      titleColor: '#b6c4d6',
+      edgeLabelBackground: '#131c28',
+      actorBkg: '#1b2636',
+      actorBorder: '#4b5d75',
+      actorTextColor: '#e8eef6',
+      actorLineColor: '#3a4a60',
+      signalColor: '#b6c4d6',
+      signalTextColor: '#e8eef6',
+      labelBoxBkgColor: '#1b2636',
+      labelBoxBorderColor: '#4b5d75',
+      labelTextColor: '#e8eef6',
+      loopTextColor: '#e8eef6',
+      noteBkgColor: '#0f2a20',
+      noteTextColor: '#d1fae5',
+      noteBorderColor: '#34d399',
+      activationBkgColor: '#22324a',
+      activationBorderColor: '#4b5d75',
+      sequenceNumberColor: '#0a0e14',
+    },
+    flowchart: { curve: 'basis', padding: 14, nodeSpacing: 36, rankSpacing: 48, wrappingWidth: 400 },
+    sequence: { mirrorActors: false, width: 120, actorMargin: 30, messageMargin: 32, noteMargin: 10, boxMargin: 8 },
+  });
+
+  const MIN_SCALE = 0.85;
+  const fit = (host) => {
+    const svg = host.querySelector('svg');
+    if (!svg) return;
+    const natural = Number((svg.getAttribute('viewBox') || '').split(/[\s,]+/)[2]);
+    const style = getComputedStyle(host);
+    const available = host.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    if (natural && available && available / natural < MIN_SCALE) {
+      svg.style.maxWidth = 'none';
+      svg.style.width = Math.round(natural * MIN_SCALE) + 'px';
+    } else {
+      svg.style.maxWidth = natural ? natural + 'px' : '100%';
+      svg.style.width = '100%';
+    }
+  };
+
+  for (const [key, source] of Object.entries(diagrams)) {
+    const host = document.querySelector('.diagram[data-diagram="' + key + '"]');
+    if (!host) continue;
+    try {
+      const { svg } = await mermaid.render('mmd-' + key, source.trim());
+      host.innerHTML = svg;
+      fit(host);
+    } catch (err) {
+      host.innerHTML = '<p class="status err">This diagram could not be drawn. Open "Show the Mermaid source" below to read it.</p>';
+      console.error(key, err);
+    }
+  }
+
+  window.addEventListener('resize', () => document.querySelectorAll('.diagram').forEach(fit));
+}
+</script>
+</body>
+</html>
