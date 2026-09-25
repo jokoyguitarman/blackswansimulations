@@ -29,16 +29,20 @@ import { countrySlug } from '../../shared/countries.js';
  * separately from the AI-backed `completeCast()` so they can be unit-tested.
  */
 
-export type CarrierRole =
-  | 'site_leader'
-  | 'hr_counterpart'
-  | 'workforce_rep'
-  | 'roster'
-  | 'distribution_list'
-  | 'local_reporter'
-  | 'regulator'
-  | 'exec_assistant'
-  | 'board_contact';
+export const CARRIER_ROLES = [
+  'site_leader',
+  'hr_counterpart',
+  'workforce_rep',
+  'roster',
+  'distribution_list',
+  'local_reporter',
+  'regulator',
+  'exec_assistant',
+  'board_contact',
+] as const;
+export type CarrierRole = (typeof CARRIER_ROLES)[number];
+/** Carriers that are individual people (roster and distribution list are built deterministically). */
+export type PrincipalRole = Exclude<CarrierRole, 'roster' | 'distribution_list'>;
 
 export interface Site {
   site_key: string;
@@ -152,35 +156,71 @@ function isPreset(fn: string): boolean {
 
 // ─── Gap detection (pure) ────────────────────────────────────────────────────
 
-const ROLE_MATCHERS: Record<
-  Exclude<CarrierRole, 'roster' | 'distribution_list'>,
-  (s: Stakeholder) => boolean
-> = {
+/**
+ * The carrier role a contact was generated for, stamped by cast completion. Read before any title
+ * heuristic: the model titles people authentically for their organisation ("Commander, Joint Task
+ * Force Sulu", "Kepala Biro SDM"), which no word list anticipates. Generator metadata: hidden from
+ * players (not in PLAYER_VISIBLE_FIELDS) and preserved by the passthrough schema.
+ */
+export function carrierRoleOf(s: Stakeholder): CarrierRole | null {
+  const role = (s as { carrier_role?: unknown }).carrier_role;
+  return typeof role === 'string' && (CARRIER_ROLES as readonly string[]).includes(role)
+    ? (role as CarrierRole)
+    : null;
+}
+
+// Title vocabulary for untagged contacts (the main stakeholder generator's cast, and carriers
+// from builds before tagging): corporate, public-sector and Malay / Indonesian terms.
+const SITE_WORDS =
+  /\b(plant|site|depot|branch|factory|country|general|operations|facility|regional|area|field|district|provincial|sector|station|base|unit|detachment|garrison|command|mission|consulate|embassy|post|centre|center|directorate|bureau|cawangan|wilayah|pangkalan|kantor)\b/i;
+const LEAD_WORDS = /\b(manager|head|director|lead|superintendent|chief|kepala|ketua|pengarah)\b/i;
+/** Titles that lead a site or unit on their own. */
+const COMMAND_TITLES =
+  /\b(commander|commanding officer|officer[- ]in[- ]charge|consul(?:[- ]general)?|komandan|komander|panglima)\b/i;
+const HR_TITLES =
+  /\b(hr(?:bp|d|m|mo)?|human resources?|human capital|people|personnel|personel|personalia|kepegawaian|sdm|sumber manusia|manpower|industrial relations|welfare|[gjs]-?1)\b/i;
+const WORKFORCE_REP_TITLES =
+  /\b(steward|staff council|union|works council|workers'? representative|employee representative)\b/i;
+const EA_TITLES =
+  /\b(executive assistant|chief of staff|ea to|office of the ceo|aide[- ]de[- ]camp|military assistant|private secretary)\b/i;
+
+const ROLE_MATCHERS: Record<PrincipalRole, (s: Stakeholder) => boolean> = {
   site_leader: (s) =>
-    s.relationship === 'internal' &&
-    s.tier !== 'roster' &&
-    /\b(plant|site|depot|branch|factory|country|general|operations|facility|regional)\b/i.test(
-      s.title,
-    ) &&
-    /\b(manager|head|director|lead|superintendent)\b/i.test(s.title),
-  hr_counterpart: (s) =>
-    s.relationship === 'internal' &&
-    s.tier !== 'roster' &&
-    /\b(hr|human resources|people|personnel|industrial relations)\b/i.test(s.title),
-  workforce_rep: (s) =>
-    s.relationship === 'union' ||
+    carrierRoleOf(s) === 'site_leader' ||
     (s.relationship === 'internal' &&
-      /\b(steward|staff council|union|works council|workers'? representative|employee representative)\b/i.test(
-        s.title,
-      )),
-  local_reporter: (s) => s.relationship === 'media',
-  regulator: (s) => s.relationship === 'regulator',
+      s.tier !== 'roster' &&
+      (COMMAND_TITLES.test(s.title) || (SITE_WORDS.test(s.title) && LEAD_WORDS.test(s.title)))),
+  hr_counterpart: (s) =>
+    carrierRoleOf(s) === 'hr_counterpart' ||
+    (s.relationship === 'internal' && s.tier !== 'roster' && HR_TITLES.test(s.title)),
+  workforce_rep: (s) =>
+    carrierRoleOf(s) === 'workforce_rep' ||
+    s.relationship === 'union' ||
+    (s.relationship === 'internal' && WORKFORCE_REP_TITLES.test(s.title)),
+  local_reporter: (s) => carrierRoleOf(s) === 'local_reporter' || s.relationship === 'media',
+  regulator: (s) => carrierRoleOf(s) === 'regulator' || s.relationship === 'regulator',
   exec_assistant: (s) =>
-    s.relationship === 'internal' &&
-    /\b(executive assistant|chief of staff|ea to|office of the ceo)\b/i.test(s.title),
+    carrierRoleOf(s) === 'exec_assistant' ||
+    (s.relationship === 'internal' && EA_TITLES.test(s.title)),
   board_contact: (s) =>
-    s.relationship === 'investor' && /\b(board|director|chair)\b/i.test(s.title),
+    carrierRoleOf(s) === 'board_contact' ||
+    (s.relationship === 'investor' && /\b(board|director|chair)\b/i.test(s.title)),
 };
+
+/** Whether a contact can carry a decision in `role`: its tag first, then its title / relationship. */
+export function isCarrier(s: Stakeholder, role: PrincipalRole): boolean {
+  return ROLE_MATCHERS[role](s);
+}
+
+function chartersOf(
+  org: NormalisedOrg,
+  charters: OrgTeamCharter[],
+  multiOrg: boolean,
+): OrgTeamCharter[] {
+  return charters.filter(
+    (c) => (c.org_key ?? 'primary') === org.org_key || (!multiOrg && c.org_key == null),
+  );
+}
 
 function belongsTo(s: Stakeholder, org: NormalisedOrg, multiOrg: boolean): boolean {
   if (!multiOrg) return true;
@@ -623,27 +663,39 @@ export function defaultSensitivities(
 
 // ─── AI-backed completion ────────────────────────────────────────────────────
 
-const ROLE_BRIEFS: Record<
-  Exclude<CarrierRole, 'roster' | 'distribution_list'>,
-  { title: string; relationship: StakeholderRelationship }
-> = {
-  site_leader: { title: 'Site / plant / depot manager for the site', relationship: 'internal' },
-  hr_counterpart: { title: 'HR business partner at the site', relationship: 'internal' },
-  workforce_rep: {
-    title: 'Union branch secretary or shop steward for the site workforce',
-    relationship: 'union',
-  },
-  local_reporter: {
-    title: 'Local labour / business reporter for the site country',
-    relationship: 'media',
-  },
-  regulator: {
-    title: 'Relevant regulator contact for the site country',
-    relationship: 'regulator',
-  },
-  exec_assistant: { title: 'Executive assistant to the CEO', relationship: 'internal' },
-  board_contact: { title: 'Board member or chair (investor side)', relationship: 'investor' },
-};
+const ROLE_BRIEFS: Record<PrincipalRole, { title: string; relationship: StakeholderRelationship }> =
+  {
+    site_leader: {
+      title:
+        'The person in charge of the site: plant / depot / branch manager, or for a public body the station or unit commander, officer-in-charge or head of the local office',
+      relationship: 'internal',
+    },
+    hr_counterpart: {
+      title: 'HR counterpart at the site (for a public body: the personnel or welfare officer)',
+      relationship: 'internal',
+    },
+    workforce_rep: {
+      title: 'Union branch secretary or shop steward for the site workforce',
+      relationship: 'union',
+    },
+    local_reporter: {
+      title: 'Local labour / business reporter for the site country',
+      relationship: 'media',
+    },
+    regulator: {
+      title: 'Relevant regulator contact for the site country',
+      relationship: 'regulator',
+    },
+    exec_assistant: { title: 'Executive assistant to the CEO', relationship: 'internal' },
+    board_contact: { title: 'Board member or chair (investor side)', relationship: 'investor' },
+  };
+
+/** Mark a contact as the carrier for `role`; the role also fixes its relationship. */
+export function stampCarrier(s: Stakeholder, role: PrincipalRole): Stakeholder {
+  (s as Stakeholder & { carrier_role?: CarrierRole }).carrier_role = role;
+  s.relationship = ROLE_BRIEFS[role].relationship;
+  return s;
+}
 
 export interface CastCompletionResult {
   added: Stakeholder[];
@@ -665,9 +717,7 @@ export async function completeCast(
   taken: TakenIdentifiers,
   opts: CastOptions,
 ): Promise<CastCompletionResult> {
-  const orgCharters = charters.filter(
-    (c) => (c.org_key ?? 'primary') === org.org_key || (!opts.multiOrg && c.org_key == null),
-  );
+  const orgCharters = chartersOf(org, charters, opts.multiOrg);
   const gaps = detectCastGaps(org, orgCharters, stakeholders, opts);
   const added: Stakeholder[] = [];
   const orgSlug = countrySlug(org.short_name || org.display_name).replace(/_+/g, '_') || 'org';
@@ -789,6 +839,7 @@ Return ONLY valid JSON: { "people": [ { ...fields... } ] }`,
       );
     }
     if (!s) s = syntheticCarrier(role, org, site, owner, orgKey, orgSlug, taken);
+    stampCarrier(s, role);
     s.tier = 'principal';
     s.kind = 'person';
     s.site_key = site.site_key;
@@ -814,12 +865,22 @@ function syntheticCarrier(
   taken: TakenIdentifiers,
 ): Stakeholder {
   const brief = ROLE_BRIEFS[role];
+  const publicBody = org.kind === 'agency';
+  const ngo = org.kind === 'ngo';
   const titles: Record<typeof role, string> = {
-    site_leader: 'Site Operations Manager',
-    hr_counterpart: 'HR Business Partner',
+    site_leader: publicBody
+      ? 'Officer-in-Charge'
+      : ngo
+        ? 'Field Office Head'
+        : 'Site Operations Manager',
+    hr_counterpart: publicBody
+      ? 'Personnel Officer'
+      : ngo
+        ? 'HR & Admin Officer'
+        : 'HR Business Partner',
     workforce_rep: 'Union Branch Secretary',
     local_reporter: 'Labour & Business Reporter',
-    regulator: 'Labour Standards Officer',
+    regulator: publicBody ? 'Oversight Officer' : 'Labour Standards Officer',
     exec_assistant: 'Executive Assistant to the CEO',
     board_contact: 'Non-Executive Director',
   };
@@ -828,7 +889,9 @@ function syntheticCarrier(
     hr_counterpart: org.display_name,
     workforce_rep: `${site.country} Workers Union — ${site.city || site.country} Branch`,
     local_reporter: `${site.country} Business Daily`,
-    regulator: `Ministry of Labour, ${site.country}`,
+    regulator: publicBody
+      ? `Office of the Ombudsman, ${site.country}`
+      : `Ministry of Labour, ${site.country}`,
     exec_assistant: org.display_name,
     board_contact: `${org.display_name} Board`,
   };
@@ -848,7 +911,7 @@ function syntheticCarrier(
     ),
     orgSlug.slice(0, 4),
   );
-  return {
+  const carrier: Stakeholder = {
     id,
     name,
     title: titles[role],
@@ -878,6 +941,60 @@ function syntheticCarrier(
     site_key: site.site_key,
     sensitivities: [],
   };
+  return stampCarrier(carrier, role);
+}
+
+// ─── Compile-time guarantee (pure apart from `taken`) ────────────────────────
+
+/** Principal carriers validateCast requires of every protagonist organisation. */
+function requiredPrincipalRoles(labourSignal: boolean): PrincipalRole[] {
+  return labourSignal
+    ? ['site_leader', 'hr_counterpart', 'workforce_rep', 'local_reporter', 'regulator']
+    : ['site_leader', 'hr_counterpart', 'local_reporter', 'regulator'];
+}
+
+export interface EnsuredCarriers {
+  added: Stakeholder[];
+  filled: Array<{ org_key: string; roles: PrincipalRole[] }>;
+}
+
+/**
+ * The guarantee behind MO-CAST-001/002/003/005/006: every protagonist organisation leaves compile
+ * with each principal carrier the validator requires. Nothing generated is replaced; a role nobody
+ * fills gets a tagged synthetic carrier (deterministic, no AI call). This is what lets a payload
+ * built before carriers were tagged compile without a rebuild. Claims identifiers in `taken`.
+ */
+export function ensureRequiredCarriers(
+  orgs: NormalisedOrg[],
+  charters: OrgTeamCharter[],
+  stakeholders: Stakeholder[],
+  taken: TakenIdentifiers,
+  opts: CastOptions,
+): EnsuredCarriers {
+  const added: Stakeholder[] = [];
+  const filled: EnsuredCarriers['filled'] = [];
+  for (const org of orgs) {
+    const mine = [...stakeholders, ...added].filter((s) => belongsTo(s, org, opts.multiOrg));
+    const missing = requiredPrincipalRoles(opts.labourSignal).filter(
+      (role) => !mine.some(ROLE_MATCHERS[role]),
+    );
+    if (missing.length === 0) continue;
+    const orgCharters = chartersOf(org, charters, opts.multiOrg);
+    const site = sitesFor(org)[0];
+    const orgSlug = countrySlug(org.short_name || org.display_name).replace(/_+/g, '_') || 'org';
+    const orgKey = opts.multiOrg ? org.org_key : null;
+    const roles: PrincipalRole[] = [];
+    for (const role of missing) {
+      const owner = ownerFunctionFor(role, orgCharters) ?? orgCharters[0]?.function_key ?? null;
+      if (!owner) continue;
+      const s = syntheticCarrier(role, org, site, owner, orgKey, orgSlug, taken);
+      s.sensitivities = defaultSensitivities(s, org.display_name, site.country);
+      added.push(s);
+      roles.push(role);
+    }
+    if (roles.length > 0) filled.push({ org_key: org.org_key, roles });
+  }
+  return { added, filled };
 }
 
 // ─── Validation (pure) — MO-CAST-* ───────────────────────────────────────────
@@ -906,7 +1023,7 @@ export function validateCast(
       issues.push({
         code: 'MO-CAST-001',
         path,
-        message: `${org.display_name}: no site leader (plant/depot/branch manager) among internal contacts`,
+        message: `${org.display_name}: no site leader (the person in charge of the site, unit or office) among internal contacts`,
       });
     if (!mine.some(ROLE_MATCHERS.hr_counterpart))
       issues.push({

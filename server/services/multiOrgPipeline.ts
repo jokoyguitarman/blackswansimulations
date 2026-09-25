@@ -58,6 +58,7 @@ import {
   completeCast,
   detectLabourSignal,
   detectProductSafetySignal,
+  ensureRequiredCarriers,
   ownerFunctionFor,
 } from './castCompletenessService.js';
 
@@ -911,6 +912,21 @@ export function buildCompileArtifacts(
     }
   }
 
+  // Carrier rule (MO-CAST-*): a required carrier the build left unfilled, or filled with a title
+  // the validator cannot recognise (payloads built before carriers were tagged), gets a
+  // deterministic one here rather than failing compile after a full build.
+  const carriers = ensureRequiredCarriers(
+    orgs,
+    charters,
+    stakeholders,
+    takenIdentifiersOf(stakeholders, body.personas, pages),
+    { labourSignal: !!body.decision_context?.labour_signal, multiOrg },
+  );
+  for (const f of carriers.filled) {
+    logger.warn({ org_key: f.org_key, roles: f.roles }, 'cast_carriers_synthesized_at_compile');
+  }
+  stakeholders.push(...carriers.added);
+
   // Visibility rule (pressure plan §11), applied again at compile so wizard state saved before
   // an organisation was switched to AI-operated still comes out right.
   const human = humanCountries(orgs);
@@ -953,6 +969,26 @@ export function buildCompileArtifacts(
         }
       : undefined,
   };
+}
+
+/** Identifiers already in use by the payload (MO-STK-004 checks all three, handles also vs pages). */
+function takenIdentifiersOf(
+  stakeholders: Stakeholder[],
+  personas: NPCPersona[],
+  pages: OrgConfig[],
+): TakenIdentifiers {
+  const taken = newTakenIdentifiers();
+  for (const s of stakeholders) {
+    taken.ids.add(s.id);
+    taken.emails.add(String(s.email).toLowerCase());
+    taken.handles.add(String(s.handle).toLowerCase());
+  }
+  for (const p of personas) if (p.handle) taken.handles.add(String(p.handle).toLowerCase());
+  for (const p of pages) {
+    if (p.facebook?.page_handle) taken.handles.add(p.facebook.page_handle.toLowerCase());
+    if (p.x_twitter?.page_handle) taken.handles.add(p.x_twitter.page_handle.toLowerCase());
+  }
+  return taken;
 }
 
 function clamp01(n: number): number {

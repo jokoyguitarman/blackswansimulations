@@ -21,6 +21,7 @@ import { registerGrievanceOverrideResolver } from '../stakeholderReconsideration
 import { recordPlayerAction } from '../sopCheckerService.js';
 import { gradePlayerContent } from '../contentGraderService.js';
 import type { Stakeholder } from '../../lib/stakeholderContract.js';
+import { isCarrier } from '../castCompletenessService.js';
 import { emitSessionEvent } from './sessionEventEmitter.js';
 import { loadDecisionContext, type DecisionContextBundle } from './decisionContext.js';
 import {
@@ -420,7 +421,10 @@ export async function assessNotice(
   const stepIds: string[] = [];
   if (
     input.recipients.some(
-      (s) => s.relationship === 'union' || /steward|representative|council/i.test(s.title),
+      (s) =>
+        s.relationship === 'union' ||
+        isCarrier(s, 'workforce_rep') ||
+        /steward|representative|council/i.test(s.title),
     )
   )
     stepIds.push('notify_workforce_representatives');
@@ -428,9 +432,11 @@ export async function assessNotice(
   if (
     input.recipients.some(
       (s) =>
-        s.relationship === 'internal' &&
-        /manager|head|director|hr|human resources/i.test(s.title) &&
-        s.kind !== 'group',
+        s.kind !== 'group' &&
+        (isCarrier(s, 'site_leader') ||
+          isCarrier(s, 'hr_counterpart') ||
+          (s.relationship === 'internal' &&
+            /manager|head|director|hr|human resources/i.test(s.title))),
     )
   )
     stepIds.push('brief_site_leadership');
