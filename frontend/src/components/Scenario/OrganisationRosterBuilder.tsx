@@ -1,4 +1,15 @@
 import { COUNTRIES, isKnownCountry } from '@shared/countries';
+import { FieldNote, issueClass, useIssueLookup } from './SetupIssues';
+import {
+  EXECUTIVE_TEAM,
+  PRESET_TEAM_NAMES,
+  PRIMARY_ORG_ID,
+  orgField,
+  pressureField,
+  teamField,
+} from './setupValidation';
+
+export { EXECUTIVE_TEAM, PRESET_TEAM_NAMES };
 
 /* ─── Types (mirror server OrganisationInput / RosterEntryInput) ────────── */
 
@@ -117,6 +128,11 @@ export function PressureOrgCard({
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
+  const issueAt = useIssueLookup();
+  const nameIssue = issueAt(pressureField(org.id, 'name'));
+  const countryIssue = issueAt(pressureField(org.id, 'country'));
+  const cityIssue = issueAt(pressureField(org.id, 'city'));
+  const wantsIssue = issueAt(pressureField(org.id, 'wants'));
   return (
     <div className="border border-warning/30 rounded p-3 bg-surface">
       <div className="flex items-center justify-between mb-2">
@@ -135,19 +151,23 @@ export function PressureOrgCard({
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-        <input
-          value={org.display_name}
-          onChange={(e) => onChange({ ...org, display_name: e.target.value })}
-          placeholder="Full official name (e.g. Ministry of Human Resources)"
-          className={`${field} sm:col-span-2`}
-        />
+        <div className="sm:col-span-2" data-field={pressureField(org.id, 'name')}>
+          <input
+            value={org.display_name}
+            onChange={(e) => onChange({ ...org, display_name: e.target.value })}
+            placeholder="Full official name (e.g. Ministry of Human Resources)"
+            className={`${field} ${issueClass(nameIssue)}`}
+            aria-invalid={nameIssue?.severity === 'error' || undefined}
+          />
+          <FieldNote issue={nameIssue} />
+        </div>
         <select
           value={org.kind}
           onChange={(e) => {
             const kind = e.target.value as PressureKind;
             onChange({ ...org, kind, register: defaultRegisterFor(kind) });
           }}
-          className={field}
+          className={`${field} self-start`}
         >
           {(Object.keys(PRESSURE_KIND_LABELS) as PressureKind[]).map((k) => (
             <option key={k} value={k}>
@@ -155,27 +175,40 @@ export function PressureOrgCard({
             </option>
           ))}
         </select>
-        <select
-          value={org.country}
-          onChange={(e) => onChange({ ...org, country: e.target.value })}
-          className={field}
-        >
-          {COUNTRIES.map((c) => (
-            <option key={c.name} value={c.name}>
-              {c.name}
-            </option>
-          ))}
-        </select>
-        <input
-          value={org.city}
-          onChange={(e) => onChange({ ...org, city: e.target.value })}
-          placeholder="City (optional)"
-          className={field}
-        />
+        <div data-field={pressureField(org.id, 'country')}>
+          <select
+            value={org.country}
+            onChange={(e) => onChange({ ...org, country: e.target.value })}
+            className={`${field} ${issueClass(countryIssue)}`}
+            aria-invalid={countryIssue?.severity === 'error' || undefined}
+          >
+            {!isKnownCountry(org.country) && (
+              <option value={org.country}>
+                {org.country ? `${org.country} (not in list)` : 'Select a country…'}
+              </option>
+            )}
+            {COUNTRIES.map((c) => (
+              <option key={c.name} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          <FieldNote issue={countryIssue} />
+        </div>
+        <div data-field={pressureField(org.id, 'city')}>
+          <input
+            value={org.city}
+            onChange={(e) => onChange({ ...org, city: e.target.value })}
+            placeholder="City (optional)"
+            className={`${field} ${issueClass(cityIssue)}`}
+            aria-invalid={cityIssue?.severity === 'error' || undefined}
+          />
+          <FieldNote issue={cityIssue} />
+        </div>
         <select
           value={org.register}
           onChange={(e) => onChange({ ...org, register: e.target.value as PressureRegister })}
-          className={field}
+          className={`${field} self-start`}
         >
           {(Object.keys(PRESSURE_REGISTER_LABELS) as PressureRegister[]).map((r) => (
             <option key={r} value={r}>
@@ -184,12 +217,16 @@ export function PressureOrgCard({
           ))}
         </select>
       </div>
-      <input
-        value={org.wants}
-        onChange={(e) => onChange({ ...org, wants: e.target.value })}
-        placeholder="What they demand (one sentence, optional — the War Room infers it otherwise)"
-        className={`${field} mb-1`}
-      />
+      <div className="mb-1" data-field={pressureField(org.id, 'wants')}>
+        <input
+          value={org.wants}
+          onChange={(e) => onChange({ ...org, wants: e.target.value })}
+          placeholder="What they demand (one sentence, optional — the War Room infers it otherwise)"
+          className={`${field} ${issueClass(wantsIssue)}`}
+          aria-invalid={wantsIssue?.severity === 'error' || undefined}
+        />
+        <FieldNote issue={wantsIssue} />
+      </div>
       {org.proposed_reason && (
         <div className="text-[10px] terminal-text text-accent">
           Suggested from your description: {org.proposed_reason}
@@ -199,19 +236,6 @@ export function PressureOrgCard({
   );
 }
 
-export function validatePressureOrg(org: PressureOrgDraft): string | null {
-  if (org.display_name.trim().length < 2) return 'Pressure organisation needs a name';
-  if (!isKnownCountry(org.country)) return `Unknown country "${org.country}"`;
-  return null;
-}
-
-export const PRESET_TEAM_NAMES = [
-  'Communications',
-  'Shareholder Engagement',
-  'Stakeholder Engagement',
-  'Legal',
-  'Executive',
-];
 /** Retired preset names — legacy drafts resume with them mapped to the current presets. */
 export const LEGACY_PRESET_ALIASES: Record<string, string> = {
   Procurement: 'Shareholder Engagement',
@@ -233,7 +257,6 @@ export function migrateLegacyRoster(roster: RosterEntry[]): RosterEntry[] {
   }
   return out;
 }
-export const EXECUTIVE_TEAM = 'Executive';
 
 export const DEFAULT_TEAM_ROSTER: RosterEntry[] = [
   'Communications',
@@ -267,64 +290,6 @@ export function newOrganisationDraft(country: string): OrganisationDraft {
     x_handle: '',
     team_roster: DEFAULT_TEAM_ROSTER.map((t) => ({ ...t })),
   };
-}
-
-/* ─── Validation (mirrors server validateOrganisations; server still enforces) ── */
-
-export function rosterErrorFor(roster: RosterEntry[], orgLabel?: string): string | null {
-  const prefix = orgLabel ? `${orgLabel}: ` : '';
-  if (roster.length < 2) return `${prefix}Pick at least 2 teams`;
-  if (roster.length > 6) return `${prefix}Maximum 6 teams`;
-  const names = roster.map((t) => t.team_name.trim().toLowerCase());
-  if (names.some((n) => !n)) return `${prefix}Every custom team needs a name`;
-  if (new Set(names).size !== names.length) return `${prefix}Team names must be unique`;
-  const clash = roster.find(
-    (t) =>
-      t.is_custom &&
-      PRESET_TEAM_NAMES.some((p) => p.toLowerCase() === t.team_name.trim().toLowerCase()),
-  );
-  if (clash) return `${prefix}"${clash.team_name}" is a preset name — rename the custom team`;
-  const bad = roster.find((t) => t.is_custom && t.description.trim().length < 10);
-  if (bad)
-    return `${prefix}Describe what "${bad.team_name || 'your custom team'}" does (min 10 characters)`;
-  if (roster.filter((t) => t.team_name === EXECUTIVE_TEAM && !t.is_custom).length > 1)
-    return `${prefix}Only one Executive team`;
-  if (roster.filter((t) => t.is_public_voice).length !== 1)
-    return `${prefix}Tick exactly one team as the public voice`;
-  return null;
-}
-
-export function organisationsErrorFor(
-  primary: { display_name: string; country: string; team_roster: RosterEntry[] },
-  extras: OrganisationDraft[],
-  competitors: CompetitorDraft[],
-): string | null {
-  if (extras.length + 1 > 6) return 'Maximum 6 organisations';
-  if (!isKnownCountry(primary.country))
-    return 'Pick the primary organisation\u2019s country from the list';
-  const primaryErr = rosterErrorFor(
-    primary.team_roster,
-    extras.length > 0 ? primary.display_name || 'Primary organisation' : undefined,
-  );
-  if (primaryErr) return primaryErr;
-  if (extras.length > 0 && primary.display_name.trim().length < 2)
-    return 'Name the primary organisation (needed when there are several organisations)';
-  const names = new Set([primary.display_name.trim().toLowerCase()]);
-  for (const o of extras) {
-    const label = o.display_name.trim() || 'Unnamed organisation';
-    if (o.display_name.trim().length < 2) return 'Every organisation needs a name (2+ characters)';
-    if (names.has(o.display_name.trim().toLowerCase()))
-      return `Organisation names must be unique: "${label}"`;
-    names.add(o.display_name.trim().toLowerCase());
-    if (!isKnownCountry(o.country)) return `${label}: pick a country from the list`;
-    const err = rosterErrorFor(o.team_roster, label);
-    if (err) return err;
-  }
-  for (const c of competitors) {
-    if (c.name.trim().length < 2) return 'Every competitor needs a name';
-    if (!isKnownCountry(c.country)) return `Competitor "${c.name}": pick a country from the list`;
-  }
-  return null;
 }
 
 /** Keep exactly one public voice whenever possible (Communications first, then the first non-Executive). */
@@ -374,12 +339,16 @@ export function RosterBuilder({
   onChange,
   presetCatalog,
   compact,
+  orgId = PRIMARY_ORG_ID,
 }: {
   roster: RosterEntry[];
   onChange: (next: RosterEntry[]) => void;
   presetCatalog: PresetTeamCard[];
   compact?: boolean;
+  /** Owner of the roster, for Setup issue anchors. */
+  orgId?: string;
 }) {
+  const issueAt = useIssueLookup();
   const presets: PresetTeamCard[] =
     presetCatalog.length > 0
       ? presetCatalog
@@ -410,10 +379,10 @@ export function RosterBuilder({
     onChange(withOnePublicVoice(next));
   };
 
-  const error = rosterErrorFor(roster);
+  const rosterIssue = issueAt(orgField(orgId, 'roster'));
 
   return (
-    <div>
+    <div data-field={orgField(orgId, 'roster')}>
       <div
         className={`grid grid-cols-1 ${compact ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-2 mb-3`}
       >
@@ -465,20 +434,28 @@ export function RosterBuilder({
 
       {roster.some((t) => t.is_custom) && (
         <div className="space-y-2 mb-3">
-          {roster.map((t, idx) =>
-            t.is_custom ? (
+          {roster.map((t, idx) => {
+            if (!t.is_custom) return null;
+            const nameIssue = issueAt(teamField(orgId, idx, 'name'));
+            const descIssue = issueAt(teamField(orgId, idx, 'description'));
+            return (
               <div key={idx} className="border border-border rounded p-2.5">
                 <div className="flex items-center gap-2 mb-1.5">
-                  <input
-                    value={t.team_name}
-                    onChange={(e) =>
-                      onChange(
-                        roster.map((x, i) => (i === idx ? { ...x, team_name: e.target.value } : x)),
-                      )
-                    }
-                    placeholder="Team name (e.g. Franchise Relations)"
-                    className="flex-1 bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded"
-                  />
+                  <div className="flex-1 min-w-0" data-field={teamField(orgId, idx, 'name')}>
+                    <input
+                      value={t.team_name}
+                      onChange={(e) =>
+                        onChange(
+                          roster.map((x, i) =>
+                            i === idx ? { ...x, team_name: e.target.value } : x,
+                          ),
+                        )
+                      }
+                      placeholder="Team name (e.g. Franchise Relations)"
+                      className={`w-full bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded ${issueClass(nameIssue)}`}
+                      aria-invalid={nameIssue?.severity === 'error' || undefined}
+                    />
+                  </div>
                   <label
                     className={`text-[9px] terminal-text cursor-pointer px-1.5 py-0.5 rounded border whitespace-nowrap ${
                       t.is_public_voice
@@ -496,20 +473,31 @@ export function RosterBuilder({
                     Remove
                   </button>
                 </div>
-                <textarea
-                  value={t.description}
-                  onChange={(e) =>
-                    onChange(
-                      roster.map((x, i) => (i === idx ? { ...x, description: e.target.value } : x)),
-                    )
-                  }
-                  rows={2}
-                  placeholder="What does this team do? (feeds the AI: their injects, pressure, duties, contacts and scoring are built from this)"
-                  className="w-full bg-surface border border-border text-ink terminal-text text-[11px] px-2 py-1 rounded resize-y"
-                />
+                {nameIssue && (
+                  <div className="-mt-0.5 mb-1.5">
+                    <FieldNote issue={nameIssue} />
+                  </div>
+                )}
+                <div data-field={teamField(orgId, idx, 'description')}>
+                  <textarea
+                    value={t.description}
+                    onChange={(e) =>
+                      onChange(
+                        roster.map((x, i) =>
+                          i === idx ? { ...x, description: e.target.value } : x,
+                        ),
+                      )
+                    }
+                    rows={2}
+                    placeholder="What does this team do? (feeds the AI: their injects, pressure, duties, contacts and scoring are built from this)"
+                    className={`w-full bg-surface border border-border text-ink terminal-text text-[11px] px-2 py-1 rounded resize-y ${issueClass(descIssue)}`}
+                    aria-invalid={descIssue?.severity === 'error' || undefined}
+                  />
+                  <FieldNote issue={descIssue} />
+                </div>
               </div>
-            ) : null,
-          )}
+            );
+          })}
         </div>
       )}
 
@@ -530,7 +518,7 @@ export function RosterBuilder({
         <span className="text-[10px] terminal-text text-muted">{roster.length}/6 teams</span>
       </div>
 
-      {error && <div className="mt-2 text-[10px] terminal-text text-warning">{error}</div>}
+      <FieldNote issue={rosterIssue} />
     </div>
   );
 }
@@ -552,6 +540,23 @@ export function OrganisationCard({
 }) {
   const field =
     'bg-surface border border-border text-ink terminal-text text-xs px-2 py-1 rounded w-full';
+  const issueAt = useIssueLookup();
+  const at = (part: Parameters<typeof orgField>[1]) => {
+    const issue = issueAt(orgField(org.id, part));
+    return {
+      issue,
+      anchor: { 'data-field': orgField(org.id, part) },
+      cls: `${field} ${issueClass(issue)}`,
+      invalid: issue?.severity === 'error' || undefined,
+    };
+  };
+  const name = at('name');
+  const short = at('short_name');
+  const country = at('country');
+  const city = at('city');
+  const kind = at('kind');
+  const facebook = at('facebook');
+  const x = at('x');
   return (
     <div className="border border-border rounded p-3 bg-surface">
       <div className="flex items-center justify-between mb-2">
@@ -567,52 +572,82 @@ export function OrganisationCard({
         </button>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
-        <input
-          value={org.display_name}
-          onChange={(e) => onChange({ ...org, display_name: e.target.value })}
-          placeholder="Organisation name (e.g. National Bureau of Investigation)"
-          className={`${field} sm:col-span-2`}
-        />
-        <input
-          value={org.short_name}
-          onChange={(e) => onChange({ ...org, short_name: e.target.value.slice(0, 20) })}
-          placeholder="Short name (e.g. NBI) — optional"
-          className={field}
-        />
-        <CountrySelect
-          value={org.country}
-          onChange={(v) => onChange({ ...org, country: v })}
-          className={field}
-        />
-        <input
-          value={org.city}
-          onChange={(e) => onChange({ ...org, city: e.target.value })}
-          placeholder="City (optional)"
-          className={field}
-        />
-        <select
-          value={org.kind}
-          onChange={(e) => onChange({ ...org, kind: e.target.value as OrgKind })}
-          className={field}
-        >
-          {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
-            <option key={k} value={k}>
-              {ORG_KIND_LABELS[k]}
-            </option>
-          ))}
-        </select>
-        <input
-          value={org.facebook_handle}
-          onChange={(e) => onChange({ ...org, facebook_handle: e.target.value })}
-          placeholder="@FacebookHandle (optional)"
-          className={field}
-        />
-        <input
-          value={org.x_handle}
-          onChange={(e) => onChange({ ...org, x_handle: e.target.value })}
-          placeholder="@XHandle (optional)"
-          className={field}
-        />
+        <div className="sm:col-span-2" {...name.anchor}>
+          <input
+            value={org.display_name}
+            onChange={(e) => onChange({ ...org, display_name: e.target.value })}
+            placeholder="Organisation name (e.g. National Bureau of Investigation)"
+            className={name.cls}
+            aria-invalid={name.invalid}
+          />
+          <FieldNote issue={name.issue} />
+        </div>
+        <div {...short.anchor}>
+          <input
+            value={org.short_name}
+            onChange={(e) => onChange({ ...org, short_name: e.target.value.slice(0, 20) })}
+            placeholder="Short name (e.g. NBI) — optional"
+            className={short.cls}
+            aria-invalid={short.invalid}
+          />
+          <FieldNote issue={short.issue} />
+        </div>
+        <div {...country.anchor}>
+          <CountrySelect
+            value={org.country}
+            onChange={(v) => onChange({ ...org, country: v })}
+            className={country.cls}
+          />
+          <FieldNote issue={country.issue} />
+        </div>
+        <div {...city.anchor}>
+          <input
+            value={org.city}
+            onChange={(e) => onChange({ ...org, city: e.target.value })}
+            placeholder="City (optional)"
+            className={city.cls}
+            aria-invalid={city.invalid}
+          />
+          <FieldNote issue={city.issue} />
+        </div>
+        <div {...kind.anchor}>
+          <select
+            value={org.kind}
+            onChange={(e) => onChange({ ...org, kind: e.target.value as OrgKind })}
+            className={kind.cls}
+          >
+            {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
+              <option key={k} value={k}>
+                {ORG_KIND_LABELS[k]}
+              </option>
+            ))}
+          </select>
+        </div>
+        {kind.issue && (
+          <div className="sm:col-span-3 -mt-1">
+            <FieldNote issue={kind.issue} />
+          </div>
+        )}
+        <div {...facebook.anchor}>
+          <input
+            value={org.facebook_handle}
+            onChange={(e) => onChange({ ...org, facebook_handle: e.target.value })}
+            placeholder="@FacebookHandle (optional)"
+            className={facebook.cls}
+            aria-invalid={facebook.invalid}
+          />
+          <FieldNote issue={facebook.issue} />
+        </div>
+        <div {...x.anchor}>
+          <input
+            value={org.x_handle}
+            onChange={(e) => onChange({ ...org, x_handle: e.target.value })}
+            placeholder="@XHandle (optional)"
+            className={x.cls}
+            aria-invalid={x.invalid}
+          />
+          <FieldNote issue={x.issue} />
+        </div>
       </div>
       <label className="flex items-start gap-2 mb-2 cursor-pointer">
         <input
@@ -640,6 +675,7 @@ export function OrganisationCard({
         onChange={(next) => onChange({ ...org, team_roster: next })}
         presetCatalog={presetCatalog}
         compact
+        orgId={org.id}
       />
     </div>
   );

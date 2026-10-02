@@ -252,6 +252,50 @@ textarea.wr-field {
   margin-top: 6px;
 }
 
+/* ── field issues (Setup checks) ───────────────────────────────────────── */
+.wr-invalid {
+  border-color: var(--danger) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.wr-warn {
+  border-color: #d97706 !important;
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.14);
+}
+.wr-field.onDark.wr-invalid {
+  border-color: #f87171 !important;
+  box-shadow: 0 0 0 4px rgba(248, 113, 113, 0.2);
+}
+.wr-node.wr-invalid {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.wr-node.wr-warn {
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.14);
+}
+.wr-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--danger);
+  text-transform: none;
+  letter-spacing: normal;
+}
+.wr-note .wr-ic {
+  margin-top: 2px;
+}
+.wr-note.warn {
+  color: #b45309;
+}
+.wr-note.onDark {
+  color: #fca5a5;
+}
+.wr-note.onDark.warn {
+  color: #fcd34d;
+}
+
 /* ── pills / chips ─────────────────────────────────────────────────────── */
 .wr-pill {
   display: inline-flex;
@@ -1075,6 +1119,108 @@ textarea.wr-field {
   position: sticky;
   bottom: 12px;
   z-index: 20;
+}
+.wr-issues {
+  position: relative;
+}
+.wr-issuechip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+  border: 1px solid rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.14);
+  color: #fecaca;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.wr-issuechip:hover {
+  background: rgba(248, 113, 113, 0.24);
+}
+.wr-issuechip.warn {
+  border-color: rgba(251, 191, 36, 0.5);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fde68a;
+}
+.wr-issuechip.warn:hover {
+  background: rgba(251, 191, 36, 0.2);
+}
+.wr-issuepanel {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  right: 0;
+  width: min(440px, 88vw);
+  max-height: min(380px, 60vh);
+  overflow: auto;
+  background: #fff;
+  color: var(--ink);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--wr-shadow-lg);
+  padding: 6px;
+}
+.wr-issuepanel .head {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--danger);
+  padding: 8px 10px 4px;
+}
+.wr-issuepanel .head.warn {
+  color: #b45309;
+}
+.wr-issuepanel .row {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font: inherit;
+  background: none;
+  border: 0;
+  color: inherit;
+}
+.wr-issuepanel button.row {
+  cursor: pointer;
+}
+.wr-issuepanel button.row:hover,
+.wr-issuepanel button.row:focus-visible {
+  background: #f4f6fa;
+  outline: none;
+}
+.wr-issuepanel .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  margin-top: 6px;
+  flex: none;
+}
+.wr-issuepanel .dot.warn {
+  background: #d97706;
+}
+.wr-issuepanel .txt {
+  min-width: 0;
+}
+.wr-issuepanel .where {
+  display: block;
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wr-issuepanel .msg {
+  display: block;
+  font-size: 12.5px;
+  line-height: 1.45;
 }
 
 /* ── path cards (mode choice) ──────────────────────────────────────────── */

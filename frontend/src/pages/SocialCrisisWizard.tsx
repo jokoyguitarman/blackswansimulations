@@ -6,7 +6,6 @@ import {
   RosterBuilder,
   OrganisationCard,
   CountrySelect,
-  organisationsErrorFor,
   newOrganisationDraft,
   migrateLegacyRoster,
   DEFAULT_TEAM_ROSTER,
@@ -14,7 +13,6 @@ import {
   PRESET_TEAM_NAMES,
   PressureOrgCard,
   newPressureOrgDraft,
-  validatePressureOrg,
   type RosterEntry,
   type PresetTeamCard,
   type OrganisationDraft,
@@ -24,6 +22,27 @@ import {
   type PressureKind,
   type PressureRegister,
 } from '../components/Scenario/OrganisationRosterBuilder';
+import {
+  BRIEF_FIELD,
+  BRIEF_MIN,
+  PRIMARY_ORG_ID,
+  collectSetupIssues,
+  competitorField,
+  indexIssues,
+  isSendablePressureOrg,
+  issuesFromServer,
+  orgField,
+  pickIssue,
+  type SetupIssue,
+  type SetupSnapshot,
+} from '../components/Scenario/setupValidation';
+import {
+  FieldNote,
+  SetupIssueSummary,
+  SetupIssuesProvider,
+  issueClass,
+  jumpToField,
+} from '../components/Scenario/SetupIssues';
 import { BrandMark } from '../components/BrandMark';
 import { WrIcon, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon';
 import { WrFold, countryCode, initialsOf } from '../components/UI/Collapsible';
@@ -388,17 +407,6 @@ export const SocialCrisisWizard = () => {
   const [competitorEntries, setCompetitorEntries] = useState<CompetitorDraft[]>([]);
   const [autoAntagonist, setAutoAntagonist] = useState(true);
 
-  /** Organisation validity mirrors server-side validateOrganisations (server still enforces). */
-  const rosterError = useMemo(
-    (): string | null =>
-      organisationsErrorFor(
-        { display_name: orgName, country, team_roster: teamRoster },
-        extraOrganisations,
-        competitorEntries,
-      ),
-    [orgName, country, teamRoster, extraOrganisations, competitorEntries],
-  );
-
   /** Wire shape for every generation endpoint (contract §5): primary + additional organisations. */
   const organisationsPayload = useMemo(
     () => [
@@ -467,21 +475,104 @@ export const SocialCrisisWizard = () => {
 
   const pressureOrganisationsPayload = useMemo(
     () =>
-      pressureOrgs
-        .filter((p) => p.display_name.trim().length >= 2)
-        .map((p) => ({
-          org_key: p.org_key,
-          display_name: p.display_name.trim(),
-          kind: p.kind,
-          country: p.country,
-          city: p.city.trim() || undefined,
-          register: p.register,
-          wants: p.wants.trim() || undefined,
-          facebook_handle: p.facebook_handle.trim() || undefined,
-          x_handle: p.x_handle.trim() || undefined,
-          spokesperson_stakeholder_id: p.spokesperson_stakeholder_id,
-        })),
+      pressureOrgs.filter(isSendablePressureOrg).map((p) => ({
+        org_key: p.org_key,
+        display_name: p.display_name.trim(),
+        kind: p.kind,
+        country: p.country,
+        city: p.city.trim() || undefined,
+        register: p.register,
+        wants: p.wants.trim() || undefined,
+        facebook_handle: p.facebook_handle.trim() || undefined,
+        x_handle: p.x_handle.trim() || undefined,
+        spokesperson_stakeholder_id: p.spokesperson_stakeholder_id,
+      })),
     [pressureOrgs],
+  );
+
+  /*
+   * Setup checks: every problem on the page at once, pinned to its field. Errors stay hidden
+   * until the trainer first presses Build (or the radar), then update live; warnings never block.
+   */
+  const setupSnapshot = useMemo<SetupSnapshot>(
+    () => ({
+      brief: crisisDescription,
+      primary: {
+        name: orgName,
+        shortName: primaryShortName,
+        country,
+        city: primaryCity,
+        kind: primaryKind,
+        roster: teamRoster,
+      },
+      extras: extraOrganisations,
+      pressure: pressureOrgs,
+      competitors: competitorEntries,
+    }),
+    [
+      crisisDescription,
+      orgName,
+      primaryShortName,
+      country,
+      primaryCity,
+      primaryKind,
+      teamRoster,
+      extraOrganisations,
+      pressureOrgs,
+      competitorEntries,
+    ],
+  );
+  const [revealIssues, setRevealIssues] = useState(false);
+  const [issuePanelOpen, setIssuePanelOpen] = useState(false);
+  /** A server refusal, shown only while Setup still matches what was sent. */
+  const [serverIssues, setServerIssues] = useState<{
+    snapshot: SetupSnapshot;
+    issues: SetupIssue[];
+  } | null>(null);
+  const setupIssues = useMemo(() => {
+    const local = collectSetupIssues(setupSnapshot);
+    if (!serverIssues || serverIssues.snapshot !== setupSnapshot) return local;
+    const flagged = new Set(local.filter((i) => i.severity === 'error').map((i) => i.field));
+    return [...local, ...serverIssues.issues.filter((i) => !i.field || !flagged.has(i.field))];
+  }, [setupSnapshot, serverIssues]);
+  const setupErrors = useMemo(
+    () => setupIssues.filter((i) => i.severity === 'error'),
+    [setupIssues],
+  );
+  const setupWarnings = useMemo(
+    () => setupIssues.filter((i) => i.severity === 'warning'),
+    [setupIssues],
+  );
+  const setupIssueIndex = useMemo(() => indexIssues(setupIssues), [setupIssues]);
+  const issueAt = (field: string) => pickIssue(setupIssueIndex.get(field), revealIssues);
+
+  // Jumps run after the render that shows the notes, so the scroll lands on the final layout.
+  // A null field means "the first error on the page".
+  const pendingJump = useRef<{ field: string | null } | null>(null);
+  const [jumpRequest, setJumpRequest] = useState(0);
+  const requestJump = useCallback((field: string | null = null) => {
+    pendingJump.current = { field };
+    setJumpRequest((n) => n + 1);
+  }, []);
+  useEffect(() => {
+    const pending = pendingJump.current;
+    if (!pending || step !== 1) return;
+    pendingJump.current = null;
+    const target = pending.field ?? setupErrors.find((i) => i.field)?.field ?? null;
+    if (!target || !jumpToField(target)) setIssuePanelOpen(true);
+  }, [jumpRequest, setupErrors, step]);
+
+  /** Pins a 400 from the footprint or build endpoints onto Setup; false when it had no details. */
+  const showServerIssues = useCallback(
+    (body: unknown): boolean => {
+      const issues = issuesFromServer(body, setupSnapshot);
+      if (issues.length === 0) return false;
+      setServerIssues({ snapshot: setupSnapshot, issues });
+      setRevealIssues(true);
+      requestJump();
+      return true;
+    },
+    [setupSnapshot, requestJump],
   );
 
   /**
@@ -490,11 +581,11 @@ export const SocialCrisisWizard = () => {
    * offices become AI-operated organisations, pressure groups become pressure-org drafts.
    */
   const detectFootprint = useCallback(
-    async (opts: { silent?: boolean } = {}) => {
+    async (opts: { silent?: boolean } = {}): Promise<'ran' | 'refused' | 'skipped' | 'failed'> => {
       const text = `${crisisDescription} ${context}`.trim();
       if (text.replace(/\W/g, '').length < 20) {
         if (!opts.silent) setFootprintNotice('Describe the crisis first (a sentence or two).');
-        return;
+        return 'skipped';
       }
       setFootprintLoading(true);
       setFootprintNotice(null);
@@ -511,6 +602,10 @@ export const SocialCrisisWizard = () => {
           }),
         });
         const json = (await res.json()) as { data?: FootprintWire; error?: string };
+        if (res.status === 400 && showServerIssues(json)) {
+          setFootprintNotice('Fix the highlighted fields first — the radar reads them too.');
+          return 'refused';
+        }
         if (!res.ok || !json.data) throw new Error(json.error || 'Footprint inference failed');
         const fp = json.data;
         setFootprint(fp);
@@ -556,10 +651,12 @@ export const SocialCrisisWizard = () => {
         setFootprintNotice(
           `${countries || 'No extra countries'}. Added ${addedOrgs.length} AI-operated organisation(s) and ${addedPressure.length} pressure organisation(s) — untick or remove anything that does not belong.`,
         );
+        return 'ran';
       } catch (err) {
         setFootprintNotice(
           err instanceof Error ? err.message : 'Could not infer the crisis footprint',
         );
+        return 'failed';
       } finally {
         setFootprintLoading(false);
       }
@@ -573,8 +670,21 @@ export const SocialCrisisWizard = () => {
       extraOrganisations,
       pressureOrgs,
       presetCatalog,
+      showServerIssues,
     ],
   );
+
+  /** Radar button: the footprint call sends the organisations and rivals, so check those first. */
+  const runFootprint = () => {
+    const blocker = setupErrors.find((i) => i.scope === 'org' || i.scope === 'rival');
+    if (blocker) {
+      setRevealIssues(true);
+      setFootprintNotice('Fix the highlighted fields first — the radar reads them too.');
+      requestJump(blocker.field);
+      return;
+    }
+    void detectFootprint();
+  };
 
   /* Stakeholder characters, registry and cast-generated SOP steps (contract §3 / §5.1) */
   const [stakeholders, setStakeholders] = useState<StakeholderWire[]>([]);
@@ -874,7 +984,7 @@ export const SocialCrisisWizard = () => {
   const canProceed = useMemo(() => {
     switch (step) {
       case 1:
-        return crisisDescription.length >= 50 && rosterError === null;
+        return setupErrors.length === 0;
       case 3:
         // Blueprint Review: can proceed once extraction settles.
         return !extracting;
@@ -886,7 +996,7 @@ export const SocialCrisisWizard = () => {
       default:
         return false;
     }
-  }, [step, crisisDescription, extracting, rosterError]);
+  }, [step, extracting, setupErrors]);
 
   /* ─── File upload ───────────────────────────────────────────────────── */
 
@@ -1056,8 +1166,14 @@ export const SocialCrisisWizard = () => {
         }),
       });
       if (!res.ok) {
-        setStep2Error('Failed to start NPC generation. Try again.');
         setStep2Loading(false);
+        const body = res.status === 400 ? await res.json().catch(() => null) : null;
+        if (showServerIssues(body)) {
+          setStep(1);
+          void saveDraftState(1);
+          return null;
+        }
+        setStep2Error('Failed to start NPC generation. Try again.');
         return null;
       }
       const json = await res.json();
@@ -1115,7 +1231,17 @@ export const SocialCrisisWizard = () => {
     }
     setStep2Loading(false);
     return null;
-  }, [crisisDescription, country, orgName, blueprint, organisationsPayload, competitorsPayload]);
+  }, [
+    crisisDescription,
+    country,
+    orgName,
+    blueprint,
+    organisationsPayload,
+    competitorsPayload,
+    pressureOrganisationsPayload,
+    showServerIssues,
+    saveDraftState,
+  ]);
 
   const generateStoryline = useCallback(
     async (
@@ -1782,7 +1908,7 @@ export const SocialCrisisWizard = () => {
     if (step === 1 && !footprintLoading) {
       const text = `${crisisDescription} ${context}`.trim();
       if (text.replace(/\W/g, '').length >= 20 && footprintRanFor.current !== text) {
-        await detectFootprint({ silent: true });
+        if ((await detectFootprint({ silent: true })) === 'refused') return;
         if (footprintRanFor.current === text) return; // stay on Setup to review proposals
       }
     }
@@ -1805,6 +1931,16 @@ export const SocialCrisisWizard = () => {
     const nextStep = VISIBLE_STEPS[nextIdx];
     await saveDraftState(nextStep);
     setStep(nextStep);
+  };
+
+  /** Setup's Build button is always pressable: with errors it points at them instead. */
+  const continueFromSetup = () => {
+    if (setupErrors.length > 0) {
+      setRevealIssues(true);
+      requestJump();
+      return;
+    }
+    void goNext();
   };
 
   /* ─── Computed stats ────────────────────────────────────────────── */
@@ -1931,7 +2067,11 @@ export const SocialCrisisWizard = () => {
     political: 'Political actor',
   };
 
-  const pressureValidation = pressureOrgs.map(validatePressureOrg).find(Boolean);
+  const briefIssue = issueAt(BRIEF_FIELD);
+  const primaryNameIssue = issueAt(orgField(PRIMARY_ORG_ID, 'name'));
+  const primaryCountryIssue = issueAt(orgField(PRIMARY_ORG_ID, 'country'));
+  const primaryCityIssue = issueAt(orgField(PRIMARY_ORG_ID, 'city'));
+  const primaryKindIssue = issueAt(orgField(PRIMARY_ORG_ID, 'kind'));
 
   /** Hero left column for Setup: the brief, the document and the logo. */
   const renderSetupBrief = () => (
@@ -1943,25 +2083,29 @@ export const SocialCrisisWizard = () => {
         story are read from it and appear on the radar; everything else — contacts, crowd, injects,
         fact sheet — is generated from it.
       </p>
-      <textarea
-        value={context}
-        onChange={(e) => setContext(e.target.value)}
-        rows={7}
-        placeholder={SCENARIO_PLACEHOLDER}
-        className="wr-field onDark"
-        style={{ minHeight: 150 }}
-      />
-      <div className="flex justify-between mt-1.5 text-[11px] text-white/55">
-        <span>
-          {context.length < 50
-            ? `Minimum 50 characters required (${50 - context.length} more)`
-            : `${context.length} characters`}
-        </span>
-        {uploadedDocText && (
+      <div data-field={BRIEF_FIELD}>
+        <textarea
+          value={context}
+          onChange={(e) => setContext(e.target.value)}
+          rows={7}
+          placeholder={SCENARIO_PLACEHOLDER}
+          className={`wr-field onDark ${issueClass(briefIssue)}`}
+          style={{ minHeight: 150 }}
+          aria-invalid={briefIssue?.severity === 'error' || undefined}
+        />
+        <div className="flex justify-between mt-1.5 text-[11px] text-white/55">
           <span>
-            {uploadedDocText.split(/\s+/).length.toLocaleString()} words from your document
+            {crisisDescription.length < BRIEF_MIN
+              ? `Minimum ${BRIEF_MIN} characters required (${BRIEF_MIN - crisisDescription.length} more)`
+              : `${context.length} characters`}
           </span>
-        )}
+          {uploadedDocText && (
+            <span>
+              {uploadedDocText.split(/\s+/).length.toLocaleString()} words from your document
+            </span>
+          )}
+        </div>
+        <FieldNote issue={briefIssue} onDark />
       </div>
 
       <div className="flex flex-wrap gap-2.5 mt-3">
@@ -2097,7 +2241,7 @@ export const SocialCrisisWizard = () => {
             {footprintNotice && <span className="text-amber-300">{footprintNotice}</span>}
             <button
               type="button"
-              onClick={() => void detectFootprint()}
+              onClick={runFootprint}
               disabled={footprintLoading}
               className="wr-btn sm onDark ml-auto"
             >
@@ -2188,7 +2332,7 @@ export const SocialCrisisWizard = () => {
             </span>
             <button
               type="button"
-              onClick={() => void detectFootprint()}
+              onClick={runFootprint}
               disabled={footprintLoading}
               className="wr-btn sm onDark ml-auto"
             >
@@ -2239,7 +2383,7 @@ export const SocialCrisisWizard = () => {
                 <WrIcon name="building" size={12} /> Headquarters · players
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 mb-3">
-                <div className="sm:col-span-6">
+                <div className="sm:col-span-6" data-field={orgField(PRIMARY_ORG_ID, 'name')}>
                   <label className="wr-lbl">
                     Organisation name {extraOrganisations.length === 0 ? '(optional)' : ''}
                   </label>
@@ -2248,34 +2392,46 @@ export const SocialCrisisWizard = () => {
                     value={orgName}
                     onChange={(e) => setOrgName(e.target.value)}
                     placeholder="e.g., Meridian Technologies, Acme Corp"
-                    className="wr-field"
+                    className={`wr-field ${issueClass(primaryNameIssue)}`}
+                    aria-invalid={primaryNameIssue?.severity === 'error' || undefined}
                   />
-                  <div className="wr-help">
-                    {extraOrganisations.length === 0
-                      ? 'Leave blank to let the AI generate a company name.'
-                      : 'Required when several organisations take part — it names the primary one.'}
-                  </div>
+                  {primaryNameIssue ? (
+                    <FieldNote issue={primaryNameIssue} />
+                  ) : (
+                    <div className="wr-help">
+                      {extraOrganisations.length === 0
+                        ? 'Leave blank to let the AI generate a company name.'
+                        : 'Required when several organisations take part — it names the primary one.'}
+                    </div>
+                  )}
                 </div>
-                <div className="sm:col-span-3">
+                <div className="sm:col-span-3" data-field={orgField(PRIMARY_ORG_ID, 'country')}>
                   <label className="wr-lbl">Country (headquarters)</label>
-                  <CountrySelect value={country} onChange={setCountry} className="wr-field" />
+                  <CountrySelect
+                    value={country}
+                    onChange={setCountry}
+                    className={`wr-field ${issueClass(primaryCountryIssue)}`}
+                  />
+                  <FieldNote issue={primaryCountryIssue} />
                 </div>
-                <div className="sm:col-span-2">
+                <div className="sm:col-span-2" data-field={orgField(PRIMARY_ORG_ID, 'city')}>
                   <label className="wr-lbl">City (optional)</label>
                   <input
                     type="text"
                     value={primaryCity}
                     onChange={(e) => setPrimaryCity(e.target.value)}
                     placeholder="e.g. Singapore"
-                    className="wr-field"
+                    className={`wr-field ${issueClass(primaryCityIssue)}`}
+                    aria-invalid={primaryCityIssue?.severity === 'error' || undefined}
                   />
+                  <FieldNote issue={primaryCityIssue} />
                 </div>
-                <div className="sm:col-span-1">
+                <div className="sm:col-span-1" data-field={orgField(PRIMARY_ORG_ID, 'kind')}>
                   <label className="wr-lbl">Type</label>
                   <select
                     value={primaryKind}
                     onChange={(e) => setPrimaryKind(e.target.value as OrgKind)}
-                    className="wr-field"
+                    className={`wr-field ${issueClass(primaryKindIssue)}`}
                   >
                     {(Object.keys(ORG_KIND_LABELS) as OrgKind[]).map((k) => (
                       <option key={k} value={k}>
@@ -2284,6 +2440,11 @@ export const SocialCrisisWizard = () => {
                     ))}
                   </select>
                 </div>
+                {primaryKindIssue && (
+                  <div className="sm:col-span-6 -mt-1">
+                    <FieldNote issue={primaryKindIssue} />
+                  </div>
+                )}
               </div>
 
               {/* Response teams at the primary organisation: presets + the trainer's own divisions */}
@@ -2306,6 +2467,7 @@ export const SocialCrisisWizard = () => {
                   roster={teamRoster}
                   onChange={setTeamRoster}
                   presetCatalog={presetCatalog}
+                  orgId={PRIMARY_ORG_ID}
                 />
               </div>
             </div>
@@ -2360,7 +2522,6 @@ export const SocialCrisisWizard = () => {
               </button>
             )}
           </div>
-          {rosterError && <div className="mt-2 text-xs text-warning">{rosterError}</div>}
         </div>
       </div>
 
@@ -2443,9 +2604,6 @@ export const SocialCrisisWizard = () => {
               </button>
             )}
           </div>
-          {pressureValidation && (
-            <div className="mt-2 text-xs text-warning">{pressureValidation}</div>
-          )}
         </div>
       </div>
 
@@ -2481,8 +2639,9 @@ export const SocialCrisisWizard = () => {
             {competitorEntries.map((e, i) => (
               <div
                 key={`comp-${i}`}
-                className="wr-node"
+                className={`wr-node ${issueClass(issueAt(competitorField(i)))}`}
                 style={{ '--g': 'var(--f-rival)' } as CSSProperties}
+                data-field={competitorField(i)}
               >
                 <div className="absolute top-2.5 right-2.5">
                   <button
@@ -2510,6 +2669,7 @@ export const SocialCrisisWizard = () => {
                     </div>
                   </div>
                 </div>
+                <FieldNote issue={issueAt(competitorField(i))} />
               </div>
             ))}
             {competitorEntries.length === 0 && autoAntagonist && (
@@ -3927,136 +4087,147 @@ export const SocialCrisisWizard = () => {
   };
 
   return (
-    <div className="min-h-screen bg-bg">
-      <header className="wr-artband wr-hero">
-        <img className="wr-art" src={heroArtByStep[step] ?? SHELL_ART.wizardSetup} alt="" />
-        <div className="wr-hero-top">
-          <button
-            type="button"
-            className="wr-brandmark"
-            onClick={() => navigate('/warroom')}
-            title="Back to the War Room"
-          >
-            <BrandMark className="h-8 w-8" /> War Room{' '}
-            <span className="sub">· Corporate crisis</span>
-          </button>
-          <div className="wr-steps" aria-label="Steps">
-            {VISIBLE_STEPS.map((s, i) => {
-              const isCurrent = s === step;
-              const isPast = currentStepIndex > i;
-              return (
-                <span key={s} className={isCurrent ? 'on' : isPast ? 'done' : ''}>
-                  <i>{isPast ? <WrIcon name="check" size={11} /> : i + 1}</i>
-                  <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
-                </span>
-              );
-            })}
-          </div>
-          <div className="wr-credits">
-            <span>
-              <WrIcon name="save" /> Draft <b>{wizardDraftId ? 'saved' : 'not yet saved'}</b>
-            </span>
-          </div>
-        </div>
-
-        <div className="wr-hero-grid">
-          {step === 1 ? (
-            <>
-              {renderSetupBrief()}
-              {renderFootprintRadar()}
-            </>
-          ) : (
-            <div>
-              <div className="wr-eyebrow">
-                Corporate crisis · step {currentStepIndex + 1} of {VISIBLE_STEPS.length}
-              </div>
-              <h1>{stepHeadline[step]?.title ?? STEP_LABELS[step]}</h1>
-              <p className="lead">{stepHeadline[step]?.lead}</p>
-            </div>
-          )}
-        </div>
-      </header>
-
-      <main className="wr-wrap">
-        <section className="wr-map">
-          {step === 1 && renderStep1()}
-          {step === 3 && renderBlueprintReview()}
-          {step === 2 && renderBuilding()}
-          {step === 7 && renderStep7()}
-        </section>
-
-        <div className="wr-ctabar sticky">
-          {step === 1 && (
-            <>
-              <div className="s">
-                <b>{orgCount}</b>organisation{orgCount === 1 ? '' : 's'}
-              </div>
-              <div className="s">
-                <b>{teamCount}</b>teams
-              </div>
-              <div className="s">
-                <b>{countrySet.size}</b>countr{countrySet.size === 1 ? 'y' : 'ies'}
-              </div>
-              <div className="s">
-                <b>{pressureOrgs.length}</b>pressure
-              </div>
-              <div className="s">
-                <b>{competitorEntries.length || (autoAntagonist ? 1 : 0)}</b>rival
-                {competitorEntries.length === 1 ||
-                (competitorEntries.length === 0 && autoAntagonist)
-                  ? ''
-                  : 's'}
-              </div>
-            </>
-          )}
-          <span className="grow" />
-          <button onClick={goBack} className="wr-btn ghost">
-            <WrIcon name="arrow-l" /> {step === 1 ? 'War Room' : 'Back'}
-          </button>
-          <span className="hint">
-            Step <b>{currentStepIndex + 1}</b> of {VISIBLE_STEPS.length}
-            {step === 1 && crisisDescription.length < 50 && <> · describe the crisis to continue</>}
-            {step === 1 && crisisDescription.length >= 50 && rosterError && <> · {rosterError}</>}
-            {step === 1 && crisisDescription.length >= 50 && !rosterError && (
-              <> · ready — the build reads everything on this page</>
-            )}
-          </span>
-          {step === 1 && (
-            <button onClick={() => void saveDraftState(step)} className="wr-btn ghost">
-              <WrIcon name="save" /> Save draft
-            </button>
-          )}
-          {step === 7 ? (
-            scenarioId ? (
-              <a href="/scenarios" className="wr-btn accent lg">
-                View in the library <WrIcon name="arrow" />
-              </a>
-            ) : compiling ? (
-              <span className="hint">Compiling…</span>
-            ) : (
-              <button onClick={compileScenario} className="wr-btn accent lg">
-                <WrIcon name="bolt" /> Compile scenario
-              </button>
-            )
-          ) : (
+    <SetupIssuesProvider index={setupIssueIndex} reveal={revealIssues}>
+      <div className="min-h-screen bg-bg">
+        <header className="wr-artband wr-hero">
+          <img className="wr-art" src={heroArtByStep[step] ?? SHELL_ART.wizardSetup} alt="" />
+          <div className="wr-hero-top">
             <button
-              onClick={goNext}
-              disabled={!canProceed || footprintLoading}
-              className="wr-btn accent lg"
+              type="button"
+              className="wr-brandmark"
+              onClick={() => navigate('/warroom')}
+              title="Back to the War Room"
             >
-              {step === 1
-                ? footprintLoading
-                  ? 'Reading the footprint…'
-                  : footprint ||
-                      footprintRanFor.current === `${crisisDescription} ${context}`.trim()
-                    ? 'Build the scenario'
-                    : 'Detect footprint & continue'
-                : 'Next'}{' '}
-              <WrIcon name="arrow" />
+              <BrandMark className="h-8 w-8" /> War Room{' '}
+              <span className="sub">· Corporate crisis</span>
             </button>
-          )}
-        </div>
-      </main>
-    </div>
+            <div className="wr-steps" aria-label="Steps">
+              {VISIBLE_STEPS.map((s, i) => {
+                const isCurrent = s === step;
+                const isPast = currentStepIndex > i;
+                return (
+                  <span key={s} className={isCurrent ? 'on' : isPast ? 'done' : ''}>
+                    <i>{isPast ? <WrIcon name="check" size={11} /> : i + 1}</i>
+                    <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
+                  </span>
+                );
+              })}
+            </div>
+            <div className="wr-credits">
+              <span>
+                <WrIcon name="save" /> Draft <b>{wizardDraftId ? 'saved' : 'not yet saved'}</b>
+              </span>
+            </div>
+          </div>
+
+          <div className="wr-hero-grid">
+            {step === 1 ? (
+              <>
+                {renderSetupBrief()}
+                {renderFootprintRadar()}
+              </>
+            ) : (
+              <div>
+                <div className="wr-eyebrow">
+                  Corporate crisis · step {currentStepIndex + 1} of {VISIBLE_STEPS.length}
+                </div>
+                <h1>{stepHeadline[step]?.title ?? STEP_LABELS[step]}</h1>
+                <p className="lead">{stepHeadline[step]?.lead}</p>
+              </div>
+            )}
+          </div>
+        </header>
+
+        <main className="wr-wrap">
+          <section className="wr-map">
+            {step === 1 && renderStep1()}
+            {step === 3 && renderBlueprintReview()}
+            {step === 2 && renderBuilding()}
+            {step === 7 && renderStep7()}
+          </section>
+
+          <div className="wr-ctabar sticky">
+            {step === 1 && (
+              <>
+                <div className="s">
+                  <b>{orgCount}</b>organisation{orgCount === 1 ? '' : 's'}
+                </div>
+                <div className="s">
+                  <b>{teamCount}</b>teams
+                </div>
+                <div className="s">
+                  <b>{countrySet.size}</b>countr{countrySet.size === 1 ? 'y' : 'ies'}
+                </div>
+                <div className="s">
+                  <b>{pressureOrgs.length}</b>pressure
+                </div>
+                <div className="s">
+                  <b>{competitorEntries.length || (autoAntagonist ? 1 : 0)}</b>rival
+                  {competitorEntries.length === 1 ||
+                  (competitorEntries.length === 0 && autoAntagonist)
+                    ? ''
+                    : 's'}
+                </div>
+              </>
+            )}
+            <span className="grow" />
+            <button onClick={goBack} className="wr-btn ghost">
+              <WrIcon name="arrow-l" /> {step === 1 ? 'War Room' : 'Back'}
+            </button>
+            <span className="hint">
+              Step <b>{currentStepIndex + 1}</b> of {VISIBLE_STEPS.length}
+              {step === 1 && !revealIssues && crisisDescription.length < BRIEF_MIN && (
+                <> · describe the crisis to continue</>
+              )}
+              {step === 1 && setupErrors.length === 0 && (
+                <> · ready — the build reads everything on this page</>
+              )}
+            </span>
+            {step === 1 && (
+              <SetupIssueSummary
+                errors={revealIssues ? setupErrors : []}
+                warnings={setupWarnings}
+                open={issuePanelOpen}
+                onOpenChange={setIssuePanelOpen}
+              />
+            )}
+            {step === 1 && (
+              <button onClick={() => void saveDraftState(step)} className="wr-btn ghost">
+                <WrIcon name="save" /> Save draft
+              </button>
+            )}
+            {step === 7 ? (
+              scenarioId ? (
+                <a href="/scenarios" className="wr-btn accent lg">
+                  View in the library <WrIcon name="arrow" />
+                </a>
+              ) : compiling ? (
+                <span className="hint">Compiling…</span>
+              ) : (
+                <button onClick={compileScenario} className="wr-btn accent lg">
+                  <WrIcon name="bolt" /> Compile scenario
+                </button>
+              )
+            ) : (
+              <button
+                onClick={step === 1 ? continueFromSetup : goNext}
+                disabled={step === 1 ? footprintLoading : !canProceed || footprintLoading}
+                className="wr-btn accent lg"
+              >
+                {step === 1
+                  ? footprintLoading
+                    ? 'Reading the footprint…'
+                    : footprint ||
+                        footprintRanFor.current === `${crisisDescription} ${context}`.trim()
+                      ? 'Build the scenario'
+                      : 'Detect footprint & continue'
+                  : 'Next'}{' '}
+                <WrIcon name="arrow" />
+              </button>
+            )}
+          </div>
+        </main>
+      </div>
+    </SetupIssuesProvider>
   );
 };
