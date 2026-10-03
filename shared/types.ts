@@ -17,6 +17,11 @@ export interface SessionUser {
   role: UserRole;
   agency?: string;
   displayName?: string;
+  /**
+   * Must send their signed Consultant Agreement before using the app. Decided by the server
+   * (GET /api/profile); until they have submitted, only the application form is open to them.
+   */
+  contractRequired?: boolean;
 }
 
 export interface ApiResponse<T> {

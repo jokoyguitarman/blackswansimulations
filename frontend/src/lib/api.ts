@@ -2751,6 +2751,14 @@ export const api = {
       );
     },
 
+    /** Send the whole application: the saved details and the signed copy uploaded with it. */
+    submit: async () => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: TrainerAgreement }>(
+        await fetch(apiUrl('/api/trainer-agreements/mine/submit'), { method: 'POST', headers }),
+      );
+    },
+
     /** A short-lived link to the signed copy the user uploaded. */
     mySignedUrl: async () => {
       const headers = await getAuthHeaders();

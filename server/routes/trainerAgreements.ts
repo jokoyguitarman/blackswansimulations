@@ -10,6 +10,7 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import {
+  hasDraftCopy,
   isOpenAgreementStatus,
   OPEN_AGREEMENT_STATUSES,
   type AdminAgreementList,
@@ -90,6 +91,7 @@ interface AgreementRow {
   signed_file_sha256: string | null;
   signed_file_pages: number | null;
   signed_file_has_reference: boolean | null;
+  signed_file_uploaded_at: string | null;
   submitted_at: string | null;
   attached_by: string | null;
   reviewed_by: string | null;
@@ -100,25 +102,31 @@ interface AgreementRow {
   updated_at: string;
 }
 
-const toApplicantView = (row: AgreementRow): TrainerAgreement => ({
-  id: row.id,
-  purpose: row.purpose,
-  status: row.status,
-  agreement_version: row.agreement_version,
-  reference: row.reference,
-  full_name: row.full_name,
-  email: row.email,
-  contact_number: row.contact_number,
-  address: row.address,
-  organisation: row.organisation,
-  issued_at: row.issued_at,
-  submitted_at: row.submitted_at,
-  reviewed_at: row.reviewed_at,
-  review_note: row.review_note,
-  has_signed_copy: Boolean(row.signed_file_path),
-  created_at: row.created_at,
-  updated_at: row.updated_at,
-});
+const toApplicantView = (row: AgreementRow): TrainerAgreement => {
+  const draft = hasDraftCopy(row);
+  return {
+    id: row.id,
+    purpose: row.purpose,
+    status: row.status,
+    agreement_version: row.agreement_version,
+    reference: row.reference,
+    full_name: row.full_name,
+    email: row.email,
+    contact_number: row.contact_number,
+    address: row.address,
+    organisation: row.organisation,
+    issued_at: row.issued_at,
+    submitted_at: row.submitted_at,
+    reviewed_at: row.reviewed_at,
+    review_note: row.review_note,
+    has_signed_copy: Boolean(row.signed_file_path),
+    copy_uploaded: draft,
+    copy_uploaded_at: draft ? row.signed_file_uploaded_at : null,
+    copy_pages: draft ? row.signed_file_pages : null,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+};
 
 const table = () => supabaseAdmin.from('trainer_agreements');
 
@@ -341,6 +349,20 @@ router.put(
         }
       }
 
+      // Saving the form again without changing anything must not re-issue the agreement, because
+      // that would throw away a signed copy that still matches.
+      if (
+        open &&
+        open.agreement_version === CURRENT_AGREEMENT_VERSION &&
+        open.full_name === fullName &&
+        open.email === user.email &&
+        open.contact_number === contactNumber &&
+        open.address === address &&
+        open.organisation === organisation
+      ) {
+        return res.json({ data: toApplicantView(open) });
+      }
+
       for (let attempt = 0; attempt < 2; attempt++) {
         const issuedAt = new Date();
         const reference = open?.reference ?? newReference();
@@ -366,8 +388,16 @@ router.put(
         };
 
         if (open) {
+          // A signed copy was signed on the previous issue, so it no longer matches this one.
           const { data, error } = await table()
-            .update(issued)
+            .update({
+              ...issued,
+              signed_file_path: null,
+              signed_file_sha256: null,
+              signed_file_pages: null,
+              signed_file_has_reference: null,
+              signed_file_uploaded_at: null,
+            })
             .eq('id', open.id)
             .in('status', statusesAllowing('edit_details'))
             .select('*')
@@ -379,7 +409,11 @@ router.put(
                 'Your agreement changed while you were editing. Reload the page and try again.',
             });
           }
-          logger.info({ userId: user.id, agreementId: open.id }, 'Consultant agreement re-issued');
+          if (open.signed_file_path) await removeStoredFile(open.signed_file_path);
+          logger.info(
+            { userId: user.id, agreementId: open.id, droppedCopy: Boolean(open.signed_file_path) },
+            'Consultant agreement re-issued',
+          );
           return res.json({ data: toApplicantView(data as AgreementRow) });
         }
 
@@ -477,15 +511,16 @@ router.post(
           .json({ error: 'We could not store your file. Please try again in a moment.' });
       }
 
+      // Saving the copy is not submitting: the application stays where it is until the applicant
+      // sends the whole thing (POST /mine/submit), and a new upload replaces this one.
       const now = new Date().toISOString();
       const { data, error } = await table()
         .update({
-          status: statusAfter('upload'),
           signed_file_path: path,
           signed_file_sha256: inspection.sha256,
           signed_file_pages: inspection.pageCount,
           signed_file_has_reference: inspection.hasReference,
-          submitted_at: now,
+          signed_file_uploaded_at: now,
           updated_at: now,
         })
         .eq('id', open.id)
@@ -510,40 +545,86 @@ router.post(
           pages: inspection.pageCount,
           hasReference: inspection.hasReference,
         },
-        'Signed consultant agreement submitted',
+        'Signed consultant agreement saved as a draft',
       );
       res.json({ data: toApplicantView(row) });
-
-      // The upload is stored, so email only adds reassurance and a nudge to the team; it runs
-      // after responding so a slow mail server never holds the applicant up.
-      const pages = await expectedPages(row.agreement_version);
-      void Promise.all([
-        sendAgreementReceivedEmail({
-          to: user.email ?? row.email,
-          toName: row.full_name,
-          reference: row.reference,
-          purpose: row.purpose,
-        }),
-        sendAgreementSubmittedNotificationEmail({
-          reference: row.reference,
-          purpose: row.purpose,
-          fullName: row.full_name,
-          email: row.email,
-          contactNumber: row.contact_number,
-          organisation: row.organisation,
-          address: row.address,
-          pageCount: inspection.pageCount,
-          expectedPages: pages,
-          hasReference: inspection.hasReference,
-        }),
-      ]).catch((error: unknown) =>
-        logger.error({ error, agreementId: row.id }, 'Agreement submission emails failed'),
-      );
     } catch (err) {
       handleError(err, res, 'POST /trainer-agreements/mine/signed');
     }
   },
 );
+
+/** Send the whole application: the saved details and the signed copy uploaded with it. */
+router.post('/mine/submit', requireAuth, async (req: AuthenticatedRequest, res) => {
+  try {
+    const user = req.user!;
+    const open = await getOpenRow(user.id);
+    if (!open) {
+      return res.status(404).json({ error: 'Start your application before submitting it.' });
+    }
+    if (!canPerform('submit', open.status)) {
+      return res.status(409).json({ error: 'Your application is already with us for review.' });
+    }
+    if (!open.signed_file_path || !hasDraftCopy(open)) {
+      return res
+        .status(409)
+        .json({ error: 'Upload your signed agreement before you submit your application.' });
+    }
+
+    const now = new Date().toISOString();
+    const { data, error } = await table()
+      .update({ status: statusAfter('submit'), submitted_at: now, updated_at: now })
+      .eq('id', open.id)
+      .in('status', statusesAllowing('submit'))
+      .select('*')
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) {
+      return res.status(409).json({
+        error:
+          'Your application changed while you were submitting it. Reload the page and try again.',
+      });
+    }
+
+    const row = data as AgreementRow;
+    logger.info(
+      { userId: user.id, agreementId: row.id, reference: row.reference },
+      'Consultant application submitted',
+    );
+    res.json({ data: toApplicantView(row) });
+
+    // The application is saved, so email only adds reassurance and a nudge to the team; it runs
+    // after responding so a slow mail server never holds the applicant up.
+    const pages = await expectedPages(row.agreement_version);
+    void Promise.all([
+      sendAgreementReceivedEmail({
+        to: user.email ?? row.email,
+        toName: row.full_name,
+        reference: row.reference,
+        purpose: row.purpose,
+      }),
+      sendAgreementSubmittedNotificationEmail({
+        reference: row.reference,
+        purpose: row.purpose,
+        fullName: row.full_name,
+        email: row.email,
+        contactNumber: row.contact_number,
+        organisation: row.organisation,
+        address: row.address,
+        pageCount: row.signed_file_pages ?? 0,
+        expectedPages: pages,
+        hasReference: row.signed_file_has_reference,
+      }),
+    ]).catch((emailError: unknown) =>
+      logger.error(
+        { error: emailError, agreementId: row.id },
+        'Agreement submission emails failed',
+      ),
+    );
+  } catch (err) {
+    handleError(err, res, 'POST /trainer-agreements/mine/submit');
+  }
+});
 
 router.get('/mine/signed', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {

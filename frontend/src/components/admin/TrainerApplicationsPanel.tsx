@@ -207,8 +207,10 @@ function ApplicationCard({
       {view === 'in_progress' && (
         <div className="text-[12px] text-muted mt-3">
           {item.status === 'changes_requested'
-            ? `Waiting for a corrected copy. You asked: ${item.review_note ?? 'no note'}`
-            : 'Waiting for them to upload the signed copy.'}
+            ? `${item.copy_uploaded ? 'A corrected copy is saved but not submitted yet.' : 'Waiting for a corrected copy.'} You asked: ${item.review_note ?? 'no note'}`
+            : item.copy_uploaded
+              ? 'Signed copy saved, but they have not submitted the application yet.'
+              : 'Waiting for them to upload the signed copy.'}
         </div>
       )}
 

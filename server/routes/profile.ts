@@ -4,6 +4,7 @@ import { logger } from '../lib/logger.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { z } from 'zod';
 import { validate } from '../lib/validation.js';
+import { isContractRequired } from '../services/trainerAgreements/contractGate.js';
 
 const router = Router();
 
@@ -52,7 +53,8 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       }
     }
 
-    res.json({ data });
+    // Tells the app whether to hold this person at the Consultant Agreement form.
+    res.json({ data: { ...data, contract_required: await isContractRequired(user) } });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /profile');
     res.status(500).json({ error: 'Internal server error' });

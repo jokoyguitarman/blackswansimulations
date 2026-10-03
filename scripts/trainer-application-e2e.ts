@@ -13,8 +13,10 @@ import { PDFParse } from 'pdf-parse';
  * Business console shows the agreement as signed and which admin approved it. Then an admin
  * attaches a paper-signed copy for an existing trainer, and enrolls a trainer from the console,
  * which a second admin can see along with who enrolled them. Finally checks that someone who signed
- * up to apply but has not saved their details is listed for admins, and only for admins. Cleans up
- * every user and file it created.
+ * up to apply but has not saved their details is listed for admins, and only for admins. Uploading
+ * a signed copy only saves it; submitting is a separate step, and until it is done a consultant
+ * sign-up or a trainer enrolled from the console is held at the form (GET /api/profile reports
+ * contract_required). Cleans up every user and file it created.
  *
  * Start the server with email off so nobody is emailed:
  *   EMAIL_ENABLED=false npm run dev:server
@@ -33,6 +35,8 @@ const SECOND_ADMIN_EMAIL = `agreement-e2e-admin2-${RUN_ID}@loadtest.example.com`
 const ENROLLED_EMAIL = `agreement-e2e-enrolled-${RUN_ID}@loadtest.example.com`;
 const UNSTARTED_EMAIL = `agreement-e2e-unstarted-${RUN_ID}@loadtest.example.com`;
 const PLAIN_EMAIL = `agreement-e2e-plain-${RUN_ID}@loadtest.example.com`;
+const GATED_EMAIL = `agreement-e2e-gated-${RUN_ID}@loadtest.example.com`;
+const LEGACY_EMAIL = `agreement-e2e-legacy-${RUN_ID}@loadtest.example.com`;
 const BUCKET = 'trainer-agreements';
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -63,13 +67,14 @@ async function createUser(
     user_metadata: { full_name: fullName, agency_name: 'E2E Test', ...extraMetadata },
   });
   if (error && !/already/i.test(error.message)) throw new Error(error.message);
+  return signIn(email, PASSWORD);
+}
+
+async function signIn(email: string, password: string): Promise<{ userId: string; token: string }> {
   const client = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error: signInError } = await client.auth.signInWithPassword({
-    email,
-    password: PASSWORD,
-  });
+  const { data, error: signInError } = await client.auth.signInWithPassword({ email, password });
   if (signInError || !data.session) throw new Error(signInError?.message ?? 'sign-in failed');
   return { userId: data.user!.id, token: data.session.access_token };
 }
@@ -248,10 +253,68 @@ async function main() {
     );
     expect(notPdf.status === 400, `non-PDF rejected (got ${notPdf.status})`);
 
+    const earlySubmit = await apiCall(
+      'POST',
+      '/api/trainer-agreements/mine/submit',
+      applicant.token,
+    );
+    expect(
+      earlySubmit.status === 409,
+      `cannot submit before a signed copy is saved (got ${earlySubmit.status})`,
+    );
+
     const first = await upload('/api/trainer-agreements/mine/signed', applicant.token, doc.bytes);
     expect(
-      first.status === 200 && first.json.data?.status === 'submitted',
-      `upload submitted (got ${first.status})`,
+      first.status === 200 &&
+        first.json.data?.status === 'awaiting_signature' &&
+        first.json.data?.copy_uploaded === true &&
+        first.json.data?.copy_pages === info.pageCount,
+      `upload is saved as a draft, not submitted (got ${first.status} / ${first.json.data?.status})`,
+    );
+    const { data: draftRow } = await admin
+      .from('trainer_agreements')
+      .select('submitted_at, signed_file_uploaded_at')
+      .eq('id', agreementId)
+      .single();
+    expect(
+      draftRow?.submitted_at === null && Boolean(draftRow?.signed_file_uploaded_at),
+      'nothing is marked submitted by uploading',
+    );
+    const viewDraft = await apiCall('GET', '/api/trainer-agreements/mine/signed', applicant.token);
+    expect(
+      viewDraft.status === 200 && Boolean(viewDraft.json.data?.url),
+      'the applicant can open their saved copy',
+    );
+
+    // Saving the form again without changing anything must not throw the signed copy away.
+    const noop = await apiCall('PUT', '/api/trainer-agreements/mine', applicant.token, {
+      ...details,
+      contact_number: '+65 8123 4567',
+    });
+    expect(
+      noop.status === 200 && noop.json.data?.copy_uploaded === true,
+      'saving unchanged details keeps the signed copy',
+    );
+
+    const replaced = await upload(
+      '/api/trainer-agreements/mine/signed',
+      applicant.token,
+      doc.bytes,
+    );
+    const { data: filesAfterReplace } = await admin.storage
+      .from(BUCKET)
+      .list(`${applicant.userId}/${agreementId}`);
+    expect(
+      replaced.status === 200 && (filesAfterReplace ?? []).length === 1,
+      'replacing the saved copy leaves exactly one file',
+    );
+
+    const submitted = await apiCall('POST', '/api/trainer-agreements/mine/submit', applicant.token);
+    expect(
+      submitted.status === 200 &&
+        submitted.json.data?.status === 'submitted' &&
+        submitted.json.data?.copy_uploaded === false,
+      `application submitted as a separate step (got ${submitted.status})`,
     );
     const { data: row1 } = await admin
       .from('trainer_agreements')
@@ -266,6 +329,12 @@ async function main() {
 
     const again = await upload('/api/trainer-agreements/mine/signed', applicant.token, doc.bytes);
     expect(again.status === 409, `no second upload while under review (got ${again.status})`);
+    const submitAgain = await apiCall(
+      'POST',
+      '/api/trainer-agreements/mine/submit',
+      applicant.token,
+    );
+    expect(submitAgain.status === 409, `no second submission (got ${submitAgain.status})`);
 
     // ── 6. Admin review ──────────────────────────────────────────────────
     console.log('\n6. Admin review');
@@ -327,8 +396,29 @@ async function main() {
 
     const second = await upload('/api/trainer-agreements/mine/signed', applicant.token, doc.bytes);
     expect(
-      second.status === 200 && second.json.data?.status === 'submitted',
-      're-upload submitted',
+      second.status === 200 &&
+        second.json.data?.status === 'changes_requested' &&
+        second.json.data?.copy_uploaded === true,
+      're-upload is saved as a draft while the changes are still pending',
+    );
+    const stillPending = await apiCall(
+      'POST',
+      `/api/trainer-agreements/admin/${agreementId}/approve`,
+      adminUser.token,
+      {},
+    );
+    expect(
+      stillPending.status === 409,
+      `cannot approve until the corrected copy is submitted (got ${stillPending.status})`,
+    );
+    const resubmitted = await apiCall(
+      'POST',
+      '/api/trainer-agreements/mine/submit',
+      applicant.token,
+    );
+    expect(
+      resubmitted.status === 200 && resubmitted.json.data?.status === 'submitted',
+      'corrected application submitted',
     );
     const { data: row2 } = await admin
       .from('trainer_agreements')
@@ -569,6 +659,96 @@ async function main() {
           (i) => i.user_id === unstarted.userId && i.status === 'awaiting_signature',
         ),
       'after saving details they move from "no details yet" to an application in progress',
+    );
+
+    // -- 11. Held at the application form until it is submitted --------------
+    console.log('\n11. Held at the application form until it is submitted');
+    const held = async (token: string) =>
+      (await apiCall('GET', '/api/profile', token)).json.data?.contract_required as
+        | boolean
+        | undefined;
+
+    const gated = await createUser(GATED_EMAIL, 'Agreement E2E Gated', {
+      applying_as_consultant: true,
+    });
+    created.push(gated.userId);
+    expect(
+      (await held(gated.token)) === true,
+      'a consultant sign-up is held before they have saved any details',
+    );
+    const gatedDetails = {
+      full_name: 'Agreement E2E Gated',
+      contact_number: '+65 9000 0002',
+      address: '1 Test Road, Singapore 000001',
+    };
+    const g1 = await apiCall('PUT', '/api/trainer-agreements/mine', gated.token, gatedDetails);
+    expect(
+      g1.status === 201 && (await held(gated.token)) === true,
+      'still held after saving their details',
+    );
+    const gatedDoc = await download('/api/trainer-agreements/mine/document', gated.token);
+    const g2 = await upload('/api/trainer-agreements/mine/signed', gated.token, gatedDoc.bytes);
+    expect(
+      g2.status === 200 && (await held(gated.token)) === true,
+      'still held with a signed copy saved but not submitted',
+    );
+
+    const g3 = await apiCall('PUT', '/api/trainer-agreements/mine', gated.token, {
+      ...gatedDetails,
+      contact_number: '+65 9000 0003',
+    });
+    const { data: staleFiles } = await admin.storage
+      .from(BUCKET)
+      .list(`${gated.userId}/${g3.json.data?.id}`);
+    expect(
+      g3.status === 200 && g3.json.data?.copy_uploaded === false && (staleFiles ?? []).length === 0,
+      'changing the details removes the old signed copy and its file',
+    );
+
+    const gatedDoc2 = await download('/api/trainer-agreements/mine/document', gated.token);
+    await upload('/api/trainer-agreements/mine/signed', gated.token, gatedDoc2.bytes);
+    const g4 = await apiCall('POST', '/api/trainer-agreements/mine/submit', gated.token);
+    expect(
+      g4.status === 200 && (await held(gated.token)) === false,
+      'the hold lifts once the application is submitted',
+    );
+
+    expect((await held(plain.token)) === false, 'an ordinary participant is never held');
+    expect((await held(adminUser.token)) === false, 'an admin is never held');
+    const legacy = await createUser(LEGACY_EMAIL, 'Agreement E2E Legacy Trainer');
+    created.push(legacy.userId);
+    await admin.from('user_profiles').update({ role: 'trainer' }).eq('id', legacy.userId);
+    expect(
+      (await held(legacy.token)) === false,
+      'a trainer from before enrollment records keeps their access',
+    );
+
+    const enrolledSession = await signIn(
+      ENROLLED_EMAIL,
+      enrolled.json.data?.temporary_password as string,
+    );
+    expect(
+      (await held(enrolledSession.token)) === true,
+      'a trainer enrolled from the console is held until they submit',
+    );
+    const e1 = await apiCall('PUT', '/api/trainer-agreements/mine', enrolledSession.token, {
+      full_name: 'Agreement E2E Enrolled',
+      contact_number: '+65 9000 0004',
+      address: '1 Test Road, Singapore 000001',
+    });
+    expect(
+      e1.status === 201 && e1.json.data?.purpose === 'existing_trainer',
+      'they can still reach the form and start their agreement',
+    );
+    const enrolledDoc = await download(
+      '/api/trainer-agreements/mine/document',
+      enrolledSession.token,
+    );
+    await upload('/api/trainer-agreements/mine/signed', enrolledSession.token, enrolledDoc.bytes);
+    const e2 = await apiCall('POST', '/api/trainer-agreements/mine/submit', enrolledSession.token);
+    expect(
+      e2.status === 200 && (await held(enrolledSession.token)) === false,
+      'and are released once they submit',
     );
   } finally {
     console.log('\nCleanup');

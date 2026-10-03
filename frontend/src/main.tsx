@@ -1,5 +1,8 @@
+// Must stay first: it reads an expired-link error out of the address before anything else
+// (including the Supabase client below) touches or redirects it.
+import './lib/authLinkError';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { NotificationProvider } from './contexts/NotificationContext';
 import { Login } from './pages/Login';
@@ -38,6 +41,12 @@ import DesktopShell from './components/SimDevice/DesktopShell';
 import './style.css';
 import './design/warroom.css';
 
+/**
+ * The only pages open to someone who still owes their signed Consultant Agreement. Account settings
+ * stays open so an enrolled trainer can replace their temporary password.
+ */
+const OPEN_WHILE_CONTRACT_DUE = ['/apply', '/account'];
+
 const ProtectedRoute = ({
   children,
   roles,
@@ -47,6 +56,7 @@ const ProtectedRoute = ({
   roles?: Array<'trainer' | 'admin'>;
 }) => {
   const { user, loading } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return (
@@ -61,6 +71,12 @@ const ProtectedRoute = ({
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  // Until they have submitted their signed agreement, the application form is the only way in.
+  // This keeps people on the form; it is not what grants or withholds trainer access.
+  if (user.contractRequired && !OPEN_WHILE_CONTRACT_DUE.includes(location.pathname)) {
+    return <Navigate to="/apply" replace />;
   }
 
   // Defense-in-depth: role-restricted pages (trainer dashboards, debug tools).

@@ -1,23 +1,35 @@
 import { useRef, useState } from 'react';
 import type { TrainerAgreement } from '@shared/trainerAgreements';
 import { api } from '../../lib/api';
+import { openInNewTab } from '../../lib/openInNewTab';
 
 const MAX_BYTES = 10 * 1024 * 1024;
 
+const formatWhen = (iso: string) =>
+  new Date(iso).toLocaleString('en-SG', {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+
 interface Props {
   agreement: TrainerAgreement;
-  onUploaded: (updated: TrainerAgreement) => void;
+  /** The signed copy was saved (this does not submit the application). */
+  onSaved: (updated: TrainerAgreement) => void;
 }
 
-export function SignedUploadCard({ agreement, onUploaded }: Props) {
-  const [file, setFile] = useState<File | null>(null);
-  const [confirmed, setConfirmed] = useState(false);
+/**
+ * Saves the signed agreement as soon as a file is chosen, so it is kept if the applicant leaves
+ * and comes back. Sending the application is a separate step (SubmitApplicationCard).
+ */
+export function SignedUploadCard({ agreement, onSaved }: Props) {
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const choose = (candidate: File | undefined) => {
+  const upload = async (candidate: File | undefined) => {
     setError(null);
     if (!candidate) return;
     const isPdf =
@@ -30,119 +42,105 @@ export function SignedUploadCard({ agreement, onUploaded }: Props) {
       setError('The file is larger than 10 MB. Please upload a smaller PDF.');
       return;
     }
-    setFile(candidate);
-  };
-
-  const clearFile = () => {
-    setFile(null);
-    if (inputRef.current) inputRef.current.value = '';
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!file || !confirmed) return;
     setUploading(true);
-    setError(null);
     try {
-      const res = await api.trainerAgreements.uploadSigned(file);
-      onUploaded(res.data);
+      const res = await api.trainerAgreements.uploadSigned(candidate);
+      onSaved(res.data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
     }
   };
 
+  const view = () =>
+    openInNewTab(async () => (await api.trainerAgreements.mySignedUrl()).data.url).catch(
+      (err: unknown) =>
+        setError(err instanceof Error ? err.message : 'Could not open the file. Please try again.'),
+    );
+
+  const buttonClass =
+    'px-3 py-1.5 text-xs font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all disabled:opacity-50';
+
   return (
-    <form
-      onSubmit={handleSubmit}
-      className="bg-surface border border-border rounded-xl shadow-sm p-6"
-    >
+    <section className="bg-surface border border-border rounded-xl shadow-sm p-6">
       <div className="text-sm font-bold text-brand mb-1">Sign and upload</div>
       <p className="text-xs text-muted mb-4">
-        Upload the signed agreement as one PDF, up to 10 MB.
+        Upload the signed agreement as one PDF, up to 10 MB. It is saved as soon as you choose it,
+        and you send your application in the next step.
       </p>
 
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDragging(false);
-          choose(e.dataTransfer.files?.[0]);
-        }}
-        className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
-          dragging ? 'border-accent bg-accent/5' : 'border-border-strong'
-        }`}
-      >
-        {file ? (
+      {agreement.copy_uploaded ? (
+        <div className="rounded-lg border border-success/40 bg-success/10 p-4 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold text-ink break-all">{file.name}</div>
+            <div className="text-sm font-semibold text-ink">Signed copy saved</div>
             <div className="text-[11px] text-muted mt-0.5">
-              {(file.size / (1024 * 1024)).toFixed(1)} MB
+              {agreement.copy_uploaded_at && `Uploaded ${formatWhen(agreement.copy_uploaded_at)}`}
+              {agreement.copy_pages !== null &&
+                ` · ${agreement.copy_pages} page${agreement.copy_pages === 1 ? '' : 's'}`}
             </div>
-            <button
-              type="button"
-              onClick={clearFile}
-              className="mt-2 text-xs font-semibold text-brand underline"
-            >
-              Choose a different file
-            </button>
           </div>
-        ) : (
-          <div>
-            <p className="text-sm text-ink">Drag the signed PDF here, or</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={() => void view()} className={buttonClass}>
+              View
+            </button>
             <button
               type="button"
               onClick={() => inputRef.current?.click()}
-              className="mt-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
+              disabled={uploading}
+              className={buttonClass}
             >
-              Choose file
+              {uploading ? 'Uploading…' : 'Replace'}
             </button>
           </div>
-        )}
-        <input
-          ref={inputRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          className="hidden"
-          onChange={(e) => choose(e.target.files?.[0])}
-        />
-      </div>
+        </div>
+      ) : (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            void upload(e.dataTransfer.files?.[0]);
+          }}
+          className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
+            dragging ? 'border-accent bg-accent/5' : 'border-border-strong'
+          }`}
+        >
+          {uploading ? (
+            <p className="text-sm text-ink animate-pulse">Uploading…</p>
+          ) : (
+            <>
+              <p className="text-sm text-ink">Drag the signed PDF here, or</p>
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                className="mt-2 px-4 py-2 text-sm font-semibold rounded-lg border border-border-strong text-brand hover:bg-surface-2 transition-all"
+              >
+                Choose file
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
-      <label className="flex items-start gap-2 mt-4 text-xs text-ink cursor-pointer">
-        <input
-          type="checkbox"
-          checked={confirmed}
-          onChange={(e) => setConfirmed(e.target.checked)}
-          className="mt-0.5"
-        />
-        <span>
-          I have read and signed the Prophyion Consultant Agreement, reference{' '}
-          <span className="font-mono">{agreement.reference}</span>.
-        </span>
-      </label>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        className="hidden"
+        onChange={(e) => void upload(e.target.files?.[0])}
+      />
 
       {error && (
         <div className="mt-4 border-l-4 border-danger bg-danger/10 p-3 rounded-md text-sm text-danger">
           {error}
         </div>
       )}
-
-      <button
-        type="submit"
-        disabled={!file || !confirmed || uploading}
-        className="military-button mt-4 px-6 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-      >
-        {uploading
-          ? 'Uploading…'
-          : agreement.purpose === 'application'
-            ? 'Submit application'
-            : 'Submit signed agreement'}
-      </button>
-    </form>
+    </section>
   );
 }

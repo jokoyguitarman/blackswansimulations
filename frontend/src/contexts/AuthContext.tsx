@@ -14,6 +14,8 @@ interface AuthContextType {
     metadata: Record<string, unknown>,
   ) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
+  /** Re-read the profile, e.g. after submitting the Consultant Agreement lifts the hold. */
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -80,6 +82,13 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     await supabase.auth.signOut();
   };
 
+  const refreshUser = async () => {
+    const {
+      data: { session: current },
+    } = await supabase.auth.getSession();
+    if (current) setUser(await resolveSessionUser(current));
+  };
+
   const value = {
     user,
     session,
@@ -87,6 +96,7 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     signIn,
     signUp,
     signOut,
+    refreshUser,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -125,7 +135,12 @@ async function resolveSessionUser(session: Session): Promise<SessionUser> {
     });
     if (res.ok) {
       const body = (await res.json()) as {
-        data?: { role?: string; agency_name?: string; full_name?: string };
+        data?: {
+          role?: string;
+          agency_name?: string;
+          full_name?: string;
+          contract_required?: boolean;
+        };
       };
       const profile = body.data;
       if (profile) {
@@ -134,6 +149,7 @@ async function resolveSessionUser(session: Session): Promise<SessionUser> {
           role: (profile.role || base.role) as SessionUser['role'],
           agency: profile.agency_name ?? base.agency,
           displayName: profile.full_name ?? base.displayName,
+          contractRequired: profile.contract_required === true,
         };
       }
     }

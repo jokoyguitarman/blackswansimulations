@@ -58,6 +58,13 @@ export interface TrainerAgreement {
   reviewed_at: string | null;
   review_note: string | null;
   has_signed_copy: boolean;
+  /**
+   * A signed copy is saved but the application has not been submitted with it yet. Always false
+   * once submitted; after an admin asks for changes it is false until a new copy is uploaded.
+   */
+  copy_uploaded: boolean;
+  copy_uploaded_at: string | null;
+  copy_pages: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -108,27 +115,44 @@ export interface AdminAgreementList {
   counts: Record<AdminAgreementView, number>;
 }
 
-/** How long a new applicant's account counts as just signed up. */
-export const NEW_APPLICANT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * A signed copy is saved and waiting to be submitted: it was uploaded after the last submission,
+ * or nothing has been submitted yet.
+ */
+export function hasDraftCopy(row: {
+  signed_file_uploaded_at: string | null;
+  submitted_at: string | null;
+}): boolean {
+  if (!row.signed_file_uploaded_at) return false;
+  if (!row.submitted_at) return true;
+  return Date.parse(row.signed_file_uploaded_at) > Date.parse(row.submitted_at);
+}
 
 /**
- * Whether to take someone straight to the application form: they signed up as a consultant, have
- * no agreement yet, and the account is new. A long-standing participant who once ticked
- * "consultant" is left alone rather than bounced to the form every visit.
+ * Whether someone must send their signed agreement before they can use the app. Until they have
+ * submitted, every page except the application form (and account settings) sends them back to it;
+ * review and approval come after and do not hold them.
+ *
+ * - A participant who signed up through the consultant form is held until they submit.
+ * - A trainer enrolled from the Business console is held the same way.
+ * - Trainers who predate enrollment records keep their access, as do trainers who came in by
+ *   approval or already have an agreement on file.
+ *
+ * This is a convenience in the interface, not a permission: only an admin can grant trainer access,
+ * and the account metadata behind `signedUpAsConsultant` is the user's to edit.
  */
-export function shouldSendToApplication(input: {
+export function contractRequired(input: {
   role: string | undefined;
   signedUpAsConsultant: boolean;
-  hasAgreement: boolean;
-  accountCreatedAt: string | undefined;
-  now?: number;
+  enrolledFromConsole: boolean;
+  statuses: readonly TrainerAgreementStatus[];
 }): boolean {
-  if (input.role !== 'participant' || !input.signedUpAsConsultant || input.hasAgreement) {
-    return false;
+  const sent = input.statuses.some((s) => s === 'submitted' || s === 'approved');
+  if (input.role === 'participant') {
+    return input.signedUpAsConsultant && !sent && !input.statuses.includes('rejected');
   }
-  const created = input.accountCreatedAt ? Date.parse(input.accountCreatedAt) : NaN;
-  if (Number.isNaN(created)) return false;
-  return (input.now ?? Date.now()) - created < NEW_APPLICANT_WINDOW_MS;
+  if (input.role === 'trainer') return input.enrolledFromConsole && !sent;
+  return false;
 }
 
 export type AgreementSummaryStatus =

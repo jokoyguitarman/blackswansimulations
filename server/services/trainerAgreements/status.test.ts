@@ -1,8 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  NEW_APPLICANT_WINDOW_MS,
-  shouldSendToApplication,
+  contractRequired,
+  hasDraftCopy,
   summariseAgreement,
   type TrainerAgreementStatus,
 } from '../../../shared/trainerAgreements.js';
@@ -20,10 +20,17 @@ const allowed = (action: Parameters<typeof canPerform>[0]) =>
   ALL.filter((status) => canPerform(action, status));
 
 describe('agreement transitions', () => {
-  test('applicants edit and upload only before review or after changes are requested', () => {
+  test('applicants edit, upload and submit only before review or after changes are requested', () => {
     assert.deepEqual(allowed('edit_details'), ['awaiting_signature', 'changes_requested']);
     assert.deepEqual(allowed('upload'), ['awaiting_signature', 'changes_requested']);
-    assert.equal(statusAfter('upload'), 'submitted');
+    assert.deepEqual(allowed('submit'), ['awaiting_signature', 'changes_requested']);
+  });
+
+  test('only submitting sends the application; uploading a signed copy does not', () => {
+    assert.equal(statusAfter('submit'), 'submitted');
+    // `upload` is not a status-changing action, so asking for its result must not type-check.
+    // @ts-expect-error uploading only saves the signed copy
+    assert.equal(statusAfter('upload'), undefined);
   });
 
   test('approval and change requests apply only to submitted agreements', () => {
@@ -86,43 +93,121 @@ describe('summariseAgreement', () => {
   });
 });
 
-describe('shouldSendToApplication', () => {
-  const NOW = Date.parse('2026-10-03T03:00:00Z');
-  const base = {
+describe('hasDraftCopy', () => {
+  test('a copy uploaded before anything was submitted is a draft', () => {
+    assert.equal(
+      hasDraftCopy({ signed_file_uploaded_at: '2026-10-03T03:00:00Z', submitted_at: null }),
+      true,
+    );
+  });
+
+  test('no copy means no draft', () => {
+    assert.equal(hasDraftCopy({ signed_file_uploaded_at: null, submitted_at: null }), false);
+    assert.equal(
+      hasDraftCopy({ signed_file_uploaded_at: null, submitted_at: '2026-10-01T00:00:00Z' }),
+      false,
+    );
+  });
+
+  test('a copy that was submitted is no longer a draft', () => {
+    assert.equal(
+      hasDraftCopy({
+        signed_file_uploaded_at: '2026-10-03T03:00:00Z',
+        submitted_at: '2026-10-03T03:00:05Z',
+      }),
+      false,
+    );
+    // Uploaded and submitted in the same instant (how copies were saved before drafts existed).
+    assert.equal(
+      hasDraftCopy({
+        signed_file_uploaded_at: '2026-10-03T03:00:00Z',
+        submitted_at: '2026-10-03T03:00:00Z',
+      }),
+      false,
+    );
+  });
+
+  test('after changes are requested, only a copy uploaded since then is a draft', () => {
+    const submitted = '2026-10-01T00:00:00Z';
+    assert.equal(
+      hasDraftCopy({ signed_file_uploaded_at: submitted, submitted_at: submitted }),
+      false,
+    );
+    assert.equal(
+      hasDraftCopy({ signed_file_uploaded_at: '2026-10-02T00:00:00Z', submitted_at: submitted }),
+      true,
+    );
+  });
+
+  test('compares times, not strings, so different Postgres and ISO formats agree', () => {
+    assert.equal(
+      hasDraftCopy({
+        signed_file_uploaded_at: '2026-10-03T03:00:00.250000+00:00',
+        submitted_at: '2026-10-03T03:00:00.100Z',
+      }),
+      true,
+    );
+  });
+});
+
+describe('contractRequired', () => {
+  const applicant = {
     role: 'participant',
     signedUpAsConsultant: true,
-    hasAgreement: false,
-    accountCreatedAt: '2026-10-02T05:06:50Z',
-    now: NOW,
+    enrolledFromConsole: false,
+    statuses: [] as TrainerAgreementStatus[],
   };
 
-  test('sends a new consultant applicant with no agreement to the form', () => {
-    assert.equal(shouldSendToApplication(base), true);
+  test('holds a consultant sign-up until they have submitted, at every step before that', () => {
+    assert.equal(contractRequired(applicant), true);
+    assert.equal(contractRequired({ ...applicant, statuses: ['awaiting_signature'] }), true);
+    assert.equal(contractRequired({ ...applicant, statuses: ['changes_requested'] }), true);
   });
 
-  test('leaves people alone who did not sign up as consultants', () => {
-    assert.equal(shouldSendToApplication({ ...base, signedUpAsConsultant: false }), false);
+  test('lets them in once the application is submitted', () => {
+    assert.equal(contractRequired({ ...applicant, statuses: ['submitted'] }), false);
+    assert.equal(contractRequired({ ...applicant, statuses: ['approved'] }), false);
   });
 
-  test('leaves alone anyone who already has an agreement of any kind', () => {
-    assert.equal(shouldSendToApplication({ ...base, hasAgreement: true }), false);
+  test('does not hold someone whose application was rejected', () => {
+    assert.equal(contractRequired({ ...applicant, statuses: ['rejected'] }), false);
   });
 
-  test('only applies to participants, never trainers or admins', () => {
-    assert.equal(shouldSendToApplication({ ...base, role: 'trainer' }), false);
-    assert.equal(shouldSendToApplication({ ...base, role: 'admin' }), false);
-    assert.equal(shouldSendToApplication({ ...base, role: undefined }), false);
+  test('never holds an ordinary participant', () => {
+    assert.equal(contractRequired({ ...applicant, signedUpAsConsultant: false }), false);
   });
 
-  test('stops once the account is a week old, so long-standing participants are not bounced', () => {
-    const justInside = new Date(NOW - NEW_APPLICANT_WINDOW_MS + 60_000).toISOString();
-    const justOutside = new Date(NOW - NEW_APPLICANT_WINDOW_MS - 60_000).toISOString();
-    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: justInside }), true);
-    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: justOutside }), false);
+  test('holds a trainer enrolled from the console until they have submitted', () => {
+    const enrolled = {
+      ...applicant,
+      role: 'trainer',
+      signedUpAsConsultant: false,
+      enrolledFromConsole: true,
+    };
+    assert.equal(contractRequired(enrolled), true);
+    assert.equal(contractRequired({ ...enrolled, statuses: ['awaiting_signature'] }), true);
+    assert.equal(contractRequired({ ...enrolled, statuses: ['rejected'] }), true);
+    assert.equal(contractRequired({ ...enrolled, statuses: ['submitted'] }), false);
+    assert.equal(contractRequired({ ...enrolled, statuses: ['approved'] }), false);
   });
 
-  test('does nothing when the account age is unknown or unreadable', () => {
-    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: undefined }), false);
-    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: 'not a date' }), false);
+  test('leaves trainers alone who were not enrolled from the console', () => {
+    const legacy = {
+      ...applicant,
+      role: 'trainer',
+      signedUpAsConsultant: false,
+      enrolledFromConsole: false,
+    };
+    assert.equal(contractRequired(legacy), false);
+    assert.equal(contractRequired({ ...legacy, signedUpAsConsultant: true }), false);
+  });
+
+  test('never holds admins or other roles', () => {
+    assert.equal(
+      contractRequired({ ...applicant, role: 'admin', enrolledFromConsole: true }),
+      false,
+    );
+    assert.equal(contractRequired({ ...applicant, role: 'police_commander' }), false);
+    assert.equal(contractRequired({ ...applicant, role: undefined }), false);
   });
 });

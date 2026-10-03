@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react';
-import { Link, Navigate, useLocation } from 'react-router-dom';
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import {
   APPLICATION_REVIEW_TIME,
   isOpenAgreementStatus,
@@ -20,6 +20,7 @@ import {
 } from '../components/agreement/AgreementDetailsFields';
 import { AgreementPreview } from '../components/agreement/AgreementPreview';
 import { SignedUploadCard } from '../components/agreement/SignedUploadCard';
+import { SubmitApplicationCard } from '../components/agreement/SubmitApplicationCard';
 import { formatAgreementDate } from '../components/agreement/AgreementStatusCard';
 
 /** Passed by the signup page when the account was created but saving the details failed. */
@@ -223,8 +224,11 @@ function UnderReview({ agreement }: { agreement: TrainerAgreement }) {
 }
 
 export const Apply = () => {
-  const { user } = useAuth();
+  const { user, refreshUser, signOut } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+  // While the platform is closed to them, the form is all they can reach, so it is also their exit.
+  const holdsPlatform = user?.contractRequired === true;
   const isAdmin = user?.role === 'admin';
   const { mine, setMine, loading, error, reload } = useMyAgreement(!isAdmin);
   const [editing, setEditing] = useState(false);
@@ -267,7 +271,7 @@ export const Apply = () => {
   let content: ReactNode;
 
   if (open && open.status !== 'submitted') {
-    step = downloaded ? 3 : 2;
+    step = downloaded || open.copy_uploaded ? 3 : 2;
     content = (
       <>
         {open.status === 'changes_requested' && (
@@ -289,7 +293,11 @@ export const Apply = () => {
             email={open.email}
             requiresAddress={requiresAddress}
             submitLabel="Save and re-issue the agreement"
-            note="Saving issues a fresh copy of the agreement. If you have already signed the old copy, sign the new one instead."
+            note={
+              open.has_signed_copy
+                ? 'Saving issues a fresh agreement with your new details, and removes the signed copy you uploaded because it was signed on the old one. Sign the new agreement and upload it again.'
+                : 'Saving issues a fresh copy of the agreement. If you have already signed the old copy, sign the new one instead.'
+            }
             onSaved={updateRow}
             onCancel={() => setEditing(false)}
           />
@@ -297,7 +305,16 @@ export const Apply = () => {
           <>
             <DetailsSummary agreement={open} onEdit={() => setEditing(true)} />
             <AgreementPreview agreement={open} onDownloaded={() => setDownloaded(true)} />
-            <SignedUploadCard agreement={open} onUploaded={updateRow} />
+            <SignedUploadCard agreement={open} onSaved={updateRow} />
+            <SubmitApplicationCard
+              agreement={open}
+              holdsPlatform={holdsPlatform}
+              onSubmitted={async (row) => {
+                updateRow(row);
+                // Submitting lifts the hold, so pick that up before offering the dashboard.
+                await refreshUser().catch(() => undefined);
+              }}
+            />
           </>
         )}
       </>
@@ -383,15 +400,29 @@ export const Apply = () => {
                     : 'Apply as a Prophyion consultant'}
                 </h1>
                 <p className="text-sm text-muted mt-1">
-                  {isTrainer
-                    ? 'Every Prophyion consultant signs this agreement. Your access continues while we review it.'
-                    : 'Prophyion approves every consultant account. Sign the Prophyion Consultant Agreement to apply.'}
+                  {holdsPlatform
+                    ? 'Review and sign your agreement, then submit it. The rest of the platform opens as soon as you have.'
+                    : isTrainer
+                      ? 'Every Prophyion consultant signs this agreement. Your access continues while we review it.'
+                      : 'Prophyion approves every consultant account. Sign the Prophyion Consultant Agreement to apply.'}
                 </p>
               </div>
             </div>
-            <Link to="/dashboard" className={`${secondaryButton} shrink-0`}>
-              Dashboard
-            </Link>
+            {holdsPlatform ? (
+              <button
+                type="button"
+                onClick={() => {
+                  void signOut().then(() => navigate('/login'));
+                }}
+                className={`${secondaryButton} shrink-0`}
+              >
+                Sign out
+              </button>
+            ) : (
+              <Link to="/dashboard" className={`${secondaryButton} shrink-0`}>
+                Dashboard
+              </Link>
+            )}
           </div>
           {step && (
             <div className="mt-5">

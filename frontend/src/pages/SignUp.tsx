@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { BrandMark } from '../components/BrandMark';
 import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
+import { ResendVerification } from '../components/auth/ResendVerification';
 import { ApplicationSteps } from '../components/agreement/ApplicationSteps';
 import {
   AgreementDetailsFields,
@@ -112,6 +113,18 @@ export const SignUp = () => {
       return;
     }
 
+    const draft: AgreementDetails = { ...details, full_name: fullName };
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      // Email confirmation is required before the first sign-in; /apply picks the draft up then.
+      if (isConsultant) saveAgreementDraft(draft);
+      setConfirmEmailFirst(true);
+      setLoading(false);
+      return;
+    }
+
     if (!isConsultant) {
       setSuccess(true);
       // If they signed up via invitation, redirect to sessions after a delay
@@ -125,17 +138,6 @@ export const SignUp = () => {
       return;
     }
 
-    const draft: AgreementDetails = { ...details, full_name: fullName };
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) {
-      // Email confirmation is required before the first sign-in; /apply picks the draft up then.
-      saveAgreementDraft(draft);
-      setConfirmEmailFirst(true);
-      setLoading(false);
-      return;
-    }
     try {
       await api.trainerAgreements.saveMine({
         full_name: draft.full_name.trim(),
@@ -172,14 +174,22 @@ export const SignUp = () => {
             {confirmEmailFirst ? (
               <>
                 <h2 className="text-2xl font-extrabold text-brand mb-2">Confirm your email</h2>
-                <p className="text-sm text-muted mb-4">
-                  We sent a confirmation link to {email}. Open it and you will go straight to the
-                  next step of your application. If it opens on another device, sign in here
-                  instead.
+                <p className="text-sm text-muted mb-2">
+                  We sent a confirmation link to <span className="font-semibold">{email}</span>.{' '}
+                  {isConsultant
+                    ? 'Open it and you will go straight to the next step of your application.'
+                    : 'Open it to finish setting up your account.'}{' '}
+                  If it opens on another device, sign in here instead.
                 </p>
-                <Link to="/login" className="military-button inline-block px-6 py-2 text-sm">
-                  Go to sign in
-                </Link>
+                <p className="text-xs text-muted mb-4">
+                  Nothing in your inbox? Check spam, or send a new link. Only the newest link works.
+                </p>
+                <div className="flex flex-col items-center gap-3">
+                  <ResendVerification email={email} initialCooldown={60} />
+                  <Link to="/login" className="military-button inline-block px-6 py-2 text-sm">
+                    Go to sign in
+                  </Link>
+                </div>
               </>
             ) : (
               <>
