@@ -185,30 +185,30 @@ async function main() {
     const unprintable = await apiCall('PUT', '/api/trainer-agreements/mine', applicant.token, {
       full_name: '陈大文',
       contact_number: '+65 9123 4567',
-      address: '1 Test Road, Singapore 000001',
     });
     expect(unprintable.status === 400, `unprintable name rejected (got ${unprintable.status})`);
 
-    if (info.fields.includes('address')) {
-      const noAddress = await apiCall('PUT', '/api/trainer-agreements/mine', applicant.token, {
-        full_name: 'Agreement E2E Applicant',
-        contact_number: '+65 9123 4567',
-      });
-      expect(noAddress.status === 400, `missing address rejected (got ${noAddress.status})`);
-    }
-
+    // No address is asked for: the form does not have the field and the API does not need it.
     const details = {
       full_name: 'Agreement E2E Applicant',
       contact_number: '+65 9123 4567',
-      address: '1 Test Road, Singapore 000001',
       organisation: 'E2E Consulting',
     };
     const saved = await apiCall('PUT', '/api/trainer-agreements/mine', applicant.token, details);
     const agreementId = saved.json.data?.id as string;
     const reference = saved.json.data?.reference as string;
-    expect(saved.status === 201, `details saved (got ${saved.status})`);
+    expect(saved.status === 201, `details saved without an address (got ${saved.status})`);
     expect(saved.json.data?.status === 'awaiting_signature', 'agreement awaits a signature');
     expect(/^PCA-[A-Z0-9]{8}$/.test(reference ?? ''), `reference issued (${reference})`);
+
+    const olderPage = await apiCall('PUT', '/api/trainer-agreements/mine', applicant.token, {
+      ...details,
+      address: '1 Test Road, Singapore 000001',
+    });
+    expect(
+      olderPage.status === 200 && (olderPage.json.data?.address ?? null) === null,
+      `an address sent by an older page is ignored, not stored (got ${olderPage.status})`,
+    );
 
     const resaved = await apiCall('PUT', '/api/trainer-agreements/mine', applicant.token, {
       ...details,
@@ -649,7 +649,6 @@ async function main() {
     const started = await apiCall('PUT', '/api/trainer-agreements/mine', unstarted.token, {
       full_name: 'Agreement E2E Unstarted',
       contact_number: '+65 9000 0001',
-      address: '1 Test Road, Singapore 000001',
     });
     expect(started.status === 201, `they saved their details (got ${started.status})`);
     const after10 = await waitingList('in_progress', adminUser.token);
@@ -679,7 +678,6 @@ async function main() {
     const gatedDetails = {
       full_name: 'Agreement E2E Gated',
       contact_number: '+65 9000 0002',
-      address: '1 Test Road, Singapore 000001',
     };
     const g1 = await apiCall('PUT', '/api/trainer-agreements/mine', gated.token, gatedDetails);
     expect(
@@ -734,7 +732,6 @@ async function main() {
     const e1 = await apiCall('PUT', '/api/trainer-agreements/mine', enrolledSession.token, {
       full_name: 'Agreement E2E Enrolled',
       contact_number: '+65 9000 0004',
-      address: '1 Test Road, Singapore 000001',
     });
     expect(
       e1.status === 201 && e1.json.data?.purpose === 'existing_trainer',

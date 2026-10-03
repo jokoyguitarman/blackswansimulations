@@ -30,12 +30,7 @@ export const SignUp = () => {
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [agencyName, setAgencyName] = useState('');
-  // 'trainer' = a consultant applying for trainer access; 'participant' = invited player.
-  const [accountType, setAccountType] = useState<'trainer' | 'participant'>(
-    inviteToken ? 'participant' : 'trainer',
-  );
   const [details, setDetails] = useState<AgreementDetails>(emptyAgreementDetails);
-  const [requiresAddress, setRequiresAddress] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -45,7 +40,9 @@ export const SignUp = () => {
   const [loadingInvitation, setLoadingInvitation] = useState(false);
   const { signUp, user } = useAuth();
   const navigate = useNavigate();
-  const isConsultant = accountType === 'trainer' && !inviteToken;
+  // Without an invitation this page is only for consultants applying. Participants are enrolled
+  // through the link they are sent, an invitation (below) or the session's join link.
+  const isConsultant = !inviteToken;
 
   // Load invitation details if token is present
   useEffect(() => {
@@ -53,14 +50,6 @@ export const SignUp = () => {
       loadInvitationInfo();
     }
   }, [inviteToken]);
-
-  useEffect(() => {
-    if (!isConsultant) return;
-    api.trainerAgreements
-      .current()
-      .then((res) => setRequiresAddress(res.data.fields.includes('address')))
-      .catch(() => {});
-  }, [isConsultant]);
 
   // The auth context resolves the new account asynchronously, and /apply needs it resolved.
   useEffect(() => {
@@ -142,7 +131,6 @@ export const SignUp = () => {
       await api.trainerAgreements.saveMine({
         full_name: draft.full_name.trim(),
         contact_number: draft.contact_number.trim(),
-        address: draft.address.trim() || null,
         organisation: draft.organisation.trim() || null,
       });
       clearAgreementDraft();
@@ -267,54 +255,16 @@ export const SignUp = () => {
             </div>
           )}
 
-          {/* Account type (hidden for invitation signups, which are players) */}
-          {!inviteToken && (
-            <div>
-              <div className="block text-xs font-semibold text-ink mb-2">I am signing up as</div>
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setAccountType('trainer')}
-                  className={`text-left p-3 rounded-lg border-2 transition-all ${
-                    accountType === 'trainer'
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border hover:border-border-strong'
-                  }`}
-                >
-                  <div
-                    className={`text-sm font-bold ${accountType === 'trainer' ? 'text-brand' : 'text-muted'}`}
-                  >
-                    Consultant
-                  </div>
-                  <div className="text-[11px] text-muted mt-0.5">
-                    I run crisis trainings for clients
-                  </div>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAccountType('participant')}
-                  className={`text-left p-3 rounded-lg border-2 transition-all ${
-                    accountType === 'participant'
-                      ? 'border-accent bg-accent/5'
-                      : 'border-border hover:border-border-strong'
-                  }`}
-                >
-                  <div
-                    className={`text-sm font-bold ${accountType === 'participant' ? 'text-brand' : 'text-muted'}`}
-                  >
-                    Participant
-                  </div>
-                  <div className="text-[11px] text-muted mt-0.5">
-                    I was invited to a training session
-                  </div>
-                </button>
-              </div>
-              {accountType === 'trainer' && (
-                <p className="text-[11px] text-muted mt-2">
-                  Prophyion approves every consultant account. After this step you review and sign
-                  the Prophyion Consultant Agreement, then upload the signed copy.
-                </p>
-              )}
+          {/* Without an invitation, this page is only for consultants applying. */}
+          {isConsultant && (
+            <div className="space-y-1">
+              <p className="text-xs text-muted">
+                Prophyion approves every consultant account. After this step you review and sign the
+                Prophyion Consultant Agreement, then upload the signed copy.
+              </p>
+              <p className="text-xs text-muted">
+                Taking part in a training session? Use the link we send you when it starts instead.
+              </p>
             </div>
           )}
 
@@ -381,12 +331,7 @@ export const SignUp = () => {
             </div>
 
             {isConsultant ? (
-              <AgreementDetailsFields
-                value={details}
-                onChange={setDetails}
-                requiresAddress={requiresAddress}
-                showName={false}
-              />
+              <AgreementDetailsFields value={details} onChange={setDetails} showName={false} />
             ) : (
               <div>
                 <label htmlFor="agencyName" className="block text-xs font-semibold text-ink mb-2">

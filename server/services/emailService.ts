@@ -501,7 +501,6 @@ interface AgreementSubmittedData {
   email: string;
   contactNumber: string | null;
   organisation: string | null;
-  address: string | null;
   pageCount: number;
   expectedPages: number | null;
   hasReference: boolean | null;
@@ -535,7 +534,6 @@ Name:          ${data.fullName}
 Email:         ${data.email}
 Contact:       ${data.contactNumber || 'not given'}
 Organisation:  ${data.organisation || 'not given'}
-Address:       ${data.address || 'not given'}
 Reference:     ${data.reference}
 Pages:         ${pages}
 Reference in the file: ${referenceCheck}

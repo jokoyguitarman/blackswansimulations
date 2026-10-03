@@ -292,7 +292,6 @@ const detailsSchema = z.object({
       .min(6, 'Enter a contact number')
       .max(30)
       .regex(/^\+?[\d\s().-]+$/, 'Use digits, spaces and + ( ) - only'),
-    address: z.string().trim().max(200).nullish(),
     organisation: z.string().trim().max(200).nullish(),
   }),
 });
@@ -319,19 +318,12 @@ router.put(
 
       const fullName = req.body.full_name as string;
       const contactNumber = req.body.contact_number as string;
-      const address = (req.body.address as string | null | undefined) || null;
       const organisation = (req.body.organisation as string | null | undefined) || null;
 
-      const { meta } = await loadAgreementTemplate();
-      if (agreementInfo(meta).fields.includes('address') && !address) {
-        return res
-          .status(400)
-          .json({ error: 'Enter your address. It is printed on the agreement.' });
-      }
-      const unprintable = await unsupportedCharacters(`${fullName} ${address ?? ''} ${user.email}`);
+      const unprintable = await unsupportedCharacters(`${fullName} ${user.email}`);
       if (unprintable.length > 0) {
         return res.status(400).json({
-          error: `The agreement cannot print ${unprintable.slice(0, 5).join(' ')}. Please write your name and address in English letters, as they appear on your NRIC or passport.`,
+          error: `The agreement cannot print ${unprintable.slice(0, 5).join(' ')}. Please write your name in English letters, as it appears on your NRIC or passport.`,
         });
       }
 
@@ -357,7 +349,6 @@ router.put(
         open.full_name === fullName &&
         open.email === user.email &&
         open.contact_number === contactNumber &&
-        open.address === address &&
         open.organisation === organisation
       ) {
         return res.json({ data: toApplicantView(open) });
@@ -373,13 +364,15 @@ router.put(
           fullName,
           email: user.email,
           contactNumber,
-          address,
+          // The form no longer asks for an address. An agreement re-issued after an edit drops
+          // one entered earlier, so what it prints is exactly what the form shows.
+          address: null,
         });
         const issued = {
           full_name: fullName,
           email: user.email,
           contact_number: contactNumber,
-          address,
+          address: null,
           organisation,
           agreement_version: CURRENT_AGREEMENT_VERSION,
           issued_at: issuedAt.toISOString(),
@@ -610,7 +603,6 @@ router.post('/mine/submit', requireAuth, async (req: AuthenticatedRequest, res) 
         email: row.email,
         contactNumber: row.contact_number,
         organisation: row.organisation,
-        address: row.address,
         pageCount: row.signed_file_pages ?? 0,
         expectedPages: pages,
         hasReference: row.signed_file_has_reference,

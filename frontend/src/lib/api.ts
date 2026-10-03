@@ -2717,7 +2717,6 @@ export const api = {
     saveMine: async (body: {
       full_name: string;
       contact_number: string;
-      address?: string | null;
       organisation?: string | null;
     }) => {
       const headers = await getAuthHeaders();

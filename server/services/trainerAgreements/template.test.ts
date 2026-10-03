@@ -50,6 +50,19 @@ describe('renderAgreement (current committed template)', () => {
     assert.doesNotMatch(all, /\[(FULL NAME|EMAIL ADDRESS|CONTACT NUMBER|ADDRESS|DATE)\]/);
   });
 
+  test('renders without an address: nothing is drawn in that cell and no placeholder shows', async () => {
+    const marker = '77 Sentinel Way, Singapore 123456';
+    const drawn = (
+      await pageTexts((await renderAgreement({ ...input, address: marker })).bytes)
+    ).join('\n');
+    const blank = await renderAgreement({ ...input, address: null });
+    const all = (await pageTexts(blank.bytes)).join('\n');
+    assert.ok(drawn.includes('Sentinel Way'), 'an address that is given is still printed');
+    assert.ok(!all.includes('Sentinel Way'));
+    assert.ok(all.includes(input.fullName) && all.includes(input.email));
+    assert.doesNotMatch(all, /\[(FULL NAME|EMAIL ADDRESS|CONTACT NUMBER|ADDRESS|DATE)\]/);
+  });
+
   test('the same input renders byte-identical output, different input does not', async () => {
     const first = await renderAgreement(input);
     const again = await renderAgreement(input);

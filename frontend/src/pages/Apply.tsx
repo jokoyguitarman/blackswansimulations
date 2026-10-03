@@ -35,14 +35,12 @@ const secondaryButton =
 const detailsFrom = (row: TrainerAgreement): AgreementDetails => ({
   full_name: row.full_name,
   contact_number: row.contact_number ?? '',
-  address: row.address ?? '',
   organisation: row.organisation ?? '',
 });
 
 function DetailsForm({
   initial,
   email,
-  requiresAddress,
   submitLabel,
   note,
   initialError,
@@ -51,7 +49,6 @@ function DetailsForm({
 }: {
   initial: AgreementDetails;
   email: string;
-  requiresAddress: boolean;
   submitLabel: string;
   note?: string;
   initialError?: string;
@@ -70,7 +67,6 @@ function DetailsForm({
       const res = await api.trainerAgreements.saveMine({
         full_name: details.full_name.trim(),
         contact_number: details.contact_number.trim(),
-        address: details.address.trim() || null,
         organisation: details.organisation.trim() || null,
       });
       clearAgreementDraft();
@@ -88,11 +84,7 @@ function DetailsForm({
         <div className="text-sm font-bold text-brand">Your details</div>
         <p className="text-xs text-muted mt-1">These are printed on your agreement.</p>
       </div>
-      <AgreementDetailsFields
-        value={details}
-        onChange={setDetails}
-        requiresAddress={requiresAddress}
-      />
+      <AgreementDetailsFields value={details} onChange={setDetails} />
       <div>
         <div className="block text-xs font-semibold text-ink mb-2">Email</div>
         <div className="text-sm text-ink">{email}</div>
@@ -157,6 +149,7 @@ function DetailsSummary({
         <Detail label="Full legal name" value={agreement.full_name} />
         <Detail label="Email" value={agreement.email} />
         <Detail label="Contact number" value={agreement.contact_number} />
+        {/* Not asked for any more, but an agreement issued with one still prints it. */}
         {agreement.address && <Detail label="Address" value={agreement.address} />}
         {agreement.organisation && (
           <Detail label="Company or organisation" value={agreement.organisation} />
@@ -258,8 +251,7 @@ export const Apply = () => {
     );
   }
 
-  const { current, onFile, agreement: info } = mine;
-  const requiresAddress = info.fields.includes('address');
+  const { current, onFile } = mine;
   const open = current && isOpenAgreementStatus(current.status) ? current : null;
   const isTrainer = user?.role === 'trainer';
   const updateRow = (row: TrainerAgreement) => {
@@ -291,7 +283,6 @@ export const Apply = () => {
           <DetailsForm
             initial={detailsFrom(open)}
             email={open.email}
-            requiresAddress={requiresAddress}
             submitLabel="Save and re-issue the agreement"
             note={
               open.has_signed_copy
@@ -378,7 +369,6 @@ export const Apply = () => {
       <DetailsForm
         initial={{ ...emptyAgreementDetails, full_name: name, ...loadAgreementDraft() }}
         email={user?.email ?? ''}
-        requiresAddress={requiresAddress}
         submitLabel="Continue to the agreement"
         initialError={(location.state as ApplyLocationState | null)?.detailsError}
         onSaved={updateRow}

@@ -1,14 +1,12 @@
 export interface AgreementDetails {
   full_name: string;
   contact_number: string;
-  address: string;
   organisation: string;
 }
 
 export const emptyAgreementDetails: AgreementDetails = {
   full_name: '',
   contact_number: '',
-  address: '',
   organisation: '',
 };
 
@@ -35,18 +33,12 @@ const inputClass = 'w-full px-4 py-3 military-input text-sm';
 interface Props {
   value: AgreementDetails;
   onChange: (value: AgreementDetails) => void;
-  requiresAddress: boolean;
   /** The signup form renders the name itself, next to the account fields. */
   showName?: boolean;
 }
 
 /** The details printed on the Consultant Agreement. */
-export function AgreementDetailsFields({
-  value,
-  onChange,
-  requiresAddress,
-  showName = true,
-}: Props) {
+export function AgreementDetailsFields({ value, onChange, showName = true }: Props) {
   const set = (field: keyof AgreementDetails) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...value, [field]: e.target.value });
 
@@ -91,24 +83,6 @@ export function AgreementDetailsFields({
           placeholder="+65 9123 4567"
         />
       </div>
-
-      {requiresAddress && (
-        <div>
-          <label htmlFor="agreementAddress" className={labelClass}>
-            Address
-          </label>
-          <input
-            id="agreementAddress"
-            required
-            maxLength={200}
-            autoComplete="street-address"
-            value={value.address}
-            onChange={set('address')}
-            className={inputClass}
-            placeholder="10 Anson Road, #20-05, Singapore 079903"
-          />
-        </div>
-      )}
 
       <div>
         <label htmlFor="agreementOrganisation" className={labelClass}>
