@@ -3,6 +3,7 @@ import type {
   AdminAgreementView,
   AdminTrainerAgreement,
   TrainerAgreementStatus,
+  UnstartedApplicant,
 } from '@shared/trainerAgreements';
 import { api, type AgreementDecisionResult } from '../../lib/api';
 import { openBlobInNewTab, openInNewTab } from '../../lib/openInNewTab';
@@ -301,10 +302,36 @@ function ApplicationCard({
   );
 }
 
+/** Someone who created an account to apply but has not saved their details, so has no agreement. */
+function UnstartedCard({ applicant }: { applicant: UnstartedApplicant }) {
+  return (
+    <div className="border border-border rounded-lg p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-semibold text-ink">{applicant.full_name || applicant.email}</span>
+        <span className={`${pill} bg-surface-2 text-muted`}>Not started</span>
+        {!applicant.email_confirmed && (
+          <span className={`${pill} bg-warning/10 text-warning`}>Email not confirmed</span>
+        )}
+      </div>
+      <div className="text-[12px] text-muted mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+        <a href={`mailto:${applicant.email}`} className="underline text-brand">
+          {applicant.email}
+        </a>
+        {applicant.organisation && <span>{applicant.organisation}</span>}
+      </div>
+      <div className="text-[11px] text-muted mt-1">
+        Signed up {formatDate(applicant.signed_up_at)}
+        {applicant.last_sign_in_at && ` · last signed in ${formatDate(applicant.last_sign_in_at)}`}
+      </div>
+    </div>
+  );
+}
+
 /** Consultant applications and signed agreements, for the Business console. */
 export function TrainerApplicationsPanel({ onChanged }: { onChanged?: () => void }) {
   const [view, setView] = useState<AdminAgreementView>('review');
   const [items, setItems] = useState<AdminTrainerAgreement[] | null>(null);
+  const [notStarted, setNotStarted] = useState<UnstartedApplicant[]>([]);
   const [counts, setCounts] = useState<Record<AdminAgreementView, number> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -314,10 +341,12 @@ export function TrainerApplicationsPanel({ onChanged }: { onChanged?: () => void
     try {
       const res = await api.trainerAgreements.list(which);
       setItems(res.data.items);
+      setNotStarted(res.data.not_started ?? []);
       setCounts(res.data.counts);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load applications');
       setItems([]);
+      setNotStarted([]);
     }
   }, []);
 
@@ -375,16 +404,38 @@ export function TrainerApplicationsPanel({ onChanged }: { onChanged?: () => void
 
       {items === null ? (
         <div className="text-xs text-muted animate-pulse">Loading applications…</div>
-      ) : items.length === 0 ? (
+      ) : items.length === 0 && notStarted.length === 0 ? (
         <div className="bg-surface-2 border border-border rounded-lg p-6 text-center text-xs text-muted">
           {current.empty}
         </div>
       ) : (
-        <div className="space-y-3">
-          {items.map((item) => (
-            <ApplicationCard key={item.id} item={item} view={view} onDecided={afterDecision} />
-          ))}
-        </div>
+        <>
+          {items.length > 0 && (
+            <div className="space-y-3">
+              {items.map((item) => (
+                <ApplicationCard key={item.id} item={item} view={view} onDecided={afterDecision} />
+              ))}
+            </div>
+          )}
+
+          {view === 'in_progress' && notStarted.length > 0 && (
+            <div className={items.length > 0 ? 'mt-6' : ''}>
+              <div className="text-[11px] font-bold uppercase tracking-wide text-muted">
+                Signed up, no details yet ({notStarted.length})
+              </div>
+              <p className="text-xs text-muted mt-1 mb-3">
+                These people created an account to apply in the last 60 days but have not saved
+                their details, so no agreement has been issued. Ask them to sign in and continue the
+                application from their dashboard.
+              </p>
+              <div className="space-y-3">
+                {notStarted.map((applicant) => (
+                  <UnstartedCard key={applicant.user_id} applicant={applicant} />
+                ))}
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

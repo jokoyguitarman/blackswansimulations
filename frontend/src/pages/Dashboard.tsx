@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+import { shouldSendToApplication } from '@shared/trainerAgreements';
 import { useAuth } from '../contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
@@ -8,12 +10,31 @@ import { BrandMark } from '../components/BrandMark';
 import { AgreementStatusCard } from '../components/agreement/AgreementStatusCard';
 import { useMyAgreement } from '../hooks/useMyAgreement';
 
+const APPLY_REDIRECT_KEY = 'prophyion_sent_to_application';
+
 export const Dashboard = () => {
   const { user, session, signOut } = useAuth();
   const navigate = useNavigate();
   const { isTrainer } = useRoleVisibility();
   // Trainers see their agreement status on the trainer dashboard itself.
   const { mine } = useMyAgreement(Boolean(user) && !isTrainer);
+  const signedUpAsConsultant = session?.user.user_metadata?.applying_as_consultant === true;
+
+  // The email confirmation link signs a new applicant in and lands them here, where the only
+  // pointer to the form is a card. Take them to the form instead, once per browser session so
+  // "Dashboard" on that page is not a trap.
+  useEffect(() => {
+    if (!mine || sessionStorage.getItem(APPLY_REDIRECT_KEY)) return;
+    const send = shouldSendToApplication({
+      role: user?.role,
+      signedUpAsConsultant,
+      hasAgreement: Boolean(mine.current || mine.onFile),
+      accountCreatedAt: session?.user.created_at,
+    });
+    if (!send) return;
+    sessionStorage.setItem(APPLY_REDIRECT_KEY, '1');
+    navigate('/apply', { replace: true });
+  }, [mine, user?.role, signedUpAsConsultant, session?.user.created_at, navigate]);
 
   const handleSignOut = async () => {
     await signOut();
@@ -113,11 +134,7 @@ export const Dashboard = () => {
 
         {mine && !isTrainer && (
           <div className="mb-6">
-            <AgreementStatusCard
-              mine={mine}
-              role={user?.role}
-              applying={session?.user.user_metadata?.applying_as_consultant === true}
-            />
+            <AgreementStatusCard mine={mine} role={user?.role} applying={signedUpAsConsultant} />
           </div>
         )}
 

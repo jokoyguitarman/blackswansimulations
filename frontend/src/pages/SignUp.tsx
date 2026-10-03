@@ -173,8 +173,9 @@ export const SignUp = () => {
               <>
                 <h2 className="text-2xl font-extrabold text-brand mb-2">Confirm your email</h2>
                 <p className="text-sm text-muted mb-4">
-                  We sent a confirmation link to {email}. Open it, then sign in to continue your
-                  application.
+                  We sent a confirmation link to {email}. Open it and you will go straight to the
+                  next step of your application. If it opens on another device, sign in here
+                  instead.
                 </p>
                 <Link to="/login" className="military-button inline-block px-6 py-2 text-sm">
                   Go to sign in

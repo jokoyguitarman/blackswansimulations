@@ -12,8 +12,9 @@ import { PDFParse } from 'pdf-parse';
  * applicant re-uploads -> admin approves -> account is a trainer with a billing profile and the
  * Business console shows the agreement as signed and which admin approved it. Then an admin
  * attaches a paper-signed copy for an existing trainer, and enrolls a trainer from the console,
- * which a second admin can see along with who enrolled them. Cleans up every user and file it
- * created.
+ * which a second admin can see along with who enrolled them. Finally checks that someone who signed
+ * up to apply but has not saved their details is listed for admins, and only for admins. Cleans up
+ * every user and file it created.
  *
  * Start the server with email off so nobody is emailed:
  *   EMAIL_ENABLED=false npm run dev:server
@@ -30,6 +31,8 @@ const TRAINER_EMAIL = `agreement-e2e-trainer-${RUN_ID}@loadtest.example.com`;
 const ADMIN_EMAIL = `agreement-e2e-admin-${RUN_ID}@loadtest.example.com`;
 const SECOND_ADMIN_EMAIL = `agreement-e2e-admin2-${RUN_ID}@loadtest.example.com`;
 const ENROLLED_EMAIL = `agreement-e2e-enrolled-${RUN_ID}@loadtest.example.com`;
+const UNSTARTED_EMAIL = `agreement-e2e-unstarted-${RUN_ID}@loadtest.example.com`;
+const PLAIN_EMAIL = `agreement-e2e-plain-${RUN_ID}@loadtest.example.com`;
 const BUCKET = 'trainer-agreements';
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -51,12 +54,13 @@ const expect = (cond: boolean, msg: string) => {
 async function createUser(
   email: string,
   fullName: string,
+  extraMetadata: Record<string, unknown> = {},
 ): Promise<{ userId: string; token: string }> {
   const { error } = await admin.auth.admin.createUser({
     email,
     password: PASSWORD,
     email_confirm: true,
-    user_metadata: { full_name: fullName, agency_name: 'E2E Test' },
+    user_metadata: { full_name: fullName, agency_name: 'E2E Test', ...extraMetadata },
   });
   if (error && !/already/i.test(error.message)) throw new Error(error.message);
   const client = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -486,6 +490,85 @@ async function main() {
         seen?.enrollment?.by_id === adminUser.userId &&
         seen?.enrollment?.by_name === 'Agreement E2E Admin',
       'a second admin sees that trainer and which admin enrolled them',
+    );
+
+    // ── 10. Applicants who signed up but have not saved their details ────
+    console.log('\n10. Applicants who signed up but have not started');
+    const unstarted = await createUser(UNSTARTED_EMAIL, 'Agreement E2E Unstarted', {
+      applying_as_consultant: true,
+    });
+    created.push(unstarted.userId);
+    const plain = await createUser(PLAIN_EMAIL, 'Agreement E2E Plain Participant');
+    created.push(plain.userId);
+
+    type Waiting = { user_id: string; email: string; email_confirmed: boolean };
+    const waitingList = async (view: string, token: string) => {
+      const res = await apiCall('GET', `/api/trainer-agreements/admin?view=${view}`, token);
+      return {
+        status: res.status,
+        notStarted: (res.json.data?.not_started ?? []) as Waiting[],
+        items: (res.json.data?.items ?? []) as Array<{ user_id: string; status: string }>,
+        inProgressCount: res.json.data?.counts?.in_progress as number,
+      };
+    };
+
+    const before10 = await waitingList('in_progress', adminUser.token);
+    const waiting = before10.notStarted.find((w) => w.user_id === unstarted.userId);
+    expect(
+      Boolean(waiting) && waiting?.email === UNSTARTED_EMAIL && waiting?.email_confirmed === true,
+      'an applicant who has not started is listed for admins, with their email',
+    );
+    expect(
+      !before10.notStarted.some((w) => w.user_id === plain.userId),
+      'a participant who never applied is not listed',
+    );
+    expect(
+      before10.inProgressCount >= before10.notStarted.length && before10.notStarted.length > 0,
+      'they are counted under In progress',
+    );
+    const reviewView = await waitingList('review', adminUser.token);
+    expect(
+      reviewView.notStarted.length === 0,
+      'the other tabs do not carry them (they come with In progress only)',
+    );
+
+    const notAdmin = await apiCall(
+      'GET',
+      '/api/trainer-agreements/admin?view=in_progress',
+      unstarted.token,
+    );
+    expect(notAdmin.status === 403, `the list is admin-only (got ${notAdmin.status})`);
+
+    // The listing function reads auth.users, so the public RPC surface must refuse it.
+    const rpc = await fetch(`${SUPABASE_URL}/rest/v1/rpc/unstarted_consultant_applicants`, {
+      method: 'POST',
+      headers: {
+        apikey: SERVICE_KEY,
+        Authorization: `Bearer ${unstarted.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+    });
+    const rpcBody = await rpc.text();
+    expect(
+      !rpc.ok && !rpcBody.includes(UNSTARTED_EMAIL),
+      `the database function is closed to signed-in users (got ${rpc.status})`,
+    );
+
+    // Once they save their details the application exists, so they move to the real list.
+    const started = await apiCall('PUT', '/api/trainer-agreements/mine', unstarted.token, {
+      full_name: 'Agreement E2E Unstarted',
+      contact_number: '+65 9000 0001',
+      address: '1 Test Road, Singapore 000001',
+    });
+    expect(started.status === 201, `they saved their details (got ${started.status})`);
+    const after10 = await waitingList('in_progress', adminUser.token);
+    expect(
+      !after10.notStarted.some((w) => w.user_id === unstarted.userId) &&
+        after10.items.some(
+          (i) => i.user_id === unstarted.userId && i.status === 'awaiting_signature',
+        ),
+      'after saving details they move from "no details yet" to an application in progress',
     );
   } finally {
     console.log('\nCleanup');

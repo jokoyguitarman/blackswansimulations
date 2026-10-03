@@ -19,6 +19,7 @@ import {
   type TrainerAgreement,
   type TrainerAgreementPurpose,
   type TrainerAgreementStatus,
+  type UnstartedApplicant,
 } from '../../shared/trainerAgreements.js';
 import {
   CURRENT_AGREEMENT_VERSION,
@@ -67,6 +68,8 @@ const BUCKET = 'trainer-agreements';
 const SIGNED_URL_SECONDS = 300;
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const DECIDED_LIST_LIMIT = 50;
+/** How far back to list consultant sign-ups that have not started an application. */
+const UNSTARTED_WINDOW_DAYS = 60;
 const newReference = () => `PCA-${customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZ', 8)()}`;
 
 interface AgreementRow {
@@ -585,6 +588,28 @@ router.get(
       const counts: Record<AdminAgreementView, number> = { review: 0, in_progress: 0, decided: 0 };
       for (const row of rows) counts[viewOf(row.status)]++;
 
+      // People who signed up to apply but have not saved their details have no row yet, so they
+      // come from the auth side. A failure here must not hide the applications that do exist.
+      const { data: unstartedRows, error: unstartedError } = await supabaseAdmin.rpc(
+        'unstarted_consultant_applicants',
+        { p_days: UNSTARTED_WINDOW_DAYS },
+      );
+      if (unstartedError) {
+        logger.warn({ error: unstartedError }, 'Could not list applicants who have not started');
+      }
+      const notStarted: UnstartedApplicant[] = (
+        (unstartedRows as Array<Record<string, unknown>> | null) ?? []
+      ).map((r) => ({
+        user_id: r.user_id as string,
+        full_name: (r.full_name as string | null) ?? '',
+        email: (r.email as string | null) ?? '',
+        organisation: (r.organisation as string | null) ?? null,
+        signed_up_at: r.signed_up_at as string,
+        email_confirmed: Boolean(r.email_confirmed),
+        last_sign_in_at: (r.last_sign_in_at as string | null) ?? null,
+      }));
+      counts.in_progress += notStarted.length;
+
       const inView = rows.filter((r) => viewOf(r.status) === view);
       if (view === 'review') {
         inView.sort((a, b) => (a.submitted_at ?? '').localeCompare(b.submitted_at ?? ''));
@@ -620,6 +645,7 @@ router.get(
 
       const list: AdminAgreementList = {
         counts,
+        not_started: view === 'in_progress' ? notStarted : [],
         items: items.map(
           (row): AdminTrainerAgreement => ({
             ...toApplicantView(row),

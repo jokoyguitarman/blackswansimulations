@@ -87,9 +87,48 @@ export interface AdminTrainerAgreement extends TrainerAgreement {
 
 export type AdminAgreementView = 'review' | 'in_progress' | 'decided';
 
+/**
+ * Someone who signed up through the consultant application form but has not saved their details,
+ * so no agreement exists yet and nothing else in the console shows them.
+ */
+export interface UnstartedApplicant {
+  user_id: string;
+  full_name: string;
+  email: string;
+  organisation: string | null;
+  signed_up_at: string;
+  email_confirmed: boolean;
+  last_sign_in_at: string | null;
+}
+
 export interface AdminAgreementList {
   items: AdminTrainerAgreement[];
+  /** Only filled for the 'in_progress' view; they are counted under in_progress either way. */
+  not_started: UnstartedApplicant[];
   counts: Record<AdminAgreementView, number>;
+}
+
+/** How long a new applicant's account counts as just signed up. */
+export const NEW_APPLICANT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
+ * Whether to take someone straight to the application form: they signed up as a consultant, have
+ * no agreement yet, and the account is new. A long-standing participant who once ticked
+ * "consultant" is left alone rather than bounced to the form every visit.
+ */
+export function shouldSendToApplication(input: {
+  role: string | undefined;
+  signedUpAsConsultant: boolean;
+  hasAgreement: boolean;
+  accountCreatedAt: string | undefined;
+  now?: number;
+}): boolean {
+  if (input.role !== 'participant' || !input.signedUpAsConsultant || input.hasAgreement) {
+    return false;
+  }
+  const created = input.accountCreatedAt ? Date.parse(input.accountCreatedAt) : NaN;
+  if (Number.isNaN(created)) return false;
+  return (input.now ?? Date.now()) - created < NEW_APPLICANT_WINDOW_MS;
 }
 
 export type AgreementSummaryStatus =

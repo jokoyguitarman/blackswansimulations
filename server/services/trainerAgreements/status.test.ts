@@ -1,6 +1,8 @@
 import { describe, test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  NEW_APPLICANT_WINDOW_MS,
+  shouldSendToApplication,
   summariseAgreement,
   type TrainerAgreementStatus,
 } from '../../../shared/trainerAgreements.js';
@@ -81,5 +83,46 @@ describe('summariseAgreement', () => {
     assert.equal(summariseAgreement([row('a', 'submitted')]).status, 'under_review');
     assert.equal(summariseAgreement([row('a', 'changes_requested')]).status, 'changes_requested');
     assert.equal(summariseAgreement([row('a', 'awaiting_signature')]).status, 'awaiting_signature');
+  });
+});
+
+describe('shouldSendToApplication', () => {
+  const NOW = Date.parse('2026-10-03T03:00:00Z');
+  const base = {
+    role: 'participant',
+    signedUpAsConsultant: true,
+    hasAgreement: false,
+    accountCreatedAt: '2026-10-02T05:06:50Z',
+    now: NOW,
+  };
+
+  test('sends a new consultant applicant with no agreement to the form', () => {
+    assert.equal(shouldSendToApplication(base), true);
+  });
+
+  test('leaves people alone who did not sign up as consultants', () => {
+    assert.equal(shouldSendToApplication({ ...base, signedUpAsConsultant: false }), false);
+  });
+
+  test('leaves alone anyone who already has an agreement of any kind', () => {
+    assert.equal(shouldSendToApplication({ ...base, hasAgreement: true }), false);
+  });
+
+  test('only applies to participants, never trainers or admins', () => {
+    assert.equal(shouldSendToApplication({ ...base, role: 'trainer' }), false);
+    assert.equal(shouldSendToApplication({ ...base, role: 'admin' }), false);
+    assert.equal(shouldSendToApplication({ ...base, role: undefined }), false);
+  });
+
+  test('stops once the account is a week old, so long-standing participants are not bounced', () => {
+    const justInside = new Date(NOW - NEW_APPLICANT_WINDOW_MS + 60_000).toISOString();
+    const justOutside = new Date(NOW - NEW_APPLICANT_WINDOW_MS - 60_000).toISOString();
+    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: justInside }), true);
+    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: justOutside }), false);
+  });
+
+  test('does nothing when the account age is unknown or unreadable', () => {
+    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: undefined }), false);
+    assert.equal(shouldSendToApplication({ ...base, accountCreatedAt: 'not a date' }), false);
   });
 });
