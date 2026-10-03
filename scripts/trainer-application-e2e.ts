@@ -10,8 +10,10 @@ import { PDFParse } from 'pdf-parse';
  * details (agreement issued) -> downloads the personalised PDF -> is still kept out of trainer
  * endpoints -> bad uploads are rejected -> uploads the signed copy -> admin requests changes ->
  * applicant re-uploads -> admin approves -> account is a trainer with a billing profile and the
- * Business console shows the agreement as signed. Then an admin attaches a paper-signed copy for
- * an existing trainer. Cleans up every user and file it created.
+ * Business console shows the agreement as signed and which admin approved it. Then an admin
+ * attaches a paper-signed copy for an existing trainer, and enrolls a trainer from the console,
+ * which a second admin can see along with who enrolled them. Cleans up every user and file it
+ * created.
  *
  * Start the server with email off so nobody is emailed:
  *   EMAIL_ENABLED=false npm run dev:server
@@ -26,6 +28,8 @@ const RUN_ID = Date.now().toString(36);
 const APPLICANT_EMAIL = `agreement-e2e-applicant-${RUN_ID}@loadtest.example.com`;
 const TRAINER_EMAIL = `agreement-e2e-trainer-${RUN_ID}@loadtest.example.com`;
 const ADMIN_EMAIL = `agreement-e2e-admin-${RUN_ID}@loadtest.example.com`;
+const SECOND_ADMIN_EMAIL = `agreement-e2e-admin2-${RUN_ID}@loadtest.example.com`;
+const ENROLLED_EMAIL = `agreement-e2e-enrolled-${RUN_ID}@loadtest.example.com`;
 const BUCKET = 'trainer-agreements';
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -379,6 +383,13 @@ async function main() {
       listed?.agreement?.status === 'signed',
       'Business console shows the agreement as signed',
     );
+    expect(
+      listed?.enrollment?.via === 'application' &&
+        listed?.enrollment?.by_id === adminUser.userId &&
+        listed?.enrollment?.by_name === 'Agreement E2E Admin' &&
+        Boolean(listed?.enrollment?.at),
+      'console records the admin who approved the application',
+    );
 
     // ── 8. Existing trainer with a paper-signed copy ─────────────────────
     console.log('\n8. Attaching a paper-signed copy');
@@ -390,6 +401,10 @@ async function main() {
     expect(
       unsigned?.agreement?.status === 'none',
       'existing trainer starts with no agreement on file',
+    );
+    expect(
+      unsigned?.enrollment?.via === null && unsigned?.enrollment?.by_id === null,
+      'a trainer created outside the console shows as not recorded',
     );
     const refused = await upload(
       `/api/trainer-agreements/admin/trainers/${trainer.userId}/attach`,
@@ -411,6 +426,67 @@ async function main() {
       new TextEncoder().encode('%PDF-1.7 broken'),
     );
     expect(broken.status === 400, `unreadable PDF refused on attach (got ${broken.status})`);
+
+    // ── 9. Enrolling a trainer from the console records who did it ───────
+    console.log('\n9. Enrolling a trainer from the console');
+    const enrollBody = {
+      email: ENROLLED_EMAIL,
+      full_name: 'Agreement E2E Enrolled',
+      agency_name: 'E2E Test',
+    };
+    const notAllowed = await apiCall(
+      'POST',
+      '/api/billing/admin/trainers',
+      trainer.token,
+      enrollBody,
+    );
+    expect(
+      notAllowed.status === 403,
+      `a trainer cannot enroll trainers (got ${notAllowed.status})`,
+    );
+    const enrolled = await apiCall(
+      'POST',
+      '/api/billing/admin/trainers',
+      adminUser.token,
+      enrollBody,
+    );
+    expect(enrolled.status === 201, `admin enrolled a trainer (got ${enrolled.status})`);
+    const enrolledId = enrolled.json.data?.id as string;
+    if (enrolledId) created.push(enrolledId);
+
+    const afterEnroll = await apiCall('GET', '/api/billing/admin/trainers', adminUser.token);
+    const enrolledListed = (afterEnroll.json.data ?? []).find(
+      (t: { id: string }) => t.id === enrolledId,
+    );
+    expect(
+      enrolledListed?.enrollment?.via === 'admin_enrollment' &&
+        enrolledListed?.enrollment?.by_id === adminUser.userId &&
+        enrolledListed?.enrollment?.by_name === 'Agreement E2E Admin' &&
+        Boolean(enrolledListed?.enrollment?.at),
+      'console records the admin who enrolled the trainer',
+    );
+    const { data: billingRow } = await admin
+      .from('trainer_billing')
+      .select('onboarding_status, enrolled_by')
+      .eq('trainer_id', enrolledId)
+      .maybeSingle();
+    expect(
+      billingRow?.onboarding_status === 'none' && billingRow?.enrolled_by === adminUser.userId,
+      'billing profile created alongside the record',
+    );
+
+    // Admin is one global role: a second admin sees the same trainers, and who enrolled each.
+    const secondAdmin = await createUser(SECOND_ADMIN_EMAIL, 'Agreement E2E Second Admin');
+    created.push(secondAdmin.userId);
+    await admin.from('user_profiles').update({ role: 'admin' }).eq('id', secondAdmin.userId);
+    const seenBySecond = await apiCall('GET', '/api/billing/admin/trainers', secondAdmin.token);
+    const seen = (seenBySecond.json.data ?? []).find((t: { id: string }) => t.id === enrolledId);
+    expect(
+      seenBySecond.status === 200 &&
+        seen?.enrollment?.by_id === adminUser.userId &&
+        seen?.enrollment?.by_name === 'Agreement E2E Admin',
+      'a second admin sees that trainer and which admin enrolled them',
+    );
   } finally {
     console.log('\nCleanup');
     try {

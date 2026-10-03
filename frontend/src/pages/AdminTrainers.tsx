@@ -15,6 +15,12 @@ const formatSgd = (cents: number) =>
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('en-SG', { day: 'numeric', month: 'short', year: 'numeric' });
 
+/** "Enrolled by Kenneth" / "Approved by Kenneth", or null when no record exists. */
+const enrolledByLabel = (e: AdminTrainerSummary['enrollment']) =>
+  e.via === null
+    ? null
+    : `${e.via === 'application' ? 'Approved' : 'Enrolled'} by ${e.by_name ?? 'a removed admin'}`;
+
 const onboardingBadge = (status: AdminTrainerSummary['onboarding_status']) => {
   switch (status) {
     case 'complete':
@@ -446,6 +452,11 @@ export const AdminTrainers = () => {
                           <div className="text-[11px] text-muted">
                             joined {formatDate(t.created_at)}
                           </div>
+                          {enrolledByLabel(t.enrollment) && (
+                            <div className="text-[11px] text-muted">
+                              {enrolledByLabel(t.enrollment)}
+                            </div>
+                          )}
                           <div className="mt-1 flex flex-wrap gap-1">
                             {onboardingBadge(t.onboarding_status)}
                             {agreementBadge(t.agreement)}
@@ -545,6 +556,27 @@ export const AdminTrainers = () => {
                                 </div>
                                 <div className="text-ink">{t.agency_name ?? '-'}</div>
                                 <div className="text-muted">{t.username}</div>
+                                <div className="font-bold text-muted uppercase tracking-wide text-[10px] mt-2 mb-1">
+                                  Enrolled by
+                                </div>
+                                {t.enrollment.via ? (
+                                  <div className="text-ink">
+                                    {t.enrollment.by_name ?? 'A removed admin'}
+                                    {t.enrollment.at && `, ${formatDate(t.enrollment.at)}`}
+                                    <span className="text-muted">
+                                      {' '}
+                                      (
+                                      {t.enrollment.via === 'application'
+                                        ? 'approved their application'
+                                        : 'enrolled from this console'}
+                                      )
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <div className="text-muted">
+                                    Not recorded (enrolled before tracking began)
+                                  </div>
+                                )}
                                 <TrainerAgreementDetails trainer={t} onChanged={loadTrainers} />
                               </div>
                             </div>

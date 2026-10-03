@@ -107,6 +107,27 @@ export interface AgreementSummary {
   signed_at: string | null;
 }
 
+export type TrainerEnrollmentVia = 'admin_enrollment' | 'application';
+
+/**
+ * Which admin brought a trainer in, for the Business console. `via` null means not recorded: the
+ * trainer predates the record. `via` set with `by_name` null means that admin's account has since
+ * been removed.
+ */
+export interface TrainerEnrollment {
+  via: TrainerEnrollmentVia | null;
+  by_id: string | null;
+  by_name: string | null;
+  at: string | null;
+}
+
+export const NO_ENROLLMENT_RECORD: TrainerEnrollment = {
+  via: null,
+  by_id: null,
+  by_name: null,
+  at: null,
+};
+
 /** What applicants are told about how long review takes. */
 export const APPLICATION_REVIEW_TIME = 'five business days';
 

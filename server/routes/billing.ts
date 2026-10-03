@@ -22,9 +22,12 @@ import { createNotification } from '../services/notificationService.js';
 import { sendTrainerEnrollmentEmail } from '../services/emailService.js';
 import { nanoid } from 'nanoid';
 import {
+  NO_ENROLLMENT_RECORD,
   summariseAgreement,
   type AgreementSummary,
   type TrainerAgreementStatus,
+  type TrainerEnrollment,
+  type TrainerEnrollmentVia,
 } from '../../shared/trainerAgreements.js';
 
 const router = Router();
@@ -846,13 +849,36 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
         supabaseAdmin.from('sessions').select('trainer_id, status').in('trainer_id', trainerIds),
         supabaseAdmin
           .from('trainer_billing')
-          .select('trainer_id, onboarding_status')
+          .select('trainer_id, onboarding_status, enrolled_by, enrolled_via, enrolled_at')
           .in('trainer_id', trainerIds),
         supabaseAdmin
           .from('trainer_agreements')
           .select('id, user_id, status, agreement_version, reviewed_at, created_at')
           .in('user_id', trainerIds),
       ]);
+
+    // Names of the admins who enrolled or approved these trainers.
+    const enrollerIds = [
+      ...new Set(
+        (billingRes.data ?? [])
+          .map((b) => b.enrolled_by as string | null)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    const enrollerNames = new Map<string, string>();
+    if (enrollerIds.length > 0) {
+      const { data: enrollers, error: enrollersError } = await supabaseAdmin
+        .from('user_profiles')
+        .select('id, full_name, username')
+        .in('id', enrollerIds);
+      if (enrollersError) {
+        logger.warn({ error: enrollersError }, 'Could not resolve enrolling admins');
+      }
+      for (const e of enrollers ?? []) {
+        const name = ((e.full_name as string | null) || (e.username as string | null) || '').trim();
+        if (name) enrollerNames.set(e.id as string, name);
+      }
+    }
 
     interface TrainerSummary {
       id: string;
@@ -873,6 +899,7 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
         held_cents: number;
       };
       agreement: AgreementSummary;
+      enrollment: TrainerEnrollment;
     }
 
     const byTrainer = new Map<string, TrainerSummary>();
@@ -896,6 +923,7 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
           held_cents: 0,
         },
         agreement: summariseAgreement([]),
+        enrollment: NO_ENROLLMENT_RECORD,
       });
     }
 
@@ -927,7 +955,15 @@ router.get('/admin/trainers', requireAuth, async (req: AuthenticatedRequest, res
 
     for (const b of billingRes.data ?? []) {
       const t = byTrainer.get(b.trainer_id as string);
-      if (t) t.onboarding_status = b.onboarding_status as string;
+      if (!t) continue;
+      t.onboarding_status = b.onboarding_status as string;
+      const enrolledBy = (b.enrolled_by as string | null) ?? null;
+      t.enrollment = {
+        via: (b.enrolled_via as TrainerEnrollmentVia | null) ?? null,
+        by_id: enrolledBy,
+        by_name: enrolledBy ? (enrollerNames.get(enrolledBy) ?? null) : null,
+        at: (b.enrolled_at as string | null) ?? null,
+      };
     }
     for (const o of orgsRes.data ?? []) {
       const t = byTrainer.get(o.trainer_id as string);
@@ -1068,9 +1104,24 @@ router.post(
         }
       }
 
-      await supabaseAdmin
-        .from('trainer_billing')
-        .upsert({ trainer_id: newUserId, onboarding_status: 'none' }, { onConflict: 'trainer_id' });
+      // Billing profile, plus the record of which admin enrolled this trainer. The account exists
+      // by now, so a failure is logged for follow-up rather than undoing the enrollment.
+      const { error: billingError } = await supabaseAdmin.from('trainer_billing').upsert(
+        {
+          trainer_id: newUserId,
+          onboarding_status: 'none',
+          enrolled_by: user.id,
+          enrolled_via: 'admin_enrollment',
+          enrolled_at: new Date().toISOString(),
+        },
+        { onConflict: 'trainer_id' },
+      );
+      if (billingError) {
+        logger.error(
+          { error: billingError, adminId: user.id, trainerId: newUserId },
+          'Trainer enrolled but the billing profile and enrollment record were not saved',
+        );
+      }
 
       const enrolledByName =
         (user.metadata?.full_name as string | undefined) || user.email || 'the Prophyion team';

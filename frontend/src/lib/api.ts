@@ -7,6 +7,7 @@ import type {
   MyAgreementResponse,
   TrainerAgreement,
   TrainerAgreementStatus,
+  TrainerEnrollment,
 } from '@shared/trainerAgreements';
 
 /**
@@ -259,6 +260,7 @@ export interface AdminTrainerSummary {
     held_cents: number;
   };
   agreement: AgreementSummary;
+  enrollment: TrainerEnrollment;
 }
 
 export interface AgreementDecisionResult {

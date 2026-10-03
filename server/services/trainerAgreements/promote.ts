@@ -27,8 +27,15 @@ export async function getProfileRole(userId: string): Promise<string | null> {
  * Give an approved applicant the trainer role and a billing profile. Only 'participant' becomes
  * 'trainer', never anything else; the service-role write is trusted by the migration 189
  * anti-escalation trigger. An existing billing row is left untouched so payout setup survives.
+ *
+ * `approvedBy` is the admin whose approval this is. It is recorded on the billing row unless a
+ * record is already there, so a retry after a failure part-way through fills the gap and never
+ * replaces who first brought the trainer in.
  */
-export async function promoteToTrainer(userId: string): Promise<'promoted' | 'already_trainer'> {
+export async function promoteToTrainer(
+  userId: string,
+  approvedBy: string,
+): Promise<'promoted' | 'already_trainer'> {
   const role = await getProfileRole(userId);
   let outcome: 'promoted' | 'already_trainer' = 'already_trainer';
 
@@ -57,6 +64,17 @@ export async function promoteToTrainer(userId: string): Promise<'promoted' | 'al
       { onConflict: 'trainer_id', ignoreDuplicates: true },
     );
   if (billingError) throw billingError;
+
+  const { error: recordError } = await supabaseAdmin
+    .from('trainer_billing')
+    .update({
+      enrolled_by: approvedBy,
+      enrolled_via: 'application',
+      enrolled_at: new Date().toISOString(),
+    })
+    .eq('trainer_id', userId)
+    .is('enrolled_at', null);
+  if (recordError) throw recordError;
 
   return outcome;
 }

@@ -781,7 +781,7 @@ function decisionRoute(action: Decision) {
       let promoted = false;
       if (promoting) {
         try {
-          promoted = (await promoteToTrainer(row.user_id)) === 'promoted';
+          promoted = (await promoteToTrainer(row.user_id, admin.id)) === 'promoted';
         } catch (err) {
           // Put the agreement back so the approval can be retried once the account is fixed.
           await table()
