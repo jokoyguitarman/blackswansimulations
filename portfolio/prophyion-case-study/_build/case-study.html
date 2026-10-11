@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Prophyion – AI-Driven Multi-Agent Crisis Simulation – Technical Case Study</title>
+<style>
+  @page { size: A4; margin: 0; }
+  :root {
+    --bg: #0b1626;
+    --bg2: #12233a;
+    --panel: #16293f;
+    --line: #27405d;
+    --text: #e8edf4;
+    --muted: #9fb2c8;
+    --teal: #2dd4bf;
+    --amber: #f59e0b;
+    --prop: #7dd3fc;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: var(--bg); }
+  body {
+    font-family: 'Inter', sans-serif;
+    color: var(--text);
+    font-size: 8.4pt;
+    line-height: 1.38;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .page {
+    width: 210mm; height: 297mm; position: relative; overflow: hidden;
+    padding: 9mm 12mm 8mm;
+    background:
+      radial-gradient(120mm 70mm at 100% 0%, rgba(45,212,191,0.10), transparent 70%),
+      linear-gradient(180deg, #0d1a2d 0%, var(--bg) 60%);
+    page-break-after: always; break-after: page;
+    display: flex; flex-direction: column;
+  }
+  .page > * { flex-shrink: 0; }
+  .page:last-child { page-break-after: auto; break-after: auto; }
+  .mono { font-family: 'JetBrains Mono', monospace; }
+  .topbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4mm; }
+  .topbar img { height: 8.5mm; }
+  .tag { font-family: 'JetBrains Mono', monospace; font-size: 7pt; letter-spacing: .12em; color: var(--muted); text-transform: uppercase; }
+  .foot { margin-top: auto; padding-top: 2.5mm; border-top: 1px solid var(--line); display: flex; justify-content: space-between; font-size: 6.8pt; color: var(--muted); }
+  h1 { font-size: 24pt; line-height: 1.02; letter-spacing: .02em; font-weight: 800; }
+  h1 .sub1 { display: block; font-size: 13.5pt; font-weight: 600; color: var(--text); letter-spacing: 0; margin-top: 2mm; }
+  h1 .sub2 { display: block; font-size: 13.5pt; font-weight: 600; color: var(--teal); letter-spacing: 0; }
+  .subtitle { margin-top: 2mm; font-size: 8.6pt; color: var(--muted); letter-spacing: .01em; }
+  h2 { font-size: 10.5pt; font-weight: 700; letter-spacing: .01em; margin-bottom: 1.6mm; }
+  h2.k { font-family: 'JetBrains Mono', monospace; font-size: 7.4pt; font-weight: 600; text-transform: uppercase; letter-spacing: .12em; color: var(--teal); }
+  p + p { margin-top: 1.6mm; }
+  ul { list-style: none; }
+  ul li { position: relative; padding-left: 3.2mm; margin-top: 1mm; }
+  ul li::before { content: ''; position: absolute; left: 0; top: 1.5mm; width: 1.5mm; height: 1.5mm; background: var(--teal); border-radius: 50%; }
+  .muted { color: var(--muted); }
+  b, strong { font-weight: 650; color: #fff; }
+
+  .shot { border: 1px solid var(--line); border-radius: 2mm; overflow: hidden; background: #000; position: relative; }
+  .shot img { display: block; width: 100%; }
+  .cap { font-size: 6.9pt; color: var(--muted); margin-top: 1.1mm; }
+  .cap b { color: var(--text); }
+
+  .badge { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 6.9pt; font-weight: 700; letter-spacing: .06em; padding: .5mm 1.6mm; border-radius: 1mm; text-transform: uppercase; vertical-align: middle; }
+  .b-impl { background: rgba(45,212,191,.16); color: var(--teal); border: 1px solid rgba(45,212,191,.55); }
+  .b-part { background: rgba(245,158,11,.14); color: var(--amber); border: 1px solid rgba(245,158,11,.55); }
+  .b-prop { background: transparent; color: var(--prop); border: 1px dashed var(--prop); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 1.3mm; margin-top: 1.2mm; }
+  .chip { font-family: 'JetBrains Mono', monospace; font-size: 6.9pt; padding: .7mm 1.9mm; border: 1px solid var(--line); border-radius: 1mm; background: var(--panel); color: var(--text); }
+  .stats { display: flex; gap: 3mm; margin: 2.6mm 0 2.8mm; }
+  .stat { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 1.6mm; padding: 1.4mm 2.6mm; }
+  .stat .n { font-size: 12.5pt; font-weight: 800; color: #fff; line-height: 1.1; }
+  .stat .l { font-size: 6.9pt; color: var(--muted); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 5mm; }
+  .box { background: var(--panel); border: 1px solid var(--line); border-radius: 2mm; padding: 3mm 3.6mm; }
+  .box.accent { border-left: 1.2mm solid var(--teal); }
+
+  /* page 2 */
+  .arch { background: var(--bg2); border: 1px solid var(--line); border-radius: 2mm; padding: 2mm 2mm 1mm; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2.6mm; margin-top: 2.6mm; }
+  .ev { background: var(--panel); border: 1px solid var(--line); border-radius: 2mm; overflow: hidden; display: flex; flex-direction: column; }
+  .ev .im { height: 20mm; overflow: hidden; background: #000; border-bottom: 1px solid var(--line); position: relative; }
+  .ev .im img { width: 100%; display: block; }
+  .ev .tx { padding: 1.8mm 2.6mm 1.8mm; font-size: 7.3pt; line-height: 1.34; }
+  .ev .hd { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1mm; }
+  .ev .hd h3 { font-size: 8.6pt; font-weight: 700; }
+  .ev .im.h30 { height: 23mm; } .ev .im.h40 { height: 29mm; }
+  .ev .src { font-family: 'JetBrains Mono', monospace; font-size: 6.6pt; color: var(--muted); margin-top: 1mm; }
+  .guards { margin-top: 3mm; display: grid; grid-template-columns: 1.5fr 1fr; gap: 3.2mm; }
+  .guards .box { font-size: 7.5pt; line-height: 1.36; padding: 2.4mm 3mm; }
+  .guards h2 { font-size: 8.6pt; margin-bottom: 1mm; }
+
+  /* page 3 */
+  table { width: 100%; border-collapse: collapse; font-size: 7.7pt; line-height: 1.32; }
+  th { text-align: left; font-family: 'JetBrains Mono', monospace; font-size: 6.6pt; letter-spacing: .08em; text-transform: uppercase; padding: 1.4mm 2mm; border-bottom: 1px solid var(--line); }
+  th.a { color: var(--teal); } th.b { color: var(--prop); } th.r { color: var(--muted); }
+  td { padding: 1.2mm 2mm; border-bottom: 1px solid rgba(39,64,93,.7); vertical-align: top; }
+  td.r { font-weight: 650; color: #fff; width: 33mm; }
+  td.b { color: #cfeafc; background: rgba(125,211,252,.04); border-left: 1px dashed rgba(125,211,252,.35); }
+  td.a .badge, td.b .badge { margin-right: 1mm; }
+  .flow { display: flex; align-items: stretch; gap: 0; margin-top: 2mm; }
+  .fnode { flex: 1; font-size: 7.4pt !important; border: 1px dashed var(--prop); background: rgba(125,211,252,.05); border-radius: 1.6mm; padding: 2mm 2.4mm; font-size: 7.1pt; line-height: 1.3; }
+  .fnode h4 { font-size: 7.8pt; font-weight: 700; color: #fff; margin-bottom: .6mm; }
+  .fnode span { color: var(--muted); }
+  .farrow { width: 5mm; display: flex; align-items: center; justify-content: center; color: var(--prop); font-size: 11pt; }
+  .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 3.2mm; margin-top: 2mm; }
+  .opt { border: 1px dashed var(--prop); border-radius: 2mm; padding: 2.4mm 3mm; background: rgba(125,211,252,.04); font-size: 7.8pt; line-height: 1.33; }
+  .opt h4 { font-size: 8.6pt; margin-bottom: 1mm; }
+  .opt .row { margin-top: 1mm; }
+  .opt .row b { color: var(--prop); font-weight: 650; }
+  .close { margin-top: 2.6mm; border-left: 1.2mm solid var(--teal); background: var(--panel); border-radius: 0 2mm 2mm 0; padding: 3mm 4mm; font-size: 8.6pt; line-height: 1.45; color: #fff; }
+  .legend { display: flex; gap: 3mm; align-items: center; font-size: 6.9pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ============================ PAGE 1 ============================ -->
+<section class="page">
+  <div class="topbar">
+    <img src="pdf-assets/logo.svg" alt="Prophyion" />
+    <div class="tag">Technical case study · 1 / 3</div>
+  </div>
+
+  <h1>PROPHYION
+    <span class="sub1">AI-Driven Multi-Agent Crisis Simulation</span>
+    <span class="sub2">Technical Case Study</span>
+  </h1>
+  <div class="subtitle">Persistent AI Personalities &nbsp;•&nbsp; Agent Memory &nbsp;•&nbsp; Multi-Participant Interactions &nbsp;•&nbsp; Sentiment Tracking</div>
+
+  <div class="shot" style="margin-top:3mm;height:80mm;">
+    <img src="pdf-assets/01_simulated_social_environment.jpg" alt="Prophyion simulated social feed" />
+  </div>
+  <div class="cap"><b>The simulated social environment.</b> Prophyion's own interface running with a fictional dairy-recall scenario and seeded demonstration data. Posts, replies and metrics shown here are authored fixtures; no live LLM call was made for this capture.</div>
+
+  <div class="stats">
+    <div class="stat"><div class="n">3</div><div class="l">AI participant types: personas, stakeholders, teammates</div></div>
+    <div class="stat"><div class="n">231</div><div class="l">database migrations (Supabase / Postgres)</div></div>
+    <div class="stat"><div class="n">283</div><div class="l">automated tests, all passing</div></div>
+    <div class="stat"><div class="n">30 s</div><div class="l">simulation tick: injects, posts, sentiment</div></div>
+  </div>
+
+  <div class="cols">
+    <div>
+      <h2 class="k">What Prophyion does</h2>
+      <p>Prophyion is a browser-based crisis-communications training simulator. A team responds to a fictional incident while a simulated social environment (feed, DMs, email, team chat, news) is populated by AI characters. A trainer follows a live dashboard; an after-action review scores the response.</p>
+      <h2 class="k" style="margin-top:2.6mm;">My role</h2>
+      <p><b>CTO and technical lead</b>, responsible for the platform architecture and technical delivery: NPC runtime, simulation state and sentiment logic, data model and trainer tooling.</p>
+      <h2 class="k" style="margin-top:2.6mm;">Verified technology stack</h2>
+      <div class="chips">
+        <span class="chip">React 19</span><span class="chip">Vite 7</span><span class="chip">TypeScript</span><span class="chip">Tailwind</span>
+        <span class="chip">Node.js + Express</span><span class="chip">Socket.IO</span><span class="chip">Zod</span>
+        <span class="chip">Supabase: Postgres · Auth · RLS</span>
+        <span class="chip">LLM client: OpenAI or AWS Bedrock</span>
+      </div>
+      <p class="muted" style="margin-top:1.4mm;font-size:7.4pt;">The LLM client is provider-switchable with structured JSON output, an hourly budget and retries.</p>
+    </div>
+    <div>
+      <h2 class="k">How humans and NPCs interact</h2>
+      <ul>
+        <li><b>Humans act</b> by posting, replying, sending DMs and email, and using team chat.</li>
+        <li><b>Stakeholders</b> (a reporter, an official, a retailer) answer in character across email, team chat, messenger and phone, drawing on one shared conversation log per stakeholder.</li>
+        <li><b>Crowd personas</b> react to feed posts: they support, attack, cover or stay neutral, and a competitor persona positions itself.</li>
+        <li><b>AI teammates</b> can play alongside humans as optional, feature-flagged participants <span class="badge b-part">Experimental</span></li>
+        <li><b>The trainer</b> sees live sentiment, graded responses and inject state, and can steer the exercise.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="box accent" style="margin-top:3mm;">
+    <h2 style="margin-bottom:1mm;">Why this is multi-agent experience</h2>
+    <p>Several LLM-driven characters, each with its own persona definition, share one simulated world. They read shared state (stored posts, conversation logs, session state), respond to the same events and obey the same server-side rules. Coordination is <b>server-orchestrated</b>: the platform decides who reacts and when. It is not free-form agent-to-agent dialogue, the main gap the proposed project would close (page 3).</p>
+  </div>
+
+  <div class="foot"><span>Prophyion · technical case study · fictional demonstration data only</span><span>Claims verified against the project repository</span></div>
+</section>
+
+<!-- ============================ PAGE 2 ============================ -->
+<section class="page">
+  <div class="topbar">
+    <img src="pdf-assets/logo.svg" alt="Prophyion" />
+    <div class="legend">
+      <span class="badge b-impl">Implemented</span>
+      <span class="badge b-part">Partial / experimental</span>
+      <span class="tag" style="margin-left:2mm;">Evidence · 2 / 3</span>
+    </div>
+  </div>
+
+  <h2 style="font-size:12.5pt;margin-bottom:1.6mm;">What the repository actually implements</h2>
+  
+  <div class="arch">
+    <svg viewBox="0 0 1000 266" width="100%" xmlns="http://www.w3.org/2000/svg" font-family="Inter, sans-serif">
+      <defs>
+        <marker id="ar" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#2dd4bf"/></marker>
+        <marker id="ar2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#f59e0b"/></marker>
+      </defs>
+      <g font-size="12.5" fill="#e8edf4">
+        <text x="6" y="14" font-family="JetBrains Mono, monospace" font-size="12" fill="#9fb2c8" letter-spacing="1.2">ARCHITECTURE: HUB-AND-SPOKE, SERVER-ORCHESTRATED</text>
+
+        <!-- Col 1 triggers -->
+        <rect x="6" y="26" width="150" height="132" rx="7" fill="#16293f" stroke="#27405d"/>
+        <text x="16" y="45" font-weight="700" font-size="13">Triggers</text>
+        <text x="16" y="66" fill="#9fb2c8">Player post, reply,</text><text x="16" y="82" fill="#9fb2c8">DM, email, chat</text>
+        <text x="16" y="106" fill="#9fb2c8">30 s scheduler tick</text>
+        <text x="16" y="130" fill="#9fb2c8">Scenario injects and</text><text x="16" y="146" fill="#9fb2c8">their conditions</text>
+
+        <!-- Col 2 orchestration -->
+        <rect x="190" y="26" width="196" height="132" rx="7" fill="#16293f" stroke="#2dd4bf"/>
+        <text x="200" y="45" font-weight="700" font-size="13">Orchestration</text>
+        <text x="200" y="66" fill="#9fb2c8">Pile-on reaction engine</text>
+        <text x="200" y="84" fill="#9fb2c8">Stakeholder reply service</text>
+        <text x="200" y="102" fill="#9fb2c8">Inject scheduler + conditions</text>
+        <text x="200" y="120" fill="#9fb2c8">pickResponders (seeded,</text><text x="200" y="136" fill="#9fb2c8">capped, deterministic)</text>
+
+        <!-- Col 3 agents -->
+        <rect x="420" y="26" width="190" height="132" rx="7" fill="#16293f" stroke="#27405d"/>
+        <text x="430" y="45" font-weight="700" font-size="13">Agents (LLM-driven)</text>
+        <text x="430" y="66" fill="#9fb2c8">Crowd personas</text>
+        <text x="430" y="86" fill="#9fb2c8">Stakeholders with hidden</text><text x="430" y="102" fill="#9fb2c8">character sheets</text>
+        <text x="430" y="126" fill="#f59e0b">AI teammate bots</text><text x="430" y="142" fill="#f59e0b" font-size="12">(experimental, flagged)</text>
+
+        <!-- Col 4 guards -->
+        <rect x="644" y="26" width="164" height="132" rx="7" fill="#16293f" stroke="#2dd4bf"/>
+        <text x="654" y="45" font-weight="700" font-size="13">Shared LLM client</text>
+        <text x="654" y="66" fill="#9fb2c8">OpenAI | Bedrock</text>
+        <text x="654" y="82" fill="#9fb2c8">JSON output, budget</text>
+        <text x="654" y="104" font-weight="700" font-size="13">Server-side guards</text>
+        <text x="654" y="124" fill="#9fb2c8">Verdict enforcement,</text><text x="654" y="140" fill="#9fb2c8">scrubbing, rate caps</text>
+
+        <!-- Col 5 state -->
+        <rect x="834" y="26" width="160" height="132" rx="7" fill="#16293f" stroke="#27405d"/>
+        <text x="844" y="45" font-weight="700" font-size="13">State (Postgres)</text>
+        <text x="844" y="66" class="m" fill="#9fb2c8" font-family="JetBrains Mono, monospace" font-size="12.5">social_posts</text>
+        <text x="844" y="84" fill="#9fb2c8" font-family="JetBrains Mono, monospace" font-size="12.5">stakeholder_</text><text x="844" y="98" fill="#9fb2c8" font-family="JetBrains Mono, monospace" font-size="12.5">conversations</text>
+        <text x="844" y="118" fill="#9fb2c8" font-family="JetBrains Mono, monospace" font-size="12.5">social_state</text>
+        <text x="844" y="136" fill="#9fb2c8" font-family="JetBrains Mono, monospace" font-size="12.5">sentiment_snapshots</text>
+
+        <g stroke="#2dd4bf" stroke-width="2" fill="none" marker-end="url(#ar)">
+          <path d="M156 92H186"/><path d="M386 92H416"/><path d="M610 92H640"/><path d="M808 92H830"/>
+        </g>
+
+        <!-- Row 2 -->
+        <rect x="560" y="180" width="434" height="46" rx="7" fill="#12233a" stroke="#2dd4bf"/>
+        <text x="570" y="198" font-weight="700" font-size="13">Sentiment engine</text>
+        <text x="570" y="216" fill="#9fb2c8" font-size="12.5">Deterministic recompute every tick + LLM graders</text>
+        <rect x="190" y="180" width="330" height="46" rx="7" fill="#12233a" stroke="#27405d"/>
+        <text x="200" y="198" font-weight="700" font-size="13">Outputs</text>
+        <text x="200" y="216" fill="#9fb2c8" font-size="12.5">Trainer dashboard (Socket.IO) · after-action review</text>
+        <g stroke="#2dd4bf" stroke-width="2" fill="none" marker-end="url(#ar)">
+          <path d="M914 158V178"/>
+          <path d="M558 203H524"/>
+        </g>
+        <path d="M780 228V246H70V162" stroke="#f59e0b" stroke-width="2" fill="none" marker-end="url(#ar2)"/>
+        <text x="84" y="262" fill="#f59e0b" font-size="12.5">Threshold crossings generate consequence injects, which re-enter as triggers</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="grid2">
+    <div class="ev">
+      <div class="im h30"><img src="pdf-assets/02_npc_persona_configuration.jpg" style="margin-top:-26.5mm;" alt="" /></div>
+      <div class="tx">
+        <div class="hd"><h3>Persistent persona definitions</h3><span class="badge b-impl">Implemented</span></div>
+        Each stakeholder has a hidden character sheet: personality, stance, knowledge, what they will not disclose, grievance, resolution criteria, persuadability and hard constraints, validated by a Zod schema. Crowd personas add bias, backstory and posting pattern.
+        <div class="src">Trainer scenario editor · fictional data</div>
+      </div>
+    </div>
+    <div class="ev">
+      <div class="im h30"><img src="pdf-assets/03_conversation_context_thread.jpg" style="margin-top:-2mm;" alt="" /></div>
+      <div class="tx">
+        <div class="hd"><h3>Conversation memory</h3><span class="badge b-impl">Implemented · session scope</span></div>
+        One log per stakeholder spans email, team chat, messenger and phone (<span class="mono" style="font-size:6.8pt;">stakeholder_conversations</span>); recent turns feed every reply. Feed NPCs rebuild thread context from stored posts. Scope is one session: no cross-session memory.
+        <div class="src">Thread continuity · authored replies</div>
+      </div>
+    </div>
+    <div class="ev">
+      <div class="im h40"><img src="pdf-assets/04_multiple_npcs_respond_to_one_event.jpg" style="margin-top:-21.5mm;" alt="" /></div>
+      <div class="tx">
+        <div class="hd"><h3>Many NPCs, one event</h3><span class="badge b-impl">Implemented</span></div>
+        One official statement triggers a pile-on. Per-persona gates (type, bias, format) choose who reacts, within a cap. One batched LLM call writes the replies, posted staggered over 3 to 30 s.
+        <div class="src">Five personas reacting · authored replies</div>
+      </div>
+    </div>
+    <div class="ev">
+      <div class="im h40" style="background:#f6f3ec;"><img src="pdf-assets/05a_sentiment_gauges.jpg" style="width:80%;margin:-5mm auto 0;" alt="" /></div>
+      <div class="tx">
+        <div class="hd"><h3>Sentiment meters</h3><span class="badge b-impl">Implemented</span></div>
+        Four session-level dimensions plus a weighted composite, recomputed deterministically each tick; two LLM graders feed in. A training metric, <b>not validated public-opinion measurement</b>.
+        <div class="src">Trainer dashboard · scripted series</div>
+      </div>
+    </div>
+    <div class="ev">
+      <div class="im" style="background:#f6f3ec;"><img src="pdf-assets/06a_state_driven_orchestration.jpg" style="width:125%;max-width:none;margin-top:0;" alt="" /></div>
+      <div class="tx">
+        <div class="hd"><h3>State-driven orchestration</h3><span class="badge b-impl">Implemented</span></div>
+        A 30 s tick publishes injects whose conditions are met (sentiment thresholds, unaddressed misinformation, statements issued). The trainer panel shows each as published, partial or waiting.
+        <div class="src">Strategy window orchestration · fictional data</div>
+      </div>
+    </div>
+    <div class="ev">
+      <div class="im" style="background:#f6f3ec;"><img src="pdf-assets/06b_ai_teammate_console.jpg" style="width:125%;max-width:none;margin-top:-1mm;" alt="" /></div>
+      <div class="tx">
+        <div class="hd"><h3>AI teammates (agent management)</h3><span class="badge b-part">Experimental</span></div>
+        LLM teammates play alongside humans. An intellect slider (0 to 100) tunes behaviour, trainers can pause or nudge each bot, and an hourly LLM budget caps usage. Bot memory is in-process, rebuilt from the database on restart.
+        <div class="src">Teammate console · fictional bots · feature-flagged</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="guards">
+    <div class="box accent">
+      <h2>Consistency and safety guards <span class="badge b-impl">Implemented</span></h2>
+      Confirmed facts and a "do not contradict" rule in character prompts · server-side enforcement of LLM verdicts (persuadability, hard constraints, criteria) · placeholder scrubbing · reply coalescing and rate caps · an LLM watchdog that flags contradictions in a player's own statements.
+      <br /><b>Documented fix:</b> NPCs wrote "Hi [Name]" because they did not know who was writing. The authenticated sender is now passed into the prompt and placeholders are scrubbed.
+    </div>
+    <div class="box" style="border-left:1.2mm solid var(--amber);">
+      <h2>Not in Prophyion today</h2>
+      Cross-session memory · embedding retrieval · automated personality-drift scoring · autonomous agent-to-agent turn-taking (NPC exchanges are server-scheduled) · per-NPC sentiment · dollar-cost tracking (token usage is logged).
+    </div>
+  </div>
+
+  <div class="foot"><span>Screenshots: unmodified Prophyion UI, fictional seeded data, no live LLM call</span><span>Source evidence held privately; no source code reproduced</span></div>
+</section>
+
+<!-- ============================ PAGE 3 ============================ -->
+<section class="page">
+  <div class="topbar">
+    <img src="pdf-assets/logo.svg" alt="Prophyion" />
+    <div class="legend">
+      <span class="badge b-impl">A · Demonstrated in Prophyion</span>
+      <span class="badge b-prop">B · New / proposed</span>
+      <span class="tag" style="margin-left:2mm;">Proposal · 3 / 3</span>
+    </div>
+  </div>
+
+  <h1 style="font-size:17pt;line-height:1.12;letter-spacing:0;">From Crisis Simulation Agents to Coached Competitive Agents</h1>
+  <p class="muted" style="margin-top:1.6mm;font-size:8pt;">How the experience above maps to the requested negotiation platform. Column A is evidence from Prophyion; column B is new work that does not exist yet.</p>
+
+  <table style="margin-top:2.6mm;">
+    <thead><tr><th class="r">Requirement</th><th class="a">A · Demonstrated in Prophyion</th><th class="b">B · New / proposed</th></tr></thead>
+    <tbody>
+      <tr><td class="r">8–10 agents, separate personalities</td>
+        <td class="a"><span class="badge b-impl">Implemented</span>Structured persona definitions (personality, stance, knowledge, constraints) validated by schema; many personas active per event.</td>
+        <td class="b">Versioned negotiation personas with explicit trait profiles and hidden priorities.</td></tr>
+      <tr><td class="r">A human coach per agent; 5 stored lessons</td>
+        <td class="a"><span class="badge b-part">Partial</span>Persona data persists in the database; trainers can nudge AI teammates (experimental). No coaching-lesson model exists.</td>
+        <td class="b">Coach accounts, five lesson slots per agent, lesson edits written to a change history.</td></tr>
+      <tr><td class="r">Persistent memory</td>
+        <td class="a"><span class="badge b-impl">Implemented</span>Cross-channel conversation log per stakeholder, session-scoped. AI teammates also track their own prior official statements.</td>
+        <td class="b">Memory that persists across matches under explicit rules: what is stored, injected and forgotten.</td></tr>
+      <tr><td class="r">2-agent duels with hidden priorities</td>
+        <td class="a"><span class="badge b-part">Partial</span>Hidden "will not disclose", criteria and hard constraints, enforced server-side. One side is always a human.</td>
+        <td class="b">Agent-vs-agent duel engine with private priority weights and a defined offer protocol.</td></tr>
+      <tr><td class="r">5-agent group negotiations</td>
+        <td class="a"><span class="badge b-part">Partial</span>Several NPCs respond to one event, capped and staggered. Orchestrated by the server, not turn-taking between agents.</td>
+        <td class="b">Turn-taking design for five agents (two options below).</td></tr>
+      <tr><td class="r">Deterministic scoring, independent of the LLM</td>
+        <td class="a"><span class="badge b-impl">Implemented</span>Sentiment composite and verdict enforcement are rule-based. Content grades from an LLM are a separate, labelled input.</td>
+        <td class="b">Scores computed only from structured offers and rules; the LLM supplies language, never points.</td></tr>
+      <tr><td class="r">Transcripts, memory changes, history</td>
+        <td class="a"><span class="badge b-impl">Implemented</span>Stored conversation logs, session events and an after-action review.</td>
+        <td class="b">Immutable match transcripts plus a before/after diff of each agent's memory.</td></tr>
+      <tr><td class="r">Coached vs uncoached comparison</td>
+        <td class="a">Not in Prophyion.</td>
+        <td class="b">Paired matches with identical seeds and scenarios, differing only in lessons.</td></tr>
+      <tr><td class="r">API usage and match cost</td>
+        <td class="a"><span class="badge b-part">Partial</span>Token usage logged per call site; hourly LLM budget cap. No dollar-cost ledger.</td>
+        <td class="b">Per-match, per-agent usage and cost ledger with budget stops.</td></tr>
+    </tbody>
+  </table>
+
+  <h2 class="k" style="margin-top:3.4mm;">Proposed architecture <span class="badge b-prop">Proposed</span></h2>
+  <div class="flow">
+    <div class="fnode"><h4>Agent Personality + Five-Lesson Memory</h4><span>Trait profile, hidden priorities, five coach lessons, versioned.</span></div>
+    <div class="farrow">&#9654;</div>
+    <div class="fnode"><h4>Conversation / Negotiation Engine</h4><span>Duel and group protocols; LLM writes dialogue and structured offers.</span></div>
+    <div class="farrow">&#9654;</div>
+    <div class="fnode"><h4>Deterministic Rules and Scoring</h4><span>Validates offers, applies payoffs; no LLM in the score.</span></div>
+    <div class="farrow">&#9654;</div>
+    <div class="fnode"><h4>Match History and Behavioral Analysis</h4><span>Transcripts, memory diffs, cost, coached vs uncoached.</span></div>
+  </div>
+
+  <h2 class="k" style="margin-top:3.4mm;">Two approaches for the five-agent group <span class="badge b-prop">Proposed</span></h2>
+  <div class="opts">
+    <div class="opt">
+      <h4>1 · Deterministic round-robin</h4>
+      A fixed speaking order rotates each round, so every agent gets a turn and every match is reproducible.
+      <div class="row"><b>Strengths:</b> simple to build and test, fair airtime, exact replay, easiest to score.</div>
+      <div class="row"><b>Trade-off:</b> stiff; no interruptions or reactions in the moment.</div>
+      <div class="row"><b>Prophyion link:</b> seeded, capped, deterministic responder selection.</div>
+    </div>
+    <div class="opt">
+      <h4>2 · Intent-driven turn-taking with a floor manager</h4>
+      Each agent declares an intent (speak, propose, respond to X, pass) with an urgency. A rule-based floor manager grants the floor, with fairness caps on consecutive turns.
+      <div class="row"><b>Strengths:</b> more natural exchanges, agents can respond to each other.</div>
+      <div class="row"><b>Trade-off:</b> more moving parts; replay needs seeded tie-breaks and a logged intent queue.</div>
+      <div class="row"><b>Suggested path:</b> approach 1 as the scored baseline, approach 2 as an experimental mode.</div>
+    </div>
+  </div>
+
+  <div class="close">My experience building Prophyion provides a practical foundation in persistent AI identities, multi-agent interactions, simulation state and measurable outcomes. The proposed negotiation prototype would be developed as a separate application with its own mechanics, memory rules and experimental controls.</div>
+
+  <div class="foot"><span>Column B and all approaches on this page are proposals, not existing functionality</span><span>3 / 3</span></div>
+</section>
+
+</body>
+</html>
