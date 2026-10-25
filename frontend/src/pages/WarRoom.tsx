@@ -113,16 +113,28 @@ export const WarRoom = () => {
   // (granted when a client pays an invoice). Admins bypass. The server
   // enforces this regardless - the banner is UX only.
   const [scenarioCredits, setScenarioCredits] = useState<number | null>(null);
-  useEffect(() => {
+  const [creditsUnknown, setCreditsUnknown] = useState(false);
+  const loadScenarioCredits = useCallback(() => {
     if (role === 'admin') {
       setScenarioCredits(1);
+      setCreditsUnknown(false);
       return;
     }
     api.billing
       .getCredits()
-      .then((res) => setScenarioCredits(res.data.scenario))
-      .catch(() => setScenarioCredits(1)); // fail open in UI; server still enforces
+      .then((res) => {
+        setScenarioCredits(res.data.scenario);
+        setCreditsUnknown(false);
+      })
+      .catch(() => {
+        // The server still enforces the balance. The chip must not invent a credit.
+        setScenarioCredits(null);
+        setCreditsUnknown(true);
+      });
   }, [role]);
+  useEffect(() => {
+    loadScenarioCredits();
+  }, [loadScenarioCredits]);
 
   // Draft picker
   const [existingDrafts, setExistingDrafts] = useState<
@@ -159,6 +171,10 @@ export const WarRoom = () => {
 
   // Wizard draft
   const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [saveNotice, setSaveNotice] = useState<{ kind: 'saved' | 'error'; text: string } | null>(
+    null,
+  );
 
   // Step 5: Location validation
   const [geoResult, setGeoResult] = useState<Record<string, unknown> | null>(null);
@@ -171,6 +187,9 @@ export const WarRoom = () => {
 
   // Step 7: Compile
   const [scenarioId, setScenarioId] = useState<string | null>(null);
+  useEffect(() => {
+    if (scenarioId) loadScenarioCredits();
+  }, [scenarioId, loadScenarioCredits]);
 
   // ── Draft save/resume helpers ─────────────────────────────────────────
 
@@ -187,7 +206,9 @@ export const WarRoom = () => {
   }, [incidentType, customIncidentText, teams, weaponType, rtsSceneId]);
 
   const saveDraftState = useCallback(
-    async (nextStep: number) => {
+    async (nextStep: number): Promise<string | null> => {
+      setSavingDraft(true);
+      setSaveNotice(null);
       try {
         if (!wizardDraftId) {
           const { data: created } = await api.warroom.wizardDraftCreate({
@@ -195,17 +216,30 @@ export const WarRoom = () => {
           });
           const newId = created.draft_id;
           setWizardDraftId(newId);
+          // The draft param would otherwise be treated as a resume and reload this screen.
+          resumedRef.current = true;
           setSearchParams({ draft: newId }, { replace: true });
+          if (nextStep !== 1) {
+            await api.warroom.wizardDraftPatch(newId, {
+              current_step: nextStep,
+              input: buildDraftInput(),
+            });
+          }
+          setSaveNotice({ kind: 'saved', text: 'Saved' });
           return newId;
         }
         await api.warroom.wizardDraftPatch(wizardDraftId, {
           current_step: nextStep,
           input: buildDraftInput(),
         });
+        setSaveNotice({ kind: 'saved', text: 'Saved' });
         return wizardDraftId;
       } catch (err) {
         console.error('Failed to save draft', err);
-        return wizardDraftId;
+        setSaveNotice({ kind: 'error', text: 'Not saved — retry' });
+        return null;
+      } finally {
+        setSavingDraft(false);
       }
     },
     [wizardDraftId, buildDraftInput, setSearchParams],
@@ -225,8 +259,14 @@ export const WarRoom = () => {
 
         setWizardDraftId(draftParam);
         const input = (draft.input ?? {}) as Record<string, unknown>;
+        if (input.sim_mode === 'social_media') {
+          navigate(`/warroom/social-crisis?draft=${draftParam}`);
+          return;
+        }
         const savedStep = (draft.current_step as number) || 1;
-        const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
+        // A compiled draft used to be stamped step 6, which is now the Research screen.
+        const compiled = draft.status === 'persisted' || !!draft.scenario_id;
+        const validStep = compiled ? 7 : VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
 
         // Restore wizard state from draft input
         if (input.scenario_type) setIncidentType(input.scenario_type as string);
@@ -304,7 +344,7 @@ export const WarRoom = () => {
       }
     };
     resume();
-  }, [searchParams]);
+  }, [searchParams, navigate]);
 
   // Load existing drafts for picker (when no ?draft= param)
   useEffect(() => {
@@ -497,27 +537,25 @@ export const WarRoom = () => {
               : true;
   const canGoNext = step < 7 && stepValid;
 
-  const goBack = () => {
-    if (canGoBack) {
-      const prevStep = VISIBLE_STEPS[currentStepIndex - 1];
-      saveDraftState(prevStep);
-      setStep(prevStep as typeof step);
-    }
+  const goBack = async () => {
+    if (!canGoBack || savingDraft) return;
+    const prevStep = VISIBLE_STEPS[currentStepIndex - 1];
+    const saved = await saveDraftState(prevStep);
+    if (!saved) return;
+    setStep(prevStep as typeof step);
   };
 
-  const goNext = () => {
+  const goNext = async () => {
+    if (savingDraft) return;
     if (step === 0 && simMode === 'social_media') {
       navigate('/warroom/social-crisis');
       return;
     }
-    if (step === 3) {
-      saveDraftState(5);
-      setStep(5);
-    } else if (canGoNext) {
-      const nextStep = (step + 1) as typeof step;
-      saveDraftState(nextStep);
-      setStep(nextStep);
-    }
+    if (!canGoNext) return;
+    const nextStep = VISIBLE_STEPS[currentStepIndex + 1] as typeof step;
+    const saved = await saveDraftState(nextStep);
+    if (!saved) return;
+    setStep(nextStep);
   };
 
   /* ── Situation Map shell (docs/design/warroom/warroom-entry.html, spec §4) ─────────── */
@@ -600,9 +638,28 @@ export const WarRoom = () => {
     setShowDraftPicker(false);
     if (isSocialCrisis) {
       navigate(`/warroom/social-crisis?draft=${draft.id}`);
-    } else {
-      setSearchParams({ draft: draft.id }, { replace: true });
-      window.location.reload();
+      return;
+    }
+    resumedRef.current = false;
+    setSearchParams({ draft: draft.id }, { replace: true });
+  };
+
+  const deleteDraft = async (draft: (typeof existingDrafts)[number]) => {
+    const compiled = draft.status === 'persisted' || !!draft.scenario_id;
+    const confirmed = window.confirm(
+      compiled
+        ? 'Delete this draft from the list? The compiled scenario stays in the library.'
+        : 'Delete this draft? This cannot be undone.',
+    );
+    if (!confirmed) return;
+    try {
+      await api.warroom.wizardDraftDelete(draft.id);
+      setExistingDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+    } catch (err) {
+      setSaveNotice({
+        kind: 'error',
+        text: err instanceof Error ? err.message : 'Could not delete the draft',
+      });
     }
   };
 
@@ -673,6 +730,14 @@ export const WarRoom = () => {
           {isCompleted ? 'Re-compile' : 'Resume'}
           {!isCompleted && <WrIcon name="arrow" size={12} />}
         </button>
+        <button
+          type="button"
+          onClick={() => void deleteDraft(draft)}
+          className="wr-btn sm ghost"
+          aria-label={`Delete draft ${sceneName}`}
+        >
+          Delete
+        </button>
       </div>
     );
   };
@@ -738,7 +803,8 @@ export const WarRoom = () => {
           </div>
           <div className="wr-credits">
             <span>
-              <WrIcon name="layers" /> Scenario credits <b>{scenarioCredits ?? '…'}</b>
+              <WrIcon name="layers" /> Scenario credits{' '}
+              <b>{creditsUnknown ? 'unknown' : (scenarioCredits ?? '…')}</b>
             </span>
           </div>
         </div>
@@ -1240,9 +1306,18 @@ export const WarRoom = () => {
 
         {/* Navigation */}
         <div className="wr-ctabar sticky">
-          <button onClick={goBack} disabled={!canGoBack} className="wr-btn ghost">
+          <button
+            onClick={() => void goBack()}
+            disabled={!canGoBack || savingDraft}
+            className="wr-btn ghost"
+          >
             <WrIcon name="arrow-l" /> Back
           </button>
+          {saveNotice && (
+            <span className={`hint ${saveNotice.kind === 'error' ? 'bad' : 'ok'}`}>
+              {saveNotice.text}
+            </span>
+          )}
           <span className="hint">
             Step <b>{step === 0 ? 1 : fieldStepIndex + 1}</b> of{' '}
             {step === 0
@@ -1277,8 +1352,12 @@ export const WarRoom = () => {
           </span>
           <span className="grow" />
           {step > 0 && step < 7 && (
-            <button onClick={() => void saveDraftState(step)} className="wr-btn ghost">
-              <WrIcon name="save" /> Save draft
+            <button
+              onClick={() => void saveDraftState(step)}
+              disabled={savingDraft}
+              className="wr-btn ghost"
+            >
+              <WrIcon name="save" /> {savingDraft ? 'Saving…' : 'Save draft'}
             </button>
           )}
           {step === 7 ? (
@@ -1290,7 +1369,11 @@ export const WarRoom = () => {
               <span className="hint">Compile the scenario above to finish</span>
             )
           ) : (
-            <button onClick={goNext} disabled={!canGoNext} className="wr-btn accent lg">
+            <button
+              onClick={() => void goNext()}
+              disabled={!canGoNext || savingDraft}
+              className="wr-btn accent lg"
+            >
               {primaryLabel[step] ?? 'Next'} <WrIcon name="arrow" />
             </button>
           )}

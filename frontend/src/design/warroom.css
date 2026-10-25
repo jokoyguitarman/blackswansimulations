@@ -1108,6 +1108,12 @@ textarea.wr-field {
 .wr-ctabar .hint b {
   color: #fff;
 }
+.wr-ctabar .hint.ok {
+  color: #86efac;
+}
+.wr-ctabar .hint.bad {
+  color: #fca5a5;
+}
 .wr-ctabar .wr-btn.ghost {
   color: rgba(255, 255, 255, 0.75);
 }

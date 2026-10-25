@@ -548,9 +548,14 @@ router.get(
         return res.status(403).json({ error: 'Only trainers can use the War Room' });
       }
       const draftId = req.params.id;
+      // geo_result is loaded here, on open, rather than on the list or on every save.
+      // The write-only copies (geocode_result, osm_vicinity, area_dossier, research_archive)
+      // stay in the row and are not sent back.
       const { data, error } = await supabaseAdmin
         .from('warroom_wizard_drafts')
-        .select('*')
+        .select(
+          'id, status, current_step, input, created_at, updated_at, scenario_id, created_by, geo_result, phase1_preview, doctrines, validated_doctrines, deterioration_preview',
+        )
         .eq('id', draftId)
         .single();
       if (error || !data) return res.status(404).json({ error: 'Draft not found' });
@@ -622,7 +627,7 @@ router.patch(
         .from('warroom_wizard_drafts')
         .update(updatePayload)
         .eq('id', draftId)
-        .select('*')
+        .select('id, status, current_step, scenario_id, updated_at')
         .single();
       if (upErr || !updated) return res.status(500).json({ error: 'Failed to update draft' });
       return res.json({ data: updated });
@@ -630,6 +635,44 @@ router.patch(
       const error = err as Error;
       logger.error({ error: error.message }, 'Error in PATCH /warroom/wizard/drafts/:id');
       return res.status(500).json({ error: error.message || 'Draft update failed' });
+    }
+  },
+);
+
+// Deletes the draft row only. A compiled scenario is a separate row and stays.
+router.delete(
+  ['/wizard/drafts/:id', '/wizard/drafts/:id/'],
+  requireAuth,
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      if (user.role !== 'trainer' && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Only trainers can use the War Room' });
+      }
+      const draftId = req.params.id;
+      const { data: draft, error: fetchErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .select('id, created_by')
+        .eq('id', draftId)
+        .single();
+      if (fetchErr || !draft) return res.status(404).json({ error: 'Draft not found' });
+      if (draft.created_by && draft.created_by !== user.id && user.role !== 'admin') {
+        return res.status(403).json({ error: 'Access denied' });
+      }
+
+      const { error: delErr } = await supabaseAdmin
+        .from('warroom_wizard_drafts')
+        .delete()
+        .eq('id', draftId);
+      if (delErr) {
+        logger.error({ error: delErr }, 'Failed to delete wizard draft');
+        return res.status(500).json({ error: 'Failed to delete draft' });
+      }
+      return res.json({ data: { id: draftId } });
+    } catch (err) {
+      const error = err as Error;
+      logger.error({ error: error.message }, 'Error in DELETE /warroom/wizard/drafts/:id');
+      return res.status(500).json({ error: error.message || 'Draft delete failed' });
     }
   },
 );
@@ -726,7 +769,7 @@ router.post(
             sensitive_infrastructure:
               (result as unknown as Record<string, unknown>).sensitiveInfrastructure ?? null,
           },
-          current_step: 2,
+          // current_step belongs to the client. The old stamp (2) is now the Teams screen.
         })
         .eq('id', draftId);
       if (upErr) {
@@ -1007,7 +1050,6 @@ router.post(
             perTeamDoctrines: doctrines.perTeamDoctrines,
             teamWorkflows: doctrines.teamWorkflows,
           },
-          current_step: 3,
         })
         .eq('id', draftId);
 
@@ -1156,7 +1198,7 @@ router.post(
 
       await supabaseAdmin
         .from('warroom_wizard_drafts')
-        .update({ scenario_id: scenarioId, status: 'persisted', current_step: 6 })
+        .update({ scenario_id: scenarioId, status: 'persisted' })
         .eq('id', draftId);
 
       const rtsSceneId = (input.scene_context as Record<string, unknown>)?.rts_scene_id as

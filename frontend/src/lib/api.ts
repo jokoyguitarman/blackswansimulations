@@ -2221,6 +2221,16 @@ export const api = {
       );
     },
 
+    wizardDraftDelete: async (draftId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: { id: string } }>(
+        await fetch(apiUrl(`/api/warroom/wizard/drafts/${draftId}`), {
+          method: 'DELETE',
+          headers,
+        }),
+      );
+    },
+
     wizardDraftGeocodeValidate: async (draftId: string) => {
       const headers = await getAuthHeaders();
       return handleResponse<{

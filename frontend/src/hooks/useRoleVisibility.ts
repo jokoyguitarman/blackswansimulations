@@ -13,7 +13,7 @@ import {
 export function useRoleVisibility() {
   const { user } = useAuth();
 
-  const role = user?.role || 'trainer';
+  const role = user?.role || 'participant';
 
   const checkVisibility = useMemo(
     () => (informationType: InformationType) => {

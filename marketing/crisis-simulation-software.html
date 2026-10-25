@@ -1,0 +1,967 @@
+<!doctype html>
+<html lang="en-SG">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/brand/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/brand/favicon-32.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/brand/apple-touch-icon.png" />
+
+    <title>Crisis Simulation Software &amp; Exercise Platform | Prophyion</title>
+    <meta
+      name="description"
+      content="Crisis simulation software from Singapore: exercises drafted from your own plans, run live with automatic injects and simulated media, and scored as they happen."
+    />
+    <link rel="canonical" href="https://prophyion.com/crisis-simulation-software" />
+    <meta property="og:url" content="https://prophyion.com/crisis-simulation-software" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Prophyion" />
+    <meta property="og:title" content="Crisis simulation software: a live crisis, scored as it happens" />
+    <meta
+      property="og:description"
+      content="Scenarios drafted from your own plans, injects that fire themselves, simulated social media and press, and every decision scored while your people make it."
+    />
+    <meta property="og:image" content="https://prophyion.com/brand/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Prophyion: live, AI-scored crisis exercises. Crisis simulated. Readiness proven." />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Crisis simulation software: a live crisis, scored as it happens" />
+    <meta
+      name="twitter:description"
+      content="Scenarios drafted from your own plans, injects that fire themselves, simulated social media and press, and every decision scored while your people make it."
+    />
+    <meta name="twitter:image" content="https://prophyion.com/brand/og-image.png" />
+    <meta name="theme-color" content="#0E1A2B" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+    />
+
+    <!-- The FAQPage entries must match the visible FAQ below word for word. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://prophyion.com/#organization",
+            "name": "Prophyion",
+            "url": "https://prophyion.com/",
+            "logo": "https://prophyion.com/brand/prophyion-mark-512.png"
+          },
+          {
+            "@type": "Service",
+            "@id": "https://prophyion.com/crisis-simulation-software#service",
+            "name": "Prophyion crisis simulation software",
+            "serviceType": "Crisis simulation software",
+            "description": "A browser-based crisis simulation platform: scenarios drafted from an organisation's own plans, injects on a timeline or triggered by decisions, simulated social media, email and news, and every decision scored, with an after-action review generated when the simulation ends.",
+            "provider": { "@id": "https://prophyion.com/#organization" },
+            "areaServed": [
+              { "@type": "Country", "name": "Singapore" },
+              { "@type": "Place", "name": "Southeast Asia" }
+            ],
+            "audience": {
+              "@type": "Audience",
+              "audienceType": "Crisis management and communications teams, emergency services and independent risk consultants"
+            }
+          },
+          {
+            "@type": "FAQPage",
+            "@id": "https://prophyion.com/crisis-simulation-software#faq",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is crisis simulation software?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Software that runs a live crisis exercise. Instead of a facilitator reading out scripted updates, it advances a fictional incident on a clock, delivers injects through simulated channels such as social media, email and news, reacts to the decisions participants make, and records every decision so the debrief is built on evidence rather than memory."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How is it different from a tabletop exercise?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "A tabletop exercise is a discussion of what a team would do. A simulation makes them do it: the situation moves whether or not they are ready, late decisions have visible consequences, and every call is timed and scored."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can our own team run the software?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Organisations usually work with a Prophyion risk consultant, who builds and facilitates the exercise for them. Independent risk consultants use the platform directly with their own clients."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "What do participants need?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "A browser each, on a laptop or a phone. There is nothing to install and no VPN, and voice runs in the browser too. Teams can sit in one room or in different countries."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Where is our data processed, and is it used to train AI?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Language models run through Amazon Bedrock, in the AWS region agreed with you at scoping. Your scenario material and every decision made during a simulation are never used to train or fine-tune any model, ours or a vendor's."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How long does it take to build an exercise?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Most of the time is your review of the draft scenario rather than the build. A Corporate Crisis exercise typically takes two to three weeks from the scoping call, and we give you a firm date for any format at that call."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Prophyion available in Singapore and Southeast Asia?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes. Prophyion is based in Singapore, and because everything runs in a browser, regional teams across Southeast Asia can take part in the same exercise."
+                }
+              }
+            ]
+          },
+          {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+              { "@type": "ListItem", "position": 1, "name": "Prophyion", "item": "https://prophyion.com/" },
+              {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Crisis simulation software",
+                "item": "https://prophyion.com/crisis-simulation-software"
+              }
+            ]
+          }
+        ]
+      }
+    </script>
+    <script type="module" src="/src/marketing.ts"></script>
+  </head>
+
+  <body class="antialiased">
+    <!-- ══════════════════════════════════════════════════════════
+         HEADER
+         ═════════════════════════════════════════════════════════ -->
+    <header
+      id="site-header"
+      class="fixed inset-x-0 top-0 z-50 border-b border-transparent transition-all duration-300"
+    >
+      <div class="mx-auto max-w-content px-5 sm:px-8">
+        <div class="flex h-16 items-center justify-between gap-4 sm:h-20">
+          <a href="/" class="flex items-center gap-3">
+            <span class="brand-mark h-10 w-10" role="img" aria-label="Prophyion logo"></span>
+            <span class="leading-tight">
+              <span class="hdr-title block text-[17px] font-bold text-white">Prophyion</span>
+            </span>
+          </a>
+
+          <nav class="hidden shrink-0 items-center gap-1 xl:flex">
+            <a
+              href="#capabilities"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >What it does</a
+            >
+            <a
+              href="#formats"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >Formats</a
+            >
+            <a
+              href="#tabletop"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >Versus a tabletop</a
+            >
+            <a
+              href="#security"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >Security</a
+            >
+            <a
+              href="#faq"
+              class="hdr-link whitespace-nowrap rounded-lg px-3 py-2 text-sm font-medium text-white/75 transition hover:bg-white/10 hover:text-white"
+              >FAQ</a
+            >
+          </nav>
+
+          <div class="flex shrink-0 items-center gap-2 sm:gap-3">
+            <a
+              href="/"
+              class="hdr-link hidden whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold text-white/85 transition hover:text-white md:block"
+              >All simulations</a
+            >
+            <a
+              href="/#enquire"
+              class="whitespace-nowrap rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-accent-strong"
+              >Book a scoping call</a
+            >
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main id="top">
+      <!-- ══════════════════════════════════════════════════════════
+           HERO
+           ═════════════════════════════════════════════════════════ -->
+      <section class="deep-grid relative isolate overflow-hidden pt-28 pb-16 sm:pt-36 sm:pb-20">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="grid items-center gap-12 lg:grid-cols-[1.05fr_1fr] lg:gap-14">
+            <div>
+              <h1
+                class="text-4xl font-extrabold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.2rem]"
+              >
+                <span
+                  class="mb-4 block font-mono text-[11px] font-medium uppercase leading-normal tracking-[0.18em] text-accent"
+                  >Crisis simulation software</span
+                >
+                A live crisis, run on a clock and scored as it happens.
+              </h1>
+              <p class="mt-6 max-w-xl text-lg leading-relaxed text-white/70">
+                Prophyion is crisis simulation software for live, multi-team exercises. It drafts the
+                scenario from your own plans, fires injects on a timeline or when conditions trigger,
+                simulates the social media, press and inbox pressure around the incident, and grades
+                every decision while your people are still making it.
+              </p>
+              <p class="mt-4 max-w-xl text-[15px] leading-relaxed text-white/55">
+                Built in Singapore. Runs in a browser, with nothing to install.
+              </p>
+
+              <div class="mt-9 flex flex-wrap items-center gap-3">
+                <a
+                  href="/#enquire"
+                  class="rounded-xl bg-accent px-5 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-accent/20 transition hover:bg-accent-strong"
+                  >Book a scoping call</a
+                >
+                <a
+                  href="/corporate-crisis"
+                  class="rounded-xl border border-white/25 px-5 py-3.5 text-[15px] font-semibold text-white transition hover:border-white/50 hover:bg-white/5"
+                  >See it run in a real exercise</a
+                >
+              </div>
+
+              <dl class="mt-11 grid max-w-lg grid-cols-3 gap-6 border-t border-white/10 pt-7">
+                <div>
+                  <dt class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+                    Access
+                  </dt>
+                  <dd class="mt-1.5 font-mono text-2xl font-bold text-white">Browser</dd>
+                  <dd class="text-[13px] text-white/50">laptop or phone</dd>
+                </div>
+                <div>
+                  <dt class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+                    Scoring
+                  </dt>
+                  <dd class="mt-1.5 font-mono text-2xl font-bold text-accent">1&ndash;10</dd>
+                  <dd class="text-[13px] text-white/50">every decision</dd>
+                </div>
+                <div>
+                  <dt class="font-mono text-[10px] uppercase tracking-[0.14em] text-white/45">
+                    Report
+                  </dt>
+                  <dd class="mt-1.5 font-mono text-2xl font-bold text-white">Same day</dd>
+                  <dd class="text-[13px] text-white/50">PDF or Excel</dd>
+                </div>
+              </dl>
+            </div>
+
+            <figure class="clip-frame">
+              <div class="clip-bar">
+                <span class="surface-dot bg-white/25"></span>
+                <span class="surface-dot bg-white/15"></span>
+                <span class="surface-dot bg-white/10"></span>
+                <span class="ml-2 font-mono text-[10px] uppercase tracking-[0.12em] text-white/45"
+                  >Trainer dashboard &middot; live feed</span
+                >
+              </div>
+              <img
+                src="/marketing/corporate-crisis/trainer-feed.webp"
+                alt="The trainer dashboard's live feed, with each incoming post tagged as harmful, misinformation, inflammatory or pressure."
+                width="1250"
+                height="860"
+                fetchpriority="high"
+                decoding="async"
+                class="block w-full"
+              />
+              <figcaption class="clip-caption">
+                Every post is classified as it lands, so the facilitator can see what a team has left
+                unanswered without reading the whole feed.
+              </figcaption>
+            </figure>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           CAPABILITIES
+           ═════════════════════════════════════════════════════════ -->
+      <section id="capabilities" class="border-y border-border bg-surface py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              What the software does
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Everything a live crisis exercise needs, in one environment
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              Your facilitator keeps the judgement. The software handles the scenario, the tempo, the
+              pressure and the record.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <span class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                  <path d="M14 2v6h6M9 15h6M9 11h3" />
+                </svg>
+              </span>
+              <h3 class="text-base font-bold text-ink">Scenarios from your own documents</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Upload a crisis plan, incident brief or standard operating procedure. The blueprint
+                engine drafts the scenario, the characters, the fact sheets and each team&rsquo;s
+                storyline, and your team reviews every line before anything runs.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <span class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <circle cx="12" cy="12" r="9" />
+                  <path d="M12 7v5l3.5 2" />
+                </svg>
+              </span>
+              <h3 class="text-base font-bold text-ink">Injects that fire themselves</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                On a timeline, triggered by what a team does or fails to do, or pushed by the
+                facilitator to lean on a team. Nobody reads inject cards aloud.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <span class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="4" width="18" height="14" rx="2" />
+                  <path d="M8 21h8M12 18v3M7 9h6M7 13h3" />
+                </svg>
+              </span>
+              <h3 class="text-base font-bold text-ink">A simulated media environment</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Two social media platforms, an inbox, a news site and a team chat, all live. Nothing a
+                participant posts can reach the public internet or a real system.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <span class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8 10a3 3 0 100-6 3 3 0 000 6zM16 10a3 3 0 100-6 3 3 0 000 6z" />
+                  <path d="M2 20v-1a5 5 0 015-5h2a5 5 0 015 5v1M15 14h1a5 5 0 015 5v1" />
+                </svg>
+              </span>
+              <h3 class="text-base font-bold text-ink">Multi-agency roles, partial information</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Each team works from its own slice of the picture, with role-scoped channels and
+                in-app voice. Whether they share what they know is part of what gets measured.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border border-border bg-bg p-6">
+              <span class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-brand/10 text-brand">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M6 3v12M6 15a3 3 0 003 3h3a3 3 0 003 3M18 6a3 3 0 01-3 3h-3a3 3 0 00-3 3" />
+                  <circle cx="6" cy="18" r="3" />
+                  <circle cx="18" cy="3" r="1.5" />
+                  <circle cx="18" cy="21" r="1.5" />
+                </svg>
+              </span>
+              <h3 class="text-base font-bold text-ink">Outcomes that branch</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Late or weak decisions escalate the incident. Timely ones settle it. Run the same
+                scenario twice and you get two different exercises.
+              </p>
+            </div>
+
+            <div class="rounded-2xl border-2 border-accent bg-accent/[0.04] p-6">
+              <span class="mb-4 grid h-11 w-11 place-items-center rounded-xl bg-accent/15 text-accent-strong">
+                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M4 20V10M10 20V4M16 20v-7M22 20v-4" />
+                </svg>
+              </span>
+              <h3 class="text-base font-bold text-ink">Scored as it happens</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Every decision is graded for robustness against sector standards, with decision
+                latency and a coordination score. The after-action review is generated when the
+                simulation ends.
+              </p>
+            </div>
+          </div>
+
+          <div class="reveal mt-5 grid gap-5 sm:grid-cols-3">
+            <div class="rounded-2xl border border-border bg-surface-2 p-5">
+              <h3 class="text-sm font-bold text-ink">Adversaries that push back</h3>
+              <p class="mt-1.5 text-[13px] leading-relaxed text-muted">
+                Hostile accounts probe your teams, and every public statement is fact-checked against
+                the scenario&rsquo;s own record of what is true.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-border bg-surface-2 p-5">
+              <h3 class="text-sm font-bold text-ink">Live maps of real places</h3>
+              <p class="mt-1.5 text-[13px] leading-relaxed text-muted">
+                Site exercises run on real building footprints and street layouts, with a crowd
+                simulation underneath that reacts to every cordon and evacuation decision.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-border bg-surface-2 p-5">
+              <h3 class="text-sm font-bold text-ink">Baseline and retest</h3>
+              <p class="mt-1.5 text-[13px] leading-relaxed text-muted">
+                Run the same scenario before and after training, and show the improvement with the
+                same scoring.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           FORMATS
+           ═════════════════════════════════════════════════════════ -->
+      <section id="formats" class="bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Exercise formats
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Three crisis simulation formats on one platform
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              Same scoring and the same report in every case. Pick the format that matches what you
+              need to prove.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-6 lg:grid-cols-3">
+            <article class="overflow-hidden rounded-2xl border border-border bg-surface">
+              <img
+                src="/marketing/crisis-multi-agency-sm.webp"
+                alt="An emergency operations centre, figures at a wall of maps marked with incidents"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-44 w-full object-cover"
+              />
+              <div class="p-6">
+                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Format 01</p>
+                <h3 class="mt-2 text-xl font-bold text-ink">Multi-agency coordination</h3>
+                <p class="mt-3 text-sm leading-relaxed text-muted">
+                  A shared operating picture where police, medical, comms and command each see a
+                  different slice of the truth. The exercise is about information flow, chain of
+                  command and who tells whom. Best for command groups and executive teams.
+                </p>
+              </div>
+            </article>
+
+            <article class="overflow-hidden rounded-2xl border border-border bg-surface">
+              <img
+                src="/marketing/crisis-site-response-sm.webp"
+                alt="Responders in high-visibility jackets directing a crowd away from a venue at dusk"
+                width="720"
+                height="480"
+                loading="lazy"
+                decoding="async"
+                class="h-44 w-full object-cover"
+              />
+              <div class="p-6">
+                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Format 02</p>
+                <h3 class="mt-2 text-xl font-bold text-ink">Site and public safety response</h3>
+                <p class="mt-3 text-sm leading-relaxed text-muted">
+                  A live map of a real location with a crowd simulation running underneath. Cordons,
+                  evacuation corridors and casualty deterioration are all modelled, so every decision
+                  has a visible consequence.
+                </p>
+              </div>
+            </article>
+
+            <article class="flex flex-col overflow-hidden rounded-2xl border border-border bg-surface">
+              <img
+                src="/marketing/corporate-crisis/desk-teamchat.webp"
+                alt="A participant's simulated desktop with the crisis response team chat open beside a social feed"
+                width="1600"
+                height="900"
+                loading="lazy"
+                decoding="async"
+                class="h-44 w-full object-cover object-left-top"
+              />
+              <div class="flex flex-1 flex-col p-6">
+                <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Format 03</p>
+                <h3 class="mt-2 text-xl font-bold text-ink">Corporate crisis communications</h3>
+                <p class="mt-3 text-sm leading-relaxed text-muted">
+                  A simulated social media feed, inbox and news cycle turns on your organisation while
+                  misinformation moves faster than your approval chain. For communications, legal and
+                  leadership.
+                </p>
+                <a
+                  href="/crisis-communications-simulation"
+                  class="mt-5 inline-flex items-center gap-1.5 self-start border-b border-accent/40 pb-0.5 text-[13px] font-semibold text-accent transition hover:border-accent"
+                  >Crisis communications simulation <span aria-hidden="true">&rarr;</span></a
+                >
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           VERSUS A TABLETOP
+           ═════════════════════════════════════════════════════════ -->
+      <section id="tabletop" class="border-y border-border bg-surface py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Versus a tabletop exercise
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Crisis simulation software versus a paper tabletop
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              A tabletop exercise is a structured discussion of what a team would do. A simulation is
+              the situation itself, moving whether or not the team is ready.
+            </p>
+          </div>
+
+          <div class="reveal mt-12 overflow-x-auto rounded-2xl border border-border bg-bg">
+            <table class="w-full min-w-[640px] text-left">
+              <caption class="sr-only">
+                A paper tabletop exercise compared with a Prophyion crisis simulation, stage by stage
+              </caption>
+              <thead>
+                <tr class="border-b border-border">
+                  <th scope="col" class="w-[20%] px-6 py-4 font-mono text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+                    Stage
+                  </th>
+                  <th scope="col" class="px-6 py-4 text-sm font-bold text-ink">Paper tabletop exercise</th>
+                  <th scope="col" class="bg-brand px-6 py-4 text-sm font-bold text-white">
+                    Prophyion crisis simulation
+                  </th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-border text-[14px] leading-relaxed">
+                <tr>
+                  <th scope="row" class="px-6 py-4 align-top text-[11px] font-semibold uppercase tracking-wider text-muted">Scenario prep</th>
+                  <td class="px-6 py-4 align-top text-ink/70">Days of writing, formatting and printing</td>
+                  <td class="bg-surface px-6 py-4 align-top font-medium text-ink">Drafted from the plans you already have</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="px-6 py-4 align-top text-[11px] font-semibold uppercase tracking-wider text-muted">Injects</th>
+                  <td class="px-6 py-4 align-top text-ink/70">A facilitator reads cards aloud and watches the clock</td>
+                  <td class="bg-surface px-6 py-4 align-top font-medium text-ink">Fire on a timeline, or when a team&rsquo;s decision triggers them</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="px-6 py-4 align-top text-[11px] font-semibold uppercase tracking-wider text-muted">Media pressure</th>
+                  <td class="px-6 py-4 align-top text-ink/70">Printed posts and emails handed round the table</td>
+                  <td class="bg-surface px-6 py-4 align-top font-medium text-ink">Live social media, inbox and news that react to what your team says</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="px-6 py-4 align-top text-[11px] font-semibold uppercase tracking-wider text-muted">Scoring</th>
+                  <td class="px-6 py-4 align-top text-ink/70">Subjective, from memory and margin notes</td>
+                  <td class="bg-surface px-6 py-4 align-top font-medium text-ink">Every decision graded 1&ndash;10, with decision latency</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="px-6 py-4 align-top text-[11px] font-semibold uppercase tracking-wider text-muted">After-action review</th>
+                  <td class="px-6 py-4 align-top text-ink/70">Written over the following week</td>
+                  <td class="bg-surface px-6 py-4 align-top font-medium text-ink">Generated when the simulation ends, exported to PDF or Excel</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="px-6 py-4 align-top text-[11px] font-semibold uppercase tracking-wider text-muted">Replay</th>
+                  <td class="px-6 py-4 align-top text-ink/70">Whatever people remember</td>
+                  <td class="bg-surface px-6 py-4 align-top font-medium text-ink">Full timeline of every decision, message and inject</td>
+                </tr>
+                <tr>
+                  <th scope="row" class="px-6 py-4 align-top text-[11px] font-semibold uppercase tracking-wider text-muted">Branching</th>
+                  <td class="px-6 py-4 align-top text-ink/70">One fixed script, the same ending every time</td>
+                  <td class="bg-surface px-6 py-4 align-top font-medium text-ink">Escalation and de-escalation paths, so no two runs are the same</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           MEASUREMENT (dark band)
+           ═════════════════════════════════════════════════════════ -->
+      <section class="deep-grid py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              What gets measured
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Numbers for the debrief, not impressions
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-white/60">
+              The question every leadership team asks afterwards is how the response went. The
+              after-action review answers it the same way every time.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Metric 01</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Decision latency</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                How long each team took to act once the inject landed, measured to the second.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Metric 02</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Coordination score</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                Whether teams shared what they knew, and with whom, or sat on it.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Metric 03</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Robustness, 1&ndash;10</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                Each decision rated against sector standards. Generic answers score poorly by design.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-white/12 bg-white/[0.04] p-6">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">Metric 04</p>
+              <h3 class="mt-2.5 text-base font-bold text-white">Impact matrix</h3>
+              <p class="mt-2 text-sm leading-relaxed text-white/60">
+                Which team&rsquo;s call created which team&rsquo;s problem, laid out side by side.
+              </p>
+            </div>
+          </div>
+
+          <div
+            class="reveal mt-8 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 rounded-2xl border border-white/10 bg-white/[0.03] px-6 py-5 text-center"
+          >
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50">Live escalation meter</span>
+            <span class="hidden h-3 w-px bg-white/15 sm:block"></span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50">Full timeline replay</span>
+            <span class="hidden h-3 w-px bg-white/15 sm:block"></span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50">Per-participant scoring</span>
+            <span class="hidden h-3 w-px bg-white/15 sm:block"></span>
+            <span class="font-mono text-[11px] uppercase tracking-[0.14em] text-white/50">PDF and Excel export</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           SECURITY
+           The data-handling claims are contractual commitments copied from the
+           home page. Keep the two in step rather than rewording either one.
+           ═════════════════════════════════════════════════════════ -->
+      <section id="security" class="bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Security and data handling
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Your crisis material is never used to train an AI model
+            </h2>
+            <p class="mt-4 text-lg leading-relaxed text-muted">
+              A realistic exercise means handing us your risk register, your escalation thresholds and
+              the things your executives would actually say at three in the morning. That material is
+              treated as what it is: some of the most sensitive information your organisation holds.
+            </p>
+          </div>
+
+          <div class="reveal mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <h3 class="text-base font-bold text-ink">No training, no fine-tuning</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Your scenario material and every decision made during a simulation are processed to
+                run your exercise and nothing else. They are never used to train or fine-tune any
+                model, ours or a vendor&rsquo;s.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <h3 class="text-base font-bold text-ink">Private inference on AWS</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Language models run through Amazon Bedrock. Prompts and responses are not shared with
+                the model providers and are not retained by them. That is an AWS contractual
+                commitment, not a setting we toggle.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <h3 class="text-base font-bold text-ink">In-region and isolated</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Your data stays in the AWS region agreed with you at scoping. Each client&rsquo;s
+                material is kept separate; nothing is pooled across engagements.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <h3 class="text-base font-bold text-ink">Yours to remove</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Request a full export or permanent deletion of everything from an engagement at any
+                point, during or after it.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <h3 class="text-base font-bold text-ink">Fictional and non-operational</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                Scenarios are invented. They are built to resemble your exposure closely enough to be
+                uncomfortable, without documenting a real target, a real vulnerability or a real
+                operational plan.
+              </p>
+            </div>
+            <div class="rounded-2xl border border-border bg-surface p-6">
+              <h3 class="text-base font-bold text-ink">Nothing touches a real platform</h3>
+              <p class="mt-2 text-sm leading-relaxed text-muted">
+                The feeds, inboxes, news outlets and messaging your people use during the exercise are
+                all simulated inside the environment. Nothing a participant posts can reach the public
+                internet or a real system.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           WAYS TO USE IT
+           ═════════════════════════════════════════════════════════ -->
+      <section class="border-y border-border bg-surface py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Ways to use it
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              Run by us, or run by your own consultant
+            </h2>
+          </div>
+
+          <div class="reveal mt-12 grid gap-6 lg:grid-cols-2">
+            <div class="flex flex-col rounded-2xl border-2 border-brand bg-bg p-7 sm:p-8">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">For organisations</p>
+              <h3 class="mt-2 text-xl font-bold text-ink">A managed crisis simulation engagement</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-muted">
+                A Prophyion risk consultant builds the scenario with you from your crisis plan, risk
+                register and standard operating procedures, facilitates two live simulations, and
+                presents the scored after-action review. One engagement, quoted as a single figure.
+              </p>
+              <a
+                href="/#engagement"
+                class="mt-auto inline-flex items-center gap-1.5 self-start pt-6 text-[14px] font-semibold text-brand transition hover:text-accent"
+                >What an engagement includes <span aria-hidden="true">&rarr;</span></a
+              >
+            </div>
+            <div class="flex flex-col rounded-2xl border border-border bg-bg p-7 sm:p-8">
+              <p class="font-mono text-[10px] uppercase tracking-[0.16em] text-accent">For risk consultants</p>
+              <h3 class="mt-2 text-xl font-bold text-ink">The platform, with your own clients</h3>
+              <p class="mt-3 text-[15px] leading-relaxed text-muted">
+                Bring your brief, invite the teams, run it live, and hand over an after-action review
+                you did not have to write. Your client is invoiced directly and pays online, so you
+                keep the relationship without the admin.
+              </p>
+              <a
+                href="/consultants"
+                class="mt-auto inline-flex items-center gap-1.5 self-start pt-6 text-[14px] font-semibold text-brand transition hover:text-accent"
+                >Crisis exercise software for consultants <span aria-hidden="true">&rarr;</span></a
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           FAQ
+           ═════════════════════════════════════════════════════════ -->
+      <section id="faq" class="bg-bg py-20 sm:py-28">
+        <div class="mx-auto max-w-3xl px-5 sm:px-8">
+          <div class="reveal text-center">
+            <p class="mb-3 font-mono text-[11px] uppercase tracking-[0.18em] text-accent">
+              Questions
+            </p>
+            <h2 class="text-3xl font-extrabold tracking-tight text-ink sm:text-4xl">
+              About the software
+            </h2>
+          </div>
+
+          <div class="reveal mt-12 divide-y divide-border border-y border-border">
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">What is crisis simulation software?</h3>
+                <svg class="faq-chevron h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                Software that runs a live crisis exercise. Instead of a facilitator reading out
+                scripted updates, it advances a fictional incident on a clock, delivers injects
+                through simulated channels such as social media, email and news, reacts to the
+                decisions participants make, and records every decision so the debrief is built on
+                evidence rather than memory.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">How is it different from a tabletop exercise?</h3>
+                <svg class="faq-chevron h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                A tabletop exercise is a discussion of what a team would do. A simulation makes them do
+                it: the situation moves whether or not they are ready, late decisions have visible
+                consequences, and every call is timed and scored.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">Can our own team run the software?</h3>
+                <svg class="faq-chevron h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                Organisations usually work with a Prophyion risk consultant, who builds and
+                facilitates the exercise for them. Independent risk consultants use the platform
+                directly with their own clients.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">What do participants need?</h3>
+                <svg class="faq-chevron h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                A browser each, on a laptop or a phone. There is nothing to install and no VPN, and
+                voice runs in the browser too. Teams can sit in one room or in different countries.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">
+                  Where is our data processed, and is it used to train AI?
+                </h3>
+                <svg class="faq-chevron h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                Language models run through Amazon Bedrock, in the AWS region agreed with you at
+                scoping. Your scenario material and every decision made during a simulation are never
+                used to train or fine-tune any model, ours or a vendor&rsquo;s.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">How long does it take to build an exercise?</h3>
+                <svg class="faq-chevron h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                Most of the time is your review of the draft scenario rather than the build. A
+                Corporate Crisis exercise typically takes two to three weeks from the scoping call,
+                and we give you a firm date for any format at that call.
+              </p>
+            </details>
+
+            <details class="group py-5">
+              <summary class="flex items-center justify-between gap-4">
+                <h3 class="text-base font-semibold text-ink">
+                  Is Prophyion available in Singapore and Southeast Asia?
+                </h3>
+                <svg class="faq-chevron h-5 w-5 shrink-0 text-muted" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                  <path d="M6 9l6 6 6-6" />
+                </svg>
+              </summary>
+              <p class="mt-3 pr-9 text-[15px] leading-relaxed text-muted">
+                Yes. Prophyion is based in Singapore, and because everything runs in a browser,
+                regional teams across Southeast Asia can take part in the same exercise.
+              </p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════════════════════════
+           CLOSE
+           ═════════════════════════════════════════════════════════ -->
+      <section class="deep-grid py-20 sm:py-28">
+        <div class="mx-auto max-w-content px-5 sm:px-8">
+          <div class="reveal mx-auto max-w-2xl text-center">
+            <h2 class="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+              Put your own plan through it
+            </h2>
+            <p class="mt-5 text-lg leading-relaxed text-white/70">
+              A scoping call is a conversation, not a commitment. Tell us what keeps you awake and we
+              will come back with a scenario outline and a recommended format.
+            </p>
+            <div class="mt-9 flex flex-wrap justify-center gap-3">
+              <a
+                href="/#enquire"
+                class="rounded-xl bg-accent px-5 py-3.5 text-[15px] font-semibold text-white shadow-lg shadow-accent/20 transition hover:bg-accent-strong"
+                >Book a scoping call</a
+              >
+              <a
+                href="/consultants"
+                class="rounded-xl border border-white/25 px-5 py-3.5 text-[15px] font-semibold text-white transition hover:border-white/50 hover:bg-white/5"
+                >I am a risk consultant</a
+              >
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ══════════════════════════════════════════════════════════
+         FOOTER
+         ═════════════════════════════════════════════════════════ -->
+    <footer class="border-t border-border bg-surface py-12">
+      <div class="mx-auto max-w-content px-5 sm:px-8">
+        <div class="flex flex-col gap-8 sm:flex-row sm:items-center sm:justify-between">
+          <a href="/" class="flex items-center gap-3">
+            <span class="brand-mark h-9 w-9" role="img" aria-label="Prophyion logo"></span>
+            <span class="leading-tight">
+              <span class="block text-[14px] font-bold text-ink">Prophyion</span>
+            </span>
+          </a>
+
+          <nav class="flex flex-wrap gap-x-6 gap-y-2 text-[13px] text-muted">
+            <a href="/" class="transition hover:text-ink">The simulations</a>
+            <a href="/crisis-communications-simulation" class="transition hover:text-ink"
+              >Crisis communications simulation</a
+            >
+            <a href="/corporate-crisis" class="transition hover:text-ink">Corporate Crisis</a>
+            <a href="/consultants" class="transition hover:text-ink">For risk consultants</a>
+            <a href="/founder" class="transition hover:text-ink">About us</a>
+            <a href="/#enquire" class="transition hover:text-ink">Contact</a>
+          </nav>
+        </div>
+
+        <p class="mt-8 border-t border-border pt-6 text-[12px] text-muted">
+          &copy; 2026 Prophyion, Singapore. Scenarios are fictional and non-operational.
+        </p>
+      </div>
+    </footer>
+  </body>
+</html>

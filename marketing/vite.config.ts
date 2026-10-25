@@ -13,6 +13,11 @@ export default defineConfig({
         index: path.resolve(__dirname, 'index.html'),
         consultants: path.resolve(__dirname, 'consultants.html'),
         corporateCrisis: path.resolve(__dirname, 'corporate-crisis.html'),
+        crisisSimulationSoftware: path.resolve(__dirname, 'crisis-simulation-software.html'),
+        crisisCommunicationsSimulation: path.resolve(
+          __dirname,
+          'crisis-communications-simulation.html',
+        ),
         founder: path.resolve(__dirname, 'founder.html'),
         thankYou: path.resolve(__dirname, 'thank-you.html'),
       },

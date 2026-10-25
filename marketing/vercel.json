@@ -60,6 +60,16 @@
     { "source": "/consultants/", "destination": "/consultants.html" },
     { "source": "/corporate-crisis", "destination": "/corporate-crisis.html" },
     { "source": "/corporate-crisis/", "destination": "/corporate-crisis.html" },
+    { "source": "/crisis-simulation-software", "destination": "/crisis-simulation-software.html" },
+    { "source": "/crisis-simulation-software/", "destination": "/crisis-simulation-software.html" },
+    {
+      "source": "/crisis-communications-simulation",
+      "destination": "/crisis-communications-simulation.html"
+    },
+    {
+      "source": "/crisis-communications-simulation/",
+      "destination": "/crisis-communications-simulation.html"
+    },
     { "source": "/founder", "destination": "/founder.html" },
     { "source": "/founder/", "destination": "/founder.html" },
     { "source": "/thank-you", "destination": "/thank-you.html" },
