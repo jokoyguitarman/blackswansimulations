@@ -146,11 +146,7 @@ export function PressureOrgCard({
             <span className="ml-2 text-muted normal-case">spokesperson linked</span>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onRemove}
-          className="text-[10px] terminal-text text-danger hover:opacity-80 border border-danger/30 px-2 py-0.5 rounded"
-        >
+        <button type="button" onClick={onRemove} className="wr-btn sm remove shrink-0">
           Remove
         </button>
       </div>
@@ -568,10 +564,7 @@ export function OrganisationCard({
           Organisation {index + 2}
           {org.display_name.trim() ? ` — ${org.display_name.trim()}` : ''}
         </span>
-        <button
-          onClick={onRemove}
-          className="text-[10px] terminal-text text-danger hover:opacity-80 border border-danger/30 px-2 py-0.5 rounded"
-        >
+        <button type="button" onClick={onRemove} className="wr-btn sm remove shrink-0">
           Remove
         </button>
       </div>

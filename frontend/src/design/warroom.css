@@ -177,6 +177,17 @@
 .wr-btn.danger:hover {
   background: color-mix(in srgb, var(--danger) 6%, #fff);
 }
+.wr-btn.remove {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+}
+.wr-btn.remove:hover {
+  color: #fff;
+  background: var(--danger);
+  border-color: var(--danger);
+  filter: brightness(1.08);
+}
 .wr-btn.sm {
   padding: 5px 9px;
   font-size: 11.5px;
@@ -232,6 +243,24 @@
 textarea.wr-field {
   resize: vertical;
   line-height: 1.55;
+}
+.wr-brief-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+}
+.wr-field.brief {
+  background: #fff;
+  color: var(--ink);
+  border-color: #fff;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+}
+.wr-field.brief::placeholder {
+  color: #64748b;
 }
 .wr-field.onDark {
   border-color: rgba(255, 255, 255, 0.14);

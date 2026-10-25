@@ -275,14 +275,8 @@ interface BlueprintView {
   [key: string]: unknown;
 }
 
-const SCENARIO_PLACEHOLDER = `Describe the crisis scenario you want to simulate. The AI will analyze your description and generate an appropriate social crisis simulation.
-
-Examples:
-- A major electronics company announces a recall of 2 million smartphones due to battery fires. Leaked internal emails suggest the company knew about the defect for months...
-- A large tech company announces layoffs affecting 15,000 employees via a company-wide email that leaks to the press before employees are notified...
-- A food delivery platform experiences a massive data breach exposing 30 million users' personal data, payment information, and order histories...
-- A viral video shows factory workers at a popular clothing brand working in unsafe conditions, sparking calls for boycotts...
-- A pharmaceutical company's new drug is linked to severe side effects that were allegedly downplayed during clinical trials...`;
+const SCENARIO_PLACEHOLDER =
+  'Click here and start typing. For example: a factory fire in Johor sends smoke into Singapore, and a leaked memo shows the company already knew.';
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -2182,12 +2176,16 @@ export const SocialCrisisWizard = () => {
         fact sheet — is generated from it.
       </p>
       <div data-field={BRIEF_FIELD}>
+        <label htmlFor="crisis-brief" className="wr-brief-label">
+          <WrIcon name="edit" size={14} /> Type the crisis in this box
+        </label>
         <textarea
+          id="crisis-brief"
           value={context}
           onChange={(e) => setContext(e.target.value)}
           rows={7}
           placeholder={SCENARIO_PLACEHOLDER}
-          className={`wr-field onDark ${issueClass(briefIssue)}`}
+          className={`wr-field brief ${issueClass(briefIssue)}`}
           style={{ minHeight: 150 }}
           aria-invalid={briefIssue?.severity === 'error' || undefined}
         />
@@ -2759,18 +2757,18 @@ export const SocialCrisisWizard = () => {
                 style={{ '--g': 'var(--f-rival)' } as CSSProperties}
                 data-field={competitorField(i)}
               >
-                <div className="absolute top-2.5 right-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="kicker">
+                    <WrIcon name="swords" size={12} /> Competitor
+                  </div>
                   <button
+                    type="button"
                     onClick={() => removeCompetitor(i)}
-                    className="wr-btn sm ghost icon"
+                    className="wr-btn sm remove shrink-0"
                     aria-label={`Remove ${e.name}`}
-                    title="Remove"
                   >
-                    <WrIcon name="x" />
+                    Remove
                   </button>
-                </div>
-                <div className="kicker">
-                  <WrIcon name="swords" size={12} /> Competitor
                 </div>
                 <div className="flex items-center gap-2.5">
                   <div className="wr-mono rv" style={{ width: 40, height: 40, fontSize: 13 }}>
