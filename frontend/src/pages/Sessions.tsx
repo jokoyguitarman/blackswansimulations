@@ -1,12 +1,11 @@
 import { useState, useEffect, type CSSProperties } from 'react';
-import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { api } from '../lib/api';
 import {
   CreateSessionModal,
   type CreateSessionScenario,
 } from '../components/Forms/CreateSessionModal';
-import { BrandMark } from '../components/BrandMark';
 import { WrIcon } from '../components/UI/WarRoomIcon';
 import { artFor, SHELL_ART } from '../lib/scenarioArt';
 
@@ -282,11 +281,6 @@ export const Sessions = () => {
       <div className="min-h-screen bg-bg">
         <header className="wr-artband wr-hero">
           <img className="wr-art" src={SHELL_ART.sessions} alt="" />
-          <div className="wr-hero-top">
-            <div className="wr-brandmark">
-              <BrandMark className="h-8 w-8" /> Prophyion
-            </div>
-          </div>
           <div className="wr-hero-grid">
             <div>
               <div className="wr-eyebrow">Sessions</div>
@@ -317,33 +311,6 @@ export const Sessions = () => {
     <div className="min-h-screen bg-bg">
       <header className="wr-artband wr-hero">
         <img className="wr-art" src={SHELL_ART.sessions} alt="" />
-        <div className="wr-hero-top">
-          <div className="wr-brandmark">
-            <BrandMark className="h-8 w-8" /> Prophyion{' '}
-            <span className="sub">· {isTrainer ? 'trainer' : 'participant'}</span>
-          </div>
-          <nav className="wr-nav" aria-label="Primary">
-            <Link to="/dashboard">
-              <WrIcon name="dash" /> Dashboard
-            </Link>
-            <Link to="/scenarios">
-              <WrIcon name="layers" /> Scenarios
-            </Link>
-            <Link to="/sessions" className="here">
-              <WrIcon name="cal" /> Sessions
-            </Link>
-            {isTrainer && (
-              <>
-                <Link to="/clients">
-                  <WrIcon name="card" /> Clients &amp; billing
-                </Link>
-                <Link to="/warroom" className="cta">
-                  <WrIcon name="bolt" /> War Room
-                </Link>
-              </>
-            )}
-          </nav>
-        </div>
         <div
           className="wr-hero-grid"
           style={{ gridTemplateColumns: '1fr auto', alignItems: 'end' }}

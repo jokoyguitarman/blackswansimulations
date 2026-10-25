@@ -26,6 +26,7 @@ import { DebugBuildingStuds } from './pages/DebugBuildingStuds';
 import { DebugEvacuationSim } from './pages/DebugEvacuationSim';
 import { DebugRTSSim } from './pages/DebugRTSSim';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { SuiteLayout } from './components/SuiteLayout';
 import { SupabaseConfigError } from './components/SupabaseConfigError';
 import DeviceShell from './components/SimDevice/DeviceShell';
 import HomeScreen from './components/SimDevice/HomeScreen';
@@ -99,114 +100,60 @@ const App = () => {
             <Route path="/signup" element={<SignUp />} />
             <Route path="/join/:joinToken" element={<JoinSessionPage />} />
             <Route
-              path="/dashboard"
               element={
                 <ProtectedRoute>
-                  <Dashboard />
+                  <SuiteLayout />
                 </ProtectedRoute>
               }
-            />
-            <Route
-              path="/account"
-              element={
-                <ProtectedRoute>
-                  <AccountSettings />
-                </ProtectedRoute>
-              }
-            />
+            >
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/account" element={<AccountSettings />} />
+              <Route
+                path="/clients"
+                element={
+                  <ProtectedRoute roles={['trainer', 'admin']}>
+                    <Clients />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/payouts"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <AdminPayouts />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/trainers"
+                element={
+                  <ProtectedRoute roles={['admin']}>
+                    <AdminTrainers />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/scenarios" element={<Scenarios />} />
+              <Route path="/warroom" element={<WarRoom />} />
+              <Route path="/warroom/social-crisis" element={<SocialCrisisWizard />} />
+              <Route path="/warroom-legacy" element={<WarRoomLegacy />} />
+              <Route path="/sessions" element={<Sessions />} />
+              <Route path="/sessions/:id" element={<SessionView />} />
+              <Route path="/sessions/:id/aar" element={<AARPage />} />
+              <Route path="/demo" element={<DemoLanding />} />
+              <Route
+                path="/sim/:sessionId/trainer"
+                element={
+                  <ProtectedRoute roles={['trainer', 'admin']}>
+                    <TrainerSimDashboard />
+                  </ProtectedRoute>
+                }
+              />
+            </Route>
             <Route
               path="/apply"
               element={
                 <ProtectedRoute>
                   <Apply />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/clients"
-              element={
-                <ProtectedRoute roles={['trainer', 'admin']}>
-                  <Clients />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/payouts"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <AdminPayouts />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin/trainers"
-              element={
-                <ProtectedRoute roles={['admin']}>
-                  <AdminTrainers />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/scenarios"
-              element={
-                <ProtectedRoute>
-                  <Scenarios />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/warroom"
-              element={
-                <ProtectedRoute>
-                  <WarRoom />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/warroom/social-crisis"
-              element={
-                <ProtectedRoute>
-                  <SocialCrisisWizard />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/warroom-legacy"
-              element={
-                <ProtectedRoute>
-                  <WarRoomLegacy />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sessions"
-              element={
-                <ProtectedRoute>
-                  <Sessions />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sessions/:id"
-              element={
-                <ProtectedRoute>
-                  <SessionView />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sessions/:id/aar"
-              element={
-                <ProtectedRoute>
-                  <AARPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/demo"
-              element={
-                <ProtectedRoute>
-                  <DemoLanding />
                 </ProtectedRoute>
               }
             />
@@ -258,14 +205,6 @@ const App = () => {
               element={
                 <ProtectedRoute>
                   <DesktopShell />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/sim/:sessionId/trainer"
-              element={
-                <ProtectedRoute roles={['trainer', 'admin']}>
-                  <TrainerSimDashboard />
                 </ProtectedRoute>
               }
             />

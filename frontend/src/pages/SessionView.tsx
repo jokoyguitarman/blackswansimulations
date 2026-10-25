@@ -11,8 +11,6 @@ import { ParticipantManagement } from '../components/Session/ParticipantManageme
 import { TrainerEnvironmentalTruths } from '../components/Session/TrainerEnvironmentalTruths';
 import { TeamAssignmentModal } from '../components/Teams/TeamAssignmentModal';
 import { SessionLobby } from '../components/Session/SessionLobby';
-import { NotificationBell } from '../components/Notifications/NotificationBell';
-import { BrandMark } from '../components/BrandMark';
 import { WrIcon } from '../components/UI/WarRoomIcon';
 import { artFor } from '../lib/scenarioArt';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
@@ -1407,20 +1405,10 @@ export const SessionView = () => {
             alt=""
           />
           <div className="wr-hero-top">
-            <div className="wr-brandmark">
-              <BrandMark className="h-8 w-8" /> Prophyion{' '}
-              <span className="sub">· session lobby</span>
-            </div>
             <div className="wr-credits">
               <span>
                 <span className="wr-livedot" style={{ color: '#FCD34D' }} /> Scheduled
               </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <NotificationBell />
-              <button onClick={() => navigate('/sessions')} className="wr-btn sm onDark">
-                <WrIcon name="arrow-l" /> Sessions
-              </button>
             </div>
           </div>
           <div
@@ -1491,7 +1479,7 @@ export const SessionView = () => {
     const isGodView = spectatorMode === 'god';
 
     return (
-      <div className="h-screen w-screen overflow-hidden bg-bg relative flex">
+      <div className="h-[calc(100vh-4rem)] w-full overflow-hidden bg-bg relative flex">
         {/* Map area */}
         <div className={isGodView ? 'relative flex-1' : 'absolute inset-0'}>
           {hasSceneConfig === true ? (
@@ -1658,7 +1646,7 @@ export const SessionView = () => {
   return (
     <div className="min-h-screen scanline">
       {/* Header */}
-      <div className="sticky top-0 z-40 military-border border-b-2 border-border bg-surface shadow-md">
+      <div className="sticky top-16 z-40 military-border border-b-2 border-border bg-surface shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-6 flex-1">
@@ -1732,7 +1720,6 @@ export const SessionView = () => {
               {session.status === 'in_progress' && (
                 <BackgroundMusic src="/audio/detective-bgm.mp3" />
               )}
-              <NotificationBell />
               {isTrainer && session.status === 'in_progress' && (
                 <button
                   onClick={handleCompleteSession}

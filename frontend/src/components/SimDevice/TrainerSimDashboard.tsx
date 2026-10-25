@@ -1512,7 +1512,7 @@ export default function TrainerSimDashboard() {
     <div className="min-h-screen w-full" style={{ backgroundColor: '#FAF8F4', color: '#172033' }}>
       {/* Header */}
       <header
-        className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 border-b"
+        className="sticky top-16 z-30 flex items-center justify-between px-6 py-3 border-b"
         style={{ backgroundColor: '#FAF8F4', borderColor: '#E4DFD4' }}
       >
         <div className="flex items-center gap-4">

@@ -7,7 +7,6 @@ import { loadSceneConfig } from '../lib/rts/sceneConfigApi';
 import { LocationValidationStep } from '../components/WarRoom/LocationValidationStep';
 import { ResearchStep } from '../components/WarRoom/ResearchStep';
 import { CompileStep } from '../components/WarRoom/CompileStep';
-import { BrandMark } from '../components/BrandMark';
 import { WrIcon, INCIDENT_ICON, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon';
 import { SHELL_ART } from '../lib/scenarioArt';
 
@@ -683,10 +682,6 @@ export const WarRoom = () => {
       <header className="wr-artband wr-hero">
         <img className="wr-art" src={heroArt[step]} alt="" />
         <div className="wr-hero-top">
-          <div className="wr-brandmark">
-            <BrandMark className="h-8 w-8" /> War Room{' '}
-            <span className="sub">· {step === 0 ? 'new scenario' : 'Field operations'}</span>
-          </div>
           <div className="wr-steps" aria-label="Steps">
             {step === 0 ? (
               simMode === 'social_media' ? (

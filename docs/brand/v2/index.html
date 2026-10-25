@@ -1,0 +1,797 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prophyion — Brand kit v2.0</title>
+    <link rel="icon" type="image/svg+xml" href="../logos/k-bishop/tile.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #faf8f4;
+        --surface: #ffffff;
+        --surface-2: #f4f1ea;
+        --ink: #172033;
+        --muted: #6b7280;
+        --brand: #1e3a5f;
+        --brand-strong: #18304e;
+        --deep: #0e1a2b;
+        --accent: #d97706;
+        --accent-strong: #b45309;
+        --border: #e4dfd4;
+        --border-strong: #d6cfc0;
+        --success: #15803d;
+        --danger: #b91c1c;
+      }
+      * { box-sizing: border-box; }
+      html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: 'Inter', system-ui, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+      }
+      a { color: var(--brand); }
+      code, .mono { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 0.86em; }
+      .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+      .eyebrow {
+        font-family: 'JetBrains Mono', monospace;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: var(--accent);
+      }
+      h1, h2, h3, h4 { margin: 0; letter-spacing: -0.02em; line-height: 1.15; }
+      h1 { font-size: 44px; font-weight: 800; letter-spacing: -0.03em; }
+      h2 { font-size: 30px; font-weight: 800; margin-top: 10px; }
+      h3 { font-size: 19px; font-weight: 700; }
+      h4 { font-size: 14px; font-weight: 700; }
+      p { margin: 0 0 12px; }
+      .lede { font-size: 17px; color: rgba(23, 32, 51, 0.8); max-width: 68ch; }
+      .muted { color: var(--muted); }
+      .small { font-size: 13px; }
+
+      .band {
+        background:
+          radial-gradient(ellipse 80% 60% at 20% -10%, rgba(217, 119, 6, 0.18), transparent 70%),
+          linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+          linear-gradient(160deg, #0e1a2b 0%, #16293f 55%, #18304e 100%);
+        background-size: 100% 100%, 64px 64px, 64px 64px, 100% 100%;
+        color: #fff;
+        padding: 72px 0 64px;
+      }
+      .band h1 { color: #fff; }
+      .band .lede { color: rgba(255, 255, 255, 0.72); }
+      .band .eyebrow { color: #f3b04a; }
+      .band-grid { display: grid; grid-template-columns: 1fr auto; gap: 40px; align-items: center; }
+      .band-logo { width: 460px; max-width: 100%; height: auto; }
+      .meta { display: flex; gap: 22px; flex-wrap: wrap; margin-top: 26px; font-size: 13px; color: rgba(255, 255, 255, 0.6); }
+      .meta b { color: #fff; font-weight: 600; }
+
+      .nav {
+        position: sticky; top: 0; z-index: 20;
+        background: rgba(250, 248, 244, 0.92);
+        backdrop-filter: blur(8px);
+        border-bottom: 1px solid var(--border);
+      }
+      .nav .wrap { display: flex; gap: 4px; align-items: center; height: 52px; overflow-x: auto; }
+      .nav a {
+        text-decoration: none; color: var(--muted); font-weight: 600; font-size: 13px;
+        padding: 6px 10px; border-radius: 8px; white-space: nowrap;
+      }
+      .nav a:hover { background: var(--surface-2); color: var(--brand); }
+      .nav .home { display: flex; align-items: center; gap: 8px; margin-right: 10px; color: var(--ink); }
+      .nav .home img { width: 22px; height: 22px; }
+
+      section { padding: 64px 0 24px; }
+      section + section { border-top: 1px solid var(--border); }
+      .sec-head { margin-bottom: 28px; }
+
+      .card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 22px 24px;
+        box-shadow: 0 1px 2px rgba(23, 32, 51, 0.04);
+      }
+      .grid { display: grid; gap: 18px; }
+      .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .g4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      @media (max-width: 860px) {
+        .g2, .g3, .g4 { grid-template-columns: 1fr 1fr; }
+        .band-grid { grid-template-columns: 1fr; }
+      }
+      @media (max-width: 560px) { .g2, .g3, .g4 { grid-template-columns: 1fr; } }
+
+      .stage {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+        background: var(--surface);
+        box-shadow: 0 1px 2px rgba(23, 32, 51, 0.04);
+      }
+      .stage-lab {
+        display: flex; justify-content: space-between; gap: 12px; align-items: baseline;
+        padding: 12px 16px; border-bottom: 1px solid var(--border);
+        font-size: 13px; font-weight: 700;
+      }
+      .stage-lab span { font-weight: 500; color: var(--muted); font-size: 12px; }
+      .tiles { display: grid; grid-template-columns: repeat(4, 1fr); }
+      .tiles > div { display: grid; place-items: center; min-height: 200px; position: relative; border-left: 1px solid var(--border); }
+      .tiles > div:first-child { border-left: 0; }
+      .tiles .lab {
+        position: absolute; left: 12px; bottom: 10px;
+        font-family: 'JetBrains Mono', monospace; font-size: 10px; letter-spacing: 0.1em;
+        text-transform: uppercase; color: var(--muted);
+      }
+      .on-light { background: var(--bg); }
+      .on-white { background: #fff; }
+      .on-navy { background: var(--brand); }
+      .on-navy .lab, .on-deep .lab { color: rgba(255, 255, 255, 0.55); }
+      .on-deep { background: var(--deep); }
+      .mark-img { width: 112px; height: auto; }
+      .sizes { display: flex; align-items: flex-end; gap: 14px; }
+      .sizes figure { margin: 0; text-align: center; }
+      .sizes figcaption { font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); margin-top: 6px; }
+      .locks { display: grid; grid-template-columns: 1fr 1fr; border-top: 1px solid var(--border); }
+      .locks > div { min-height: 120px; display: grid; place-items: center; padding: 22px; }
+      .locks > div + div { border-left: 1px solid var(--border); }
+      .locks img.h { height: 52px; width: auto; }
+      .locks img.s { height: 120px; width: auto; }
+      @media (max-width: 860px) {
+        .tiles { grid-template-columns: 1fr 1fr; }
+        .tiles > div { border-left: 0; border-top: 1px solid var(--border); }
+        .locks { grid-template-columns: 1fr; }
+        .locks > div + div { border-left: 0; border-top: 1px solid var(--border); }
+      }
+
+      /* Website frames */
+      .m-header, .app-nav, .m-footer {
+        display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      }
+      .brandline { display: flex; align-items: center; gap: 12px; text-decoration: none; color: inherit; }
+      .brandline img { width: 40px; height: 40px; display: block; border-radius: 22%; box-shadow: 0 2px 8px rgba(14, 26, 43, 0.12); }
+      .brandline .name { display: block; font-weight: 700; font-size: 17px; letter-spacing: -0.02em; line-height: 1.1; }
+      .brandline .sub { display: block; font-size: 11px; font-weight: 400; opacity: 0.6; margin-top: 2px; }
+      .links { display: flex; gap: 2px; align-items: center; }
+      .links a { text-decoration: none; font-size: 14px; font-weight: 500; padding: 8px 12px; border-radius: 8px; white-space: nowrap; }
+      .cta {
+        text-decoration: none; background: var(--accent); color: #fff; font-weight: 600; font-size: 14px;
+        padding: 10px 16px; border-radius: 8px; white-space: nowrap;
+      }
+      .hero {
+        background:
+          radial-gradient(ellipse 80% 60% at 18% -20%, rgba(217, 119, 6, 0.2), transparent 60%),
+          linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px),
+          linear-gradient(160deg, #0e1a2b, #16293f 60%, #18304e);
+        background-size: 100% 100%, 64px 64px, 64px 64px, 100% 100%;
+        color: #fff;
+      }
+      .hero .m-header { height: 80px; padding: 0 28px; }
+      .hero .links a { color: rgba(255,255,255,0.75); }
+      .hero-copy { padding: 28px 28px 56px; max-width: 640px; }
+      .hero-copy h3 { font-size: 40px; font-weight: 800; letter-spacing: -0.03em; color: #fff; line-height: 1.05; }
+      .hero-copy p { color: rgba(255,255,255,0.7); max-width: 48ch; margin-top: 12px; }
+      .scrolled { background: rgba(255,255,255,0.94); border-bottom: 1px solid var(--border); }
+      .scrolled .m-header { height: 72px; padding: 0 28px; }
+      .scrolled .links a { color: var(--ink); }
+      .scrolled .name { color: var(--ink); }
+      .appbar { background: var(--brand); color: #fff; }
+      .appbar .app-nav { height: 64px; padding: 0 24px; }
+      .appbar .brandline img { width: 36px; height: 36px; }
+      .appbar .name { font-size: 16px; }
+      .appbar .sub { white-space: nowrap; }
+      .appbar .links a { color: rgba(255,255,255,0.8); font-size: 14px; }
+      .appbar .who { text-align: right; font-size: 13px; line-height: 1.25; }
+      .appbar .who b { display: block; font-weight: 600; }
+      .appbar .who span { color: rgba(255,255,255,0.55); font-size: 11px; }
+      .foot { background: #fff; }
+      .foot .m-footer { padding: 28px; align-items: center; }
+      .foot .name { font-size: 14px; color: var(--ink); }
+      .foot .sub { color: var(--muted); opacity: 1; }
+      .foot .links a { color: var(--muted); font-size: 14px; padding: 4px 0 4px 18px; }
+      .foot .fine { margin: 0 28px; padding: 16px 0 22px; border-top: 1px solid var(--border); color: var(--muted); font-size: 12px; }
+      .login-page { background: var(--bg); padding: 36px 20px 42px; display: grid; place-items: center; }
+      .login-card {
+        width: min(400px, 100%); background: #fff; border: 1px solid var(--border); border-radius: 16px;
+        box-shadow: 0 10px 30px rgba(23, 32, 51, 0.06); padding: 32px 28px; text-align: center;
+      }
+      .login-card img { width: 48px; height: 48px; border-radius: 22%; }
+      .login-card h3 { margin-top: 14px; color: var(--brand); font-size: 24px; font-weight: 800; }
+      .field { height: 40px; border: 1px solid var(--border); border-radius: 8px; background: #fff; margin-top: 10px; }
+      .login-card .cta { display: block; margin-top: 14px; }
+      .photo {
+        position: relative; isolation: isolate; min-height: 280px; color: #fff;
+        background: #0e1a2b center/cover no-repeat;
+      }
+      .photo::after {
+        content: ''; position: absolute; inset: 0; z-index: -1;
+        background: linear-gradient(100deg, rgba(14,26,43,0.92) 0%, rgba(14,26,43,0.72) 48%, rgba(14,26,43,0.45) 100%);
+      }
+      .photo .m-header { height: 76px; padding: 0 28px; }
+      .photo .links a { color: rgba(255,255,255,0.8); }
+      .photo .blurb { padding: 8px 28px 36px; max-width: 520px; }
+      .photo .blurb h3 { color: #fff; font-size: 28px; font-weight: 800; }
+      .photo .blurb p { color: rgba(255,255,255,0.72); }
+      .sig { display: flex; gap: 16px; align-items: center; padding: 22px 24px; background: #fff; }
+      .sig img { height: 46px; width: auto; }
+      .sig .who { font-weight: 700; }
+      .sig .who span { display: block; font-weight: 500; color: var(--muted); font-size: 13px; }
+      .og {
+        aspect-ratio: 1200 / 630; max-height: 360px;
+        background:
+          radial-gradient(ellipse 50% 80% at 90% 80%, rgba(217,119,6,0.18), transparent 60%),
+          linear-gradient(160deg, #0e1a2b, #18304e);
+        color: #fff; display: flex; flex-direction: column; justify-content: space-between; padding: 36px 40px;
+      }
+      .og img { height: 64px; width: auto; }
+      .og h3 { font-size: 32px; font-weight: 800; color: #fff; max-width: 16ch; }
+      .og .url { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: #f3b04a; }
+      @media (max-width: 800px) {
+        .links.desk { display: none; }
+        .hero-copy h3 { font-size: 30px; }
+        .appbar .who, .appbar .links { display: none; }
+        .foot .m-footer { flex-direction: column; align-items: flex-start; }
+        .og { aspect-ratio: auto; min-height: 240px; }
+      }
+
+      .callouts { margin: 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+      .callouts li { display: flex; gap: 12px; align-items: flex-start; }
+      .callouts .n {
+        flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--brand); color: #fff;
+        font-size: 12px; font-weight: 700; display: grid; place-items: center; margin-top: 2px;
+      }
+      .callouts .n.a { background: var(--accent); }
+      .rule-list { margin: 0; padding: 0; list-style: none; }
+      .rule-list li { padding: 8px 0; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: baseline; }
+      .rule-list li:last-child { border-bottom: 0; }
+      .tag { font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 700; letter-spacing: 0.1em; padding: 3px 7px; border-radius: 6px; text-transform: uppercase; flex: none; }
+      .tag.ok { background: rgba(21, 128, 61, 0.1); color: var(--success); }
+      .tag.no { background: rgba(185, 28, 28, 0.08); color: var(--danger); }
+      .dont { display: grid; place-items: center; height: 130px; background: var(--bg); border-radius: 10px; border: 1px solid var(--border); position: relative; overflow: hidden; }
+      .dont::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to top right, transparent calc(50% - 1px), rgba(185, 28, 28, 0.55), transparent calc(50% + 1px)); pointer-events: none; }
+      .dont img { height: 78px; }
+      .dont-cap { font-size: 12.5px; color: var(--muted); margin-top: 8px; }
+
+      .swatch { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); background: var(--surface); cursor: copy; }
+      .swatch .chip { height: 84px; }
+      .swatch .info { padding: 10px 12px; }
+      .swatch .name { font-weight: 700; font-size: 13.5px; }
+      .swatch .hex { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+      .swatch .role { font-size: 12px; color: var(--muted); margin-top: 2px; }
+      .swatch .var { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; color: var(--muted); }
+      .ratio { display: flex; height: 44px; border-radius: 10px; overflow: hidden; border: 1px solid var(--border); font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+      .ratio div { display: grid; place-items: center; }
+      table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+      th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+      th { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
+      td code { font-size: 12px; }
+      .dl { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+      .dl a {
+        font-family: 'JetBrains Mono', monospace; font-size: 11px; text-decoration: none;
+        border: 1px solid var(--border); border-radius: 6px; padding: 3px 7px; color: var(--brand); background: var(--surface-2);
+      }
+      footer { padding: 40px 0 60px; color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); margin-top: 40px; }
+      .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--ink); color: #fff; padding: 8px 14px; border-radius: 8px; font-size: 13px; opacity: 0; transition: all 0.25s; pointer-events: none; }
+      .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+      .compare { display: grid; grid-template-columns: 1fr 1fr; }
+      .compare > div { padding: 28px; display: grid; place-items: center; gap: 10px; min-height: 180px; }
+      .compare > div + div { border-left: 1px solid var(--border); }
+      .compare img { height: 72px; }
+      .compare figcaption { font-size: 12px; color: var(--muted); text-align: center; }
+      @media (max-width: 700px) { .compare { grid-template-columns: 1fr; } .compare > div + div { border-left: 0; border-top: 1px solid var(--border); } }
+    </style>
+  </head>
+  <body>
+    <header class="band">
+      <div class="wrap band-grid">
+        <div>
+          <div class="eyebrow">Brand kit · v2.0 · October 2026</div>
+          <h1 style="margin-top: 14px">Prophyion</h1>
+          <p class="lede" style="margin-top: 14px">
+            The same name, the same colours, a new mark. The bishop replaces the rook-and-pawn cut.
+            Navy, amber and cream are the September palette, unchanged. The previous kit and every
+            file for the old mark are kept.
+          </p>
+          <div class="meta">
+            <span><b>Mark</b> Bishop</span>
+            <span><b>Replaces</b> J — Promotion · cut</span>
+            <span><b>Colours</b> Unchanged from v1</span>
+            <span><b>Previous kit</b> <a href="../index.html" style="color:#f3b04a">docs/brand/index.html</a></span>
+          </div>
+        </div>
+        <img class="band-logo" src="../logos/k-bishop/logo-horizontal-on-dark.svg" alt="Prophyion — horizontal lockup on dark" />
+      </div>
+    </header>
+
+    <nav class="nav">
+      <div class="wrap">
+        <a class="home" href="#top"><img src="../logos/k-bishop/tile.svg" alt="" /> Prophyion</a>
+        <a href="#mark">Mark</a>
+        <a href="#website">On the website</a>
+        <a href="#lockups">Lockups</a>
+        <a href="#usage">Usage</a>
+        <a href="#colour">Colour</a>
+        <a href="#assets">Files</a>
+        <a href="#previous">Previous mark</a>
+      </div>
+    </nav>
+
+    <main id="top">
+      <section id="mark">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">01 · The mark</div>
+            <h2>A bishop, slit open, held by two arcs</h2>
+            <p class="lede" style="margin-top: 12px">
+              The piece is a chess bishop: mitre, diagonal slit, collar, and a wide base. The slit is a
+              gap, so the surface behind the mark shows through. The two arcs are the only amber in the
+              mark. Everything else is navy on light grounds and cream on dark grounds.
+            </p>
+          </div>
+
+          <div class="stage">
+            <div class="tiles">
+              <div class="on-light"><img class="mark-img" src="../logos/k-bishop/mark.svg" alt="Bishop mark on cream" /><span class="lab">On cream</span></div>
+              <div class="on-white"><img class="mark-img" src="../logos/k-bishop/mark.svg" alt="Bishop mark on white" /><span class="lab">On white</span></div>
+              <div class="on-navy"><img class="mark-img" src="../logos/k-bishop/mark-on-dark.svg" alt="Bishop mark on navy" /><span class="lab">On navy</span></div>
+              <div class="on-deep"><img class="mark-img" src="../logos/k-bishop/mark-on-dark.svg" alt="Bishop mark on deep navy" /><span class="lab">On deep</span></div>
+            </div>
+            <div class="locks">
+              <div class="on-white"><img class="mark-img" src="../logos/k-bishop/tile.svg" alt="App tile" style="width:96px" /></div>
+              <div class="on-white">
+                <div class="sizes">
+                  <figure><img src="../logos/k-bishop/tile.svg" width="16" height="16" alt="" /><figcaption>16</figcaption></figure>
+                  <figure><img src="../logos/k-bishop/tile.svg" width="24" height="24" alt="" /><figcaption>24</figcaption></figure>
+                  <figure><img src="../logos/k-bishop/tile.svg" width="32" height="32" alt="" /><figcaption>32</figcaption></figure>
+                  <figure><img src="../logos/k-bishop/tile.svg" width="48" height="48" alt="" /><figcaption>48</figcaption></figure>
+                  <figure><img src="../logos/k-bishop/tile.svg" width="64" height="64" alt="" /><figcaption>64</figcaption></figure>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid g2" style="margin-top: 18px">
+            <div class="card">
+              <h3>What changed</h3>
+              <ul class="rule-list" style="margin-top: 10px">
+                <li><span class="tag ok">Shape</span><span>The bishop, with its slit and the two arcs, is the mark on the marketing site and in the simulation app. The rook with the pawn cut out of it stays in the September files.</span></li>
+                <li><span class="tag ok">Files</span><span>New drawings live in <code>logos/k-bishop/</code>. The September drawings stay in <code>logos/j-promotion-cut/</code>.</span></li>
+                <li><span class="tag ok">Held</span><span>No new colours. The artwork’s gold arcs are drawn in Amber <code>#D97706</code>. The piece is Navy <code>#1E3A5F</code> or Cream <code>#FAF8F4</code>.</span></li>
+              </ul>
+            </div>
+            <div class="card">
+              <h3>Three parts</h3>
+              <ul class="callouts" style="margin-top: 12px">
+                <li><span class="n">1</span><div><b>The mitre and the slit.</b> The slit stays open. Filling it, even with amber, closes the bishop into a flame and is a different mark.</div></li>
+                <li><span class="n">2</span><div><b>The body.</b> Collar, the notch on the right, and the wide base. The base is flat. It is part of the piece, in the same colour as the mitre.</div></li>
+                <li><span class="n a">3</span><div><b>The arcs.</b> A pair, amber, outside the piece. They are the accent, the way the rook’s base used to be. In one-colour versions they take the same ink as the piece.</div></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="website">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">02 · On the website</div>
+            <h2>How the mark sits in the product</h2>
+            <p class="lede" style="margin-top: 12px">
+              The site and the app use the tile — a navy rounded square — next to the name set in Inter.
+              The tile already carries its own ground, so the same file sits on the dark hero, the white
+              header, and the navy app bar. These frames use the live layout, type, and colours.
+            </p>
+          </div>
+
+          <div class="stage">
+            <div class="stage-lab">Marketing header, over the hero <span>transparent bar · tile 40px · Inter 17 bold</span></div>
+            <div class="hero">
+              <div class="m-header">
+                <a class="brandline" href="#top">
+                  <img src="../logos/k-bishop/tile.svg" alt="Prophyion" />
+                  <span class="name">Prophyion</span>
+                </a>
+                <nav class="links desk">
+                  <a href="#website">Corporate Crisis</a>
+                  <a href="#website">Platform</a>
+                  <a href="#website">What you get</a>
+                  <a href="#website">Sectors</a>
+                  <a href="#website">About us</a>
+                </nav>
+                <a class="cta" href="#website">Book a scoping call</a>
+              </div>
+              <div class="hero-copy">
+                <div class="eyebrow" style="color:#f3b04a">Crisis simulated. Readiness proven.</div>
+                <h3 style="margin-top:12px">Rehearse the crisis before it arrives</h3>
+                <p>Live exercises built on your own risks, plans and operating procedures.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" style="margin-top: 18px">
+            <div class="stage-lab">Marketing header, once the page has scrolled <span>white bar · ink title · same tile</span></div>
+            <div class="scrolled">
+              <div class="m-header">
+                <a class="brandline" href="#top">
+                  <img src="../logos/k-bishop/tile.svg" alt="Prophyion" />
+                  <span class="name">Prophyion</span>
+                </a>
+                <nav class="links desk">
+                  <a href="#website">Corporate Crisis</a>
+                  <a href="#website">Platform</a>
+                  <a href="#website">What you get</a>
+                  <a href="#website">Sectors</a>
+                  <a href="#website">About us</a>
+                </nav>
+                <a class="cta" href="#website">Book a scoping call</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" style="margin-top: 18px">
+            <div class="stage-lab">App navigation <span>navy bar · tile 36px · name and the product line</span></div>
+            <div class="appbar">
+              <div class="app-nav">
+                <a class="brandline" href="#top">
+                  <img src="../logos/k-bishop/tile.svg" alt="" />
+                  <span>
+                    <span class="name">Prophyion</span>
+                    <span class="sub">Unified Simulation Environment</span>
+                  </span>
+                </a>
+                <nav class="links desk">
+                  <a href="#website">Scenarios</a>
+                  <a href="#website">War Room</a>
+                  <a href="#website">Sessions</a>
+                </nav>
+                <div class="who"><b>A. Rahman</b><span>Trainer</span></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" style="margin-top: 18px">
+            <div class="stage-lab">Sign-in card <span>cream page · tile 48px</span></div>
+            <div class="login-page">
+              <div class="login-card">
+                <img src="../logos/k-bishop/tile.svg" alt="" />
+                <h3>Prophyion</h3>
+                <p class="small muted">Unified Simulation Environment</p>
+                <div class="field"></div>
+                <div class="field"></div>
+                <a class="cta" href="#website">Sign in</a>
+              </div>
+            </div>
+          </div>
+
+          <div class="stage" style="margin-top: 18px">
+            <div class="stage-lab">Marketing footer <span>white · tile 40px · muted links</span></div>
+            <div class="foot">
+              <div class="m-footer">
+                <a class="brandline" href="#top">
+                  <img src="../logos/k-bishop/tile.svg" alt="" />
+                  <span>
+                    <span class="name">Prophyion</span>
+                    <span class="sub">Unified Simulation Environment</span>
+                  </span>
+                </a>
+                <nav class="links">
+                  <a href="#website">What you get</a>
+                  <a href="#website">Corporate Crisis</a>
+                  <a href="#website">About us</a>
+                  <a href="#website" style="color:var(--brand);font-weight:600">Participant sign in</a>
+                </nav>
+              </div>
+              <p class="fine">© 2026 Prophyion, Singapore. Scenarios are fictional and non-operational.</p>
+            </div>
+          </div>
+
+          <div class="stage" style="margin-top: 18px">
+            <div class="stage-lab">Header on a photograph <span>the same tile, over the section scrim</span></div>
+            <div class="photo" style="background-image: url('../../../marketing/public/marketing/sections/bg-war-room.webp')">
+              <div class="m-header">
+                <a class="brandline" href="#top">
+                  <img src="../logos/k-bishop/tile.svg" alt="" />
+                  <span class="name">Prophyion</span>
+                </a>
+                <nav class="links desk">
+                  <a href="#website">Platform</a>
+                  <a href="#website">What you get</a>
+                  <a href="#website">About us</a>
+                </nav>
+                <a class="cta" href="#website">Book a scoping call</a>
+              </div>
+              <div class="blurb">
+                <div class="eyebrow" style="color:#f3b04a">War room</div>
+                <h3 style="margin-top:8px">Where the response breaks, measured</h3>
+                <p>The tile keeps its own navy ground, so it does not need a disc behind it on photography.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid g2" style="margin-top: 18px">
+            <div class="stage">
+              <div class="stage-lab">Email signature <span>horizontal lockup, about 160px wide</span></div>
+              <div class="sig">
+                <img src="../logos/k-bishop/logo-horizontal.svg" alt="Prophyion" />
+                <div class="who">Kenneth
+                  <span>kenneth@prophyion.com<br />prophyion.com</span>
+                </div>
+              </div>
+            </div>
+            <div class="stage">
+              <div class="stage-lab">Link preview <span>1200 × 630 proportion · on-dark lockup</span></div>
+              <div class="og">
+                <img src="../logos/k-bishop/logo-horizontal-on-dark.svg" alt="Prophyion" />
+                <div>
+                  <h3>Crisis simulated. Readiness proven.</h3>
+                  <div class="url" style="margin-top:14px">prophyion.com</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="lockups">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">03 · Lockups</div>
+            <h2>The outlined wordmark, for places that are not the website</h2>
+            <p class="lede" style="margin-top: 12px">
+              Slides, documents, and signatures use the outlined wordmark, the same Inter Bold drawing as v1.
+              The website does not: there the name beside the tile is live Inter, as in the frames above.
+              The dot of the i can be amber in the display lockup. It is too small to use under 24px.
+            </p>
+          </div>
+          <div class="stage">
+            <div class="locks">
+              <div class="on-light"><img class="h" src="../logos/k-bishop/logo-horizontal.svg" alt="Horizontal lockup" /></div>
+              <div class="on-deep"><img class="h" src="../logos/k-bishop/logo-horizontal-on-dark.svg" alt="Horizontal lockup on dark" /></div>
+            </div>
+            <div class="locks">
+              <div class="on-light"><img class="h" src="../logos/k-bishop/logo-horizontal-accent-i.svg" alt="Horizontal lockup with amber tittle" /></div>
+              <div class="on-white"><img class="h" src="../logos/k-bishop/logo-horizontal-mono.svg" alt="One-colour horizontal lockup" /></div>
+            </div>
+            <div class="locks">
+              <div class="on-light"><img class="s" src="../logos/k-bishop/logo-stacked.svg" alt="Stacked lockup" /></div>
+              <div class="on-deep"><img class="s" src="../logos/k-bishop/logo-stacked-on-dark.svg" alt="Stacked lockup on dark" /></div>
+            </div>
+          </div>
+          <div class="grid g2" style="margin-top: 18px">
+            <div class="card">
+              <h3>One colour</h3>
+              <p class="small" style="margin-top: 8px">Ink on white, and white on a dark ground. The arcs are not a second colour in these files.</p>
+              <div class="grid g2" style="margin-top: 12px">
+                <div class="on-white" style="border-radius:10px;border:1px solid var(--border);display:grid;place-items:center;min-height:160px">
+                  <img src="../logos/k-bishop/mark-mono.svg" alt="" style="width:100px" />
+                </div>
+                <div class="on-ink" style="background:#172033;border-radius:10px;display:grid;place-items:center;min-height:160px">
+                  <img src="../logos/k-bishop/mark-mono-white.svg" alt="" style="width:100px" />
+                </div>
+              </div>
+            </div>
+            <div class="card">
+              <h3>Supplied artwork</h3>
+              <p class="small" style="margin-top: 8px">
+                The partner file is a white piece and gold arcs on black. The shape was traced from it.
+                The gold in that file is not a brand colour; the arcs in the kit are Amber <code>#D97706</code>.
+              </p>
+              <div style="margin-top:12px;background:#000;border-radius:10px;display:grid;place-items:center;padding:12px">
+                <img src="../logos/k-bishop/source/partner-artwork-on-black.jpg" alt="Partner artwork" style="width:min(100%, 280px);height:auto" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="usage">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">04 · Usage</div>
+            <h2>Clear space, small sizes, and the things that break it</h2>
+          </div>
+          <div class="grid g3">
+            <div class="card">
+              <h4>Clear space</h4>
+              <p class="small muted" style="margin-top: 8px">One quarter of the mark’s height on every side, measured from the outer edge of the arcs. The lockups keep the wordmark outside the arcs, with that clear space already built in.</p>
+            </div>
+            <div class="card">
+              <h4>Minimum size</h4>
+              <p class="small muted" style="margin-top: 8px">The slit and the arcs read from 32px. At 16px the tile is still the right favicon: the silhouette holds, and the slit closes up. Horizontal lockup: 140px wide.</p>
+            </div>
+            <div class="card">
+              <h4>Which file</h4>
+              <p class="small muted" style="margin-top: 8px">Light grounds → <code>mark.svg</code>. Navy, deep, or a photograph → <code>mark-on-dark.svg</code>, or the tile. App icons and the website header → <code>tile.svg</code>. One ink → <code>mark-mono.svg</code>.</p>
+            </div>
+          </div>
+
+          <div class="grid g3" style="margin-top: 18px">
+            <div>
+              <div class="dont"><img src="../logos/k-bishop/mark.svg" alt="" style="transform: rotate(28deg)" /></div>
+              <div class="dont-cap">Leave the mark upright. The slit has a direction.</div>
+            </div>
+            <div>
+              <div class="dont"><img src="../logos/k-bishop/mark.svg" alt="" style="transform: scaleX(1.45)" /></div>
+              <div class="dont-cap">Keep the proportion. The piece is taller than it is wide.</div>
+            </div>
+            <div>
+              <div class="dont"><img src="../logos/k-bishop/mark.svg" alt="" style="filter: hue-rotate(90deg) saturate(1.3)" /></div>
+              <div class="dont-cap">Navy and amber only. The partner gold is not a second palette.</div>
+            </div>
+            <div>
+              <div class="dont" style="background: var(--brand)"><img src="../logos/k-bishop/mark.svg" alt="" /></div>
+              <div class="dont-cap">On navy or a photograph, use the cream piece, not the navy one.</div>
+            </div>
+            <div>
+              <div class="dont"><img src="../logos/k-bishop/mark.svg" alt="" style="filter: drop-shadow(0 8px 8px rgba(0,0,0,.45))" /></div>
+              <div class="dont-cap">No shadow, glow, or outline. The tile’s own shadow is the exception, and it is already in the site CSS.</div>
+            </div>
+            <div>
+              <div class="dont" style="font-weight:800;font-size:22px;letter-spacing:-0.02em;color:var(--brand)">Prophyion <span class="muted" style="font-weight:500;font-size:13px">Simulations</span></div>
+              <div class="dont-cap">The name stands alone. No “Simulations” after it.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="colour">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">05 · Colour</div>
+            <h2>Navy structure, amber decision, cream ground</h2>
+            <p class="lede" style="margin-top: 12px">
+              Carried over unchanged from v1 and from the site tokens
+              (<code>frontend/src/style.css</code>, <code>marketing.css</code>).
+              Click a swatch to copy its hex. Supporting colours — borders, muted text, success, danger — are the same list in the September kit. Amber stays one decision on a view, not a decoration.
+            </p>
+          </div>
+          <h3 style="margin-bottom: 12px">Core</h3>
+          <div class="grid g4">
+            <div class="swatch" data-hex="#1E3A5F"><div class="chip" style="background:#1e3a5f"></div><div class="info"><div class="name">Navy</div><div class="hex">#1E3A5F</div><div class="role">Primary. The piece on light grounds. Navigation, headings.</div><div class="var">--brand</div></div></div>
+            <div class="swatch" data-hex="#18304E"><div class="chip" style="background:#18304e"></div><div class="info"><div class="name">Navy strong</div><div class="hex">#18304E</div><div class="role">Hover and pressed states of navy.</div><div class="var">--brand-strong</div></div></div>
+            <div class="swatch" data-hex="#0E1A2B"><div class="chip" style="background:#0e1a2b"></div><div class="info"><div class="name">Deep navy</div><div class="hex">#0E1A2B</div><div class="role">Hero and footer bands, link-preview ground.</div><div class="var">deep</div></div></div>
+            <div class="swatch" data-hex="#172033"><div class="chip" style="background:#172033"></div><div class="info"><div class="name">Ink</div><div class="hex">#172033</div><div class="role">Body text, and the one-colour mark.</div><div class="var">--ink</div></div></div>
+            <div class="swatch" data-hex="#D97706"><div class="chip" style="background:#d97706"></div><div class="info"><div class="name">Amber</div><div class="hex">#D97706</div><div class="role">The arcs, the primary action, eyebrow labels.</div><div class="var">--accent</div></div></div>
+            <div class="swatch" data-hex="#B45309"><div class="chip" style="background:#b45309"></div><div class="info"><div class="name">Amber strong</div><div class="hex">#B45309</div><div class="role">Amber text on cream when it must pass AA. Hover of amber.</div><div class="var">--accent-strong</div></div></div>
+            <div class="swatch" data-hex="#FAF8F4"><div class="chip" style="background:#faf8f4;border-bottom:1px solid #e4dfd4"></div><div class="info"><div class="name">Cream</div><div class="hex">#FAF8F4</div><div class="role">Page background. The piece on dark grounds and inside the tile.</div><div class="var">--bg</div></div></div>
+            <div class="swatch" data-hex="#F4F1EA"><div class="chip" style="background:#f4f1ea;border-bottom:1px solid #e4dfd4"></div><div class="info"><div class="name">Cream 2</div><div class="hex">#F4F1EA</div><div class="role">Secondary surfaces and hover fills.</div><div class="var">--surface-2</div></div></div>
+          </div>
+          <div class="card" style="margin-top: 22px">
+            <h3>Proportion</h3>
+            <p class="small muted" style="margin-top: 6px">Unchanged. Roughly how a screen should weigh out.</p>
+            <div class="ratio" style="margin-top: 12px">
+              <div style="flex:60;background:#faf8f4;color:#6b7280">cream / white · 60</div>
+              <div style="flex:30;background:#1e3a5f;color:#fff">navy · 30</div>
+              <div style="flex:10;background:#d97706;color:#fff">amber · 10</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="assets">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">06 · Files</div>
+            <h2>Where the new mark is, and where the old one stayed</h2>
+          </div>
+          <div class="grid g2">
+            <div class="card">
+              <h3>This kit — <code>docs/brand/logos/k-bishop/</code></h3>
+              <p class="small muted" style="margin: 6px 0 10px">The bishop, in the same roles the rook used to fill.</p>
+              <table>
+                <tr><th>File</th><th>Use</th></tr>
+                <tr><td><code>mark.svg</code></td><td>Navy piece, amber arcs. Light grounds.</td></tr>
+                <tr><td><code>mark-on-dark.svg</code></td><td>Cream piece, amber arcs. Navy, deep, photography.</td></tr>
+                <tr><td><code>mark-mono.svg</code> · <code>mark-mono-white.svg</code></td><td>One colour. Ink, or white.</td></tr>
+                <tr><td><code>tile.svg</code> · <code>tile-512.png</code></td><td>Website header, app bar, favicon, avatars.</td></tr>
+                <tr><td><code>logo-horizontal.svg</code> · <code>-on-dark</code> · <code>-mono</code> · <code>-accent-i</code></td><td>Wordmark to the right of the mark.</td></tr>
+                <tr><td><code>logo-stacked.svg</code> · <code>-on-dark</code></td><td>Wordmark under the mark.</td></tr>
+                <tr><td><code>mark-512.png</code></td><td>Raster of the bare mark, for places that cannot take SVG.</td></tr>
+                <tr><td><code>source/partner-artwork-on-black.jpg</code></td><td>The file the shape was traced from.</td></tr>
+              </table>
+              <div class="dl">
+                <a href="../logos/k-bishop/mark.svg">mark</a>
+                <a href="../logos/k-bishop/mark-on-dark.svg">on-dark</a>
+                <a href="../logos/k-bishop/mark-mono.svg">mono</a>
+                <a href="../logos/k-bishop/tile.svg">tile</a>
+                <a href="../logos/k-bishop/logo-horizontal.svg">horizontal</a>
+                <a href="../logos/k-bishop/logo-stacked.svg">stacked</a>
+                <a href="../logos/k-bishop/logo-horizontal-accent-i.svg">accent-i</a>
+              </div>
+            </div>
+            <div class="card">
+              <h3>On the site</h3>
+              <p class="small" style="margin-top: 8px">
+                The marketing site and the simulation app load these drawings under the
+                <code>prophyion-*</code> names in <code>frontend/public/brand/</code> and
+                <code>marketing/public/brand/</code>. The app navigation uses the tile. Favicons and the
+                link-preview image are the same mark.
+              </p>
+              <h3 style="margin-top: 18px">Type and voice</h3>
+              <p class="small" style="margin-top: 8px">
+                Inter for reading, JetBrains Mono for labels and data. The tagline stays
+                “Crisis simulated. Readiness proven.” Name rules — Prophyion, capital P, no suffix —
+                are in the <a href="../index.html#name">September kit</a>, which is otherwise unchanged.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="previous">
+        <div class="wrap">
+          <div class="sec-head">
+            <div class="eyebrow">07 · Previous mark</div>
+            <h2>J — Promotion · cut, kept whole</h2>
+            <p class="lede" style="margin-top: 12px">
+              The rook with the pawn cut out of it shipped in September. Its files were not moved or
+              overwritten; the site now loads the bishop instead. Concepts A–I remain in the
+              September kit as the exploration that led there.
+            </p>
+          </div>
+          <div class="stage">
+            <div class="compare">
+              <div class="on-light">
+                <img src="../logos/j-promotion-cut/logo-horizontal.svg" alt="Previous horizontal lockup" />
+                <figcaption>September 2026 · kept as the archive<br /><a href="../index.html">Open the v1 kit</a></figcaption>
+              </div>
+              <div class="on-light">
+                <img src="../logos/k-bishop/logo-horizontal.svg" alt="Current horizontal lockup" />
+                <figcaption>October 2026 · this kit<br /><a href="../logos/k-bishop/mark.svg">k-bishop/mark.svg</a></figcaption>
+              </div>
+            </div>
+            <div class="compare">
+              <div class="on-white" style="background:#fff">
+                <img src="../logos/j-promotion-cut/tile.svg" alt="Previous tile" style="height:88px" />
+                <figcaption><code>logos/j-promotion-cut/</code></figcaption>
+              </div>
+              <div class="on-white" style="background:#fff">
+                <img src="../logos/k-bishop/tile.svg" alt="Current tile" style="height:88px" />
+                <figcaption><code>logos/k-bishop/</code></figcaption>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap" style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap">
+        <span>Prophyion brand kit v2.0 · October 2026 · <code>docs/brand/v2/index.html</code></span>
+        <span>Shape updated. Colours, type, and voice are the September system.</span>
+      </div>
+    </footer>
+    <div class="toast" id="toast">Copied</div>
+    <script>
+      const toast = document.getElementById('toast');
+      let t;
+      document.querySelectorAll('.swatch').forEach((el) => {
+        el.addEventListener('click', async () => {
+          const hex = el.dataset.hex;
+          try {
+            await navigator.clipboard.writeText(hex);
+            toast.textContent = 'Copied ' + hex;
+          } catch {
+            toast.textContent = hex;
+          }
+          toast.classList.add('show');
+          clearTimeout(t);
+          t = setTimeout(() => toast.classList.remove('show'), 1400);
+        });
+      });
+    </script>
+  </body>
+</html>

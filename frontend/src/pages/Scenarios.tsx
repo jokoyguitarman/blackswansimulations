@@ -16,7 +16,6 @@ import { artFor, SHELL_ART } from '../lib/scenarioArt';
 import { WrIcon, teamIcon } from '../components/UI/WarRoomIcon';
 import { OriginBadge } from '../components/UI/OriginBadge';
 import { countryCode, initialsOf } from '../components/UI/Collapsible';
-import { BrandMark } from '../components/BrandMark';
 import { ScenarioDetailView } from '../components/Scenario/ScenarioDetailView';
 
 /*
@@ -287,11 +286,6 @@ export const Scenarios = () => {
       <div className="min-h-screen bg-bg">
         <header className="wr-artband wr-hero">
           <img className="wr-art" src={SHELL_ART.library} alt="" />
-          <div className="wr-hero-top">
-            <div className="wr-brandmark">
-              <BrandMark className="h-8 w-8" /> Prophyion
-            </div>
-          </div>
           <div className="wr-hero-grid">
             <div>
               <div className="wr-eyebrow">Scenario library</div>
@@ -322,33 +316,6 @@ export const Scenarios = () => {
     <div className="min-h-screen bg-bg">
       <header className="wr-artband wr-hero">
         <img className="wr-art" src={SHELL_ART.library} alt="" />
-        <div className="wr-hero-top">
-          <div className="wr-brandmark">
-            <BrandMark className="h-8 w-8" /> Prophyion{' '}
-            <span className="sub">· {isTrainer ? 'trainer' : 'participant'}</span>
-          </div>
-          <nav className="wr-nav" aria-label="Primary">
-            <Link to="/dashboard">
-              <WrIcon name="dash" /> Dashboard
-            </Link>
-            <Link to="/scenarios" className="here">
-              <WrIcon name="layers" /> Scenarios
-            </Link>
-            <Link to="/sessions">
-              <WrIcon name="cal" /> Sessions
-            </Link>
-            {isTrainer && (
-              <>
-                <Link to="/clients">
-                  <WrIcon name="card" /> Clients &amp; billing
-                </Link>
-                <Link to="/warroom" className="cta">
-                  <WrIcon name="bolt" /> War Room
-                </Link>
-              </>
-            )}
-          </nav>
-        </div>
         <div
           className="wr-hero-grid"
           style={{ gridTemplateColumns: '1fr auto', alignItems: 'end' }}

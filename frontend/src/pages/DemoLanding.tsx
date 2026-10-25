@@ -98,7 +98,7 @@ export function DemoLanding() {
   };
 
   return (
-    <div className="min-h-screen scanline flex items-center justify-center p-8">
+    <div className="min-h-[calc(100vh-4rem)] scanline flex items-center justify-center p-8">
       <div className="military-border bg-surface p-8 max-w-2xl w-full">
         <div className="flex items-center gap-4 mb-8">
           <h1 className="text-2xl terminal-text uppercase tracking-wider">Demo Launcher</h1>

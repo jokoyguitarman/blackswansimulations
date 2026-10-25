@@ -1,96 +1,19 @@
 import { useAuth } from '../contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import { useRoleVisibility } from '../hooks/useRoleVisibility';
 import { TrainerDashboard } from '../components/dashboards/TrainerDashboard';
 import { AgencyDashboard } from '../components/dashboards/AgencyDashboard';
-import { NotificationBell } from '../components/Notifications/NotificationBell';
-import { BrandMark } from '../components/BrandMark';
 import { AgreementStatusCard } from '../components/agreement/AgreementStatusCard';
 import { useMyAgreement } from '../hooks/useMyAgreement';
 
 export const Dashboard = () => {
-  const { user, session, signOut } = useAuth();
-  const navigate = useNavigate();
+  const { user, session } = useAuth();
   const { isTrainer } = useRoleVisibility();
   // Trainers see their agreement status on the trainer dashboard itself.
   const { mine } = useMyAgreement(Boolean(user) && !isTrainer);
   const signedUpAsConsultant = session?.user.user_metadata?.applying_as_consultant === true;
 
-  const handleSignOut = async () => {
-    await signOut();
-    navigate('/login');
-  };
-
   return (
     <div className="min-h-screen">
-      {/* Top Navigation */}
-      <nav className="bg-brand text-white relative z-10 shadow-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
-              <BrandMark className="w-9 h-9" />
-              <h1 className="text-base font-bold leading-tight">
-                Prophyion
-                <span className="block text-[11px] font-normal text-white/60">
-                  Unified Simulation Environment
-                </span>
-              </h1>
-            </div>
-            <div className="flex items-center gap-4">
-              {/* Role-based navigation */}
-              <div className="flex items-center gap-1">
-                {isTrainer && (
-                  <>
-                    <a
-                      href="/scenarios"
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
-                    >
-                      Scenarios
-                    </a>
-                    <a
-                      href="/warroom"
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
-                    >
-                      War Room
-                    </a>
-                    <a
-                      href="/demo"
-                      className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
-                    >
-                      Demo
-                    </a>
-                  </>
-                )}
-                <a
-                  href="/sessions"
-                  className="px-3 py-1.5 text-sm font-medium rounded-lg text-white/80 hover:bg-white/10 hover:text-white transition-all"
-                >
-                  Sessions
-                </a>
-              </div>
-              {/* Notification Bell */}
-              <NotificationBell />
-              <a
-                href="/account"
-                className="text-right leading-tight text-white hover:opacity-80 transition-opacity"
-                title="Account settings"
-              >
-                <div className="text-sm font-semibold text-white">
-                  {user?.displayName || user?.email}
-                </div>
-                <div className="text-[11px] text-white/60 capitalize">{user?.role} · settings</div>
-              </a>
-              <button
-                onClick={handleSignOut}
-                className="px-4 py-2 text-sm font-medium rounded-lg border border-white/30 text-white hover:bg-white/10 transition-all"
-              >
-                Log out
-              </button>
-            </div>
-          </div>
-        </div>
-      </nav>
-
       {/* Main Content */}
       <main className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Status Bar */}

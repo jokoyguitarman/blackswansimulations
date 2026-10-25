@@ -43,7 +43,6 @@ import {
   issueClass,
   jumpToField,
 } from '../components/Scenario/SetupIssues';
-import { BrandMark } from '../components/BrandMark';
 import { WrIcon, teamIcon, type WrIconName } from '../components/UI/WarRoomIcon';
 import { WrFold, countryCode, initialsOf } from '../components/UI/Collapsible';
 import { OriginBadge } from '../components/UI/OriginBadge';
@@ -4092,15 +4091,6 @@ export const SocialCrisisWizard = () => {
         <header className="wr-artband wr-hero">
           <img className="wr-art" src={heroArtByStep[step] ?? SHELL_ART.wizardSetup} alt="" />
           <div className="wr-hero-top">
-            <button
-              type="button"
-              className="wr-brandmark"
-              onClick={() => navigate('/warroom')}
-              title="Back to the War Room"
-            >
-              <BrandMark className="h-8 w-8" /> War Room{' '}
-              <span className="sub">· Corporate crisis</span>
-            </button>
             <div className="wr-steps" aria-label="Steps">
               {VISIBLE_STEPS.map((s, i) => {
                 const isCurrent = s === step;
