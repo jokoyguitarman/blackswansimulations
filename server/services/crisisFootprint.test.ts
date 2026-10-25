@@ -188,6 +188,75 @@ describe('guardRailFootprint', () => {
     );
     assert.equal(fp.pressure_organisations[0].register, 'statutory');
   });
+  test('existing pressure groups and removals are not proposed again, including name variants', () => {
+    const raw = {
+      implied_organisations: [
+        {
+          display_name: 'Dyson Malaysia Sdn Bhd',
+          kind: 'office' as const,
+          country: 'Malaysia',
+          reason: 'variant of a removed office',
+          suggested_roster: [],
+        },
+        {
+          display_name: 'Dyson Vietnam',
+          kind: 'office' as const,
+          country: 'Vietnam',
+          reason: 'new',
+          suggested_roster: [],
+        },
+      ],
+      pressure_organisations: [
+        {
+          display_name: 'Ministry of Human Resources (MOHR)',
+          kind: 'regulator' as const,
+          country: 'Malaysia',
+          register: 'statutory' as const,
+          reason: 'already entered',
+        },
+        {
+          display_name: 'Johor Residents Association',
+          kind: 'community_group' as const,
+          country: 'Malaysia',
+          register: 'grassroots' as const,
+          reason: 'removed',
+        },
+      ],
+    };
+    const fp = guardRailFootprint(raw, DYSON, existing, {
+      existingPressure: [{ display_name: 'Ministry of Human Resources' }],
+      dismissed: [
+        { side: 'office', name: 'Dyson Malaysia' },
+        { side: 'pressure', name: 'Johor Residents Association' },
+      ],
+    });
+    assert.deepEqual(
+      fp.implied_organisations.map((o) => o.display_name),
+      ['Dyson Vietnam'],
+    );
+    assert.equal(fp.pressure_organisations.length, 0);
+  });
+
+  test('a dismissed pressure group does not block an office, and omitting awareness is unchanged', () => {
+    const raw = {
+      implied_organisations: [
+        {
+          display_name: 'Dyson Malaysia',
+          kind: 'office' as const,
+          country: 'Malaysia',
+          reason: 'factory',
+          suggested_roster: [],
+        },
+      ],
+    };
+    const aware = guardRailFootprint(raw, DYSON, existing, {
+      dismissed: [{ side: 'pressure', name: 'Dyson Malaysia' }],
+    });
+    assert.equal(aware.implied_organisations.length, 1);
+    const plain = guardRailFootprint(raw, DYSON, existing);
+    assert.equal(plain.implied_organisations[0].display_name, 'Dyson Malaysia');
+  });
+
   test('null input yields only the entered countries and signals', () => {
     const fp = guardRailFootprint(null, DYSON, existing);
     assert.deepEqual(

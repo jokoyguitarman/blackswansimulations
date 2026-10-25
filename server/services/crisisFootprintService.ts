@@ -4,6 +4,7 @@ import { isKnownCountry, findCountry } from '../../shared/countries.js';
 import type { NormalisedOrg, PressureKind, PressureRegister } from './scenarioOrgModel.js';
 import { defaultRegisterFor } from './scenarioOrgModel.js';
 import { detectLabourSignal, detectProductSafetySignal } from './castCompletenessService.js';
+import { sameOrganisationName } from '../../shared/orgNames.js';
 
 /**
  * Crisis footprint inference (pressure plan §11): one AI call that reads the crisis
@@ -66,17 +67,37 @@ const PRESSURE_KINDS: readonly PressureKind[] = [
 const POLITICAL_RE =
   /\b(minister|parliament|mp|senator|opposition|election|policy ?makers?|lawmakers?)\b/i;
 
+/** What the trainer already has, and what they removed, so a re-run does not propose it again. */
+export interface FootprintAwareness {
+  existingPressure?: Array<{ display_name: string }>;
+  dismissed?: Array<{ side: 'office' | 'pressure'; name: string }>;
+}
+
+function alreadyNamed(name: string, names: string[]): boolean {
+  return names.some((n) => sameOrganisationName(name, n));
+}
+
 /** Deterministic clean-up of the model's proposal (also used when the AI is unavailable). */
 export function guardRailFootprint(
   raw: Partial<CrisisFootprint> | null | undefined,
   crisisText: string,
   existingOrgs: Array<{ display_name: string; country: string }>,
+  awareness?: FootprintAwareness,
 ): CrisisFootprint {
   const labour = detectLabourSignal(crisisText);
   const productSafety = detectProductSafetySignal(crisisText);
   const political = POLITICAL_RE.test(crisisText);
   const existingCountries = new Set(existingOrgs.map((o) => o.country));
-  const existingNames = new Set(existingOrgs.map((o) => o.display_name.toLowerCase()));
+  const taken = [
+    ...existingOrgs.map((o) => o.display_name),
+    ...(awareness?.existingPressure ?? []).map((p) => p.display_name),
+  ];
+  const dismissedOffice = (awareness?.dismissed ?? [])
+    .filter((d) => d.side === 'office')
+    .map((d) => d.name);
+  const dismissedPressure = (awareness?.dismissed ?? [])
+    .filter((d) => d.side === 'pressure')
+    .map((d) => d.name);
 
   const countries: FootprintCountry[] = [];
   const seenC = new Set<string>();
@@ -108,7 +129,13 @@ export function guardRailFootprint(
     if (implied.length >= MAX_IMPLIED) break;
     const name = String(o?.display_name || '').trim();
     const country = findCountry(String(o?.country || ''))?.name;
-    if (name.length < 2 || !country || existingNames.has(name.toLowerCase())) continue;
+    if (
+      name.length < 2 ||
+      !country ||
+      alreadyNamed(name, taken) ||
+      alreadyNamed(name, dismissedOffice)
+    )
+      continue;
     const kind = (['office', 'company', 'agency', 'ngo', 'other'] as const).includes(
       o.kind as 'office',
     )
@@ -124,7 +151,7 @@ export function guardRailFootprint(
         ? (o.suggested_roster as unknown[]).map(String).filter(Boolean).slice(0, 4)
         : [],
     });
-    existingNames.add(name.toLowerCase());
+    taken.push(name);
   }
 
   const pressure: PressureProposal[] = [];
@@ -135,7 +162,7 @@ export function guardRailFootprint(
     const country = findCountry(String(p?.country || ''))?.name;
     const kind = p?.kind as PressureKind;
     if (name.length < 2 || !country || !PRESSURE_KINDS.includes(kind)) continue;
-    if (existingNames.has(name.toLowerCase())) continue;
+    if (alreadyNamed(name, taken) || alreadyNamed(name, dismissedPressure)) continue;
     if (kind === 'union' && !labour) continue;
     if (kind === 'political' && !political) continue;
     if (kind === 'regulator') {
@@ -144,7 +171,7 @@ export function guardRailFootprint(
       if (n >= allowed) continue;
       regulatorsByCountry.set(country, n + 1);
     }
-    existingNames.add(name.toLowerCase());
+    taken.push(name);
     pressure.push({
       display_name: name.slice(0, 120),
       kind,
@@ -172,8 +199,15 @@ export function guardRailFootprint(
 export async function inferCrisisFootprint(
   crisisText: string,
   orgs: NormalisedOrg[],
+  awareness?: FootprintAwareness,
 ): Promise<CrisisFootprint> {
   const existing = orgs.map((o) => ({ display_name: o.display_name, country: o.country }));
+  const pressureLine = awareness?.existingPressure?.length
+    ? `\nPressure organisations already entered: ${awareness.existingPressure.map((p) => p.display_name).join('; ')}`
+    : '';
+  const dismissedLine = awareness?.dismissed?.length
+    ? `\nDo not propose these, the trainer removed them: ${awareness.dismissed.map((d) => `${d.name} (${d.side})`).join('; ')}`
+    : '';
   const raw = await callSocialCrisisAI(
     `You are mapping the FOOTPRINT of a crisis for a training simulation: which countries it touches and in what role, which organisation-side entities the text implies but the trainer has not entered, and which third parties will apply pressure.
 
@@ -189,7 +223,7 @@ Rules:
 - implied_organisations are ONLY protagonist-side entities of the organisation under crisis (a country office, a factory's operating company, a regional hub) that the text names or clearly implies and that the trainer has NOT entered. Never list suppliers, partners, customers, media or authorities here. At most 3.
 - pressure_organisations: the specific regulator / ministry per involved country (real names where possible), the union or labour NGO when workers are affected, a community group when a community is named, a political actor only when politics is in the text. At most 6. Use full official names.
 - Countries must be real country names.`,
-    `Crisis: ${crisisText.slice(0, 2500)}\nOrganisations already entered: ${existing.map((o) => `${o.display_name} (${o.country})`).join('; ') || 'none'}`,
+    `Crisis: ${crisisText.slice(0, 2500)}\nOrganisations already entered: ${existing.map((o) => `${o.display_name} (${o.country})`).join('; ') || 'none'}${pressureLine}${dismissedLine}`,
     3000,
     0.4,
   );
@@ -197,6 +231,7 @@ Rules:
     raw as Partial<CrisisFootprint> | null,
     crisisText,
     existing,
+    awareness,
   );
   logger.info(
     {

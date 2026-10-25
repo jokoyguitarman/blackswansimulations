@@ -315,6 +315,25 @@ router.post(
         context: z.string().default(''),
         organisations: organisationsSchema.optional(),
         competitors: competitorsSchema.optional(),
+        pressure_organisations: z
+          .array(
+            z.object({
+              display_name: z.string().max(120),
+              country: z.string().max(80),
+              kind: z.string().max(40).optional(),
+            }),
+          )
+          .max(12)
+          .optional(),
+        dismissed: z
+          .array(
+            z.object({
+              side: z.enum(['office', 'pressure']),
+              name: z.string().max(120),
+            }),
+          )
+          .max(50)
+          .optional(),
       }),
     }),
   ),
@@ -336,6 +355,10 @@ router.post(
       const footprint = await inferCrisisFootprint(
         text,
         orgsResult && orgsResult.ok ? orgsResult.orgs : [],
+        {
+          existingPressure: req.body.pressure_organisations,
+          dismissed: req.body.dismissed,
+        },
       );
       res.json({ data: footprint });
     } catch (err) {

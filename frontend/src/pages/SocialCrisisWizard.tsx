@@ -37,6 +37,18 @@ import {
   type SetupSnapshot,
 } from '../components/Scenario/setupValidation';
 import {
+  clearDismissal,
+  isDismissed,
+  isOnMap,
+  mergeSpokespersonLinks,
+  parseDismissedProposals,
+  recordDismissal,
+  selectFootprintAdditions,
+  type DismissedProposal,
+  type ProposalSide,
+  type SetupLists,
+} from '../components/Scenario/setupOrganisations';
+import {
   FieldNote,
   SetupIssueSummary,
   SetupIssuesProvider,
@@ -307,6 +319,20 @@ function Spinner({ text }: { text: string }) {
   );
 }
 
+/** Whether one card is the footprint proposal, including after the trainer renamed it. */
+function cardIsProposal(
+  side: ProposalSide,
+  card: { display_name: string; country: string; proposed_from?: string },
+  proposal: { display_name: string; country: string },
+): boolean {
+  const lists: SetupLists = {
+    primary: { display_name: '', country: '' },
+    offices: side === 'office' ? [card] : [],
+    pressure: side === 'pressure' ? [card] : [],
+  };
+  return isOnMap(side, proposal, lists);
+}
+
 /* ─── Component ─────────────────────────────────────────────────────── */
 
 export const SocialCrisisWizard = () => {
@@ -334,6 +360,10 @@ export const SocialCrisisWizard = () => {
 
   /* Draft persistence */
   const [wizardDraftId, setWizardDraftId] = useState<string | null>(null);
+  // The ref is what saves read, so a save captured before the id arrived still updates the right draft.
+  const wizardDraftIdRef = useRef<string | null>(null);
+  /** Set when a build finishes; the effect below saves once the finished content has rendered. */
+  const pendingBuildSave = useRef(false);
 
   /* Step 1 — Scenario Setup (free-form) */
   const [orgName, setOrgName] = useState('');
@@ -467,6 +497,8 @@ export const SocialCrisisWizard = () => {
 
   /* Pressure organisations (pressure plan §5.1 / §11) + crisis footprint proposals */
   const [pressureOrgs, setPressureOrgs] = useState<PressureOrgDraft[]>([]);
+  /** Proposals the trainer removed, so a later footprint run does not put them back. */
+  const [dismissedProposals, setDismissedProposals] = useState<DismissedProposal[]>([]);
   const [footprint, setFootprint] = useState<FootprintWire | null>(null);
   const [footprintLoading, setFootprintLoading] = useState(false);
   const [footprintNotice, setFootprintNotice] = useState<string | null>(null);
@@ -580,11 +612,13 @@ export const SocialCrisisWizard = () => {
    * offices become AI-operated organisations, pressure groups become pressure-org drafts.
    */
   const detectFootprint = useCallback(
-    async (opts: { silent?: boolean } = {}): Promise<'ran' | 'refused' | 'skipped' | 'failed'> => {
+    async (
+      opts: { silent?: boolean } = {},
+    ): Promise<{ outcome: 'ran' | 'refused' | 'skipped' | 'failed'; added: number }> => {
       const text = `${crisisDescription} ${context}`.trim();
       if (text.replace(/\W/g, '').length < 20) {
         if (!opts.silent) setFootprintNotice('Describe the crisis first (a sentence or two).');
-        return 'skipped';
+        return { outcome: 'skipped', added: 0 };
       }
       setFootprintLoading(true);
       setFootprintNotice(null);
@@ -598,48 +632,53 @@ export const SocialCrisisWizard = () => {
             context,
             organisations: organisationsPayload,
             competitors: competitorsPayload,
+            pressure_organisations: pressureOrgs.filter(isSendablePressureOrg).map((p) => ({
+              display_name: p.display_name.trim(),
+              country: p.country,
+              kind: p.kind,
+            })),
+            dismissed: dismissedProposals,
           }),
         });
         const json = (await res.json()) as { data?: FootprintWire; error?: string };
         if (res.status === 400 && showServerIssues(json)) {
           setFootprintNotice('Fix the highlighted fields first — the radar reads them too.');
-          return 'refused';
+          return { outcome: 'refused', added: 0 };
         }
         if (!res.ok || !json.data) throw new Error(json.error || 'Footprint inference failed');
         const fp = json.data;
         setFootprint(fp);
         footprintRanFor.current = text;
-        const existingOrgNames = new Set(
-          [orgName, ...extraOrganisations.map((o) => o.display_name)].map((n) =>
-            n.trim().toLowerCase(),
-          ),
-        );
-        const addedOrgs: OrganisationDraft[] = fp.implied_organisations
-          .filter((o) => !existingOrgNames.has(o.display_name.toLowerCase()))
-          .map((o) => ({
-            ...newOrganisationDraft(o.country),
-            display_name: o.display_name,
-            city: o.city || '',
-            kind: (['company', 'office', 'agency', 'ngo', 'other'] as const).includes(o.kind)
-              ? o.kind
-              : 'office',
-            operation: 'ai' as const,
-            proposed_reason: o.reason,
-            team_roster: rosterFromSuggestion(o.suggested_roster, presetCatalog),
-          }));
-        const existingPressure = new Set(
-          pressureOrgs.map((p) => p.display_name.trim().toLowerCase()),
-        );
-        const addedPressure: PressureOrgDraft[] = fp.pressure_organisations
-          .filter((p) => !existingPressure.has(p.display_name.toLowerCase()))
-          .map((p) => ({
-            ...newPressureOrgDraft(p.country, p.kind),
-            display_name: p.display_name,
-            city: p.city || '',
-            register: p.register,
-            wants: p.wants || '',
-            proposed_reason: p.reason,
-          }));
+        const lists: SetupLists = {
+          primary: { display_name: orgName, country },
+          offices: extraOrganisations,
+          pressure: pressureOrgs,
+        };
+        const picked = selectFootprintAdditions(fp, lists, dismissedProposals, {
+          offices: 5 - extraOrganisations.length,
+          pressure: 6 - pressureOrgs.length,
+        });
+        const addedOrgs: OrganisationDraft[] = picked.offices.map((o) => ({
+          ...newOrganisationDraft(o.country),
+          display_name: o.display_name,
+          city: o.city || '',
+          kind: (['company', 'office', 'agency', 'ngo', 'other'] as const).includes(o.kind)
+            ? o.kind
+            : 'office',
+          operation: 'ai' as const,
+          proposed_reason: o.reason,
+          proposed_from: o.display_name,
+          team_roster: rosterFromSuggestion(o.suggested_roster, presetCatalog),
+        }));
+        const addedPressure: PressureOrgDraft[] = picked.pressure.map((p) => ({
+          ...newPressureOrgDraft(p.country, p.kind),
+          display_name: p.display_name,
+          city: p.city || '',
+          register: p.register,
+          wants: p.wants || '',
+          proposed_reason: p.reason,
+          proposed_from: p.display_name,
+        }));
         if (addedOrgs.length > 0)
           setExtraOrganisations((prev) => [...prev, ...addedOrgs].slice(0, 5));
         if (addedPressure.length > 0)
@@ -647,15 +686,29 @@ export const SocialCrisisWizard = () => {
         const countries = fp.countries
           .map((c) => `${c.name} (${c.role.replace('_', ' ')})`)
           .join(', ');
-        setFootprintNotice(
-          `${countries || 'No extra countries'}. Added ${addedOrgs.length} AI-operated organisation(s) and ${addedPressure.length} pressure organisation(s) — untick or remove anything that does not belong.`,
-        );
-        return 'ran';
+        const notice = [
+          `${countries || 'No extra countries'}. Added ${addedOrgs.length} AI-operated organisation(s) and ${addedPressure.length} pressure group(s).`,
+        ];
+        if (picked.keptOff.length > 0) {
+          notice.push(
+            `${picked.keptOff.length} you removed earlier stayed off the map. Click a chip to add one back.`,
+          );
+        }
+        if (picked.noRoom.length > 0) {
+          notice.push(
+            `No room for ${picked.noRoom.join(', ')}: the map takes 6 organisations and 6 pressure groups.`,
+          );
+        }
+        if (addedOrgs.length + addedPressure.length > 0) {
+          notice.push('Remove anything that does not belong.');
+        }
+        setFootprintNotice(notice.join(' '));
+        return { outcome: 'ran', added: addedOrgs.length + addedPressure.length };
       } catch (err) {
         setFootprintNotice(
           err instanceof Error ? err.message : 'Could not infer the crisis footprint',
         );
-        return 'failed';
+        return { outcome: 'failed', added: 0 };
       } finally {
         setFootprintLoading(false);
       }
@@ -666,8 +719,10 @@ export const SocialCrisisWizard = () => {
       organisationsPayload,
       competitorsPayload,
       orgName,
+      country,
       extraOrganisations,
       pressureOrgs,
+      dismissedProposals,
       presetCatalog,
       showServerIssues,
     ],
@@ -781,6 +836,7 @@ export const SocialCrisisWizard = () => {
       primary_short_name: primaryShortName,
       extra_organisations: extraOrganisations,
       pressure_organisations: pressureOrgs,
+      dismissed_proposals: dismissedProposals,
       footprint,
       stakeholders,
       stakeholder_injects: stakeholderInjects,
@@ -792,6 +848,7 @@ export const SocialCrisisWizard = () => {
     [
       crisisDescription,
       orgName,
+      brandLogoUrl,
       country,
       context,
       uploadedDocText,
@@ -816,6 +873,7 @@ export const SocialCrisisWizard = () => {
       primaryShortName,
       extraOrganisations,
       pressureOrgs,
+      dismissedProposals,
       footprint,
       stakeholders,
       stakeholderInjects,
@@ -828,9 +886,14 @@ export const SocialCrisisWizard = () => {
 
   const saveDraftState = useCallback(
     async (nextStep: number) => {
+      const remember = (id: string) => {
+        wizardDraftIdRef.current = id;
+        setWizardDraftId(id);
+      };
       try {
         const headers = await authHeaders();
-        if (!wizardDraftId) {
+        const existingId = wizardDraftIdRef.current;
+        if (!existingId) {
           const res = await fetchJSON(apiUrl('/api/warroom/wizard/drafts'), {
             method: 'POST',
             headers,
@@ -840,26 +903,41 @@ export const SocialCrisisWizard = () => {
             const json = await res.json();
             const newId = String(json.data?.draft_id || '');
             if (newId) {
-              setWizardDraftId(newId);
+              remember(newId);
               setSearchParams({ draft: newId }, { replace: true });
+              // POST always stores the draft at step 1; record the real step straight away.
+              if (nextStep > 1) {
+                await fetchJSON(apiUrl(`/api/warroom/wizard/drafts/${newId}`), {
+                  method: 'PATCH',
+                  headers,
+                  body: JSON.stringify({ current_step: nextStep, input: buildDraftInput() }),
+                });
+              }
             }
-            return newId;
+            return newId || null;
           }
           return null;
         }
-        await fetchJSON(apiUrl(`/api/warroom/wizard/drafts/${wizardDraftId}`), {
+        await fetchJSON(apiUrl(`/api/warroom/wizard/drafts/${existingId}`), {
           method: 'PATCH',
           headers,
           body: JSON.stringify({ current_step: nextStep, input: buildDraftInput() }),
         });
-        return wizardDraftId;
+        return existingId;
       } catch (err) {
         console.error('Failed to save social crisis draft', err);
-        return wizardDraftId;
+        return wizardDraftIdRef.current;
       }
     },
-    [wizardDraftId, buildDraftInput, setSearchParams],
+    [buildDraftInput, setSearchParams],
   );
+
+  // A finished build is saved after the render that holds its content, not from the closure that started it.
+  useEffect(() => {
+    if (step !== 7 || !pendingBuildSave.current) return;
+    pendingBuildSave.current = false;
+    void saveDraftState(7);
+  }, [step, saveDraftState]);
 
   useEffect(() => {
     if (resumedRef.current) return;
@@ -879,6 +957,7 @@ export const SocialCrisisWizard = () => {
         if (!draft) return;
 
         setWizardDraftId(draftParam);
+        wizardDraftIdRef.current = draftParam;
         const input = (draft.input ?? {}) as Record<string, unknown>;
         const savedStep = Number(draft.current_step) || 1;
         const validStep = VISIBLE_STEPS.includes(savedStep) ? savedStep : 1;
@@ -937,6 +1016,7 @@ export const SocialCrisisWizard = () => {
         if (extras.length > 0) setExtraOrganisations(extras);
         if (Array.isArray(input.pressure_organisations))
           setPressureOrgs(input.pressure_organisations as PressureOrgDraft[]);
+        setDismissedProposals(parseDismissedProposals(input.dismissed_proposals));
         if (input.footprint && typeof input.footprint === 'object') {
           setFootprint(input.footprint as FootprintWire);
           footprintRanFor.current =
@@ -1356,18 +1436,7 @@ export const SocialCrisisWizard = () => {
                         spokesperson_stakeholder_id?: string;
                       }>)
                     : [];
-                  const mergedPressure = pressureOrgs.map((p) => {
-                    const m = pressureWire.find(
-                      (w) => w.display_name.toLowerCase() === p.display_name.trim().toLowerCase(),
-                    );
-                    return m
-                      ? {
-                          ...p,
-                          org_key: m.org_key,
-                          spokesperson_stakeholder_id: m.spokesperson_stakeholder_id,
-                        }
-                      : p;
-                  });
+                  const mergedPressure = mergeSpokespersonLinks(pressureOrgs, pressureWire);
                   result = {
                     injects,
                     teamStorylines: teamMap,
@@ -1387,8 +1456,11 @@ export const SocialCrisisWizard = () => {
                   if (Array.isArray(msg.sop_steps)) setSopSteps(msg.sop_steps as SopStepWire[]);
                   if (msg.decision_context && typeof msg.decision_context === 'object')
                     setDecisionContext(msg.decision_context as Record<string, unknown>);
-                  // Pressure orgs come back normalised with their spokesperson ids.
-                  if (pressureWire.length > 0) setPressureOrgs(mergedPressure);
+                  // Annotate the cards the trainer currently holds. Never write the captured list back:
+                  // a removal made after this callback was created must survive the stage.
+                  if (pressureWire.length > 0) {
+                    setPressureOrgs((prev) => mergeSpokespersonLinks(prev, pressureWire));
+                  }
                   if (stks.length > 0)
                     setStep3Progress((prev) => [
                       ...prev,
@@ -1431,6 +1503,8 @@ export const SocialCrisisWizard = () => {
       teamRoster,
       organisationsPayload,
       competitorsPayload,
+      pressureOrgs,
+      pressureOrganisationsPayload,
     ],
   );
 
@@ -1581,6 +1655,7 @@ export const SocialCrisisWizard = () => {
       blueprint,
       organisationsPayload,
       competitorsPayload,
+      pressureOrganisationsPayload,
     ],
   );
 
@@ -1743,9 +1818,9 @@ export const SocialCrisisWizard = () => {
     await generateOrgPage(story.stakeholders, npc.factSheet, story.pressureOrganisations);
 
     setBuildStage('done');
-    await saveDraftState(7);
+    pendingBuildSave.current = true;
     setStep(7);
-  }, [generateNPCs, generateStoryline, generateConvergence, generateOrgPage, saveDraftState]);
+  }, [generateNPCs, generateStoryline, generateConvergence, generateOrgPage]);
 
   const compileScenario = useCallback(async () => {
     if (!crisisDescription) return;
@@ -1880,6 +1955,7 @@ export const SocialCrisisWizard = () => {
     blueprint,
     organisationsPayload,
     competitorsPayload,
+    pressureOrganisationsPayload,
     stakeholders,
     stakeholderInjects,
     sopSteps,
@@ -1907,8 +1983,11 @@ export const SocialCrisisWizard = () => {
     if (step === 1 && !footprintLoading) {
       const text = `${crisisDescription} ${context}`.trim();
       if (text.replace(/\W/g, '').length >= 20 && footprintRanFor.current !== text) {
-        if ((await detectFootprint({ silent: true })) === 'refused') return;
-        if (footprintRanFor.current === text) return; // stay on Setup to review proposals
+        const firstRun = footprint === null;
+        const detected = await detectFootprint({ silent: true });
+        if (detected.outcome === 'refused') return;
+        // Stay to review only when this is the first look, or the run actually added something.
+        if (detected.outcome === 'ran' && (firstRun || detected.added > 0)) return;
       }
     }
     // With the feature on and a document uploaded, route through Blueprint Review.
@@ -1999,22 +2078,39 @@ export const SocialCrisisWizard = () => {
     [country, ...extraOrganisations.map((o) => o.country)].filter(Boolean),
   );
 
-  /** Is a radar proposal currently present as a draft? */
-  const hasOrgProposal = (name: string) =>
-    [orgName, ...extraOrganisations.map((o) => o.display_name)].some(
-      (n) => n.trim().toLowerCase() === name.trim().toLowerCase(),
-    );
-  const hasPressureProposal = (name: string) =>
-    pressureOrgs.some((p) => p.display_name.trim().toLowerCase() === name.trim().toLowerCase());
+  const setupLists: SetupLists = {
+    primary: { display_name: orgName, country },
+    offices: extraOrganisations,
+    pressure: pressureOrgs,
+  };
+  const proposalOnMap = (side: ProposalSide, proposal: { display_name: string; country: string }) =>
+    isOnMap(side, proposal, setupLists);
+  /** The primary answers to a proposal, and it cannot be removed from a chip. */
+  const proposalIsPrimary = (proposal: { display_name: string; country: string }) =>
+    isOnMap('office', proposal, { ...setupLists, offices: [] });
+
+  const dismissCards = (
+    side: ProposalSide,
+    proposalName: string,
+    cards: Array<{ display_name: string; proposed_from?: string }>,
+  ) => {
+    setDismissedProposals((prev) => {
+      let next = recordDismissal(prev, side, { display_name: proposalName });
+      for (const card of cards) next = recordDismissal(next, side, card);
+      return next;
+    });
+  };
 
   const toggleOrgProposal = (o: FootprintWire['implied_organisations'][number]) => {
-    if (hasOrgProposal(o.display_name)) {
-      setExtraOrganisations((prev) =>
-        prev.filter((x) => x.display_name.trim().toLowerCase() !== o.display_name.toLowerCase()),
-      );
+    if (proposalIsPrimary(o)) return;
+    const matching = extraOrganisations.filter((x) => cardIsProposal('office', x, o));
+    if (matching.length > 0) {
+      setExtraOrganisations((prev) => prev.filter((x) => !cardIsProposal('office', x, o)));
+      dismissCards('office', o.display_name, matching);
       return;
     }
     if (extraOrganisations.length + 1 >= 6) return;
+    setDismissedProposals((prev) => clearDismissal(prev, 'office', o.display_name));
     setExtraOrganisations((prev) => [
       ...prev,
       {
@@ -2026,18 +2122,20 @@ export const SocialCrisisWizard = () => {
           : 'office',
         operation: 'ai' as const,
         proposed_reason: o.reason,
+        proposed_from: o.display_name,
         team_roster: rosterFromSuggestion(o.suggested_roster, presetCatalog),
       },
     ]);
   };
   const togglePressureProposal = (p: FootprintWire['pressure_organisations'][number]) => {
-    if (hasPressureProposal(p.display_name)) {
-      setPressureOrgs((prev) =>
-        prev.filter((x) => x.display_name.trim().toLowerCase() !== p.display_name.toLowerCase()),
-      );
+    const matching = pressureOrgs.filter((x) => cardIsProposal('pressure', x, p));
+    if (matching.length > 0) {
+      setPressureOrgs((prev) => prev.filter((x) => !cardIsProposal('pressure', x, p)));
+      dismissCards('pressure', p.display_name, matching);
       return;
     }
     if (pressureOrgs.length >= 6) return;
+    setDismissedProposals((prev) => clearDismissal(prev, 'pressure', p.display_name));
     setPressureOrgs((prev) => [
       ...prev,
       {
@@ -2047,6 +2145,7 @@ export const SocialCrisisWizard = () => {
         register: p.register,
         wants: p.wants || '',
         proposed_reason: p.reason,
+        proposed_from: p.display_name,
       },
     ]);
   };
@@ -2287,13 +2386,21 @@ export const SocialCrisisWizard = () => {
               <h5>Proposed — placed on the map</h5>
               <div className="wr-rchips">
                 {footprint.implied_organisations.map((o) => {
-                  const on = hasOrgProposal(o.display_name);
+                  const on = proposalOnMap('office', o);
+                  const headquarters = proposalIsPrimary(o);
+                  const removed = !on && isDismissed(dismissedProposals, 'office', o.display_name);
                   return (
                     <button
                       type="button"
                       key={`o-${o.display_name}`}
                       className={`wr-rc act ${on ? 'on' : 'off'}`}
-                      title={`${o.reason}${on ? ' — click to remove' : ' — click to add back'}`}
+                      title={
+                        headquarters
+                          ? `${o.reason} — this is your headquarters`
+                          : removed
+                            ? 'You removed this. Click to add it back.'
+                            : `${o.reason}${on ? ' — click to remove' : ' — click to add back'}`
+                      }
                       onClick={() => toggleOrgProposal(o)}
                     >
                       {on && <WrIcon name="check" size={12} className="tick" />} {o.display_name}{' '}
@@ -2302,13 +2409,19 @@ export const SocialCrisisWizard = () => {
                   );
                 })}
                 {footprint.pressure_organisations.map((p) => {
-                  const on = hasPressureProposal(p.display_name);
+                  const on = proposalOnMap('pressure', p);
+                  const removed =
+                    !on && isDismissed(dismissedProposals, 'pressure', p.display_name);
                   return (
                     <button
                       type="button"
                       key={`p-${p.display_name}`}
                       className={`wr-rc act ${on ? 'on' : 'off'}`}
-                      title={`${p.reason}${on ? ' — click to remove' : ' — click to add back'}`}
+                      title={
+                        removed
+                          ? 'You removed this. Click to add it back.'
+                          : `${p.reason}${on ? ' — click to remove' : ' — click to add back'}`
+                      }
                       onClick={() => togglePressureProposal(p)}
                     >
                       {on && <WrIcon name="check" size={12} className="tick" />} {p.display_name}{' '}
@@ -2493,9 +2606,10 @@ export const SocialCrisisWizard = () => {
                   onChange={(next) =>
                     setExtraOrganisations((prev) => prev.map((o) => (o.id === org.id ? next : o)))
                   }
-                  onRemove={() =>
-                    setExtraOrganisations((prev) => prev.filter((o) => o.id !== org.id))
-                  }
+                  onRemove={() => {
+                    setDismissedProposals((prev) => recordDismissal(prev, 'office', org));
+                    setExtraOrganisations((prev) => prev.filter((o) => o.id !== org.id));
+                  }}
                 />
               </div>
             ))}
@@ -2578,7 +2692,10 @@ export const SocialCrisisWizard = () => {
                   onChange={(next) =>
                     setPressureOrgs((prev) => prev.map((x) => (x.id === p.id ? next : x)))
                   }
-                  onRemove={() => setPressureOrgs((prev) => prev.filter((x) => x.id !== p.id))}
+                  onRemove={() => {
+                    setDismissedProposals((prev) => recordDismissal(prev, 'pressure', p));
+                    setPressureOrgs((prev) => prev.filter((x) => x.id !== p.id));
+                  }}
                 />
               </div>
             ))}

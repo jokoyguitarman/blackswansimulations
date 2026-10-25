@@ -46,6 +46,8 @@ export interface OrganisationDraft {
   operation?: 'players' | 'ai';
   /** Set when the footprint inference proposed this organisation. */
   proposed_reason?: string;
+  /** The proposal name this card was created from, kept when the trainer renames it. */
+  proposed_from?: string;
 }
 
 export interface CompetitorDraft {
@@ -73,6 +75,8 @@ export interface PressureOrgDraft {
   x_handle: string;
   spokesperson_stakeholder_id?: string;
   proposed_reason?: string;
+  /** The proposal name this card was created from, kept when the trainer renames it. */
+  proposed_from?: string;
 }
 
 export const PRESSURE_KIND_LABELS: Record<PressureKind, string> = {

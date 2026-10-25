@@ -1,4 +1,5 @@
 import { isKnownCountry } from '@shared/countries';
+import { sameOrganisationName } from '@shared/orgNames';
 import type {
   CompetitorDraft,
   OrganisationDraft,
@@ -117,18 +118,7 @@ function functionKeyOf(t: RosterEntry): string {
 
 /** Same body written two ways ("Ministry of Labour" / "Ministry of Labour (Malaysia)"). */
 function looksLikeSameBody(a: string, b: string): boolean {
-  const simplify = (s: string) =>
-    s
-      .toLowerCase()
-      .replace(/\([^)]*\)/g, ' ')
-      .replace(/[^a-z0-9]+/g, ' ')
-      .trim();
-  const x = simplify(a);
-  const y = simplify(b);
-  if (!x || !y) return false;
-  if (x === y) return true;
-  const [short, long] = x.length <= y.length ? [x, y] : [y, x];
-  return short.length >= 8 && long.includes(short);
+  return sameOrganisationName(a, b);
 }
 
 export function collectSetupIssues(s: SetupSnapshot): SetupIssue[] {
