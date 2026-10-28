@@ -564,9 +564,9 @@ export default function HomeScreen() {
       )}
 
       {/* Time & Date Widget */}
-      <div className="flex flex-col items-center pt-12 pb-6">
+      <div className="home-clock flex flex-col items-center pt-12 pb-6">
         <div
-          className="text-white font-light tracking-tight"
+          className="home-clock-time text-white font-light tracking-tight"
           style={{
             fontSize: 72,
             lineHeight: 1,

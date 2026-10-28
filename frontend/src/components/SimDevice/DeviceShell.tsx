@@ -377,7 +377,10 @@ function DeviceShellInner() {
             <span className="flex-none text-[13px] font-semibold tracking-tight">{timeStr}</span>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-hidden app-content-enter" key={location.pathname}>
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden app-content-enter"
+            key={location.pathname}
+          >
             <Outlet />
           </div>
 

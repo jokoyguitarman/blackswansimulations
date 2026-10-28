@@ -150,6 +150,16 @@
   height: 100dvh;
 }
 
+/* A real phone shows less than the drawn phone's 764 pixels; keep the home screen's dock in view. */
+.device-fullscreen .home-clock {
+  padding-top: 16px;
+  padding-bottom: 10px;
+}
+
+.device-fullscreen .home-clock-time {
+  font-size: 54px !important;
+}
+
 .wa-chat-font {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
