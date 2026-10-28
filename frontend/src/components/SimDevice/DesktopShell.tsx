@@ -447,7 +447,7 @@ export default function DesktopShell() {
     <div
       className="h-screen w-screen flex flex-col overflow-hidden"
       style={{
-        backgroundImage: 'url(/icons/wallpaper.png)',
+        backgroundImage: 'url(/icons/wallpaper.jpg)',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}

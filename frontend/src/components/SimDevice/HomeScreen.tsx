@@ -385,7 +385,7 @@ export default function HomeScreen() {
     <div
       className="h-full flex flex-col relative overflow-hidden"
       style={{
-        backgroundImage: 'url(/icons/wallpaper.png)',
+        backgroundImage: 'url(/icons/wallpaper.jpg)',
         backgroundSize: 'cover',
         backgroundPosition: 'center',
       }}
