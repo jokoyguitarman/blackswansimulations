@@ -11,6 +11,7 @@ import BriefingApp, { fetchMyTeam } from './BriefingApp';
 import { DESKTOP_OPEN_APP_EVENT } from '../../lib/appIntents';
 import { DESKTOP_CLOSE_APP_EVENT } from '../../lib/deviceNav';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { useBoothIdleSignOut } from '../../lib/boothVisitor';
 
 interface WindowState {
   id: string;
@@ -151,6 +152,7 @@ export default function DesktopShell() {
   const [nextZ, setNextZ] = useState(100);
   const { isTrainer } = useRoleVisibility();
   const [showFirstBriefing, setShowFirstBriefing] = useState(false);
+  useBoothIdleSignOut(sessionId);
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(timer);

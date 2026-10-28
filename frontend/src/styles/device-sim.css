@@ -144,6 +144,12 @@
   animation: appOpen 0.25s ease-out forwards;
 }
 
+/* Booth visitors on a real phone: the simulated phone fills the screen (DeviceShell). */
+.device-fullscreen {
+  height: 100vh;
+  height: 100dvh;
+}
+
 .wa-chat-font {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;

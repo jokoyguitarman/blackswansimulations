@@ -21,6 +21,7 @@ import { Sessions } from './pages/Sessions';
 import { SessionView } from './pages/SessionView';
 import AARPage from './pages/AARPage';
 import { JoinSessionPage } from './pages/JoinSessionPage';
+import { BoothEndedPage } from './pages/BoothEndedPage';
 import { DemoLanding } from './pages/DemoLanding';
 import { DebugBuildingStuds } from './pages/DebugBuildingStuds';
 import { DebugEvacuationSim } from './pages/DebugEvacuationSim';
@@ -99,6 +100,7 @@ const App = () => {
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<SignUp />} />
             <Route path="/join/:joinToken" element={<JoinSessionPage />} />
+            <Route path="/booth/ended" element={<BoothEndedPage />} />
             <Route
               element={
                 <ProtectedRoute>

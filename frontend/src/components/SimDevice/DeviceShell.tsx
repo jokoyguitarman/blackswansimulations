@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useParams, useNavigate, useLocation, useNavigationType } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useAuth } from '../../contexts/AuthContext';
 import { PageModeProvider } from '../../contexts/PageModeContext';
 import { supabase } from '../../lib/supabase';
+import { isBoothSession, useBoothIdleSignOut, usePhoneViewport } from '../../lib/boothVisitor';
 import {
   NotificationCenter,
   type NotificationItem,
@@ -167,6 +168,34 @@ function DeviceShellInner() {
   const processedIdsRef = useRef<Set<string>>(new Set());
   const initialFetchDoneRef = useRef(false);
 
+  // Booth visitors on a real phone get the phone full screen instead of a phone drawn on a phone.
+  const phoneViewport = usePhoneViewport();
+  const fullScreen = isBoothSession(sessionId) && phoneViewport;
+  useBoothIdleSignOut(sessionId);
+
+  // Screens visited inside the shell, so Back never leaves the simulation: its first screen
+  // replaced the join page in the browser history.
+  const navigationType = useNavigationType();
+  const depthRef = useRef(0);
+  const lastPathRef = useRef(location.pathname + location.search);
+  useEffect(() => {
+    const here = location.pathname + location.search;
+    if (here === lastPathRef.current) return;
+    lastPathRef.current = here;
+    if (navigationType === 'PUSH') depthRef.current += 1;
+    else if (navigationType === 'POP') depthRef.current = Math.max(0, depthRef.current - 1);
+  }, [location.pathname, location.search, navigationType]);
+
+  const homePath = `/sim/${sessionId}/device/home`;
+  const onHomeScreen = /\/device(\/home)?\/?$/.test(location.pathname);
+  const goHome = useCallback(() => {
+    if (!onHomeScreen) navigate(homePath);
+  }, [onHomeScreen, homePath, navigate]);
+  const goBack = useCallback(() => {
+    if (depthRef.current > 0) navigate(-1);
+    else if (!onHomeScreen) navigate(homePath, { replace: true });
+  }, [onHomeScreen, homePath, navigate]);
+
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 30000);
     return () => clearInterval(timer);
@@ -319,6 +348,89 @@ function DeviceShellInner() {
   const hours = time.getHours();
   const minutes = time.getMinutes().toString().padStart(2, '0');
   const timeStr = `${hours}:${minutes}`;
+
+  if (fullScreen) {
+    const navButton =
+      'flex h-[52px] w-24 flex-col items-center justify-center gap-0.5 rounded-xl text-white/80 active:bg-white/10';
+    return (
+      <div className="device-sim device-fullscreen fixed inset-0 flex flex-col overflow-hidden bg-black">
+        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
+          {/* The real phone has its own status bar; this strip keeps the team in view. */}
+          <div
+            className="ios-status-bar relative z-50 flex items-center justify-between gap-3 px-4 text-white"
+            style={{ minHeight: 30, paddingTop: 'env(safe-area-inset-top)' }}
+          >
+            <div className="min-w-0 truncate">
+              {myTeamName && (
+                <span
+                  className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: 'rgba(255,255,255,0.18)',
+                    color: 'rgba(255,255,255,0.9)',
+                  }}
+                  title={`Your team: ${myTeamName}`}
+                >
+                  {myTeamName}
+                </span>
+              )}
+            </div>
+            <span className="flex-none text-[13px] font-semibold tracking-tight">{timeStr}</span>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-hidden app-content-enter" key={location.pathname}>
+            <Outlet />
+          </div>
+
+          <NotificationCenter
+            notifications={notifications}
+            expanded={centerExpanded}
+            onExpand={() => setCenterExpanded(true)}
+            onDismiss={dismissAll}
+            onTap={handleCenterTap}
+          />
+        </div>
+
+        {/* Phone navigation: leave an app, or go straight to the home screen. */}
+        <nav
+          aria-label="Phone navigation"
+          className="relative z-50 flex flex-none items-center justify-around border-t border-white/10 bg-[#111]"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        >
+          <button type="button" onClick={goBack} aria-label="Back" className={navButton}>
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M15 5l-7 7 7 7" />
+            </svg>
+            <span className="text-[10px] font-medium">Back</span>
+          </button>
+          <button type="button" onClick={goHome} aria-label="Home" className={navButton}>
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5h-5v5H5a1 1 0 0 1-1-1z" />
+            </svg>
+            <span className="text-[10px] font-medium">Home</span>
+          </button>
+        </nav>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#1a1a2e] flex items-center justify-center p-4 device-sim">

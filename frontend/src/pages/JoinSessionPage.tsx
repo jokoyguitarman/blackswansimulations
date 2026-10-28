@@ -4,6 +4,7 @@ import { api } from '../lib/api';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
 import { BrandMark } from '../components/BrandMark';
+import { isBoothJoinToken, markBoothSession } from '../lib/boothVisitor';
 
 interface JoinInfo {
   sessionTitle: string;
@@ -116,6 +117,7 @@ export const JoinSessionPage = () => {
 
       // Step 2: Register as participant
       const result = await api.join.register(joinToken!, displayName.trim(), teamName);
+      if (isBoothJoinToken(joinToken)) markBoothSession(result.sessionId);
 
       // Step 3: Optional email linking
       if (email.trim()) {
