@@ -3,6 +3,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate, schemas } from '../lib/validation.js';
+import { isBoothJoinToken, openingParagraph } from '../lib/boothLink.js';
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.get(
       // Get session and verify access
       const { data: session } = await supabaseAdmin
         .from('sessions')
-        .select('scenario_id, trainer_id')
+        .select('scenario_id, trainer_id, join_token')
         .eq('id', id)
         .single();
 
@@ -85,6 +86,12 @@ router.get(
             null
           : null;
 
+      // Booth visitors arrive mid-story and skip the lobby, so their in-world briefing also carries
+      // the opening situation (not the whole description, which gives away later developments).
+      const situation = isBoothJoinToken(session.join_token)
+        ? openingParagraph(scenario.description)
+        : null;
+
       res.json({
         data: {
           general_briefing: scenario.briefing || scenario.description,
@@ -94,6 +101,7 @@ router.get(
           team_name: teamName,
           vicinity_map_url: null,
           layout_image_url: null,
+          booth: situation ? { situation, goals: scenario.briefing || null } : null,
         },
       });
     } catch (err) {

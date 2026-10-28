@@ -7,8 +7,10 @@ import GroupChatApp from './GroupChatApp';
 import { WordAppDesktop } from './WordApp/WordApp';
 import { SheetsAppDesktop } from './SheetsApp/SheetsApp';
 import ZDesktopLayout from './ZDesktopLayout';
+import BriefingApp, { fetchMyTeam } from './BriefingApp';
 import { DESKTOP_OPEN_APP_EVENT } from '../../lib/appIntents';
 import { DESKTOP_CLOSE_APP_EVENT } from '../../lib/deviceNav';
+import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 
 interface WindowState {
   id: string;
@@ -99,6 +101,13 @@ const APP_REGISTRY: Record<
     defaultWidth: 980,
     defaultHeight: 620,
   },
+  briefing: {
+    title: 'Briefing',
+    icon: '📋',
+    component: BriefingApp,
+    defaultWidth: 460,
+    defaultHeight: 600,
+  },
 };
 
 type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw';
@@ -140,10 +149,30 @@ export default function DesktopShell() {
   const [windows, setWindows] = useState<WindowState[]>([]);
   const [time, setTime] = useState(new Date());
   const [nextZ, setNextZ] = useState(100);
+  const { isTrainer } = useRoleVisibility();
+  const [showFirstBriefing, setShowFirstBriefing] = useState(false);
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
+
+  // The first time a player opens the desktop in a session, open their briefing, as the phone does.
+  useEffect(() => {
+    if (!sessionId || isTrainer) return;
+    const seenKey = `desktop_briefing_seen_${sessionId}`;
+    if (localStorage.getItem(seenKey)) return;
+    let cancelled = false;
+    fetchMyTeam(sessionId)
+      .then((team) => {
+        if (cancelled || !team) return;
+        localStorage.setItem(seenKey, '1');
+        setShowFirstBriefing(true);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [sessionId, isTrainer]);
 
   const desktopRef = useRef<HTMLDivElement>(null);
 
@@ -191,6 +220,12 @@ export default function DesktopShell() {
     setWindows((prev) => [...prev, newWindow]);
     setNextZ((z) => z + 1);
   }
+
+  useEffect(() => {
+    if (!showFirstBriefing) return;
+    setShowFirstBriefing(false);
+    openApp('briefing');
+  }, [showFirstBriefing]);
 
   // Cross-app intents (e.g. Contacts → Mail compose, Contacts → TeamChat DM). See lib/appIntents.
   useEffect(() => {

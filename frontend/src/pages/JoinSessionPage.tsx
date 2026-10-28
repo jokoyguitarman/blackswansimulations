@@ -235,7 +235,6 @@ export const JoinSessionPage = () => {
                   {joinInfo.teams.map((team) => (
                     <option key={team.id} value={team.team_name}>
                       {team.team_name}
-                      {team.team_description ? ` - ${team.team_description}` : ''}
                     </option>
                   ))}
                 </select>
@@ -250,6 +249,14 @@ export const JoinSessionPage = () => {
                   className="w-full military-input px-4 py-3 text-sm"
                 />
               )}
+              {(() => {
+                const picked = joinInfo?.teams.find((t) => t.team_name === teamName);
+                return picked?.team_description ? (
+                  <p className="text-xs text-muted mt-2 leading-relaxed">
+                    {picked.team_description}
+                  </p>
+                ) : null;
+              })()}
             </div>
 
             {/* Error Display */}

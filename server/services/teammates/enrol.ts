@@ -3,8 +3,8 @@ import { logger } from '../../lib/logger.js';
 import { env } from '../../env.js';
 import { getWebSocketService } from '../websocketService.js';
 import { ensureTeamChannels } from '../channelService.js';
-import { invalidatePlayerTeamCache, getCatalogCharter } from '../teamCharterService.js';
-import { resolveTeamFunction } from '../../lib/stakeholderContract.js';
+import { invalidatePlayerTeamCache, teamIsPublicVoice } from '../teamCharterService.js';
+import { isBoothJoinToken } from '../../lib/boothLink.js';
 import { getPool, type BotAccount } from './accounts.js';
 
 /**
@@ -41,12 +41,13 @@ interface SessionRow {
   scenario_id: string | null;
   sim_mode: string | null;
   status: string;
+  join_token: string | null;
 }
 
 async function loadSession(sessionId: string): Promise<SessionRow | null> {
   const { data } = await supabaseAdmin
     .from('sessions')
-    .select('id, trainer_id, scenario_id, sim_mode, status')
+    .select('id, trainer_id, scenario_id, sim_mode, status, join_token')
     .eq('id', sessionId)
     .maybeSingle();
   return (data as SessionRow | null) ?? null;
@@ -275,77 +276,94 @@ export async function removeBot(
 }
 
 /**
- * Give the organisation's page to a bot on the public-voice team when nobody
- * holds it at session start. Never overrides a human controller.
+ * Give an organisation's page to a bot on that organisation's own public-voice team when no bot holds
+ * it. Outside booth worlds this covers the primary page only and never touches a page a human holds.
+ * In booth worlds every player-run organisation's page gets a bot, alongside any visitor holding it,
+ * so the world keeps its voices when visitors walk away.
  */
 export async function ensurePageHolder(sessionId: string): Promise<void> {
   try {
     const session = await loadSession(sessionId);
     if (!session?.scenario_id) return;
-    const [{ data: pages }, { data: controllers }, bots] = await Promise.all([
+    const [{ data: pages }, { data: controllers }, bots, { data: teamRows }] = await Promise.all([
       supabaseAdmin
         .from('sim_org_pages')
-        .select('org_key, role, is_primary')
+        .select('org_key, role, is_primary, control_mode')
         .eq('session_id', sessionId),
       supabaseAdmin
         .from('session_page_controllers')
         .select('user_id, org_key')
         .eq('session_id', sessionId),
       listSessionBots(sessionId),
+      supabaseAdmin
+        .from('scenario_teams')
+        .select('team_name, function_key, org_key, charter')
+        .eq('scenario_id', session.scenario_id),
     ]);
     const protagonist = (pages ?? []).filter(
       (p) => String((p as { role?: string }).role ?? 'protagonist') === 'protagonist',
-    ) as Array<{ org_key: string; is_primary?: boolean | null }>;
+    ) as Array<{ org_key: string; is_primary?: boolean | null; control_mode?: string | null }>;
     const primary = protagonist.find((p) => p.is_primary) ?? protagonist[0];
     if (!primary) return;
-    if ((controllers ?? []).some((c) => (c as { org_key: string }).org_key === primary.org_key))
-      return;
 
-    // Which team owns the public voice for this scenario?
-    const { data: teamRows } = await supabaseAdmin
-      .from('scenario_teams')
-      .select('team_name, function_key, charter')
-      .eq('scenario_id', session.scenario_id);
-    const voiceTeams = new Set<string>();
-    for (const row of teamRows ?? []) {
-      const r = row as {
-        team_name: string;
-        function_key?: string | null;
-        charter?: Record<string, unknown> | null;
-      };
-      const fn = resolveTeamFunction({
-        team_name: r.team_name,
-        function_key: r.function_key ?? null,
-      });
-      const explicit = r.charter?.can_post_publicly;
-      const canPost =
-        typeof explicit === 'boolean'
-          ? explicit
-          : (getCatalogCharter(fn)?.can_post_publicly ?? fn === 'Communications');
-      if (canPost) voiceTeams.add(r.team_name);
-    }
-    const candidate =
-      bots.find((b) => b.team_name && voiceTeams.has(b.team_name)) ??
-      bots.find((b) => b.team_name && /communication/i.test(b.team_name));
-    if (!candidate) return;
-    const controlled = new Set((controllers ?? []).map((c) => (c as { user_id: string }).user_id));
-    if (controlled.has(candidate.user_id)) return;
+    const booth = isBoothJoinToken(session.join_token);
+    const orgKeys = booth
+      ? [
+          primary.org_key,
+          ...new Set(
+            protagonist
+              .filter((p) => p.control_mode !== 'ai' && p.org_key !== primary.org_key)
+              .map((p) => p.org_key),
+          ),
+        ]
+      : [primary.org_key];
 
-    const { error } = await supabaseAdmin.from('session_page_controllers').upsert(
-      {
-        session_id: sessionId,
-        user_id: candidate.user_id,
-        org_key: primary.org_key,
-        assigned_by: session.trainer_id,
-      },
-      { onConflict: 'session_id,user_id' },
-    );
-    if (error) logger.warn({ err: error, sessionId }, 'teammates: page holder assignment failed');
-    else
+    const teams = (teamRows ?? []) as Array<{
+      team_name: string;
+      function_key?: string | null;
+      org_key?: string | null;
+      charter?: Record<string, unknown> | null;
+    }>;
+    const orgOfTeam = new Map(teams.map((t) => [t.team_name, t.org_key ?? primary.org_key]));
+    const voiceTeams = new Set(teams.filter((t) => teamIsPublicVoice(t)).map((t) => t.team_name));
+    const rows = (controllers ?? []) as Array<{ user_id: string; org_key: string }>;
+    const botIds = new Set(bots.map((b) => b.user_id));
+    const holding = new Set(rows.map((c) => c.user_id));
+
+    for (const orgKey of orgKeys) {
+      const holders = rows.filter((c) => c.org_key === orgKey);
+      if (holders.some((c) => botIds.has(c.user_id))) continue;
+      if (holders.length > 0 && !booth) continue;
+      const free = bots.filter(
+        (b): b is SessionBotRow & { team_name: string } =>
+          !!b.team_name && orgOfTeam.get(b.team_name) === orgKey && !holding.has(b.user_id),
+      );
+      const candidate =
+        free.find((b) => voiceTeams.has(b.team_name)) ??
+        (orgKey === primary.org_key
+          ? free.find((b) => /communication/i.test(b.team_name))
+          : undefined);
+      if (!candidate) continue;
+
+      const { error } = await supabaseAdmin.from('session_page_controllers').upsert(
+        {
+          session_id: sessionId,
+          user_id: candidate.user_id,
+          org_key: orgKey,
+          assigned_by: session.trainer_id,
+        },
+        { onConflict: 'session_id,user_id' },
+      );
+      if (error) {
+        logger.warn({ err: error, sessionId, orgKey }, 'teammates: page holder assignment failed');
+        continue;
+      }
+      holding.add(candidate.user_id);
       logger.info(
-        { sessionId, bot: candidate.display_name, orgKey: primary.org_key },
+        { sessionId, bot: candidate.display_name, orgKey },
         'teammates: bot holds the org page',
       );
+    }
   } catch (err) {
     logger.warn({ err, sessionId }, 'teammates: ensurePageHolder failed');
   }

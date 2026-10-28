@@ -1467,6 +1467,8 @@ export const api = {
           scenario_title: string;
           user_role: string | null;
           team_name?: string | null;
+          /** Booth worlds only: the opening situation and the goals every team shares. */
+          booth?: { situation: string; goals: string | null } | null;
         };
       }>(await fetch(apiUrl(`/api/briefing/session/${sessionId}`), { headers }));
     },

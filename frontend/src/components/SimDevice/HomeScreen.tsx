@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { useBoothBriefing } from './BriefingApp';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string): string {
@@ -173,6 +174,7 @@ export default function HomeScreen() {
 
   const [teamBriefing, setTeamBriefing] = useState<TeamBriefing | null>(null);
   const [showBriefing, setShowBriefing] = useState(false);
+  const boothBriefing = useBoothBriefing(sessionId);
 
   const raceOptions = RACE_BY_COUNTRY[scenarioCountry.toLowerCase()] || DEFAULT_RACE_OPTIONS;
   const effectiveReligion = religion === 'other' ? customReligion.trim() : religion;
@@ -650,6 +652,23 @@ export default function HomeScreen() {
             </div>
 
             <div className="px-5 pb-4 space-y-4 overflow-y-auto flex-1">
+              {boothBriefing?.situation && (
+                <div>
+                  <div
+                    className="text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    What's going on
+                  </div>
+                  <p
+                    className="text-[13px] leading-snug"
+                    style={{ color: 'rgba(255,255,255,0.85)' }}
+                  >
+                    {boothBriefing.situation}
+                  </p>
+                </div>
+              )}
+
               {teamBriefing.responsibilities.length > 0 && (
                 <div>
                   <div
@@ -693,6 +712,23 @@ export default function HomeScreen() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {boothBriefing?.goals && (
+                <div>
+                  <div
+                    className="text-[11px] font-semibold uppercase tracking-wider mb-1.5"
+                    style={{ color: 'rgba(255,255,255,0.4)' }}
+                  >
+                    What every team must do
+                  </div>
+                  <p
+                    className="text-[13px] leading-snug"
+                    style={{ color: 'rgba(255,255,255,0.75)' }}
+                  >
+                    {boothBriefing.goals}
+                  </p>
                 </div>
               )}
             </div>

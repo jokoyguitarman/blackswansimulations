@@ -4,6 +4,9 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
+import { isBoothJoinToken } from '../lib/boothLink.js';
+import { aiOperatedOrgKeys, hasPlayerRunPage } from '../services/orgPageService.js';
+import { teamIsPublicVoice } from '../services/teamCharterService.js';
 
 const router = Router();
 
@@ -61,9 +64,15 @@ router.get('/:joinToken', async (req, res) => {
     // Load teams from scenario_teams
     const { data: teams } = await supabaseAdmin
       .from('scenario_teams')
-      .select('id, team_name, team_description')
+      .select('id, team_name, team_description, org_key')
       .eq('scenario_id', session.scenario_id)
       .order('team_name', { ascending: true });
+
+    // Booth visitors are only offered teams of player-run organisations; the AI runs the others.
+    const aiOrgs = isBoothJoinToken(joinToken)
+      ? await aiOperatedOrgKeys(session.id)
+      : new Set<string>();
+    const offered = (teams || []).filter((t) => !aiOrgs.has((t.org_key as string) ?? 'primary'));
 
     // Return minimal info (session title + teams only, no scenario title for privacy)
     // Supabase may return scenarios as object or array depending on relation type
@@ -73,7 +82,7 @@ router.get('/:joinToken', async (req, res) => {
     res.json({
       data: {
         sessionTitle: scenarioData?.title ?? 'Simulation Session',
-        teams: (teams || []).map((t) => ({
+        teams: offered.map((t) => ({
           id: t.id,
           team_name: t.team_name,
           team_description: t.team_description,
@@ -128,13 +137,27 @@ router.post(
       // 4. Validate team_name against scenario_teams
       const { data: scenarioTeams } = await supabaseAdmin
         .from('scenario_teams')
-        .select('team_name, max_participants')
+        .select('team_name, max_participants, org_key, function_key, charter')
         .eq('scenario_id', session.scenario_id);
 
       const validTeamNames = (scenarioTeams || []).map((t) => t.team_name);
 
       // If scenario has defined teams, validate against them
       if (validTeamNames.length > 0 && !validTeamNames.includes(team_name)) {
+        return res.status(400).json({ error: 'Invalid team selection' });
+      }
+
+      const booth = isBoothJoinToken(join_token);
+      const teamRow = (scenarioTeams || []).find((t) => t.team_name === team_name) as
+        | {
+            team_name: string;
+            org_key: string | null;
+            function_key: string | null;
+            charter: Record<string, unknown> | null;
+          }
+        | undefined;
+      const teamOrgKey = teamRow?.org_key ?? 'primary';
+      if (booth && teamRow && (await aiOperatedOrgKeys(session.id)).has(teamOrgKey)) {
         return res.status(400).json({ error: 'Invalid team selection' });
       }
 
@@ -219,12 +242,14 @@ router.post(
         user_metadata: { full_name: display_name },
       });
 
-      // 8. Insert into session_participants
+      // 8. Insert into session_participants. Booth visitors skip the demographics questions; without a
+      // race the ambient engines leave them out of their demographic clusters.
       const { error: participantError } = await supabaseAdmin.from('session_participants').upsert(
         {
           session_id: session.id,
           user_id: user.id,
           role: 'participant',
+          ...(booth ? { demographics: { gender: 'prefer_not_to_say' } } : {}),
         },
         { onConflict: 'session_id,user_id' },
       );
@@ -261,6 +286,29 @@ router.post(
           session.id,
           (session as { trainer_id?: string | null }).trainer_id ?? null,
         );
+      }
+
+      // Booth visitors on their organisation's public-voice team may post as its page, alongside the
+      // AI teammate who holds it.
+      if (
+        !teamError &&
+        booth &&
+        teamRow &&
+        teamIsPublicVoice(teamRow) &&
+        (await hasPlayerRunPage(session.id, teamOrgKey))
+      ) {
+        const { error: pageError } = await supabaseAdmin
+          .from('session_page_controllers')
+          .upsert(
+            { session_id: session.id, user_id: user.id, org_key: teamOrgKey, assigned_by: null },
+            { onConflict: 'session_id,user_id' },
+          );
+        if (pageError) {
+          logger.warn(
+            { error: pageError, sessionId: session.id, userId: user.id, orgKey: teamOrgKey },
+            'Booth visitor page access failed',
+          );
+        }
       }
 
       logger.info(

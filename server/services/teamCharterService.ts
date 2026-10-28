@@ -610,6 +610,21 @@ export function getCatalogCharter(name: string): TeamCharter | null {
   return null;
 }
 
+/** Whether a scenario team is its organisation's public voice (may post as the organisation's page). */
+export function teamIsPublicVoice(row: {
+  team_name: string;
+  function_key?: string | null;
+  charter?: Record<string, unknown> | null;
+}): boolean {
+  const explicit = row.charter?.can_post_publicly;
+  if (typeof explicit === 'boolean') return explicit;
+  const fn = resolveTeamFunction({
+    team_name: row.team_name,
+    function_key: row.function_key ?? null,
+  });
+  return getCatalogCharter(fn)?.can_post_publicly ?? fn === 'Communications';
+}
+
 /** TeamDef-compatible shape consumed by assemblePayload / persistence. */
 export function buildFixedTeamDefs(): Array<{
   team_name: string;

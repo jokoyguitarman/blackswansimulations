@@ -1,5 +1,32 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 
+/**
+ * Organisations whose page the AI runs in a session: AI-operated in the scenario, or flipped to AI at
+ * start for want of players (pressureEngineService.flipUnstaffedOrgsToAi).
+ */
+export async function aiOperatedOrgKeys(sessionId: string): Promise<Set<string>> {
+  const { data } = await supabaseAdmin
+    .from('sim_org_pages')
+    .select('org_key')
+    .eq('session_id', sessionId)
+    .eq('role', 'protagonist')
+    .eq('control_mode', 'ai');
+  return new Set((data ?? []).map((r) => String((r as { org_key: string }).org_key)));
+}
+
+/** True when the session has a player-run page for the organisation. */
+export async function hasPlayerRunPage(sessionId: string, orgKey: string): Promise<boolean> {
+  const { data } = await supabaseAdmin
+    .from('sim_org_pages')
+    .select('org_key')
+    .eq('session_id', sessionId)
+    .eq('org_key', orgKey)
+    .eq('role', 'protagonist')
+    .neq('control_mode', 'ai')
+    .limit(1);
+  return (data ?? []).length > 0;
+}
+
 /** The org_key of the page a player controls in a session, or null if none. */
 export async function getControlledOrgKey(
   sessionId: string,
