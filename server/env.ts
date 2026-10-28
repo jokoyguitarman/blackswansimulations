@@ -125,6 +125,9 @@ export const env = {
   // docs/stakeholder-contacts-contract.md). ON by default; set ENABLE_STAKEHOLDER_ENGINE=false to
   // fall back to the legacy NPC reply paths and skip verdict calls.
   enableStakeholderEngine: process.env.ENABLE_STAKEHOLDER_ENGINE !== 'false',
+  // Scheduled social injects pass an AI cancellation check before they publish (injectSchedulerService);
+  // 'off' publishes them on time. Booth worlds always skip it (docs/booth/live-booth-spec.md WS9).
+  socialInjectCancelGate: process.env.SOCIAL_INJECT_CANCEL_GATE !== 'off',
   // Organic executive decisions + pressure organisations engines
   // (docs/executive-decisions-organic-plan.md §9). ON by default; ENABLE_EXECUTIVE_DECISIONS=false
   // disables detection hooks, the cascade planner and the pressure engine ticker.

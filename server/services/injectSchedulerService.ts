@@ -36,6 +36,7 @@ import { runEngagementTick } from './engagementAlgorithmService.js';
 import { runAntagonistEngine, runAntagonistThreadReplies } from './antagonistEngineService.js';
 import { runExtremistHive, runHiveThreadReplies } from './extremistHiveService.js';
 import { runScenarioDirector } from './blueprint/scenarioDirectorService.js';
+import { isBoothJoinToken } from '../lib/boothLink.js';
 import type { Server as SocketServer } from 'socket.io';
 
 /** Sessions for which the decision-template dormancy notice has been logged (once per process). */
@@ -214,6 +215,11 @@ async function runAiCancellationGate(
  */
 /** Per-session lock: avoid processing the same session in two overlapping ticks (prevents double publish). */
 const sessionsInProgress = new Set<string>();
+/**
+ * Booth worlds run their social engines outside that lock, one pass at a time per session, so a slow
+ * engine pass (AI calls queued behind the AI teammates) never holds back scripted injects.
+ */
+const socialEnginesInProgress = new Set<string>();
 
 export class InjectSchedulerService {
   private intervalId: NodeJS.Timeout | null = null;
@@ -288,7 +294,7 @@ export class InjectSchedulerService {
       const { data: sessions, error: sessionsError } = await supabaseAdmin
         .from('sessions')
         .select(
-          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects, sim_mode',
+          'id, scenario_id, start_time, trainer_id, status, current_state, inject_state_effects, sim_mode, join_token',
         )
         .eq('status', 'in_progress')
         .not('start_time', 'is', null);
@@ -415,11 +421,15 @@ export class InjectSchedulerService {
     current_state?: Record<string, unknown> | null;
     inject_state_effects?: Record<string, unknown> | null;
     sim_mode?: string | null;
+    join_token?: string | null;
   }): Promise<void> {
     // Calculate elapsed minutes
     const startTime = new Date(session.start_time).getTime();
     const now = Date.now();
     const elapsedMinutes = Math.floor((now - startTime) / 60000);
+    // Booth worlds publish scripted injects on time: no AI cancellation checks, engines in their own lane.
+    const boothWorld = isBoothJoinToken(session.join_token);
+    const timing = { start: now, injects: 0, conditions: 0, published: 0 };
 
     logger.info(
       {
@@ -760,6 +770,11 @@ export class InjectSchedulerService {
           let cancelled = false;
           if (stakeholderGate === 'publish_as_is') {
             cancelled = false;
+          } else if (
+            session.sim_mode === 'social_media' &&
+            (boothWorld || !env.socialInjectCancelGate)
+          ) {
+            cancelled = false;
           } else if (session.sim_mode === 'social_media') {
             const { data: playerActions } = await supabaseAdmin
               .from('player_actions')
@@ -839,6 +854,7 @@ export class InjectSchedulerService {
 
           await publishInjectToSession(inject.id, session.id, session.trainer_id, this.io);
           publishedInjectIds.add(inject.id);
+          timing.published++;
           logger.info(
             { sessionId: session.id, injectId: inject.id },
             'Inject auto-published successfully',
@@ -851,6 +867,8 @@ export class InjectSchedulerService {
         }
       }
     }
+
+    timing.injects = Date.now();
 
     // --- Social media crisis: compute social state before condition evaluation ---
     if (session.sim_mode === 'social_media') {
@@ -1037,7 +1055,7 @@ export class InjectSchedulerService {
             if (stakeholderGate === 'handled') continue;
 
             const cancelled =
-              stakeholderGate === 'publish_as_is'
+              stakeholderGate === 'publish_as_is' || boothWorld
                 ? false
                 : await runAiCancellationGate(
                     {
@@ -1071,6 +1089,7 @@ export class InjectSchedulerService {
 
             await publishInjectToSession(condInject.id, session.id, session.trainer_id, this.io);
             publishedInjectIds.add(condInject.id);
+            timing.published++;
           }
         }
       }
@@ -1080,6 +1099,7 @@ export class InjectSchedulerService {
         'Condition-based inject evaluation error',
       );
     }
+    timing.conditions = Date.now();
 
     // --- Spatial pin resolution: check if placed assets resolve hazard/casualty pins ---
     try {
@@ -1167,52 +1187,85 @@ export class InjectSchedulerService {
 
     // --- Social media crisis: check response deadlines + ambient posts ---
     if (session.sim_mode === 'social_media') {
-      try {
-        await checkResponseDeadlines(session.id);
-      } catch (socialErr) {
-        logger.warn(
-          { err: socialErr, sessionId: session.id },
-          'Social response deadline check error',
-        );
-      }
-
-      try {
-        await runEngagementTick(session.id);
-      } catch (engErr) {
-        logger.warn({ err: engErr, sessionId: session.id }, 'Engagement tick error');
-      }
-
-      try {
-        await runAntagonistEngine(session.id, elapsedMinutes);
-      } catch (antagErr) {
-        logger.warn({ err: antagErr, sessionId: session.id }, 'Antagonist engine error');
-      }
-
-      try {
-        await runExtremistHive(session.id, elapsedMinutes);
-      } catch (hiveErr) {
-        logger.warn({ err: hiveErr, sessionId: session.id }, 'Extremist hive error');
-      }
-
-      try {
-        await runHiveThreadReplies(session.id, elapsedMinutes);
-      } catch (hiveReplyErr) {
-        logger.warn({ err: hiveReplyErr, sessionId: session.id }, 'Extremist hive reply error');
-      }
-
-      try {
-        await runAntagonistThreadReplies(session.id, elapsedMinutes);
-      } catch (antagReplyErr) {
-        logger.warn({ err: antagReplyErr, sessionId: session.id }, 'Antagonist reply error');
-      }
-
-      if (env.enableScenarioDirector) {
+      const runSocialEngines = async () => {
         try {
-          await runScenarioDirector(session.id, elapsedMinutes);
-        } catch (dirErr) {
-          logger.warn({ err: dirErr, sessionId: session.id }, 'Scenario director error');
+          await checkResponseDeadlines(session.id);
+        } catch (socialErr) {
+          logger.warn(
+            { err: socialErr, sessionId: session.id },
+            'Social response deadline check error',
+          );
         }
+
+        try {
+          await runEngagementTick(session.id);
+        } catch (engErr) {
+          logger.warn({ err: engErr, sessionId: session.id }, 'Engagement tick error');
+        }
+
+        try {
+          await runAntagonistEngine(session.id, elapsedMinutes);
+        } catch (antagErr) {
+          logger.warn({ err: antagErr, sessionId: session.id }, 'Antagonist engine error');
+        }
+
+        try {
+          await runExtremistHive(session.id, elapsedMinutes);
+        } catch (hiveErr) {
+          logger.warn({ err: hiveErr, sessionId: session.id }, 'Extremist hive error');
+        }
+
+        try {
+          await runHiveThreadReplies(session.id, elapsedMinutes);
+        } catch (hiveReplyErr) {
+          logger.warn({ err: hiveReplyErr, sessionId: session.id }, 'Extremist hive reply error');
+        }
+
+        try {
+          await runAntagonistThreadReplies(session.id, elapsedMinutes);
+        } catch (antagReplyErr) {
+          logger.warn({ err: antagReplyErr, sessionId: session.id }, 'Antagonist reply error');
+        }
+
+        if (env.enableScenarioDirector) {
+          try {
+            await runScenarioDirector(session.id, elapsedMinutes);
+          } catch (dirErr) {
+            logger.warn({ err: dirErr, sessionId: session.id }, 'Scenario director error');
+          }
+        }
+      };
+
+      if (boothWorld) {
+        if (!socialEnginesInProgress.has(session.id)) {
+          socialEnginesInProgress.add(session.id);
+          const lane = Date.now();
+          void runSocialEngines().finally(() => {
+            socialEnginesInProgress.delete(session.id);
+            logger.info(
+              { sessionId: session.id, elapsedMinutes, ms: Date.now() - lane },
+              'social engines lane',
+            );
+          });
+        }
+      } else {
+        await runSocialEngines();
       }
+
+      logger.info(
+        {
+          sessionId: session.id,
+          elapsedMinutes,
+          booth: boothWorld,
+          published: timing.published,
+          ms: {
+            injects: timing.injects - timing.start,
+            conditions: timing.conditions - timing.injects,
+            rest: Date.now() - timing.conditions,
+          },
+        },
+        'inject tick timing',
+      );
     }
   }
 
