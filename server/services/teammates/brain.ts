@@ -313,7 +313,9 @@ export async function decide(input: BrainInput): Promise<BotAction> {
   });
   if (!out) return fallback(input, shortlist[0], 'model unavailable');
 
-  const idx = Number(out.choice);
+  // A lone line from a person must be answered; "keep monitoring" is not an option for it.
+  const mustAnswer = shortlist.length === 1 && shortlist[0].fromHuman === true;
+  const idx = mustAnswer ? 1 : Number(out.choice);
   if (idx === 0) return { kind: 'idle', reason: out.reason || 'monitoring', source: 'llm' };
   const item =
     shortlist[Math.min(SHORTLIST_SIZE, shortlist.length) >= idx && idx > 0 ? idx - 1 : -1];

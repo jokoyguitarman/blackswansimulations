@@ -225,10 +225,14 @@ export class PlayerBot {
           targetId: `nudge:${Date.now()}`,
           reason: `the trainer asked: "${this.pendingNudge.slice(0, 200)}"`,
           context: this.pendingNudge,
+          fromHuman: true,
         });
         this.pendingNudge = null;
       }
-      const shortlist = items.slice(0, SHORTLIST);
+      // A person waiting on this bot is answered first: their line is the only choice this turn,
+      // so the model cannot trade it for desk work.
+      const human = items.find((it) => it.kind === 'chat' && it.fromHuman);
+      const shortlist = human ? [human] : items.slice(0, SHORTLIST);
 
       const before = { calls: brainStats.calls, fallbacks: brainStats.fallbacks };
       const action = await decide({

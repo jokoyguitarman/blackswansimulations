@@ -109,6 +109,8 @@ export interface Situation {
     nudges: ChatMessage[];
     /** Unanswered 1:1 chats (TeamChat app) with a human or a teammate. */
     directs: DirectChat[];
+    /** Ids of the mentions and 1:1 lines above that a person wrote (not an AI teammate or the system). */
+    fromHumans?: Set<string>;
   };
   drafts: {
     toReview: Draft[];
@@ -559,6 +561,11 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
       messages: msgs.slice(-8),
     });
   });
+  const fromHumans = new Set<string>();
+  for (const m of [...mentions, ...nudges, ...directs.map((d) => d.lastFromOther)]) {
+    if (m.sender_id && m.sender_id !== userId && !(await isBotUser(m.sender_id)))
+      fromHumans.add(m.id);
+  }
 
   // Drafts.
   const toReview = drafts.filter(
@@ -657,6 +664,7 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
       mentions,
       nudges,
       directs,
+      fromHumans,
     },
     drafts: { toReview, mine, approvedUnpublished, changesRequested },
     news: unreadNews,

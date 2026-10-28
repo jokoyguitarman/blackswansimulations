@@ -33,6 +33,8 @@ export interface TriageItem {
   channelId?: string;
   /** Present when the item satisfies a charter expected action. */
   detectionActionType?: string;
+  /** A chat line a person wrote to this bot; the bot answers it before anything else. */
+  fromHuman?: boolean;
 }
 
 /**
@@ -176,6 +178,7 @@ export function triage(input: TriageInput): TriageItem[] {
       channelId: m.channel_id,
       reason: `trainer instruction: "${m.content.slice(0, 160)}"`,
       context: m.content,
+      fromHuman: sit.chat.fromHumans?.has(m.id) ?? false,
     });
   }
   // A private message to me is the most personal thing on the desk: answer it before the room.
@@ -196,6 +199,7 @@ export function triage(input: TriageInput): TriageItem[] {
       reason: `private chat from ${d.withName}${d.withTeam ? ` (${d.withTeam})` : ''}: "${d.lastFromOther.content.slice(0, 140)}"`,
       context: `PRIVATE 1:1 CHAT with ${d.withName}. Reply to them directly.\n${transcript}`,
       detectionActionType: 'chat_message_sent',
+      fromHuman: sit.chat.fromHumans?.has(d.lastFromOther.id) ?? false,
     });
   }
   for (const m of sit.chat.mentions) {
@@ -210,6 +214,7 @@ export function triage(input: TriageInput): TriageItem[] {
       reason: `${m.sender?.full_name ?? 'a teammate'} said: "${m.content.slice(0, 160)}"`,
       context: m.content,
       detectionActionType: 'chat_message_sent',
+      fromHuman: sit.chat.fromHumans?.has(m.id) ?? false,
     });
   }
 
