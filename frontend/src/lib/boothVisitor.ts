@@ -81,11 +81,12 @@ export function useBoothIdleSignOut(sessionId: string | undefined): void {
       );
       // Leave the protected route first, or signing out would bounce the visitor to the login page.
       navigate(BOOTH_ENDED_PATH, { replace: true });
-      try {
-        await supabase.auth.signOut();
-      } catch {
-        await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
-      }
+      // signOut() reports failures in its result; when the server cannot be reached, still forget the
+      // session on this device.
+      const { error } = await supabase.auth
+        .signOut()
+        .catch((err: unknown) => ({ error: err as Error }));
+      if (error) await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
     };
 
     const check = () => {
