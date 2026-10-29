@@ -85,14 +85,6 @@ export const BriefingView = ({ sessionId }: BriefingViewProps) => {
           </p>
         </div>
       )}
-
-      {/* Volunteer / Insider note */}
-      <div className="military-border p-4 bg-surface">
-        <p className="text-sm terminal-text text-ink">
-          You have a Volunteer in the field you can message through the chat. The contact appears as{' '}
-          <strong>the Insider</strong>.
-        </p>
-      </div>
     </div>
   );
 };
