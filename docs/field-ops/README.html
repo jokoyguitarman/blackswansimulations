@@ -1,0 +1,243 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Field operations War Room: build specification set · Field ops build specs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#FAF8F4;--surface:#fff;--surface-2:#F4F1EA;--ink:#172033;--muted:#667085;
+  --brand:#1E3A5F;--accent:#D97706;--accent-strong:#B45309;
+  --border:#E4DFD4;--border-strong:#D6CFC0;--success:#15803D;--danger:#B91C1C;
+  --deep:#0E1A2B;--deep-2:#13233A;--code-bg:#0F172A;--code-ink:#E2E8F0;
+  --shadow:0 1px 2px rgba(23,32,51,.06),0 10px 26px -18px rgba(23,32,51,.28);
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:16px}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.5px/1.64 Inter,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand)}
+code{font-family:var(--mono);font-size:.85em;background:var(--surface-2);padding:.08em .36em;border-radius:5px;border:1px solid var(--border);word-break:break-word}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 12px;padding-left:22px}
+li{margin:3px 0}
+li>ul,li>ol{margin:4px 0 4px}
+ul.tasks{list-style:none;padding-left:4px}
+li.task input{margin-right:6px;vertical-align:-1px}
+hr{border:0;border-top:1px solid var(--border);margin:26px 0}
+
+.hero{background:radial-gradient(1100px 480px at 12% -25%,rgba(217,119,6,.30),transparent 62%),linear-gradient(180deg,var(--deep),var(--deep-2));color:#E5E7EB;padding:38px 32px 30px}
+.hero .in{max-width:1400px;margin:0 auto;padding-left:316px}
+.eyebrow{font:800 11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:#F59E0B}
+.hero h1{font-size:36px;line-height:1.1;letter-spacing:-.025em;margin:10px 0 16px;color:#fff;font-weight:800;max-width:900px}
+.metagrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;max-width:1100px}
+.metagrid div{padding:9px 13px;border:1px solid rgba(255,255,255,.15);border-radius:12px;background:rgba(255,255,255,.05);font-size:13.5px;color:rgba(255,255,255,.85)}
+.metagrid dt{font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55);margin-bottom:2px}
+.metagrid dd{margin:0}
+.metagrid code{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.18);color:#FDE68A}
+.metagrid a{color:#FCD34D}
+
+.layout{max-width:1400px;margin:0 auto;display:grid;grid-template-columns:292px minmax(0,1fr) 236px}
+.side,.rail{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;font-size:13px}
+.side{padding:20px 14px 40px 22px;border-right:1px solid var(--border)}
+.rail{padding:24px 14px 40px 8px}
+.side h6,.rail h6{font:800 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:16px 0 5px 8px}
+.side a{display:flex;gap:8px;align-items:baseline;padding:5px 8px;border-radius:8px;text-decoration:none;color:var(--ink);line-height:1.3}
+.side a:hover{background:var(--surface-2)}
+.side a.cur{background:color-mix(in srgb,var(--accent) 13%,#fff);font-weight:700}
+.side a b{font:800 11px var(--mono);color:var(--accent-strong);min-width:22px}
+.side a i{margin-left:auto;font:700 9.5px var(--mono);color:var(--muted);font-style:normal;letter-spacing:.04em}
+.brandmark{font:800 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--brand);padding:2px 8px 6px}
+.rail a{display:block;padding:3px 8px;border-left:2px solid var(--border);text-decoration:none;color:#475467;line-height:1.35}
+.rail a.l3{padding-left:18px;font-size:12px}
+.rail a:hover{color:var(--brand);border-left-color:var(--accent)}
+.rail a.on{color:var(--brand);font-weight:700;border-left-color:var(--accent)}
+main{padding:30px 44px 140px;min-width:0;max-width:1060px}
+
+.doc h2{font-size:27px;letter-spacing:-.02em;color:var(--brand);line-height:1.2;font-weight:800;margin:54px 0 14px;padding-top:26px;border-top:1px solid var(--border);display:flex;gap:14px;align-items:baseline}
+.doc h2:first-of-type{margin-top:8px;border-top:0;padding-top:0}
+.doc h2 .num{font:800 13px var(--mono);color:var(--accent-strong);background:color-mix(in srgb,var(--accent) 12%,#fff);border:1px solid color-mix(in srgb,var(--accent) 38%,#fff);border-radius:10px;padding:5px 9px;flex:none;position:relative;top:-3px}
+.doc h3{font:800 11.5px var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--accent-strong);margin:32px 0 11px;display:flex;align-items:center;gap:10px}
+.doc h3::after{content:"";flex:1;height:1px;background:var(--border)}
+.doc h4{margin:20px 0 6px;font-size:15px;color:var(--brand)}
+.doc h5,.doc h6{margin:14px 0 4px;font-size:14px;color:var(--brand)}
+.anchor{opacity:0;margin-left:-20px;padding-right:8px;text-decoration:none;color:var(--muted);font-weight:400;position:absolute;transform:translateX(-4px)}
+.doc h2 .anchor,.doc h3 .anchor,.doc h4 .anchor{position:relative;margin-left:0;padding-right:0;order:9;transform:none;font-size:.7em}
+.doc h2:hover .anchor,.doc h3:hover .anchor,.doc h4:hover .anchor{opacity:1}
+
+.tw{overflow-x:auto;margin:8px 0 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{background:var(--surface-2);text-align:left;font:800 10px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:8px 12px;white-space:nowrap}
+td{padding:8px 12px;border-top:1px solid var(--border);vertical-align:top}
+td:first-child{font-weight:600}
+td code{white-space:normal}
+td code.nb{white-space:nowrap;word-break:normal}
+tbody tr:hover td{background:#FFFDF7}
+
+.codeblock{position:relative;margin:10px 0 16px}
+.codeblock::before{content:attr(data-lang);position:absolute;top:8px;right:84px;font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#94A3B8}
+pre.code{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:16px 18px;overflow:auto;font:12.5px/1.55 var(--mono);box-shadow:var(--shadow)}
+pre.code code{background:none;border:0;padding:0;color:inherit;font-size:inherit;word-break:normal}
+.copy{position:absolute;top:6px;right:8px;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.08);color:#CBD5E1;border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:4px 9px;cursor:pointer}
+.copy:hover{background:rgba(255,255,255,.18)}
+pre.mermaid{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;overflow:auto;font:12.5px/1.5 var(--mono);text-align:center}
+
+blockquote{margin:12px 0 16px;padding:12px 18px;background:#FFFBEB;border:1px solid #FDE68A;border-left:4px solid var(--accent);border-radius:10px}
+blockquote p:last-child{margin:0}
+
+.tag{font:800 10px var(--mono);letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:6px;border:1px solid}
+.tag-verified{background:#F0FDF4;border-color:#BBF7D0;color:#15803D}
+.tag-proposed{background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8}
+.tag-assumed{background:#FFFBEB;border-color:#FDE68A;color:#B45309}
+.new{font:800 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#15803D;border:1px solid #86EFAC;background:#F0FDF4;border-radius:5px;padding:0 4px;margin-left:5px;vertical-align:1px}
+abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3px;cursor:help;font-weight:600}
+
+.docs-table td:nth-child(1){white-space:nowrap}
+.pill{display:inline-block;font:700 10.5px var(--mono);letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:#475467;margin:1px 3px 1px 0}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 6px}
+.stat{padding:10px 15px;border:1px solid var(--border);border-radius:12px;background:#fff;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:23px;line-height:1.15;color:var(--brand)}
+.stat span{font:700 10px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.pager{display:flex;justify-content:space-between;gap:14px;margin-top:56px;padding-top:20px;border-top:1px solid var(--border)}
+.pager a{flex:1;max-width:48%;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:#fff;text-decoration:none;box-shadow:var(--shadow)}
+.pager a small{display:block;font:800 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.pager a.next{text-align:right;margin-left:auto}
+.gen{margin-top:30px;font:12px var(--mono);color:var(--muted)}
+
+@media (max-width:1180px){
+  .layout{grid-template-columns:270px minmax(0,1fr)}
+  .rail{display:none}
+  .hero .in{padding-left:294px}
+}
+@media (max-width:880px){
+  .layout{display:block}
+  .side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border)}
+  .hero .in{padding-left:0}
+  main{padding:22px 18px 80px}
+}
+@media print{
+  .side,.rail,.copy,.pager,.anchor{display:none!important}
+  .layout{display:block}
+  .hero{background:#fff;color:#000;padding:0 0 12px}
+  .hero h1{color:#000}
+  .metagrid div{border-color:#bbb;color:#000;background:#fff}
+  .metagrid dt{color:#555}
+  main{padding:0;max-width:none}
+  pre.code{white-space:pre-wrap;background:#f6f6f6;color:#000;box-shadow:none}
+}
+</style>
+</head>
+<body>
+<header class="hero"><div class="in">
+<div class="eyebrow">Field operations War Room · build specification</div>
+<h1>Field operations War Room: build specification set</h1>
+<dl class="metagrid"><div><dt>Status</dt><dd>v1.2, 3 Nov 2026. Ready for review. Nothing in this set is built. <strong>Added 3 Nov 2026:</strong> the owner's new requirements (a doctrine library by country, stored physics, and a living, real-time strategy world with units, fog of war, weather and traffic) are recorded in the master plan as <abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr> to <abbr class="dref" title="D36 (Decided): **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.">D36</abbr> and WS9. Every entry is marked <strong>Added 3 Nov 2026</strong>. On the same day, 02 and 06 were revised and WS9's spec (11) was written. Every other spec that another one asked for something carries the answer as a marked addition. Master 10.8 items 37 to 40 settle the contracts between them.</dd></div><div><dt>Baseline verified against</dt><dd>commit <code class="nb">588387f</code> on <code class="nb">master</code> (3 Nov 2026), with no uncommitted changes in the code this set cites. On 3 Nov, 88 citations were moved from <code class="nb">7c16bde</code> to their lines at <code class="nb">588387f</code>, after the booth and teammate commits of 28 and 29 Oct. Before that, the baseline was commit <code class="nb">7c16bde</code> (25 Oct 2026, 17:31). The set was first written against commit <code class="nb">6d472e1</code> (3 Oct 2026) plus five files that were then uncommitted: <code class="nb">frontend/src/pages/WarRoom.tsx</code>, <code class="nb">frontend/src/lib/api.ts</code>, <code class="nb">frontend/src/design/warroom.css</code>, <code class="nb">frontend/src/hooks/useRoleVisibility.ts</code> and <code class="nb">server/routes/warroom.ts</code>. Those five were committed unchanged in <code class="nb">56d4035</code>. Commits <code class="nb">907bb66</code> (one suite nav and the new brand mark), <code class="nb">f268e3f</code> and <code class="nb">7c16bde</code> (the corporate wizard's organisation removals) changed cited files, so on 25 Oct every citation was moved to its line at <code class="nb">7c16bde</code>, and the suite nav became master 10.8 item 34.</dd></div><div><dt>Narrative source</dt><dd><code class="nb">docs/field-ops-user-journey.html</code> (how field ops works today, 185 findings, and the plan in &quot;Addendum · Document-driven setup&quot;).</dd></div><div><dt>UI source</dt><dd><code class="nb">docs/design/warroom/field-ops-setup.html</code> (the mockup, four states).</dd></div></dl>
+</div></header>
+<div class="layout">
+<nav class="side" aria-label="Specifications"><div class="brandmark">Field ops specs</div><h6>Start</h6><a href="index.html"><b>·</b>Index</a><a href="README.html" class="cur" aria-current="page"><b>·</b>About this set</a><h6>Specifications</h6><a href="00-master-plan.html"><b>00</b>Master plan<i>All</i></a><a href="01-prerequisites.html"><b>01</b>Prerequisites<i>WS0</i></a><a href="02-teams-and-doctrines.html"><b>02</b>Teams and doctrines<i>WS1</i></a><a href="03-setup-screen.html"><b>03</b>Setup screen<i>WS2</i></a><a href="04-site-picker.html"><b>04</b>Site picker<i>WS3</i></a><a href="05-layout-step.html"><b>05</b>Layout step<i>WS4</i></a><a href="06-compile-and-review.html"><b>06</b>Compile and review<i>WS5</i></a><a href="07-device-and-physics.html"><b>07</b>Device and physics<i>WS6</i></a><a href="08-people-or-ai.html"><b>08</b>People or AI<i>WS7</i></a><a href="09-after-publish.html"><b>09</b>After publish<i>WS8</i></a><a href="10-ui-spec-sheet.html"><b>10</b>UI spec sheet<i>UI</i></a><a href="11-living-world.html"><b>11</b>Living world<i>WS9</i></a><h6>Sources</h6><a href="../field-ops-user-journey.html"><b>↗</b>User journey document</a><a href="../design/warroom/field-ops-setup.html"><b>↗</b>UI mockup</a></nav>
+<main class="doc">
+<article><h2 id="1-what-this-set-is"><a class="anchor" href="#1-what-this-set-is" aria-label="Link to this heading">#</a><span class="num">1</span>What this set is</h2>
+<p>The journey document says <strong>what</strong> field ops should become and why. This set says <strong>how to build it</strong>, in documents precise enough to hand to a coding agent: exact migrations, API contracts, file maps, component states, LLM contracts, tests, flags, commit plans and acceptance criteria.</p>
+<p>It is written in two formats from one source. The Markdown files are the source of truth. The HTML files next to them are generated and must not be edited by hand.</p>
+<h2 id="2-reading-order"><a class="anchor" href="#2-reading-order" aria-label="Link to this heading">#</a><span class="num">2</span>Reading order</h2>
+<div class="tw"><table><thead><tr><th>#</th><th>Document</th><th>Workstream</th><th>Depends on</th></tr></thead><tbody>
+<tr><td>00</td><td><code class="nb">00-master-plan.md</code></td><td>Decisions, flags, migrations, shared contracts, order of work</td><td>none</td></tr>
+<tr><td>01</td><td><code class="nb">01-prerequisites.md</code></td><td>WS0: live map (13.1), durable and draft compile (7.1, 7.3, 7.5), draft validation (5.4)</td><td>00</td></tr>
+<tr><td>02</td><td><code class="nb">02-teams-and-doctrines.md</code></td><td>WS1: archetypes, capabilities, doctrine library, matching</td><td>00, 01</td></tr>
+<tr><td>03</td><td><code class="nb">03-setup-screen.md</code></td><td>WS2: document, footprint radar, blueprint, five lanes, readiness</td><td>00, 01, 02, 04</td></tr>
+<tr><td>04</td><td><code class="nb">04-site-picker.md</code></td><td>WS3: saved map search, addresses, radius, buildings involved, draft handoff</td><td>00, 01</td></tr>
+<tr><td>05</td><td><code class="nb">05-layout-step.md</code></td><td>WS4: Lay out the scene opens with the site</td><td>00, 01, 04</td></tr>
+<tr><td>06</td><td><code class="nb">06-compile-and-review.md</code></td><td>WS5: compile honours the blueprint, draft state, review, publish</td><td>00 to 05</td></tr>
+<tr><td>07</td><td><code class="nb">07-device-and-physics.md</code></td><td>WS6: device specifics, calculator, library, casualties</td><td>00, 03, 05</td></tr>
+<tr><td>08</td><td><code class="nb">08-people-or-ai.md</code></td><td>WS7: AI-operated agencies, lobby, end of engine auto-play</td><td>00, 01, 02, 06</td></tr>
+<tr><td>09</td><td><code class="nb">09-after-publish.md</code></td><td>WS8: editor, pressure runtime</td><td>00, 06</td></tr>
+<tr><td>10</td><td><code class="nb">10-ui-spec-sheet.md</code></td><td>The mockup, element by element</td><td>00 to 09</td></tr>
+<tr><td>11</td><td><code class="nb">11-living-world.md</code> (<strong>Added 3 Nov 2026</strong>)</td><td>WS9: the living world (stored spread physics, live fire, smoke, structure, plumes and crowds, units and travel, fog of war, weather and traffic)</td><td>00, 01, 04 to 08; softly 09</td></tr>
+</tbody></table></div>
+<p>The numbering of workstreams (WS0 to WS9) is fixed in the master plan. The file numbers are only for ordering: files 01 to 09 are WS0 to WS8, 10 is the UI sheet and 11 is WS9.</p>
+<h2 id="3-how-every-spec-is-written"><a class="anchor" href="#3-how-every-spec-is-written" aria-label="Link to this heading">#</a><span class="num">3</span>How every spec is written</h2>
+<p>Every workstream spec (01 to 09, and 11) uses these sixteen sections, in this order, with these exact heading texts, so a reader can jump between specs:</p>
+<ol>
+<li><code>## 1. Purpose, goals and non-goals</code></li>
+<li><code>## 2. Decisions and assumptions</code></li>
+<li><code>## 3. Current state (verified)</code></li>
+<li><code>## 4. Target behaviour and acceptance criteria</code></li>
+<li><code>## 5. Data model</code></li>
+<li><code>## 6. Server</code></li>
+<li><code>## 7. Client</code></li>
+<li><code>## 8. AI and LLM contracts</code></li>
+<li><code>## 9. Security, privacy and safety</code></li>
+<li><code>## 10. Flags, rollout and observability</code></li>
+<li><code>## 11. Tests</code></li>
+<li><code>## 12. Tasks</code></li>
+<li><code>## 13. Commit plan and backtracking</code></li>
+<li><code>## 14. File map</code></li>
+<li><code>## 15. Risks and open questions</code></li>
+<li><code>## 16. Definition of done</code></li>
+</ol>
+<p>A section that does not apply still appears, with one line saying why (&quot;Not applicable: this workstream has no LLM calls.&quot;). The UI spec sheet (10) has its own structure, given in its header.</p>
+<p>Directly under the title every spec carries a header block:</p>
+<div class="codeblock" data-lang="text"><pre class="code"><code>**Status:** v1, 24 Oct 2026. Not built.
+**Workstream:** WS&lt;n&gt;
+**Depends on:** &lt;documents&gt;
+**Flags:** &lt;names from the master plan&gt;
+**Migrations:** &lt;numbers from the allocated range, or &quot;none&quot;&gt;
+**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.</code></pre></div>
+<h2 id="4-conventions"><a class="anchor" href="#4-conventions" aria-label="Link to this heading">#</a><span class="num">4</span>Conventions</h2>
+<p><strong>Status tags.</strong> Every factual statement about the current code is tagged or obviously verified:</p>
+<ul>
+<li><strong class="tag tag-verified">Verified:</strong> read in the code on the baseline, with a <code class="nb">path:line</code> citation.</li>
+<li><strong class="tag tag-proposed">Proposed:</strong> the design we agreed, not yet built.</li>
+<li><strong class="tag tag-assumed">Assumed (D-number):</strong> a default for a decision that is still open. The D-number points to the decision log in the master plan, where the owner can overrule it.</li>
+</ul>
+<p><strong>Citations.</strong> Cite code as <code class="nb">path/to/file.ts:120</code> or <code class="nb">path/to/file.ts:120-160</code>, always repository-relative, always on the baseline. A file that does not exist yet is written with <code class="nb">(new)</code> after it, for example <code>server/services/fieldOps/site/siteSearch.ts</code><span class="new">new</span>.</p>
+<p><strong>Names come from the master plan.</strong> Migration numbers, flag names, route prefixes, component names, type names and enum values are allocated in <code class="nb">00-master-plan.md</code>. A spec never invents one outside its allocation. If a spec needs something outside, it lists it under &quot;Cross-spec requests&quot; in its risks section instead of taking it.</p>
+<p><strong>Markdown subset.</strong> So that the HTML builder renders every file the same way, use only: headings (<code class="nb">#</code> to <code class="nb">####</code>), paragraphs, bullet and numbered lists (two levels of nesting at most), pipe tables, fenced code blocks with a language tag, <code class="nb">mermaid</code> fenced blocks, block quotes, horizontal rules, inline code, bold, italics and links. No raw HTML. No emojis.</p>
+<p><strong>Spelling and tone.</strong> British spelling. Plain sentences. Say what the code does, then what it will do.</p>
+<p><strong>Safety stance for anything involving devices.</strong> Specs describe categories, quantities, effects and response data. They never describe how to build, arm, hide or deploy a device, and they never list formulations or proportions. Published scaling relationships and reference tables are cited by name, not reproduced as instructions.</p>
+<p><strong>Links.</strong> Link to other specs with relative paths, for example <code>[the master plan](00-master-plan.md#3-decision-log)</code>. The HTML builder rewrites <code class="nb">.md</code> links to <code class="nb">.html</code>.</p>
+<h2 id="5-building-the-html-and-checking-the-set"><a class="anchor" href="#5-building-the-html-and-checking-the-set" aria-label="Link to this heading">#</a><span class="num">5</span>Building the HTML and checking the set</h2>
+<div class="codeblock" data-lang="text"><pre class="code"><code>node scripts/build-field-ops-spec-html.mjs
+node scripts/verify-field-ops-specs.mjs</code></pre></div>
+<p>The builder writes one <code class="nb">.html</code> per <code class="nb">.md</code> in this folder, plus <code class="nb">index.html</code>. The checker fails on: missing template sections, citations to files that do not exist (unless marked <code class="nb">(new)</code>), line numbers past the end of a file, migration numbers outside a spec's allocation or used twice, flags that are neither existing nor in the master plan, links that do not resolve, unknown decision numbers, placeholder text, and task or acceptance-criteria ids that belong to another workstream. It also warns about thin sections, bare file names, raw HTML and American spellings, and it lists device-related wording for a human to read.</p>
+<p>Both scripts share the small Markdown parser in <code class="nb">scripts/lib/field-ops-md.mjs</code>, so a heading becomes the same anchor in the HTML and in the checker. Useful options for the checker: <code class="nb">--only=02,05</code> checks only those documents, <code class="nb">--strict</code> also fails on warnings, <code class="nb">--allow-missing</code> tolerates documents that are not written yet, and <code class="nb">--quiet</code> hides the notes.</p>
+<h2 id="6-changing-a-spec"><a class="anchor" href="#6-changing-a-spec" aria-label="Link to this heading">#</a><span class="num">6</span>Changing a spec</h2>
+<p>Edit the Markdown, run the checker, rebuild the HTML. If a change touches a contract owned by another spec (a type, a route, a flag, a migration), change the master plan first and say so in its change log.</p></article>
+<p class="gen">Generated from <code>docs/field-ops/README.md</code> by <code>scripts/build-field-ops-spec-html.mjs</code>. Edit the Markdown, not this file.</p>
+</main>
+<aside class="rail" aria-label="On this page"><h6>On this page</h6><a class="l2" href="#1-what-this-set-is">1. What this set is</a><a class="l2" href="#2-reading-order">2. Reading order</a><a class="l2" href="#3-how-every-spec-is-written">3. How every spec is written</a><a class="l2" href="#4-conventions">4. Conventions</a><a class="l2" href="#5-building-the-html-and-checking-the-set">5. Building the HTML and checking the set</a><a class="l2" href="#6-changing-a-spec">6. Changing a spec</a></aside>
+</div>
+<script>
+(function(){
+  document.querySelectorAll('.codeblock').forEach(function(block){
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'copy'; btn.textContent = 'Copy';
+    btn.addEventListener('click', function(){
+      var text = block.querySelector('code').textContent;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function(){
+        btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = 'Copy'; }, 1400);
+      }).catch(function(){ btn.textContent = 'Select and copy'; });
+    });
+    block.appendChild(btn);
+  });
+  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a'));
+  if (!links.length || !('IntersectionObserver' in window)) return;
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute('href').slice(1)] = a; });
+  var heads = Array.prototype.slice.call(document.querySelectorAll('.doc h2[id], .doc h3[id]'));
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (e.isIntersecting && byId[e.target.id]) {
+        links.forEach(function(a){ a.classList.remove('on'); });
+        byId[e.target.id].classList.add('on');
+      }
+    });
+  }, { rootMargin: '0px 0px -75% 0px' });
+  heads.forEach(function(h){ obs.observe(h); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Field operations War Room: master plan · Field ops build specs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700;800&display=swap" rel="stylesheet" />
+<style>
+:root{
+  --bg:#FAF8F4;--surface:#fff;--surface-2:#F4F1EA;--ink:#172033;--muted:#667085;
+  --brand:#1E3A5F;--accent:#D97706;--accent-strong:#B45309;
+  --border:#E4DFD4;--border-strong:#D6CFC0;--success:#15803D;--danger:#B91C1C;
+  --deep:#0E1A2B;--deep-2:#13233A;--code-bg:#0F172A;--code-ink:#E2E8F0;
+  --shadow:0 1px 2px rgba(23,32,51,.06),0 10px 26px -18px rgba(23,32,51,.28);
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:16px}
+body{margin:0;background:var(--bg);color:var(--ink);font:15.5px/1.64 Inter,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--brand)}
+code{font-family:var(--mono);font-size:.85em;background:var(--surface-2);padding:.08em .36em;border-radius:5px;border:1px solid var(--border);word-break:break-word}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 12px;padding-left:22px}
+li{margin:3px 0}
+li>ul,li>ol{margin:4px 0 4px}
+ul.tasks{list-style:none;padding-left:4px}
+li.task input{margin-right:6px;vertical-align:-1px}
+hr{border:0;border-top:1px solid var(--border);margin:26px 0}
+
+.hero{background:radial-gradient(1100px 480px at 12% -25%,rgba(217,119,6,.30),transparent 62%),linear-gradient(180deg,var(--deep),var(--deep-2));color:#E5E7EB;padding:38px 32px 30px}
+.hero .in{max-width:1400px;margin:0 auto;padding-left:316px}
+.eyebrow{font:800 11px var(--mono);letter-spacing:.2em;text-transform:uppercase;color:#F59E0B}
+.hero h1{font-size:36px;line-height:1.1;letter-spacing:-.025em;margin:10px 0 16px;color:#fff;font-weight:800;max-width:900px}
+.metagrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;max-width:1100px}
+.metagrid div{padding:9px 13px;border:1px solid rgba(255,255,255,.15);border-radius:12px;background:rgba(255,255,255,.05);font-size:13.5px;color:rgba(255,255,255,.85)}
+.metagrid dt{font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.55);margin-bottom:2px}
+.metagrid dd{margin:0}
+.metagrid code{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.18);color:#FDE68A}
+.metagrid a{color:#FCD34D}
+
+.layout{max-width:1400px;margin:0 auto;display:grid;grid-template-columns:292px minmax(0,1fr) 236px}
+.side,.rail{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;font-size:13px}
+.side{padding:20px 14px 40px 22px;border-right:1px solid var(--border)}
+.rail{padding:24px 14px 40px 8px}
+.side h6,.rail h6{font:800 10px var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--muted);margin:16px 0 5px 8px}
+.side a{display:flex;gap:8px;align-items:baseline;padding:5px 8px;border-radius:8px;text-decoration:none;color:var(--ink);line-height:1.3}
+.side a:hover{background:var(--surface-2)}
+.side a.cur{background:color-mix(in srgb,var(--accent) 13%,#fff);font-weight:700}
+.side a b{font:800 11px var(--mono);color:var(--accent-strong);min-width:22px}
+.side a i{margin-left:auto;font:700 9.5px var(--mono);color:var(--muted);font-style:normal;letter-spacing:.04em}
+.brandmark{font:800 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--brand);padding:2px 8px 6px}
+.rail a{display:block;padding:3px 8px;border-left:2px solid var(--border);text-decoration:none;color:#475467;line-height:1.35}
+.rail a.l3{padding-left:18px;font-size:12px}
+.rail a:hover{color:var(--brand);border-left-color:var(--accent)}
+.rail a.on{color:var(--brand);font-weight:700;border-left-color:var(--accent)}
+main{padding:30px 44px 140px;min-width:0;max-width:1060px}
+
+.doc h2{font-size:27px;letter-spacing:-.02em;color:var(--brand);line-height:1.2;font-weight:800;margin:54px 0 14px;padding-top:26px;border-top:1px solid var(--border);display:flex;gap:14px;align-items:baseline}
+.doc h2:first-of-type{margin-top:8px;border-top:0;padding-top:0}
+.doc h2 .num{font:800 13px var(--mono);color:var(--accent-strong);background:color-mix(in srgb,var(--accent) 12%,#fff);border:1px solid color-mix(in srgb,var(--accent) 38%,#fff);border-radius:10px;padding:5px 9px;flex:none;position:relative;top:-3px}
+.doc h3{font:800 11.5px var(--mono);letter-spacing:.15em;text-transform:uppercase;color:var(--accent-strong);margin:32px 0 11px;display:flex;align-items:center;gap:10px}
+.doc h3::after{content:"";flex:1;height:1px;background:var(--border)}
+.doc h4{margin:20px 0 6px;font-size:15px;color:var(--brand)}
+.doc h5,.doc h6{margin:14px 0 4px;font-size:14px;color:var(--brand)}
+.anchor{opacity:0;margin-left:-20px;padding-right:8px;text-decoration:none;color:var(--muted);font-weight:400;position:absolute;transform:translateX(-4px)}
+.doc h2 .anchor,.doc h3 .anchor,.doc h4 .anchor{position:relative;margin-left:0;padding-right:0;order:9;transform:none;font-size:.7em}
+.doc h2:hover .anchor,.doc h3:hover .anchor,.doc h4:hover .anchor{opacity:1}
+
+.tw{overflow-x:auto;margin:8px 0 16px;border-radius:12px;border:1px solid var(--border);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th{background:var(--surface-2);text-align:left;font:800 10px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted);padding:8px 12px;white-space:nowrap}
+td{padding:8px 12px;border-top:1px solid var(--border);vertical-align:top}
+td:first-child{font-weight:600}
+td code{white-space:normal}
+td code.nb{white-space:nowrap;word-break:normal}
+tbody tr:hover td{background:#FFFDF7}
+
+.codeblock{position:relative;margin:10px 0 16px}
+.codeblock::before{content:attr(data-lang);position:absolute;top:8px;right:84px;font:700 10px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#94A3B8}
+pre.code{margin:0;background:var(--code-bg);color:var(--code-ink);border-radius:12px;padding:16px 18px;overflow:auto;font:12.5px/1.55 var(--mono);box-shadow:var(--shadow)}
+pre.code code{background:none;border:0;padding:0;color:inherit;font-size:inherit;word-break:normal}
+.copy{position:absolute;top:6px;right:8px;font:700 10px var(--mono);letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.08);color:#CBD5E1;border:1px solid rgba(255,255,255,.18);border-radius:7px;padding:4px 9px;cursor:pointer}
+.copy:hover{background:rgba(255,255,255,.18)}
+pre.mermaid{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;overflow:auto;font:12.5px/1.5 var(--mono);text-align:center}
+
+blockquote{margin:12px 0 16px;padding:12px 18px;background:#FFFBEB;border:1px solid #FDE68A;border-left:4px solid var(--accent);border-radius:10px}
+blockquote p:last-child{margin:0}
+
+.tag{font:800 10px var(--mono);letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:6px;border:1px solid}
+.tag-verified{background:#F0FDF4;border-color:#BBF7D0;color:#15803D}
+.tag-proposed{background:#EFF6FF;border-color:#BFDBFE;color:#1D4ED8}
+.tag-assumed{background:#FFFBEB;border-color:#FDE68A;color:#B45309}
+.new{font:800 9px var(--mono);letter-spacing:.1em;text-transform:uppercase;color:#15803D;border:1px solid #86EFAC;background:#F0FDF4;border-radius:5px;padding:0 4px;margin-left:5px;vertical-align:1px}
+abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3px;cursor:help;font-weight:600}
+
+.docs-table td:nth-child(1){white-space:nowrap}
+.pill{display:inline-block;font:700 10.5px var(--mono);letter-spacing:.04em;padding:2px 8px;border-radius:999px;background:var(--surface-2);border:1px solid var(--border);color:#475467;margin:1px 3px 1px 0}
+.stats{display:flex;flex-wrap:wrap;gap:10px;margin:18px 0 6px}
+.stat{padding:10px 15px;border:1px solid var(--border);border-radius:12px;background:#fff;box-shadow:var(--shadow)}
+.stat b{display:block;font-size:23px;line-height:1.15;color:var(--brand)}
+.stat span{font:700 10px var(--mono);letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.pager{display:flex;justify-content:space-between;gap:14px;margin-top:56px;padding-top:20px;border-top:1px solid var(--border)}
+.pager a{flex:1;max-width:48%;padding:12px 16px;border:1px solid var(--border);border-radius:12px;background:#fff;text-decoration:none;box-shadow:var(--shadow)}
+.pager a small{display:block;font:800 10px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.pager a.next{text-align:right;margin-left:auto}
+.gen{margin-top:30px;font:12px var(--mono);color:var(--muted)}
+
+@media (max-width:1180px){
+  .layout{grid-template-columns:270px minmax(0,1fr)}
+  .rail{display:none}
+  .hero .in{padding-left:294px}
+}
+@media (max-width:880px){
+  .layout{display:block}
+  .side{position:static;height:auto;border-right:0;border-bottom:1px solid var(--border)}
+  .hero .in{padding-left:0}
+  main{padding:22px 18px 80px}
+}
+@media print{
+  .side,.rail,.copy,.pager,.anchor{display:none!important}
+  .layout{display:block}
+  .hero{background:#fff;color:#000;padding:0 0 12px}
+  .hero h1{color:#000}
+  .metagrid div{border-color:#bbb;color:#000;background:#fff}
+  .metagrid dt{color:#555}
+  main{padding:0;max-width:none}
+  pre.code{white-space:pre-wrap;background:#f6f6f6;color:#000;box-shadow:none}
+}
+</style>
+</head>
+<body>
+<header class="hero"><div class="in">
+<div class="eyebrow">Field operations War Room · build specification · All</div>
+<h1>Field operations War Room: master plan</h1>
+<dl class="metagrid"><div><dt>Status</dt><dd>v1.2, 3 Nov 2026. Not built. Entries marked <strong>Added 3 Nov 2026</strong> record the owner's requirements of that day and how they are specified: in the revised 02 and 06, in WS9's new spec 11, and in marked additions to the other specs (10.8 item 36).</dd></div><div><dt>Workstream</dt><dd>all</dd></div><div><dt>Depends on</dt><dd>none</dd></div><div><dt>Flags</dt><dd>see section 8</dd></div><div><dt>Migrations</dt><dd>allocation in section 9</dd></div><div><dt>Baseline</dt><dd>verified against commit 588387f (3 Nov 2026); see the README.</dd></div></dl>
+</div></header>
+<div class="layout">
+<nav class="side" aria-label="Specifications"><div class="brandmark">Field ops specs</div><h6>Start</h6><a href="index.html"><b>·</b>Index</a><a href="README.html"><b>·</b>About this set</a><h6>Specifications</h6><a href="00-master-plan.html" class="cur" aria-current="page"><b>00</b>Master plan<i>All</i></a><a href="01-prerequisites.html"><b>01</b>Prerequisites<i>WS0</i></a><a href="02-teams-and-doctrines.html"><b>02</b>Teams and doctrines<i>WS1</i></a><a href="03-setup-screen.html"><b>03</b>Setup screen<i>WS2</i></a><a href="04-site-picker.html"><b>04</b>Site picker<i>WS3</i></a><a href="05-layout-step.html"><b>05</b>Layout step<i>WS4</i></a><a href="06-compile-and-review.html"><b>06</b>Compile and review<i>WS5</i></a><a href="07-device-and-physics.html"><b>07</b>Device and physics<i>WS6</i></a><a href="08-people-or-ai.html"><b>08</b>People or AI<i>WS7</i></a><a href="09-after-publish.html"><b>09</b>After publish<i>WS8</i></a><a href="10-ui-spec-sheet.html"><b>10</b>UI spec sheet<i>UI</i></a><a href="11-living-world.html"><b>11</b>Living world<i>WS9</i></a><h6>Sources</h6><a href="../field-ops-user-journey.html"><b>↗</b>User journey document</a><a href="../design/warroom/field-ops-setup.html"><b>↗</b>UI mockup</a></nav>
+<main class="doc">
+<article><p>This document is the spine of the set. It records the decisions, fixes the names every other spec must use (flags, migration numbers, route prefixes, types, components), sets the order of work, and defines what &quot;done&quot; means for the whole programme. The workstream specs fill in how each part is built.</p>
+<h2 id="1-purpose-and-scope"><a class="anchor" href="#1-purpose-and-scope" aria-label="Link to this heading">#</a><span class="num">1</span>Purpose and scope</h2>
+<p><strong>Purpose.</strong> Build the field-operations War Room the way the journey document describes it (<code class="nb">docs/field-ops-user-journey.html</code>, &quot;Addendum · Document-driven setup&quot;) and the way the mockup shows it (<code class="nb">docs/design/warroom/field-ops-setup.html</code>).</p>
+<p><strong>In scope</strong></p>
+<ul>
+<li>One setup screen fed by the trainer's own scenario document, with a footprint radar that prefills it.</li>
+<li>A shared doctrine library, team archetypes with capabilities, and a matching layer, with an admin approval flow.</li>
+<li>A site picker that runs on the saved OpenStreetMap data in Supabase (addresses, landmarks, streets, a 150 m default radius, buildings involved).</li>
+<li>A &quot;Lay out the scene&quot; step that opens with the site already loaded.</li>
+<li>Optional, detailed device specifics, a deterministic effects calculator, and casualties computed from where people stand.</li>
+<li>A compile that honours the document, snapshots doctrines, and writes a draft that is reviewed and then published.</li>
+<li>AI-operated agencies built on the corporate teammate-bot framework, with the doctrine as the planner.</li>
+<li>A post-publish editor and a pressure runtime.</li>
+</ul>
+<p><strong>Out of scope</strong></p>
+<ul>
+<li>Incident types other than the four live bombing types (<abbr class="dref" title="D11 (Decided): Incident types are the four live bombing types. A document about any other type is named, marked &quot;soon&quot;, and nothing is compiled.">D11</abbr>).</li>
+<li>Any change to the corporate-crisis wizard's behaviour. Shared components are extracted and reused; the corporate screens must not change.</li>
+<li>The privacy programme in <code class="nb">docs/privacy/01-current-exposure.html</code> to <code class="nb">04-implementation-phases.html</code>. This set consumes it (<abbr class="dref" title="D19 (Assumed): Document privacy: a plain notice at upload and a size cap now; document text goes to the LLM provider through the privacy programme's aliasing layer when that ships. No redaction step in version 1.">D19</abbr>) and does not redo it.</li>
+<li>Deleting the legacy field-ops wizard. That is a separate clean-up after the new flow has been live for a release (<abbr class="dref" title="D25 (Assumed): The new wizard is a new page, `/warroom/field-ops`, so the legacy field-ops wizard and the corporate wizard stay untouched while it is built.">D25</abbr>).</li>
+</ul>
+<h2 id="2-the-product-in-one-page"><a class="anchor" href="#2-the-product-in-one-page" aria-label="Link to this heading">#</a><span class="num">2</span>The product in one page</h2>
+<p>A trainer opens the War Room and chooses field operations. One screen, <strong>Setup</strong>, asks &quot;What happened?&quot;. She types a description or drops in a document. A <strong>footprint radar</strong> reads it and prefills five lanes: the incident (type, people present, devices), the site, the responding agencies, the pressure on them, and the adversaries. She corrects what is wrong.</p>
+<p>Each <strong>agency</strong> is a team card with an archetype, a rewritable description, a roster of roles, and People or AI. It is matched to a <strong>doctrine</strong> in a shared library; where none fits it says &quot;No doctrine detected&quot; and the trainer writes one, which joins the library as Unverified until an admin approves it. The <strong>site</strong> lane is the Scene Editor's map picker moved into Setup: she searches an address, landmark or street, the building, its neighbours and the streets are outlined from the saved map data at a 150 m radius that she can expand or shrink, and she marks the other buildings involved. A <strong>device</strong> can be described as precisely as she likes (charge and quantity, fragments, casing, other hazard materials, initiation, container, position); anything she leaves blank is assumed and labelled.</p>
+<p><strong>Lay out the scene</strong> opens with the site already loaded. She adds hazards, walks the site taking photos, plants the devices, paints crowd zones. <strong>Compile</strong> builds the exercise from her document, the doctrines, and the physics calculated from her device details, with no research step. A <strong>Review</strong> page shows what was built and where each part came from; she publishes it and can edit it afterwards, except while a session is live. On the day, agencies marked AI are run by AI, and the lobby can override any seat.</p>
+<h2 id="3-decision-log"><a class="anchor" href="#3-decision-log" aria-label="Link to this heading">#</a><span class="num">3</span>Decision log</h2>
+<p>&quot;Decided&quot; means the owner chose it in conversation. &quot;Assumed&quot; means this set uses the stated default until the owner overrules it; every spec that depends on an assumed decision says so.</p>
+<div class="tw"><table><thead><tr><th>ID</th><th>Decision</th><th>Status</th><th>Specs</th></tr></thead><tbody>
+<tr><td><abbr class="dref" title="D1 (Decided): Document-driven setup on one screen; the document prefills it; nothing in it is silently dropped.">D1</abbr></td><td>Document-driven setup on one screen; the document prefills it; nothing in it is silently dropped.</td><td>Decided</td><td>03, 06</td></tr>
+<tr><td><abbr class="dref" title="D2 (Decided): A shared doctrine library. A trainer-written doctrine is usable by every trainer at once and shown as Unverified until an admin approves it.">D2</abbr></td><td>A shared doctrine library. A trainer-written doctrine is usable by every trainer at once and shown as Unverified until an admin approves it.</td><td>Decided</td><td>02, 09</td></tr>
+<tr><td><abbr class="dref" title="D3 (Decided): The trainer can lay out the scene while a team has no doctrine, but compile is blocked until every team has one.">D3</abbr></td><td>The trainer can lay out the scene while a team has no doctrine, but compile is blocked until every team has one.</td><td>Decided</td><td>02, 03, 06</td></tr>
+<tr><td><abbr class="dref" title="D4 (Decided): AI-operated teams are built on the corporate teammate-bot framework. The doctrine is the planner. One brain per AI agency; roster seats are personas. Setup sets the default, the lobby overrides per seat.">D4</abbr></td><td>AI-operated teams are built on the corporate teammate-bot framework. The doctrine is the planner. One brain per AI agency; roster seats are personas. Setup sets the default, the lobby overrides per seat.</td><td>Decided</td><td>08</td></tr>
+<tr><td><abbr class="dref" title="D5 (Decided): The site is set on the setup screen from the saved OpenStreetMap data in Supabase. Nothing involves Google Maps. No building, road or address data is fetched live (no Overpass, no Nominatim); the map background is the existing OpenStreetMap tile layer through our tile proxy, as the Scene Editor shows it today.">D5</abbr></td><td>The site is set on the setup screen from the saved OpenStreetMap data in Supabase. Nothing involves Google Maps. No building, road or address data is fetched live (no Overpass, no Nominatim); the map background is the existing OpenStreetMap tile layer through our tile proxy, as the Scene Editor shows it today.</td><td>Decided</td><td>04, 05</td></tr>
+<tr><td><abbr class="dref" title="D6 (Decided): Addresses resolve. The saved data is re-extracted with street numbers and postcodes and the search index includes them.">D6</abbr></td><td>Addresses resolve. The saved data is re-extracted with street numbers and postcodes and the search index includes them.</td><td>Decided</td><td>04</td></tr>
+<tr><td><abbr class="dref" title="D7 (Decided): Lay out the scene opens with the site loaded. Hazards, photos, planting devices and crowd zones happen there.">D7</abbr></td><td>Lay out the scene opens with the site loaded. Hazards, photos, planting devices and crowd zones happen there.</td><td>Decided</td><td>05</td></tr>
+<tr><td><abbr class="dref" title="D8 (Decided): A device can be described in as much detail as the trainer wants. Everything is optional. Entered values are used as given; blanks are assumed and labelled. Effects are calculated by deterministic code.">D8</abbr></td><td>A device can be described in as much detail as the trainer wants. Everything is optional. Entered values are used as given; blanks are assumed and labelled. Effects are calculated by deterministic code.</td><td>Decided</td><td>07</td></tr>
+<tr><td><abbr class="dref" title="D9 (Decided): Other involved buildings are handled at footprint level: shown on the map, devices and hazards can be placed in them, exits and wall points are generated from the footprint. Only the primary building has the full interior layout.">D9</abbr></td><td>Other involved buildings are handled at footprint level: shown on the map, devices and hazards can be placed in them, exits and wall points are generated from the footprint. Only the primary building has the full interior layout.</td><td>Decided</td><td>04, 05</td></tr>
+<tr><td><abbr class="dref" title="D10 (Decided): The crowd is split. The headcount is set on the setup screen; where people stand is painted as crowd zones in Lay out the scene.">D10</abbr></td><td>The crowd is split. The headcount is set on the setup screen; where people stand is painted as crowd zones in Lay out the scene.</td><td>Decided</td><td>03, 05, 07</td></tr>
+<tr><td><abbr class="dref" title="D11 (Decided): Incident types are the four live bombing types. A document about any other type is named, marked &quot;soon&quot;, and nothing is compiled.">D11</abbr></td><td>Incident types are the four live bombing types. A document about any other type is named, marked &quot;soon&quot;, and nothing is compiled.</td><td>Decided</td><td>03</td></tr>
+<tr><td><abbr class="dref" title="D12 (Decided): The similar-cases research is removed. Per-team standards research is replaced by the doctrine library.">D12</abbr></td><td>The similar-cases research is removed. Per-team standards research is replaced by the doctrine library.</td><td>Decided</td><td>06</td></tr>
+<tr><td><abbr class="dref" title="D13 (Assumed): Outside the saved data's coverage the site picker says there is no saved map data for the area and stops. There is no live fallback. An admin import path is documented.">D13</abbr></td><td>Outside the saved data's coverage the site picker says there is no saved map data for the area and stops. There is no live fallback. An admin import path is documented.</td><td>Assumed</td><td>04</td></tr>
+<tr><td><abbr class="dref" title="D14 (Assumed): Street View imagery on wall points is removed. The trainer's own photos are the only wall-point and hazard imagery.">D14</abbr></td><td>Street View imagery on wall points is removed. The trainer's own photos are the only wall-point and hazard imagery.</td><td>Assumed</td><td>05</td></tr>
+<tr><td><abbr class="dref" title="D15 (Assumed): Caps: 10 agencies, 6 pressure bodies, 3 adversaries, 6 devices, 5 involved buildings besides the primary.">D15</abbr></td><td>Caps: 10 agencies, 6 pressure bodies, 3 adversaries, 6 devices, 5 involved buildings besides the primary.</td><td>Assumed</td><td>03, 04, 07</td></tr>
+<tr><td><abbr class="dref" title="D16 (Assumed): Roster roles are labels and seats in version 1. Permissions (for example only the incident commander authorises) are deferred; the data model leaves room for them.">D16</abbr></td><td>Roster roles are labels and seats in version 1. Permissions (for example only the incident commander authorises) are deferred; the data model leaves room for them.</td><td>Assumed</td><td>02, 08</td></tr>
+<tr><td><abbr class="dref" title="D17 (Assumed): Platform admins approve doctrines in an admin queue. A doctrine is usable while Unverified. Target response time is five working days. Admins can retire a doctrine.">D17</abbr></td><td>Platform admins approve doctrines in an admin queue. A doctrine is usable while Unverified. Target response time is five working days. Admins can retire a doctrine.</td><td>Assumed</td><td>02, 09</td></tr>
+<tr><td><abbr class="dref" title="D18 (Assumed): The area and vicinity dossier stays (hospitals, police and fire stations within 5 km, nearby hazards).">D18</abbr></td><td>The area and vicinity dossier stays (hospitals, police and fire stations within 5 km, nearby hazards).</td><td>Assumed</td><td>06</td></tr>
+<tr><td><abbr class="dref" title="D19 (Assumed): Document privacy: a plain notice at upload and a size cap now; document text goes to the LLM provider through the privacy programme's aliasing layer when that ships. No redaction step in version 1.">D19</abbr></td><td>Document privacy: a plain notice at upload and a size cap now; document text goes to the LLM provider through the privacy programme's aliasing layer when that ships. No redaction step in version 1.</td><td>Assumed</td><td>03</td></tr>
+<tr><td><abbr class="dref" title="D20 (Assumed): Pressure kinds are the corporate five (regulator, union, NGO, community group, political) plus `media`.">D20</abbr></td><td>Pressure kinds are the corporate five (regulator, union, NGO, community group, political) plus <code class="nb">media</code>.</td><td>Assumed</td><td>03, 09</td></tr>
+<tr><td><abbr class="dref" title="D21 (Assumed): AI-operated agencies ship behind `ENABLE_FIELDOPS_AI_TEAMS`, off in production until validated on staging with the bot scorecard.">D21</abbr></td><td>AI-operated agencies ship behind <code class="nb">ENABLE_FIELDOPS_AI_TEAMS</code>, off in production until validated on staging with the bot scorecard.</td><td>Assumed</td><td>08</td></tr>
+<tr><td><abbr class="dref" title="D22 (Assumed): A person with blast-effects or EOD experience reviews the calculator and the first library entries before `ENABLE_FIELDOPS_PHYSICS` is turned on in production. Until then results carry an &quot;Unreviewed model&quot; label.">D22</abbr></td><td>A person with blast-effects or EOD experience reviews the calculator and the first library entries before <code class="nb">ENABLE_FIELDOPS_PHYSICS</code> is turned on in production. Until then results carry an &quot;Unreviewed model&quot; label.</td><td>Assumed</td><td>07</td></tr>
+<tr><td><abbr class="dref" title="D23 (Assumed): Migrations are numbered from 218 and are additive only (section 9).">D23</abbr></td><td>Migrations are numbered from 218 and are additive only (section 9).</td><td>Assumed</td><td>all</td></tr>
+<tr><td><abbr class="dref" title="D24 (Assumed): Compile writes a scenario in the `draft` publish state. A scenario is published by an explicit action.">D24</abbr></td><td>Compile writes a scenario in the <code class="nb">draft</code> publish state. A scenario is published by an explicit action.</td><td>Assumed</td><td>01, 06</td></tr>
+<tr><td><abbr class="dref" title="D25 (Assumed): The new wizard is a new page, `/warroom/field-ops`, so the legacy field-ops wizard and the corporate wizard stay untouched while it is built.">D25</abbr></td><td>The new wizard is a new page, <code class="nb">/warroom/field-ops</code>, so the legacy field-ops wizard and the corporate wizard stay untouched while it is built.</td><td>Assumed</td><td>03</td></tr>
+<tr><td><abbr class="dref" title="D26 (Assumed): Doctrine matching thresholds: 0.85 or more is assigned, 0.60 to below 0.85 is suggested, below 0.60 is &quot;No doctrine detected&quot;. They are constants that can be tuned.">D26</abbr></td><td>Doctrine matching thresholds: 0.85 or more is assigned, 0.60 to below 0.85 is suggested, below 0.60 is &quot;No doctrine detected&quot;. They are constants that can be tuned.</td><td>Assumed</td><td>02</td></tr>
+<tr><td><abbr class="dref" title="D27 (Assumed): Credit semantics are unchanged: one scenario credit is taken when compile starts and is refunded if compile fails before a draft is written.">D27</abbr></td><td>Credit semantics are unchanged: one scenario credit is taken when compile starts and is refunded if compile fails before a draft is written.</td><td>Assumed</td><td>01, 06</td></tr>
+<tr><td><abbr class="dref" title="D28 (Assumed): Where the approved mockup and a spec would differ, the mockup wins, unless safety, accessibility, the data model or the design brief (`docs/design/warroom/IMPLEMENTATION_SPEC.md`) requires otherwise. Each difference is listed in the UI spec sheet. So agency cards follow the mockup (one card open, the others compact with an Edit control), and the layout tools use `WrIcon` instead of the mockup's emoji.">D28</abbr></td><td>Where the approved mockup and a spec would differ, the mockup wins, unless safety, accessibility, the data model or the design brief (<code>docs/design/warroom/IMPLEMENTATION_SPEC.md</code>) requires otherwise. Each difference is listed in the UI spec sheet. So agency cards follow the mockup (one card open, the others compact with an Edit control), and the layout tools use <code class="nb">WrIcon</code> instead of the mockup's emoji.</td><td>Assumed</td><td>02, 05, 10</td></tr>
+<tr><td><abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr></td><td><strong>Added 3 Nov 2026.</strong> Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.</td><td>Decided</td><td>02</td></tr>
+<tr><td><abbr class="dref" title="D30 (Decided): **Added 3 Nov 2026.** When an agency the trainer names matches no doctrine, she can pick any doctrine in the library, type one, or upload a doctrine document for that agency, organisation or team. She states its country, so the doctrine is grouped with the right country. An uploaded document is read into the doctrine's fields for her to check, and is saved as Unverified (D2).">D30</abbr></td><td><strong>Added 3 Nov 2026.</strong> When an agency the trainer names matches no doctrine, she can pick any doctrine in the library, type one, or upload a doctrine document for that agency, organisation or team. She states its country, so the doctrine is grouped with the right country. An uploaded document is read into the doctrine's fields for her to check, and is saved as Unverified (<abbr class="dref" title="D2 (Decided): A shared doctrine library. A trainer-written doctrine is usable by every trainer at once and shown as Unverified until an admin approves it.">D2</abbr>).</td><td>Decided</td><td>02</td></tr>
+<tr><td><abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr></td><td><strong>Added 3 Nov 2026.</strong> All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call <code class="nb">researchDeteriorationPhysics</code>.</td><td>Decided</td><td>06, 07</td></tr>
+<tr><td><abbr class="dref" title="D32 (Decided): **Added 3 Nov 2026.** Field ops is a real-time strategy simulation. Compile turns every detail into the starting state of a live world. During the session a server-side simulation evolves it: fire and smoke spread through the building by material and wall, structural damage progresses with time and fire exposure, gas plumes drift, crowds move, and the world reacts to what the teams do.">D32</abbr></td><td><strong>Added 3 Nov 2026.</strong> Field ops is a real-time strategy simulation. Compile turns every detail into the starting state of a live world. During the session a server-side simulation evolves it: fire and smoke spread through the building by material and wall, structural damage progresses with time and fire exposure, gas plumes drift, crowds move, and the world reacts to what the teams do.</td><td>Decided</td><td>new WS9</td></tr>
+<tr><td><abbr class="dref" title="D33 (Decided): **Added 3 Nov 2026.** Teams place and move units. A unit has a type, the capabilities of its archetype, a position and a status. It is dispatched, travels over the saved road network with a travel time, and acts on arrival according to its capabilities.">D33</abbr></td><td><strong>Added 3 Nov 2026.</strong> Teams place and move units. A unit has a type, the capabilities of its archetype, a position and a status. It is dispatched, travels over the saved road network with a travel time, and acts on arrival according to its capabilities.</td><td>Decided</td><td>new WS9</td></tr>
+<tr><td><abbr class="dref" title="D34 (Decided): **Added 3 Nov 2026.** Fog of war. A team sees what its units and positions can observe, with range reduced by smoke and weather, plus what is reported to it. The trainer sees everything, and AI agencies see through the same fog as people.">D34</abbr></td><td><strong>Added 3 Nov 2026.</strong> Fog of war. A team sees what its units and positions can observe, with range reduced by smoke and weather, plus what is reported to it. The trainer sees everything, and AI agencies see through the same fog as people.</td><td>Decided</td><td>new WS9</td></tr>
+<tr><td><abbr class="dref" title="D35 (Decided): **Added 3 Nov 2026.** Weather and traffic are mechanics, not labels. Weather (rain, wind, haze, heat, visibility) changes spread, visibility, travel speed and casualties. Traffic (time-of-day congestion on the saved roads, cordons, closures, evacuation jams) changes unit travel times and so the teams' deployment choices.">D35</abbr></td><td><strong>Added 3 Nov 2026.</strong> Weather and traffic are mechanics, not labels. Weather (rain, wind, haze, heat, visibility) changes spread, visibility, travel speed and casualties. Traffic (time-of-day congestion on the saved roads, cordons, closures, evacuation jams) changes unit travel times and so the teams' deployment choices.</td><td>Decided</td><td>03, new WS9</td></tr>
+<tr><td><abbr class="dref" title="D36 (Decided): **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.">D36</abbr></td><td><strong>Added 3 Nov 2026.</strong> Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.</td><td>Decided</td><td>03, 05, 06</td></tr>
+</tbody></table></div>
+<h2 id="4-architecture-overview"><a class="anchor" href="#4-architecture-overview" aria-label="Link to this heading">#</a><span class="num">4</span>Architecture overview</h2>
+<pre class="mermaid">flowchart LR
+  doc[Document or description] --&gt; radar[Footprint radar and blueprint]
+  radar --&gt; setup[(wizard draft: setup_v2)]
+  osm[(osm_sg_buildings and osm_sg_roads)] --&gt; picker[Site picker]
+  picker --&gt; setup
+  lib[(archetypes, doctrines, device library)] --&gt; setup
+  setup --&gt; layout[Lay out the scene]
+  layout --&gt; scene[(rts_scene_configs)]
+  setup --&gt; compile[Compile job]
+  scene --&gt; compile
+  lib --&gt; compile
+  compile --&gt; draftscn[(scenario in draft state)]
+  draftscn --&gt; review[Review]
+  review --&gt; publish[Publish]
+  publish --&gt; runtime[Session runtime: people and AI agencies]</pre>
+<p><strong>Principles</strong></p>
+<ul>
+<li>Store the trainer's choices, not map data. The draft keeps the site selection (centre, radius, the primary and involved polygons); the surrounding footprints and streets are read again from the saved tables when a screen needs them.</li>
+<li>Deterministic code does the physics, from data stored in the database. The LLM writes narrative and reads the categories the trainer's own words state; it never computes effects and is never asked for a device value (10.8 item 17). <strong>Updated 3 Nov 2026</strong>: this line said the LLM fills gaps inside bounds, which item 17 had already overruled.</li>
+<li><strong>Added 3 Nov 2026.</strong> The session is a live world. A simulation on the server evolves what compile built and reacts to what the teams do (<abbr class="dref" title="D32 (Decided): **Added 3 Nov 2026.** Field ops is a real-time strategy simulation. Compile turns every detail into the starting state of a live world. During the session a server-side simulation evolves it: fire and smoke spread through the building by material and wall, structural damage progresses with time and fire exposure, gas plumes drift, crowds move, and the world reacts to what the teams do.">D32</abbr> to <abbr class="dref" title="D35 (Decided): **Added 3 Nov 2026.** Weather and traffic are mechanics, not labels. Weather (rain, wind, haze, heat, visibility) changes spread, visibility, travel speed and casualties. Traffic (time-of-day congestion on the saved roads, cordons, closures, evacuation jams) changes unit travel times and so the teams' deployment choices.">D35</abbr>).</li>
+<li>A compiled scenario owns a snapshot of the doctrines and the physics it was built with. Later library changes never alter it.</li>
+<li>Every long operation is a persisted job. Nothing depends on a browser tab or on process memory.</li>
+<li>Everything new is behind a flag and additive.</li>
+</ul>
+<h2 id="5-workstreams"><a class="anchor" href="#5-workstreams" aria-label="Link to this heading">#</a><span class="num">5</span>Workstreams</h2>
+<div class="tw"><table><thead><tr><th>WS</th><th>Document</th><th>Delivers</th><th>Depends on</th><th>Size</th></tr></thead><tbody>
+<tr><td>WS0</td><td><code class="nb">01-prerequisites.md</code></td><td>A live map for wizard-built scenarios (13.1); a durable, locked, draft-state compile (7.1, 7.3, 7.5); validated draft input (5.4); persisted jobs</td><td>none</td><td>M</td></tr>
+<tr><td>WS1</td><td><code class="nb">02-teams-and-doctrines.md</code></td><td>Team archetypes and capabilities; the doctrine library; matching; admin approval; seeding; snapshot contract</td><td>WS0</td><td>L</td></tr>
+<tr><td>WS2</td><td><code class="nb">03-setup-screen.md</code></td><td>The new wizard page and its five lanes; document upload; footprint radar; field-ops blueprint; readiness checks; the <code class="nb">setup_v2</code> draft payload</td><td>WS0, WS1, WS3</td><td>XL</td></tr>
+<tr><td>WS3</td><td><code class="nb">04-site-picker.md</code></td><td>Saved-map search with addresses; radius; buildings involved; the re-extract; the search index; the site handoff to the draft</td><td>WS0</td><td>L</td></tr>
+<tr><td>WS4</td><td><code class="nb">05-layout-step.md</code></td><td>The Scene Editor opens with the site; footprint-level buildings; crowd zones; photos; Street View removal; device summary</td><td>WS0, WS3</td><td>L</td></tr>
+<tr><td>WS5</td><td><code class="nb">06-compile-and-review.md</code></td><td>A blueprint-honouring compile; doctrine snapshot; draft and publish; the Review page</td><td>WS0 to WS4</td><td>XL</td></tr>
+<tr><td>WS6</td><td><code class="nb">07-device-and-physics.md</code></td><td>The device specifics contract; the calculator; the library; casualties from crowd zones; labels</td><td>WS2, WS4</td><td>XL</td></tr>
+<tr><td>WS7</td><td><code class="nb">08-people-or-ai.md</code></td><td>AI-operated agencies; the field-ops perception and action layer; the lobby card; the end of engine auto-play</td><td>WS1, WS5</td><td>XL</td></tr>
+<tr><td>WS8</td><td><code class="nb">09-after-publish.md</code></td><td>The post-publish editor; the pressure runtime</td><td>WS5</td><td>L</td></tr>
+<tr><td>UI</td><td><code class="nb">10-ui-spec-sheet.md</code></td><td>The mockup mapped element by element to components, data and states</td><td>all</td><td>M</td></tr>
+<tr><td>WS9</td><td><code class="nb">11-living-world.md</code> (<strong>Added 3 Nov 2026</strong>)</td><td>The living world (<abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr> to <abbr class="dref" title="D36 (Decided): **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.">D36</abbr>): the stored spread and deterioration parameters; the server-side simulation of fire, smoke, structure, gas plumes and crowds during a session; units that are dispatched and travel over the saved roads; fog of war; weather and traffic as mechanics</td><td>WS4, WS5, WS6</td><td>XL</td></tr>
+</tbody></table></div>
+<p><strong>Added 3 Nov 2026.</strong> WS1 also takes <abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr> and <abbr class="dref" title="D30 (Decided): **Added 3 Nov 2026.** When an agency the trainer names matches no doctrine, she can pick any doctrine in the library, type one, or upload a doctrine document for that agency, organisation or team. She states its country, so the doctrine is grouped with the right country. An uploaded document is read into the doctrine's fields for her to check, and is saved as Unverified (D2).">D30</abbr>: a country on every doctrine and alias, Southeast Asian seed doctrines, and a doctrine-document upload. WS6 takes <abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr>'s spread data. Their specs (02 and 07) carry a marked note and are revised before they are built (10.8 item 36).</p>
+<h2 id="6-dependencies-and-order-of-work"><a class="anchor" href="#6-dependencies-and-order-of-work" aria-label="Link to this heading">#</a><span class="num">6</span>Dependencies and order of work</h2>
+<pre class="mermaid">flowchart TD
+  WS0[WS0 Prerequisites] --&gt; WS1[WS1 Teams and doctrines]
+  WS0 --&gt; WS3[WS3 Site picker]
+  WS3 --&gt; WS4[WS4 Layout step]
+  WS1 --&gt; WS2[WS2 Setup screen]
+  WS3 --&gt; WS2
+  WS2 --&gt; WS5[WS5 Compile and review]
+  WS4 --&gt; WS5
+  WS2 --&gt; WS6[WS6 Device and physics]
+  WS4 --&gt; WS6
+  WS5 --&gt; WS7[WS7 People or AI]
+  WS5 --&gt; WS8[WS8 After publish]
+  WS6 -.-&gt; WS5
+  WS5 --&gt; WS9[WS9 Living world, added 3 Nov]
+  WS6 --&gt; WS9</pre>
+<p>The dotted arrow from WS6 to WS5 is soft: compile uses calculated effects when <code class="nb">ENABLE_FIELDOPS_PHYSICS</code> is on and the legacy bands when it is off, so neither blocks the other.</p>
+<p><strong>Build order</strong></p>
+<ol>
+<li><strong>WS0</strong> first. The live-map fix (13.1) can ship on its own and is useful to every session today.</li>
+<li><strong>WS1 and WS3 in parallel.</strong> They do not depend on each other. WS4 follows WS3.</li>
+<li><strong>WS2</strong> once the WS1 card contract and the WS3 site contract exist (stubs are enough to start).</li>
+<li><strong>WS6's calculator core</strong> is a pure module with no dependencies and can be built at any time; its UI and wiring wait for WS2 and WS4.</li>
+<li><strong>WS5</strong> once WS1 to WS4 have landed, because it consumes all four contracts.</li>
+<li><strong>WS7 and WS8</strong> after WS5, in parallel. WS8's session start claim (its migration and <code class="nb">claimSessionStart</code>, 10.8 item 26) lands first, because WS7's start-branch task depends on it.</li>
+<li><strong>Added 3 Nov 2026. WS9</strong> after WS5 and WS6, in slices that each fall back to today's scripted escalation:
+<ul>
+<li>the stored spread parameters (<abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr>), landing with WS5, because 10.8 item 35 needs them;</li>
+<li>the live simulation of fire, smoke, structure, plumes and crowds;</li>
+<li>units with dispatch and travel;</li>
+<li>fog of war;</li>
+<li>weather and traffic effects.</li>
+</ul></li>
+</ol>
+<p><strong>Suggested release slices</strong> (not binding):</p>
+<ul>
+<li>Slice A: WS0.</li>
+<li>Slice B: WS3 and WS4 behind <code class="nb">ENABLE_FIELDOPS_V2</code>, with the Setup page containing only the incident, site and the existing eight-team inventory. This is the visible streamlining and needs no doctrines or documents.</li>
+<li>Slice C: WS1, WS2 and WS5, which turn Setup into the document-driven screen and add draft, review and publish.</li>
+<li>Slice D: WS6.</li>
+<li>Slice E: WS7 and WS8.</li>
+<li>Slice F (<strong>Added 3 Nov 2026</strong>): WS9, in the slices of build-order item 7.</li>
+</ul>
+<h2 id="7-where-things-live"><a class="anchor" href="#7-where-things-live" aria-label="Link to this heading">#</a><span class="num">7</span>Where things live</h2>
+<div class="tw"><table><thead><tr><th>Area</th><th>Location</th></tr></thead><tbody>
+<tr><td>Shared types, constants and pure helpers (browser and server)</td><td><code class="nb">shared/fieldOps/*.ts</code><span class="new">new</span>, under the rules in section 10.7</td></tr>
+<tr><td>zod schemas and the tests of shared modules</td><td><code class="nb">server/lib/fieldOps/*.ts</code><span class="new">new</span> (section 10.7)</td></tr>
+<tr><td>Server services</td><td><code class="nb">server/services/fieldOps/&lt;area&gt;/</code><span class="new">new</span> with areas <code class="nb">setup</code>, <code class="nb">radar</code>, <code class="nb">documents</code>, <code class="nb">blueprint</code>, <code class="nb">site</code>, <code class="nb">layout</code>, <code class="nb">teams</code>, <code class="nb">doctrine</code>, <code class="nb">physics</code>, <code class="nb">compile</code>, <code class="nb">bots</code>, <code class="nb">editor</code>, <code class="nb">pressure</code></td></tr>
+<tr><td>Server routes</td><td><code class="nb">server/routes/fieldOps&lt;Area&gt;.ts</code><span class="new">new</span>, with <code class="nb">fieldOpsJobs</code>, <code class="nb">fieldOpsSetup</code>, <code class="nb">fieldOpsSite</code>, <code class="nb">fieldOpsScene</code>, <code class="nb">fieldOpsTeams</code>, <code class="nb">fieldOpsDoctrine</code>, <code class="nb">fieldOpsDevices</code>, <code class="nb">fieldOpsCompile</code>, <code class="nb">fieldOpsBots</code>, <code class="nb">fieldOpsEditor</code> and <code class="nb">fieldOpsPressure</code> as the router files the specs define</td></tr>
+<tr><td>Client page</td><td><code class="nb">frontend/src/pages/FieldOpsWizard.tsx</code><span class="new">new</span> at <code class="nb">/warroom/field-ops</code></td></tr>
+<tr><td>Client components</td><td><code class="nb">frontend/src/components/FieldOps/&lt;Area&gt;/</code><span class="new">new</span></td></tr>
+<tr><td>Shared lane components extracted from the corporate wizard</td><td><code class="nb">frontend/src/components/WarRoom/lanes/</code><span class="new">new</span>, used by both wizards with no behaviour change to the corporate one</td></tr>
+<tr><td>Stylesheets</td><td><code class="nb">frontend/src/design/fieldops-&lt;area&gt;.css</code><span class="new">new</span> with the class prefix <code class="nb">fo-</code>, each created by the spec that owns its components (section 10.8)</td></tr>
+<tr><td>Tests</td><td>next to the module as <code class="nb">*.test.ts</code>, except modules under <code class="nb">shared/</code>, whose tests live in <code class="nb">server/lib/fieldOps/</code> (section 10.7); client tests in <code class="nb">frontend/tests/</code></td></tr>
+<tr><td>Migrations</td><td><code class="nb">migrations/NNN_&lt;name&gt;.sql</code><span class="new">new</span></td></tr>
+</tbody></table></div>
+<h2 id="8-feature-flags"><a class="anchor" href="#8-feature-flags" aria-label="Link to this heading">#</a><span class="num">8</span>Feature flags</h2>
+<p>All flags default to on in development and off in production until the owning workstream's acceptance criteria pass. Server flags are read once in <code class="nb">server/env.ts</code>; client flags use the <code class="nb">VITE_</code> prefix. When a flag is off its routes answer 404 and its UI is absent, so the legacy behaviour is unchanged.</p>
+<div class="tw"><table><thead><tr><th>Flag</th><th>Owner</th><th>Gates</th></tr></thead><tbody>
+<tr><td><code class="nb">ENABLE_FIELDOPS_V2</code> and <code class="nb">VITE_ENABLE_FIELDOPS_V2</code></td><td>WS2, WS3, WS4, WS5</td><td>The <code class="nb">/warroom/field-ops</code> page, the site picker, the layout step opening with the site, the <code class="nb">setup_v2</code> draft endpoints, draft and publish</td></tr>
+<tr><td><code class="nb">ENABLE_FIELDOPS_DOCTRINES</code></td><td>WS1</td><td>Archetype and doctrine APIs, the matching layer and the admin queue. Off: teams use the legacy eight-name inventory and per-scenario research. <strong>Added 3 Nov 2026:</strong> the off state is for development and staging only. The new compile reaches production with the doctrine library (release slice C), so production compiles never research doctrines (<abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr>)</td></tr>
+<tr><td><code class="nb">ENABLE_FIELDOPS_BLUEPRINT</code></td><td>WS2</td><td>The document drop zone, the footprint radar and blueprint extraction. Off: the setup screen takes a text description only</td></tr>
+<tr><td><code class="nb">ENABLE_FIELDOPS_PHYSICS</code></td><td>WS6</td><td>Calculator-driven bands and casualties. It takes <code class="nb">true</code>, <code class="nb">admin</code> (on for the admin role only, read through <code class="nb">physicsEnabledFor(role)</code>) or <code class="nb">false</code>. In production <code class="nb">true</code> behaves as <code class="nb">admin</code> until the <abbr class="dref" title="D22 (Assumed): A person with blast-effects or EOD experience reviews the calculator and the first library entries before `ENABLE_FIELDOPS_PHYSICS` is turned on in production. Until then results carry an &quot;Unreviewed model&quot; label.">D22</abbr> review is recorded. It has no <code class="nb">VITE_</code> mirror, because <code class="nb">admin</code> depends on the user: the client asks <code>GET /api/field-ops/devices/capabilities</code>. Off: the legacy manual radius with fixed 33 and 66 per cent bands</td></tr>
+<tr><td><code class="nb">ENABLE_FIELDOPS_AI_TEAMS</code></td><td>WS7</td><td>Field-ops bots and agency brains. Does not require the corporate <code class="nb">ENABLE_TEAMMATE_BOTS</code> flag</td></tr>
+<tr><td><code class="nb">ENABLE_FIELDOPS_EDITOR</code></td><td>WS8</td><td>The post-publish editor and the pressure runtime. It has no <code class="nb">VITE_</code> mirror: the client asks <code>GET /api/field-ops/editor/capabilities</code></td></tr>
+<tr><td><code class="nb">ENABLE_FIELDOPS_WORLD_SIM</code> (<strong>Added 3 Nov 2026</strong>)</td><td>WS9</td><td>The live world simulation, units with travel, fog of war, and weather and traffic effects. Off: today's scripted escalation (spawn pins and deterioration timelines)</td></tr>
+</tbody></table></div>
+<p>Each flag is read once, at boot, into one <code class="nb">env</code> property named as in section 10.7 (<code class="nb">env.enableFieldopsV2</code> is defined by WS0 and reused by the others), so flipping a server flag needs a restart but no build. The job settings below are read as <code class="nb">env.fieldopsJobs*</code>, and <code class="nb">FIELDOPS_JOBS_MAX_CONCURRENT=0</code> switches the job engine off.</p>
+<p><strong>Non-flag settings.</strong> These are tuning values with safe defaults, owned by the workstream that names them. A spec gives each its default and range.</p>
+<div class="tw"><table><thead><tr><th>Setting</th><th>Owner</th><th>Controls</th></tr></thead><tbody>
+<tr><td><code class="nb">FIELDOPS_JOBS_MAX_CONCURRENT</code>, <code class="nb">FIELDOPS_JOBS_MAX_ACTIVE_PER_USER</code></td><td>WS0</td><td>Builds running at once, per process and per trainer</td></tr>
+<tr><td><code class="nb">FIELDOPS_JOBS_LEASE_SECONDS</code>, <code class="nb">FIELDOPS_JOBS_HEARTBEAT_SECONDS</code>, <code class="nb">FIELDOPS_JOBS_SWEEP_SECONDS</code></td><td>WS0</td><td>The job lease, its heartbeat and the sweeper interval</td></tr>
+<tr><td><code class="nb">FIELDOPS_COMPILE_MAX_LLM_CALLS</code>, <code class="nb">FIELDOPS_COMPILE_MAX_MINUTES</code></td><td>WS5</td><td>The ceiling on model calls and on wall-clock time for one compile</td></tr>
+<tr><td><code class="nb">FIELDOPS_BOTS_MAX_AGENCIES</code>, <code class="nb">FIELDOPS_BOTS_MAX_LLM_PER_HOUR</code>, <code class="nb">FIELDOPS_BOTS_MAX_LLM_PER_AGENCY_HOUR</code>, <code>FIELDOPS_BOTS_MAX_ACTIONS_PER_AGENCY_HOUR</code>, <code class="nb">FIELDOPS_BOTS_TRAINER_ALLOWLIST</code></td><td>WS7</td><td>AI agency count, model-call and action budgets, and the trainers allowed to use AI agencies while the flag is staged</td></tr>
+<tr><td><strong>Added 3 Nov 2026.</strong> <code class="nb">FIELDOPS_WORLD_MAX_SESSIONS</code> (default 4, 0 to 8), <code class="nb">FIELDOPS_WORLD_WORKERS</code> (2, 1 to 4), <code class="nb">FIELDOPS_WORLD_LEASE_SECONDS</code> (30, 15 to 120), <code class="nb">FIELDOPS_WORLD_TICK_BUDGET_MS</code> (250, 50 to 900), <code class="nb">FIELDOPS_WORLD_SNAPSHOT_SECONDS</code> (60, 30 to 300)</td><td>WS9</td><td>Live worlds per process, where 0 runs none and is the operational off switch; worker threads; the world lease; the tick's time budget before the world degrades; the snapshot interval (<code class="nb">11-living-world.md</code> section 6.13)</td></tr>
+</tbody></table></div>
+<p>Existing flags this set relies on: <code class="nb">ENABLE_DOCUMENT_BLUEPRINT</code> (corporate; not used here), <code class="nb">ENABLE_TEAMMATE_BOTS</code> (corporate; the framework code is reused), <code class="nb">ENABLE_LOCAL_OSM_SINGAPORE</code> (the legacy map path; the new site picker reads the tables directly and does not depend on it).</p>
+<h2 id="9-migrations"><a class="anchor" href="#9-migrations" aria-label="Link to this heading">#</a><span class="num">9</span>Migrations</h2>
+<p>The latest migration at the baseline is <code class="nb">217_agreement_signed_copy_draft.sql</code>. The next free number is 218. Older numbers are not unique (there are two files each for 190, 193 and 194), so specs cite a migration by its file name, for example <code class="nb">migrations/194_team_charters.sql</code>. Each workstream owns a range; it uses numbers inside the range in order and never skips backwards.</p>
+<div class="tw"><table><thead><tr><th>WS</th><th>Range</th><th>Likely contents</th></tr></thead><tbody>
+<tr><td>WS0</td><td>218 to 219</td><td>218 <code class="nb">scenarios.publish_state</code>; 219 persisted jobs (<code class="nb">fieldops_jobs</code>, <code class="nb">fieldops_job_stages</code>) and the claim, credit, commit and fail functions. The order differs from the first plan so the commit function can use the publish state</td></tr>
+<tr><td>WS1</td><td>220 to 224</td><td><code class="nb">team_archetypes</code> (220), <code class="nb">doctrines</code> and <code class="nb">doctrine_versions</code> (221), usage, reports and events (222), queue indexes (223), <code class="nb">team_match_feedback</code> (224)</td></tr>
+<tr><td>WS2</td><td>225 to 227</td><td><code class="nb">setup_v2</code>, <code class="nb">setup_v2_rev</code> and <code class="nb">setup_v2_schema_version</code> on the draft (225), <code class="nb">fieldops_documents</code> (226), <code class="nb">fieldops_radar_results</code> (227)</td></tr>
+<tr><td>WS3</td><td>228 to 231</td><td>Address and place-class columns and <code class="nb">osm_sg_data_versions</code> (228), the search index (229), the site-area function (230), <code class="nb">osm_sg_facilities</code> (231). Nothing is added to the draft: the site lives in <code class="nb">setup_v2</code></td></tr>
+<tr><td>WS4</td><td>232 to 233</td><td>V2 layout columns on <code class="nb">rts_scene_configs</code>, two partial unique indexes and <code class="nb">rts_scene_revisions</code> (232); crowd zones with <code class="nb">crowd_headcount</code>, <code class="nb">rts_scene_photos</code> with <code class="nb">deleted_reason</code>, and the private bucket <code class="nb">fieldops-scene-photos</code> (233)</td></tr>
+<tr><td>WS5</td><td>234 to 236</td><td>Doctrine and physics snapshot tables (234), provenance and coverage (235), compile manifests, review decisions, publish events and the persist, discard and publish functions (236)</td></tr>
+<tr><td>WS6</td><td>237 to 241</td><td>Device presets (237), explosive materials (238), injury thresholds (239), an effect-result index (240; the full result is in WS5's snapshot), physics reviews (241)</td></tr>
+<tr><td>WS7</td><td>242 to 244</td><td><code class="nb">scenario_teams.operation</code> with session settings and seats (242), bot enrolment (243), brain state and decisions (244)</td></tr>
+<tr><td>WS8</td><td>245 to 248</td><td>Pressure runtime tables (245), scenario revisions (246), edit audit and edit jobs (247), the edit-apply function (248)</td></tr>
+<tr><td>WS9</td><td>249 to 256</td><td><strong>Added 3 Nov 2026.</strong> The spread library and its review record (249), world models (250), world sessions (251), the world log (252), units (253), visibility (254), weather presets and traffic profiles (255); 256 is kept unused for WS9's next revision (<code class="nb">11-living-world.md</code> section 5)</td></tr>
+</tbody></table></div>
+<p><strong>Added 3 Nov 2026.</strong> <abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr> and <abbr class="dref" title="D30 (Decided): **Added 3 Nov 2026.** When an agency the trainer names matches no doctrine, she can pick any doctrine in the library, type one, or upload a doctrine document for that agency, organisation or team. She states its country, so the doctrine is grouped with the right country. An uploaded document is read into the doctrine's fields for her to check, and is saved as Unverified (D2).">D30</abbr> need a <code class="nb">country</code> (ISO 3166-1 alpha-2) on doctrines and archetype aliases, and a table for uploaded doctrine documents. None of WS1's migrations is applied yet, so the change goes into 220 to 222 rather than a new number.</p>
+<p><strong>Rules</strong></p>
+<ul>
+<li>Additive only: new tables, new nullable columns, new indexes. No drops, renames or type changes in the same release as the code that stops using the old shape.</li>
+<li>The three environments (development, preview, production) share one Supabase project (finding 17.17), so every migration must be safe for the code that is already running.</li>
+<li>Migrations are SQL files applied by the owner. Code must detect a missing column or table and degrade to the legacy behaviour until the migration is applied (the same approach as section 6 of <code class="nb">docs/durable-warroom-builds-plan.md</code>).</li>
+<li>Every migration is idempotent (<code>IF NOT EXISTS</code>) and states its rollback in a comment.</li>
+<li>RLS: the server uses the service role everywhere, so authorisation is route code. A table that a browser could reach through the anon key must have RLS enabled with no permissive policy.</li>
+</ul>
+<h2 id="10-shared-contracts"><a class="anchor" href="#10-shared-contracts" aria-label="Link to this heading">#</a><span class="num">10</span>Shared contracts</h2>
+<h3 id="101-vocabulary"><a class="anchor" href="#101-vocabulary" aria-label="Link to this heading">#</a>10.1 Vocabulary</h3>
+<div class="tw"><table><thead><tr><th>Name</th><th>Values</th></tr></thead><tbody>
+<tr><td><code class="nb">IncidentTypeKey</code> (live)</td><td><code class="nb">bombing</code>, <code class="nb">car_bomb</code>, <code class="nb">suicide_bombing</code>, <code class="nb">bombing_mall</code></td></tr>
+<tr><td><code class="nb">IncidentTypeKey</code> (named and stopped)</td><td><code class="nb">open_field_shooting</code>, <code class="nb">knife_attack</code>, <code class="nb">gas_attack</code>, <code class="nb">poisoning</code>, <code class="nb">kidnapping</code>, <code class="nb">hijacking</code></td></tr>
+<tr><td><code class="nb">ArchetypeKey</code> (the eight that exist today)</td><td><code class="nb">bomb_disposal_eod</code>, <code class="nb">medical_triage</code>, <code class="nb">fire_rescue</code>, <code class="nb">evacuation_crowd</code>, <code class="nb">media_comms</code>, <code class="nb">pursuit_investigation</code>, <code class="nb">incident_command</code>, <code class="nb">police_security</code></td></tr>
+<tr><td><code class="nb">ArchetypeKey</code> <span class="new">new</span></td><td><code class="nb">transport_operator</code>, <code class="nb">venue_operations</code>, <code class="nb">hospital_ed</code>, <code class="nb">utilities</code>, <code class="nb">ministry_liaison</code></td></tr>
+<tr><td><code class="nb">OperationMode</code></td><td><code class="nb">people</code>, <code class="nb">ai</code></td></tr>
+<tr><td><code class="nb">ValueOrigin</code> (an input value)</td><td><code class="nb">yours</code>, <code class="nb">library</code>, <code class="nb">assumed</code></td></tr>
+<tr><td><code class="nb">EffectSource</code> (a calculated result)</td><td><code class="nb">calculated</code>, <code class="nb">stored</code>, <code class="nb">ai_estimated</code>, <code class="nb">manual_override</code>. The new flow never produces <code class="nb">ai_estimated</code>: it labels legacy compiles only, whose casualty range came from a model. A device whose blanks were filled by library rules is shown as &quot;Calculated from assumed inputs&quot; (07)</td></tr>
+<tr><td><code class="nb">DoctrineStatus</code></td><td><code class="nb">unverified</code>, <code class="nb">verified</code>, <code class="nb">retired</code></td></tr>
+<tr><td><code class="nb">DoctrineSource</code></td><td><code class="nb">seeded</code>, <code class="nb">trainer</code>, <code class="nb">ai_drafted</code>, <code class="nb">imported</code></td></tr>
+<tr><td><code class="nb">PressureKind</code></td><td><code class="nb">regulator</code>, <code class="nb">union</code>, <code class="nb">ngo</code>, <code class="nb">community_group</code>, <code class="nb">political</code>, <code class="nb">media</code></td></tr>
+<tr><td><code class="nb">InvolvedBuildingKind</code></td><td><code class="nb">car_park</code>, <code class="nb">transit_station</code>, <code class="nb">adjacent</code>, <code class="nb">other</code></td></tr>
+<tr><td><code class="nb">PublishState</code> (scenario)</td><td><code class="nb">draft</code>, <code class="nb">published</code></td></tr>
+<tr><td><code class="nb">DraftStatus</code> (wizard draft)</td><td><code class="nb">draft</code>, <code class="nb">compiling</code>, <code class="nb">compiled</code>, <code class="nb">failed</code></td></tr>
+</tbody></table></div>
+<p>The eight existing archetypes come from the <code class="nb">TEAM_INVENTORY</code> names in <code class="nb">frontend/src/pages/WarRoom.tsx:66-104</code> (Bomb Squad / EOD, Medical Triage, Hazards / Fire / Rescue, Evacuation, Media &amp; Communications, Pursuit &amp; Investigation, Incident Command, Police / Security). The incident types come from <code class="nb">INCIDENT_TYPES</code> in <code class="nb">frontend/src/pages/WarRoom.tsx:33-62</code>. Coordinates are <code>[lat, lng]</code> pairs everywhere, the same order the saved map tables and the Scene Editor use.</p>
+<p>WS7 owns <code class="nb">SessionPlayMode</code> and <code class="nb">AgencyActionKind</code> (<code class="nb">shared/fieldOps/aiAgency.ts</code><span class="new">new</span>). <code class="nb">PublishState</code> and <code class="nb">DraftStatus</code> are declared in <code class="nb">shared/fieldOps/jobs.ts</code><span class="new">new</span> (WS0), together with <code class="nb">StoredDraftStatus</code> (the legacy value <code class="nb">persisted</code> is still written by the legacy compile). <code class="nb">shared/fieldOps/vocabulary.ts</code><span class="new">new</span> (WS1) re-exports those two and declares every other list in this table, and it is the one place a spec imports a vocabulary from.</p>
+<h3 id="102-the-setup-payload"><a class="anchor" href="#102-the-setup-payload" aria-label="Link to this heading">#</a>10.2 The setup payload</h3>
+<p>The wizard draft gains one validated JSONB column, <code class="nb">setup_v2</code> (WS2 migration), holding this object. It is the single contract between the setup screen, the layout step, compile, the physics calculator and the AI layer. The shapes below are contract sketches. The owning workstream finalises each sub-type as a TypeScript type with its constants and pure helpers in <code class="nb">shared/fieldOps/</code>, and as a zod schema in <code class="nb">server/lib/fieldOps/</code> for the server edge (section 10.7). Any change goes through the change log at the end of this document.</p>
+<div class="codeblock" data-lang="ts"><pre class="code"><code>// shared/fieldOps/setup.ts (new). The envelope is owned by WS2.
+export interface FieldOpsSetupV2 {
+  schema_version: 2;
+  brief: {                                   // WS2
+    description: string;                     // up to 12,000 characters
+    document: { id: string; filename: string; mime: string; word_count: number; truncated: boolean } | null;
+  };
+  footprint: FootprintProposal | null;       // WS2: what the radar proposed, with evidence, kept for Review
+  incident: {                                // WS2
+    type: IncidentTypeKey;
+    people_present: number | null;
+    when: { day: 'weekday' | 'weekend'; time: string; label: string };
+  };
+  devices: DeviceSpec[];                     // WS6: one to six; the first is the main device
+  site: SiteSelection | null;                // WS3
+  agencies: AgencyCard[];                    // WS1 owns the card, WS2 owns the lane
+  pressure: PressureBody[];                  // WS2
+  adversaries: AdversaryInput[];             // WS2
+  options: { duration_minutes: number; weather: string | null; auto_adversary: boolean };
+}
+
+export interface SiteSelection {             // WS3
+  place_label: string;
+  centre: [number, number];
+  radius_m: number;                          // 50 to 500, default 150
+  primary: BuildingRef;
+  involved: Array&lt;BuildingRef &amp; { kind: InvolvedBuildingKind; label: string }&gt;;
+  source: 'saved_osm';
+}
+export interface BuildingRef { osm_id: string | null; name: string | null; polygon: Array&lt;[number, number]&gt; }
+
+export interface AgencyCard {                // WS1
+  id: string;
+  display_name: string;
+  agency_label: string | null;
+  archetype_key: ArchetypeKey | null;
+  match: { confidence: number; method: 'alias' | 'name' | 'ai' | 'manual'; candidates: Array&lt;{ key: ArchetypeKey; confidence: number }&gt; } | null;
+  description: string;
+  roster: Array&lt;{ key: string; label: string; count_min: number; count_max: number; is_lead: boolean }&gt;;
+  min_players: number;
+  max_players: number;
+  is_investigative: boolean;
+  operation: OperationMode;
+  doctrine: { doctrine_id: string; version: number; status: DoctrineStatus; title: string } | null;
+}
+
+export interface PressureBody {              // WS2
+  id: string; display_name: string; kind: PressureKind; wants: string;
+  escalation: string[]; stand_down: string; targets_agency_ids: string[];
+}
+export interface AdversaryInput {            // WS2
+  id: string; label: string; kind: 'perpetrator' | 'hoax' | 'copycat' | 'other'; behaviour: string; pursuit: boolean;
+}
+// DeviceSpec and FootprintProposal are defined in 07-device-and-physics.md and 03-setup-screen.md.</code></pre></div>
+<p>The radar's device proposal is a hint, not a device. WS2 defines it and WS6 maps it (section 10.8, item 9):</p>
+<div class="codeblock" data-lang="ts"><pre class="code"><code>// shared/fieldOps/footprint.ts (new). Owned by WS2; WS6's deviceSpecFromHint turns a hint into a DeviceSpec.
+export interface DeviceHint {
+  role: 'main' | 'secondary' | 'unspecified';
+  summary: string;                  // the document's own words for the device, at most 160 characters
+  container_text: string | null;    // at most 80 characters
+  items: DeviceHintItem[];          // at most 12
+  at_minutes: number | null;        // minutes from the start at which the document says it goes off
+  evidence: EvidenceRef | null;     // WS2's reference to the sentence it came from
+}
+export interface DeviceHintItem {
+  group: 'charge' | 'fragments' | 'other_hazard' | 'initiation' | 'position' | 'timing';
+  label: string;                    // the document's words, at most 80 characters, moderated
+  amount: { value: number; unit: 'kg' | 'g' | 'l' | 'count' } | null; // only for charge, fragments and other_hazard
+}</code></pre></div>
+<p><strong>Refinements to these sketches.</strong> They were settled while the first drafts were written and are binding; the owning spec finalises the exact shape in its section 5.</p>
+<ul>
+<li><code class="nb">incident.type</code> is <code>IncidentTypeKey | null</code> in a stored draft (03 section 5).</li>
+<li><code class="nb">brief.document</code> also carries <code class="nb">chars_kept</code>, <code class="nb">chars_original</code>, <code class="nb">truncation</code> and <code class="nb">pages</code>, written only by the server (03).</li>
+<li><code class="nb">FieldOpsSetupV2</code> and <code class="nb">SetupPatch</code> are in <code class="nb">shared/fieldOps/setup.ts</code><span class="new">new</span>, <code class="nb">FootprintProposal</code> in <code class="nb">shared/fieldOps/footprint.ts</code><span class="new">new</span>; their zod schemas are on the server (section 10.7). <code class="nb">PressureBody</code> has no register or tone field.</li>
+<li><code class="nb">SiteSelection</code> gains optional <code class="nb">address</code> and <code class="nb">data_version</code>; the types are in <code class="nb">shared/fieldOps/site.ts</code><span class="new">new</span> and the zod schema is on the server (04). <code class="nb">SiteSelection.centre</code> is always the vertex mean of the primary polygon, recomputed by the server. WS3 also exports <code class="nb">SiteHint</code>, <code class="nb">SiteHintResolution</code> (with <code class="nb">involved</code> and a ready <code class="nb">selection</code>), <code class="nb">SiteSearchResult</code>, <code class="nb">SiteArea</code> (its streets as <code class="nb">roads</code>), <code class="nb">FacilityRef</code>, <code class="nb">siteReadinessRules</code>, <code class="nb">describeSite</code> and <code class="nb">toggleInvolved</code>.</li>
+<li><code class="nb">AgencyCard</code> and the roster seat are in <code class="nb">shared/fieldOps/agency.ts</code><span class="new">new</span> (02); the card's zod schema is in <code class="nb">server/lib/fieldOps/agencySchemas.ts</code><span class="new">new</span>.</li>
+<li><code class="nb">DeviceSpec</code>, <code class="nb">EffectEstimate</code> and the vocabularies are in <code class="nb">shared/fieldOps/device.ts</code><span class="new">new</span> and <code class="nb">shared/fieldOps/effects.ts</code><span class="new">new</span> (07). The radar proposes <code class="nb">DeviceHint</code> objects (03) and WS6's <code class="nb">deviceSpecFromHint</code> turns each into a <code class="nb">DeviceSpec</code>; the model never writes a <code class="nb">DeviceSpec</code> itself.</li>
+<li>The stored layout is <code class="nb">SceneConfigV2</code> with <code class="nb">SceneConfigV2Authored</code>, <code class="nb">CrowdZone</code>, <code class="nb">PlacedDevice</code>, <code class="nb">FootprintBuildingLayout</code> and <code class="nb">LayoutReadiness</code>, defined in 05 and kept in <code class="nb">rts_scene_configs</code>; the draft points at it through the existing <code class="nb">rts_scene_id</code> column.</li>
+</ul>
+<h3 id="103-api-conventions"><a class="anchor" href="#103-api-conventions" aria-label="Link to this heading">#</a>10.3 API conventions</h3>
+<ul>
+<li><strong>Prefixes.</strong> Wizard-time endpoints: <code class="nb">/api/warroom/field-ops/...</code>. Library resources: <code class="nb">/api/field-ops/...</code>. Existing routes keep their paths.</li>
+<li><strong>Auth.</strong> <code class="nb">requireAuth</code>, then WS0's <code class="nb">requireFieldopsTrainer</code> on trainer routes (10.8 item 31). Admin-only routes check the <code class="nb">admin</code> role server-side. The client is never trusted for roles.</li>
+<li><strong>Validation.</strong> Every body, query and param goes through the existing <code class="nb">validate()</code> helper with a zod schema (<code class="nb">server/lib/validation.ts</code>). Draft payloads are validated against the zod schemas in <code class="nb">server/lib/fieldOps/</code> with explicit size caps.</li>
+<li><strong>Errors.</strong> <code>{ &quot;error&quot;: &quot;&lt;message for a person&gt;&quot;, &quot;code&quot;: &quot;&lt;SNAKE_CASE&gt;&quot;, &quot;details&quot;: [...] }</code> with the right status code. Codes are listed in each spec.</li>
+<li><strong>Long operations.</strong> <code class="nb">POST</code> answers <code>202 { data: { job_id } }</code>; <code>GET /api/warroom/field-ops/jobs/:id</code> answers <code>{ data: FieldOpsJobView }</code>, which carries the status, progress, result and error. Job state is stored in the database (WS0), never only in memory. Every job has a heartbeat, a retry policy and a lock so a second request cannot start a second run.</li>
+<li><strong>Rate limits.</strong> Reuse the existing limiter patterns, keyed on the verified user id. LLM-backed routes are credit- or budget-gated.</li>
+<li><strong>Success bodies and validation errors.</strong> Job and library responses wrap their content as <code>{ data }</code>. A validation failure is a 400 whose body carries <code>code: 'VALIDATION_FAILED'</code> (WS0 adds it to <code class="nb">validate()</code>, additively).</li>
+<li><strong>Further route subtrees.</strong> Session-runtime endpoints sit under <code class="nb">/api/field-ops/sessions/:id/...</code>: WS7's AI agencies under <code class="nb">/ai/...</code>, WS8's pressure runtime under <code class="nb">/pressure/...</code> and, <strong>added 3 Nov 2026</strong>, WS9's live world under <code class="nb">/world/...</code>. <strong>Added 3 Nov 2026:</strong> WS9's admin routes for the spread library sit under <code class="nb">/api/field-ops/spread-library</code> (<code class="nb">11-living-world.md</code> section 6.14). WS7 also owns <code>GET /api/field-ops/bots/availability</code> and the socket event <code class="nb">fieldops_ai.updated</code>. WS1's routers are mounted at <code class="nb">/api/field-ops/teams</code> and <code class="nb">/api/field-ops/doctrines</code>. The post-publish editor sits under <code class="nb">/api/field-ops/scenarios/:id/...</code> (WS8). The scene store sits under <code class="nb">/api/warroom/field-ops/scene</code> (WS4). Publishing sits under <code>/api/warroom/field-ops/scenarios/:scenarioId/publish</code> and <code>/api/warroom/field-ops/drafts/:draftId/publish</code> (WS5); the reserved wizard-prefix publish path is released.</li>
+</ul>
+<h3 id="104-canonical-component-names"><a class="anchor" href="#104-canonical-component-names" aria-label="Link to this heading">#</a>10.4 Canonical component names</h3>
+<p>The UI spec sheet and every workstream spec use these names.</p>
+<div class="tw"><table><thead><tr><th>Component</th><th>Purpose</th><th>Spec</th></tr></thead><tbody>
+<tr><td><code class="nb">FieldOpsWizard</code></td><td>The page and its step shell</td><td>03</td></tr>
+<tr><td><code class="nb">SetupHero</code></td><td>&quot;What happened?&quot;, the description box and the document chip</td><td>03</td></tr>
+<tr><td><code class="nb">FootprintRadar</code></td><td>&quot;Detected from your document&quot; and its chips</td><td>03</td></tr>
+<tr><td><code class="nb">IncidentLane</code></td><td>Incident type tiles and the crowd fields</td><td>03</td></tr>
+<tr><td><code class="nb">DevicesCard</code></td><td>Device tabs, the specifics form and the effects panel</td><td>07</td></tr>
+<tr><td><code class="nb">EffectsPanel</code></td><td>Calculated effects with origin labels</td><td>07</td></tr>
+<tr><td><code class="nb">SiteLane</code></td><td>The relocated map picker</td><td>04</td></tr>
+<tr><td><code class="nb">PlaceSearch</code></td><td>The address, landmark and street dropdown</td><td>04</td></tr>
+<tr><td><code class="nb">RadiusControl</code></td><td>The 50 to 500 m control, default 150</td><td>04</td></tr>
+<tr><td><code class="nb">SiteMap</code></td><td>Leaflet map: ring, streets, footprints, ghosts</td><td>04</td></tr>
+<tr><td><code class="nb">InvolvedBuildingsList</code></td><td>Buildings involved with roles</td><td>04</td></tr>
+<tr><td><code class="nb">AgencyLane</code></td><td>The responding-agency cards</td><td>03</td></tr>
+<tr><td><code class="nb">AgencyCard</code></td><td>One team card</td><td>02</td></tr>
+<tr><td><code class="nb">DoctrinePill</code></td><td>Verified, Unverified or No doctrine detected</td><td>02</td></tr>
+<tr><td><code class="nb">DoctrineDrawer</code></td><td>Create a doctrine</td><td>02</td></tr>
+<tr><td><code class="nb">RosterEditor</code></td><td>Roles and seats</td><td>02</td></tr>
+<tr><td><code class="nb">PressureLane</code></td><td>Pressure bodies</td><td>03</td></tr>
+<tr><td><code class="nb">AdversaryLane</code></td><td>Adversaries</td><td>03</td></tr>
+<tr><td><code class="nb">ReadinessList</code></td><td>&quot;Before you move on&quot;</td><td>03</td></tr>
+<tr><td><code class="nb">LayoutShell</code></td><td>The layout step and its site bar</td><td>05</td></tr>
+<tr><td><code class="nb">SceneToolsPanel</code></td><td>Structure, hazards, devices, photos, crowd tools</td><td>05</td></tr>
+<tr><td><code class="nb">SceneCanvas</code></td><td>The map and canvas editor</td><td>05</td></tr>
+<tr><td><code class="nb">SceneInspector</code></td><td>Device, effects, override and scene totals</td><td>05</td></tr>
+<tr><td><code class="nb">OperationSegment</code></td><td>The People or AI control, on an agency card and in the session lobby</td><td>08</td></tr>
+<tr><td><code class="nb">CompileReviewStep</code></td><td>The step component <code class="nb">stepRegistry.compile</code> points to; it shows <code class="nb">CompilePanel</code> until the draft is compiled and <code class="nb">ReviewPage</code> after</td><td>06</td></tr>
+<tr><td><code class="nb">CompilePanel</code></td><td>Compile progress, failure and retry, before the draft is compiled</td><td>06</td></tr>
+<tr><td><code class="nb">ReviewPage</code></td><td>Counts, storyline, provenance, doctrines, physics, unplaced notes</td><td>06</td></tr>
+<tr><td><code class="nb">PublishBar</code></td><td>Blockers, review count and Publish</td><td>06</td></tr>
+</tbody></table></div>
+<h3 id="105-logging-and-telemetry"><a class="anchor" href="#105-logging-and-telemetry" aria-label="Link to this heading">#</a>10.5 Logging and telemetry</h3>
+<p>Use the existing <code class="nb">pino</code> logger. Event names are snake case and start with <code class="nb">fieldops_</code>, for example <code class="nb">fieldops_footprint_inferred</code>, <code class="nb">fieldops_site_selected</code>, <code class="nb">fieldops_doctrine_matched</code>, <code class="nb">fieldops_compile_started</code>. Never log document text, descriptions, or device specifics; log counts, ids and durations.</p>
+<h3 id="106-tests"><a class="anchor" href="#106-tests" aria-label="Link to this heading">#</a>10.6 Tests</h3>
+<p>Server and shared tests use <code class="nb">node:test</code> through <code class="nb">tsx</code>, as in the <code class="nb">test</code> script of <code class="nb">package.json</code>, which lists test files explicitly. <strong>Every new test file must be added to that list.</strong> Client tests live in <code class="nb">frontend/tests/</code>, following <code class="nb">setupValidation.test.ts</code>. Pure logic (matching, calculator, validation, guard-rails, planners) is written as pure functions so it can be unit-tested without a database or an LLM.</p>
+<h3 id="107-shared-code-rules"><a class="anchor" href="#107-shared-code-rules" aria-label="Link to this heading">#</a>10.7 Shared code rules</h3>
+<p>The frontend build is <code>tsc &amp;&amp; vite build</code> (<code class="nb">frontend/package.json:8</code>), and <code class="nb">frontend/tsconfig.json</code> includes <code class="nb">../shared</code>, so every file under <code class="nb">shared/</code> is type-checked by the browser project, without Node types (<code class="nb">frontend/tsconfig.json:7</code>, <code class="nb">frontend/tsconfig.json:34</code>) and with <code class="nb">erasableSyntaxOnly</code> (<code class="nb">frontend/tsconfig.json:24</code>). Vercel's root directory is <code class="nb">frontend</code> and it installs only <code class="nb">frontend/node_modules</code> (<code class="nb">frontend/vercel.json</code>), so the root <code class="nb">node_modules</code>, where zod lives (<code class="nb">package.json:103</code>), is not there. Today no file under <code class="nb">shared/</code> imports a third-party package. These rules follow from that:</p>
+<ol>
+<li><strong>No third-party imports under <code class="nb">shared/</code></strong>, zod included. A <code class="nb">shared/fieldOps/*.ts</code> file holds types, constants, labels, limits and pure helpers, and imports only other files in <code class="nb">shared/</code>.</li>
+<li><strong>zod schemas live on the server</strong>, in <code class="nb">server/lib/fieldOps/</code> or next to the service that owns them under <code class="nb">server/services/fieldOps/&lt;area&gt;/</code>, in a file named <code class="nb">&lt;area&gt;Schema.ts</code> or <code class="nb">&lt;area&gt;Schemas.ts</code>. The server validates request bodies there. Where the browser needs the same check it uses a hand-written pure validator from <code class="nb">shared/</code>, and a parity test in <code class="nb">server/lib/fieldOps/</code> feeds one corpus to both so they cannot drift.</li>
+<li><strong>No <code class="nb">*.test.ts</code> under <code class="nb">shared/</code>.</strong> A test of a shared module sits in <code class="nb">server/lib/fieldOps/&lt;name&gt;.test.ts</code> and imports the module with a <code class="nb">.js</code> suffix, as <code class="nb">server/lib/authLinkError.test.ts</code> does for <code class="nb">shared/authLinkError.ts</code>.</li>
+<li><strong>No TypeScript enums, namespaces or parameter properties</strong> (<code class="nb">erasableSyntaxOnly</code>). Use a <code class="nb">const</code> array with <code>as const</code> and a union type.</li>
+<li><strong>Environment property names</strong> follow the flag: <code class="nb">ENABLE_FIELDOPS_V2</code> is <code class="nb">env.enableFieldopsV2</code>, <code class="nb">ENABLE_FIELDOPS_DOCTRINES</code> is <code class="nb">env.enableFieldopsDoctrines</code>, and so on, with a lower-case &quot;ops&quot;.</li>
+</ol>
+<p>The checker (<code>node scripts/verify-field-ops-specs.mjs</code>) fails a spec that breaks rule 1, 3 or 4.</p>
+<h3 id="108-settled-interface-decisions"><a class="anchor" href="#108-settled-interface-decisions" aria-label="Link to this heading">#</a>10.8 Settled interface decisions</h3>
+<p>These decisions fix how the workstreams meet. They bind every spec. A spec that finds one wrong raises a cross-spec request in its section 15 instead of departing from it.</p>
+<p><strong>Jobs, compile and publish (WS0, WS2, WS5)</strong></p>
+<ol>
+<li>WS0 owns the generic job engine (persisted jobs and stages, lease, heartbeat, sweeper, retry per stage), the compile lock (a draft whose status is <code class="nb">compiling</code> refuses writes with 409 <code class="nb">DRAFT_COMPILING</code>, raised by WS0's <code class="nb">assertDraftEditable</code>), the credit rules (<abbr class="dref" title="D27 (Assumed): Credit semantics are unchanged: one scenario credit is taken when compile starts and is refunded if compile fails before a draft is written.">D27</abbr>) and <code class="nb">scenarios.publish_state</code> (<abbr class="dref" title="D24 (Assumed): Compile writes a scenario in the `draft` publish state. A scenario is published by an explicit action.">D24</abbr>). WS5 registers a <code class="nb">v2</code> compile variant on that engine; WS2 registers the <code class="nb">fieldops_radar</code> and <code class="nb">fieldops_blueprint</code> job kinds on it.</li>
+<li>A compile variant declares <code class="nb">draftColumns</code>, the extra draft columns it loads (for v2: <code class="nb">setup_v2</code>, <code class="nb">setup_v2_rev</code> and <code class="nb">rts_scene_id</code>), and an <code class="nb">assertReady</code> that may be asynchronous and returns <code>{ ok: false, message, details? }</code>. The <code class="nb">details</code> reach the 400 <code class="nb">DRAFT_NOT_READY</code> body, so a start is refused before a credit moves. A variant may supply its own <code class="nb">ALREADY_COMPILED</code> message. The commit stage takes the scene id from the persist stage's summary when it is present, because WS4 may copy a scene at commit.</li>
+<li><code>POST /api/warroom/field-ops/drafts/:id/compile</code> (WS0) offers only variants other than <code class="nb">legacy</code>; the legacy <code class="nb">/persist</code> route keeps the <code class="nb">immediate</code> mode. For a job kind with no commit step, the runner passes the last stage's summary to <code class="nb">completeJob</code> as the job's result. Several routers may share the <code class="nb">/api/warroom/field-ops</code> prefix, and a job kind registered when its module is imported is enough for the boot sweeper.</li>
+<li>Publishing a new-flow scenario is WS5's: <code>POST /api/warroom/field-ops/scenarios/:scenarioId/publish</code> and <code>POST /api/warroom/field-ops/drafts/:draftId/publish</code>. WS0 keeps <code class="nb">publishScenarioRow</code> for legacy compiles. The standard scenario edit routes keep refusing drafts; Review edits drafts through WS5's own routes. <code>GET /api/scenarios/:id</code> answers 404 to a trainer who did not create a draft scenario; admins keep access.</li>
+<li>Missing tables, columns and functions are detected everywhere with WS0's helpers in <code class="nb">server/lib/schemaFeatures.ts</code><span class="new">new</span>: <code class="nb">createCachedDetector</code>, <code class="nb">isMissingColumnError</code>, <code class="nb">isMissingRelationError</code> and <code class="nb">isMissingFunctionError</code>. The module imports nothing from <code class="nb">server/env.ts</code>, so pure tests can use it. A negative answer is re-checked after about a minute, so applying a migration needs no restart.</li>
+<li>The new page writes only <code class="nb">input.sim_mode</code> and <code class="nb">input.scenario_type</code> into a draft's legacy <code class="nb">input</code> column. Drafts made by the new page are hidden from the legacy wizard's draft list.</li>
+</ol>
+<p><strong>Setup and its lanes (WS2 with WS1, WS3, WS6, WS7)</strong></p>
+<ol start="7">
+<li>WS2 creates <code>frontend/src/components/FieldOps/stepRegistry.ts</code><span class="new">new</span>; WS4 and WS5 each change one line of it (<code class="nb">layout</code> and <code class="nb">compile</code>). Every step component implements WS2's <code class="nb">StepMountProps</code>.</li>
+<li>WS1 owns <code class="nb">AgencyCard</code>, its zod schema in <code class="nb">server/lib/fieldOps/agencySchemas.ts</code><span class="new">new</span> and its readiness rules; WS2's <code class="nb">AgencyLane</code> hosts the cards. The People or AI control is WS7's <code class="nb">OperationSegment</code>, rendered inside the card. When AI agencies are switched off it reads &quot;AI-operated agencies are not enabled on this server.&quot;</li>
+<li>The footprint radar returns devices as <code class="nb">DeviceHint</code> objects (section 10.2). WS6's pure <code class="nb">deviceSpecFromHint</code> in <code class="nb">shared/fieldOps/deviceHints.ts</code><span class="new">new</span> turns a hint into a <code class="nb">DeviceSpec</code>, writing only closed-vocabulary values and only amounts the document states; the model never writes a <code class="nb">DeviceSpec</code> itself. WS6 exports <code class="nb">validateDevices</code>, <code class="nb">moderateDeviceText</code>, <code class="nb">deviceReadinessRules</code> and <code class="nb">physicsEnabledFor(role)</code> for WS2, and WS6's <code class="nb">DEVICE_CAP</code> equals WS2's device limit.</li>
+<li>WS3 exports the type <code class="nb">SiteHintResolution</code> from <code class="nb">shared/fieldOps/site.ts</code><span class="new">new</span> and the server function <code class="nb">resolveSiteHint</code>; WS2 keeps WS3's <code class="nb">SiteSearchResult</code> in its own radar ledger. WS2's save route calls WS3's <code class="nb">normaliseSiteSelection</code> with the context built by WS3's <code class="nb">buildSiteSelectionContext</code>. The default radius is WS3's <code class="nb">SITE_LIMITS.radiusDefault</code> (150 m). The site lane's data note reads &quot;Map data: saved OpenStreetMap for Singapore.&quot; and adds the extract date when it is known.</li>
+</ol>
+<p><strong>Layout (WS4 with WS3, WS5, WS6, WS8)</strong></p>
+<ol start="11">
+<li>The layout is stored in <code class="nb">rts_scene_configs</code>; a draft points at it through the existing column <code class="nb">warroom_wizard_drafts.rts_scene_id</code> (<code class="nb">migrations/163_rts_scene_configs.sql:63</code>). WS3 keeps <code class="nb">ringFingerprint</code> and <code class="nb">siteFingerprint</code> (the radius is part of the site fingerprint) in <code class="nb">shared/fieldOps/site.ts</code><span class="new">new</span>, and keeps <code class="nb">loadSiteArea</code> and its route stable. WS4 provides <code class="nb">loadSceneForCompile</code>, <code class="nb">getLayoutReadiness</code>, <code class="nb">buildTrainerScene</code> and <code class="nb">resolveSceneForCommit</code> (a scene owned by another scenario is copied, otherwise reused) to WS5; the pure exports <code class="nb">toCrowdZoneInputs</code>, <code class="nb">confinementAt</code>, <code class="nb">allocateCrowd</code> and <code class="nb">simToLatLng</code> to WS6; and a published mode of <code class="nb">LayoutShell</code>, with a read route by scenario, to WS8.</li>
+<li>WS0's participant projection of a scene is an allow-list, so columns added later stay hidden from participants unless a spec adds them on purpose.</li>
+</ol>
+<p><strong>Doctrines and teams (WS1 with WS5, WS7, WS8)</strong></p>
+<ol start="13">
+<li>Compile snapshots doctrines with WS1's functions (<code class="nb">resolveDoctrineForCompile</code>, <code class="nb">buildDoctrineSnapshot</code>, <code class="nb">applySnapshotToPayload</code>, <code class="nb">charterColumnsFromSnapshot</code>, <code class="nb">stripDoctrineKeys</code>, <code class="nb">recordDoctrineUsage</code>) and stores them in WS5's <code class="nb">scenario_doctrine_snapshots</code>, whose <code class="nb">content.projection</code> holds the readers' shape. WS1's <code class="nb">getDoctrineHeads</code> and <code class="nb">checkDoctrineUpdates</code> report newer and retired versions, and <code class="nb">invalidateRuntimeDoctrines</code> clears the runtime cache after a refresh (WS8). In library mode it also writes <code class="nb">scenario_teams.charter</code>, <code class="nb">expected_actions</code> and <code class="nb">scoring_rubric</code> where the columns of <code class="nb">migrations/194_team_charters.sql</code> exist, because team scoring reads them with a catalogue fallback (<code>server/services/teamScoreService.ts:229-246</code>); in legacy-research mode they stay null. <code class="nb">scenario_teams.function_key</code> holds the archetype key, <code class="nb">org_key</code> stays null for field ops in version 1, and the roster is stored in <code class="nb">scenario_teams.charter.roster</code> with its labels in <code class="nb">required_roles</code> (<abbr class="dref" title="D16 (Assumed): Roster roles are labels and seats in version 1. Permissions (for example only the incident commander authorises) are deferred; the data model leaves room for them.">D16</abbr>).</li>
+<li>Compile writes <code class="nb">scenario_teams.operation</code> (WS7's migration 242) from <code class="nb">AgencyCard.operation</code> when that column exists.</li>
+<li>WS7 gates the engine's three NPC queues by the session's mode, not by who staffs a team. WS1's edits to the team lookups inside those queues serve the legacy path.</li>
+</ol>
+<p><strong>Physics and the answer key (WS6 with WS4, WS5)</strong></p>
+<ol start="16">
+<li><p>WS6's <code class="nb">getEffectsForCompile</code> returns WS5's <code class="nb">CompileEffects</code>; WS5 stores the full result in <code class="nb">scenario_physics_snapshots.payload</code> and calls WS6's <code class="nb">recordEffectIndex</code> after the persist. Every signed-in user can read the active rows of <code class="nb">scenarios</code> (<code class="nb">migrations/002_rls_policies.sql:44-46</code>, journey finding 8.1), and <code>GET /api/scenarios/:id</code> returns the whole row (<code class="nb">server/routes/scenarios.ts:346</code>). So for a new-flow scenario none of the following is written to a column of <code class="nb">scenarios</code>, and each lives in the draft or in snapshot tables with RLS on and no policy, read only through checked server routes and accessors:</p>
+<ul>
+<li>device specifics and calculated effects;</li>
+<li>the bomb-squad device pool: <code class="nb">sweep_device_pool</code> is written as <code class="nb">[]</code>, the pool lives in <code class="nb">scenario_physics_snapshots.device_pool</code>, and session start reads it through WS5's <code class="nb">loadDevicePoolForScenario</code>;</li>
+<li>doctrine content: none of the doctrine keys of <code class="nb">insider_knowledge</code> (<code class="nb">team_doctrines</code>, <code class="nb">forbidden_actions</code>, <code class="nb">team_workflows</code>, <code class="nb">sector_standards</code> and their kin) are written; WS1's runtime accessor serves today's readers from <code class="nb">scenario_doctrine_snapshots</code>;</li>
+<li>the field-ops blueprint: <code class="nb">scenarios.blueprint</code> stays null, and the blueprint is stored on WS2's <code class="nb">fieldops_documents</code> row (migration 226).</li>
+</ul>
+<p>Both accessors fall back to the <code class="nb">scenarios</code> columns when a scenario has no snapshot rows, so legacy scenarios are read exactly as today. WS1's runtime accessor serves every doctrine reader, including WS7's agency brains, which never read the <code class="nb">insider_knowledge</code> keys of a new-flow scenario. WS8's stored setup copy, revisions and edit jobs hold the same kinds of data and follow the same rule. Other keys of <code class="nb">insider_knowledge</code> (the dossier, profiles, layout facts) are still written; finding 8.1 is fixed separately.</p></li>
+<li>Blank device fields are filled by fixed library rules. No model is ever asked for a position, a time, a quantity, a material or an initiation method. The mockup's sentence about where a secondary device is hidden and when it goes off is replaced by library wording.</li>
+</ol>
+<p><strong>After publish (WS8 with WS5)</strong></p>
+<ol start="18">
+<li>WS5 does not call WS8's functions; WS8 calls them itself, and wraps WS5's exported generators when it regenerates part of a scenario. Pins compiled from the scene carry <code class="nb">conditions.scene_item_id</code> on location pins and <code class="nb">properties.scene_item_id</code> on hazards, so WS8 can match them to scene items. The editor serves published scenarios; Review edits drafts.</li>
+</ol>
+<p><strong>Interface and styles (all, with the UI spec sheet)</strong></p>
+<ol start="19">
+<li>New stylesheets follow section 7: <code class="nb">fo-</code> classes in a <code class="nb">frontend/src/design/fieldops-&lt;area&gt;.css</code> file created by the spec that owns the components and cited by the others, the UI spec sheet included. Icons come from <code class="nb">WrIcon</code>, never emoji (<code>docs/design/warroom/IMPLEMENTATION_SPEC.md:20</code>). Where the mockup and a spec differ, <abbr class="dref" title="D28 (Assumed): Where the approved mockup and a spec would differ, the mockup wins, unless safety, accessibility, the data model or the design brief (`docs/design/warroom/IMPLEMENTATION_SPEC.md`) requires otherwise. Each difference is listed in the UI spec sheet. So agency cards follow the mockup (one card open, the others compact with an Edit control), and the layout tools use `WrIcon` instead of the mockup's emoji.">D28</abbr> applies.</li>
+</ol>
+<p><strong>Settled when the drafts were reconciled (25 Oct 2026)</strong></p>
+<ol start="20">
+<li><strong>Compile route, refund and the legacy path (WS0, WS5).</strong> WS0 defines the compile start route and WS5's router does not. WS0 refunds from the job's credit state on any failure before its commit; no spec-specific marker decides a refund. The legacy <code class="nb">/persist</code> route runs on WS0's engine whenever 218 and 219 are applied and the engine is on, whatever the flag. WS0 finalises the variant interface and WS5 adopts its names:
+<ul>
+<li><code class="nb">enabled</code>, <code class="nb">draftColumns</code>, an <code class="nb">assertReady</code> that returns <code class="nb">details</code>, <code class="nb">alreadyCompiledMessage</code>, stages with <code class="nb">maxAttempts</code>, <code class="nb">timeoutMs</code> and <code class="nb">run</code>, <code class="nb">summaryOf</code> and <code class="nb">onCommitted</code>;</li>
+<li>a start body of <code>{ variant, recompile?, retry_of? }</code>;</li>
+<li>after a failed or cancelled re-compile, the draft returns to <code class="nb">compiled</code> when its <code class="nb">scenario_id</code> is set;</li>
+<li>the job result and <code class="nb">scene_id</code> come from the persist stage's summary;</li>
+<li>the sweeper fails and refunds jobs whose variant is not registered;</li>
+<li><code class="nb">FieldOpsJobView</code> carries per-stage status and summaries, the progress, <code class="nb">error.code</code>, and whether the credit was refunded.</li>
+</ul></li>
+<li><strong>Foreign keys.</strong> A foreign key from any new table to <code class="nb">scenarios</code> is <code>ON DELETE CASCADE</code> or <code>ON DELETE SET NULL</code>, because WS5 deletes superseded and reopened draft scenarios.</li>
+<li><strong>The trainer's layout survives a replaced draft scenario.</strong> WS5 calls WS4's <code class="nb">detachAuthoringScene(scenarioId)</code> before it deletes any draft scenario. <code class="nb">resolveSceneForCommit</code> takes a <code class="nb">replacingScenarioId</code> and reuses, rather than copies, a scene owned only by that draft scenario. Only WS0's commit links a scene to a scenario, so a failed job never touches it.</li>
+<li><strong>One source for the setup caps.</strong> WS0 owns <code class="nb">SETUP_V2_ENVELOPE_LIMITS</code> (the <abbr class="dref" title="D15 (Assumed): Caps: 10 agencies, 6 pressure bodies, 3 adversaries, 6 devices, 5 involved buildings besides the primary.">D15</abbr> caps and the 262,144-byte ceiling); WS2's <code class="nb">SETUP_LIMITS</code> takes its values from it, with a parity test.</li>
+<li><strong>One free-text check.</strong> <code>moderateDeviceText(text, options?)</code> (WS6, <code class="nb">shared/fieldOps/deviceModeration.ts</code><span class="new">new</span>) returns <code>{ ok: true, text }</code> or <code>{ ok: false, code, reason }</code>. Device fields pass <code>{ field }</code>; every other caller passes the text alone, or with a <code class="nb">maxLength</code>, which applies the response mode and a 4,000-character cap.</li>
+<li><strong>Doctrine steps and the AI planner.</strong> Steps carry no action hint in version 1; WS7's planner classifies each step from its label. An action hint may be added later as an additive content field.</li>
+<li><strong>The session start claim.</strong> WS8 defines <code class="nb">fieldops_claim_session_start</code> and <code class="nb">claimSessionStart</code>. WS7 owns the start branch of <code>PATCH /api/sessions/:id</code>, calls the claim first, then materialises seats. Ending paused sessions automatically is out of scope for version 1; WS8's lock strip may offer the session's trainer the existing end-session route, so a paused session never locks its scenario for good.</li>
+<li><strong>Published new-flow scenarios are edited only in WS8's editor.</strong> The standard routes refuse writes to them with <code class="nb">FIELDOPS_EDITOR_REQUIRED</code>, whether or not the editor flag is on, and always refuse the live refresh routes (<abbr class="dref" title="D5 (Decided): The site is set on the setup screen from the saved OpenStreetMap data in Supabase. Nothing involves Google Maps. No building, road or address data is fetched live (no Overpass, no Nominatim); the map background is the existing OpenStreetMap tile layer through our tile proxy, as the Scene Editor shows it today.">D5</abbr>), so the editor's revisions and audit stay true.</li>
+<li><strong>The participant scene projection</strong> (item 12) gains <code class="nb">schema_version</code>, <code class="nb">involved_layouts</code>, <code class="nb">crowd_zones</code>, <code class="nb">crowd_headcount</code> and, for v2 rows, the trainer's photos from WS4's <code class="nb">listRuntimeScenePhotos</code>; never <code class="nb">authored</code>, <code class="nb">site_snapshot</code> or <code class="nb">draft_id</code>.</li>
+<li><strong>File maps</strong> list files another workstream creates with their owner (an Owner column, or &quot;touched&quot;). Such files keep the <code class="nb">(new)</code> marker because they do not exist yet.</li>
+<li><strong>The After-Action Review</strong> shows which revision a session ran on (&quot;Ran on revision 7&quot;), read from WS8's <code class="nb">fieldops_session_revisions</code>; WS8 makes that change.</li>
+<li><strong>One refusal for a role, one for a flag, one client error class.</strong> Every field-ops trainer route uses WS0's <code class="nb">requireFieldopsTrainer</code> (<code>server/lib/fieldOps/requireFieldopsFlag.ts</code><span class="new">new</span>), which answers 403 <code>{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }</code>; no spec keeps its own role code (<code class="nb">TRAINER_REQUIRED</code>, <code class="nb">TRAINER_ONLY</code> and <code class="nb">FORBIDDEN_ROLE</code> are retired). Admin-only routes keep their admin check. Ownership stays each router's own check: draft and scenario routes answer 404, so they never reveal that another trainer's draft or scenario exists (item 4), and session routes keep the existing owner check's 403 (<code class="nb">assertSessionOwner</code>, <code class="nb">server/lib/access.ts:84-109</code>). While its flag is off a route answers the app's bare 404 <code>{ error: 'Not found' }</code>; <code class="nb">FIELDOPS_DISABLED</code> comes only from the compile start, for a registered variant whose <code class="nb">enabled()</code> is false. The browser uses WS0's <code class="nb">fieldOpsRequest</code> and <code class="nb">FieldOpsApiError</code> (<code>frontend/src/lib/fieldOps/fieldOpsHttp.ts</code><span class="new">new</span>); no spec declares a second error class. <code class="nb">fieldOpsRequest</code> resolves to the whole parsed body (each API module reads its <code class="nb">data</code>) and to undefined for a 204.</li>
+<li><strong>Job stages use WS0's stage context names:</strong> <code>progress(message, done?, total?)</code>, <code class="nb">summaryOf(stageKey)</code>, <code class="nb">outputOf(stageKey)</code>, <code class="nb">reserveScenarioId(id?)</code>, <code class="nb">attempt</code>, <code class="nb">signal</code> and <code class="nb">log</code> (<code class="nb">01-prerequisites.md</code> section 6.10.1). Counts go in <code class="nb">done</code> and <code class="nb">total</code>, not in the message.</li>
+<li><strong>A scene copy left by a failed job.</strong> <code class="nb">resolveSceneForCommit</code> may copy a scene before the commit, and a failed job never links that copy. WS4's photo sweeper deletes such copies (no <code class="nb">scenario_id</code>, no <code class="nb">draft_id</code>, a <code class="nb">source_scene_id</code>, older than 24 hours) with their photo rows (<code class="nb">05-layout-step.md</code> AC4.27). WS0's fail function keeps unlinking every scene of a scenario it discards, because legacy scene rows carry no <code class="nb">draft_id</code> and <code class="nb">rts_scene_configs.scenario_id</code> cascades on delete (<code class="nb">migrations/163_rts_scene_configs.sql:9</code>).</li>
+<li><strong>One suite nav, no page brand mark.</strong> Since commit 907bb66 every suite page, the War Room and the corporate wizard included, renders inside <code class="nb">SuiteLayout</code>, whose <code class="nb">SuiteNav</code> carries the one brand mark (<code class="nb">frontend/src/main.tsx:104-110</code>, <code>frontend/src/components/SuiteLayout.tsx:4-11</code>). The field-ops pages do the same: their routes sit inside the suite layout route, and they draw no brand mark of their own. The mockup's brandmark row (&quot;War Room · Field operations&quot;) is dropped, a <abbr class="dref" title="D28 (Assumed): Where the approved mockup and a spec would differ, the mockup wins, unless safety, accessibility, the data model or the design brief (`docs/design/warroom/IMPLEMENTATION_SPEC.md`) requires otherwise. Each difference is listed in the UI spec sheet. So agency cards follow the mockup (one card open, the others compact with an Edit control), and the layout tools use `WrIcon` instead of the mockup's emoji.">D28</abbr> difference that follows the owner's sitewide navigation; the mode name moves to the step hero's eyebrow.</li>
+<li><strong>Added 3 Nov 2026. Fire spread survives the removal of the research step.</strong> Today's fire-spread pins come from the environment simulation that the research step runs (<code>server/services/environmentalSimService.ts</code>, called by <code>server/services/rtsSceneEnrichmentService.ts</code>) and that compile reads back (<code>server/services/warroomService.ts:1626-1653</code>). The new flow has no research step, and WS4's <code class="nb">buildTrainerScene</code> leaves <code class="nb">enrichment</code> unset (<code class="nb">05-layout-step.md</code> section 6.12). As first specified, the new compile would therefore produce no fire spread, even though <code class="nb">06-compile-and-review.md</code> section 3.2 lists the fire-spread pins as kept. Until WS9's live simulation ships, WS5's pins stage builds each hazard's spread events from <abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr>'s stored parameters for its type and material. It runs the same deterministic simulation over WS4's layout (walls, materials, hazards), with no per-hazard vision or model call, and feeds the resulting timeline to the fire-spread pins as today.</li>
+<li><p><strong>Added 3 Nov 2026. Specs revised before they are built.</strong> <abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr> to <abbr class="dref" title="D36 (Decided): **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.">D36</abbr> change specs that are written but not built. Each affected spec carries a marked note now, and its detailed revision is pending:</p>
+<ul>
+<li>02 for <abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr> and <abbr class="dref" title="D30 (Decided): **Added 3 Nov 2026.** When an agency the trainer names matches no doctrine, she can pick any doctrine in the library, type one, or upload a doctrine document for that agency, organisation or team. She states its country, so the doctrine is grouped with the right country. An uploaded document is read into the doctrine's fields for her to check, and is saved as Unverified (D2).">D30</abbr>;</li>
+<li>03 for <abbr class="dref" title="D35 (Decided): **Added 3 Nov 2026.** Weather and traffic are mechanics, not labels. Weather (rain, wind, haze, heat, visibility) changes spread, visibility, travel speed and casualties. Traffic (time-of-day congestion on the saved roads, cordons, closures, evacuation jams) changes unit travel times and so the teams' deployment choices.">D35</abbr> and <abbr class="dref" title="D36 (Decided): **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.">D36</abbr>;</li>
+<li>06 for <abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr> and item 35;</li>
+<li>07 for <abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr>;</li>
+<li>08 for <abbr class="dref" title="D34 (Decided): **Added 3 Nov 2026.** Fog of war. A team sees what its units and positions can observe, with range reduced by smoke and weather, plus what is reported to it. The trainer sees everything, and AI agencies see through the same fog as people.">D34</abbr>.</li>
+</ul>
+<p>WS9 needs a spec of its own. Until the revisions land, a builder follows the master plan where a note says it overrides the spec.</p>
+<p><strong>Status at the end of 3 Nov 2026: nothing is pending.</strong></p>
+<ul>
+<li>02 and 06 are revised.</li>
+<li>03 and 08 take in what <abbr class="dref" title="D34 (Decided): **Added 3 Nov 2026.** Fog of war. A team sees what its units and positions can observe, with range reduced by smoke and weather, plus what is reported to it. The trainer sees everything, and AI agencies see through the same fog as people.">D34</abbr> to <abbr class="dref" title="D36 (Decided): **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.">D36</abbr> need, as marked additions that answer WS1's, WS5's and WS9's requests.</li>
+<li>07 needs no revision: WS9 owns the spread parameters and reads WS6's radii unchanged.</li>
+<li>WS9's spec is <code class="nb">11-living-world.md</code>.</li>
+<li>01, 04, 05, 09 and 10 carry small marked additions that answer the requests made of them.</li>
+</ul></li>
+<li><strong>Added 3 Nov 2026. Doctrine country and upload (<abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr>, <abbr class="dref" title="D30 (Decided): **Added 3 Nov 2026.** When an agency the trainer names matches no doctrine, she can pick any doctrine in the library, type one, or upload a doctrine document for that agency, organisation or team. She states its country, so the doctrine is grouped with the right country. An uploaded document is read into the doctrine's fields for her to check, and is saved as Unverified (D2).">D30</abbr>).</strong> WS1 owns these; specs 03, 06 and 09 read them.
+<ul>
+<li><strong>Country.</strong> <code class="nb">AgencyCard</code> gains <code>country: string | null</code>, an ISO 3166-1 alpha-2 code in upper case. Doctrines and archetype aliases carry a country too; null means a generic doctrine that fits any country.</li>
+<li><strong>Matching.</strong> At setup, <code class="nb">matchAgencies</code> looks in the card's country first, then at generic doctrines, and never assigns another country's doctrine automatically; the trainer may still pick one. At compile, <code class="nb">resolveDoctrineForCompile</code> resolves the doctrine the card names (<abbr class="dref" title="D3 (Decided): The trainer can lay out the scene while a team has no doctrine, but compile is blocked until every team has one.">D3</abbr>). It never swaps or refuses one on country, and records whether the doctrine's country matches the card's. That match is shown in Review. The only match vocabulary is WS1's <code class="nb">CountryMatch</code> (<code>'same' | 'generic' | 'other' | 'unset'</code>), computed by <code class="nb">countryMatch</code> in <code class="nb">shared/fieldOps/doctrineCountry.ts</code><span class="new">new</span>. The doctrine snapshot carries <code class="nb">country</code>, <code class="nb">card_country</code> and <code class="nb">country_match</code>, and WS5 reads them; it declares no second type.</li>
+<li><strong>The default for a new card.</strong> The country the radar read from the document (WS3's <code class="nb">SiteHint.country</code>, a name from <code class="nb">shared/countries.ts</code>), otherwise the country of the saved map data the site lies in (&quot;SG&quot; today), otherwise null.</li>
+<li><strong>Upload.</strong> The doctrine drawer takes one PDF, DOCX or TXT per doctrine and reads it with WS2's <code class="nb">extractDocumentText</code> (<code>server/services/fieldOps/documents/extractText.ts</code><span class="new">new</span>). WS1 keeps the extracted text, never the file, and drafts the fields from it with its existing drafting call. The result is saved as Unverified with the country the trainer states.</li>
+<li><strong>Seeds.</strong> Southeast Asian seed doctrines are prepared once, during development, under <code class="nb">scripts/fieldops/seeds/</code>, each with a source note, and reviewed before they are Verified (<abbr class="dref" title="D17 (Assumed): Platform admins approve doctrines in an admin queue. A doctrine is usable while Unverified. Target response time is five working days. Admins can retire a doctrine.">D17</abbr>). No spec invents doctrine content.</li>
+</ul></li>
+<li><strong>Added 3 Nov 2026. The spread library and the compile-time timeline (<abbr class="dref" title="D31 (Decided): **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`.">D31</abbr>, item 35).</strong> WS9 owns the library and both functions; WS5 calls them, and WS6 stays the owner of the blast calculator.
+<ul>
+<li><strong>Types</strong> in <code class="nb">shared/fieldOps/world.ts</code><span class="new">new</span>: <code class="nb">MaterialBehaviour</code>, <code class="nb">HazardBehaviour</code> and <code class="nb">SpreadLibrary</code>.</li>
+<li><strong>Library</strong> in <code>server/services/fieldOps/world/spreadLibrary.ts</code><span class="new">new</span>:
+<ul>
+<li><code>loadSpreadLibrary(): Promise&lt;SpreadLibrary | null&gt;</code>, null while migration 249 is missing;</li>
+<li><code>hazardEventsFor(hazard, library): HazardEvent[]</code>, the deterministic replacement for the per-hazard model analysis (<code class="nb">HazardAnalysis.events</code>, <code>server/services/rtsSceneEnrichmentService.ts:113-145</code>);</li>
+<li><code>deteriorationFactsFor(hazards, casualties, library): string</code>, the stored facts that replace the output of <code class="nb">researchDeteriorationPhysics</code> (<code>server/services/warroomResearchService.ts:1542</code>) as the input of <code class="nb">generateDeteriorationTimeline</code>.</li>
+</ul></li>
+<li><strong>Timeline</strong> in <code>server/services/fieldOps/world/compileSpread.ts</code><span class="new">new</span>: <code>buildSpreadTimeline({ studs, walls, hazards, library, durationMin }): Promise&lt;EnvironmentalSnapshot[]&gt;</code>. It runs today's <code class="nb">runEnvironmentalSimulation</code> (<code>server/services/environmentalSimService.ts:202</code>) in a worker thread, so a large building cannot block the server (journey finding 4.14).</li>
+<li><strong>Added 3 Nov 2026, as WS9 specified it</strong> (<code class="nb">11-living-world.md</code> sections 6.2 and 6.5): the input also takes an optional <code class="nb">signal</code>, whose abort stops the worker and rejects with <code class="nb">aborted</code>; <code class="nb">SpreadLibrary</code> carries a <code class="nb">version</code> label, which WS5 records; and the pure <code class="nb">buildSpreadLibrary</code> turns the stored rows into the library, so tests need no database. WS5's <code class="nb">rebuildFireSpread</code> also makes these calls for WS8's editor after a published edit (<code class="nb">06-compile-and-review.md</code> section 6.16).</li>
+<li><strong>WS5's two calls.</strong> The pins stage passes the timeline to today's fire-spread pin generator (<code class="nb">generateFireSpreadSpawnPins</code>, <code class="nb">server/services/warroomService.ts:925</code>). The deterioration stage passes <code class="nb">deteriorationFactsFor(...)</code> and never calls <code class="nb">researchDeteriorationPhysics</code>.</li>
+<li><strong>Without migration 249,</strong> WS5 compiles without fire-spread pins and with an empty facts block, and records a warning.</li>
+</ul></li>
+<li><strong>Added 3 Nov 2026. The live world's seams (<abbr class="dref" title="D32 (Decided): **Added 3 Nov 2026.** Field ops is a real-time strategy simulation. Compile turns every detail into the starting state of a live world. During the session a server-side simulation evolves it: fire and smoke spread through the building by material and wall, structural damage progresses with time and fire exposure, gas plumes drift, crowds move, and the world reacts to what the teams do.">D32</abbr> to <abbr class="dref" title="D35 (Decided): **Added 3 Nov 2026.** Weather and traffic are mechanics, not labels. Weather (rain, wind, haze, heat, visibility) changes spread, visibility, travel speed and casualties. Traffic (time-of-day congestion on the saved roads, cordons, closures, evacuation jams) changes unit travel times and so the teams' deployment choices.">D35</abbr>).</strong> WS9 owns the live world.
+<ul>
+<li><strong>Lease.</strong> It runs for each live session in a worker, leased per session as WS0 leases jobs, so one process runs it.</li>
+<li><strong>Inputs.</strong> It builds the world from the compiled scenario: WS5's snapshots, WS4's scene, WS6's effects, WS3's roads and facilities, and the setup copy. It may precompute through a job kind of its own (<code class="nb">registerJobKind</code>, WS0) and adds nothing to WS5's stages beyond item 38.</li>
+<li><strong>Fog of war.</strong> Each team's view is filtered on the server before anything is sent, on top of WS0's participant projections. WS7's AI agencies get the same filtered view (<abbr class="dref" title="D34 (Decided): **Added 3 Nov 2026.** Fog of war. A team sees what its units and positions can observe, with range reduced by smoke and weather, plus what is reported to it. The trainer sees everything, and AI agencies see through the same fog as people.">D34</abbr>).</li>
+<li><strong>Weather.</strong> Setup's weather becomes a structured <code class="nb">WeatherSetting</code>, defined by WS9 in <code class="nb">shared/fieldOps/world.ts</code><span class="new">new</span> and stored by WS2 in <code class="nb">setup_v2.options</code>, beside the free-text label.</li>
+<li><strong>Units.</strong> They build on today's placed assets and placement checks. WS1's archetype capabilities say what a unit can do.</li>
+<li><strong>Routes and events.</strong> Routes sit under <code class="nb">/api/field-ops/sessions/:id/world/...</code>. The socket events are <code class="nb">fieldops_world.delta</code>, for each team's filtered view, and <code class="nb">fieldops_world.trainer</code>, for the full view.</li>
+</ul></li>
+<li><strong>Added 3 Nov 2026. Delayed pins reach the session (journey finding 13.7).</strong> A default chosen on 3 Nov; the owner may widen it.
+<ul>
+<li><strong>The gap.</strong> At session start, <code class="nb">cloneScenarioPinsForSession</code> copies the template hazards but skips every one whose status is <code class="nb">delayed</code>, and keeps the template's <code class="nb">parent_pin_id</code> (<code>server/services/sessionPinCloningService.ts:154-164</code>). The deterioration service reveals only delayed children that belong to the session and point at the session's copy of the parent (<code>server/services/hazardDeteriorationService.ts:100-106</code>). So no pre-generated child ever appears in a session, and neither would the fire-spread pins that item 35 keeps.</li>
+<li><strong>The rule.</strong> For a new-flow scenario, session start also copies the delayed hazards and casualties, and remaps every <code class="nb">parent_pin_id</code> to the session's copy of that parent. A legacy scenario keeps today's behaviour.</li>
+<li><strong>Hidden until revealed.</strong> The session's hazard and casualty lists filter only on <code class="nb">appears_at_minutes</code> (<code class="nb">server/routes/hazards.ts:40-46</code>, <code class="nb">server/routes/casualties.ts:59</code>), so a copied delayed row gets <code class="nb">appears_at_minutes</code> 1,000,000. Its minute stays in <code class="nb">spawn_condition.at_minutes</code>, which the reveal reads, and revealing sets <code class="nb">appears_at_minutes</code> to the current minute (<code>server/services/hazardDeteriorationService.ts:119-122</code>). Every delayed child compile writes has the <code class="nb">parent_unresolved</code> trigger, so none relies on its minute alone.</li>
+<li><strong>Owner.</strong> WS5, which already changes that function to read the device pool (<code class="nb">06-compile-and-review.md</code> section 5.8). With WS9's live world running, the deterioration service does not reveal the fire-spread children, because the world's own fires replace them (<code class="nb">11-living-world.md</code> section 6.12).</li>
+</ul></li>
+</ol>
+<h2 id="11-global-definition-of-done"><a class="anchor" href="#11-global-definition-of-done" aria-label="Link to this heading">#</a><span class="num">11</span>Global definition of done</h2>
+<p>A workstream is done when all of these hold:</p>
+<ol>
+<li>Every acceptance criterion in its spec passes, with the test that proves it named in the spec.</li>
+<li><code>npm test</code> passes, with the new test files added to the script, and <code>npx tsc --noEmit</code> is clean for server, shared and frontend.</li>
+<li>The spec checker passes: <code>node scripts/verify-field-ops-specs.mjs</code>.</li>
+<li>The flag is off by default in production and the legacy behaviour is unchanged with it off (checked by hand and, where practical, by a test).</li>
+<li>Migrations are additive, idempotent, inside the allocated range, and the code tolerates them being unapplied.</li>
+<li>No new secret, no document text and no device specifics in logs.</li>
+<li>Security review items in the spec's section 9 are closed.</li>
+<li>The spec's tasks are all ticked and its file map matches what was actually touched.</li>
+<li>The journey document's relevant findings are marked fixed in its register, with the commit.</li>
+</ol>
+<h2 id="12-environments-and-rollout"><a class="anchor" href="#12-environments-and-rollout" aria-label="Link to this heading">#</a><span class="num">12</span>Environments and rollout</h2>
+<ul>
+<li><strong>One Supabase project, three environments.</strong> Expand and contract: ship the additive migration, ship code that works with and without it, switch the flag, and only much later remove the old path.</li>
+<li><strong>One Render instance</strong> runs the API, sockets and all background engines. Anything CPU-heavy must be bounded and must not block the request path. LLM calls go through a queue with a per-session and per-scenario budget. <strong>Added 3 Nov 2026:</strong> while <code class="nb">ENABLE_FIELDOPS_WORLD_SIM</code> is on, exactly one instance is required: a live world sends its updates from the process that runs it, and a second instance would hold sockets that never receive them (<code class="nb">11-living-world.md</code> risk R9.6).</li>
+<li><strong>Vercel</strong> builds the frontend, so a <code class="nb">VITE_</code> flag is fixed at build time. Server flags can be flipped without a build, but they are read at boot, so a flip needs a restart.</li>
+<li><strong>Roll out</strong> per flag: development, then a staging session run with the checklist in the spec, then production for the owner's own account, then everyone.</li>
+<li><strong>Roll back</strong> by turning the flag off. Data written under a flag stays valid for the legacy code because every change is additive.</li>
+</ul>
+<h2 id="13-risks"><a class="anchor" href="#13-risks" aria-label="Link to this heading">#</a><span class="num">13</span>Risks</h2>
+<div class="tw"><table><thead><tr><th>#</th><th>Risk</th><th>Mitigation</th><th>Owner spec</th></tr></thead><tbody>
+<tr><td>1</td><td>The saved map data is Singapore-only, 6 per cent of buildings are named, and it has no addresses</td><td>Re-extract with addresses (<abbr class="dref" title="D6 (Decided): Addresses resolve. The saved data is re-extracted with street numbers and postcodes and the search index includes them.">D6</abbr>); say plainly when there is no data (<abbr class="dref" title="D13 (Assumed): Outside the saved data's coverage the site picker says there is no saved map data for the area and stops. There is no live fallback. An admin import path is documented.">D13</abbr>); a small search index</td><td>04</td></tr>
+<tr><td>2</td><td>A shared doctrine library lets one trainer's text steer another's judging and AI</td><td>Unverified until approved, treated as data in prompts, versioned, snapshotted at compile (<abbr class="dref" title="D2 (Decided): A shared doctrine library. A trainer-written doctrine is usable by every trainer at once and shown as Unverified until an admin approves it.">D2</abbr>, <abbr class="dref" title="D17 (Assumed): Platform admins approve doctrines in an admin queue. A doctrine is usable while Unverified. Target response time is five working days. Admins can retire a doctrine.">D17</abbr>)</td><td>02, 06</td></tr>
+<tr><td>3</td><td>LLM-estimated physics can be wrong</td><td>Deterministic calculator, hard bounds, origin labels, expert review before production (<abbr class="dref" title="D22 (Assumed): A person with blast-effects or EOD experience reviews the calculator and the first library entries before `ENABLE_FIELDOPS_PHYSICS` is turned on in production. Until then results carry an &quot;Unreviewed model&quot; label.">D22</abbr>)</td><td>07</td></tr>
+<tr><td>4</td><td>Detailed device inputs could be misused</td><td>Categories and quantities only, no assembly content stored or generated, plausibility checks</td><td>07</td></tr>
+<tr><td>5</td><td>A compile that costs about 100 LLM calls can fail halfway</td><td>Persisted jobs, a lock, draft state, retry per stage (WS0)</td><td>01, 06</td></tr>
+<tr><td>6</td><td>AI-operated agencies cost too much or act wrongly</td><td>One brain per agency, a deterministic planner, budgets, off in production until validated (<abbr class="dref" title="D21 (Assumed): AI-operated agencies ship behind `ENABLE_FIELDOPS_AI_TEAMS`, off in production until validated on staging with the bot scorecard.">D21</abbr>)</td><td>08</td></tr>
+<tr><td>7</td><td>Document upload sends agency material to an LLM provider</td><td>Notice, size cap, aliasing layer when it ships (<abbr class="dref" title="D19 (Assumed): Document privacy: a plain notice at upload and a size cap now; document text goes to the LLM provider through the privacy programme's aliasing layer when that ships. No redaction step in version 1.">D19</abbr>)</td><td>03</td></tr>
+<tr><td>8</td><td>Another session edits <code class="nb">WarRoom.tsx</code> and <code class="nb">server/routes/warroom.ts</code> while this work is planned (its edits so far are committed in <code class="nb">56d4035</code>) and new work collides with them</td><td>The new wizard is a new page (<abbr class="dref" title="D25 (Assumed): The new wizard is a new page, `/warroom/field-ops`, so the legacy field-ops wizard and the corporate wizard stay untouched while it is built.">D25</abbr>); the few edits to these files are small, applied last and rebased onto <code class="nb">master</code>; the specs cite lines on the baseline</td><td>03</td></tr>
+<tr><td>9</td><td>One database for all environments</td><td>Additive migrations and feature detection (section 9)</td><td>all</td></tr>
+<tr><td>10</td><td>The Scene Editor is about 2,700 lines and changes are risky</td><td>Remove the map phase behind the flag, keep the edit phase unchanged, add tests around the extracted site loader</td><td>05</td></tr>
+<tr><td>11</td><td>The static map for wizard-built scenarios (13.1) blocks people and bots acting together</td><td>Fix first (WS0)</td><td>01</td></tr>
+<tr><td>12</td><td>The corporate durable-builds plan assumes migration 209, which is already taken</td><td>Do not build it unchanged; if it proceeds it must renumber from 249. <strong>Added 3 Nov 2026:</strong> from 257, because WS9 now holds 249 to 256</td><td>01</td></tr>
+<tr><td>13</td><td>Shared code is type-checked by the frontend build on Vercel, which installs only <code class="nb">frontend/node_modules</code></td><td>The five rules of section 10.7; the checker fails a spec that imports a package or adds a test under <code class="nb">shared/</code></td><td>all</td></tr>
+<tr><td>14</td><td><code class="nb">rts_scene_configs</code> has a read policy of <code>USING (true)</code> for every role and a public storage bucket (<code>migrations/163_rts_scene_configs.sql:66-74</code>). Checked on the live project on 25 Oct 2026: RLS is on, the policy applies to all roles and <code class="nb">anon</code> holds SELECT, so the public anon key alone, with no sign-in, reads every scene row, planted-device positions included (the answer key of a bomb-squad exercise); the bucket <code class="nb">rts-scene-images</code> is public. This affects every scene that exists today</td><td>Closing the policy and making the bucket private is not additive, so it is the owner's decision; it should be done soon on its own, and it is a gate before production in any case (05 request R4.9). WS0's participant allow-list hides the new columns from the API meanwhile. <strong>Added 3 Nov 2026:</strong> fog of war depends on it too, because while the anon key reads the layout's device positions, hiding them in the world's views achieves nothing (<code class="nb">11-living-world.md</code> section 9.7)</td><td>05, 01, 11</td></tr>
+<tr><td>15</td><td>Four runtime models keep their own blast assumptions after WS6 (07 section 3.2): the runtime detonation (M7), the pin editor's guide circles (M8), the stud blast bands used for pin snapping and session grid rebuilds (M9), and the exclusion-zone checks that read <code class="nb">blast_radius_m</code> (M11). A session can therefore show a circle or a cordon that disagrees with the calculated rings</td><td>Left unchanged in this release; a follow-up owner can feed them from WS6's ring set</td><td>07</td></tr>
+<tr><td>16</td><td>AI agencies depend on the corporate bot account pool (migration 207, <code class="nb">is_bot</code>) and on <code class="nb">TEAMMATE_BOT_PASSWORD</code> being set in production</td><td>Checked at staging; the flag stays off in production until the scorecard passes (<abbr class="dref" title="D21 (Assumed): AI-operated agencies ship behind `ENABLE_FIELDOPS_AI_TEAMS`, off in production until validated on staging with the bot scorecard.">D21</abbr>). Production fails closed: without <code class="nb">TEAMMATE_BOT_PASSWORD</code>, AI agencies are off end to end (<code class="nb">08-people-or-ai.md</code> section 6.3), so the committed default password (<code class="nb">server/env.ts:159</code>) is never used for them</td><td>08</td></tr>
+<tr><td>17</td><td>Zod schemas on the server and hand-written types in <code class="nb">shared/</code> can drift</td><td>A parity test per contract feeds one corpus to both</td><td>02, 03, 07</td></tr>
+<tr><td>18</td><td>Ten documents are written in parallel and cite each other's contracts</td><td>Section 10.8 fixes the interfaces in advance; <code>node scripts/verify-field-ops-specs.mjs</code> checks anchors, names, ranges and ownership; each spec answers every request made of it in section 15</td><td>all</td></tr>
+<tr><td>19</td><td><strong>Added 3 Nov 2026.</strong> A live simulation on the one Node process that also runs every engine and Socket.IO would block it. Today's compile-time simulation already does about 2·10⁸ operations for a large building in one synchronous call (journey finding 4.14)</td><td>WS9 runs the simulation in a worker thread or a separate worker, only near active hazards and on a coarse grid, and falls back to the scripted escalation when it falls behind</td><td>new WS9</td></tr>
+<tr><td>20</td><td><strong>Added 3 Nov 2026.</strong> As first specified, the new compile loses today's fire spread</td><td>10.8 item 35 keeps it at compile from stored parameters until WS9</td><td>05, 06</td></tr>
+<tr><td>21</td><td><strong>Added 3 Nov 2026.</strong> Doctrines for Southeast Asian agencies: public material differs by country and language, some of it is restricted, and a wrong doctrine misleads players and the scoring</td><td>Researched once from public sources, each with a source note; reviewed by a person before it is Verified (<abbr class="dref" title="D17 (Assumed): Platform admins approve doctrines in an admin queue. A doctrine is usable while Unverified. Target response time is five working days. Admins can retire a doctrine.">D17</abbr>); never restricted or classified material; country coverage grows over time</td><td>02</td></tr>
+<tr><td>22</td><td><strong>Added 3 Nov 2026.</strong> Scope: an RTS-style live world is the largest piece of work in the set</td><td>WS9 ships in slices behind <code class="nb">ENABLE_FIELDOPS_WORLD_SIM</code> (section 6, item 7), each falling back to today's behaviour</td><td>new WS9</td></tr>
+</tbody></table></div>
+<h2 id="14-traceability"><a class="anchor" href="#14-traceability" aria-label="Link to this heading">#</a><span class="num">14</span>Traceability</h2>
+<div class="tw"><table><thead><tr><th>Journey finding</th><th>What happens to it</th><th>Spec</th></tr></thead><tbody>
+<tr><td>3.2 A team is a string, not an entity</td><td>Archetype key and capabilities become the identity; keyword matches become the fallback</td><td>02</td></tr>
+<tr><td>5.4 Draft input is unvalidated</td><td><code class="nb">setup_v2</code> is validated with size caps</td><td>01, 03</td></tr>
+<tr><td>7.1 Persistence is not transactional</td><td>Compile writes a draft scenario; publish is explicit</td><td>01, 06</td></tr>
+<tr><td>7.3 The credit is spent first and refunded only if the process survives</td><td>Persisted job and refund path</td><td>01</td></tr>
+<tr><td>7.5 No compile lock or idempotency</td><td>A <code class="nb">compiling</code> status and a database lock</td><td>01</td></tr>
+<tr><td>7.6 The trainer's designed casualties are not compiled</td><td>Casualties come from the calculation and crowd zones</td><td>07, 06</td></tr>
+<tr><td>7.11 Three blast models coexist</td><td>One calculator</td><td>07</td></tr>
+<tr><td>12.1 The engine plays three teams in every session</td><td>AI plays only seats flagged AI</td><td>08</td></tr>
+<tr><td>13.1 Wizard-built scenarios get a static preview as the live map</td><td>Interactive map for wizard-built scenarios</td><td>01</td></tr>
+<tr><td>15.7 Decision text auto-places assets without validation</td><td>AI teams go through placement validation</td><td>08</td></tr>
+<tr><td>17.17 One Supabase project for all environments</td><td>Additive migrations and feature detection</td><td>all</td></tr>
+<tr><td>Chapter 8 (the field-ops detail view is read-only)</td><td>The post-publish editor</td><td>09</td></tr>
+</tbody></table></div>
+<h2 id="15-glossary"><a class="anchor" href="#15-glossary" aria-label="Link to this heading">#</a><span class="num">15</span>Glossary</h2>
+<ul>
+<li><strong>Agency:</strong> a responding body or unit; one team card.</li>
+<li><strong>Archetype:</strong> the kind of team (for example Police / Security), from a closed list.</li>
+<li><strong>Capabilities:</strong> what the platform lets an archetype do (map actions, assets it may place, counters, equipment, zones it may enter).</li>
+<li><strong>Doctrine:</strong> the rulebook a team plays by: mission, response sequence with time targets, a never-do list, hand-offs, what good looks like.</li>
+<li><strong>Footprint radar:</strong> the AI call that reads the document and proposes the contents of the setup screen.</li>
+<li><strong>Blueprint:</strong> the structured extraction of the whole document, kept for compile to honour.</li>
+<li><strong>Primary building:</strong> the building that gets the full interior layout.</li>
+<li><strong>Involved building:</strong> another building in the incident, handled at footprint level.</li>
+<li><strong>Origin label:</strong> whether a value is Yours, from the Library, or Assumed.</li>
+<li><strong>Snapshot:</strong> the copy of a doctrine or calculation stored inside a scenario at compile.</li>
+</ul>
+<h2 id="16-change-log"><a class="anchor" href="#16-change-log" aria-label="Link to this heading">#</a><span class="num">16</span>Change log</h2>
+<div class="tw"><table><thead><tr><th>Date</th><th>Change</th></tr></thead><tbody>
+<tr><td>24 Oct 2026</td><td>v1 written.</td></tr>
+<tr><td>24 Oct 2026</td><td>Workstream specs 01 to 09 and the UI spec sheet drafted. Master plan updated from their requests: section 10.7 (shared-code rules); section 7 and 10.2 (types in <code class="nb">shared/</code>, zod on the server); section 8 (<code class="nb">ENABLE_FIELDOPS_PHYSICS</code> takes <code class="nb">true</code>, <code class="nb">admin</code> or <code class="nb">false</code>; the non-flag settings; <code class="nb">ENABLE_FIELDOPS_EDITOR</code> has no <code class="nb">VITE_</code> mirror); section 9 (the actual migration files, and 218 as the publish state before 219 as the jobs); section 10.1 (<code class="nb">PublishState</code> and <code class="nb">DraftStatus</code> live in <code class="nb">jobs.ts</code>, re-exported by <code class="nb">vocabulary.ts</code>); section 10.2 (where final shapes differ from the sketches); section 10.3 (<code>{ data }</code> bodies, <code class="nb">VALIDATION_FAILED</code>, the session-runtime, editor, scene and publish route subtrees); section 10.4 (<code class="nb">CompileReviewStep</code>); section 13 (risks 13 to 18).</td></tr>
+<tr><td>25 Oct 2026</td><td>v1.1. The ten documents are re-drafted from this plan; the first drafts are archived outside the repository. Added <abbr class="dref" title="D28 (Assumed): Where the approved mockup and a spec would differ, the mockup wins, unless safety, accessibility, the data model or the design brief (`docs/design/warroom/IMPLEMENTATION_SPEC.md`) requires otherwise. Each difference is listed in the UI spec sheet. So agency cards follow the mockup (one card open, the others compact with an Edit control), and the layout tools use `WrIcon` instead of the mockup's emoji.">D28</abbr> (the mockup wins where a spec would differ), section 10.8 (settled interface decisions), the <code class="nb">DeviceHint</code> sketch in 10.2, <code class="nb">OperationSegment</code> and <code class="nb">CompilePanel</code> in 10.4, and the stylesheet row in section 7.</td></tr>
+<tr><td>25 Oct 2026</td><td>10.1: the new flow never produces <code class="nb">ai_estimated</code>; assumed inputs are shown as &quot;Calculated from assumed inputs&quot; (07, choice DC3).</td></tr>
+<tr><td>25 Oct 2026</td><td>Reconciliation of the ten drafts: 10.8 items 20 to 30 settle the conflicts between specs (compile route and refunds, foreign keys, the layout on a replaced draft, the setup caps, the free-text check, doctrine steps, the session start claim, edits to published scenarios, the participant projection, file maps, the revision in the After-Action Review); 10.8 items 5, 13 and 16 extended; 10.1, 10.2 and 10.3 record WS1's, WS3's and WS7's names and routes; section 8 and section 12 say flags are read at boot; section 9 lists the extra contents of 232 and 233. The field-ops blueprint is stored on <code class="nb">fieldops_documents</code>, and WS2's budgets are code constants.</td></tr>
+<tr><td>25 Oct 2026</td><td>Section 8: the physics flag behaves as <code class="nb">admin</code> in production until the <abbr class="dref" title="D22 (Assumed): A person with blast-effects or EOD experience reviews the calculator and the first library entries before `ENABLE_FIELDOPS_PHYSICS` is turned on in production. Until then results carry an &quot;Unreviewed model&quot; label.">D22</abbr> review and has no <code class="nb">VITE_</code> mirror; risk 14 updated with the live check (the anon key reads every scene row); risk 15 extended to rows M9 and M11 (07).</td></tr>
+<tr><td>25 Oct 2026</td><td>10.8 item 16 made explicit: for new-flow scenarios the device pool, doctrine content and the field-ops blueprint stay out of <code class="nb">scenarios</code> columns and are read through accessors with a fallback for legacy scenarios (06, choices 5 and 15).</td></tr>
+<tr><td>25 Oct 2026</td><td>Second reconciliation: 10.8 items 31 to 33 (one role refusal, flag refusal and client error class; WS0's stage context names; who removes a scene copy left by a failed job); the auth bullet of 10.3; section 6 says WS8's start claim lands before WS7's start branch.</td></tr>
+<tr><td>25 Oct 2026</td><td>Re-checked against the code at commit 7c16bde, after commits 907bb66, f268e3f, 56d4035 and 7c16bde landed during the reconciliation: every code citation in the set moved to its current line; 10.8 item 34 follows the sitewide suite nav.</td></tr>
+<tr><td>3 Nov 2026</td><td>v1.2. The owner's requirements of 3 Nov are added and marked <strong>Added 3 Nov 2026</strong>: <abbr class="dref" title="D29 (Decided): **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country.">D29</abbr> to <abbr class="dref" title="D36 (Decided): **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day.">D36</abbr>; WS9, the living world, whose spec is not yet written; its flag <code class="nb">ENABLE_FIELDOPS_WORLD_SIM</code> and migrations 249 to 256; 10.8 items 35 (fire spread kept at compile) and 36 (specs to revise); risks 19 to 22. The physics principle in section 4 is corrected to match item 17.</td></tr>
+<tr><td>3 Nov 2026</td><td>The revisions of item 36, each marked <strong>Added 3 Nov 2026</strong>. 02 and 06 are revised and WS9's spec <code class="nb">11-living-world.md</code> is written. 10.8 items 37 to 39 settle their contracts, and item 40 brings delayed pins into new-flow sessions (journey finding 13.7). Item 38 records WS9's <code class="nb">signal</code>, <code class="nb">version</code> and <code class="nb">buildSpreadLibrary</code>. Sections 8 and 9 gain WS9's settings and migrations; section 10.3 gains the spread library's routes; section 12 requires one instance while the world runs; risks 12 and 14 are updated. Marked additions in 01, 03, 04, 05, 07, 08, 09 and 10 answer the requests between specs. Section 8's doctrines flag is off only in development and staging.</td></tr>
+</tbody></table></div></article><div class="pager"><span></span><a class="next" href="01-prerequisites.html"><small>Next</small>01  Prerequisites</a></div>
+<p class="gen">Generated from <code>docs/field-ops/00-master-plan.md</code> by <code>scripts/build-field-ops-spec-html.mjs</code>. Edit the Markdown, not this file.</p>
+</main>
+<aside class="rail" aria-label="On this page"><h6>On this page</h6><a class="l2" href="#1-purpose-and-scope">1. Purpose and scope</a><a class="l2" href="#2-the-product-in-one-page">2. The product in one page</a><a class="l2" href="#3-decision-log">3. Decision log</a><a class="l2" href="#4-architecture-overview">4. Architecture overview</a><a class="l2" href="#5-workstreams">5. Workstreams</a><a class="l2" href="#6-dependencies-and-order-of-work">6. Dependencies and order of work</a><a class="l2" href="#7-where-things-live">7. Where things live</a><a class="l2" href="#8-feature-flags">8. Feature flags</a><a class="l2" href="#9-migrations">9. Migrations</a><a class="l2" href="#10-shared-contracts">10. Shared contracts</a><a class="l3" href="#101-vocabulary">10.1 Vocabulary</a><a class="l3" href="#102-the-setup-payload">10.2 The setup payload</a><a class="l3" href="#103-api-conventions">10.3 API conventions</a><a class="l3" href="#104-canonical-component-names">10.4 Canonical component names</a><a class="l3" href="#105-logging-and-telemetry">10.5 Logging and telemetry</a><a class="l3" href="#106-tests">10.6 Tests</a><a class="l3" href="#107-shared-code-rules">10.7 Shared code rules</a><a class="l3" href="#108-settled-interface-decisions">10.8 Settled interface decisions</a><a class="l2" href="#11-global-definition-of-done">11. Global definition of done</a><a class="l2" href="#12-environments-and-rollout">12. Environments and rollout</a><a class="l2" href="#13-risks">13. Risks</a><a class="l2" href="#14-traceability">14. Traceability</a><a class="l2" href="#15-glossary">15. Glossary</a><a class="l2" href="#16-change-log">16. Change log</a></aside>
+</div>
+<script>
+(function(){
+  document.querySelectorAll('.codeblock').forEach(function(block){
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'copy'; btn.textContent = 'Copy';
+    btn.addEventListener('click', function(){
+      var text = block.querySelector('code').textContent;
+      (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).then(function(){
+        btn.textContent = 'Copied'; setTimeout(function(){ btn.textContent = 'Copy'; }, 1400);
+      }).catch(function(){ btn.textContent = 'Select and copy'; });
+    });
+    block.appendChild(btn);
+  });
+  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a'));
+  if (!links.length || !('IntersectionObserver' in window)) return;
+  var byId = {};
+  links.forEach(function(a){ byId[a.getAttribute('href').slice(1)] = a; });
+  var heads = Array.prototype.slice.call(document.querySelectorAll('.doc h2[id], .doc h3[id]'));
+  var obs = new IntersectionObserver(function(entries){
+    entries.forEach(function(e){
+      if (e.isIntersecting && byId[e.target.id]) {
+        links.forEach(function(a){ a.classList.remove('on'); });
+        byId[e.target.id].classList.add('on');
+      }
+    });
+  }, { rootMargin: '0px 0px -75% 0px' });
+  heads.forEach(function(h){ obs.observe(h); });
+})();
+</script>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'neutral',
+    themeVariables: { fontSize: '15px' },
+    flowchart: { htmlLabels: true, useMaxWidth: false },
+    sequence: { useMaxWidth: false },
+  });
+</script>
+</body>
+</html>

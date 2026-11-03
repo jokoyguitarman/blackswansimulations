@@ -1,0 +1,1457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>War Room — Field ops setup (one screen)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="shared.css" />
+<style>
+  /* ── hero, radar, lanes: same treatment as variation-c-situation-map.html ── */
+  .hero{padding:20px 28px 46px}
+  .hero>*{position:relative;z-index:1}
+  .hero .top{display:flex;align-items:center;justify-content:space-between;gap:16px;max-width:1380px;margin:0 auto 22px}
+  .brandmark{display:flex;align-items:center;gap:10px;font-weight:800;color:#fff}
+  .brandmark .sub{color:rgba(255,255,255,.6);font-weight:600}
+  .steps{display:flex;gap:8px}
+  .steps span{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:700;padding:6px 12px 6px 6px;border-radius:999px;border:1px solid rgba(255,255,255,.16);color:rgba(255,255,255,.65)}
+  .steps span i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;background:rgba(255,255,255,.1)}
+  .steps span.on{background:#fff;color:var(--deep);border-color:#fff;box-shadow:0 8px 20px -10px rgba(0,0,0,.5)}
+  .steps span.on i{background:var(--deep);color:#fff}
+  .steps span.done i{background:var(--success);color:#fff}
+  .credits{font-size:12px;color:rgba(255,255,255,.65);display:flex;gap:14px}.credits b{color:#fff}
+  .hero .grid{max-width:1380px;margin:0 auto;display:grid;grid-template-columns:1.2fr 1fr;gap:22px;align-items:start}
+  .hero .eyebrow{margin-bottom:8px}
+  .hero h1{margin:0 0 6px;font-size:28px;font-weight:800;color:#fff;letter-spacing:-.015em;line-height:1.1}
+  .hero .lead{margin:0 0 16px;color:rgba(255,255,255,.68);font-size:13.5px;max-width:600px}
+  .hero textarea{width:100%;min-height:196px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06);color:#fff;padding:14px;font:inherit;font-size:13.5px;line-height:1.6;resize:vertical;transition:border-color .15s,box-shadow .15s,background .15s}
+  .hero textarea:focus{outline:none;border-color:rgba(245,158,11,.7);background:rgba(255,255,255,.08);box-shadow:0 0 0 4px rgba(245,158,11,.15)}
+  .hero .meta{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:rgba(255,255,255,.55)}
+  .hero .attach{display:flex;gap:10px;margin-top:10px;flex-wrap:wrap}
+  .doc{flex:1;min-width:260px;display:flex;align-items:center;gap:10px;border:1px solid rgba(251,191,36,.5);background:rgba(251,191,36,.1);border-radius:11px;padding:9px 12px;font-size:12px;color:#fff}
+  .doc b{font-weight:800}.doc span{color:rgba(255,255,255,.6)}
+  .doc button{margin-left:auto;background:none;border:0;color:rgba(255,255,255,.65);cursor:pointer}
+  .doc button:hover{color:#fff}
+  .drop{display:flex;align-items:center;gap:10px;border:1px dashed rgba(255,255,255,.22);border-radius:11px;padding:9px 12px;font-size:12px;color:rgba(255,255,255,.75);cursor:pointer}
+  .drop:hover{border-color:rgba(255,255,255,.5);background:rgba(255,255,255,.05)}
+
+  .radar{padding:16px 18px;border-radius:18px}
+  .radar h3{margin:0;font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:#F59E0B;display:flex;align-items:center;gap:10px}
+  .radar h3 .tot{margin-left:auto;font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.45)}
+  .radar h5{margin:12px 0 6px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.5)}
+  .rchips{display:flex;flex-wrap:wrap;gap:6px}
+  .rc{display:inline-flex;align-items:center;gap:6px;border:1px solid rgba(255,255,255,.16);border-radius:999px;padding:4px 10px 4px 7px;font-size:12px;font-weight:600;color:#fff;background:transparent;font-family:inherit}
+  .rc small{font-size:10px;color:rgba(255,255,255,.55);font-weight:600}
+  .rc .cc{background:rgba(255,255,255,.14)}
+  .rc.on{background:rgba(245,158,11,.14);border-color:rgba(245,158,11,.55)}
+  .rc.on .tick{color:#F59E0B}
+  .rc.off{opacity:.4;text-decoration:line-through}
+  .rc.act{cursor:pointer}
+  .rc.gap{border-style:dashed;color:rgba(255,255,255,.75)}
+  .rc.warnchip{border-color:rgba(252,165,165,.6)}
+  .radar .foot{margin-top:14px;display:flex;align-items:center;gap:10px;font-size:12px;color:rgba(255,255,255,.6)}
+  .radar .foot .btn{margin-left:auto;border-color:rgba(255,255,255,.25);background:transparent;color:#fff}
+  .radar .foot .btn:hover{background:rgba(255,255,255,.08)}
+
+  .wrap{max-width:1380px;margin:-20px auto 60px;padding:0 28px}
+  .map{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:22px;position:relative;box-shadow:var(--shadow-md)}
+  .lane{display:grid;grid-template-columns:222px 1fr;gap:18px;align-items:start;padding:16px 0}
+  .lane:first-child{padding-top:0}
+  .lane + .lane{border-top:1px solid var(--border)}
+  .lanehead{position:sticky;top:12px;background:#fff;border:1px solid var(--border);border-radius:16px;overflow:hidden;box-shadow:var(--shadow-sm)}
+  .lanehead .vignette{height:92px;border-radius:0}
+  .lanehead .vignette::before{content:"";position:absolute;left:0;right:0;bottom:0;height:3px;background:var(--g);z-index:1}
+  .lanehead .inner{padding:12px 14px 14px}
+  .lanehead h2{margin:0;font-size:15px;font-weight:800;color:var(--g);display:flex;align-items:center;gap:8px}
+  .lanehead p{margin:4px 0 10px;font-size:12px;color:var(--muted)}
+  .lanehead .cnt{font-size:11px;font-weight:800;color:var(--g);background:color-mix(in srgb,var(--g) 9%,#fff);padding:3px 8px;border-radius:999px;display:inline-block}
+  .lanehead .inner > .btn{margin-top:10px;width:100%}
+  .lanehead .chk{display:flex;gap:8px;align-items:flex-start;margin-top:12px;font-size:11.5px;color:var(--muted)}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+  .cards.three{grid-template-columns:1fr 1.15fr 1fr}
+  .toolbar{display:flex;flex-wrap:wrap;gap:6px}
+
+  .node{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;position:relative;box-shadow:var(--shadow-sm)}
+  .node.hq{border:2px solid var(--f-org);grid-column:1/-1}
+  .node.ai{border-color:var(--f-ai)}
+  .node.warn{border-color:color-mix(in srgb,var(--accent) 55%,#fff);box-shadow:0 0 0 3px rgba(217,119,6,.12)}
+  .node.gone{display:none}
+  .node .kicker{font-size:10px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--g);display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-right:70px}
+  .node.ai .kicker{color:var(--f-ai)}
+  .node .id{display:flex;gap:10px;align-items:center;margin-bottom:10px}
+  .node .mono,.node .tile{width:42px;height:42px;font-size:12px}
+  .node .tile{font-size:19px}
+  .node .nm{font-weight:800;line-height:1.25}
+  .node .mt{font-size:12px;color:var(--muted);margin-top:2px}
+  .node .mt .soft{color:#98A2B3}
+  .node .acts{position:absolute;top:10px;right:10px;display:flex;gap:4px}
+  .node .foot{margin-top:10px;padding-top:9px;border-top:1px dashed var(--border);font-size:11.5px;color:var(--muted);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .node .foot .opnote{flex:1;min-width:140px}
+  .node .wants{margin-top:8px;font-size:12px;border-left:3px solid var(--g);padding-left:10px;color:#344054}
+  .node .wants + .wants{margin-top:6px}
+  .node .reg{font-size:10.5px;font-weight:800;color:var(--g);text-transform:uppercase;letter-spacing:.08em}
+  .split{display:grid;grid-template-columns:1.1fr 1fr;gap:22px}
+  .split textarea.field{min-height:78px;font-size:12.5px}
+  .roster{display:flex;flex-wrap:wrap;gap:6px}
+  .role{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:4px 9px;border-radius:8px;background:#fff;border:1px solid var(--border-strong)}
+  .role b{font:700 10.5px "JetBrains Mono",monospace;color:var(--brand)}
+  .role.add{border-style:dashed;color:var(--brand);cursor:pointer}
+  .role.lead{background:color-mix(in srgb,var(--accent) 9%,#fff);border-color:color-mix(in srgb,var(--accent) 40%,#fff)}
+  .help{font-size:11.5px;color:var(--muted);margin-top:6px}
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .fgrid .full{grid-column:1/-1}
+  select.field,input.field{padding:8px 10px;font-size:13px;height:38px}
+  .row{display:flex;align-items:center;gap:8px;font-size:12.5px}
+  .row .sp{flex:1}
+
+  .seg{display:inline-flex;border:1px solid var(--border-strong);border-radius:9px;overflow:hidden;background:#fff;flex:none}
+  .seg button{border:0;background:transparent;padding:5px 11px;font-size:11.5px;font-weight:700;color:var(--muted);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+  .seg button.on{background:var(--brand);color:#fff}
+  .node.ai .seg button.on{background:var(--f-ai)}
+  .seg.three button{padding:5px 14px}
+
+  .dp{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:700;border-radius:10px;padding:7px 10px;border:1px solid var(--border);background:var(--surface-2);flex-wrap:wrap}
+  .dp .ver{font-weight:600;color:var(--muted);font-size:10.5px}
+  .dp a{margin-left:auto;color:var(--brand);font-weight:700;cursor:pointer;font-size:11px}
+  .dp.ok{color:var(--success);border-color:color-mix(in srgb,var(--success) 30%,#fff);background:color-mix(in srgb,var(--success) 7%,#fff)}
+  .dp.unv{color:var(--accent-strong);border-color:color-mix(in srgb,var(--accent) 40%,#fff);background:color-mix(in srgb,var(--accent) 9%,#fff)}
+  .dp.none{color:var(--danger);border-color:color-mix(in srgb,var(--danger) 30%,#fff);background:color-mix(in srgb,var(--danger) 6%,#fff)}
+  .dpnote{font-size:11.5px;color:#475467;margin:7px 1px 0}
+  .glance{margin:8px 0 0;padding:0;list-style:none;font-size:11.5px;color:#475467;display:grid;gap:3px}
+  .glance li{display:flex;gap:7px}.glance b{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);min-width:52px;padding-top:2px}
+  .node.saved .dp-missing{display:none}
+  .node:not(.saved) .dp-saved{display:none}
+  .btnrow{display:flex;gap:8px;margin-top:9px;flex-wrap:wrap}
+
+  div.add{border:1.5px dashed var(--border-strong);border-radius:16px;display:grid;place-items:center;min-height:150px;color:var(--g);font-weight:700;background:rgba(255,255,255,.75);text-align:center;padding:14px;cursor:pointer;transition:border-color .15s,background .15s}
+  div.add:hover{border-color:var(--g);background:#fff}
+  div.add small{display:block;color:var(--muted);font-weight:500;margin-top:4px;font-size:11px}
+
+  /* incident lane */
+  .opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .opt{border:1px solid var(--border-strong);border-radius:12px;padding:9px 11px;background:#fff;cursor:pointer;text-align:left;font:inherit;font-weight:700;font-size:12.5px;color:var(--ink);display:flex;flex-direction:column;gap:3px}
+  .opt small{font-weight:500;color:var(--muted);font-size:10.5px;line-height:1.3}
+  .opt.sel{border-color:var(--f-org);background:color-mix(in srgb,var(--f-org) 6%,#fff);box-shadow:0 0 0 3px color-mix(in srgb,var(--f-org) 12%,transparent)}
+  .soon{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .soon span{font-size:11px;font-weight:700;color:#98A2B3;border:1px dashed var(--border-strong);border-radius:999px;padding:3px 9px}
+  .soon span em{font-style:normal;font-size:9px;letter-spacing:.08em;text-transform:uppercase;margin-left:6px;color:var(--accent-strong)}
+  .fx{background:var(--surface-2);border:1px solid var(--border);border-radius:12px;padding:10px 11px;margin-top:12px}
+  .fx .hd{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .bar{display:flex;height:10px;border-radius:999px;overflow:hidden;margin:8px 0 6px;background:#E6E0D2}
+  .bar i{display:block;height:100%}
+  .lg{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#475467}
+  .lg span::before{content:"";display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:var(--c)}
+  .fx + .fx{margin-top:8px}
+  .minimap{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#EEF2F5;margin-top:10px;position:relative}
+  .minimap svg{display:block;width:100%;height:auto}
+  .okline{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;color:var(--success);margin-top:6px}
+
+  /* CTA bar */
+  .ctabar{margin-top:18px;display:flex;align-items:center;gap:18px;background:var(--deep);color:#fff;border-radius:18px;padding:14px 18px;box-shadow:var(--shadow-lg);flex-wrap:wrap}
+  .ctabar .s{font-size:11px;color:rgba(255,255,255,.6);text-transform:uppercase;letter-spacing:.06em;font-weight:700}.ctabar .s b{display:block;font-size:18px;color:#fff;letter-spacing:0;font-variant-numeric:tabular-nums}
+  .ctabar .grow{flex:1}
+  .ctabar .btn.ghost{color:rgba(255,255,255,.75)}.ctabar .btn.ghost:hover{background:rgba(255,255,255,.08);color:#fff}
+  .ready{margin-top:14px;background:#fff;border:1px solid var(--border);border-radius:16px;padding:12px 16px;box-shadow:var(--shadow-sm)}
+  .ready h4{margin:0 0 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .ready ul{list-style:none;padding:0;margin:0;display:grid;gap:6px;font-size:12.5px}
+  .ready li{display:flex;gap:8px;align-items:flex-start}
+  .ready li .ic{margin-top:2px}
+  .ready li.ok{color:#166534}.ready li.todo{color:#B45309;font-weight:600}.ready li.info{color:#475467}
+  .ready li .btn{margin-left:auto}
+  .ready li.todo.done{display:none}
+  .ready li.ok.later{display:none}
+  .node.saved ~ * {}
+
+  /* design-note state switcher */
+  .note{flex-wrap:wrap}.note .grow{flex:1}
+  .statetabs{display:flex;gap:6px}
+  .statetab{border:1px solid rgba(255,255,255,.2);background:transparent;color:#CBD5E1;border-radius:999px;padding:4px 12px;font-size:11.5px;font-weight:700;cursor:pointer;font-family:inherit}
+  .statetab.on{background:#fff;color:var(--deep);border-color:#fff}
+  #drawer,#scrim{display:none}
+  body[data-state="doctrine"] #drawer{display:flex}
+  body[data-state="doctrine"] #scrim{display:block}
+
+  /* drawer: create a doctrine */
+  #scrim{position:fixed;inset:0;background:rgba(14,26,43,.58);z-index:40}
+  #drawer{position:fixed;top:0;right:0;bottom:0;width:580px;max-width:100%;background:var(--bg);z-index:41;box-shadow:var(--shadow-lg);flex-direction:column}
+  #drawer .dh{position:relative;padding:18px 22px 16px;color:#fff;isolation:isolate;overflow:hidden;background:var(--deep)}
+  #drawer .dh img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2;opacity:.9}
+  #drawer .dh::before{content:"";position:absolute;inset:0;z-index:-1;background:linear-gradient(90deg,rgba(14,26,43,.96),rgba(14,26,43,.7))}
+  #drawer .dh .eyebrow{margin-bottom:6px}
+  #drawer .dh h3{margin:0;font-size:19px;font-weight:800;letter-spacing:-.01em}
+  #drawer .dh p{margin:4px 0 0;font-size:12.5px;color:rgba(255,255,255,.72)}
+  #drawer .dh .close{position:absolute;top:12px;right:12px}
+  #drawer .db{flex:1;overflow:auto;padding:16px 22px 22px}
+  #drawer .df{padding:12px 22px;border-top:1px solid var(--border);background:#fff;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .explain{background:color-mix(in srgb,var(--f-intel) 6%,#fff);border:1px solid color-mix(in srgb,var(--f-intel) 25%,#fff);border-radius:14px;padding:12px 14px;font-size:12.5px;color:#344054}
+  .explain h4{margin:0 0 4px;font-size:12.5px;color:var(--f-intel);display:flex;gap:7px;align-items:center}
+  .explain ul{margin:6px 0 0;padding-left:18px}.explain li{margin:2px 0}
+  .dsec{margin-top:16px}
+  .dsec>.lbl{display:flex;align-items:center;gap:8px}
+  .dsec>.lbl small{font-weight:500;letter-spacing:0;text-transform:none;color:#98A2B3}
+  .stp{display:grid;grid-template-columns:78px 1fr 28px;gap:8px;margin-bottom:6px;align-items:center}
+  .stp input.field{height:36px}
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+  .tag{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;border:1px solid var(--border-strong);background:#fff;border-radius:999px;padding:4px 6px 4px 10px}
+  .tag.no{border-color:color-mix(in srgb,var(--danger) 35%,#fff);color:#991B1B;background:color-mix(in srgb,var(--danger) 5%,#fff)}
+  .tag button{border:0;background:none;color:inherit;opacity:.55;cursor:pointer;padding:0 2px}
+  .tag.addt{border-style:dashed;color:var(--brand);padding:4px 10px;cursor:pointer}
+  .closest{display:grid;gap:6px}
+  .closest .c{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid var(--border);border-radius:11px;padding:8px 10px;font-size:12.5px}
+  .closest .c b{font-weight:700}.closest .c .pct{font:700 11px "JetBrains Mono",monospace;color:var(--muted)}
+  .closest .c .btn{margin-left:auto}
+  .share{display:flex;gap:9px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:10px 12px;font-size:12px;color:#7C4A03;margin-top:14px}
+  .toggle{display:flex;gap:10px;align-items:flex-start;font-size:12.5px;margin-top:14px}
+  .toggle small{display:block;color:var(--muted);font-size:11.5px}
+
+  /* review view */
+  .rv-hero{padding:20px 28px 48px}
+  .rv-hero .grid{max-width:1380px;margin:0 auto;display:flex;align-items:flex-end;gap:24px;flex-wrap:wrap}
+  .rv-hero h1{margin:0;font-size:26px;font-weight:800;color:#fff;letter-spacing:-.015em}
+  .rv-hero .chips{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  .rv-hero .pill{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.2);color:#fff}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:16px}
+  .kpis div{text-align:center;background:var(--surface-2);border-radius:12px;padding:12px 4px}
+  .kpis b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+  .kpis span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+  .rvgrid{display:grid;grid-template-columns:1.25fr 1fr;gap:18px;align-items:start}
+  .panel{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px 16px;box-shadow:var(--shadow-sm)}
+  .panel + .panel{margin-top:14px}
+  .panel h4{margin:0 0 4px;font-size:13.5px;font-weight:800;display:flex;align-items:center;gap:8px}
+  .panel h4 .sp{flex:1}
+  .panel p.sub{margin:0 0 10px;font-size:12px;color:var(--muted)}
+  .tl .r{display:grid;grid-template-columns:54px minmax(0,1fr) 112px 28px;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--border);font-size:12.5px}
+  .tl .r .src{justify-self:end;text-align:center}
+  .tl .r:first-of-type{border-top:0}
+  .tl .t{font:700 10.5px "JetBrains Mono",monospace;color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,#fff);border-radius:6px;padding:4px 0;text-align:center}
+  .tl .r b{font-weight:700}
+  .tl .r span.d{display:block;font-size:11.5px;color:var(--muted)}
+  .src{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap}
+  .src.fromdoc{color:#1E3A5F;border-color:#BFD0E6;background:#EEF4FB}
+  .src.gen{color:#667085;border-color:#D0D5DD;background:#F9FAFB}
+  .src.doctrine{color:#166534;border-color:#BBF7D0;background:#F0FDF4}
+  .src.pressure{color:#B45309;border-color:#FDE68A;background:#FFFBEB}
+  .src.adv{color:#991B1B;border-color:#FECACA;background:#FEF2F2}
+  .prov{display:flex;height:12px;border-radius:999px;overflow:hidden;margin:8px 0 8px}
+  .prov i{display:block}
+  .tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .tbl th{font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);text-align:left;padding:5px 6px;background:none}
+  .tbl td{padding:7px 6px;border-top:1px solid var(--border);vertical-align:middle}
+  .tbl td:first-child{font-weight:700}
+  .dir{border:1px dashed var(--border-strong);border-radius:12px;padding:10px 12px;font-size:12.5px;background:#FFFEFB}
+  .dir .qt{display:block;font-style:italic;color:#475467;margin-bottom:8px}
+  .dir + .dir{margin-top:8px}
+
+  /* ── incident lane: devices with full optional specifics ───────────────── */
+  .cards.incident{grid-template-columns:1fr;gap:14px}
+  .incsplit{grid-template-columns:1.8fr 1fr;gap:26px}
+  .opts.four{grid-template-columns:repeat(4,1fr)}
+  .src-note{font-weight:600;letter-spacing:0;text-transform:none;font-size:10.5px;color:var(--success);margin-left:6px}
+  .optnote{margin-left:auto;font-weight:700;letter-spacing:.04em;text-transform:none;font-size:11px;color:var(--muted)}
+  .devnode .kicker{padding-right:0}
+  .devtabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+  .dtab{display:inline-flex;align-items:baseline;gap:7px;border:1px solid var(--border-strong);background:#fff;border-radius:11px;padding:7px 12px;font:inherit;font-size:12.5px;cursor:pointer;color:var(--ink)}
+  .dtab small{color:var(--muted);font-weight:600;font-size:11px}
+  .dtab.on{border-color:var(--f-org);background:color-mix(in srgb,var(--f-org) 7%,#fff);box-shadow:0 0 0 3px color-mix(in srgb,var(--f-org) 12%,transparent)}
+  .dtab.add{border-style:dashed;color:var(--brand);align-items:center}
+  .hintbar{display:flex;gap:9px;background:color-mix(in srgb,var(--f-intel) 6%,#fff);border:1px solid color-mix(in srgb,var(--f-intel) 22%,#fff);border-radius:12px;padding:9px 12px;font-size:12px;color:#344054;margin-bottom:12px}
+  .hintbar .ic{margin-top:2px;color:var(--f-intel);flex:none}
+  .devsplit{grid-template-columns:1.2fr 1fr;gap:24px}
+  .grp{margin-top:14px}
+  .grp h6{margin:0 0 6px;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .chrow{display:grid;grid-template-columns:minmax(0,1fr) 116px auto 30px;gap:8px;align-items:center;margin-bottom:6px}
+  .chrow.empty{grid-template-columns:1fr 1fr auto}
+  .chrow select.field{min-width:0}
+  .qty{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
+  .qty input{width:80px}
+  .og{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:999px;border:1px solid;white-space:nowrap;display:inline-block}
+  .og.yours{color:#1E3A5F;border-color:#BFD0E6;background:#EEF4FB}
+  .og.lib{color:#475467;border-color:#D0D5DD;background:#F9FAFB}
+  .og.ai{color:#B45309;border-color:#FDE68A;background:#FFFBEB}
+  .calc{font-size:12px;color:#475467;background:var(--surface-2);border-radius:9px;padding:6px 9px;margin-top:6px}
+  .hide{display:none!important}
+  .fx .hd .pill{margin-left:auto}
+  .ptbl{width:100%;border-collapse:collapse;font-size:12px;margin:2px 0 6px}
+  .ptbl td{padding:4px 2px;border-top:1px dashed var(--border);vertical-align:middle}
+  .ptbl td:first-child{color:var(--muted);width:30%}
+  .ptbl td:last-child{text-align:right}
+  .casu{font-size:12px;margin-top:8px;color:#344054;background:#fff;border:1px solid var(--border);border-radius:10px;padding:7px 10px}
+  .illus{font-size:9px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--accent-strong);border:1px dashed color-mix(in srgb,var(--accent) 50%,#fff);border-radius:999px;padding:1px 7px;margin-left:6px;white-space:nowrap}
+  .assume{display:flex;gap:9px;background:#FFFBEB;border:1px solid #FDE68A;border-radius:12px;padding:10px 12px;font-size:12.5px;color:#7C4A03;margin:12px 0 10px}
+  .assume .ic{flex:none;margin-top:2px}
+
+  /* ── the site lane: the existing map picker, moved into setup ───────────── */
+  .site{display:grid;grid-template-columns:330px minmax(0,1fr);gap:18px}
+  .site .ctl{display:flex;flex-direction:column;gap:14px}
+  .acwrap{position:relative}
+  .ac{position:absolute;left:0;right:0;top:calc(100% + 4px);background:#fff;border:1px solid var(--border-strong);border-radius:12px;box-shadow:var(--shadow-lg);z-index:6;display:none;overflow:hidden}
+  .acwrap.open .ac{display:block}
+  .ac button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;border:0;border-top:1px solid var(--border);background:#fff;padding:8px 12px;cursor:pointer;font:inherit;font-size:12.5px}
+  .ac button:first-child{border-top:0}
+  .ac button:hover,.ac button.sel{background:var(--surface-2)}
+  .ac button b{display:block;font-weight:700}
+  .ac button em{display:block;font-style:normal;font-size:11px;color:var(--muted)}
+  .ac .ty{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:color-mix(in srgb,var(--g) 10%,#fff);color:var(--g);flex:none}
+  .ac .note{padding:8px 12px;font-size:11px;color:var(--muted);background:var(--surface-2);border-top:1px solid var(--border)}
+  .rad{display:flex;align-items:center;gap:8px}
+  .rad input[type=range]{flex:1;accent-color:#16A34A}
+  .rad .val{font:700 12px "JetBrains Mono",monospace;min-width:52px;text-align:right}
+  .blist{display:grid;gap:6px}
+  .bld{display:flex;align-items:center;gap:9px;border:1px solid var(--border);border-radius:11px;padding:7px 9px;background:#fff;font-size:12.5px}
+  .bld.primary{border-color:#22D3EE;background:color-mix(in srgb,#22D3EE 8%,#fff)}
+  .bld .sq{width:12px;height:12px;border-radius:3px;border:2px solid #D97706;background:#F8C766;flex:none}
+  .bld.primary .sq{border-color:#22D3EE;background:rgba(34,211,238,.3)}
+  .bld b{display:block;font-weight:700;line-height:1.2}
+  .bld small{display:block;color:var(--muted);font-size:11px}
+  .bld .sp{flex:1;min-width:0}
+  .bld select{border:1px solid var(--border-strong);border-radius:8px;font:inherit;font-size:11.5px;padding:3px 6px;background:#fff}
+  .mapbox{position:relative;border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#F2EFE9;align-self:start}
+  .mapbox svg{display:block;width:100%;height:auto}
+  .zoom{position:absolute;left:10px;top:10px;display:grid;border:1px solid #b9b9b9;border-radius:6px;overflow:hidden;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.25)}
+  .zoom span{width:28px;height:28px;display:grid;place-items:center;font-weight:700;color:#333;border-top:1px solid #ddd}
+  .zoom span:first-child{border-top:0}
+  .mapbox .hud{position:absolute;right:10px;top:10px;background:rgba(255,255,255,.95);border:1px solid var(--border);border-radius:9px;padding:5px 9px;font-size:11.5px;font-weight:700}
+  .attr{position:absolute;right:0;bottom:0;background:rgba(255,255,255,.8);font-size:9.5px;padding:1px 6px;color:#333}
+  .mapbox .legend{position:absolute;left:10px;bottom:22px;display:flex;gap:10px;flex-wrap:wrap;background:rgba(255,255,255,.93);border:1px solid var(--border);border-radius:9px;padding:5px 9px;font-size:10.5px;color:#475467}
+  .mapbox .legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+  .nudge{position:absolute;left:50%;transform:translateX(-50%);top:46px;background:#fff;border:1px solid #FDE68A;border-radius:999px;padding:4px 6px 4px 12px;font-size:11.5px;font-weight:600;color:#7C4A03;display:flex;gap:8px;align-items:center;box-shadow:var(--shadow-sm);white-space:nowrap}
+  .nudge.gone{display:none}
+  svg .rcase{stroke:#CFC8B8;stroke-width:11;fill:none;stroke-linecap:round}
+  svg .rfill{stroke:#fff;stroke-width:8;fill:none;stroke-linecap:round}
+  svg .rd{stroke:#1d4ed8;stroke-width:2.5;fill:none;stroke-linecap:round;opacity:.95}
+  svg .road{transition:opacity .2s}
+  svg .road.out{opacity:0}
+  svg .rl{font:600 9px Inter,sans-serif;fill:#1d4ed8;paint-order:stroke;stroke:#fff;stroke-width:3px}
+  svg .b{fill:#EBDCC3;stroke:#F59E0B;stroke-width:1.5;cursor:pointer;transition:opacity .2s,fill .15s}
+  svg .b:hover{fill:#F7D48F}
+  svg .b.inv{fill:#F8C766;stroke:#D97706;stroke-width:2.2}
+  svg .b.pri{fill:rgba(34,211,238,.28);stroke:#22D3EE;stroke-width:3;cursor:default}
+  svg .b.out{opacity:0;pointer-events:none}
+  svg .b.ghostb.out{opacity:1;fill:none;stroke:#9CA3AF;stroke-dasharray:4 3;stroke-width:1.5}
+  svg .bl{font:700 9.5px Inter,sans-serif;fill:#0E1A2B;paint-order:stroke;stroke:#fff;stroke-width:3px;pointer-events:none}
+  svg .bl.cy{fill:#0E7490}
+  svg .ring{fill:rgba(34,197,94,.08);stroke:#22c55e;stroke-width:1.2;stroke-dasharray:6 4;pointer-events:none}
+
+  /* ── lay out the scene ──────────────────────────────────────────────────── */
+  .sitebar{position:relative;display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff;border:1px solid var(--border);border-radius:14px;padding:9px 14px;margin-bottom:14px;font-size:12.5px;box-shadow:var(--shadow-sm)}
+  .sitebar .ok{color:var(--success);font-weight:700;display:inline-flex;gap:6px;align-items:center}
+  .sitebar .sp{flex:1}
+  .lay-grid{display:grid;grid-template-columns:250px minmax(0,1fr) 300px;gap:16px;align-items:start}
+  .tools{background:#fff;border:1px solid var(--border);border-radius:16px;padding:12px;box-shadow:var(--shadow-sm)}
+  .tools h6{margin:14px 0 6px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .tools h6:first-child{margin-top:0}
+  .tbtn{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid var(--border);background:#fff;border-radius:9px;padding:6px 9px;margin-bottom:5px;font:inherit;font-size:12px;cursor:pointer;color:var(--ink)}
+  .tbtn.on{border-color:var(--f-org);background:color-mix(in srgb,var(--f-org) 7%,#fff);font-weight:700}
+  .tbtn .em{width:18px;text-align:center}
+  .tbtn .st{margin-left:auto;font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--success)}
+  .canvas{position:relative;border:1px solid var(--border);border-radius:16px;overflow:hidden;background:#F2EFE9;box-shadow:var(--shadow-sm)}
+  .canvas svg{display:block;width:100%;height:auto}
+  .insp{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;box-shadow:var(--shadow-sm)}
+  .insp h4{margin:0 0 6px;font-size:14px;font-weight:800;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .insp .sec{margin-top:12px;padding-top:10px;border-top:1px dashed var(--border)}
+  .insp .sec h6{margin:0 0 6px;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+
+  #view-layout,#view-review{display:none}
+  body[data-state="layout"] #view-layout{display:block}
+  body[data-state="layout"] #view-setup{display:none}
+  body[data-state="review"] #view-review{display:block}
+  body[data-state="review"] #view-setup{display:none}
+
+  @media (max-width:1100px){
+    .site,.devsplit,.incsplit,.lay-grid{grid-template-columns:1fr}
+    .opts.four{grid-template-columns:1fr 1fr}
+  }
+
+  @media (max-width:1100px){
+    .hero .grid{grid-template-columns:1fr}
+    .lane{grid-template-columns:1fr}
+    .lanehead{position:static}
+    .lanehead .vignette{height:64px}
+    .cards.three,.split,.rvgrid{grid-template-columns:1fr}
+    .kpis{grid-template-columns:repeat(2,1fr)}
+  }
+</style>
+</head>
+<body data-state="setup">
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-building" viewBox="0 0 24 24"><path d="M4 21V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v16"/><path d="M14 9h5a1 1 0 0 1 1 1v11"/><path d="M8 8h2M8 12h2M8 16h2M17 13h1M17 17h1"/><path d="M2 21h20"/></symbol>
+  <symbol id="i-megaphone" viewBox="0 0 24 24"><path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6l-5 4H4a1 1 0 0 0-1 1z"/><path d="M15 9.5a3.5 3.5 0 0 1 0 5M17.5 7a7 7 0 0 1 0 10"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.5"/><path d="M3 20a6 6 0 0 1 12 0M15 20a4.5 4.5 0 0 1 6 0"/></symbol>
+  <symbol id="i-landmark" viewBox="0 0 24 24"><path d="M3 21h18M5 21V10M9.5 21V10M14.5 21V10M19 21V10"/><path d="M2 10l10-6 10 6z"/></symbol>
+  <symbol id="i-fist" viewBox="0 0 24 24"><path d="M7 12V8a2 2 0 1 1 4 0v3"/><path d="M11 11V6a2 2 0 1 1 4 0v5"/><path d="M15 11V8a2 2 0 1 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-6-6v-2a2 2 0 1 1 4 0"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24"><path d="M4 20C6 10 12 5 20 4c-1 8-6 14-16 16z"/><path d="M4 20l8-8"/></symbol>
+  <symbol id="i-community" viewBox="0 0 24 24"><circle cx="12" cy="6" r="2.5"/><circle cx="5" cy="10" r="2"/><circle cx="19" cy="10" r="2"/><path d="M8 21a4 4 0 0 1 8 0M2 18a3 3 0 0 1 5-2M22 18a3 3 0 0 0-5-2"/></symbol>
+  <symbol id="i-podium" viewBox="0 0 24 24"><path d="M6 10h12l-1 11H7L6 10z"/><path d="M4 10h16M12 3v7M9 6l3-3 3 3"/></symbol>
+  <symbol id="i-swords" viewBox="0 0 24 24"><path d="M3 3l8 8M14 14l3 3M3 21l6-6M21 3l-8 8M10 14l-3 3M21 21l-6-6"/><path d="M6 15l3 3M15 6l3 3"/></symbol>
+  <symbol id="i-radar" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/><path d="M12 12l6-6"/></symbol>
+  <symbol id="i-doc" viewBox="0 0 24 24"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12l4 4L19 6"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17h.01"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 16l.8 2.2L22 19l-2.2.8L19 22l-.8-2.2L16 19l2.2-.8z"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s7-6 7-11a7 7 0 1 0-14 0c0 5 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+  <symbol id="i-map" viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L18 10l-4-4L4 16v4z"/><path d="M13 7l4 4"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 5v14l11-7z"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-wrench" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0 5 5L21 9.9a6 6 0 0 1-7.8 7.8L6 21l-3-3 3.3-7.2A6 6 0 0 1 14.1 3z"/></symbol>
+  <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24"><path d="M5 3h11l3 3v15H5z"/><path d="M8 3v6h8V3M8 21v-7h8v7"/></symbol>
+  <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5M3 17l9 5 9-5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3c1 4 5.5 5.5 5.5 10.5a5.5 5.5 0 0 1-11 0c0-2.2 1-3.6 2.2-4.8.1 1.8 1 2.8 2 3.2-.6-3.4-.2-6.3 1.3-8.9z"/></symbol>
+  <symbol id="i-cross" viewBox="0 0 24 24"><path d="M10 4h4v6h6v4h-6v6h-4v-6H4v-4h6z"/></symbol>
+  <symbol id="i-train" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14M9 21l2-4M15 21l-2-4"/><path d="M9 14h.01M15 14h.01"/></symbol>
+  <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 21a7 7 0 0 1 14 0"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01M9.5 16.5h5"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3z"/><path d="M5 17a3 3 0 0 1 3-3h11M9 8h6"/></symbol>
+  <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 9l1.5-5h13L20 9"/><path d="M4 9a2.5 2.5 0 0 0 5 0 2.5 2.5 0 0 0 6 0 2.5 2.5 0 0 0 5 0"/><path d="M5 12v8h14v-8M10 20v-5h4v5"/></symbol>
+</svg>
+
+<div class="note">
+  <b>DESIGN STUDY D</b>
+  <span>Field ops setup — one screen. The trainer's own document prefills the incident, device, location, agencies, pressure and adversaries. All names and numbers are illustrative; nothing here is built. Remove this strip before build.</span>
+  <span class="grow"></span>
+  <div class="statetabs" role="tablist" aria-label="Mockup states">
+    <button class="statetab on" data-s="setup">1 · Setup</button>
+    <button class="statetab" data-s="doctrine">2 · No doctrine detected</button>
+    <button class="statetab" data-s="layout">3 · Lay out the scene</button>
+    <button class="statetab" data-s="review">4 · Review after compile</button>
+  </div>
+</div>
+
+<!-- ═════════════════════════ VIEW 1: SETUP ═════════════════════════ -->
+<div id="view-setup">
+
+<header class="hero artband">
+  <img class="art" src="art/crisis-multi-agency-sm.webp" alt="" />
+  <div class="top">
+    <div class="brandmark"><img class="logo" src="art/prophyion-mark.png" alt="Prophyion" /> War Room <span class="sub">· Field operations</span></div>
+    <div class="steps"><span class="on"><i>1</i> Setup</span><span><i>2</i> Lay out the scene</span><span><i>3</i> Compile &amp; review</span></div>
+    <div class="credits"><span><svg class="ic ic-14"><use href="#i-layers"/></svg> Scenario credits <b>3</b></span><span><svg class="ic ic-14"><use href="#i-play"/></svg> Session credits <b>6</b></span></div>
+  </div>
+  <div class="grid">
+    <div class="reveal" style="--i:0">
+      <div class="eyebrow">Scenario setup · step 1 of 3</div>
+      <h1>What happened?</h1>
+      <p class="lead">Describe the incident, or drop in your own scenario document. The device, location, agencies, pressure and adversaries it states are read from it and prefilled below. Anything it leaves out is generated — and marked as generated.</p>
+      <textarea spellcheck="false">Marina Court Mall, Saturday 14:10. A rucksack left beside the atrium escalator detonates in a crowded shopping atrium (about 1,800 shoppers inside). The device holds roughly 12 kg of an ammonium-nitrate-based charge packed with steel nuts, set off by a timer with a tilt switch as back-up. A second, smaller device is reported in the multi-storey car park next door at T+6. SPF cordons the site; SCDF fire &amp; rescue and medical teams enter once EOD has cleared the secondary. The Ministry of Home Affairs wants an incident commander named within 20 minutes, the tenants association is demanding access to evacuated stores, and a national news outlet is broadcasting unverified casualty counts. The attacker is believed to be heading for the MRT concourse.</textarea>
+      <div class="meta"><span>812 characters from your description</span><span>4,812 words from your document</span></div>
+      <div class="attach">
+        <div class="doc"><svg class="ic ic-16"><use href="#i-doc"/></svg> <b>Marina-Court-exercise-brief.docx</b> <span>· 4,812 words · read in 6.2 s</span><button aria-label="Remove document"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+        <div class="drop"><svg class="ic ic-16"><use href="#i-doc"/></svg> Add another document — PDF, DOCX or TXT</div>
+      </div>
+    </div>
+    <aside class="radar glass reveal" style="--i:1">
+      <h3><span class="livedot"></span> Detected from your document <span class="tot">41 items · evidence kept for review</span></h3>
+      <h5>Incident, crowd &amp; device</h5>
+      <div class="rchips">
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Mall Bombing <small>live type</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> 1,800 people <small>Sat 14:10</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Backpack IED <small>placed</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> 12 kg ANFO-type <small>charge</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Steel nuts <small>fragments</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Timer + tilt <small>initiation</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Secondary device <small>not described · assumed</small></span>
+      </div>
+      <h5>Site — from the saved map data</h5>
+      <div class="rchips">
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> <span class="cc">SG</span> Marina Court Mall <small>primary</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Car park <small>involved · 82 m</small></span>
+        <button class="rc act off" data-site="b-mrt"><svg class="ic ic-12 tick" style="visibility:hidden"><use href="#i-check"/></svg> MRT station <small>207 m · outside radius</small></button>
+      </div>
+      <h5>Responding agencies — placed below</h5>
+      <div class="rchips">
+        <button class="rc act on" data-card="c-spf"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> SPF <small>police</small></button>
+        <button class="rc act on" data-card="c-fire"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> SCDF Fire &amp; Rescue <small>fire &amp; rescue</small></button>
+        <button class="rc act on" data-card="c-med"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> SCDF Medical <small>medical</small></button>
+        <button class="rc act on" data-card="c-eod"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> SPF EOD <small>bomb disposal</small></button>
+        <button class="rc act on" data-card="c-lta"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> LTA <small>rail operator</small></button>
+        <button class="rc act on warnchip" data-card="c-mall"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Mall management <small>venue · no doctrine</small></button>
+        <button class="rc act off" data-card="c-customs"><svg class="ic ic-12 tick" style="visibility:hidden"><use href="#i-check"/></svg> Customs <small>no match</small></button>
+      </div>
+      <h5>Pressure &amp; adversaries</h5>
+      <div class="rchips">
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> MHA <small>ministry</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Tenants association <small>community</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> News outlet <small>media</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Lone attacker <small>adversary</small></span>
+        <span class="rc on"><svg class="ic ic-12 tick"><use href="#i-check"/></svg> Hoax caller <small>adversary</small></span>
+      </div>
+      <h5>Not in your document — will be generated</h5>
+      <div class="rchips"><span class="rc gap">Crowd spread <small>auto</small></span><span class="rc gap">Exercise length <small>60 min</small></span><span class="rc gap">Weather <small>clear</small></span><span class="rc gap">Secondary device detail <small>assumed</small></span></div>
+      <div class="foot"><span>Customs was suggested but matched no archetype — click to add it back.</span><button class="btn sm"><svg class="ic ic-14"><use href="#i-radar"/></svg> Re-detect</button></div>
+    </aside>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="map">
+
+    <!-- Lane 1 · the incident -->
+    <div class="lane" style="--g:var(--f-org)">
+      <div class="lanehead reveal" style="--i:2">
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/20-evacuation-sm.webp" alt="" /><div class="cap">The incident</div></div>
+        <div class="inner">
+          <h2><svg class="ic ic-16"><use href="#i-target"/></svg> What happened</h2>
+          <p>The incident type, who was there, and exactly what went off. Every device detail is optional.</p>
+          <span class="cnt">Mall Bombing · 2 devices</span>
+        </div>
+      </div>
+      <div class="cards incident">
+
+        <div class="node reveal" style="--i:3">
+          <div class="split incsplit">
+            <div>
+              <div class="kicker">Incident type <span class="src-note">read from your document</span></div>
+              <div class="opts four">
+                <button class="opt"><span>Bombing (General)</span><small>Placed device · blast &amp; fragmentation</small></button>
+                <button class="opt"><span>Car Bomb / VBIED</span><small>Vehicle-borne · secondary sweep</small></button>
+                <button class="opt"><span>Suicide Bombing</span><small>Person-borne · crowd egress</small></button>
+                <button class="opt sel"><span>Mall Bombing</span><small>Enclosed retail · multi-level evacuation</small></button>
+              </div>
+              <div class="soon"><span>Armed attack<em>soon</em></span><span>Chemical / gas<em>soon</em></span><span>Hostage / hijack<em>soon</em></span></div>
+              <div class="help">A type we have not built is named here and nothing is compiled — it is never squeezed into a bombing.</div>
+            </div>
+            <div>
+              <div class="kicker">The crowd</div>
+              <div class="fgrid">
+                <div><label class="lbl">People present <span class="src-note">from your document</span></label><input class="field" type="number" value="1800" /></div>
+                <div><label class="lbl">When</label><select class="field"><option>Saturday 14:10</option><option>Weekday 08:30 (rush hour)</option><option>Weekday 13:00</option><option>Evening 19:30</option><option>Night 23:00</option></select></div>
+              </div>
+              <div class="help">Where they stand is spread to suit the venue and the time, and refined when you lay out the scene.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="node devnode reveal" style="--i:4">
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-bolt"/></svg> Devices · what exactly went off <span class="optnote">every field optional</span></div>
+          <div class="devtabs">
+            <button class="dtab on" data-dev="d1"><b>Device 1</b> <small>main · goes off at T+0</small></button>
+            <button class="dtab" data-dev="d2"><b>Device 2</b> <small>secondary · hidden</small></button>
+            <button class="dtab add"><svg class="ic ic-12"><use href="#i-plus"/></svg> device</button>
+          </div>
+          <div class="hintbar"><svg class="ic ic-14"><use href="#i-sparkle"/></svg><div><b>Give as much or as little as you know.</b> What you enter is used exactly as given. What you leave blank is assumed from the incident, the container and the venue, and labelled <i>assumed</i>.</div></div>
+
+          <div id="dev-d1">
+            <div class="split devsplit">
+              <div>
+                <div class="fgrid">
+                  <div><label class="lbl">Device type</label><select class="field"><option>Backpack IED</option><option>Pipe device</option><option>Vehicle-borne (VBIED)</option><option>Person-borne</option><option>Parcel / package</option><option>Other (describe)…</option></select></div>
+                  <div><label class="lbl">Container</label><select class="field"><option>Backpack / rucksack</option><option>Suitcase</option><option>Vest / belt</option><option>Parcel / package</option><option>Pipe / tube</option><option>Car</option><option>Van</option><option>Truck</option></select></div>
+                </div>
+
+                <div class="grp"><h6>Explosive charge</h6>
+                  <div class="chrow"><select class="field"><option>ANFO (ammonium nitrate / fuel oil)</option><option>TNT</option><option>RDX / C-4</option><option>PETN / Semtex</option><option>TATP</option><option>Black powder</option><option>Smokeless powder</option><option>Dynamite</option><option>Other / unknown (describe)…</option></select><div class="qty"><input class="field" type="number" value="12" /><span>kg</span></div><span class="og yours">Yours</span><button class="btn sm ghost icon" aria-label="Remove ingredient"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+                  <button class="btn sm dashed"><svg class="ic ic-14"><use href="#i-plus"/></svg> Add another ingredient</button>
+                  <div class="calc">≈ <b>9.6 kg TNT-equivalent</b> · factor 0.8 for ANFO, a published value you can edit</div>
+                </div>
+
+                <div class="grp"><h6>Fragmentation &amp; casing</h6>
+                  <div class="chrow"><select class="field"><option>Steel nuts / bolts</option><option>Nails</option><option>Ball bearings</option><option>Glass / shards</option><option>Metal casing fragments</option><option>None</option><option>Other (describe)…</option></select><div class="qty"><input class="field" type="number" value="3" /><span>kg</span></div><span class="og yours">Yours</span><button class="btn sm ghost icon" aria-label="Remove fragments"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+                  <div class="fgrid" style="margin-top:8px"><div><label class="lbl">Casing</label><select class="field"><option>Soft bag — no casing</option><option>Steel pipe</option><option>Pressure vessel</option><option>Metal box</option><option>Plastic container</option><option>Vehicle body</option></select></div><div></div></div>
+                </div>
+
+                <div class="grp"><h6>Other hazard materials</h6>
+                  <div class="chrow empty"><span class="help" style="margin:0">None added — a vehicle’s fuel or a gas cylinder would go here</span><span></span><span class="og ai">Assumed: none</span></div>
+                  <button class="btn sm dashed"><svg class="ic ic-14"><use href="#i-plus"/></svg> Fuel, gas or chemical</button>
+                </div>
+
+                <div class="grp"><h6>Initiation &amp; wiring</h6>
+                  <div class="fgrid">
+                    <div><label class="lbl">Main trigger</label><select class="field"><option>Timer</option><option>Remote (radio / phone)</option><option>Command wire</option><option>Victim-operated (pressure / trip)</option><option>Motion / tilt</option><option>Dual (two independent)</option><option>Unknown</option></select></div>
+                    <div><label class="lbl">Back-up trigger</label><select class="field"><option>Tilt / motion switch</option><option>None</option><option>Remote (radio / phone)</option><option>Unknown</option></select></div>
+                    <div><label class="lbl">Anti-handling</label><select class="field"><option>Present</option><option>Decoy elements only</option><option>None / unknown</option></select></div>
+                    <div><label class="lbl">Goes off</label><select class="field"><option>At T+0 (14:10)</option><option>After a delay…</option><option>When handled</option></select></div>
+                  </div>
+                  <label class="lbl" style="margin-top:8px">Notes on the arrangement <span class="src-note">for the bomb-squad exercise</span></label>
+                  <textarea class="field" style="min-height:58px" spellcheck="false">The timer shows on X-ray as a separate module; the tilt switch is wired as a back-up. A decoy wire runs to the lid.</textarea>
+                </div>
+
+                <div class="grp"><h6>Where it is</h6>
+                  <input class="field" value="Beside the atrium escalator, level 1" />
+                  <div class="help">The exact position is set when you lay out the scene. The calculation then adds the floor, the walls and the glass.</div>
+                </div>
+              </div>
+
+              <div>
+                <div class="fx calcfx">
+                  <div class="hd"><svg class="ic ic-14"><use href="#i-book"/></svg> Effects · main device <span class="pill ok">Calculated from your specifics</span></div>
+                  <table class="ptbl">
+                    <tr><td>Charge</td><td>12 kg ANFO</td><td><span class="og yours">Yours</span></td></tr>
+                    <tr><td>TNT equivalent</td><td>≈ 9.6 kg (factor 0.8)</td><td><span class="og lib">Library</span></td></tr>
+                    <tr><td>Fragments</td><td>3 kg steel nuts / bolts</td><td><span class="og yours">Yours</span></td></tr>
+                    <tr><td>Container</td><td>Backpack</td><td><span class="og yours">Yours</span></td></tr>
+                    <tr><td>Goes off</td><td>T+0 · timer</td><td><span class="og yours">Yours</span></td></tr>
+                    <tr><td>Confinement</td><td>Enclosed atrium</td><td><span class="og ai">Assumed · venue type</span></td></tr>
+                    <tr><td>Height</td><td>Floor level</td><td><span class="og ai">Assumed</span></td></tr>
+                  </table>
+                  <div class="bar"><i style="width:8%;background:#B91C1C"></i><i style="width:15%;background:#D97706"></i><i style="width:53%;background:#F1C27D"></i><i style="width:24%;background:repeating-linear-gradient(45deg,#C4B5FD,#C4B5FD 4px,#E9E3FF 4px,#E9E3FF 8px)"></i></div>
+                  <div class="lg"><span style="--c:#B91C1C">Lethal ≤ 7 m</span><span style="--c:#D97706">Serious ≤ 20 m</span><span style="--c:#F1C27D">Minor / glass ≤ 65 m</span><span style="--c:#C4B5FD">Fragments ≤ 85 m</span></div>
+                  <div class="casu"><b>≈ 140 casualties</b> of 1,800 present · about 35 critical or fatal <span class="illus">illustrative</span></div>
+                  <div class="okline"><svg class="ic ic-14"><use href="#i-check"/></svg> 12 kg of charge plus 3 kg of fragments fits a backpack</div>
+                  <div class="help">Recalculated when you plant the device: the scene adds the floor, walls and glass.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div id="dev-d2" class="hide">
+            <div class="fgrid">
+              <div><label class="lbl">Device type</label><select class="field"><option>Pipe device</option><option>Backpack IED</option><option>Parcel / package</option></select></div>
+              <div><label class="lbl">Container</label><select class="field"><option>Parcel / package</option><option>Backpack / rucksack</option></select></div>
+            </div>
+            <div class="assume"><svg class="ic ic-16"><use href="#i-sparkle"/></svg><div><b>Nothing specified for this device.</b> The AI will assume a small pipe device of about 2 kg TNT-equivalent, hidden at a wall point of the multi-storey car park and set to function at T+14. Each of those is labelled <i>assumed</i> and stays editable.</div></div>
+            <div class="btnrow" style="margin-top:0"><button class="btn sm"><svg class="ic ic-14"><use href="#i-edit"/></svg> Add specifics</button><span class="og ai" style="align-self:center">AI-estimated effects · lethal ≤ 3 m · serious ≤ 9 m</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lane 2 · the site -->
+    <div class="lane" style="--g:#15803D">
+      <div class="lanehead reveal" style="--i:3">
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/44-map-table-sm.webp" alt="" /><div class="cap">The site</div></div>
+        <div class="inner">
+          <h2><svg class="ic ic-16"><use href="#i-map"/></svg> Where</h2>
+          <p>Type an address, landmark or street. The building, its neighbours and the streets are outlined from our saved map data.</p>
+          <span class="cnt" id="cnt-site">Marina Court Mall · 150 m</span>
+        </div>
+      </div>
+      <div class="cards" style="grid-template-columns:1fr">
+        <div class="node reveal" style="--i:4">
+          <div class="site">
+            <div class="ctl">
+              <div>
+                <label class="lbl">Address, landmark or street</label>
+                <div class="acwrap" id="acwrap">
+                  <input class="field" id="placeInput" value="Marina Court Mall" autocomplete="off" aria-label="Address, landmark or street" />
+                  <div class="ac" id="acList">
+                    <button data-pick="1 Marina Way, Singapore 018900"><span class="ty"><svg class="ic ic-14"><use href="#i-pin"/></svg></span><span><b>1 Marina Way, Singapore 018900</b><em>Address · Marina Court Mall</em></span></button>
+                    <button class="sel" data-pick="Marina Court Mall"><span class="ty"><svg class="ic ic-14"><use href="#i-building"/></svg></span><span><b>Marina Court Mall</b><em>Shopping mall · building</em></span></button>
+                    <button data-pick="Marina Court Car Park"><span class="ty"><svg class="ic ic-14"><use href="#i-layers"/></svg></span><span><b>Marina Court Car Park</b><em>Car park · building</em></span></button>
+                    <button data-pick="Marina Court MRT Station"><span class="ty"><svg class="ic ic-14"><use href="#i-train"/></svg></span><span><b>Marina Court MRT Station</b><em>Station · building</em></span></button>
+                    <button data-pick="Marina Court Residences"><span class="ty"><svg class="ic ic-14"><use href="#i-building"/></svg></span><span><b>Marina Court Residences</b><em>Apartments · building</em></span></button>
+                    <button data-pick="Marina Court Road"><span class="ty"><svg class="ic ic-14"><use href="#i-map"/></svg></span><span><b>Marina Court Road</b><em>Street · click a building after</em></span></button>
+                    <div class="note">Addresses, building names and street names from the saved map data. A street opens the map there; then click the building.</div>
+                  </div>
+                </div>
+                <div class="okline"><svg class="ic ic-14"><use href="#i-check"/></svg> Found in the saved map data · building outline loaded</div>
+              </div>
+
+              <div>
+                <label class="lbl">Radius around the site</label>
+                <div class="rad"><button class="btn sm icon" id="radMinus" aria-label="Smaller">−</button><input type="range" id="radius" min="50" max="500" step="10" value="150" aria-label="Radius in metres" /><button class="btn sm icon" id="radPlus" aria-label="Larger">+</button><span class="val" id="radval">150 m</span></div>
+                <div class="help">Starts at 150 m. Expand to pull in more streets and buildings, or shrink to trim the map.</div>
+              </div>
+
+              <div>
+                <label class="lbl">Buildings involved <span class="src-note" id="bcount">2</span></label>
+                <div class="blist" id="blist"></div>
+                <div class="help">Click footprints on the map to add them. The primary building gets the full interior layout next; the others get exits and wall points generated from their footprint.</div>
+              </div>
+
+              <div class="btnrow" style="margin-top:0">
+                <button class="btn sm dashed"><svg class="ic ic-14"><use href="#i-edit"/></svg> Not on the map? Draw it</button>
+                <button class="btn sm dashed"><svg class="ic ic-14"><use href="#i-sparkle"/></svg> Auto-trace (magic wand)</button>
+              </div>
+              <div class="help" style="margin-top:-4px">Map data: saved OpenStreetMap for Singapore. Nothing is fetched live.</div>
+            </div>
+
+            <div class="mapbox">
+              <svg id="siteMap" viewBox="130 90 400 250" role="img" aria-label="Site map: building outlines, streets and search radius">
+                <defs>
+                  <path id="r1" d="M0 262 C150 256 480 270 640 262" fill="none"/>
+                  <path id="r4" d="M0 138 L640 144" fill="none"/>
+                  <path id="r2" d="M262 0 C258 120 266 280 262 400" fill="none"/>
+                  <path id="r3" d="M404 0 C408 130 400 270 404 400" fill="none"/>
+                  <path id="r5" d="M0 70 L640 64" fill="none"/>
+                  <path id="r8" d="M0 330 L640 326" fill="none"/>
+                  <path id="r6" d="M178 0 C174 140 182 260 178 400" fill="none"/>
+                  <path id="r7" d="M492 0 C496 130 488 270 492 400" fill="none"/>
+                  <path id="r9" d="M74 0 L70 400" fill="none"/>
+                  <path id="r10" d="M586 0 L590 400" fill="none"/>
+                </defs>
+                <rect width="640" height="400" fill="#F2EFE9"/>
+                <path d="M134 292 L198 288 L206 340 L134 344 Z" fill="#CDEBB0"/>
+                <path d="M466 90 L530 90 L530 130 L486 124 Z" fill="#AAD3DF"/>
+
+                <g class="road" data-id="r1"><use href="#r1" class="rcase"/><use href="#r1" class="rfill"/><use href="#r1" class="rd"/><text class="rl"><textPath href="#r1" startOffset="64%">Marina Way</textPath></text></g>
+                <g class="road" data-id="r4"><use href="#r4" class="rcase"/><use href="#r4" class="rfill"/><use href="#r4" class="rd"/><text class="rl"><textPath href="#r4" startOffset="14%">Harbour Drive</textPath></text></g>
+                <g class="road" data-id="r2"><use href="#r2" class="rcase"/><use href="#r2" class="rfill"/><use href="#r2" class="rd"/><text class="rl"><textPath href="#r2" startOffset="70%">Court Road</textPath></text></g>
+                <g class="road" data-id="r3"><use href="#r3" class="rcase"/><use href="#r3" class="rfill"/><use href="#r3" class="rd"/><text class="rl"><textPath href="#r3" startOffset="14%">Bayview Link</textPath></text></g>
+                <g class="road" data-id="r5"><use href="#r5" class="rcase"/><use href="#r5" class="rfill"/><use href="#r5" class="rd"/><text class="rl"><textPath href="#r5" startOffset="40%">North Quay</textPath></text></g>
+                <g class="road" data-id="r8"><use href="#r8" class="rcase"/><use href="#r8" class="rfill"/><use href="#r8" class="rd"/><text class="rl"><textPath href="#r8" startOffset="30%">South Quay</textPath></text></g>
+                <g class="road" data-id="r6"><use href="#r6" class="rcase"/><use href="#r6" class="rfill"/><use href="#r6" class="rd"/></g>
+                <g class="road" data-id="r7"><use href="#r7" class="rcase"/><use href="#r7" class="rfill"/><use href="#r7" class="rd"/></g>
+                <g class="road" data-id="r9"><use href="#r9" class="rcase"/><use href="#r9" class="rfill"/><use href="#r9" class="rd"/></g>
+                <g class="road" data-id="r10"><use href="#r10" class="rcase"/><use href="#r10" class="rfill"/><use href="#r10" class="rd"/></g>
+
+                <g id="blds">
+                  <polygon class="b" points="272,152 312,152 312,168 272,168"/>
+                  <polygon class="b" points="322,152 392,152 392,168 322,168"/>
+                  <polygon class="b" points="270,236 292,236 292,254 270,254"/>
+                  <polygon class="b" points="372,236 396,236 396,254 372,254"/>
+                  <polygon class="b" points="268,180 286,180 286,222 268,222"/>
+                  <polygon class="b" points="374,176 396,176 396,226 374,226"/>
+                  <polygon class="b" points="200,170 252,170 252,230 200,230"/>
+                  <polygon class="b" points="190,236 252,236 252,256 190,256"/>
+                  <polygon class="b" points="420,152 470,152 470,170 420,170"/>
+                  <polygon class="b" points="414,232 450,232 450,252 414,252"/>
+                  <polygon class="b" points="300,84 350,84 350,120 300,120"/>
+                  <polygon class="b" points="180,84 260,84 260,120 180,120"/>
+                  <polygon class="b" points="300,290 350,290 350,320 300,320"/>
+                  <polygon class="b" points="380,290 440,290 440,320 380,320"/>
+                  <polygon class="b" points="100,170 160,170 160,230 100,230"/>
+                  <polygon class="b" points="500,170 560,170 560,230 500,230"/>
+                  <polygon class="b" points="520,260 580,260 580,300 520,300"/>
+                  <polygon class="b" points="90,260 150,260 150,300 90,300"/>
+                  <polygon class="b ghostb" id="b-mrt" data-name="Marina Court MRT Station" points="414,178 474,178 474,224 414,224"/>
+                  <polygon class="b inv" id="b-car" data-name="Marina Court Car Park" points="300,236 366,236 366,254 300,254"/>
+                  <polygon class="b pri" id="b-pri" data-name="Marina Court Mall" points="292,176 366,176 366,206 344,206 344,226 292,226"/>
+                </g>
+
+                <circle id="ring" class="ring" cx="330" cy="200" r="82.5"/>
+                <circle cx="330" cy="200" r="6" fill="rgba(34,197,94,.65)" stroke="#22c55e" stroke-width="2"/>
+                <text class="bl cy" x="329" y="171" text-anchor="middle">Marina Court Mall</text>
+                <text class="bl" x="333" y="266" text-anchor="middle">Car park</text>
+                <text class="bl" id="t-mrt" x="444" y="172" text-anchor="middle">MRT station</text>
+              </svg>
+              <div class="zoom"><span>+</span><span>−</span></div>
+              <div class="hud" id="hud">150 m</div>
+              <div class="nudge" id="nudge">MRT station is 207 m away — outside the radius <button class="btn sm" id="nudgeBtn">Expand to 220 m</button></div>
+              <div class="legend"><span><i style="background:#22D3EE"></i>Primary</span><span><i style="background:#F8C766;border:1px solid #D97706"></i>Involved</span><span><i style="background:#EBDCC3;border:1px solid #F59E0B"></i>Other building</span><span><i style="background:#1d4ed8;height:3px;vertical-align:2px"></i>Streets</span></div>
+              <div class="attr">© OpenStreetMap contributors</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Lane 3 · responding agencies -->
+    <div class="lane" style="--g:var(--f-org)">
+      <div class="lanehead reveal" style="--i:3">
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/22-responders-sm.webp" alt="" /><div class="cap">Your side</div></div>
+        <div class="inner">
+          <h2><svg class="ic ic-16"><use href="#i-shield"/></svg> Responding agencies</h2>
+          <p>Every agency or unit that responds. Each has a doctrine, a roster of roles, and people or AI to run it.</p>
+          <span class="cnt" id="cnt-agencies">6 of 10 · 15 roles</span>
+          <button class="btn sm"><svg class="ic ic-14"><use href="#i-plus"/></svg> Add agency</button>
+        </div>
+      </div>
+      <div class="cards">
+
+        <div class="node hq lift reveal" id="c-spf" data-roles="3" style="--i:4">
+          <div class="acts"><button class="btn sm ghost icon" title="Edit"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon" title="Remove"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-shield"/></svg> Responding agency · <span class="opl">People</span></div>
+          <div class="split">
+            <div>
+              <div class="id"><div class="mono">SPF</div><div><div class="nm">Singapore Police Force — Cordon &amp; Evacuation</div><div class="mt">Archetype <b>Police / Security</b> · matched 96% <span class="soft">· “SPF cordons the site…”</span></div></div></div>
+              <label class="lbl">What this team does <span style="text-transform:none;letter-spacing:0;font-weight:500">(yours to rewrite)</span></label>
+              <textarea class="field" spellcheck="false">Secures the outer and inner cordon, runs the evacuation routes and crowd control, and decides who may enter the hot zone. Leads the pursuit of the attacker once the site is stable.</textarea>
+              <div class="fgrid" style="margin-top:10px">
+                <div><label class="lbl">Players</label><div class="row"><input class="field" type="number" value="4" style="width:64px" /><span>to</span><input class="field" type="number" value="10" style="width:64px" /></div></div>
+                <div><label class="lbl">Pursuit sub-game</label><div class="row"><span class="sw on"></span><span>Investigative team</span></div></div>
+              </div>
+            </div>
+            <div>
+              <label class="lbl">Roster — the roles players take</label>
+              <div class="roster">
+                <span class="role lead"><svg class="ic ic-12"><use href="#i-user"/></svg> Incident Commander <b>×1</b></span>
+                <span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> Cordon Lead <b>×1</b></span>
+                <span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> Crowd Officers <b>×2–8</b></span>
+                <span class="role add"><svg class="ic ic-12"><use href="#i-plus"/></svg> role</span>
+              </div>
+              <label class="lbl" style="margin-top:14px">Operated by</label>
+              <div class="row"><div class="seg"><button class="on" data-op="people"><svg class="ic ic-12"><use href="#i-user"/></svg> People</button><button data-op="ai"><svg class="ic ic-12"><use href="#i-bot"/></svg> AI</button></div><span class="help opnote" style="margin:0">Players take the seats. Empty seats can be filled by AI in the lobby.</span></div>
+              <label class="lbl" style="margin-top:14px">Doctrine</label>
+              <div class="dp ok"><svg class="ic ic-14"><use href="#i-check"/></svg> Verified · Police &amp; Security <span class="ver">v3</span><a>View</a></div>
+              <ul class="glance">
+                <li><b>Sequence</b> Outer cordon → access control → inner cordon → evacuation routes → crowd release</li>
+                <li><b>Never</b> Admit anyone to the hot zone before EOD clearance</li>
+                <li><b>Hands to</b> Bomb Disposal, Fire &amp; Rescue, Medical</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="node lift reveal" id="c-fire" data-roles="3" style="--i:5">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-flame"/></svg> Agency · <span class="opl">People</span></div>
+          <div class="id"><div class="tile" style="--g:#B45309"><svg class="ic"><use href="#i-flame"/></svg></div><div><div class="nm">SCDF — Fire &amp; Rescue</div><div class="mt">Archetype <b>Fire &amp; Rescue</b> · matched 97%</div></div></div>
+          <div class="roster"><span class="role lead"><svg class="ic ic-12"><use href="#i-user"/></svg> Fire Commander <b>×1</b></span><span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> HazMat Officer <b>×1</b></span><span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> Rescue crews <b>×2–6</b></span></div>
+          <div class="dp ok" style="margin-top:10px"><svg class="ic ic-14"><use href="#i-check"/></svg> Verified · Fire &amp; Rescue <span class="ver">v2</span><a>View</a></div>
+          <div class="foot"><div class="seg"><button class="on" data-op="people">People</button><button data-op="ai">AI</button></div><span class="opnote">Players take the seats. Empty seats can be filled by AI in the lobby.</span></div>
+        </div>
+
+        <div class="node lift reveal" id="c-med" data-roles="3" style="--i:6">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-cross"/></svg> Agency · <span class="opl">People</span></div>
+          <div class="id"><div class="tile" style="--g:#B91C1C"><svg class="ic"><use href="#i-cross"/></svg></div><div><div class="nm">SCDF — Emergency Medical</div><div class="mt">Archetype <b>Medical Triage</b> · matched 94%</div></div></div>
+          <div class="roster"><span class="role lead"><svg class="ic ic-12"><use href="#i-user"/></svg> Medical Commander <b>×1</b></span><span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> Triage Officer <b>×1</b></span><span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> Paramedics <b>×2–6</b></span></div>
+          <div class="dp ok" style="margin-top:10px"><svg class="ic ic-14"><use href="#i-check"/></svg> Verified · Medical Triage <span class="ver">v2</span><a>View</a></div>
+          <div class="foot"><div class="seg"><button class="on" data-op="people">People</button><button data-op="ai">AI</button></div><span class="opnote">Players take the seats. Empty seats can be filled by AI in the lobby.</span></div>
+        </div>
+
+        <div class="node lift reveal" id="c-eod" data-roles="2" style="--i:7">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-wrench"/></svg> Agency · <span class="opl">People</span></div>
+          <div class="id"><div class="tile" style="--g:#1E3A5F"><svg class="ic"><use href="#i-wrench"/></svg></div><div><div class="nm">SPF — Explosive Ordnance Disposal</div><div class="mt">Archetype <b>Bomb Disposal / EOD</b> · matched 99%</div></div></div>
+          <div class="roster"><span class="role lead"><svg class="ic ic-12"><use href="#i-user"/></svg> EOD Team Lead <b>×1</b></span><span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> Operators <b>×1–4</b></span></div>
+          <div class="dp ok" style="margin-top:10px"><svg class="ic ic-14"><use href="#i-check"/></svg> Verified · Bomb Disposal / EOD <span class="ver">v2</span><a>View</a></div>
+          <div class="foot"><div class="seg"><button class="on" data-op="people">People</button><button data-op="ai">AI</button></div><span class="opnote">Players take the seats. Empty seats can be filled by AI in the lobby.</span></div>
+        </div>
+
+        <div class="node ai lift reveal" id="c-lta" data-roles="2" style="--g:var(--f-ai);--i:8">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-train"/></svg> Agency · <span class="opl">AI-operated</span></div>
+          <div class="id"><div class="tile" style="--g:#0F766E"><svg class="ic"><use href="#i-train"/></svg></div><div><div class="nm">LTA — MRT Operations</div><div class="mt">Archetype <b>Transport Operator</b> · matched 91%</div></div></div>
+          <div class="roster"><span class="role lead"><svg class="ic ic-12"><use href="#i-bot"/></svg> Operations Controller <b>×1</b></span><span class="role"><svg class="ic ic-12"><use href="#i-bot"/></svg> Station Managers <b>×2</b></span></div>
+          <div class="dp unv" style="margin-top:10px"><svg class="ic ic-14"><use href="#i-alert"/></svg> Unverified · Transport Operator <span class="ver">v1 · written by another trainer, 12 Oct</span><a>View</a></div>
+          <div class="foot"><div class="seg"><button data-op="people">People</button><button class="on" data-op="ai">AI</button></div><span class="opnote">Runs from its doctrine. Seats can still be filled by people in the lobby.</span></div>
+        </div>
+
+        <div class="node warn lift reveal" id="c-mall" data-roles="2" style="--i:9">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker"><svg class="ic ic-12"><use href="#i-store"/></svg> Agency · <span class="opl">People</span></div>
+          <div class="id"><div class="tile" style="--g:#475467"><svg class="ic"><use href="#i-store"/></svg></div><div><div class="nm">Mall management &amp; security</div><div class="mt">Archetype <b>unmatched</b> · closest is only 58%</div></div></div>
+          <div class="roster"><span class="role lead"><svg class="ic ic-12"><use href="#i-user"/></svg> Duty Manager <b>×1</b></span><span class="role"><svg class="ic ic-12"><use href="#i-user"/></svg> Security Supervisors <b>×1–3</b></span></div>
+          <div class="dp-missing">
+            <div class="dp none" style="margin-top:10px"><svg class="ic ic-14"><use href="#i-alert"/></svg> No doctrine detected</div>
+            <div class="dpnote">Closest existing: <b>Evacuation &amp; Crowd</b> (58%) — too low to assume. A doctrine is the rulebook this team plays by.</div>
+            <div class="btnrow"><button class="btn sm accent" data-goto="doctrine"><svg class="ic ic-14"><use href="#i-book"/></svg> Create doctrine</button><button class="btn sm ghost">Use closest anyway</button></div>
+          </div>
+          <div class="dp-saved">
+            <div class="dp unv" style="margin-top:10px"><svg class="ic ic-14"><use href="#i-alert"/></svg> Unverified · Venue Operations <span class="ver">v1 · you, just now</span><a>View</a></div>
+            <div class="dpnote">Saved to the shared library. Other trainers can use it now; it shows as Unverified until an admin approves it.</div>
+          </div>
+          <div class="foot"><div class="seg"><button class="on" data-op="people">People</button><button data-op="ai">AI</button></div><span class="opnote">Players take the seats. Empty seats can be filled by AI in the lobby.</span></div>
+        </div>
+
+        <div class="add reveal" style="--i:10"><div><svg class="ic ic-24"><use href="#i-plus"/></svg><div style="margin-top:8px">Add an agency or team</div><small>Pick a type from the library, or write your own</small></div></div>
+      </div>
+    </div>
+
+    <!-- Lane 4 · pressure -->
+    <div class="lane" style="--g:var(--f-pressure)">
+      <div class="lanehead reveal" style="--i:4">
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/16-protest-lobby-sm.webp" alt="" /><div class="cap">Pressure</div></div>
+        <div class="inner">
+          <h2><svg class="ic ic-16"><use href="#i-fist"/></svg> Pressure</h2>
+          <p>Ministries, communities and media leaning on the response. Engage them and they stand down — ignore them and they escalate.</p>
+          <span class="cnt">3 of 6</span>
+          <div class="toolbar" style="margin-top:10px">
+            <button class="btn sm dashed icon" title="Ministry / regulator"><svg class="ic ic-14"><use href="#i-landmark"/></svg></button>
+            <button class="btn sm dashed icon" title="Political actor"><svg class="ic ic-14"><use href="#i-podium"/></svg></button>
+            <button class="btn sm dashed icon" title="Community group"><svg class="ic ic-14"><use href="#i-community"/></svg></button>
+            <button class="btn sm dashed icon" title="NGO"><svg class="ic ic-14"><use href="#i-leaf"/></svg></button>
+            <button class="btn sm dashed icon" title="Media outlet"><svg class="ic ic-14"><use href="#i-megaphone"/></svg></button>
+          </div>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="node lift reveal" style="--i:5">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Ministry · <span class="reg">statutory</span></div>
+          <div class="id"><div class="tile" style="--g:#B45309"><svg class="ic"><use href="#i-landmark"/></svg></div><div><div class="nm">Ministry of Home Affairs</div><div class="mt"><span class="cc light">SG</span> Singapore</div></div></div>
+          <div class="wants"><b>Wants:</b> a named incident commander and a situation brief within 20 minutes.</div>
+          <div class="wants"><b>Escalates:</b> statement → demand with deadline → ministerial presence on site.</div>
+          <div class="wants"><b>Stands down when:</b> the brief lands on time and the commander is named.</div>
+        </div>
+        <div class="node lift reveal" style="--i:6">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Community · <span class="reg">grassroots</span></div>
+          <div class="id"><div class="tile" style="--g:#B45309"><svg class="ic"><use href="#i-community"/></svg></div><div><div class="nm">Marina Court Tenants Association</div><div class="mt"><span class="cc light">SG</span> Singapore</div></div></div>
+          <div class="wants"><b>Wants:</b> access to evacuated stores and a compensation contact.</div>
+          <div class="wants"><b>Escalates:</b> crowds at the cordon → media statements.</div>
+        </div>
+        <div class="node lift reveal" style="--i:7">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Media · <span class="reg">aggressive</span></div>
+          <div class="id"><div class="tile" style="--g:#B45309"><svg class="ic"><use href="#i-megaphone"/></svg></div><div><div class="nm">National news outlet</div><div class="mt"><span class="cc light">SG</span> Singapore · live broadcast</div></div></div>
+          <div class="wants"><b>Wants:</b> live access and official casualty figures.</div>
+          <div class="wants"><b>Does:</b> airs unverified counts if no figure is given within 10 minutes.</div>
+        </div>
+        <div class="add reveal" style="--i:8"><div><svg class="ic ic-24"><use href="#i-plus"/></svg><div style="margin-top:8px">Pressure body</div><small>Or accept a proposal from the radar</small></div></div>
+      </div>
+    </div>
+
+    <!-- Lane 5 · adversaries -->
+    <div class="lane" style="--g:var(--f-rival)">
+      <div class="lanehead reveal" style="--i:5">
+        <div class="vignette"><img src="../../../frontend/public/marketing/library/48-searchlight-sm.webp" alt="" /><div class="cap">Adversaries</div></div>
+        <div class="inner">
+          <h2><svg class="ic ic-16"><use href="#i-swords"/></svg> Adversaries</h2>
+          <p>People and groups working against the response. They drive the pursuit, false leads and rumours.</p>
+          <span class="cnt">2 named</span>
+          <label class="chk"><input type="checkbox" checked /> Invent one if none is named</label>
+        </div>
+      </div>
+      <div class="cards">
+        <div class="node lift reveal" style="--i:6">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Perpetrator</div>
+          <div class="id"><div class="mono rv">LA</div><div><div class="nm">Lone attacker</div><div class="mt">Acts alone · carries the secondary device</div></div></div>
+          <div class="wants"><b>Behaviour:</b> moves toward the MRT concourse after about 12 minutes; changes clothing; avoids cameras.</div>
+          <div class="wants"><b>Pursuit sub-game:</b> on — sightings, false leads, three gates.</div>
+        </div>
+        <div class="node lift reveal" style="--i:7">
+          <div class="acts"><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button><button class="btn sm danger icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+          <div class="kicker">Hoax / copycat</div>
+          <div class="id"><div class="mono rv">HC</div><div><div class="nm">Hoax caller</div><div class="mt">Phones in a false threat</div></div></div>
+          <div class="wants"><b>Behaviour:</b> reports a device at the bus interchange at T+18 to split the response.</div>
+        </div>
+        <div class="add reveal" style="--i:8"><div><svg class="ic ic-24"><use href="#i-plus"/></svg><div style="margin-top:8px">Adversary</div><small>Profile, behaviour, timing</small></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="ready reveal" style="--i:7">
+    <h4>Before you move on</h4>
+    <ul>
+      <li class="ok"><svg class="ic ic-14"><use href="#i-check"/></svg> Incident type is one we can build (Mall Bombing).</li>
+      <li class="ok"><svg class="ic ic-14"><use href="#i-check"/></svg> Site set from the saved map data: Marina Court Mall plus 1 involved building, 150 m.</li>
+      <li class="info"><svg class="ic ic-14"><use href="#i-alert"/></svg> The secondary device's effects are AI-estimated — review them, or leave them and they are marked as estimated.</li>
+      <li class="todo" id="rd-doctrine"><svg class="ic ic-14"><use href="#i-alert"/></svg> “Mall management &amp; security” has no doctrine. You can lay out the scene now, but you need one before compile. <button class="btn sm" data-goto="doctrine">Create doctrine</button></li>
+      <li class="ok later" id="rd-doctrine-ok"><svg class="ic ic-14"><use href="#i-check"/></svg> Every agency has a doctrine (2 are Unverified).</li>
+    </ul>
+  </div>
+
+  <div class="ctabar reveal" style="--i:8">
+    <div class="s"><b id="cta-agencies">6</b>agencies</div><div class="s"><b id="cta-roles">15</b>roles</div><div class="s"><b id="cta-ai">1</b>run by AI</div><div class="s"><b>3</b>pressure</div><div class="s"><b>2</b>adversaries</div>
+    <div class="grow"></div>
+    <button class="btn ghost"><svg class="ic ic-14"><use href="#i-save"/></svg> Save draft</button>
+    <button class="btn accent" style="padding:11px 18px" data-goto="layout">Lay out the scene <svg class="ic ic-14"><use href="#i-arrow"/></svg></button>
+  </div>
+</div>
+</div>
+
+<!-- ═════════════════════════ DRAWER: NO DOCTRINE DETECTED ═════════════════════════ -->
+<div id="scrim" data-goto="setup"></div>
+<aside id="drawer" aria-label="Create a doctrine">
+  <div class="dh">
+    <img src="../../../frontend/public/marketing/library/21-command-post-sm.webp" alt="" />
+    <div class="eyebrow">No doctrine detected</div>
+    <h3>Create a doctrine for “Mall management &amp; security”</h3>
+    <p>We looked for the closest team type and nothing fits well enough. Write it here and it is saved for every scenario you — or any other trainer — builds.</p>
+    <button class="btn sm onDark close" data-goto="setup" style="border-color:rgba(255,255,255,.25);background:transparent;color:#fff" aria-label="Close"><svg class="ic ic-14"><use href="#i-x"/></svg></button>
+  </div>
+  <div class="db">
+    <div class="explain">
+      <h4><svg class="ic ic-14"><use href="#i-book"/></svg> What is a doctrine?</h4>
+      The rulebook a team plays by. It says how the team sequences its response, what it must never do, when it hands over to another team, and what good looks like. It is used in three places:
+      <ul>
+        <li><b>Building the scenario</b> — injects and expectations follow it.</li>
+        <li><b>Judging players</b> — the AI judge scores decisions against it.</li>
+        <li><b>AI-operated teams</b> — they act from it.</li>
+      </ul>
+    </div>
+
+    <div class="dsec">
+      <div class="lbl">Closest existing doctrines <small>— start from one, or begin blank</small></div>
+      <div class="closest">
+        <div class="c"><svg class="ic ic-14"><use href="#i-users"/></svg><div><b>Evacuation &amp; Crowd</b> <span class="dp ok" style="display:inline-flex;padding:2px 7px;font-size:10px">Verified v2</span></div><span class="pct">58%</span><button class="btn sm">Start from this</button></div>
+        <div class="c"><svg class="ic ic-14"><use href="#i-shield"/></svg><div><b>Police &amp; Security</b> <span class="dp ok" style="display:inline-flex;padding:2px 7px;font-size:10px">Verified v3</span></div><span class="pct">41%</span><button class="btn sm">Start from this</button></div>
+      </div>
+    </div>
+
+    <label class="toggle"><span class="sw on"></span><span><b>Draft it for me</b> from the team's description and your document<small>AI proposes every field below. You review and edit before anything is saved. Marked “AI-drafted”.</small></span></label>
+
+    <div class="dsec"><label class="lbl">Team type</label>
+      <div class="fgrid"><select class="field"><option>New type — Venue Operations</option><option>Evacuation &amp; Crowd</option><option>Police / Security</option></select><input class="field" value="Venue Operations — shopping mall" /></div></div>
+
+    <div class="dsec"><label class="lbl">Applies to <small>incident types</small></label>
+      <div class="tags"><span class="tag">Mall Bombing <button>×</button></span><span class="tag">Bombing (General) <button>×</button></span><span class="tag addt">+ add</span></div></div>
+
+    <div class="dsec"><label class="lbl">Mission</label>
+      <textarea class="field" style="min-height:70px" spellcheck="false">Keep people safe inside the venue until the agencies take over, give responders accurate building information, and protect evidence and access.</textarea></div>
+
+    <div class="dsec"><label class="lbl">Response sequence <small>what the team does, in order, with time targets</small></label>
+      <div class="stp"><input class="field" value="T+0–3" /><input class="field" value="Trigger the evacuation alarm; announce by zone; unlock fire exits" /><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+      <div class="stp"><input class="field" value="T+3–8" /><input class="field" value="Hand building plans, CCTV and a named duty contact to the incident commander" /><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+      <div class="stp"><input class="field" value="T+8 on" /><input class="field" value="Keep tenants and the public behind the cordon; log who is admitted" /><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+      <button class="btn sm dashed"><svg class="ic ic-14"><use href="#i-plus"/></svg> Add step</button></div>
+
+    <div class="dsec"><label class="lbl">Must never do</label>
+      <div class="tags"><span class="tag no">Reopen any entrance before clearance <button>×</button></span><span class="tag no">Give casualty figures to media <button>×</button></span><span class="tag addt">+ add</span></div></div>
+
+    <div class="dsec"><label class="lbl">Hands over to</label>
+      <div class="tags"><span class="tag">Police — Cordon &amp; Evacuation <button>×</button></span><span class="tag">Bomb Disposal / EOD <button>×</button></span><span class="tag addt">+ add</span></div></div>
+
+    <div class="dsec"><label class="lbl">What good looks like <small>how players are scored</small></label>
+      <div class="stp" style="grid-template-columns:1fr 28px"><input class="field" value="Evacuation alarm sounded within 3 minutes" /><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div>
+      <div class="stp" style="grid-template-columns:1fr 28px"><input class="field" value="Building plans handed to the incident commander within 8 minutes" /><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-x"/></svg></button></div></div>
+
+    <div class="dsec"><label class="lbl">Source <small>optional — where this comes from</small></label><input class="field" placeholder="e.g. venue emergency plan, national guideline, your own experience" /></div>
+
+    <div class="share"><svg class="ic ic-16" style="flex:none;margin-top:1px"><use href="#i-eye"/></svg><div><b>This goes into the shared library.</b> Every trainer can use it straight away. It is marked <b>Unverified</b> until an admin approves it, and your name stays on it. Don't paste restricted or classified procedures.</div></div>
+  </div>
+  <div class="df">
+    <button class="btn accent" id="saveDoctrine"><svg class="ic ic-14"><use href="#i-save"/></svg> Save to library &amp; use</button>
+    <button class="btn" data-goto="setup">Use in this scenario only</button>
+    <span style="flex:1"></span>
+    <button class="btn ghost" data-goto="setup">Cancel</button>
+  </div>
+</aside>
+
+<!-- ═════════════════════════ VIEW 3: LAYOUT THE SCENE ═════════════════════════ -->
+<div id="view-layout">
+<header class="rv-hero hero artband">
+  <img class="art" src="art/crisis-site-response-sm.webp" alt="" />
+  <div class="top">
+    <div class="brandmark"><img class="logo" src="art/prophyion-mark.png" alt="Prophyion" /> War Room <span class="sub">· Field operations</span></div>
+    <div class="steps"><span class="done"><i>✓</i> Setup</span><span class="on"><i>2</i> Lay out the scene</span><span><i>3</i> Compile &amp; review</span></div>
+    <div class="credits"><span><svg class="ic ic-14"><use href="#i-layers"/></svg> Scenario credits <b>3</b></span></div>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="eyebrow">Lay out the scene · step 2 of 3</div>
+      <h1>Marina Court Mall</h1>
+      <div class="chips"><span class="pill">Site loaded from setup</span><span class="pill">Nothing to search or pick</span><span class="pill">Works on a phone, on site</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="sitebar">
+    <span class="ok"><svg class="ic ic-14"><use href="#i-check"/></svg> Site loaded from setup</span>
+    <span><b>Marina Court Mall</b> · saved map data · 150 m radius</span>
+    <span class="pill" title="The primary building has the full interior layout; the car park is handled at footprint level.">2 buildings involved · 1 full layout</span>
+    <span class="sp"></span>
+    <button class="btn sm" data-goto="setup"><svg class="ic ic-14"><use href="#i-map"/></svg> Change site</button>
+  </div>
+
+  <div class="lay-grid">
+    <aside class="tools">
+      <h6>Structure</h6>
+      <button class="tbtn on"><span class="em">↖</span> Select / move</button>
+      <button class="tbtn"><span class="em">▭</span> Place exit <span class="st">5</span></button>
+      <button class="tbtn"><span class="em">╱</span> Draw interior wall <span class="st">6</span></button>
+      <button class="tbtn"><span class="em">▤</span> Place stairwell <span class="st">2</span></button>
+
+      <h6>Hazards</h6>
+      <button class="tbtn"><span class="em">🔥</span> Combustible <span class="st">1</span></button>
+      <button class="tbtn"><span class="em">💥</span> Ignitable</button>
+      <button class="tbtn"><span class="em">🧱</span> Debris risk</button>
+      <button class="tbtn"><span class="em">⚠</span> Falling object risk <span class="st">1</span></button>
+      <button class="tbtn"><span class="em">⚡</span> Electrical <span class="st">1</span></button>
+      <button class="tbtn"><span class="em">☣</span> Chemical</button>
+
+      <h6>Devices — from setup</h6>
+      <button class="tbtn"><span class="em">●</span> Device 1 · main <span class="st">placed</span></button>
+      <button class="tbtn"><span class="em">◌</span> Device 2 · hidden <span class="st">placed</span></button>
+
+      <h6>Photos</h6>
+      <button class="tbtn"><span class="em">📷</span> Wall points · 25 <span class="st">4 photos</span></button>
+      <div class="help" style="margin-top:2px">Walk the site. Tap a wall point or a hazard, then Take photo. Photos you take are attached to that point.</div>
+
+      <h6>Crowd</h6>
+      <div class="help" style="margin-top:0"><b>1,800 people</b>, set in Setup. Paint zones where they cluster; the rest is spread to suit the venue.</div>
+      <button class="tbtn"><span class="em">◍</span> Paint crowd zone <span class="st">2</span></button>
+    </aside>
+
+    <div class="canvas">
+      <svg viewBox="130 30 500 410" role="img" aria-label="Scene editor: the outlined building with exits, walls, hazards, photo pins, devices and blast rings">
+        <rect width="760" height="470" fill="#F2EFE9"/>
+        <g>
+          <path class="rcase" d="M0 40 L760 46"/><path class="rfill" d="M0 40 L760 46"/><path class="rd" d="M0 40 L760 46"/>
+          <path class="rcase" d="M0 440 C190 434 570 448 760 440"/><path class="rfill" d="M0 440 C190 434 570 448 760 440"/><path class="rd" d="M0 440 C190 434 570 448 760 440"/>
+          <path class="rcase" d="M150 0 C146 160 154 320 150 470"/><path class="rfill" d="M150 0 C146 160 154 320 150 470"/><path class="rd" d="M150 0 C146 160 154 320 150 470"/>
+          <path class="rcase" d="M612 0 C616 160 608 320 612 470"/><path class="rfill" d="M612 0 C616 160 608 320 612 470"/><path class="rd" d="M612 0 C616 160 608 320 612 470"/>
+        </g>
+        <text class="rl" x="30" y="34">Harbour Drive</text>
+        <text class="rl" x="540" y="436">Marina Way</text>
+        <text class="rl" transform="translate(143 130) rotate(90)">Court Road</text>
+        <text class="rl" transform="translate(605 300) rotate(90)">Bayview Link</text>
+
+        <g fill="#EBDCC3" stroke="#F59E0B" stroke-width="1.2">
+          <rect x="176" y="70" width="72" height="36" rx="2"/>
+          <rect x="262" y="70" width="170" height="36" rx="2"/>
+          <rect x="452" y="70" width="112" height="36" rx="2"/>
+          <rect x="164" y="372" width="64" height="38" rx="2"/>
+          <rect x="540" y="372" width="64" height="38" rx="2"/>
+          <rect x="168" y="160" width="40" height="170" rx="2"/>
+          <rect x="556" y="150" width="42" height="180" rx="2"/>
+        </g>
+        <rect x="240" y="372" width="288" height="44" rx="2" fill="#F8C766" stroke="#D97706" stroke-width="2"/>
+        <text class="bl" x="252" y="390">Car park · footprint level</text>
+        <g fill="#fff" stroke="#334155" stroke-width="1.2"><circle r="3" cx="262" cy="372"/><circle r="3" cx="300" cy="372"/><circle r="3" cx="340" cy="372"/><circle r="3" cx="440" cy="372"/><circle r="3" cx="480" cy="372"/><circle r="3" cx="516" cy="372"/><circle r="3" cx="240" cy="394"/><circle r="3" cx="528" cy="394"/></g>
+        <g fill="#16A34A"><rect x="236" y="400" width="8" height="12" rx="2"/><rect x="524" y="400" width="8" height="12" rx="2"/></g>
+
+        <!-- crowd zones -->
+        <ellipse cx="388" cy="206" rx="64" ry="48" fill="rgba(168,85,247,.16)" stroke="#A855F7" stroke-width="1.5" stroke-dasharray="5 4"/>
+        <rect x="246" y="272" width="86" height="52" rx="8" fill="rgba(168,85,247,.12)" stroke="#A855F7" stroke-width="1.5" stroke-dasharray="5 4"/>
+
+        <!-- the primary building -->
+        <polygon points="236,150 524,150 524,262 446,262 446,330 236,330" fill="rgba(15,23,42,.10)" stroke="#22D3EE" stroke-width="3"/>
+        <rect x="330" y="150" width="116" height="112" fill="rgba(34,211,238,.08)"/>
+        <g stroke="#334155" stroke-width="2.2" stroke-linecap="round" fill="none">
+          <path d="M330 150 V262"/><path d="M236 214 H330"/><path d="M446 150 V262"/><path d="M340 262 V330"/><path d="M236 262 H340"/><path d="M446 262 H524"/>
+        </g>
+        <text class="bl" x="388" y="165" text-anchor="middle">ATRIUM</text>
+        <text class="bl" x="289" y="284" text-anchor="middle">Food court</text>
+
+        <!-- exits -->
+        <g fill="#16A34A">
+          <rect x="232" y="196" width="8" height="18" rx="2"/><rect x="380" y="146" width="18" height="8" rx="2"/><rect x="520" y="198" width="8" height="18" rx="2"/><rect x="332" y="326" width="18" height="8" rx="2"/><rect x="442" y="288" width="8" height="18" rx="2"/>
+        </g>
+        <g class="bl"><text x="214" y="190">E1</text><text x="383" y="140">E2</text><text x="532" y="192">E3</text><text x="334" y="346">E4</text><text x="454" y="284">E5</text></g>
+
+        <!-- stairwells -->
+        <g><rect x="288" y="238" width="16" height="16" rx="3" fill="#3B82F6"/><rect x="480" y="222" width="16" height="16" rx="3" fill="#3B82F6"/></g>
+        <g fill="#fff" font-size="9" font-weight="700" text-anchor="middle"><text x="296" y="250">S1</text><text x="488" y="234">S2</text></g>
+
+        <!-- wall inspection points -->
+        <g fill="#fff" stroke="#334155" stroke-width="1.2">
+          <circle r="3" cx="262" cy="150"/><circle r="3" cx="300" cy="150"/><circle r="3" cx="340" cy="150"/><circle r="3" cx="420" cy="150"/><circle r="3" cx="460" cy="150"/><circle r="3" cx="500" cy="150"/>
+          <circle r="3" cx="524" cy="172"/><circle r="3" cx="524" cy="200"/><circle r="3" cx="524" cy="228"/><circle r="3" cx="524" cy="252"/>
+          <circle r="3" cx="480" cy="262"/><circle r="3" cx="508" cy="262"/><circle r="3" cx="446" cy="290"/><circle r="3" cx="446" cy="316"/>
+          <circle r="3" cx="262" cy="330"/><circle r="3" cx="300" cy="330"/><circle r="3" cx="340" cy="330"/><circle r="3" cx="380" cy="330"/><circle r="3" cx="420" cy="330"/>
+          <circle r="3" cx="236" cy="172"/><circle r="3" cx="236" cy="248"/><circle r="3" cx="236" cy="288"/><circle r="3" cx="236" cy="316"/>
+        </g>
+
+        <!-- blast rings for Device 1, calculated -->
+        <g transform="translate(388 210)">
+          <circle r="187" fill="none" stroke="#7C3AED" stroke-width="1.4" stroke-dasharray="6 5"/>
+          <circle r="154" fill="rgba(250,204,21,.16)" stroke="#EAB308" stroke-width="1.4" stroke-dasharray="5 4"/>
+          <circle r="48" fill="rgba(249,115,22,.22)" stroke="#F97316" stroke-width="1.6"/>
+          <circle r="18" fill="rgba(185,28,28,.42)" stroke="#B91C1C" stroke-width="1.8"/>
+          <circle r="5" fill="#7F1D1D"/><circle r="1.8" fill="#fff"/>
+          <text class="bl" x="24" y="-14">Device 1</text>
+        </g>
+        <g class="bl" font-size="9"><text x="388" y="42" text-anchor="middle" fill="#6D28D9">fragments ≤ 85 m</text><text x="388" y="74" text-anchor="middle">minor / glass ≤ 70 m</text></g>
+
+        <!-- device 2 -->
+        <g transform="translate(396 394)"><circle r="11" fill="#fff" stroke="#D97706" stroke-width="2" stroke-dasharray="3 2"/><text text-anchor="middle" y="4" font-size="12">👁</text></g>
+        <text class="bl" x="414" y="398">Device 2 (hidden)</text>
+
+        <!-- hazards -->
+        <g transform="translate(268 306)"><circle r="14" fill="#fff7ed" stroke="#f97316" stroke-width="2"/><text text-anchor="middle" y="5" font-size="14">🔥</text></g>
+        <g transform="translate(480 190)"><circle r="14" fill="#fefce8" stroke="#eab308" stroke-width="2"/><text text-anchor="middle" y="5" font-size="14">⚠</text></g>
+        <g transform="translate(410 304)"><circle r="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/><text text-anchor="middle" y="5" font-size="14">⚡</text></g>
+
+        <!-- photo pins -->
+        <g fill="#0E1A2B">
+          <g transform="translate(262 140)"><circle r="9"/><g stroke="#fff" stroke-width="1.2" fill="none"><rect x="-5" y="-3.5" width="10" height="7" rx="1.5"/><circle r="1.8"/></g></g>
+          <g transform="translate(534 228)"><circle r="9"/><g stroke="#fff" stroke-width="1.2" fill="none"><rect x="-5" y="-3.5" width="10" height="7" rx="1.5"/><circle r="1.8"/></g></g>
+          <g transform="translate(340 342)"><circle r="9"/><g stroke="#fff" stroke-width="1.2" fill="none"><rect x="-5" y="-3.5" width="10" height="7" rx="1.5"/><circle r="1.8"/></g></g>
+          <g transform="translate(294 314)"><circle r="9"/><g stroke="#fff" stroke-width="1.2" fill="none"><rect x="-5" y="-3.5" width="10" height="7" rx="1.5"/><circle r="1.8"/></g></g>
+        </g>
+        <text class="bl cy" x="380" y="124" text-anchor="middle">Marina Court Mall</text>
+      </svg>
+      <div class="zoom"><span>+</span><span>−</span></div>
+      <div class="attr">© OpenStreetMap contributors</div>
+    </div>
+
+    <aside class="insp">
+      <h4>Device 1 · main <span class="pill ok">Placed</span><span class="pill ok">Calculated</span></h4>
+      <div class="help" style="margin-top:0">12 kg ANFO-type charge, 3 kg steel-nut fragments, timer with tilt back-up. All from setup.</div>
+      <div class="sec">
+        <h6>Effects at this position</h6>
+        <div class="bar"><i style="width:9%;background:#B91C1C"></i><i style="width:16%;background:#D97706"></i><i style="width:56%;background:#F1C27D"></i><i style="width:19%;background:repeating-linear-gradient(45deg,#C4B5FD,#C4B5FD 4px,#E9E3FF 4px,#E9E3FF 8px)"></i></div>
+        <div class="lg"><span style="--c:#B91C1C">Lethal ≤ 8 m</span><span style="--c:#D97706">Serious ≤ 22 m</span><span style="--c:#F1C27D">Minor / glass ≤ 70 m</span><span style="--c:#C4B5FD">Fragments ≤ 85 m</span></div>
+        <div class="help">The atrium walls reflect the blast, so these are a little larger than the preview in setup (7 / 20 / 65 m).</div>
+        <div class="casu"><b>≈ 150 casualties</b> with the crowd zones as painted <span class="illus">illustrative</span></div>
+      </div>
+      <div class="sec">
+        <h6>Override</h6>
+        <div class="row"><span class="sw"></span><span>Set the radius by hand</span></div>
+        <div class="help">Manual values are flagged in Review and the After-Action Review.</div>
+      </div>
+      <div class="sec">
+        <h6>This scene</h6>
+        <div class="help" style="margin-top:0">5 exits · 6 walls · 2 stairwells · 3 hazards · 2 crowd zones · 4 photos</div>
+      </div>
+    </aside>
+  </div>
+
+  <div class="ctabar">
+    <div class="s"><b>5</b>exits</div><div class="s"><b>2</b>devices</div><div class="s"><b>3</b>hazards</div><div class="s"><b>4</b>photos</div>
+    <div class="grow"></div>
+    <button class="btn ghost" data-goto="setup">← Back to setup</button>
+    <button class="btn ghost"><svg class="ic ic-14"><use href="#i-save"/></svg> Save scene</button>
+    <button class="btn accent" style="padding:11px 18px" data-goto="review">Compile &amp; review <svg class="ic ic-14"><use href="#i-arrow"/></svg></button>
+  </div>
+</div>
+</div>
+
+
+<!-- ═════════════════════════ VIEW 4: REVIEW ═════════════════════════ -->
+<div id="view-review">
+<header class="rv-hero hero artband">
+  <img class="art" src="art/crisis-site-response-sm.webp" alt="" />
+  <div class="top">
+    <div class="brandmark"><img class="logo" src="art/prophyion-mark.png" alt="Prophyion" /> War Room <span class="sub">· Field operations</span></div>
+    <div class="steps"><span class="done"><i>✓</i> Setup</span><span class="done"><i>✓</i> Lay out the scene</span><span class="on"><i>3</i> Compile &amp; review</span></div>
+    <div class="credits"><span><svg class="ic ic-14"><use href="#i-layers"/></svg> Scenario credits <b>2</b></span></div>
+  </div>
+  <div class="grid">
+    <div>
+      <div class="eyebrow">Review · not published yet</div>
+      <h1>Marina Court Mall bombing</h1>
+      <div class="chips"><span class="pill">Compiled just now</span><span class="pill">60 min</span><span class="pill">6 agencies</span><span class="pill">Draft — players cannot see it</span></div>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="map">
+    <div class="kpis"><div><b>6</b><span>agencies</span></div><div><b>41</b><span>injects</span></div><div><b>5</b><span>hazards</span></div><div><b>36</b><span>casualties</span></div><div><b>3</b><span>unplaced notes</span></div></div>
+    <div class="rvgrid">
+      <div>
+        <div class="panel tl">
+          <h4>Storyline &amp; injects <span class="sp"></span><button class="btn sm"><svg class="ic ic-14"><use href="#i-plus"/></svg> Add inject</button></h4>
+          <p class="sub">Every line is editable. The tag says where it came from.</p>
+          <div class="r"><span class="t">T+0</span><div><b>Initial report — explosion in the atrium</b><span class="d">“A rucksack left beside the atrium escalator detonates…”</span></div><span class="src fromdoc">Your document</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="r"><span class="t">T+6</span><div><b>Second device reported in the multi-storey car park</b><span class="d">Routed to Bomb Disposal; delays Fire &amp; Medical entry</span></div><span class="src fromdoc">Your document</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="r"><span class="t">T+8</span><div><b>MHA asks who the incident commander is</b><span class="d">Escalates at T+20 if no brief is sent</span></div><span class="src pressure">Pressure</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="r"><span class="t">T+10</span><div><b>Cordon breached at the east entrance by tenants</b><span class="d">Police doctrine: hold the line, redirect to the information point</span></div><span class="src doctrine">Doctrine</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="r"><span class="t">T+12</span><div><b>Attacker sighted heading to the MRT concourse</b><span class="d">First of four sightings; one is a false lead</span></div><span class="src adv">Adversary</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="r"><span class="t">T+15</span><div><b>News outlet airs “at least 40 dead”</b><span class="d">Fires only if no official figure has been issued</span></div><span class="src pressure">Pressure</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="r"><span class="t">T+18</span><div><b>Hoax call: device at the bus interchange</b></div><span class="src adv">Adversary</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <div class="r"><span class="t">T+22</span><div><b>Nearest hospital reports it is at 85% capacity</b><span class="d">Generated from the area dossier</span></div><span class="src gen">Generated</span><button class="btn sm ghost icon"><svg class="ic ic-14"><use href="#i-edit"/></svg></button></div>
+          <a class="btn sm" style="margin-top:10px">Show all 41 injects</a>
+        </div>
+      </div>
+      <div>
+        <div class="panel">
+          <h4>How much came from your document</h4>
+          <div class="prov"><i style="width:44%;background:#1E3A5F"></i><i style="width:36%;background:#15803D"></i><i style="width:14%;background:#B45309"></i><i style="width:6%;background:#98A2B3"></i></div>
+          <div class="lg"><span style="--c:#1E3A5F">18 from your document</span><span style="--c:#15803D">15 from doctrines</span><span style="--c:#B45309">6 pressure &amp; adversary</span><span style="--c:#98A2B3">2 generated</span></div>
+        </div>
+        <div class="panel">
+          <h4>Doctrines used <span class="sp"></span><span class="pill warn">1 update available</span></h4>
+          <p class="sub">Copied into this scenario at compile. Later library edits don't change it unless you update.</p>
+          <table class="tbl"><tr><th>Team</th><th>Doctrine</th><th>State</th></tr>
+            <tr><td>SPF — Cordon</td><td>Police &amp; Security v3</td><td><span class="pill ok">Verified</span></td></tr>
+            <tr><td>SCDF Fire</td><td>Fire &amp; Rescue v2</td><td><span class="pill ok">Verified</span></td></tr>
+            <tr><td>SCDF Medical</td><td>Medical Triage v2</td><td><span class="pill ok">Verified</span></td></tr>
+            <tr><td>SPF EOD</td><td>Bomb Disposal v2</td><td><span class="pill ok">Verified</span></td></tr>
+            <tr><td>LTA</td><td>Transport Operator v1</td><td><span class="pill warn">Unverified</span> <a style="font-size:11px;font-weight:700;color:var(--brand)">v2 available</a></td></tr>
+            <tr><td>Mall mgmt</td><td>Venue Operations v1</td><td><span class="pill warn">Unverified · yours</span></td></tr>
+          </table>
+        </div>
+        <div class="panel">
+          <h4>Physics <span class="sp"></span><span class="pill ok">1 calculated</span><span class="pill warn">1 AI-estimated</span></h4>
+          <p class="sub">Device 1 is calculated from the specifics you gave; Device 2 was assumed. The labels carry into the scene and the After-Action Review.</p>
+        </div>
+        <div class="panel">
+          <h4>Notes we couldn't place <span class="sp"></span><span class="pill">3</span></h4>
+          <p class="sub">Nothing in your document is dropped silently.</p>
+          <div class="dir"><span class="qt">“The tenant of unit #02-14 refuses to evacuate and has to be persuaded.”</span><button class="btn sm">Add as an inject</button> <button class="btn sm ghost">Ignore</button></div>
+          <div class="dir"><span class="qt">“Scoring should reward early contact with the mall's duty manager.”</span><button class="btn sm">Add to objectives</button> <button class="btn sm ghost">Ignore</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="ctabar">
+    <div class="s"><b>0</b>blockers</div><div class="s"><b>2</b>to review</div>
+    <div class="grow"></div>
+    <span style="font-size:12px;color:rgba(255,255,255,.65)">Everything stays editable after publishing, except while a session is live.</span>
+    <button class="btn ghost" data-goto="layout">Back to the scene</button>
+    <button class="btn accent" style="padding:11px 18px"><svg class="ic ic-14"><use href="#i-check"/></svg> Publish scenario</button>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+  var body = document.body;
+  function $(s, r){ return (r||document).querySelector(s); }
+  function $$(s, r){ return Array.prototype.slice.call((r||document).querySelectorAll(s)); }
+
+  /* ── mockup states ─────────────────────────────────────────────────── */
+  function setState(s){
+    body.dataset.state = s;
+    $$('.statetab').forEach(function(b){ b.classList.toggle('on', b.dataset.s === s); });
+    if (s !== 'doctrine') window.scrollTo(0, 0);
+    if (s === 'setup') initSite();
+  }
+  $$('.statetab').forEach(function(b){ b.addEventListener('click', function(){ setState(b.dataset.s); }); });
+  $$('[data-goto]').forEach(function(b){ b.addEventListener('click', function(){ setState(b.dataset.goto); }); });
+
+  /* ── agency counters ───────────────────────────────────────────────── */
+  function refreshCounts(){
+    var cards = $$('#view-setup [data-roles]').filter(function(c){ return !c.classList.contains('gone'); });
+    var roles = cards.reduce(function(n, c){ return n + (parseInt(c.dataset.roles, 10) || 0); }, 0);
+    var el = $('#cnt-agencies'); if (el) el.textContent = cards.length + ' of 10 \u00b7 ' + roles + ' roles';
+    var c2 = $('#cta-agencies'); if (c2) c2.textContent = cards.length;
+    var c3 = $('#cta-roles'); if (c3) c3.textContent = roles;
+    var c4 = $('#cta-ai'); if (c4) c4.textContent = cards.filter(function(c){ return c.classList.contains('ai'); }).length;
+  }
+
+  /* ── the site: radius, footprints, buildings involved ──────────────── */
+  var SC = 0.55, CX = 330, CY = 200, siteReady = false;
+  var svg = $('#siteMap');
+  var ROLES = ['Car park', 'Station / transit', 'Adjacent building', 'Other'];
+
+  function roadMinDist(id){
+    var src = svg.querySelector('defs #' + id);
+    var tmp = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    tmp.setAttribute('d', src.getAttribute('d'));
+    tmp.setAttribute('fill', 'none'); tmp.setAttribute('stroke', 'none');
+    svg.appendChild(tmp);
+    var L = tmp.getTotalLength(), m = 1e9;
+    for (var i = 0; i <= 60; i++) { var p = tmp.getPointAtLength(L * i / 60); m = Math.min(m, Math.hypot(p.x - CX, p.y - CY)); }
+    svg.removeChild(tmp);
+    return m / SC;
+  }
+  function initSite(){
+    if (siteReady || !svg) return;
+    if (!svg.getBoundingClientRect().width) return;
+    $$('#siteMap .b').forEach(function(el, i){
+      var bb = el.getBBox();
+      el.dataset.d = Math.hypot(bb.x + bb.width / 2 - CX, bb.y + bb.height / 2 - CY) / SC;
+      if (!el.id) el.id = 'bx' + i;
+    });
+    $$('#siteMap .road').forEach(function(g){ g.dataset.d = roadMinDist(g.dataset.id); });
+    siteReady = true;
+    setRadius(parseInt($('#radius').value, 10));
+  }
+  function placeName(){ return $('#placeInput').value || 'Marina Court Mall'; }
+  function applyRadius(m){
+    if (!siteReady) return;
+    $('#ring').setAttribute('r', (m * SC).toFixed(1));
+    $('#radval').textContent = m + ' m';
+    var vis = 0, streets = 0;
+    $$('#siteMap .b').forEach(function(el){
+      var out = parseFloat(el.dataset.d) > m;
+      el.classList.toggle('out', out);
+      if (out) el.classList.remove('inv'); else vis++;
+    });
+    $$('#siteMap .road').forEach(function(g){
+      var out = parseFloat(g.dataset.d) > m;
+      g.classList.toggle('out', out);
+      if (!out) streets++;
+    });
+    $('#hud').textContent = m + ' m \u00b7 ' + vis + ' buildings \u00b7 ' + streets + ' streets';
+    var c = $('#cnt-site'); if (c) c.textContent = placeName() + ' \u00b7 ' + m + ' m';
+  }
+  function renderList(){
+    var list = $('#blist'); if (!list) return;
+    var items = $$('#siteMap .b.pri, #siteMap .b.inv').sort(function(a, b){
+      return (b.classList.contains('pri') ? 1 : 0) - (a.classList.contains('pri') ? 1 : 0);
+    });
+    $('#bcount').textContent = items.length;
+    list.innerHTML = items.map(function(el){
+      var pri = el.classList.contains('pri');
+      var name = el.dataset.name || 'Unnamed building';
+      var role = el.id === 'b-car' ? 'Car park' : el.id === 'b-mrt' ? 'Station / transit' : 'Adjacent building';
+      var sel = '<select aria-label="Role of ' + name + '">' + ROLES.map(function(r){ return '<option' + (r === role ? ' selected' : '') + '>' + r + '</option>'; }).join('') + '</select>';
+      var sub = pri ? 'Primary \u00b7 full interior layout next' : (el.dataset.name ? 'Involved \u00b7 shown on the scene map' : 'Unnamed in the map data \u00b7 name it');
+      return '<div class="bld' + (pri ? ' primary' : '') + '"><span class="sq"></span><span class="sp"><b>' + name + '</b><small>' + sub + '</small></span>' + (pri ? '' : sel) + '</div>';
+    }).join('');
+  }
+  function applyNudge(){
+    var mrt = $('#b-mrt');
+    var show = mrt && mrt.classList.contains('out') && !mrt.classList.contains('inv');
+    $('#nudge').classList.toggle('gone', !show);
+    var chip = $('.rc[data-site="b-mrt"]');
+    if (chip) {
+      var on = mrt && mrt.classList.contains('inv');
+      chip.classList.toggle('on', !!on); chip.classList.toggle('off', !on);
+      var tick = $('.tick', chip); if (tick) tick.style.visibility = on ? 'visible' : 'hidden';
+    }
+  }
+  function setRadius(m){
+    m = Math.max(50, Math.min(500, m));
+    $('#radius').value = m;
+    applyRadius(m); renderList(); applyNudge();
+  }
+  function involveMrt(){
+    setRadius(Math.max(220, parseInt($('#radius').value, 10)));
+    var m = $('#b-mrt'); m.classList.remove('out'); m.classList.add('inv');
+    renderList(); applyNudge();
+  }
+
+  var rad = $('#radius');
+  if (rad) {
+    rad.addEventListener('input', function(){ setRadius(parseInt(rad.value, 10)); });
+    $('#radMinus').addEventListener('click', function(){ setRadius(parseInt(rad.value, 10) - 10); });
+    $('#radPlus').addEventListener('click', function(){ setRadius(parseInt(rad.value, 10) + 10); });
+    $('#nudgeBtn').addEventListener('click', involveMrt);
+  }
+
+  /* place search dropdown */
+  var acw = $('#acwrap'), inp = $('#placeInput');
+  if (acw && inp) {
+    inp.addEventListener('focus', function(){ acw.classList.add('open'); });
+    inp.addEventListener('input', function(){ acw.classList.add('open'); });
+    acw.addEventListener('click', function(e){
+      var b = e.target.closest('button[data-pick]'); if (!b) return;
+      inp.value = b.dataset.pick;
+      $$('#acList button').forEach(function(x){ x.classList.toggle('sel', x === b); });
+      acw.classList.remove('open');
+      var c = $('#cnt-site'); if (c) c.textContent = inp.value + ' \u00b7 ' + $('#radius').value + ' m';
+    });
+  }
+
+  /* device tabs */
+  $$('.dtab[data-dev]').forEach(function(t){
+    t.addEventListener('click', function(){
+      $$('.dtab[data-dev]').forEach(function(x){ x.classList.toggle('on', x === t); });
+      $('#dev-d1').classList.toggle('hide', t.dataset.dev !== 'd1');
+      $('#dev-d2').classList.toggle('hide', t.dataset.dev !== 'd2');
+    });
+  });
+
+  /* ── clicks: people/AI, radar chips, footprints ────────────────────── */
+  document.addEventListener('click', function(e){
+    if (acw && !e.target.closest('#acwrap')) acw.classList.remove('open');
+
+    var bld = e.target.closest('#siteMap .b');
+    if (bld) {
+      if (!bld.classList.contains('out') && !bld.classList.contains('pri')) { bld.classList.toggle('inv'); renderList(); applyNudge(); }
+      return;
+    }
+    var sb = e.target.closest('.seg button[data-op]');
+    if (sb) {
+      var node = sb.closest('.node');
+      $$('button', sb.parentElement).forEach(function(x){ x.classList.toggle('on', x === sb); });
+      var ai = sb.dataset.op === 'ai';
+      node.classList.toggle('ai', ai);
+      var l = $('.opl', node); if (l) l.textContent = ai ? 'AI-operated' : 'People';
+      var n = $('.opnote', node);
+      if (n) n.textContent = ai ? 'Runs from its doctrine. Seats can still be filled by people in the lobby.' : 'Players take the seats. Empty seats can be filled by AI in the lobby.';
+      refreshCounts();
+      return;
+    }
+    var chip = e.target.closest('.rc.act');
+    if (chip) {
+      if (chip.dataset.site) {
+        var wasOn = chip.classList.contains('on');
+        if (wasOn) { var m = $('#b-mrt'); m.classList.remove('inv'); renderList(); applyNudge(); }
+        else involveMrt();
+        return;
+      }
+      var on = !chip.classList.contains('on');
+      chip.classList.toggle('on', on); chip.classList.toggle('off', !on);
+      var tick = $('.tick', chip); if (tick) tick.style.visibility = on ? 'visible' : 'hidden';
+      var card = chip.dataset.card && document.getElementById(chip.dataset.card);
+      if (card) card.classList.toggle('gone', !on);
+      refreshCounts();
+    }
+  });
+
+  /* ── saving a doctrine ─────────────────────────────────────────────── */
+  var save = $('#saveDoctrine');
+  if (save) save.addEventListener('click', function(){
+    var c = document.getElementById('c-mall');
+    c.classList.add('saved'); c.classList.remove('warn');
+    $('.mt', c).innerHTML = 'Archetype <b>Venue Operations</b> \u00b7 new, yours';
+    var todo = document.getElementById('rd-doctrine'); if (todo) todo.classList.add('done');
+    var ok = document.getElementById('rd-doctrine-ok'); if (ok) ok.classList.remove('later');
+    setState('setup');
+  });
+
+  refreshCounts();
+  initSite();
+})();
+</script>
+</body>
+</html>
