@@ -81,6 +81,7 @@ Each **agency** is a team card with an archetype, a rewritable description, a ro
 | D34 | **Added 3 Nov 2026.** Fog of war. A team sees what its units and positions can observe, with range reduced by smoke and weather, plus what is reported to it. The trainer sees everything, and AI agencies see through the same fog as people. | Decided | new WS9 |
 | D35 | **Added 3 Nov 2026.** Weather and traffic are mechanics, not labels. Weather (rain, wind, haze, heat, visibility) changes spread, visibility, travel speed and casualties. Traffic (time-of-day congestion on the saved roads, cordons, closures, evacuation jams) changes unit travel times and so the teams' deployment choices. | Decided | 03, new WS9 |
 | D36 | **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day. | Decided | 03, 05, 06 |
+| D37 | **Added 4 Nov 2026.** A session with no human activity for 30 minutes ends by itself, after a warning at 25 that anyone in it can answer with "I'm still here"; and any session ends 12 hours after it started. AI teammates, NPC replies and the engines' own events never count as activity. It applies to every session type, needs no flag, and turns off with `SESSION_IDLE_END_MINUTES=0` and `SESSION_MAX_HOURS=0`. Four forgotten sessions ran from 29 Oct to 4 Nov 2026 and used up the OpenAI balance. | Decided | 01 |
 
 ## 4. Architecture overview
 
@@ -153,7 +154,7 @@ The dotted arrow from WS6 to WS5 is soft: compile uses calculated effects when `
 
 **Build order**
 
-1. **WS0** first. The live-map fix (13.1) can ship on its own and is useful to every session today.
+1. **WS0** first. The live-map fix (13.1) can ship on its own and is useful to every session today. **Added 4 Nov 2026:** before it, WS0's task T0.23, the idle-session rule (D37), ships alone as commit 0, because every running session costs money until it ends.
 2. **WS1 and WS3 in parallel.** They do not depend on each other. WS4 follows WS3.
 3. **WS2** once the WS1 card contract and the WS3 site contract exist (stubs are enough to start).
 4. **WS6's calculator core** is a pure module with no dependencies and can be built at any time; its UI and wiring wait for WS2 and WS4.
@@ -214,6 +215,7 @@ Each flag is read once, at boot, into one `env` property named as in section 10.
 | `FIELDOPS_JOBS_LEASE_SECONDS`, `FIELDOPS_JOBS_HEARTBEAT_SECONDS`, `FIELDOPS_JOBS_SWEEP_SECONDS` | WS0 | The job lease, its heartbeat and the sweeper interval |
 | `FIELDOPS_COMPILE_MAX_LLM_CALLS`, `FIELDOPS_COMPILE_MAX_MINUTES` | WS5 | The ceiling on model calls and on wall-clock time for one compile |
 | `FIELDOPS_BOTS_MAX_AGENCIES`, `FIELDOPS_BOTS_MAX_LLM_PER_HOUR`, `FIELDOPS_BOTS_MAX_LLM_PER_AGENCY_HOUR`, `FIELDOPS_BOTS_MAX_ACTIONS_PER_AGENCY_HOUR`, `FIELDOPS_BOTS_TRAINER_ALLOWLIST` | WS7 | AI agency count, model-call and action budgets, and the trainers allowed to use AI agencies while the flag is staged |
+| **Added 4 Nov 2026.** `SESSION_IDLE_END_MINUTES` (default 30, 0 to 1,440), `SESSION_IDLE_WARN_MINUTES` (5, 0 to 60), `SESSION_MAX_HOURS` (12, 0 to 72) | WS0 | D37: minutes without human activity before any session ends, the warning before it, and the longest a session may run; 0 turns a rule off (`01-prerequisites.md` section 6.15) |
 | **Added 3 Nov 2026.** `FIELDOPS_WORLD_MAX_SESSIONS` (default 4, 0 to 8), `FIELDOPS_WORLD_WORKERS` (2, 1 to 4), `FIELDOPS_WORLD_LEASE_SECONDS` (30, 15 to 120), `FIELDOPS_WORLD_TICK_BUDGET_MS` (250, 50 to 900), `FIELDOPS_WORLD_SNAPSHOT_SECONDS` (60, 30 to 300) | WS9 | Live worlds per process, where 0 runs none and is the operational off switch; worker threads; the world lease; the tick's time budget before the world degrades; the snapshot interval (`11-living-world.md` section 6.13) |
 
 Existing flags this set relies on: `ENABLE_DOCUMENT_BLUEPRINT` (corporate; not used here), `ENABLE_TEAMMATE_BOTS` (corporate; the framework code is reused), `ENABLE_LOCAL_OSM_SINGAPORE` (the legacy map path; the new site picker reads the tables directly and does not depend on it).
@@ -637,3 +639,4 @@ A workstream is done when all of these hold:
 | 25 Oct 2026 | Re-checked against the code at commit 7c16bde, after commits 907bb66, f268e3f, 56d4035 and 7c16bde landed during the reconciliation: every code citation in the set moved to its current line; 10.8 item 34 follows the sitewide suite nav. |
 | 3 Nov 2026 | v1.2. The owner's requirements of 3 Nov are added and marked **Added 3 Nov 2026**: D29 to D36; WS9, the living world, whose spec is not yet written; its flag `ENABLE_FIELDOPS_WORLD_SIM` and migrations 249 to 256; 10.8 items 35 (fire spread kept at compile) and 36 (specs to revise); risks 19 to 22. The physics principle in section 4 is corrected to match item 17. |
 | 3 Nov 2026 | The revisions of item 36, each marked **Added 3 Nov 2026**. 02 and 06 are revised and WS9's spec `11-living-world.md` is written. 10.8 items 37 to 39 settle their contracts, and item 40 brings delayed pins into new-flow sessions (journey finding 13.7). Item 38 records WS9's `signal`, `version` and `buildSpreadLibrary`. Sections 8 and 9 gain WS9's settings and migrations; section 10.3 gains the spread library's routes; section 12 requires one instance while the world runs; risks 12 and 14 are updated. Marked additions in 01, 03, 04, 05, 07, 08, 09 and 10 answer the requests between specs. Section 8's doctrines flag is off only in development and staging. |
+| 4 Nov 2026 | D37, marked **Added 4 Nov 2026**: idle sessions end by themselves after a warning, and every session ends after 12 hours. It is WS0's task T0.23, built first as commit 0, with its three settings in section 8 (`01-prerequisites.md` sections 6.15 and 7.5). Section 12 records the backend's size, checked in Render: one instance, 1 CPU and 2 GB. |
