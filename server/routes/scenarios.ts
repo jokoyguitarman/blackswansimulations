@@ -17,7 +17,12 @@ import {
   backfillBuildingsForScenario,
   snapCoordinate,
 } from '../services/buildingStudService.js';
-import { assertScenarioOwner } from '../lib/access.js';
+import {
+  assertScenarioOwner,
+  joinedScenarioIds,
+  redactScenarioForPlayer,
+  sessionTrainerScenarioIds,
+} from '../lib/access.js';
 import { canEditScenario } from '../services/scenarioEditService.js';
 import { sanitizeTeamTargeting } from '../services/socialCrisisPersistenceService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
@@ -204,11 +209,11 @@ function castPreview(stakeholders: Array<Record<string, unknown>>) {
   return [...groups.values()].slice(0, 3);
 }
 
-// Get all scenarios (active only for non-trainers)
+// Get all scenarios. Admins see every scenario. Trainers see only their own.
+// Players and guests see only scenarios for sessions they have joined.
 router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
-    const isTrainer = user.role === 'trainer' || user.role === 'admin';
     const withSummary = req.query.include === 'summary';
 
     let query = supabaseAdmin
@@ -216,13 +221,16 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
       .select(withSummary ? `${LIST_COLUMNS}, ${SUMMARY_SOURCE_COLUMNS}` : LIST_COLUMNS)
       .order('created_at', { ascending: false });
 
-    // Visibility: admins see every scenario; trainers see only their own
-    // (marketplace model - trainers are independent customers and must not
-    // browse each other's work); non-trainers only see active scenarios.
-    if (user.role === 'trainer') {
+    if (user.role === 'admin') {
+      // no extra filter: an admin still sees the whole library
+    } else if (user.role === 'trainer') {
       query = query.eq('created_by', user.id);
-    } else if (!isTrainer) {
-      query = query.eq('is_active', true);
+    } else {
+      const ids = await joinedScenarioIds(user.id);
+      if (ids.length === 0) {
+        return res.json({ data: [] });
+      }
+      query = query.in('id', ids);
     }
 
     const { data, error } = await query;
@@ -353,12 +361,22 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
       return res.status(500).json({ error: 'Failed to fetch scenario' });
     }
 
-    // Non-trainers can only see active scenarios
-    if (user.role !== 'trainer' && user.role !== 'admin' && !data.is_active) {
+    const isAdmin = user.role === 'admin';
+    const isCreator = data.created_by === user.id && user.role === 'trainer';
+    const trainsThisScenario =
+      user.role === 'trainer' && (await sessionTrainerScenarioIds(user.id)).includes(id);
+    const playsThisScenario =
+      !isAdmin &&
+      !isCreator &&
+      !trainsThisScenario &&
+      (await joinedScenarioIds(user.id)).includes(id);
+
+    if (!isAdmin && !isCreator && !trainsThisScenario && !playsThisScenario) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
-    res.json({ data });
+    const payload = playsThisScenario ? redactScenarioForPlayer(data) : data;
+    res.json({ data: payload });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios/:id');
     res.status(500).json({ error: 'Internal server error' });

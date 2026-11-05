@@ -5,6 +5,7 @@ import { logger } from '../lib/logger.js';
 import { validate } from '../lib/validation.js';
 import { generateScenario } from '../services/aiService.js';
 import { env } from '../env.js';
+import { canTranscribe } from '../lib/access.js';
 
 const router = Router();
 
@@ -99,6 +100,11 @@ router.post(
       const audioBuffer = req.body as Buffer;
       if (!audioBuffer || !Buffer.isBuffer(audioBuffer) || audioBuffer.length < 100) {
         return res.status(400).json({ error: 'No audio data provided' });
+      }
+
+      const allowed = await canTranscribe(req.user!);
+      if (!allowed) {
+        return res.status(403).json({ error: 'Access denied' });
       }
 
       const contentType = req.headers['content-type'] || 'audio/webm';

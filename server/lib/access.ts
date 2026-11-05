@@ -203,6 +203,57 @@ export async function getControlledOrgKeyForUser(
   return getControlledOrgKey(sessionId, user.id);
 }
 
+/** Scenarios this person is running, even when someone else created the scenario. */
+export async function sessionTrainerScenarioIds(userId: string): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('sessions')
+    .select('scenario_id')
+    .eq('trainer_id', userId);
+  return [
+    ...new Set(
+      (data ?? [])
+        .map((row) => row.scenario_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0),
+    ),
+  ];
+}
+
+/** Scenarios this person has joined as a participant. */
+export async function joinedScenarioIds(userId: string): Promise<string[]> {
+  const { data } = await supabaseAdmin
+    .from('session_participants')
+    .select('session_id, sessions!inner(scenario_id)')
+    .eq('user_id', userId);
+  const ids = (data ?? []).map((row) => {
+    const session = row.sessions as { scenario_id: string } | { scenario_id: string }[] | null;
+    const one = Array.isArray(session) ? session[0] : session;
+    return one?.scenario_id;
+  });
+  return [...new Set(ids.filter((id): id is string => typeof id === 'string' && id.length > 0))];
+}
+
+/** Player-facing scenario row: keep the exercise shell, drop trainer-only documents. */
+export function redactScenarioForPlayer<T extends Record<string, unknown>>(row: T): T {
+  const copy = { ...row };
+  delete copy.insider_knowledge;
+  delete copy.blueprint;
+  return copy;
+}
+
+/**
+ * Microphone access. Trainers and admins can dictate from the War Room.
+ * Anyone already on a session can dictate in play. A login with no session cannot.
+ * The audio body has no session id, so this is membership of any session.
+ */
+export async function canTranscribe(user: AccessUser): Promise<boolean> {
+  if (user.role === 'trainer' || user.role === 'admin') return true;
+  const { count } = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('user_id', user.id);
+  return (count ?? 0) > 0;
+}
+
 /** Ensure the select string always includes the columns the helpers rely on. */
 function ensureColumns(select: string): string {
   const cols = new Set(

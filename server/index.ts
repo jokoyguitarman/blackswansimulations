@@ -60,7 +60,7 @@ import { initializeAIInjectScheduler } from './services/aiInjectSchedulerService
 import { initializeChatSurveillance } from './services/chatSurveillanceService.js';
 import { initializeStatementWatchdog } from './services/statementWatchdogService.js';
 import { startGeneratorEngines } from './services/engineTicker.js';
-import jwt from 'jsonwebtoken';
+import { supabaseAdmin } from './lib/supabaseAdmin.js';
 
 const app = express();
 // Trust proxy for correct client IP behind Render/Cloudflare
@@ -159,32 +159,46 @@ app.use(
 // otherwise their progress lines are buffered until the response ends.
 app.use(compression());
 
+// A verified Supabase user id, set only after getUser succeeds. requireAuth still
+// checks the token itself and loads the profile. An unverified bearer token does
+// not get its own rate-limit budget.
+interface RateLimitedRequest extends express.Request {
+  rateLimitUserId?: string;
+}
+
+app.use('/api/', async (req, _res, next) => {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) {
+    next();
+    return;
+  }
+  const token = header.slice('Bearer '.length).trim();
+  if (!token) {
+    next();
+    return;
+  }
+  try {
+    const { data } = await supabaseAdmin.auth.getUser(token);
+    if (data?.user?.id) {
+      (req as RateLimitedRequest).rateLimitUserId = data.user.id;
+    }
+  } catch {
+    // An unusable token falls through to the IP key.
+  }
+  next();
+});
+
 // Per-user rate limiting - significantly increased limits
-// Each authenticated user gets their own limit, preventing one user from affecting others
+// Each verified user gets their own limit, preventing one user from affecting others
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: env.nodeEnv === 'production' ? 10000 : 20000, // 10k per user in prod, 20k in dev
   message: 'Too many requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  // Use user ID for authenticated requests, IP for anonymous
   keyGenerator: (req) => {
-    try {
-      const authHeader = req.headers.authorization;
-      if (authHeader) {
-        const [, token] = authHeader.split(' ');
-        if (token) {
-          // Decode JWT without verification (lightweight)
-          // The token will be verified later by requireAuth middleware
-          const decoded = jwt.decode(token) as { sub?: string } | null;
-          if (decoded?.sub) {
-            return `user:${decoded.sub}`;
-          }
-        }
-      }
-    } catch {
-      // Fall back to IP if token parsing fails
-    }
+    const userId = (req as RateLimitedRequest).rateLimitUserId;
+    if (userId) return `user:${userId}`;
     const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
     if (ip === 'unknown') return 'unknown';
     return ipKeyGenerator(ip);

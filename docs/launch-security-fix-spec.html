@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Launch security fix spec · Prophyion</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,520;9..144,640&family=Outfit:wght@380;460;560&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f6f1e8;
+    --paper: #fffdf9;
+    --ink: #172033;
+    --muted: #5e6674;
+    --brand: #1e3a5f;
+    --brand-deep: #0e1a2b;
+    --accent: #c56a12;
+    --line: #e3d9c8;
+    --line-strong: #cfc3ae;
+    --now: #8f2d2d;
+    --after: #1d6b45;
+    --code: #101820;
+    --shadow: 0 18px 50px rgba(14, 26, 43, 0.08);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 500px at 100% -10%, rgba(197, 106, 18, 0.12), transparent 55%),
+      var(--bg);
+    color: var(--ink);
+    font-family: Outfit, sans-serif;
+    font-weight: 380;
+    font-size: 17px;
+    line-height: 1.6;
+  }
+  a { color: var(--brand); }
+  .hero {
+    background: var(--brand-deep);
+    color: #f6f1e8;
+    padding: 72px 8vw 56px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    right: -80px;
+    top: -80px;
+    width: 360px;
+    height: 360px;
+    border: 1px solid rgba(246, 241, 232, 0.12);
+    border-radius: 50%;
+  }
+  .kicker {
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    font-size: 12px;
+    color: #e0b07a;
+    margin: 0 0 18px;
+  }
+  h1 {
+    font-family: Fraunces, serif;
+    font-weight: 520;
+    font-size: clamp(42px, 6vw, 76px);
+    line-height: 0.95;
+    letter-spacing: -0.03em;
+    margin: 0 0 22px;
+    max-width: 14ch;
+  }
+  .lede {
+    max-width: 62ch;
+    font-size: 19px;
+    color: #d9d3c7;
+    margin: 0;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 860px);
+    gap: 48px;
+    width: min(1180px, calc(100% - 48px));
+    margin: -28px auto 80px;
+    align-items: start;
+  }
+  nav {
+    position: sticky;
+    top: 18px;
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 16px 14px;
+    box-shadow: var(--shadow);
+  }
+  nav p {
+    margin: 0 8px 10px;
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  nav a {
+    display: block;
+    text-decoration: none;
+    color: var(--ink);
+    padding: 7px 8px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  nav a:hover { background: #f3ece1; }
+  nav a span {
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+    margin-right: 6px;
+  }
+  main { min-width: 0; }
+  .panel {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 28px 28px 8px;
+    box-shadow: var(--shadow);
+    margin-bottom: 22px;
+  }
+  .files { width: 100%; border-collapse: collapse; font-size: 15px; }
+  .files th {
+    text-align: left;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 0 12px 10px 0;
+  }
+  .files td {
+    padding: 12px 16px 12px 0;
+    border-top: 1px solid var(--line);
+    vertical-align: top;
+  }
+  code, .mono { font-family: "IBM Plex Mono", monospace; font-size: 0.86em; }
+  .note {
+    background: #f8f1e4;
+    border-left: 3px solid var(--accent);
+    padding: 12px 14px;
+    border-radius: 0 10px 10px 0;
+    margin: 8px 0 22px;
+    color: #3d3428;
+  }
+  section {
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    padding: 34px 32px 28px;
+    margin: 18px 0 26px;
+    box-shadow: var(--shadow);
+  }
+  .sec-no {
+    font-family: Fraunces, serif;
+    font-size: 13px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 6px;
+  }
+  h2 {
+    font-family: Fraunces, serif;
+    font-weight: 520;
+    font-size: 36px;
+    letter-spacing: -0.03em;
+    margin: 0 0 8px;
+    line-height: 1.05;
+  }
+  h3 {
+    font-size: 13px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    margin: 26px 0 10px;
+  }
+  h3.now { color: var(--now); }
+  h3.after { color: var(--after); }
+  p { margin: 0 0 14px; }
+  ul { margin: 0 0 16px; padding-left: 1.15em; }
+  li { margin: 6px 0; }
+  pre {
+    background: var(--code);
+    color: #efe7da;
+    border-radius: 14px;
+    padding: 16px 18px;
+    overflow: auto;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    margin: 0 0 14px;
+  }
+  .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  .tag {
+    display: inline-block;
+    font-size: 11px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 3px 8px;
+    margin-bottom: 8px;
+  }
+  .tag.now { color: #f3d2d2; background: #3a1c1c; }
+  .tag.after { color: #d5f0e2; background: #143326; }
+  table.matrix {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+  }
+  table.matrix th, table.matrix td {
+    text-align: left;
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  table.matrix th {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  table.matrix tr:last-child td { border-bottom: 0; }
+  ol.steps { list-style: none; padding: 0; margin: 0; counter-reset: step; }
+  ol.steps li {
+    counter-increment: step;
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 12px;
+    align-items: start;
+    margin: 0;
+    padding: 12px 0;
+    border-top: 1px solid var(--line);
+  }
+  ol.steps li::before {
+    content: counter(step);
+    font-family: Fraunces, serif;
+    font-size: 22px;
+    color: var(--accent);
+  }
+  .foot {
+    color: var(--muted);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; width: min(100% - 28px, 860px); }
+    nav { position: static; }
+    .pair { grid-template-columns: 1fr; }
+    section, .panel { padding-left: 18px; padding-right: 18px; }
+  }
+</style>
+</head>
+<body>
+<header class="hero">
+  <p class="kicker">Prophyion · implementation spec</p>
+  <h1>Nine fixes. The app keeps running.</h1>
+  <p class="lede">The join page, anonymous sign-in, public image links, and the existing accounts stay. What changes is who the public database key will trust, and what a guest login can ask the server for.</p>
+</header>
+
+<div class="layout">
+  <nav>
+    <p>Contents</p>
+    <a href="#files"><span>00</span>Files</a>
+    <a href="#s1"><span>01</span>Media bucket</a>
+    <a href="#s2"><span>02</span>Scenario rule</a>
+    <a href="#s3"><span>03</span>Scenario API</a>
+    <a href="#s4"><span>04</span>Scene configs</a>
+    <a href="#s5"><span>05</span>Functions</a>
+    <a href="#s6"><span>06</span>Notifications</a>
+    <a href="#s7"><span>07</span>Trainer walls</a>
+    <a href="#s8"><span>08</span>Microphone</a>
+    <a href="#s9"><span>09</span>Rate limit</a>
+    <a href="#after"><span>—</span>After this</a>
+    <a href="#order"><span>—</span>Apply order</a>
+  </nav>
+
+  <main>
+    <div class="panel" id="files">
+      <h2 style="font-size:28px">Where the code lives</h2>
+      <p>One new migration holds every database change. Three existing server files change. No frontend file changes. <code>HomeScreen</code> still calls <code>GET /api/scenarios/:id</code> and still reads <code>initial_state.country</code>.</p>
+      <table class="files">
+        <thead><tr><th>File</th><th>Change</th></tr></thead>
+        <tbody>
+          <tr><td><code>migrations/218_launch_access_locks.sql</code></td><td>New. Storage, scenarios, scenes, trainer policies, functions, notification insert.</td></tr>
+          <tr><td><code>server/lib/access.ts</code></td><td>Helpers for scenario reads and the microphone.</td></tr>
+          <tr><td><code>server/routes/scenarios.ts</code></td><td><code>GET /</code> and <code>GET /:id</code> only.</td></tr>
+          <tr><td><code>server/routes/ai.ts</code></td><td><code>POST /transcribe</code> only.</td></tr>
+          <tr><td><code>server/index.ts</code></td><td>The global rate-limit key. The <code>jsonwebtoken</code> import goes away.</td></tr>
+        </tbody>
+      </table>
+      <p class="note">Left alone: join routes, anonymous sign-in, <code>scenario-assets</code>, <code>aar-exports</code>, <code>rts-scene-images</code>, captcha, and every account row.</p>
+    </div>
+
+    <section id="s1">
+      <p class="sec-no">01 · Storage</p>
+      <h2>Media bucket</h2>
+      <p><code>migrations/170_sim_media_storage_bucket.sql</code> made <code>sim-media</code> public and added two policies. The live bucket is still public, and its size limit is now 500 MB. This fix must not touch the public flag or that limit.</p>
+      <h3 class="now">What it does now</h3>
+      <pre>CREATE POLICY "Public read access for sim-media"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'sim-media');
+
+CREATE POLICY "Service role full access for sim-media"
+ON storage.objects FOR ALL
+USING (bucket_id = 'sim-media')
+WITH CHECK (bucket_id = 'sim-media');</pre>
+      <p>The first policy lets any caller with the public key list every file. The second is named for the service role, but it never checks the role. <code>FOR ALL</code> means select, insert, update, and delete, and an empty role list means everyone. The server does not need it. Uploads in <code>mediaGenerationService</code>, <code>chatSurveillanceService</code>, and <code>socialCrisisWarroom</code> already use the service-role key, which bypasses these policies, then store <code>getPublicUrl()</code> on the post.</p>
+      <p>A public bucket still serves a file to anyone who already has the URL. That is what the images in the sim use. Dropping the policies does not blank those pictures. It stops listing, uploading, overwriting, and deleting through the public key.</p>
+      <h3 class="after">Replacement</h3>
+      <pre>DROP POLICY IF EXISTS "Public read access for sim-media" ON storage.objects;
+DROP POLICY IF EXISTS "Service role full access for sim-media" ON storage.objects;</pre>
+      <p>After this, the storage API refuses list, upload, and delete for anon and authenticated callers. The server keeps uploading. Existing public URLs keep loading.</p>
+    </section>
+
+    <section id="s2">
+      <p class="sec-no">02 · Database</p>
+      <h2>Scenario rule</h2>
+      <p><code>migrations/002_rls_policies.sql</code> lets every signed-in user, including an anonymous guest, read every active scenario. The row includes insider knowledge, the blueprint, the briefing, and the role briefs. The browser does not call this table. A caller using the public key against the database API does. The app screens go through the server, covered in the next section.</p>
+      <div class="pair">
+        <div>
+          <span class="tag now">Now</span>
+          <pre>CREATE POLICY "Anyone authenticated can view active scenarios"
+  ON scenarios FOR SELECT
+  USING (is_active = true AND auth.role() = 'authenticated');</pre>
+        </div>
+        <div>
+          <span class="tag after">After</span>
+          <pre>DROP POLICY IF EXISTS "Anyone authenticated can view active scenarios"
+  ON public.scenarios;
+
+CREATE POLICY "Creators and admins can view scenarios"
+  ON public.scenarios
+  FOR SELECT
+  TO authenticated
+  USING (
+    created_by = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      WHERE up.id = auth.uid()
+        AND up.role = 'admin'
+    )
+  );</pre>
+        </div>
+      </div>
+      <p>A direct read returns a row only to the creator or an admin. A guest, a player, and another trainer get nothing from the public key. Players still receive the scenario from <code>GET /api/scenarios/:id</code>, with insider knowledge and the blueprint removed.</p>
+    </section>
+
+    <section id="s3">
+      <p class="sec-no">03 · Server</p>
+      <h2>Scenario API</h2>
+      <h3 class="now">List, today</h3>
+      <p><code>GET /api/scenarios</code> builds one query, then filters it. An admin has no extra filter. A trainer sees only rows they created. Anyone else, including a guest who has never joined, sees every active scenario. The list columns are the card fields. They do not include insider knowledge or the blueprint.</p>
+      <pre>const isTrainer = user.role === 'trainer' || user.role === 'admin';
+
+let query = supabaseAdmin
+  .from('scenarios')
+  .select(withSummary ? `${LIST_COLUMNS}, ${SUMMARY_SOURCE_COLUMNS}` : LIST_COLUMNS)
+  .order('created_at', { ascending: false });
+
+if (user.role === 'trainer') {
+  query = query.eq('created_by', user.id);
+} else if (!isTrainer) {
+  query = query.eq('is_active', true);
+}</pre>
+      <h3 class="now">One scenario, today</h3>
+      <p><code>GET /api/scenarios/:id</code> loads the entire row. Any trainer can open any scenario, including another trainer's insider knowledge. Any other signed-in user can open any active scenario and receives the full row.</p>
+      <pre>const { data, error } = await supabaseAdmin
+  .from('scenarios').select('*').eq('id', id).single();
+
+if (user.role !== 'trainer' && user.role !== 'admin' && !data.is_active) {
+  return res.status(403).json({ error: 'Access denied' });
+}
+
+res.json({ data });</pre>
+      <p><code>select('*')</code> stays, because <code>ScenarioDetailView</code>, <code>TrainerEnvironmentalTruths</code>, and <code>WarRoomLegacy</code> read <code>insider_knowledge</code> from this response. <code>HomeScreen</code> calls the same route for a player and reads only <code>initial_state.country</code>. That field has to stay.</p>
+      <p class="note">The other scenario routes, such as injects, teams, and locations, already return 403 unless the caller is a trainer or admin. They are not part of this change.</p>
+
+      <h3 class="after">New helpers in server/lib/access.ts</h3>
+      <p>These sit next to the existing session helpers and use the same service-role client. Do not add an unused admin set. The route checks <code>user.role === 'admin'</code> directly.</p>
+      <pre>export async function sessionTrainerScenarioIds(userId: string): Promise&lt;string[]&gt; {
+  const { data } = await supabaseAdmin
+    .from('sessions')
+    .select('scenario_id')
+    .eq('trainer_id', userId);
+  return [...new Set((data ?? []).map((row) => row.scenario_id).filter(Boolean))] as string[];
+}
+
+export async function joinedScenarioIds(userId: string): Promise&lt;string[]&gt; {
+  const { data } = await supabaseAdmin
+    .from('session_participants')
+    .select('session_id, sessions!inner(scenario_id)')
+    .eq('user_id', userId);
+  const ids = (data ?? []).map((row) => {
+    const session = row.sessions as { scenario_id: string } | { scenario_id: string }[];
+    const one = Array.isArray(session) ? session[0] : session;
+    return one?.scenario_id;
+  });
+  return [...new Set(ids.filter((id): id is string =&gt; typeof id === 'string' && id.length &gt; 0))];
+}
+
+export function redactScenarioForPlayer&lt;T extends Record&lt;string, unknown&gt;&gt;(row: T): T {
+  const copy = { ...row };
+  delete copy.insider_knowledge;
+  delete copy.blueprint;
+  return copy;
+}</pre>
+      <ul>
+        <li><code>sessionTrainerScenarioIds</code> is the set of scenarios this person is running. They still need the ground truth, even when someone else created the scenario.</li>
+        <li><code>joinedScenarioIds</code> is the set of scenarios where this person is only a participant.</li>
+        <li><code>redactScenarioForPlayer</code> removes the two trainer-only documents. Description, briefing, and <code>initial_state</code> stay, so the phone can still read the country.</li>
+      </ul>
+
+      <h3 class="after">New list</h3>
+      <p>Leave the summary aggregation that follows this block unchanged. It already runs on whatever rows the query returned.</p>
+      <pre>if (user.role === 'admin') {
+  // an admin still sees the whole library
+} else if (user.role === 'trainer') {
+  query = query.eq('created_by', user.id);
+} else {
+  const ids = await joinedScenarioIds(user.id);
+  if (ids.length === 0) return res.json({ data: [] });
+  query = query.in('id', ids);
+}</pre>
+      <p>A guest who has never joined gets an empty list. A player gets the scenarios for sessions they joined, including a completed session whose scenario is no longer active. A trainer's library and an admin's library stay as they are.</p>
+
+      <h3 class="after">New single scenario</h3>
+      <p>Keep the <code>select('*')</code> load and the 404. Replace the active-scenario check with this. <code>id</code> is the scenario id, and both helpers return scenario ids.</p>
+      <pre>const isAdmin = user.role === 'admin';
+const isCreator = data.created_by === user.id && user.role === 'trainer';
+const trainsThisScenario =
+  user.role === 'trainer' && (await sessionTrainerScenarioIds(user.id)).includes(id);
+const playsThisScenario =
+  !isAdmin && !isCreator && !trainsThisScenario
+  && (await joinedScenarioIds(user.id)).includes(id);
+
+if (!isAdmin && !isCreator && !trainsThisScenario && !playsThisScenario) {
+  return res.status(403).json({ error: 'Access denied' });
+}
+
+const payload = playsThisScenario ? redactScenarioForPlayer(data) : data;
+res.json({ data: payload });</pre>
+      <ul>
+        <li>An admin receives the full row.</li>
+        <li>The trainer who created it receives the full row, so editing and insider knowledge stay.</li>
+        <li>A trainer who is <code>trainer_id</code> on a session of that scenario receives the full row, so the ground-truth panel still works.</li>
+        <li>A participant, including a guest who joined, receives the row without insider knowledge and without the blueprint.</li>
+        <li>Everyone else receives 403.</li>
+      </ul>
+    </section>
+
+    <section id="s4">
+      <p class="sec-no">04 · Database</p>
+      <h2>Scene configs</h2>
+      <p><code>migrations/163_rts_scene_configs.sql</code> lets every caller read every scene, including planted items, casualties, and the blast site. Insert, update, and delete are already limited to the creator. The War Room loads scenes with the service-role client, so it does not use this policy.</p>
+      <div class="pair">
+        <div>
+          <span class="tag now">Now</span>
+          <pre>CREATE POLICY rts_scene_configs_select
+  ON rts_scene_configs
+  FOR SELECT USING (true);</pre>
+        </div>
+        <div>
+          <span class="tag after">After</span>
+          <pre>DROP POLICY IF EXISTS rts_scene_configs_select
+  ON public.rts_scene_configs;
+
+CREATE POLICY rts_scene_configs_select
+  ON public.rts_scene_configs
+  FOR SELECT
+  TO authenticated
+  USING (
+    created_by = auth.uid()
+    OR EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      WHERE up.id = auth.uid()
+        AND up.role = 'admin'
+    )
+  );</pre>
+        </div>
+      </div>
+      <p>The public key can no longer read planted items. The creator and an admin still can. The War Room is unchanged.</p>
+    </section>
+
+    <section id="s5">
+      <p class="sec-no">05 · Database</p>
+      <h2>Five functions</h2>
+      <p>These functions are <code>SECURITY DEFINER</code>. They run with the owner's rights and ignore row security. Postgres grants execute to everyone by default, and the live database still lets the anon role call them. Nothing in <code>server/</code> calls them. The server writes events, sentiment, and notifications with the service-role client.</p>
+      <ul>
+        <li><code>log_session_event</code> inserts an event for whatever session id it is given.</li>
+        <li><code>update_sentiment_snapshot</code> inserts a sentiment row for whatever session id it is given.</li>
+        <li><code>get_unread_notification_count</code> returns the unread count for whatever user id it is given.</li>
+        <li><code>process_accepted_invitations_for_user</code> reads that user's email and enrolls them.</li>
+        <li><code>is_session_participant</code> reports whether a user is on a session.</li>
+      </ul>
+      <h3 class="after">Replacement</h3>
+      <pre>REVOKE ALL ON FUNCTION public.log_session_event(uuid, text, text, uuid, text, jsonb)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.update_sentiment_snapshot(uuid, integer, integer, integer)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.get_unread_notification_count(uuid)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.process_accepted_invitations_for_user(uuid)
+  FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.is_session_participant(uuid, uuid)
+  FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE ON FUNCTION public.log_session_event(uuid, text, text, uuid, text, jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.update_sentiment_snapshot(uuid, integer, integer, integer) TO service_role;
+GRANT EXECUTE ON FUNCTION public.get_unread_notification_count(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.process_accepted_invitations_for_user(uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.is_session_participant(uuid, uuid) TO service_role;
+
+ALTER FUNCTION public.log_session_event(uuid, text, text, uuid, text, jsonb) SET search_path = public;
+ALTER FUNCTION public.update_sentiment_snapshot(uuid, integer, integer, integer) SET search_path = public;
+ALTER FUNCTION public.get_unread_notification_count(uuid) SET search_path = public;
+ALTER FUNCTION public.process_accepted_invitations_for_user(uuid) SET search_path = public;
+ALTER FUNCTION public.is_session_participant(uuid, uuid) SET search_path = public;</pre>
+      <p>Anon and authenticated callers can no longer run these. The service role still can. <code>search_path = public</code> does not change what the function does. It only stops the function from looking up tables in some other schema. Trigger functions such as <code>handle_new_user</code> stay, so signup still creates a profile.</p>
+    </section>
+
+    <section id="s6">
+      <p class="sec-no">06 · Database</p>
+      <h2>Notifications</h2>
+      <p><code>migrations/029_create_notifications_system.sql</code> allows any caller to insert any alert, for any user, on any session. Select and update stay limited to the recipient. The server inserts from <code>socialNotificationService</code> and <code>contentDisputeService</code> with the service-role client.</p>
+      <div class="pair">
+        <div>
+          <span class="tag now">Now</span>
+          <pre>CREATE POLICY "System can create notifications"
+  ON notifications FOR INSERT
+  WITH CHECK (true);</pre>
+        </div>
+        <div>
+          <span class="tag after">After</span>
+          <pre>DROP POLICY IF EXISTS "System can create notifications"
+  ON public.notifications;</pre>
+        </div>
+      </div>
+      <p>There is no replacement insert policy. Guests and signed-in users can no longer plant alerts. The server still can. People can still read and mark their own.</p>
+    </section>
+
+    <section id="s7">
+      <p class="sec-no">07 · Database</p>
+      <h2>Trainer walls</h2>
+      <p>Several policies allow the owner, and then also allow every trainer. That second branch is the hole. Any trainer, with the public key, can read and rewrite another trainer's scenario structure, and can rewrite the roster of any session. The Express routes already check ownership and then use the service-role client, so these screens do not change.</p>
+      <p>The same shape is on all four commands for <code>scenario_locations</code>, <code>scenario_environmental_seeds</code>, and <code>scenario_teams</code>.</p>
+      <div class="pair">
+        <div>
+          <span class="tag now">The hole</span>
+          <pre>EXISTS (
+  SELECT 1 FROM scenarios s
+  WHERE s.id = scenario_locations.scenario_id
+    AND s.created_by = auth.uid()
+)
+OR EXISTS (
+  SELECT 1 FROM user_profiles up
+  WHERE up.id = auth.uid()
+    AND up.role IN ('trainer', 'admin')
+)</pre>
+        </div>
+        <div>
+          <span class="tag after">The wall</span>
+          <pre>EXISTS (
+  SELECT 1 FROM public.scenarios s
+  WHERE s.id = scenario_locations.scenario_id
+    AND s.created_by = auth.uid()
+)
+OR EXISTS (
+  SELECT 1 FROM public.user_profiles up
+  WHERE up.id = auth.uid()
+    AND up.role = 'admin'
+)</pre>
+        </div>
+      </div>
+      <p>Drop and recreate the four policies on each table, keeping the current policy names. Locations are the template. Seeds use <code>scenario_environmental_seeds</code> and the names that already say "environmental seeds". Teams use <code>scenario_teams</code> and the names that already say "teams for their scenarios".</p>
+      <pre>DROP POLICY IF EXISTS "Trainers can view locations for their scenarios" ON public.scenario_locations;
+DROP POLICY IF EXISTS "Trainers can create locations for their scenarios" ON public.scenario_locations;
+DROP POLICY IF EXISTS "Trainers can update locations for their scenarios" ON public.scenario_locations;
+DROP POLICY IF EXISTS "Trainers can delete locations for their scenarios" ON public.scenario_locations;
+
+CREATE POLICY "Trainers can view locations for their scenarios"
+  ON public.scenario_locations FOR SELECT
+  USING ( /* owner of the scenario, or admin */ );
+
+CREATE POLICY "Trainers can create locations for their scenarios"
+  ON public.scenario_locations FOR INSERT
+  WITH CHECK ( /* same check */ );
+
+CREATE POLICY "Trainers can update locations for their scenarios"
+  ON public.scenario_locations FOR UPDATE
+  USING ( /* same check */ );
+
+CREATE POLICY "Trainers can delete locations for their scenarios"
+  ON public.scenario_locations FOR DELETE
+  USING ( /* same check */ );</pre>
+      <p>The full check is the "wall" block above, with the table name swapped in. Select and delete and update use <code>USING</code>. Insert uses <code>WITH CHECK</code>.</p>
+      <h3 class="now">Injects today</h3>
+      <p>Insert does not look at the scenario owner at all. Any trainer can add an inject to any scenario. The participant select policy on injects stays. It is not a cross-trainer write.</p>
+      <pre>CREATE POLICY "Trainers can create injects"
+  ON scenario_injects FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM user_profiles
+      WHERE id = auth.uid()
+        AND role IN ('trainer', 'admin')
+    )
+  );</pre>
+      <h3 class="after">Injects after</h3>
+      <pre>DROP POLICY IF EXISTS "Trainers can create injects" ON public.scenario_injects;
+
+CREATE POLICY "Trainers can create injects"
+  ON public.scenario_injects FOR INSERT
+  WITH CHECK (
+    EXISTS (
+      SELECT 1 FROM public.scenarios s
+      WHERE s.id = scenario_injects.scenario_id
+        AND s.created_by = auth.uid()
+    )
+    OR EXISTS (
+      SELECT 1 FROM public.user_profiles up
+      WHERE up.id = auth.uid() AND up.role = 'admin'
+    )
+  );</pre>
+      <h3 class="now">Session teams today</h3>
+      <p>The session's own trainer is allowed, and then so is every trainer. Select also allows a person to read their own assignment. Update and delete repeat the same session check.</p>
+      <pre>s.trainer_id = auth.uid()
+OR EXISTS (
+  SELECT 1 FROM user_profiles up
+  WHERE up.id = auth.uid()
+    AND up.role IN ('trainer', 'admin')
+)</pre>
+      <h3 class="after">Session teams after</h3>
+      <p>A player can still read their own assignment. Writes belong to that session's trainer, or to an admin. The role list loses <code>trainer</code> and keeps <code>admin</code>.</p>
+      <pre>DROP POLICY IF EXISTS "Users can view their own team assignments" ON public.session_teams;
+DROP POLICY IF EXISTS "Trainers can assign teams" ON public.session_teams;
+DROP POLICY IF EXISTS "Trainers can update team assignments" ON public.session_teams;
+DROP POLICY IF EXISTS "Trainers can remove team assignments" ON public.session_teams;
+
+-- SELECT keeps: user_id = auth.uid() OR session trainer OR admin
+-- INSERT, UPDATE, DELETE keep: session trainer OR admin</pre>
+      <p>A trainer can still edit the scenarios they created and the sessions they run through the app. They can no longer reach another trainer's locations, seeds, teams, injects, or roster through the public key. An admin still can.</p>
+    </section>
+
+    <section id="s8">
+      <p class="sec-no">08 · Server</p>
+      <h2>Microphone</h2>
+      <p><code>POST /api/ai/transcribe</code> requires a login and then sends the audio to the paid speech API. There is no role check and no session check. <code>useVoiceInput</code> posts the recording with the current token and no session id. The button is on chat, the decision form, the map, and the legacy War Room. A guest who has only signed in anonymously, and has never joined, can use it.</p>
+      <h3 class="now">Today</h3>
+      <pre>router.post('/transcribe', requireAuth, raw({ type: ['audio/*', 'application/octet-stream'], limit: '10mb' }),
+  async (req, res) =&gt; {
+    if (!env.openAiApiKey) return res.status(500).json({ error: 'OpenAI API key not configured' });
+    const audioBuffer = req.body as Buffer;
+    if (!audioBuffer || !Buffer.isBuffer(audioBuffer) || audioBuffer.length &lt; 100) {
+      return res.status(400).json({ error: 'No audio data provided' });
+    }
+    // builds FormData and calls the speech API
+  });</pre>
+      <h3 class="after">Helper</h3>
+      <pre>export async function canTranscribe(user: AccessUser): Promise&lt;boolean&gt; {
+  if (user.role === 'trainer' || user.role === 'admin') return true;
+  const { count } = await supabaseAdmin
+    .from('session_participants')
+    .select('user_id', { count: 'exact', head: true })
+    .eq('user_id', user.id);
+  return (count ?? 0) &gt; 0;
+}</pre>
+      <p>A trainer or admin can use the microphone from the War Room without being a participant. Anyone with a <code>session_participants</code> row can use it from chat, decisions, and the map, including a guest after they have joined. A login with no session row is refused. The check is not tied to one session, because the body is raw audio and carries no session id.</p>
+      <h3 class="after">Inserted before the paid call</h3>
+      <pre>const allowed = await canTranscribe(req.user!);
+if (!allowed) return res.status(403).json({ error: 'Access denied' });</pre>
+      <p>A short or missing recording still returns 400 without a database lookup. A refused caller never reaches the speech API. The rest of the handler stays.</p>
+    </section>
+
+    <section id="s9">
+      <p class="sec-no">09 · Server</p>
+      <h2>Rate limit</h2>
+      <p><code>server/index.ts</code> imports <code>jsonwebtoken</code> only for this. The global limiter allows 10,000 requests per 15 minutes in production. The key is a user id taken from the bearer token with <code>jwt.decode</code>, which does not check the signature. A token that was never issued can still supply a <code>sub</code>, and each different value gets its own budget. The join limiter and the contact limiter already key by IP. They stay.</p>
+      <p><code>requireAuth</code> later calls <code>supabaseAdmin.auth.getUser(token)</code>, which does check the token. The limiter runs first, so it cannot see <code>req.user</code>.</p>
+      <h3 class="now">Today</h3>
+      <pre>const decoded = jwt.decode(token) as { sub?: string } | null;
+if (decoded?.sub) return `user:${decoded.sub}`;</pre>
+      <h3 class="after">Verify first, then count</h3>
+      <p>Delete <code>import jwt from 'jsonwebtoken'</code>. Add this middleware immediately before <code>app.use('/api/', limiter)</code>. It stores only a verified user id. It does not set <code>req.user</code>, so <code>requireAuth</code> still checks the token and still loads the profile.</p>
+      <pre>interface RateLimitedRequest extends Request {
+  rateLimitUserId?: string;
+}
+
+app.use('/api/', async (req, _res, next) =&gt; {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return next();
+  const token = header.slice('Bearer '.length).trim();
+  if (!token) return next();
+  try {
+    const { data } = await supabaseAdmin.auth.getUser(token);
+    if (data?.user?.id) (req as RateLimitedRequest).rateLimitUserId = data.user.id;
+  } catch {
+    // an unusable token falls through to the IP key
+  }
+  next();
+});
+
+keyGenerator: (req) =&gt; {
+  const userId = (req as RateLimitedRequest).rateLimitUserId;
+  if (userId) return `user:${userId}`;
+  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
+  if (ip === 'unknown') return 'unknown';
+  return ipKeyGenerator(ip);
+}</pre>
+      <p>A real signed-in user still has their own 10,000-request budget. A missing or rejected token shares the IP budget. The health-check skip stays. This adds one auth lookup on each API request that sends a bearer token, and <code>requireAuth</code> still does a second lookup. That is the cost of not trusting an unverified token. Do not remove the lookup inside <code>requireAuth</code> as part of this change.</p>
+    </section>
+
+    <section id="after">
+      <p class="sec-no">Outcome</p>
+      <h2>Who can do what</h2>
+      <table class="matrix">
+        <thead>
+          <tr><th>Caller</th><th>Scenarios</th><th>Scenes</th><th>Media</th><th>Mic</th><th>Alerts</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Admin</td><td>Full library, full row</td><td>Own scenes, War Room via the server</td><td>Server uploads. Public URLs still load</td><td>Yes</td><td>Server creates them</td></tr>
+          <tr><td>Trainer</td><td>Own library. Full row for those, and for sessions they run</td><td>Scenes they created, War Room via the server</td><td>Same</td><td>Yes</td><td>Same</td></tr>
+          <tr><td>Player or joined guest</td><td>Only joined scenarios. No insider knowledge, no blueprint</td><td>No direct read</td><td>Images on posts still load</td><td>Yes</td><td>Their own only</td></tr>
+          <tr><td>Guest who has not joined</td><td>Empty list. 403 on an id</td><td>No direct read</td><td>Cannot list or upload</td><td>403</td><td>Cannot insert</td></tr>
+          <tr><td>Public key, no login</td><td>No rows</td><td>No rows</td><td>Cannot list or upload. A known image URL still loads</td><td>401</td><td>Cannot insert</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="order">
+      <p class="sec-no">Sequence</p>
+      <h2>Apply it in this order</h2>
+      <ol class="steps">
+        <li>Add the helpers to <code>server/lib/access.ts</code>.</li>
+        <li>Update <code>GET /</code> and <code>GET /:id</code> in <code>server/routes/scenarios.ts</code>.</li>
+        <li>Update <code>POST /transcribe</code> in <code>server/routes/ai.ts</code>.</li>
+        <li>Update the limiter in <code>server/index.ts</code> and remove the <code>jsonwebtoken</code> import.</li>
+        <li>Add <code>migrations/218_launch_access_locks.sql</code> and apply it to the live database.</li>
+      </ol>
+      <p class="foot">Steps 1 to 4 are safe to deploy before the migration. Until the migration runs, the public key can still read scenarios and scenes and can still write the media bucket. The route changes close the server door first. The migration closes the database door.</p>
+    </section>
+  </main>
+</div>
+</body>
+</html>
