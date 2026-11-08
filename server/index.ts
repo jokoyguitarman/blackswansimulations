@@ -60,6 +60,7 @@ import { initializeAIInjectScheduler } from './services/aiInjectSchedulerService
 import { initializeChatSurveillance } from './services/chatSurveillanceService.js';
 import { initializeStatementWatchdog } from './services/statementWatchdogService.js';
 import { startGeneratorEngines } from './services/engineTicker.js';
+import { startSessionIdleSweeper, stopSessionIdleSweeper } from './services/sessionIdleSweeper.js';
 import { supabaseAdmin } from './lib/supabaseAdmin.js';
 
 const app = express();
@@ -103,6 +104,8 @@ if (env.runBackgroundEngines) {
   // AI teammate bots (docs/ai-teammate-bots-plan.md): reconciles in-progress social sessions
   // with bot participants every 60s. No-op when ENABLE_TEAMMATE_BOTS is off.
   getTeammateBotService().startReconciler();
+  // Idle sessions end themselves. No-op when both limits are 0.
+  startSessionIdleSweeper();
 } else {
   logger.warn(
     { nodeEnv: env.nodeEnv },
@@ -330,6 +333,7 @@ const shutdown = async () => {
 
   // Stop inject schedulers
   injectScheduler.stop();
+  stopSessionIdleSweeper();
   aiInjectScheduler.stop();
   chatSurveillance.stop();
   statementWatchdog.stop();

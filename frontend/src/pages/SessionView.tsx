@@ -11,6 +11,7 @@ import { ParticipantManagement } from '../components/Session/ParticipantManageme
 import { TrainerEnvironmentalTruths } from '../components/Session/TrainerEnvironmentalTruths';
 import { TeamAssignmentModal } from '../components/Teams/TeamAssignmentModal';
 import { SessionLobby } from '../components/Session/SessionLobby';
+import { SessionIdleNotice } from '../components/Session/SessionIdleNotice';
 import { WrIcon } from '../components/UI/WarRoomIcon';
 import { artFor } from '../lib/scenarioArt';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
@@ -587,6 +588,7 @@ interface Session {
   join_token?: string | null;
   join_enabled?: boolean;
   join_expires_at?: string | null;
+  trainer_id?: string | null;
   scenarios?: {
     id?: string;
     title: string;
@@ -1645,6 +1647,12 @@ export const SessionView = () => {
 
   return (
     <div className="min-h-screen scanline">
+      {id ? (
+        <SessionIdleNotice
+          sessionId={id}
+          role={session.trainer_id === user?.id || user?.role === 'admin' ? 'trainer' : 'player'}
+        />
+      ) : null}
       {/* Header */}
       <div className="sticky top-16 z-40 military-border border-b-2 border-border bg-surface shadow-md">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">

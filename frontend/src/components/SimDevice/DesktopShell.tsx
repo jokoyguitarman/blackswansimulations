@@ -12,6 +12,7 @@ import { DESKTOP_OPEN_APP_EVENT } from '../../lib/appIntents';
 import { DESKTOP_CLOSE_APP_EVENT } from '../../lib/deviceNav';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { useBoothIdleSignOut } from '../../lib/boothVisitor';
+import { SessionIdleNotice } from '../Session/SessionIdleNotice';
 
 interface WindowState {
   id: string;
@@ -452,6 +453,7 @@ export default function DesktopShell() {
         backgroundPosition: 'center',
       }}
     >
+      {sessionId ? <SessionIdleNotice sessionId={sessionId} role="player" /> : null}
       {/* Desktop Area */}
       <div ref={desktopRef} className="flex-1 relative overflow-hidden">
         {/* Desktop Icons */}

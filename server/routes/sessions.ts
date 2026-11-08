@@ -22,6 +22,11 @@ import { insiderRouter } from './insider.js';
 import { performSweep } from '../services/bombSquadSweepService.js';
 import { hospitalRouter } from './hospital.js';
 import { consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
+import {
+  broadcastIdleEvent,
+  createSupabaseIdleSweepStore,
+  recordKeepalive,
+} from '../services/sessionIdleSweeper.js';
 
 const router = Router();
 
@@ -2791,6 +2796,38 @@ router.post(
     } catch (err) {
       logger.error({ err, sessionId: req.params.id }, 'Sweep endpoint error');
       return res.status(500).json({ error: 'Sweep failed' });
+    }
+  },
+);
+
+// "I'm still here" (docs/field-ops/01-prerequisites.md section 6.15).
+router.post(
+  '/:id/keepalive',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const user = req.user!;
+      const access = await assertSessionAccess(req.params.id, user, 'id, trainer_id, status');
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      const sessionStatus =
+        access.session && typeof access.session.status === 'string' ? access.session.status : '';
+      const result = await recordKeepalive(
+        {
+          store: createSupabaseIdleSweepStore(),
+          broadcast: broadcastIdleEvent,
+        },
+        { sessionId: req.params.id, sessionStatus, userId: user.id },
+      );
+      if (result.status === 409) {
+        return res
+          .status(409)
+          .json({ error: 'This session is not running.', code: 'SESSION_NOT_RUNNING' });
+      }
+      return res.status(204).end();
+    } catch (err) {
+      logger.error({ err }, 'Error in POST /sessions/:id/keepalive');
+      return res.status(500).json({ error: 'Internal server error' });
     }
   },
 );

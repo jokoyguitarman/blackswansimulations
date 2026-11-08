@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { readSessionIdleSettings } from './lib/sessionIdleSettings.js';
 
 const required = (value: string | undefined, name: string): string => {
   if (!value) {
@@ -31,6 +32,8 @@ const aiTemperaturePolicy: AiTemperaturePolicy =
   process.env.AI_TEMPERATURE_POLICY === 'pass' || process.env.AI_TEMPERATURE_POLICY === 'strip'
     ? process.env.AI_TEMPERATURE_POLICY
     : 'auto';
+
+const sessionIdle = readSessionIdleSettings(process.env);
 
 const DEV_SESSION_SECRET = 'dev-secret-change-in-production';
 
@@ -173,6 +176,11 @@ export const env = {
   teammateBotsPregrade: process.env.TEAMMATE_BOTS_PREGRADE === 'true',
   // Base URL the bot runtime uses to call this API. Defaults to loopback on the listening port.
   teammateBotsApiBase: process.env.TEAMMATE_BOTS_API_BASE,
+  // Idle sessions end themselves (docs/field-ops/01-prerequisites.md section 6.15).
+  // 0 turns a rule off. Read once at boot; a change needs a restart.
+  sessionIdleEndMinutes: sessionIdle.idleEndMinutes,
+  sessionIdleWarnMinutes: sessionIdle.idleWarnMinutes,
+  sessionMaxHours: sessionIdle.maxHours,
   // ---------- Stripe payment portal ----------
   // All optional: without a secret key the app boots normally and billing
   // endpoints return 503. Webhook secret comes from `stripe listen` in dev

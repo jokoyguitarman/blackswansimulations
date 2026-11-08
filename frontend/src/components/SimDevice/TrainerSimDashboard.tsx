@@ -7,6 +7,7 @@ import { AdversaryConsole } from './AdversaryConsole';
 import { TeammateConsole } from './TeammateConsole';
 import { MetricSparkline } from './MetricSparkline';
 import { BotBadge } from '../UI/BotBadge';
+import { SessionIdleNotice } from '../Session/SessionIdleNotice';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -1510,6 +1511,7 @@ export default function TrainerSimDashboard() {
 
   return (
     <div className="min-h-screen w-full" style={{ backgroundColor: '#FAF8F4', color: '#172033' }}>
+      {sessionId ? <SessionIdleNotice sessionId={sessionId} role="trainer" /> : null}
       {/* Header */}
       <header
         className="sticky top-16 z-30 flex items-center justify-between px-6 py-3 border-b"
