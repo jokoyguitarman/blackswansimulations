@@ -5,7 +5,7 @@
 **Depends on:** [the master plan](00-master-plan.md#10-shared-contracts) and [the prerequisites spec](01-prerequisites.md#6-server) (WS0: `env.enableFieldopsV2`, `requireFieldopsV2`, the schema-feature helpers, `VALIDATION_FAILED`); for named types only, `02-teams-and-doctrines.md` (the vocabulary) and `03-setup-screen.md` (the readiness rule and lane-props contracts)
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
 **Migrations:** 229, 230, 231, 232 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -169,14 +169,14 @@ So the brief's four colours are all verified: the green dashed ring `#22c55e`, t
 ### 3.6 The server paths today
 
 - `SINGAPORE_BOUNDS` is lat 1.13 to 1.5 and lng 103.58 to 104.1 (`server/services/osmVicinityService.ts:592-597`). The saved data reaches lat 1.508, so the legacy box clips its northern edge.
-- `shouldUseLocalSingaporeCache` uses the saved tables only inside that box and only when asked or when `env.enableLocalOsmSingapore` is on (`server/services/osmVicinityService.ts:608-617`); the flag is read at `server/env.ts:141-143`.
+- `shouldUseLocalSingaporeCache` uses the saved tables only inside that box and only when asked or when `env.enableLocalOsmSingapore` is on (`server/services/osmVicinityService.ts:608-617`); the flag is read at `server/env.ts:144-146`.
 - `fetchLocalSingaporeRouteGeometries` pages 1,000 rows at a time by bounding box and keeps streets by polyline distance (`server/services/osmVicinityService.ts:652-722`). `fetchLocalSingaporeBuildings` does the same for buildings using the nearest vertex (`server/services/osmVicinityService.ts:724-809`).
 - The road query reads an explicit column list from `osm_sg_roads` (`server/services/osmVicinityService.ts:669-673`) and the building query from `osm_sg_buildings` (`server/services/osmVicinityService.ts:737-741`), so new columns do not change what they read.
 - Five public Overpass mirrors are listed in `OVERPASS_ENDPOINTS` (`server/services/osmVicinityService.ts:12-18`).
 - The hospitals, police and fire-station query is `runOverpassQuery` (`server/services/osmVicinityService.ts:167-192`).
 - The whole diagnostic router runs `requireAuth` and `requireStaff` (`server/routes/debug.ts:47`). `/building-studs` parses `osmSource`, `lat`, `lng` and `radius` (`server/routes/debug.ts:68-83`), skips road footprints in local-cache mode (`server/routes/debug.ts:161-168`) and caps road centre-lines by radius (`server/routes/debug.ts:189-196`).
 - The tile proxy interpolates raw `z`, `x` and `y`, rotates the `a`, `b` and `c` subdomains, sends `User-Agent: Prophyion/1.0`, has no timeout and no cache, and answers with `Access-Control-Allow-Origin: *` and a one-day `Cache-Control` (`server/routes/tileProxy.ts:9-36`). It needs no authentication.
-- It is mounted at `server/index.ts:297`, after helmet (`server/index.ts:114-118`), whose version 8.1.0 sends `Cross-Origin-Resource-Policy: same-origin` by default because the options there do not change it, and after the CORS allow-list with credentials (`server/index.ts:121-156`). The app trusts one proxy hop (`server/index.ts:67`), rate-limits every `/api/` request at 10,000 per 15 minutes per user (`server/index.ts:193-211`), parses JSON up to 10 MB (`server/index.ts:252`) and answers unknown routes with `{ "error": "Not found" }` (`server/index.ts:308-310`).
+- It is mounted at `server/index.ts:300`, after helmet (`server/index.ts:117-121`), whose version 8.1.0 sends `Cross-Origin-Resource-Policy: same-origin` by default because the options there do not change it, and after the CORS allow-list with credentials (`server/index.ts:124-159`). The app trusts one proxy hop (`server/index.ts:68`), rate-limits every `/api/` request at 10,000 per 15 minutes per user (`server/index.ts:196-214`), parses JSON up to 10 MB (`server/index.ts:255`) and answers unknown routes with `{ "error": "Not found" }` (`server/index.ts:311-313`).
 - The report-only CSP lists `nominatim.openstreetmap.org` and the OpenStreetMap tile hosts but not the API origin, in either `img-src` or `connect-src` (`frontend/vercel.json:48-49`). In development Vite proxies `/api` to port 3001 (`frontend/vite.config.ts:20-25`).
 
 ### 3.7 The legacy location hand-off and the conventions this spec follows
@@ -1305,7 +1305,7 @@ export const siteCoverageRequestSchema = z.object({
 
 ### 6.3 Routes
 
-Mounted in `server/index.ts` as `app.use('/api/warroom/field-ops/site', fieldOpsSiteRouter)`, next to WS2's field-ops routers after the existing `warroomRouter` mount (`server/index.ts:286`), which has no router-wide middleware and no path under `/field-ops` (`03-setup-screen.md` section 6.11). Every route runs, in this order: WS0's `requireFieldopsV2` gate, `requireAuth`, the trainer check, a per-user limiter, `validate()`, the handler. The gate sits on each route, not on the router, because several routers share the `/api/warroom/field-ops` prefix (master 10.8 item 3; `01-prerequisites.md` section 6.4).
+Mounted in `server/index.ts` as `app.use('/api/warroom/field-ops/site', fieldOpsSiteRouter)`, next to WS2's field-ops routers after the existing `warroomRouter` mount (`server/index.ts:289`), which has no router-wide middleware and no path under `/field-ops` (`03-setup-screen.md` section 6.11). Every route runs, in this order: WS0's `requireFieldopsV2` gate, `requireAuth`, the trainer check, a per-user limiter, `validate()`, the handler. The gate sits on each route, not on the router, because several routers share the `/api/warroom/field-ops` prefix (master 10.8 item 3; `01-prerequisites.md` section 6.4).
 
 | Method and path | Request | 200 body | Cache-Control |
 | --- | --- | --- | --- |
@@ -1324,13 +1324,13 @@ Errors, with the body `{ "error": <sentence>, "code": <CODE>, "details": [...] }
 | 400 | `VALIDATION_FAILED` | `POST /validate` only: the normaliser refuses the site. The body is WS0's `validationErrorBody`, and each detail is `{ field: 'site.<path>', message, code }` with a `SITE_*` code of section 5.2, the same shape WS2's save route returns (`03-setup-screen.md` section 6.4) | "Validation failed", with the normaliser's messages in `details` |
 | 401 | none (existing body) | No or bad token (`requireAuth`) | `Missing authorization header` or `Invalid or expired token` |
 | 403 | `FORBIDDEN` | The user is not a trainer or an admin | "Only trainers can use the War Room" (`server/routes/warroom.ts:198-199`) |
-| 404 | none | `ENABLE_FIELDOPS_V2` is off | `{ "error": "Not found" }`, the same body as the app's 404 handler (`server/index.ts:308-310`) |
+| 404 | none | `ENABLE_FIELDOPS_V2` is off | `{ "error": "Not found" }`, the same body as the app's 404 handler (`server/index.ts:311-313`) |
 | 429 | `RATE_LIMITED` | Over the per-user limit | "Too many map requests. Wait a moment and try again." |
 | 503 | `SITE_DATA_UNAVAILABLE` | A read of the saved tables failed for a reason other than a missing migration | "The saved map data could not be read. Try again in a moment." |
 
 Outside coverage is a state, not an error: `area` answers 200 with `coverage` `outside_bbox` or `no_data_nearby` and empty lists, and `coverage` answers 200 with the point's state.
 
-Per-user limits, keyed `user:<id>` after `requireAuth` with the `perUserLimit` pattern of `server/routes/trainerAgreements.ts:214-222` but a one-minute window: search 120, area 40, validate 30, coverage 60. The global limiter still applies on top (`server/index.ts:193-211`).
+Per-user limits, keyed `user:<id>` after `requireAuth` with the `perUserLimit` pattern of `server/routes/trainerAgreements.ts:214-222` but a one-minute window: search 120, area 40, validate 30, coverage 60. The global limiter still applies on top (`server/index.ts:196-214`).
 
 The trainer check is WS0's one trainer-or-admin guard, `requireFieldopsTrainer` (`01-prerequisites.md`, AC0.40), which answers 403 with the body above; until it lands, the router holds the same middleware: if `req.user.role` is neither `trainer` nor `admin`, answer 403 with that body. The flag gate is WS0's `requireFieldopsV2`, which reads `env.enableFieldopsV2` and answers 404 `{ "error": "Not found" }` when it is off; the value is read once at boot (master section 8), so a change takes effect when the server restarts, with no build.
 
@@ -1612,7 +1612,7 @@ What version 1 lacks, and an owner decision must precede: a `--region` flag in b
 - An upstream 5xx answers 502; other statuses pass through, as today.
 - `createTileProxyRouter(deps)` takes `fetchImpl`, `timeoutMs` and the cache limits, for the test; `tileProxyRouter` stays the default export the app mounts.
 
-Tile requests carry no token, so the global `limiter` already counts them by client address through its `keyGenerator`, at 10,000 per 15 minutes in production (`server/index.ts:193-211`); no second limiter is added. Authentication is not added either: tile images are requested by the browser without an `Authorization` header. The tiles reach the cross-origin production front end only because the tile layer asks for them in CORS mode (`crossOrigin="anonymous"`, `frontend/src/components/SceneEditor/SceneEditor.tsx:1875`): helmet's default `Cross-Origin-Resource-Policy: same-origin` is enforced by browsers on no-cors requests only. `SiteMap` keeps that attribute (section 7.3), which is also what lets auto-trace read the pixels. This is checked by hand in production (manual step M4).
+Tile requests carry no token, so the global `limiter` already counts them by client address through its `keyGenerator`, at 10,000 per 15 minutes in production (`server/index.ts:196-214`); no second limiter is added. Authentication is not added either: tile images are requested by the browser without an `Authorization` header. The tiles reach the cross-origin production front end only because the tile layer asks for them in CORS mode (`crossOrigin="anonymous"`, `frontend/src/components/SceneEditor/SceneEditor.tsx:1875`): helmet's default `Cross-Origin-Resource-Policy: same-origin` is enforced by browsers on no-cors requests only. `SiteMap` keeps that attribute (section 7.3), which is also what lets auto-trace read the pixels. This is checked by hand in production (manual step M4).
 
 ## 7. Client
 
@@ -1981,7 +1981,7 @@ Not applicable: WS3 makes no model call. The footprint radar's model call belong
 
 **Authentication and authorisation.** Every site route runs `requireAuth` and the trainer-or-admin check, and answers 404 while `ENABLE_FIELDOPS_V2` is off (section 6.3). The server reads the tables with the service role, so the route is the only gate. The new tables (`osm_sg_data_versions`, `osm_sg_search_index`, `osm_sg_facilities`) have RLS on and no policy, so the browser's anon key reads nothing (master section 9). The four new functions revoke `EXECUTE` from `PUBLIC`, `anon` and `authenticated` and grant it to `service_role` only, so they cannot be called through the public RPC endpoint either.
 
-**Cost and abuse.** Per-user limits of 120 searches, 40 area reads, 30 validations and 60 coverage checks a minute sit under the global limiter. The area read is bounded three times: the radius is capped at 600 m in SQL, the SQL limits rows to 3,000 buildings and 2,000 streets, and the shaped response to 1,500 buildings, 800 streets, 500 vertices a footprint and 1.5 MB. Server caches are bounded (500 searches, 100 areas, 1,000 tiles or 24 MB). The `/validate` body is bounded by the schema (at most 21 polygons of 501 points); the app-wide JSON limit stays 10 MB (`server/index.ts:252`).
+**Cost and abuse.** Per-user limits of 120 searches, 40 area reads, 30 validations and 60 coverage checks a minute sit under the global limiter. The area read is bounded three times: the radius is capped at 600 m in SQL, the SQL limits rows to 3,000 buildings and 2,000 streets, and the shaped response to 1,500 buildings, 800 streets, 500 vertices a footprint and 1.5 MB. Server caches are bounded (500 searches, 100 areas, 1,000 tiles or 24 MB). The `/validate` body is bounded by the schema (at most 21 polygons of 501 points); the app-wide JSON limit stays 10 MB (`server/index.ts:255`).
 
 **Input handling.** Every query and body goes through `validate()` with the zod schemas of section 6.2. The search text is normalised to letters, digits and single spaces before it reaches SQL, so it carries no `LIKE` wildcard or text-search operator; the SQL still escapes `%`, `_` and backslashes and quotes every text-search token with `quote_literal`. No SQL is built from strings in TypeScript: the functions take parameters, and the names-only fallback passes an escaped value to `ilike`.
 
@@ -2009,7 +2009,7 @@ Not applicable: WS3 makes no model call. The footprint radar's model call belong
 | --- | --- | --- |
 | `ENABLE_FIELDOPS_V2` | `env.enableFieldopsV2`, defined by WS0 in `server/env.ts`, read on every request | The four site routes (404 when off) |
 | `VITE_ENABLE_FIELDOPS_V2` | WS2's page gate | Whether `/warroom/field-ops`, and so `SiteLane`, exists at all |
-| `ENABLE_LOCAL_OSM_SINGAPORE` (existing) | `server/env.ts:141-143` | Nothing: the new code reads the tables directly and does not consult it |
+| `ENABLE_LOCAL_OSM_SINGAPORE` (existing) | `server/env.ts:144-146` | Nothing: the new code reads the tables directly and does not consult it |
 
 Not flag-gated, on purpose: the tile proxy changes (valid requests get the same bytes; only malformed ones change, from an upstream error to 400), the optional auto-trace parameter (the Scene Editor's call is unchanged), the `train` glyph, and the generator and importer changes (operator tools). WS3 adds no non-flag setting to master section 8; its tuning values are the `SITE_LIMITS` constants.
 

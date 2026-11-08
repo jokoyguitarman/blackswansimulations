@@ -5,7 +5,7 @@
 **Depends on:** `00-master-plan.md`, `03-setup-screen.md`, `05-layout-step.md`; it also uses WS0's helpers (`01-prerequisites.md`) and WS5's snapshot table (`06-compile-and-review.md`)
 **Flags:** `ENABLE_FIELDOPS_PHYSICS` (`true`, `admin` or `false`, read through `physicsEnabledFor(role)`); the library reads follow `ENABLE_FIELDOPS_V2`
 **Migrations:** 238, 239, 240, 241, 242 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -131,9 +131,9 @@ Not blast models, so out of this table: adversary-caused patients spawned 5 to 2
 - **Validation.** `validate()` parses `{ body, query, params }` with zod and answers 400 `{ error: 'Validation failed', details }` without a code (`server/lib/validation.ts:5-36`); WS0 adds `code: 'VALIDATION_FAILED'` (master 10.3).
 - **Auth.** `requireAuth` takes the role from app metadata or `user_profiles` (`server/middleware/auth.ts:20-82`); `requireStaff` allows trainer or admin (`server/middleware/auth.ts:87-99`); `requireAdmin` allows admin only (`server/middleware/auth.ts:102-112`). The wizard routes check the role inline and answer "Only trainers can use the War Room" (`server/routes/warroom.ts:198-199`).
 - **Credits.** `isAdmin` (`server/services/creditService.ts:31`) and `hasCredit` (`server/services/creditService.ts:55-58`); the wizard's entry gate `lacksScenarioCredit` is private to its router (`server/routes/warroom.ts:31-39`).
-- **Rate limits.** A global per-user `limiter` on `/api/` (`server/index.ts:193-210`), and per-route limiters keyed on the verified user id after `requireAuth`, as `perUserLimit` does (`server/routes/trainerAgreements.ts:214-222`).
-- **Flags and routers.** Flags are expressions on `env`, for example `enableDocumentBlueprint` (`server/env.ts:140`) and `enableTeammateBots` with its development default (`server/env.ts:155-157`). Routers mount in `server/index.ts`; `warroomRouter` takes `/api/warroom` (`server/index.ts:286`).
-- **Logging.** pino with `redact` paths for authorisation headers, cookies and `*.password`, `*.token`, `*.apiKey`, `*.secret` (`server/lib/logger.ts:28-39`); `pinoHttp` logs requests without bodies (`server/index.ts:245`).
+- **Rate limits.** A global per-user `limiter` on `/api/` (`server/index.ts:196-213`), and per-route limiters keyed on the verified user id after `requireAuth`, as `perUserLimit` does (`server/routes/trainerAgreements.ts:214-222`).
+- **Flags and routers.** Flags are expressions on `env`, for example `enableDocumentBlueprint` (`server/env.ts:143`) and `enableTeammateBots` with its development default (`server/env.ts:158-160`). Routers mount in `server/index.ts`; `warroomRouter` takes `/api/warroom` (`server/index.ts:289`).
+- **Logging.** pino with `redact` paths for authorisation headers, cookies and `*.password`, `*.token`, `*.apiKey`, `*.secret` (`server/lib/logger.ts:28-39`); `pinoHttp` logs requests without bodies (`server/index.ts:248`).
 - **Model calls.** `chatJson` takes `ChatOptions` with a tier, `json` (a strict schema), `maxTokens`, `temperature`, `label`, `budgetKey` and `budgetLimit` (`server/services/ai/chatClient.ts:35-66`, `chatJson` at `server/services/ai/chatClient.ts:421-441`); `JsonSchemaSpec` is `{ name, schema }` (`server/services/ai/chatCore.ts:23-26`).
 - **Bundled files.** Server code reads bundled files relative to `process.cwd()`, as `ASSETS_DIR` does (`server/services/trainerAgreements/template.ts:18`), so they work both under `tsx` and after `tsc`.
 - **Tests.** The root test script lists files explicitly (`package.json:25`); shared modules are tested from `server/lib` with a `.js` import, as for `parseAuthLinkError` (`server/lib/authLinkError.test.ts:1-3`); client tests import TypeScript modules from `frontend/src`, as for `collectSetupIssues` (`frontend/tests/setupValidation.test.ts:1-21`).
@@ -1733,7 +1733,7 @@ export function currentPhysicsMode(): PhysicsFlagMode;      // effectivePhysicsM
 export function physicsEnabledFor(role: string | undefined): boolean;   // physicsModeAllows(currentPhysicsMode(), role)
 ```
 
-`server/index.ts` imports both routers and mounts them immediately before `warroomRouter` (`server/index.ts:286`): `fieldOpsPhysicsRouter` at `/api/warroom/field-ops/physics` and `fieldOpsDevicesRouter` at `/api/field-ops/devices`. The global per-user limiter and the 10 MB JSON parser already apply; the routes add their own limits and the 512 KB size check from `content-length`.
+`server/index.ts` imports both routers and mounts them immediately before `warroomRouter` (`server/index.ts:289`): `fieldOpsPhysicsRouter` at `/api/warroom/field-ops/physics` and `fieldOpsDevicesRouter` at `/api/field-ops/devices`. The global per-user limiter and the 10 MB JSON parser already apply; the routes add their own limits and the 512 KB size check from `content-length`.
 
 ## 7. Client
 
@@ -2610,7 +2610,7 @@ Every commit passes `npm test` (with its new test files added to the script), `n
 | File | Change |
 | --- | --- |
 | `server/env.ts` | Adds `enableFieldopsPhysics` (section 6.9) |
-| `server/index.ts` | Imports the two routers and mounts them before `warroomRouter` (`server/index.ts:286`) |
+| `server/index.ts` | Imports the two routers and mounts them before `warroomRouter` (`server/index.ts:289`) |
 | `package.json` | Adds the fourteen new test files to the `test` script (`package.json:25`) |
 
 **Files other workstreams create that WS6 imports, without changing them** (master 10.8 item 29):

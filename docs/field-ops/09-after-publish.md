@@ -5,7 +5,7 @@
 **Depends on:** 00-master-plan.md, 01-prerequisites.md, 02-teams-and-doctrines.md, 03-setup-screen.md, 05-layout-step.md, 06-compile-and-review.md, 07-device-and-physics.md, 08-people-or-ai.md
 **Flags:** `ENABLE_FIELDOPS_EDITOR`
 **Migrations:** 246, 247, 248, 249 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -126,12 +126,12 @@ Everything in this section was read on the baseline. Citations are to the files 
 
 ### 3.5 Sessions: statuses, start, pause and what a start copies
 
-- **Verified.** The `sessions.status` values are `scheduled`, `in_progress`, `paused`, `completed` and `cancelled` (`migrations/001_initial_schema.sql:84-100`). The update route accepts any of them with no transition rules (`server/routes/sessions.ts:51`) and checks only that the caller is the session's trainer or an admin (`server/routes/sessions.ts:1413-1415`).
-- **Verified.** Start is the branch `status === 'in_progress' && !session.start_time` (`server/routes/sessions.ts:1424-1425`). It re-merges the live `initial_state` into `current_state` (`server/routes/sessions.ts:1429-1463`), clones the template casualties and hazards with `cloneScenarioPinsForSession` (`server/routes/sessions.ts:1472-1482`), initialises objectives, gates and environmental state (`server/routes/sessions.ts:1484-1511`), and only then writes the status (`server/routes/sessions.ts:1518-1523`). The read-time guard is not a compare-and-set, so two starts can both pass (journey finding 11.2).
+- **Verified.** The `sessions.status` values are `scheduled`, `in_progress`, `paused`, `completed` and `cancelled` (`migrations/001_initial_schema.sql:84-100`). The update route accepts any of them with no transition rules (`server/routes/sessions.ts:56`) and checks only that the caller is the session's trainer or an admin (`server/routes/sessions.ts:1418-1420`).
+- **Verified.** Start is the branch `status === 'in_progress' && !session.start_time` (`server/routes/sessions.ts:1429-1430`). It re-merges the live `initial_state` into `current_state` (`server/routes/sessions.ts:1434-1468`), clones the template casualties and hazards with `cloneScenarioPinsForSession` (`server/routes/sessions.ts:1477-1487`), initialises objectives, gates and environmental state (`server/routes/sessions.ts:1489-1516`), and only then writes the status (`server/routes/sessions.ts:1523-1528`). The read-time guard is not a compare-and-set, so two starts can both pass (journey finding 11.2).
 - **Verified.** `cloneScenarioPinsForSession` copies template casualties and hazards into session-owned rows, skips `delayed` hazards and copies the sweep device pool (`server/services/sessionPinCloningService.ts:89-197`).
 - **Verified.** Before that it resets the scenario-level sighting pins with `resetSightingPinsForScenario` (`server/services/sessionPinCloningService.ts:9-79`). Locations are not copied: every session of a scenario shares them.
 - **Verified.** The inject scheduler reads template injects and this session's runtime injects on every tick (`server/services/injectSchedulerService.ts:624-634`), so an edited template inject reaches a session that has not reached its trigger time.
-- **Verified.** The trainer's "Complete Session" button is shown only for `in_progress` (`frontend/src/pages/SessionView.tsx:1723-1730`). No UI sets `paused`, and nothing ends a paused session (journey finding 11.5), so today a paused session locks editing until someone calls the API by hand.
+- **Verified.** The trainer's "Complete Session" button is shown only for `in_progress` (`frontend/src/pages/SessionView.tsx:1731-1738`). No UI sets `paused`, and nothing ends a paused session (journey finding 11.5), so today a paused session locks editing until someone calls the API by hand.
 
 ### 3.6 The corporate pressure engine
 
@@ -274,7 +274,7 @@ The existing `idx_sessions_scenario` index serves it (`migrations/001_initial_sc
 - A finished session keeps what it ran: its hazards, casualties and published injects are its own rows, and its incidents keep their text even if a template inject is later deleted (section 3.8). WS8 pins each session to the revision it started on in `fieldops_session_revisions`, through the start claim or at the runtime's first tick, so a later report or replay can read the right version.
 - Two scenario-level reads can still see a later edit: shared locations, and team charters if field-ops scoring ever adopts `computeTeamScores` (today the AAR calls it for social-media sessions only, section 3.8). Before applying a doctrine refresh or an agency change, the confirm dialog warns when a completed session of the scenario has no After-Action Review yet: "1 finished session has no After-Action Review yet. Generate it first if it should be judged against the current doctrines."
 
-**A paused session must not lock editing for ever.** Today no screen can end a paused session (section 3.5). The lock strip therefore offers **End the paused session** when the live session is paused and the caller is its trainer or an admin. It asks for confirmation ("End the paused session? It is marked completed and cannot be resumed. You can still generate its After-Action Review.") and then calls the existing `PATCH /api/sessions/:id` with `status: 'completed'`, which sets the end time and snapshots final state (`server/routes/sessions.ts:1513-1539`). When another trainer's session holds the lock, the strip says "A session run by another trainer is paused on this scenario. Ask them or an admin to end it." Paused sessions that expire on their own, and a resume control, are out of scope for version 1 (master 10.8 item 26); this action adds no session feature, it only offers the existing route from the lock strip.
+**A paused session must not lock editing for ever.** Today no screen can end a paused session (section 3.5). The lock strip therefore offers **End the paused session** when the live session is paused and the caller is its trainer or an admin. It asks for confirmation ("End the paused session? It is marked completed and cannot be resumed. You can still generate its After-Action Review.") and then calls the existing `PATCH /api/sessions/:id` with `status: 'completed'`, which sets the end time and snapshots final state (`server/routes/sessions.ts:1518-1544`). When another trainer's session holds the lock, the strip says "A session run by another trainer is paused on this scenario. Ask them or an admin to end it." Paused sessions that expire on their own, and a resume control, are out of scope for version 1 (master 10.8 item 26); this action adds no session feature, it only offers the existing route from the lock strip.
 
 ### 4.3 Versioning, concurrency and audit
 
@@ -436,7 +436,7 @@ The kill switch is one row, `fieldops_pressure_switches.id = 'global'`: with `ru
 | --- | --- |
 | `PATCH /api/scenarios/:id` with `refresh_vicinity: true` | 409 `VICINITY_REFRESH_REFUSED`: "This scenario uses the saved map data. Live map downloads are switched off for it." |
 | `POST /api/scenarios/:id/retry-routes` | The same refusal |
-| `POST /api/scenarios/:id/backfill-buildings` | The same refusal; the trainer-map button in a live session shows the message (`frontend/src/pages/SessionView.tsx:2577-2599`) |
+| `POST /api/scenarios/:id/backfill-buildings` | The same refusal; the trainer-map button in a live session shows the message (`frontend/src/pages/SessionView.tsx:2585-2607`) |
 | `POST /api/scenarios/:id/generate-maps`, and the background image after an edit | Allowed: tiles and an overlay, no building, road or address data |
 | The OpenStreetMap tile layer through the tile proxy | Unchanged |
 | Any other legacy write to a published new-flow scenario (its injects, teams, objectives, pins, or a scenario `PATCH` beyond `is_active`) | 409 `FIELDOPS_EDITOR_REQUIRED` (master 10.8 item 27); cloning, deactivating and deleting the scenario stay allowed |
@@ -2983,7 +2983,7 @@ export type StartClaim =
 export async function claimSessionStart(sessionId: string): Promise<StartClaim>;
 ```
 
-The contract WS7 implements in the start branch of `PATCH /api/sessions/:id` (`server/routes/sessions.ts:1424-1425`), which it owns (master 10.8 item 26):
+The contract WS7 implements in the start branch of `PATCH /api/sessions/:id` (`server/routes/sessions.ts:1429-1430`), which it owns (master 10.8 item 26):
 
 ```text
 claim = await claimSessionStart(id)
@@ -3039,7 +3039,7 @@ All bodies are `{ data }` on success and `{ error, code, details? }` on failure 
 
 Direct edits apply at once and answer the new revision; the client then reloads the section it changed. The client follows a regeneration with WS0's `useFieldOpsJob(job_id)`, which polls `GET /api/warroom/field-ops/jobs/:id`, and reads the proposal from the edit-job route when the job completes. The session revision route serves the After-Action Review (master 10.8 item 30): it answers only the revision number and two times, never content, and 404 when the session does not belong to the scenario.
 
-**Pressure** (router `fieldOpsPressureRouter`, `Router({ mergeParams: true })`, mounted at `/api/field-ops/sessions/:id/pressure`, as the bot router is mounted under a session id at `server/index.ts:266`):
+**Pressure** (router `fieldOpsPressureRouter`, `Router({ mergeParams: true })`, mounted at `/api/field-ops/sessions/:id/pressure`, as the bot router is mounted under a session id at `server/index.ts:269`):
 
 | Method and path | Who | Body | Success | Errors |
 | --- | --- | --- | --- | --- |
@@ -3431,8 +3431,8 @@ export const pressureSwitchesSchema = z.object({
 
 ### 6.15 Wiring
 
-- **`server/env.ts`**: one property, in the pattern of `enableTeammateBots` (`server/env.ts:155-157`): `enableFieldopsEditor: process.env.ENABLE_FIELDOPS_EDITOR === 'true' || (nodeEnv !== 'production' && process.env.ENABLE_FIELDOPS_EDITOR !== 'false')`.
-- **`server/index.ts`**: mount `fieldOpsEditorMetaRouter` at `/api/field-ops/editor`, `fieldOpsEditorRouter` at `/api/field-ops/scenarios` and `fieldOpsPressureRouter` at `/api/field-ops/sessions/:id/pressure`, among the API routes and before the 404 handler (`server/index.ts:261-310`). Every route's first middleware is WS0's `requireFieldopsFlag(() => env.enableFieldopsEditor)`, per route rather than per router as WS0 requires, so with the flag off each answers WS0's 404 body and no other router under `/api/field-ops` is shadowed. After `requireAuth`, every route except the session revision route, which participants of the session also read, runs WS0's `requireFieldopsTrainer` (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`), which answers any role other than trainer or admin with 403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` (master 10.8 item 31; `01-prerequisites.md` AC0.40); the two switch routes then keep their admin check, and ownership stays each route's own check (404 on the editor routes, section 6.2). Inside the background-engines block (`server/index.ts:85-106`), start `startPressureTicker(io)` when the flag is on; in the shutdown handler (`server/index.ts:328-352`), await `stopPressureTicker()`. At boot, with the flag on and the schema present, call `fieldops_editor_seed_allowlist` once and log the column count; a failure is logged and the editor reports `not_migrated`.
+- **`server/env.ts`**: one property, in the pattern of `enableTeammateBots` (`server/env.ts:158-160`): `enableFieldopsEditor: process.env.ENABLE_FIELDOPS_EDITOR === 'true' || (nodeEnv !== 'production' && process.env.ENABLE_FIELDOPS_EDITOR !== 'false')`.
+- **`server/index.ts`**: mount `fieldOpsEditorMetaRouter` at `/api/field-ops/editor`, `fieldOpsEditorRouter` at `/api/field-ops/scenarios` and `fieldOpsPressureRouter` at `/api/field-ops/sessions/:id/pressure`, among the API routes and before the 404 handler (`server/index.ts:264-313`). Every route's first middleware is WS0's `requireFieldopsFlag(() => env.enableFieldopsEditor)`, per route rather than per router as WS0 requires, so with the flag off each answers WS0's 404 body and no other router under `/api/field-ops` is shadowed. After `requireAuth`, every route except the session revision route, which participants of the session also read, runs WS0's `requireFieldopsTrainer` (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`), which answers any role other than trainer or admin with 403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` (master 10.8 item 31; `01-prerequisites.md` AC0.40); the two switch routes then keep their admin check, and ownership stays each route's own check (404 on the editor routes, section 6.2). Inside the background-engines block (`server/index.ts:86-109`), start `startPressureTicker(io)` when the flag is on; in the shutdown handler (`server/index.ts:331-356`), await `stopPressureTicker()`. At boot, with the flag on and the schema present, call `fieldops_editor_seed_allowlist` once and log the column count; a failure is logged and the editor reports `not_migrated`.
 - **`server/routes/scenarios.ts`**: the guard line of section 6.10.
 - **`server/routes/injects.ts`**: the template-write check of section 6.10 in the create handler.
 - **WS0's engine**: `regenerate.ts` registers its kind when `fieldOpsEditor.ts` imports it (master 10.8 item 3).
@@ -3445,7 +3445,7 @@ export const pressureSwitchesSchema = z.object({
 | Where | What the trainer does | What appears |
 | --- | --- | --- |
 | Scenario library | Opens a card or presses **Edit** | `ScenarioDetailView` asks for the editor state of a non-corporate scenario. With a state, it renders `FieldOpsScenarioEditor`; on 409 `NOT_FIELDOPS_V2`, 404 (flag off) or `editor: false`, it renders today's field-ops view unchanged; on 409 `SCENARIO_IS_DRAFT`, it shows "This scenario is still a draft. Finish it in Review before it can be edited here." with **Open Review** |
-| The live session, trainer view | Scrolls to the trainer cards | A **Pressure** card (`PressureConsole`) next to the Injects card (`frontend/src/pages/SessionView.tsx:2440-2467`) when the session's scenario has pressure bodies; nothing otherwise |
+| The live session, trainer view | Scrolls to the trainer cards | A **Pressure** card (`PressureConsole`) next to the Injects card (`frontend/src/pages/SessionView.tsx:2448-2475`) when the session's scenario has pressure bodies; nothing otherwise |
 | The After-Action Review page | Opens the report | `PressureAfterActionPanel` below `AARDashboard` (`frontend/src/pages/AARPage.tsx:52-54`) for a session that had pressure bodies; nothing otherwise. `SessionRevisionNote` under the session name in the header, "Ran on revision 7" (master 10.8 item 30), for the trainer and for participants, using the `scenario_id` of the session the page already loads (`frontend/src/pages/AARPage.tsx:17-25`); nothing for a session with no pinned revision |
 
 The change to `ScenarioDetailView` is one probe and one branch, next to the existing branch that mounts `SocialScenarioEditor` for corporate scenarios (`frontend/src/components/Scenario/ScenarioDetailView.tsx:416-426`): the probe runs in parallel with the existing loads, and a failure of the probe always falls back to today's view.

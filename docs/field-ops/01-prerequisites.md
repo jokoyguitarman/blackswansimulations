@@ -5,7 +5,7 @@
 **Depends on:** [the master plan](00-master-plan.md)
 **Flags:** `ENABLE_FIELDOPS_V2` (read once as `env.enableFieldopsV2`, defined here and reused by WS2 to WS5; it gates every `/api/warroom/field-ops/*` route this spec adds). No new flag. Settings: `FIELDOPS_JOBS_MAX_CONCURRENT`, `FIELDOPS_JOBS_MAX_ACTIVE_PER_USER`, `FIELDOPS_JOBS_LEASE_SECONDS`, `FIELDOPS_JOBS_HEARTBEAT_SECONDS`, `FIELDOPS_JOBS_SWEEP_SECONDS`.
 **Migrations:** 219, 220 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -53,7 +53,7 @@
 | --- | --- | --- |
 | P0.1 | Participants and spectators always render `MapView`; the trainer's map shows `MapView` by default with a "Scene preview" toggle that renders `SceneCanvasView` when a scene exists. | `MapView` is the only session-aware, realtime map with the response layer, and it already outlines the trainer's building through the stud overlay (section 3.1). Rebuilding `SceneCanvasView` into a live map would duplicate about 2,200 lines of interaction code. Option comparison in section 6.5.1. |
 | P0.2 | The scene projection is an allow-list of columns and of the keys inside `exits`, `interior_walls` and `stairwells`; the casualty projection is an allow-list of columns plus a deny-list of answer keys inside `conditions`. | Master 10.8 item 12 asks for an allow-list so later columns stay hidden. `conditions` is an open bag the engines write at runtime and the player UI reads a dozen of its keys (section 3.2), so an allow-list there would silently blank live data; the answer keys are a short, named list with a test. |
-| P0.3 | A job's `scope` is `production` only when `NODE_ENV=production` and the process runs on Render (`RENDER` is set); otherwise `local:<hostname>`. A runner claims only jobs of its own scope. | One Supabase project serves every environment (finding 17.17). `server/env.ts:44` already treats `RENDER` as the deploy marker, and `RUN_BACKGROUND_ENGINES` (`server/env.ts:104-114`) exists because a development server once ran production engines. |
+| P0.3 | A job's `scope` is `production` only when `NODE_ENV=production` and the process runs on Render (`RENDER` is set); otherwise `local:<hostname>`. A runner claims only jobs of its own scope. | One Supabase project serves every environment (finding 17.17). `server/env.ts:47` already treats `RENDER` as the deploy marker, and `RUN_BACKGROUND_ENGINES` (`server/env.ts:107-117`) exists because a development server once ran production engines. |
 | P0.4 | `immediate` jobs run inside the request that started them and are never refused for process capacity; they count against the per-trainer cap and use up process capacity for background claims. | The legacy route must keep its response (G0.5) and was never capped; background jobs are the new load the cap protects. |
 | P0.5 | `FIELDOPS_JOBS_MAX_CONCURRENT=0` disables the engine: no claims, the legacy route uses its inline path, and the field-ops routes answer 503 `JOBS_UNAVAILABLE`. | An operational switch without a new flag (the master allocates none to WS0). |
 | P0.6 | `publish_state` is `NOT NULL DEFAULT 'published'`, with a check that a draft is never active. | The constant default is the backfill (existing rows and every insert that omits the column get `published`, as `is_bot` did in `migrations/207_teammate_bots.sql:15-16`). The check keeps drafts out of every reader that filters on `is_active`, whatever code runs. **Updated 8 Nov 2026:** this named the browser read policy "Anyone authenticated can view active scenarios" (`migrations/002_rls_policies.sql:44-46`), which migration 218 replaced with "Creators and admins can view scenarios". |
@@ -75,8 +75,8 @@ All line numbers are at commit `7c16bde` (25 Oct 2026). `server/routes/warroom.t
 
 ### 3.1 Which map a session shows (journey 13.1)
 
-- **Verified.** The session page calls `getSceneConfig` once and stores the answer with `setHasSceneConfig` (`frontend/src/pages/SessionView.tsx:1029-1038`). The route returns the whole `rts_scene_configs` row of the session's scenario, `select('*')` with `.maybeSingle()`, to anyone `assertSessionAccess` admits (`server/routes/sessions.ts:970-1000`).
-- **Verified.** Three places choose the map on that one boolean: the spectator view renders `SceneCanvasView` when it is true and `MapView` when it is false (`frontend/src/pages/SessionView.tsx:1485-1538`); the participant's map module does the same, gated by `id && !isTrainer` (`frontend/src/pages/SessionView.tsx:2193-2279`); and the trainer's "Trainer Map" card does the same inside the trainer grid (`frontend/src/pages/SessionView.tsx:2564-2680`). `isTrainer` is true for the `trainer` and `admin` roles (`frontend/src/hooks/useRoleVisibility.ts:34`).
+- **Verified.** The session page calls `getSceneConfig` once and stores the answer with `setHasSceneConfig` (`frontend/src/pages/SessionView.tsx:1031-1040`). The route returns the whole `rts_scene_configs` row of the session's scenario, `select('*')` with `.maybeSingle()`, to anyone `assertSessionAccess` admits (`server/routes/sessions.ts:975-1005`).
+- **Verified.** Three places choose the map on that one boolean: the spectator view renders `SceneCanvasView` when it is true and `MapView` when it is false (`frontend/src/pages/SessionView.tsx:1487-1540`); the participant's map module does the same, gated by `id && !isTrainer` (`frontend/src/pages/SessionView.tsx:2201-2287`); and the trainer's "Trainer Map" card does the same inside the trainer grid (`frontend/src/pages/SessionView.tsx:2572-2688`). `isTrainer` is true for the `trainer` and `admin` roles (`frontend/src/hooks/useRoleVisibility.ts:34`).
 - **Verified.** The legacy wizard's layout step cannot be left without a saved scene: `stepValid` requires `rtsSceneId` at step 3 (`frontend/src/pages/WarRoom.tsx:526-538`). So every wizard-built scenario has a scene row and every one of its sessions renders `SceneCanvasView`.
 - **Verified.** `SceneCanvasView` declares `sessionId` and `showAllPins` but destructures only `scenarioId`, `height`, `fillHeight` and `onLoaded` (`frontend/src/components/COP/SceneCanvasView.tsx:35-42`, `frontend/src/components/COP/SceneCanvasView.tsx:82-87`). It loads scenario-level data once, by scenario id, through `getScenarioCasualties`, `getScenarioLocations`, `getScenarioHazards` and `getBuildingStuds` (`frontend/src/components/COP/SceneCanvasView.tsx:153-166`). It has no WebSocket subscription and makes no decision, placement, claim or assessment call.
 - **Verified.** `MapView` is session-aware: it loads the session's pins and claims through `getLocations` (`frontend/src/components/COP/MapView.tsx:646-687`), the session's hazards, casualties, placements and floor plans (`frontend/src/components/COP/MapView.tsx:1082-1143`), refreshes them every 30 seconds (`frontend/src/components/COP/MapView.tsx:1145-1191`) and listens to `location.claimed`, `placement.*`, `casualty.*` and the adversary events (`frontend/src/components/COP/MapView.tsx:761-781`).
@@ -87,7 +87,7 @@ All line numbers are at commit `7c16bde` (25 Oct 2026). `server/routes/warroom.t
 
 | Path | What it returns to a participant | Evidence |
 | --- | --- | --- |
-| `GET /api/sessions/:id/scene-config` | The whole scene row, including `planted_items` (the bomb-squad answer key), `enrichment_result`, `hazard_zones` (every hazard, before it appears) and `wall_inspection_points` | `server/routes/sessions.ts:970-1000` (**Verified**) |
+| `GET /api/sessions/:id/scene-config` | The whole scene row, including `planted_items` (the bomb-squad answer key), `enrichment_result`, `hazard_zones` (every hazard, before it appears) and `wall_inspection_points` | `server/routes/sessions.ts:975-1005` (**Verified**) |
 | `GET /api/scenarios/:id/scene-config` | The same whole row, to any signed-in user, with no session, role or owner check | `server/routes/scenarios.ts:3382-3401` (**Verified**) |
 | `GET /api/rts-scenes/:id`, `GET /api/rts-scenes?scenario_id=` | The whole row by id, and a list of scene ids by scenario, to any signed-in user; `PATCH`, `DELETE` and the image upload have no role check either | `server/routes/rtsScenes.ts:73-121`, `server/routes/rtsScenes.ts:124-258` (**Verified**) |
 | `SceneCanvasView` for a participant | The scene and its building studs load; casualties, locations and hazards come from trainer-only routes (`server/routes/scenarios.ts:464-561`), fail with 403 and are replaced by empty arrays (`frontend/src/components/COP/SceneCanvasView.tsx:160-162`). The static preview therefore shows the building, exits and walls, and paints every wall point that holds a planted device red with a bomb icon (`frontend/src/components/COP/SceneCanvasView.tsx:964-969`) with a "Planted Devices" list on click (`frontend/src/components/COP/SceneCanvasView.tsx:1209-1227`) | **Verified** |
@@ -98,9 +98,9 @@ The player map does not paint the true colour: an unassessed casualty is grey an
 
 ### 3.3 The exit gate
 
-- **Verified.** `MapView` renders hazards, casualties and crowds only when `allExitsClaimed`, which is `bypassExitGate || (entryExitPins.length > 0 && entryExitPins.every(claimed))` (`frontend/src/components/COP/MapView.tsx:754-759`, used at `frontend/src/components/COP/MapView.tsx:1877-1936`). Zero entry and exit pins, or one pin no team in the session can claim, therefore leaves the operational layer hidden for the whole session, with the "Plan Your Pathways" banner (`frontend/src/components/COP/MapView.tsx:2089-2117`). The trainer and spectator views pass `bypassExitGate` (`frontend/src/pages/SessionView.tsx:1502`, `frontend/src/pages/SessionView.tsx:2640`).
+- **Verified.** `MapView` renders hazards, casualties and crowds only when `allExitsClaimed`, which is `bypassExitGate || (entryExitPins.length > 0 && entryExitPins.every(claimed))` (`frontend/src/components/COP/MapView.tsx:754-759`, used at `frontend/src/components/COP/MapView.tsx:1877-1936`). Zero entry and exit pins, or one pin no team in the session can claim, therefore leaves the operational layer hidden for the whole session, with the "Plan Your Pathways" banner (`frontend/src/components/COP/MapView.tsx:2089-2117`). The trainer and spectator views pass `bypassExitGate` (`frontend/src/pages/SessionView.tsx:1504`, `frontend/src/pages/SessionView.tsx:2648`).
 - **Verified.** A claim is allowed when `claimable_by` is empty, contains `all`, or contains the team (`server/routes/locations.ts:57-60`); only one claim per pin per session is accepted (`server/routes/locations.ts:43-55`).
-- **Verified.** The locations route already counts claims, but over every entry and exit pin, and reports `all_exits_claimed: false` when there are none (`server/routes/sessions.ts:1147-1158`). No client reads `exit_claim_progress` or `all_exits_claimed` (search of `frontend/src/`).
+- **Verified.** The locations route already counts claims, but over every entry and exit pin, and reports `all_exits_claimed: false` when there are none (`server/routes/sessions.ts:1152-1163`). No client reads `exit_claim_progress` or `all_exits_claimed` (search of `frontend/src/`).
 - **Verified.** The entry and exit pins are derived from the loaded locations by an effect that calls `setEntryExitPins` (`frontend/src/components/COP/MapView.tsx:721-752`).
 - **Verified.** The `location.claimed` handler also calls only `setEntryExitPins` (`frontend/src/components/COP/MapView.tsx:828-842`), while the adversary handlers call `setScenarioLocations` (for example `frontend/src/components/COP/MapView.tsx:930-944`). The effect then rebuilds the pins from locations that never saw the claim, which is the second half of journey 13.9.
 
@@ -117,12 +117,12 @@ The legacy wizard's `CompileStep` calls `wizardDraftPersist` and waits for one r
 7. Runs `stageGenerateAndPersist` and, if it throws, refunds in the same process (`server/routes/warroom.ts:1172-1189`).
 8. Writes the scenario id onto the spend row, marks the draft `persisted`, points the scene row at the new scenario and answers `{ data: { scenarioId, draft_id } }` (`server/routes/warroom.ts:1191-1214`).
 
-Nothing prevents a second request from starting a second compile and a second charge while the first runs (journey 7.5). A deploy or crash between steps 6 and 8 leaves the credit spent and no refund (journey 7.3); the shutdown handler force-exits after 10 seconds (`server/index.ts:347-351`).
+Nothing prevents a second request from starting a second compile and a second charge while the first runs (journey 7.5). A deploy or crash between steps 6 and 8 leaves the credit spent and no refund (journey 7.3); the shutdown handler force-exits after 10 seconds (`server/index.ts:351-355`).
 
 - **Verified.** `stageGenerateAndPersist` loads the trainer scene by `scene_context.rts_scene_id` (`server/services/warroomService.ts:1181-1193`), runs the generator, then calls `persistWarroomScenario` (`server/services/warroomService.ts:1689-1694`), then schedules a deferred building backfill and research linking (`server/services/warroomService.ts:1696-1728`), and returns `{ scenarioId, payload }` (`server/services/warroomService.ts:1730`).
 - **Verified.** `persistWarroomScenario` inserts the scenario row first, with `is_active` set true, before any child row (`server/services/warroomPersistenceService.ts:72-92`), writes the children one statement at a time, and on a thrown error deletes the scenario without checking the result (`server/services/warroomPersistenceService.ts:706-709`). `PersistOptions` carries only the centre, radius and buildings (`server/services/warroomPersistenceService.ts:39-44`).
 - **Verified.** Credits live in the append-only `credit_ledger` (`migrations/193_payment_portal.sql:55-71`). `consume_credit` takes a per-trainer advisory lock, checks the balance, inserts the minus-one spend row and returns the funding invoice (`migrations/193_payment_portal.sql:126-178`); it is revoked from the public roles (`migrations/193_payment_portal.sql:181-185`) and the billing tables have row level security with no policy (`migrations/193_payment_portal.sql:190-195`). `consumeCredit` wraps it, and `refundCredit` inserts a plus-one `refund` row against the same invoice and only logs if that insert fails (`server/services/creditService.ts:60-124`). `isAdmin` is the only bypass (`server/services/creditService.ts:31`). Balances are summed in `getBalances` and served by `GET /api/billing/credits` (`server/routes/billing.ts:383-389`) to the client's `getCredits` (`frontend/src/lib/api.ts:2612-2617`).
-- **Verified.** The other scenario-credit spenders are the quick-generate routes (`server/routes/warroom.ts:275-314`) and the corporate compile (`server/routes/socialCrisisWarroom.ts:1056`); session creation spends a session credit (`server/routes/sessions.ts:1261-1275`). WS0 changes none of them.
+- **Verified.** The other scenario-credit spenders are the quick-generate routes (`server/routes/warroom.ts:275-314`) and the corporate compile (`server/routes/socialCrisisWarroom.ts:1056`); session creation spends a session credit (`server/routes/sessions.ts:1266-1280`). WS0 changes none of them.
 
 ### 3.5 Draft endpoints and input (journey 5.4)
 
@@ -151,7 +151,7 @@ Nothing prevents a second request from starting a second compile and a second ch
 | --- | --- | --- |
 | `GET /api/scenarios` (library, `Sessions` page, create-session picker) | Admins see every row, trainers their own, everyone else only the scenarios of sessions they joined (**updated 8 Nov 2026**: before the launch security fix, every active row) | `server/routes/scenarios.ts:214-345`, visibility at `server/routes/scenarios.ts:224-234`; callers `frontend/src/lib/scenarioLibraryApi.ts:75-83` and `frontend/src/pages/Sessions.tsx:92` |
 | `GET /api/scenarios/:id` | **Updated 8 Nov 2026:** the whole row to an admin, the creator and a trainer running one of its sessions; the row without `insider_knowledge` and `blueprint` to a player of one of its sessions; 403 to anyone else. Before the launch security fix, the whole row to anyone signed in, with inactive rows refused to non-staff | `server/routes/scenarios.ts:348-384` |
-| `POST /api/sessions` | Loads the scenario by id only, then consumes a session credit | `server/routes/sessions.ts:1237-1275` |
+| `POST /api/sessions` | Loads the scenario by id only, then consumes a session credit | `server/routes/sessions.ts:1242-1280` |
 | `POST /api/scenarios/:id/clone` | Staff, no owner check; copies chosen columns and template injects; the copy is inactive | `server/routes/scenarios.ts:1781-1924` |
 | `PATCH /api/scenarios/:id` | Owner or admin; content fields pass `canEditScenario`, `is_active` and the map fields do not | `server/routes/scenarios.ts:1550-1676`, content list at `server/routes/scenarios.ts:1579-1607` |
 | Content edits through `guardScenarioEdit` | Staff, owner, then `canEditScenario` (live session or no session credits gives 423) | `server/routes/scenarios.ts:44-74`, `server/services/scenarioEditService.ts:35-80` |
@@ -165,8 +165,8 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 
 - **Verified.** Missing-schema detection is copied per service. `insertTeamRowsWithOrgColumns` matches the error message against a regular expression and retries without the two columns (`server/services/socialCrisisPersistenceService.ts:61-96`); the pressure engine keeps a module-level tri-state `pageColumnsSupported` that, once false, stays false until the process restarts (`server/services/pressureEngineService.ts:122-147`).
 - **Verified.** `validate()` answers 400 `{ error: 'Validation failed', details: [{ field, message }] }` with no `code` (`server/lib/validation.ts:22-31`). Its readers: the client's `handleResponse` appends `details` to the message (`frontend/src/lib/api.ts:100-133`), `issuesFromServer` maps `details[].field` or `details[].path` onto Setup fields (`frontend/src/components/Scenario/setupValidation.ts:573-715`), and the corporate wizard calls it on a 400 (`frontend/src/pages/SocialCrisisWizard.tsx:638`, `frontend/src/pages/SocialCrisisWizard.tsx:1243`). None branches on a top-level `code`, so adding one is safe.
-- **Verified.** Flags are read once into `env` (`server/env.ts:51-190`); the pattern for "on in development, off in production" is `enableTeammateBots` (`server/env.ts:152-157`). `runBackgroundEngines` is on in production unless `RUN_BACKGROUND_ENGINES=false` and off elsewhere unless it is `true` (`server/env.ts:104-114`); `server/index.ts` starts the schedulers only when it is on (`server/index.ts:76-111`).
-- **Verified.** Routers are mounted in `server/index.ts`; `/api/warroom` is mounted at `server/index.ts:286` and `/api/warroom/social-crisis` after it at `server/index.ts:302`, so several routers already share a prefix. The JSON body limit is 10 MB (`server/index.ts:252`). Shutdown stops the schedulers, closes the server and exits after 10 seconds (`server/index.ts:327-355`).
+- **Verified.** Flags are read once into `env` (`server/env.ts:54-198`); the pattern for "on in development, off in production" is `enableTeammateBots` (`server/env.ts:155-160`). `runBackgroundEngines` is on in production unless `RUN_BACKGROUND_ENGINES=false` and off elsewhere unless it is `true` (`server/env.ts:107-117`); `server/index.ts` starts the schedulers only when it is on (`server/index.ts:77-114`).
+- **Verified.** Routers are mounted in `server/index.ts`; `/api/warroom` is mounted at `server/index.ts:289` and `/api/warroom/social-crisis` after it at `server/index.ts:305`, so several routers already share a prefix. The JSON body limit is 10 MB (`server/index.ts:255`). Shutdown stops the schedulers, closes the server and exits after 10 seconds (`server/index.ts:330-359`).
 - **Verified.** `requireStaff` exists for trainer-or-admin routes (`server/middleware/auth.ts:88-99`). `assertSessionAccess` admits the session's trainer, an admin or a participant and returns the session row with `trainer_id` (`server/lib/access.ts:40-78`); `assertScenarioOwner` admits the creator or an admin (`server/lib/access.ts:115-138`).
 - **Verified.** The root `test` script lists every test file (`package.json:25`), and client tests sit in `frontend/tests/` (`frontend/tests/setupValidation.test.ts:1-21`). A shared module is tested from `server/lib/` with a `.js` suffix (`server/lib/authLinkError.test.ts:1-3`). Client modules kept out of `frontend/src/lib/api.ts` already exist with their own base URL and headers (`frontend/src/lib/scenarioLibraryApi.ts:1-20`).
 
@@ -245,7 +245,7 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
     - `none` at 10:46 when `warnedFor` holds `idle` (**updated 8 Nov 2026**: `warnedFor` is now a list);
     - `end` with `idle` and `idleMinutes` 30 at 10:50.
 
-    Given no human activity at all, the idle clock runs from 10:00. Given steady activity, it answers `warn` with `max_duration` at 21:55 and `end` with `max_duration` at 22:00. **Updated 8 Nov 2026:** at 21:57, with activity at 21:56 and `warnedFor` holding `max_duration`, it answers `none`. With `SESSION_IDLE_END_MINUTES=0` the idle rule never fires; with `SESSION_MAX_HOURS=0` the limit never fires; with `SESSION_IDLE_WARN_MINUTES=0` there is no warning. Proved by `server/services/sessionIdleSweeper.test.ts (new)`, case "the rule".
+    Given no human activity at all, the idle clock runs from 10:00. Given steady activity, it answers `warn` with `max_duration` at 21:55 and `end` with `max_duration` at 22:00. **Updated 8 Nov 2026:** at 21:57, with activity at 21:56 and `warnedFor` holding `max_duration`, it answers `none`. With `SESSION_IDLE_END_MINUTES=0` the idle rule never fires; with `SESSION_MAX_HOURS=0` the limit never fires; with `SESSION_IDLE_WARN_MINUTES=0` there is no warning. Proved by `server/services/sessionIdleSweeper.test.ts`, case "the rule".
 43. **AC0.43** **Added 4 Nov 2026.** Given a session whose only rows in the last hour are chat from a bot account, NPC chat (`sender_id` null, `sender_stakeholder_id` set), engine events (`actor_id` null), the sweeper's own warning and a bot's social post, when `latestHumanActivity` runs, then it answers null. Given one chat message, decision, player action, social post, event or participant join by a human, it answers that row's time. Given a query that fails, it answers the current time. Proved by `sessionIdleSweeper.test.ts`, case "what counts as a person", against an in-memory fake of the store's queries.
 44. **AC0.44** **Added 4 Nov 2026.** Given a session idle for 30 minutes, when `runIdleSweep` runs, then:
     - `completeIfRunning` is called once;
@@ -255,7 +255,7 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 
     Given the trainer ended or paused the session between the read and the write (`completeIfRunning` answers false), nothing else happens. Given an error in one session, the next session is still swept. Given a warning already recorded since the last activity, no second warning is recorded. Proved by `sessionIdleSweeper.test.ts`, case "a sweep".
 45. **AC0.45** **Added 4 Nov 2026.** Given a running session, when its participant presses "I'm still here" (`POST /api/sessions/:id/keepalive`), then one `status_update` event with the participant as `actor_id` and `metadata.kind` `idle_keepalive` is recorded, `session.idle_cleared` is broadcast, and the answer is 204. A second press within 60 seconds records nothing. A bot account gets 204 and nothing is recorded. A session that is not running answers 409 `SESSION_NOT_RUNNING`. The access check before it is the route's existing `assertSessionAccess`. Proved by `sessionIdleSweeper.test.ts`, case "I'm still here", and manual step M14 for the route's 403 and 404.
-46. **AC0.46** **Added 4 Nov 2026.** Given the events `session.idle_warning`, then `session.idle_cleared`, then `session.idle_warning` and `session.auto_ended`, when they reach `idleNoticeReducer`, then the state goes from hidden to warning, back to hidden, to warning, then to ended. **Updated 8 Nov 2026:** a `session.idle_cleared` that arrives while the 12-hour warning shows leaves that warning showing, and one that arrives after the end leaves the end showing. `idleNoticeCopy` gives the four texts of section 7.5, the "I'm still here" button only for the idle warning, and the After-Action Review link only to the trainer. On staging, a session left alone shows the warning at 25 minutes and ends at 30 on all four screens (manual step M14). Proved by `frontend/tests/sessionIdleNotice.test.ts (new)` and manual step M14.
+46. **AC0.46** **Added 4 Nov 2026.** Given the events `session.idle_warning`, then `session.idle_cleared`, then `session.idle_warning` and `session.auto_ended`, when they reach `idleNoticeReducer`, then the state goes from hidden to warning, back to hidden, to warning, then to ended. **Updated 8 Nov 2026:** a `session.idle_cleared` that arrives while the 12-hour warning shows leaves that warning showing, and one that arrives after the end leaves the end showing. `idleNoticeCopy` gives the four texts of section 7.5, the "I'm still here" button only for the idle warning, and the After-Action Review link only to the trainer. On staging, a session left alone shows the warning at 25 minutes and ends at 30 on all four screens (manual step M14). Proved by `frontend/tests/sessionIdleNotice.test.ts` and manual step M14.
 47. **AC0.47** **Added 8 Nov 2026.** Given a session that started at 10:00, a 12-hour warning recorded at 21:55 and a player acting every minute after it, when the sweeps of 21:56 to 21:59 run, then none records a second 12-hour warning. Given an idle warning recorded at 10:45 and a player's chat message at 10:47, when the sweep of 10:48 runs, then it records one `status_update` event with `metadata.kind` `idle_cleared` and broadcasts `session.idle_cleared` once, and the sweep of 10:49 records and broadcasts nothing. Given an idle warning answered with "I'm still here" instead, no clear is recorded, because the press already broadcast one. Given a session that started at 00:00 with its last human activity at 11:28, the idle warning at 11:53 and the 12-hour warning at 11:55 are each recorded once, and the session ends at 11:58 with `idle`. Proved by `sessionIdleSweeper.test.ts`, cases "the markers" and "a sweep".
 
 ## 5. Data model
@@ -1496,7 +1496,7 @@ stateDiagram-v2
 | --- | --- | --- |
 | `server/lib/schemaFeatures.ts (new)` | WS0 | Missing-schema helpers for every spec (master 10.8 item 5) |
 | `server/lib/validation.ts` | touched | `VALIDATION_FAILED` on the 400 body, and `validationErrorBody` for routes that validate by hand |
-| `server/lib/fieldOps/jobSettings.ts (new)` | WS0 | Pure parsing of the `FIELDOPS_JOBS_*` settings, the job scope and the `ENABLE_FIELDOPS_V2` default |
+| `server/lib/fieldOps/jobSettings.ts` | WS0 | Pure parsing of the `FIELDOPS_JOBS_*` settings, the job scope and the `ENABLE_FIELDOPS_V2` default. **Updated 8 Nov 2026:** T0.23 created the file with `readIntSetting` alone; T0.7 adds the rest |
 | `server/lib/fieldOps/requireFieldopsFlag.ts (new)` | WS0 | `requireFieldopsFlag`, `requireFieldopsV2` and the trainer-or-admin guard `requireFieldopsTrainer`, for every field-ops route |
 | `server/lib/participantProjections.ts (new)` | WS0 | Scene and casualty projections and the answer-key audience rule |
 | `server/lib/fieldOps/draftInputSchemas.ts (new)` | WS0 | zod schemas, caps, flow classification and merge rules for the legacy draft endpoints |
@@ -1610,7 +1610,7 @@ enableFieldopsV2: readFieldopsV2Flag(process.env, nodeEnv),
 ```
 
 ```ts
-// server/lib/fieldOps/jobSettings.ts (new). WS0. Pure: no imports from server/env.ts.
+// server/lib/fieldOps/jobSettings.ts. WS0. Pure: no imports from server/env.ts. T0.23 created it with readIntSetting; T0.7 adds the rest.
 export interface FieldopsJobSettings {
   fieldopsJobsMaxConcurrent: number;     // 0 disables the engine (P0.5)
   fieldopsJobsMaxActivePerUser: number;
@@ -1789,12 +1789,12 @@ export function canSeeScenarioAnswerKey(user: AccessUser, scenario: { created_by
 
 | Route | Today | After WS0 |
 | --- | --- | --- |
-| `GET /api/sessions/:id/scene-config` (`server/routes/sessions.ts:970-1000`) | Whole row to every session member | Whole row when `canSeeSessionAnswerKey`, otherwise `projectSceneForParticipant(row, { photos })`, where `photos` is fetched only for a row with `schema_version` 2 (see below). Access check and `{ data }` shape unchanged |
+| `GET /api/sessions/:id/scene-config` (`server/routes/sessions.ts:975-1005`) | Whole row to every session member | Whole row when `canSeeSessionAnswerKey`, otherwise `projectSceneForParticipant(row, { photos })`, where `photos` is fetched only for a row with `schema_version` 2 (see below). Access check and `{ data }` shape unchanged |
 | `GET /api/scenarios/:id/scene-config` (`server/routes/scenarios.ts:3382-3401`, one `maybeSingle` read) | Whole row to any signed-in user | Loads `created_by` and, when 219 is applied, `publish_state` of the scenario. Whole row when `canSeeScenarioAnswerKey`; 404 `{ error: 'Scenario not found' }` when the scenario is a draft and the caller is neither; otherwise the projection, with `photos` for a v2 row as on the session route |
 | Every `/api/rts-scenes` route (`server/routes/rtsScenes.ts:10`, `server/routes/rtsScenes.ts:73`, `server/routes/rtsScenes.ts:94`, `server/routes/rtsScenes.ts:124`, `server/routes/rtsScenes.ts:199-202`, `server/routes/rtsScenes.ts:243`) | `requireAuth` only | `requireAuth, requireStaff` (403 "Trainer or admin access required"). Every caller is a staff page: the Scene Editor, both wizards and the debug page (callers of `frontend/src/lib/rts/sceneConfigApi.ts`) |
 | `GET /api/sessions/:id/casualties`, `GET .../casualties/:casualtyId`, `PATCH .../casualties/:casualtyId`, `POST .../assess` (`server/routes/casualties.ts:40-279`) | `stripGroundTruth` for everyone | Unchanged for the answer-key audience; `projectCasualtyForParticipant` for everyone else, on every row returned |
 | `GET /api/sessions/:id/hazards` and `GET .../hazards/:hazardId` (`server/routes/hazards.ts:16-110`) | `include_zones=true` from any caller returns zones | `include_zones` is honoured only for the answer-key audience; the detail route keeps stripping zones for everyone |
-| `GET /api/sessions/:id/locations` (`server/routes/sessions.ts:1002-1165`) | Counts every entry and exit pin | See section 6.5.4 |
+| `GET /api/sessions/:id/locations` (`server/routes/sessions.ts:1007-1170`) | Counts every entry and exit pin | See section 6.5.4 |
 
 The casualty and hazard routes already load the session through `assertSessionAccess`, whose row carries `trainer_id` (`server/lib/access.ts:257-267`), so the audience check costs no query.
 
@@ -1802,7 +1802,7 @@ The casualty and hazard routes already load the session through `assertSessionAc
 
 #### 6.5.4 The locations route and the exit gate
 
-`GET /api/sessions/:id/locations` (touched) loads the distinct `team_name` values of `session_teams` for the session (one query, next to the claims query at `server/routes/sessions.ts:1051-1063`). For each entry and exit row it adds `claimable_in_session: isPinClaimableInSession(row.claimable_by, sessionTeams)`. It computes `exit_claim_progress` and `all_exits_claimed` with `exitGateState` over those rows, so both now count only claimable pins and `all_exits_claimed` is `true` when there is nothing to claim. No client reads either field today (section 3.3), so the change of meaning is safe. Every other field and filter is unchanged.
+`GET /api/sessions/:id/locations` (touched) loads the distinct `team_name` values of `session_teams` for the session (one query, next to the claims query at `server/routes/sessions.ts:1056-1068`). For each entry and exit row it adds `claimable_in_session: isPinClaimableInSession(row.claimable_by, sessionTeams)`. It computes `exit_claim_progress` and `all_exits_claimed` with `exitGateState` over those rows, so both now count only claimable pins and `all_exits_claimed` is `true` when there is nothing to claim. No client reads either field today (section 3.3), so the change of meaning is safe. Every other field and filter is unchanged.
 
 ### 6.6 Publish state in the existing readers (D24)
 
@@ -2414,7 +2414,7 @@ Claiming (`tick`, every `sweepSeconds` when claiming is on, and on `kick`):
 2. When `sweepSeconds` have passed since the last sweep, `sweep({ scope, maxAgeMinutes: 1440, retentionDays: 7, handlers: registeredHandlers(), unregisteredGraceMinutes: 10 })` runs (own-scope jobs that no registered handler can run are failed and refunded after 10 minutes; jobs older than 24 hours time out; outputs of finished jobs older than 7 days are pruned) and each action is logged. The 10 minutes cover a deploy, when the old release, which may not know a new variant, still sweeps. A local runner's sweep touches only its own scope; only the production sweep also ends abandoned jobs of other scopes, and no sweep ever requeues another scope's job.
 3. Capacity is `maxConcurrent - runningCount()`, where running counts both immediate and claimed jobs in this process. When it is above 0, `claimJobs({ worker, scope, handlers, limit: min(capacity, 5), leaseSeconds })` claims and each claimed job runs as above. An immediate job is never refused for capacity (P0.4).
 
-Stopping (`stop`, on SIGTERM): clear the timers, abort every stage signal with reason `shutdown`, call `releaseLeases(worker)` so the next sweep, on whichever instance, requeues the jobs within `sweepSeconds`, and wait at most 5 seconds for the runs to settle. The process exits 10 seconds after SIGTERM in any case (`server/index.ts:347-351`).
+Stopping (`stop`, on SIGTERM): clear the timers, abort every stage signal with reason `shutdown`, call `releaseLeases(worker)` so the next sweep, on whichever instance, requeues the jobs within `sweepSeconds`, and wait at most 5 seconds for the runs to settle. The process exits 10 seconds after SIGTERM in any case (`server/index.ts:351-355`).
 
 #### 6.10.4 The job view
 
@@ -2443,7 +2443,7 @@ export function stopJobEngine(): Promise<void>;
 
 `startJobEngine` starts the runner with claiming on when `fieldopsJobsMaxConcurrent > 0` and either the scope is local or `env.runBackgroundEngines` is true, so a production process started with `RUN_BACKGROUND_ENGINES=false` serves HTTP and runs immediate jobs only. It logs `fieldops_jobs_engine_started { worker, scope, claim }`. A local server claims only `local:<hostname>` jobs, so it can never take a production job, whatever its `RUN_BACKGROUND_ENGINES` says (P0.3).
 
-`server/index.ts` (touched) gains three lines: the import and mount of `fieldOpsJobsRouter` at `/api/warroom/field-ops`, placed before the `warroomRouter` mount (`server/index.ts:286`), `startJobEngine()` after the block guarded by `runBackgroundEngines` (`server/index.ts:84-111`), and `await stopJobEngine()` as the first step of `shutdown` (`server/index.ts:328-336`). **Added 3 Nov 2026:** WS9's `await stopWorldRuntime()` comes right after it (`11-living-world.md` section 6.11), so with the runner's 5-second wait the world keeps at least 5 of the 10 seconds before the process exits.
+`server/index.ts` (touched) gains three lines: the import and mount of `fieldOpsJobsRouter` at `/api/warroom/field-ops`, placed before the `warroomRouter` mount (`server/index.ts:289`), `startJobEngine()` after the block guarded by `runBackgroundEngines` (`server/index.ts:85-114`), and `await stopJobEngine()` as the first step of `shutdown` (`server/index.ts:331-340`). **Added 3 Nov 2026:** WS9's `await stopWorldRuntime()` comes right after it (`11-living-world.md` section 6.11), so with the runner's 5-second wait the world keeps at least 5 of the 10 seconds before the process exits.
 
 ### 6.11 The compile kind and its variants (master 10.8 items 2, 3 and 20)
 
@@ -2783,11 +2783,11 @@ Master D37. This applies to every session, corporate and field ops, whatever the
 
 **Verified, 4 Nov 2026, why it is needed.** Four corporate sessions started on 29 Oct ran until 4 Nov with no human playing, while their engines and AI teammates kept calling the model, until the OpenAI balance ran out. Today a session ends only in three ways:
 
-- the trainer's `PATCH /api/sessions/:id` with `status: 'completed'`, which sets `end_time`, snapshots the final state for the After-Action Review and pokes the AI-teammate service (`server/routes/sessions.ts:1513-1539`, `server/routes/sessions.ts:1626-1635`);
+- the trainer's `PATCH /api/sessions/:id` with `status: 'completed'`, which sets `end_time`, snapshots the final state for the After-Action Review and pokes the AI-teammate service (`server/routes/sessions.ts:1518-1544`, `server/routes/sessions.ts:1631-1640`);
 - `checkAndAutoCompleteSession`, which does the first two when every objective is resolved and `auto_complete_on_objectives` is on, off by default (`server/services/objectiveTrackingService.ts:270-330`);
 - an admin's SQL.
 
-Nothing ends a session for inactivity. The engines and the AI-teammate reconciler act on every `in_progress` session (`server/services/engineTicker.ts:41-48`, `server/index.ts:85-106`), so a forgotten session costs money for as long as it stays open. A `paused` session runs no engine, so it is left alone.
+Nothing ends a session for inactivity. The engines and the AI-teammate reconciler act on every `in_progress` session (`server/services/engineTicker.ts:41-48`, `server/index.ts:86-109`), so a forgotten session costs money for as long as it stays open. A `paused` session runs no engine, so it is left alone.
 
 **The rule.** Once a minute, the sweeper looks at each `in_progress` session.
 
@@ -2813,10 +2813,10 @@ With the defaults, a session with no human activity gets a warning at 25 minutes
 
 An open browser tab with nobody acting does not count, by design: a display left on would otherwise keep a session alive for days.
 
-**The module.** `server/services/sessionIdleSweeper.ts (new)`:
+**The module.** `server/services/sessionIdleSweeper.ts`:
 
 ```ts
-// server/services/sessionIdleSweeper.ts (new). WS0, master D37. Runs only where env.runBackgroundEngines is true.
+// server/services/sessionIdleSweeper.ts. WS0, master D37. Runs only where env.runBackgroundEngines is true.
 export interface IdleSettings {
   idleEndMinutes: number;   // env.sessionIdleEndMinutes; 0: no idle rule
   idleWarnMinutes: number;  // env.sessionIdleWarnMinutes; 0: no warning
@@ -2915,14 +2915,14 @@ export function stopSessionIdleSweeper(): void;
 3. **`warn`.** Record a `trainer_alert` event with `metadata: { kind: 'idle_warning', reason, ends_at }` and the warning copy of section 7.5 as its `description`. Broadcast `session.idle_warning` with `{ session_id, reason, ends_at, idle_end_minutes, idle_warn_minutes, max_hours }` through `getWebSocketService().broadcastToSession` (`server/services/websocketService.ts:62-73`). Log `session_idle_warning { sessionId, reason, endsAt }`.
 4. **`end`.** Call `completeIfRunning`; when it answers false, stop. Otherwise do what the trainer's end does:
    - `snapshotFinalStateOnCompletion(sessionId)` (`server/services/scenarioStateService.ts:544-573`);
-   - the AI-teammate hook `getTeammateBotService().onBotsChanged(sessionId)`, imported as `server/routes/sessions.ts:1626-1635` imports it.
+   - the AI-teammate hook `getTeammateBotService().onBotsChanged(sessionId)`, imported as `server/routes/sessions.ts:1631-1640` imports it.
 
    Then record a `status_update` event with `metadata: { kind: 'idle_auto_end', reason, idle_minutes, last_human_activity_at }` and the ended copy of section 7.5 as its `description`. Broadcast `session.auto_ended` with `{ session_id, reason, ended_at, idle_end_minutes, idle_warn_minutes, max_hours }`. Log `session_auto_ended { sessionId, reason, idleMinutes }`.
 5. An error in one session is logged as `session_idle_sweep_failed { sessionId }` and never stops the others. No log line carries chat, post or decision text.
 
-**Wiring.** `server/index.ts` (touched) calls `startSessionIdleSweeper()` inside the `if (env.runBackgroundEngines)` block, after `getTeammateBotService().startReconciler()` (`server/index.ts:85-106`), so only the one process that runs the engines sweeps. `shutdown` calls `stopSessionIdleSweeper()` beside `injectScheduler.stop()` (`server/index.ts:328-352`).
+**Wiring.** `server/index.ts` (touched) calls `startSessionIdleSweeper()` inside the `if (env.runBackgroundEngines)` block, after `getTeammateBotService().startReconciler()` (`server/index.ts:86-109`), so only the one process that runs the engines sweeps. `shutdown` calls `stopSessionIdleSweeper()` beside `injectScheduler.stop()` (`server/index.ts:331-356`).
 
-**The settings.** `server/env.ts` (touched) reads them after the teammate-bot settings (`server/env.ts:160-161`). It uses the pure `readSessionIdleSettings(process.env)` in `server/lib/sessionIdleSettings.ts (new)`, which calls `readIntSetting` from `server/lib/fieldOps/jobSettings.ts (new)` exactly as section 6.4 declares it: a missing or non-integer value takes the default, and an integer is clamped to the range. When T0.23 lands before commit 2, it creates `jobSettings.ts` with `readIntSetting` alone, and commit 2 adds the rest of that file.
+**The settings.** `server/env.ts` (touched) reads them after the teammate-bot settings (`server/env.ts:163-164`). It uses the pure `readSessionIdleSettings(process.env)` in `server/lib/sessionIdleSettings.ts`, which calls `readIntSetting` from `server/lib/fieldOps/jobSettings.ts` exactly as section 6.4 declares it: a missing or non-integer value takes the default, and an integer is clamped to the range. When T0.23 lands before commit 2, it creates `jobSettings.ts` with `readIntSetting` alone, and commit 2 adds the rest of that file.
 
 **"I'm still here."** `POST /api/sessions/:id/keepalive` in `server/routes/sessions.ts` (touched), after `requireAuth`. The route does step 1 and hands the rest to `recordKeepalive`:
 
@@ -2967,16 +2967,16 @@ export function chooseSessionMap(input: {
 | Audience | `view` | `showSceneToggle` | `liveMap` (`showAllPins`, `bypassExitGate`, `hidePrebuiltZones`) |
 | --- | --- | --- | --- |
 | `participant` | `live_map` | false | false, false, false (today's player props) |
-| `trainer` | `scene_preview` only when `trainerMapMode` is `scene` and `hasSceneConfig` is true; else `live_map` | `hasSceneConfig === true` | true, true, true (today's trainer props, `frontend/src/pages/SessionView.tsx:2630-2640`) |
-| `spectator_staff` | `live_map` | false | true, true, true (today's spectator props, `frontend/src/pages/SessionView.tsx:1493-1502`) |
+| `trainer` | `scene_preview` only when `trainerMapMode` is `scene` and `hasSceneConfig` is true; else `live_map` | `hasSceneConfig === true` | true, true, true (today's trainer props, `frontend/src/pages/SessionView.tsx:2638-2648`) |
+| `spectator_staff` | `live_map` | false | true, true, true (today's spectator props, `frontend/src/pages/SessionView.tsx:1495-1504`) |
 | `spectator_participant` | `live_map` | false | false, false, true |
 
 Changes in `frontend/src/pages/SessionView.tsx` (touched):
 
 1. A state `trainerMapMode` (`'live'` by default) and `const choice = chooseSessionMap(...)`, with the audience from `isSpectator` and `isTrainer`.
-2. The scene-config check (`frontend/src/pages/SessionView.tsx:1029-1038`) runs only for a trainer who is not in spectator mode; nobody else needs it.
-3. The spectator view renders `MapView` with `choice.liveMap` and keeps `DemoMapAnimator`; the `SceneCanvasView` branch goes (`frontend/src/pages/SessionView.tsx:1485-1491`).
-4. The participant's map module renders `MapView` whenever `mapModuleReady && mapHasBeenOpened`; the `SceneCanvasView` branch goes (`frontend/src/pages/SessionView.tsx:2227-2232`).
+2. The scene-config check (`frontend/src/pages/SessionView.tsx:1031-1040`) runs only for a trainer who is not in spectator mode; nobody else needs it.
+3. The spectator view renders `MapView` with `choice.liveMap` and keeps `DemoMapAnimator`; the `SceneCanvasView` branch goes (`frontend/src/pages/SessionView.tsx:1487-1493`).
+4. The participant's map module renders `MapView` whenever `mapModuleReady && mapHasBeenOpened`; the `SceneCanvasView` branch goes (`frontend/src/pages/SessionView.tsx:2235-2240`).
 5. The trainer map card shows, when `choice.showSceneToggle` is true, a two-button group in its header next to "Backfill Buildings": **Live map** and **Scene preview** (`role="group"`, `aria-label="Trainer map view"`, `aria-pressed` on each button). In scene preview the card renders today's `SceneCanvasView` with `showAllPins`, hides "Inspect Studs", and shows one line under the header: "Scene preview: the scene as you laid it out, including planted devices. It does not update during the session, and players never see it." In live map it renders today's trainer `MapView` unchanged.
 
 `SceneCanvasView` itself does not change, and the scenario detail view keeps using it as the trainer's read-only preview (`frontend/src/components/Scenario/ScenarioDetailView.tsx:2491`).
@@ -3150,7 +3150,7 @@ The warning and the end of section 6.15 reach people through one small banner on
 | `/sim/:sessionId/desktop` | `frontend/src/components/SimDevice/DesktopShell.tsx` | `player` |
 
 ```ts
-// frontend/src/components/Session/sessionIdleNoticeModel.ts (new). WS0. Pure; tested from frontend/tests/.
+// frontend/src/components/Session/sessionIdleNoticeModel.ts. WS0. Pure; tested from frontend/tests/.
 export type IdleNoticeState =
   | { kind: 'hidden' }
   | { kind: 'warning'; reason: 'idle' | 'max_duration'; endsAt: string }
@@ -3168,7 +3168,7 @@ export function idleNoticeCopy(
 
 **Updated 8 Nov 2026:** `session.idle_cleared` hides only the idle warning; a 12-hour warning and the end stay. The sweeper now also sends a clear when players come back by acting (section 6.15, step 2 of the sweep), and activity does not move the 12-hour limit.
 
-`frontend/src/components/Session/SessionIdleNotice.tsx (new)` takes `{ sessionId: string; role: 'trainer' | 'player' }`. It subscribes with `useWebSocket({ sessionId, eventTypes: ['session.idle_warning', 'session.idle_cleared', 'session.auto_ended'], onEvent })` (`frontend/src/hooks/useWebSocket.ts:25-26`) and feeds each event to `idleNoticeReducer`. A warning is a `role="status"` strip across the top; the end is a `role="alert"` strip. `sendKeepalive(sessionId)` in `frontend/src/components/Session/sessionIdleApi.ts (new)` posts to `/api/sessions/:id/keepalive` with its own `apiUrl` and `getAuthHeaders`, the local helpers each SimDevice component already keeps (`frontend/src/components/SimDevice/DeviceShell.tsx:15-31`), so `frontend/src/lib/api.ts` stays untouched, as section 14.2 requires. Times are shown with `toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })`. The warning events carry the three settings as `idle_end_minutes`, `idle_warn_minutes` and `max_hours`, so the client hard-codes no number.
+`frontend/src/components/Session/SessionIdleNotice.tsx` takes `{ sessionId: string; role: 'trainer' | 'player' }`. It subscribes with `useWebSocket({ sessionId, eventTypes: ['session.idle_warning', 'session.idle_cleared', 'session.auto_ended'], onEvent })` (`frontend/src/hooks/useWebSocket.ts:25-26`) and feeds each event to `idleNoticeReducer`. A warning is a `role="status"` strip across the top; the end is a `role="alert"` strip. `sendKeepalive(sessionId)` in `frontend/src/components/Session/sessionIdleApi.ts` posts to `/api/sessions/:id/keepalive` with its own `apiUrl` and `getAuthHeaders`, the local helpers each SimDevice component already keeps (`frontend/src/components/SimDevice/DeviceShell.tsx:16-32`), so `frontend/src/lib/api.ts` stays untouched, as section 14.2 requires. Times are shown with `toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })`. The warning events carry the three settings as `idle_end_minutes`, `idle_warn_minutes` and `max_hours`, so the client hard-codes no number.
 
 **Copy.**
 
@@ -3209,7 +3209,7 @@ Rules for later specs: a new scene column is hidden unless the owning spec adds 
 | A participant may still `PATCH` a casualty's `conditions` and `status` (`server/routes/casualties.ts:105-165`, journey 13.3) | A write-path fix, not a read projection; the player UI sends only coordinates | Privacy programme |
 | Any trainer may read, edit or delete any trainer's scene through `/api/rts-scenes` (journey 4.1); WS0 removes only non-staff access | Owner checks belong with the scene store | WS4 (section 15.4) |
 | For a v2 scene, the trainer's photos and the points they are pinned to reach players (master 10.8 item 28) | The ruling puts them on the runtime map; no device record travels with them, but a photo shows whatever the trainer chose to photograph | WS4 |
-| Spectator mode is still a URL parameter; a participant spectator now gets the participant map, but points of interest and cordons are filtered on the client, as for every player | The server already ships those pins to every player (`server/routes/sessions.ts:1118-1145`); filtering them is the privacy programme's | Privacy programme |
+| Spectator mode is still a URL parameter; a participant spectator now gets the participant map, but points of interest and cordons are filtered on the client, as for every player | The server already ships those pins to every player (`server/routes/sessions.ts:1123-1150`); filtering them is the privacy programme's | Privacy programme |
 | `GET /api/scenarios/:id/building-studs` marks studs that hold any pin, undiscovered casualties included (journey 8.2) | `MapView` needs the grid; occupancy is a separate fix | Privacy programme |
 
 ### 9.3 The job tables, the draft table and the functions
@@ -3353,8 +3353,8 @@ All unit tests use `node:test` through `tsx`, as the root script does (`package.
 | `server/routes/fieldOpsJobs.test.ts (new)` | An Express app with `createFieldOpsJobsRouter(fakes)` on an ephemeral port, called with `fetch`. "flag off hides the routes" (404 `{ error: 'Not found' }` on all four); "participants are refused" (403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` on all four, and no store call); `available()` false gives 503; "start body" (an extra key, a non-boolean `recompile` and a malformed `retry_of` give 400 `VALIDATION_FAILED`; `retry_of_invalid` from the store gives 400 with the `retry_of` detail; a valid body reaches `startCompile` with `recompile` and `retryOf`); "a job is visible to its creator and admins" (another trainer gets 404); list filters and the `limit` bound; "cancel outcomes" (`cancelled`, `cancel_requested`, `not_cancellable` as 409, `not_found` as 404); "compile start outcomes" (legacy and unknown variants 400, a variant whose `enabled()` is false 404 `FIELDOPS_DISABLED`, another trainer's draft 404 `DRAFT_NOT_FOUND`, `DRAFT_NOT_READY` with details, `ALREADY_COMPILED` with the variant's message unless `recompile` is true, 402, 409, 429, 202 with `job_id` and one `kick`) |
 | `frontend/tests/sessionMapChoice.test.ts (new)` | "participants always get the live map" with `hasSceneConfig` `true`, `false` and `null`; "the trainer defaults to the live map and may preview the scene" (toggle only when the scene exists; `scene` mode without a scene stays live); "spectator props follow the role"; `sessionMapAudience` for the four combinations |
 | `frontend/tests/fieldOpsJobPolling.test.ts (new)` | 0 before anything loads; 2,000 ms at 10 s; 5,000 ms at 61 s; 15,000 ms when hidden; 2,000, 4,000, 8,000, 16,000 and 30,000 ms after one to five errors; `null` for each finished status; option overrides; `isNewerJobView` with an older `updated_at`, a newer one and a finished view arriving before a running one |
-| `server/services/sessionIdleSweeper.test.ts (new)` | **Added 4 Nov 2026.** "the rule" (AC0.42): `decideIdleAction` at each minute of AC0.42, the 12-hour limit, and each setting at 0. "what counts as a person" (AC0.43): an in-memory fake of the six sources, with bot, NPC, engine and human rows, and a failing query answering now. "a sweep" (AC0.44): `runIdleSweep` with a fake store, a fixed clock and spies for `onEnded` and `broadcast`; a lost compare-and-set, an error in one of two sessions, no repeated warning. "I'm still here" (AC0.45): `recordKeepalive` for a person, a second press within 60 seconds, a bot and a session that is not running. "settings": `readSessionIdleSettings` gives 30, 5 and 12 from an empty source, clamps `'5000'` to 1,440 and reads `'abc'` as the default. **Added 8 Nov 2026:** "the markers" (AC0.47): `readIdleMarkers` with a 12-hour warning older than the last activity (it stands), an idle warning older than the last activity with and without a later `idle_cleared` or `idle_keepalive` (clear only without), and an idle warning newer than the last activity (it stands, no clear). "a sweep" adds the cases of AC0.47, with a fake store whose `listIdleMarkers` reads back the events the sweep records |
-| `frontend/tests/sessionIdleNotice.test.ts (new)` | **Added 4 Nov 2026.** `idleNoticeReducer` over the event sequence of AC0.46; `idleNoticeCopy` for the four texts of section 7.5 with a fixed `formatTime`, the button only for the idle warning, the After-Action Review link only for the trainer. **Added 8 Nov 2026:** a `session.idle_cleared` while the 12-hour warning shows, and one after the end, change nothing |
+| `server/services/sessionIdleSweeper.test.ts` | **Added 4 Nov 2026.** "the rule" (AC0.42): `decideIdleAction` at each minute of AC0.42, the 12-hour limit, and each setting at 0. "what counts as a person" (AC0.43): an in-memory fake of the six sources, with bot, NPC, engine and human rows, and a failing query answering now. "a sweep" (AC0.44): `runIdleSweep` with a fake store, a fixed clock and spies for `onEnded` and `broadcast`; a lost compare-and-set, an error in one of two sessions, no repeated warning. "I'm still here" (AC0.45): `recordKeepalive` for a person, a second press within 60 seconds, a bot and a session that is not running. "settings": `readSessionIdleSettings` gives 30, 5 and 12 from an empty source, clamps `'5000'` to 1,440 and reads `'abc'` as the default. **Added 8 Nov 2026:** "the markers" (AC0.47): `readIdleMarkers` with a 12-hour warning older than the last activity (it stands), an idle warning older than the last activity with and without a later `idle_cleared` or `idle_keepalive` (clear only without), and an idle warning newer than the last activity (it stands, no clear). "a sweep" adds the cases of AC0.47, with a fake store whose `listIdleMarkers` reads back the events the sweep records |
+| `frontend/tests/sessionIdleNotice.test.ts` | **Added 4 Nov 2026.** `idleNoticeReducer` over the event sequence of AC0.46; `idleNoticeCopy` for the four texts of section 7.5 with a fixed `formatTime`, the button only for the idle warning, the After-Action Review link only for the trainer. **Added 8 Nov 2026:** a `session.idle_cleared` while the 12-hour warning shows, and one after the end, change nothing |
 | `frontend/tests/fieldOpsDescribeJob.test.ts (new)` | Every row of the copy deck in section 7.3, with the step text ("Step 1 of 2" for `stage_index` 0 and `stage_count` 2) and the refund sentence for `none`, `refunded` and `kept`; `formatJobDuration` for 45 s, 60 s and 252 s |
 
 ### 11.2 Fixtures
@@ -3409,7 +3409,7 @@ frontend/tests/fieldOpsJobPolling.test.ts
 frontend/tests/fieldOpsDescribeJob.test.ts
 ```
 
-**Added 4 Nov 2026.** Task T0.23 appends its two files first, because commit 0 lands before the others: `server/services/sessionIdleSweeper.test.ts (new)` and `frontend/tests/sessionIdleNotice.test.ts (new)`.
+**Added 4 Nov 2026.** Task T0.23 appends its two files first, because commit 0 lands before the others: `server/services/sessionIdleSweeper.test.ts` and `frontend/tests/sessionIdleNotice.test.ts`.
 
 ## 12. Tasks
 
@@ -3453,7 +3453,7 @@ The order follows the brief: the live map alone first, then the helpers, then 21
    - Tests: `validation.test.ts`. Commit: 2.
 7. **T0.7 The flag, the settings and the route gate.**
    - Goal: `env.enableFieldopsV2`, the job settings, `requireFieldopsV2` and the trainer guard `requireFieldopsTrainer` that every field-ops router uses.
-   - Files: `server/lib/fieldOps/jobSettings.ts (new)`, `server/lib/fieldOps/jobSettings.test.ts (new)`, `server/lib/fieldOps/requireFieldopsFlag.ts (new)`, `server/env.ts` (touched).
+   - Files: `server/lib/fieldOps/jobSettings.ts` (touched; **updated 8 Nov 2026**: T0.23 created it with `readIntSetting`, which stays as it is), `server/lib/fieldOps/jobSettings.test.ts (new)`, `server/lib/fieldOps/requireFieldopsFlag.ts (new)`, `server/env.ts` (touched).
    - Steps: section 6.4. The repository has no environment example file, so the defaults live in `JOB_SETTING_BOUNDS` and in section 10.1 only.
    - Done when: the server boots with no new variable set and logs nothing new; the AC0.33 cases pass.
    - Tests: `jobSettings.test.ts`. Commit: 2.
@@ -3547,11 +3547,11 @@ The order follows the brief: the live map alone first, then the helpers, then 21
     - Steps: section 6.5.3, "Photos for v2 rows". Land it after WS4's migrations 233 and 234 and its layout module.
     - Done when: AC0.35 and the v2 half of M4 pass; a thrown photo call logs `fieldops_scene_photos_failed` and the map still loads.
     - Tests: `participantProjections.test.ts` (the pure half, from T0.3); manual M4. Commit: 7.
-23. **T0.23 Idle sessions end by themselves (added 4 Nov 2026; master D37). Build this first.**
+23. **T0.23 Idle sessions end by themselves (added 4 Nov 2026; master D37). Build this first.** **Updated 8 Nov 2026:** built, committed as `1cd539a` and live in production; manual step M14 is still to run.
     - Goal: sections 6.15 and 7.5; AC0.42 to AC0.47.
-    - **Updated 8 Nov 2026**, after the first build was reviewed: a revision touches only `server/services/sessionIdleSweeper.ts (new)`, `server/services/sessionIdleSweeper.test.ts (new)`, `frontend/src/components/Session/sessionIdleNoticeModel.ts (new)` and `frontend/tests/sessionIdleNotice.test.ts (new)`. It brings in the list `warnedFor`, `listIdleMarkers` and `readIdleMarkers`, the sweep's clear step (section 6.15), the reducer's change (section 7.5), the updates to AC0.42 and AC0.46, and AC0.47.
+    - **Updated 8 Nov 2026**, after the first build was reviewed: a revision touches only `server/services/sessionIdleSweeper.ts`, `server/services/sessionIdleSweeper.test.ts`, `frontend/src/components/Session/sessionIdleNoticeModel.ts` and `frontend/tests/sessionIdleNotice.test.ts`. It brings in the list `warnedFor`, `listIdleMarkers` and `readIdleMarkers`, the sweep's clear step (section 6.15), the reducer's change (section 7.5), the updates to AC0.42 and AC0.46, and AC0.47.
     - Files:
-      - new: `server/services/sessionIdleSweeper.ts (new)`, `server/lib/sessionIdleSettings.ts (new)`, `server/lib/fieldOps/jobSettings.ts (new)` (`readIntSetting` only, when commit 2 has not landed), `frontend/src/components/Session/SessionIdleNotice.tsx (new)`, `frontend/src/components/Session/sessionIdleNoticeModel.ts (new)`, `frontend/src/components/Session/sessionIdleApi.ts (new)`, `server/services/sessionIdleSweeper.test.ts (new)`, `frontend/tests/sessionIdleNotice.test.ts (new)`;
+      - new: `server/services/sessionIdleSweeper.ts`, `server/lib/sessionIdleSettings.ts`, `server/lib/fieldOps/jobSettings.ts` (`readIntSetting` only, when commit 2 has not landed), `frontend/src/components/Session/SessionIdleNotice.tsx`, `frontend/src/components/Session/sessionIdleNoticeModel.ts`, `frontend/src/components/Session/sessionIdleApi.ts`, `server/services/sessionIdleSweeper.test.ts`, `frontend/tests/sessionIdleNotice.test.ts`;
       - touched: `server/env.ts`, `server/index.ts`, `server/routes/sessions.ts` (the keepalive route only), `frontend/src/pages/SessionView.tsx`, `frontend/src/components/SimDevice/TrainerSimDashboard.tsx`, `frontend/src/components/SimDevice/DeviceShell.tsx`, `frontend/src/components/SimDevice/DesktopShell.tsx` (one `SessionIdleNotice` each), `package.json` (the two test files).
     - Steps:
       1. The settings and their reader, with their test.
@@ -3561,7 +3561,7 @@ The order follows the brief: the live map alone first, then the helpers, then 21
       5. The wiring in `server/index.ts`.
       6. The pure notice model and its test, then the component and its four mounts.
     - Done when: AC0.42 to AC0.47 pass; `npm test`, `npx tsc --noEmit` and `npm --prefix frontend run build` pass; on a development server with `RUN_BACKGROUND_ENGINES=true` pointed at a Supabase branch, never the shared project (its engines would sweep production sessions), a session left alone is warned at 25 minutes and completed at 30; M14 passes on staging.
-    - Tests: `server/services/sessionIdleSweeper.test.ts (new)`, `frontend/tests/sessionIdleNotice.test.ts (new)`; manual M14. Commit: 0.
+    - Tests: `server/services/sessionIdleSweeper.test.ts`, `frontend/tests/sessionIdleNotice.test.ts`; manual M14. Commit: 0.
 
 ## 13. Commit plan and backtracking
 
@@ -3593,7 +3593,7 @@ If commit 6 must be rolled back after legacy jobs have committed, nothing is los
 | `shared/fieldOps/setupEnvelopeLimits.ts (new)` | T0.11 | `SETUP_V2_ENVELOPE_LIMITS`, the one source of the setup caps |
 | `server/lib/schemaFeatures.ts (new)` | T0.5 | Missing-schema helpers |
 | `server/lib/participantProjections.ts (new)` | T0.3 | Scene and casualty projections |
-| `server/lib/fieldOps/jobSettings.ts (new)` | T0.7 | Settings and scope |
+| `server/lib/fieldOps/jobSettings.ts` | T0.23, T0.7 | Settings and scope; **updated 8 Nov 2026:** T0.23 created it with `readIntSetting` |
 | `server/lib/fieldOps/requireFieldopsFlag.ts (new)` | T0.7 | `requireFieldopsV2` and `requireFieldopsTrainer` |
 | `server/lib/fieldOps/draftInputSchemas.ts (new)` | T0.9 | Legacy draft schemas and merge rules |
 | `server/lib/fieldOps/setupEnvelope.ts (new)` | T0.11 | `validateSetupV2Envelope` |
@@ -3620,13 +3620,13 @@ If commit 6 must be rolled back after legacy jobs have committed, nothing is los
 | `frontend/src/lib/fieldOps/describeJob.ts (new)` | T0.18 | Job copy |
 | `frontend/src/hooks/useFieldOpsJob.ts (new)` | T0.18 | The polling hook |
 | `scripts/fieldops-jobs-smoke.ts (new)` | T0.19 | Manual database smoke test |
-| `server/services/sessionIdleSweeper.ts (new)` | T0.23 | **Added 4 Nov 2026.** The idle rule, the sweep, its store and `recordKeepalive` (section 6.15) |
-| `server/lib/sessionIdleSettings.ts (new)` | T0.23 | **Added 4 Nov 2026.** `readSessionIdleSettings` |
-| `frontend/src/components/Session/SessionIdleNotice.tsx (new)` | T0.23 | **Added 4 Nov 2026.** The banner (section 7.5) |
-| `frontend/src/components/Session/sessionIdleNoticeModel.ts (new)` | T0.23 | **Added 4 Nov 2026.** The pure reducer and copy |
-| `frontend/src/components/Session/sessionIdleApi.ts (new)` | T0.23 | **Added 4 Nov 2026.** `sendKeepalive` |
+| `server/services/sessionIdleSweeper.ts` | T0.23 | **Added 4 Nov 2026.** The idle rule, the sweep, its store and `recordKeepalive` (section 6.15) |
+| `server/lib/sessionIdleSettings.ts` | T0.23 | **Added 4 Nov 2026.** `readSessionIdleSettings` |
+| `frontend/src/components/Session/SessionIdleNotice.tsx` | T0.23 | **Added 4 Nov 2026.** The banner (section 7.5) |
+| `frontend/src/components/Session/sessionIdleNoticeModel.ts` | T0.23 | **Added 4 Nov 2026.** The pure reducer and copy |
+| `frontend/src/components/Session/sessionIdleApi.ts` | T0.23 | **Added 4 Nov 2026.** `sendKeepalive` |
 
-The seventeen test files of section 11.5 are new as well, in the folders that rule 3 of master 10.7 sets. **Added 4 Nov 2026:** so are T0.23's two, `server/services/sessionIdleSweeper.test.ts (new)` and `frontend/tests/sessionIdleNotice.test.ts (new)`. T0.23 also creates `server/lib/fieldOps/jobSettings.ts (new)` when it lands before T0.6, with `readIntSetting` alone.
+The seventeen test files of section 11.5 are new as well, in the folders that rule 3 of master 10.7 sets. **Added 4 Nov 2026:** so are T0.23's two, `server/services/sessionIdleSweeper.test.ts` and `frontend/tests/sessionIdleNotice.test.ts`. T0.23 also created `server/lib/fieldOps/jobSettings.ts`, with `readIntSetting` alone (**updated 8 Nov 2026**: it landed first, as commit 0).
 
 ### 14.2 Touched files
 

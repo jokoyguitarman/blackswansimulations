@@ -5,7 +5,7 @@
 **Depends on:** [the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the compile and review spec](06-compile-and-review.md), [the device and physics spec](07-device-and-physics.md) (text moderation), [the after-publish spec](09-after-publish.md) (the start claim)
 **Flags:** `ENABLE_FIELDOPS_AI_TEAMS` (new, this spec); existing `ENABLE_TEAMMATE_BOTS` is not required
 **Migrations:** 243, 244, 245 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -74,7 +74,7 @@ Migration 245 is amended in place for the two kinds, because it is not applied y
 | Session start | WS7 owns the start branch of `PATCH /api/sessions/:id`. It calls WS8's `claimSessionStart` first, then fixes the play mode and materialises the seats, then runs today's start steps (section 6.4). Ending paused sessions is out of scope for version 1. | Master 10.8 item 26: a double start, or an edit racing the start, is refused instead of mixing content. |
 | Doctrine reads | Only through WS5's `loadDoctrineSnapshots` and WS1's runtime accessor. A new-flow scenario's `insider_knowledge` is never selected (section 6.7). | Master 10.8 item 16. |
 | Map payloads | The actor reads the participant payloads a player's `MapView` reads, after WS0's projections and behind the same exit gate. It never calls `/api/rts-scenes`, the scene-config route or a physics route (section 6.8). | WS0's request; WS6's X6.10; master 10.8 item 16. |
-| Fail closed | In production, AI agencies are off end to end without `TEAMMATE_BOT_PASSWORD`: availability, seat changes, enrolment and the runtime all check `aiRuntimeAllowed` (section 6.3). | `teammateBotPassword` otherwise falls back to a value committed in the code (`server/env.ts:159`). |
+| Fail closed | In production, AI agencies are off end to end without `TEAMMATE_BOT_PASSWORD`: availability, seat changes, enrolment and the runtime all check `aiRuntimeAllowed` (section 6.3). | `teammateBotPassword` otherwise falls back to a value committed in the code (`server/env.ts:162`). |
 
 **Assumptions to confirm** are listed as questions in section 15.
 
@@ -84,7 +84,7 @@ Everything in this section was read on the baseline. Corporate decision numbers 
 
 ### 3.1 The corporate teammate-bot framework
 
-**Lifecycle.** `TeammateBotService` keeps one runtime per in-progress social session. Its reconciler ticks every `TICK_MS` of 60 seconds (`server/services/teammates/teammateBotService.ts:29`) and starts only when `enableTeammateBots` is on (`server/services/teammates/teammateBotService.ts:90-100`), from inside the `runBackgroundEngines` block (`server/index.ts:85-106`). `reconcile` selects `in_progress` sessions whose `sim_mode` is `social_media` (`server/services/teammates/teammateBotService.ts:139-160`); `syncSession` starts missing bots with a stagger and stops departed ones (`server/services/teammates/teammateBotService.ts:162-218`). `onBotsChanged` reconciles one session at once (`server/services/teammates/teammateBotService.ts:113-131`) and is called by the session status route on every status change (`onBotsChanged`, `server/routes/sessions.ts:1626-1635`). All runtime state is process memory, rebuilt within one tick after a restart.
+**Lifecycle.** `TeammateBotService` keeps one runtime per in-progress social session. Its reconciler ticks every `TICK_MS` of 60 seconds (`server/services/teammates/teammateBotService.ts:29`) and starts only when `enableTeammateBots` is on (`server/services/teammates/teammateBotService.ts:90-100`), from inside the `runBackgroundEngines` block (`server/index.ts:86-109`). `reconcile` selects `in_progress` sessions whose `sim_mode` is `social_media` (`server/services/teammates/teammateBotService.ts:139-160`); `syncSession` starts missing bots with a stagger and stops departed ones (`server/services/teammates/teammateBotService.ts:162-218`). `onBotsChanged` reconciles one session at once (`server/services/teammates/teammateBotService.ts:113-131`) and is called by the session status route on every status change (`onBotsChanged`, `server/routes/sessions.ts:1631-1640`). All runtime state is process memory, rebuilt within one tick after a restart.
 
 **The bot loop.** `PlayerBot.turn` runs perceive, triage, decide, execute, remember and sleep (`server/services/teammates/bot.ts:161-306`). A trainer nudge is held in `pendingNudge` and becomes the top shortlist item on the next turn (`server/services/teammates/bot.ts:221-231`). Three consecutive failures stretch the next wait to `FAIL_PAUSE_MS` (`server/services/teammates/bot.ts:284-288`).
 
@@ -101,12 +101,12 @@ Everything in this section was read on the baseline. Corporate decision numbers 
 - `intellectToParams` maps a 0 to 100 slider through anchors at 0, 30, 60, 85 and 100 (`ANCHORS`, `server/services/teammates/intellect.ts:40-117`).
 - The session value is `sessions.bot_intellect` (`bot_intellect`, `migrations/207_teammate_bots.sql:22-28`), with a default of 70 (`DEFAULT_INTELLECT`, `server/services/teammates/intellect.ts:118`).
 - `callJson` passes the session id as `budgetKey` to the shared chat client and serialises calls (`server/services/teammates/llmQueue.ts:74-90`).
-- The limit `teammateBotsMaxLlmPerHour` defaults to 400 and `teammateBotsMaxPerSession` to 8 (`server/env.ts:160-161`).
+- The limit `teammateBotsMaxLlmPerHour` defaults to 400 and `teammateBotsMaxPerSession` to 8 (`server/env.ts:163-164`).
 - The budget lives in process memory (`HourlyBudget`, `server/services/ai/chatCore.ts:299-326`).
 
-**Observability and the scorecard.** Per-bot `BotStats` (actions, failures, counts by kind, model calls, fallbacks, last action and error) are memory only (`BotStats`, `server/services/teammates/types.ts:86-94`) and reach the trainer through `view` (`server/services/teammates/teammateBotService.ts:506-534`). Each turn is logged through `logger.info` (`server/services/teammates/teammateBotService.ts:243`). The scorecard is an offline script over the database, `scripts/teammates-scorecard.ts`, with a run-to-run comparison in `scripts/teammates-compare.ts` (operating guide, `docs/ai-teammate-bots-plan.md:417-418`). Behaviour layers can be switched off by environment, for example `teammateBotsPlanner` (`server/env.ts:168-171`).
+**Observability and the scorecard.** Per-bot `BotStats` (actions, failures, counts by kind, model calls, fallbacks, last action and error) are memory only (`BotStats`, `server/services/teammates/types.ts:86-94`) and reach the trainer through `view` (`server/services/teammates/teammateBotService.ts:506-534`). Each turn is logged through `logger.info` (`server/services/teammates/teammateBotService.ts:243`). The scorecard is an offline script over the database, `scripts/teammates-scorecard.ts`, with a run-to-run comparison in `scripts/teammates-compare.ts` (operating guide, `docs/ai-teammate-bots-plan.md:417-418`). Behaviour layers can be switched off by environment, for example `teammateBotsPlanner` (`server/env.ts:171-174`).
 
-**Routes and lobby.** `teammateBotsRouter` is mounted at `/api/sessions/:id/bots` (`server/index.ts:266`), answers 404 when `enableTeammateBots` is off (`server/routes/teammateBots.ts:25-31`), is limited to the owning trainer by `ownerGuard` (`server/routes/teammateBots.ts:35-44`), and mirrors a nudge into the bot's team channel through `chat_messages` (`server/routes/teammateBots.ts:193-232`). The lobby renders `AITeammatesPanel` only when `isSocialSim` (`frontend/src/components/Session/SessionLobby.tsx:412-425`), and the panel hides itself on 404 (`setHidden`, `frontend/src/components/Session/AITeammatesPanel.tsx:28-40`).
+**Routes and lobby.** `teammateBotsRouter` is mounted at `/api/sessions/:id/bots` (`server/index.ts:269`), answers 404 when `enableTeammateBots` is off (`server/routes/teammateBots.ts:25-31`), is limited to the owning trainer by `ownerGuard` (`server/routes/teammateBots.ts:35-44`), and mirrors a nudge into the bot's team channel through `chat_messages` (`server/routes/teammateBots.ts:193-232`). The lobby renders `AITeammatesPanel` only when `isSocialSim` (`frontend/src/components/Session/SessionLobby.tsx:412-425`), and the panel hides itself on 404 (`setHidden`, `frontend/src/components/Session/AITeammatesPanel.tsx:28-40`).
 
 ### 3.2 The bot account pool
 
@@ -114,7 +114,7 @@ Everything in this section was read on the baseline. Corporate decision numbers 
 - `ensurePool` creates or finds every account once per process (`server/services/teammates/accounts.ts:204-213`), and `createBotUser` creates missing ones through the Admin API with `env.teammateBotPassword` (`createBotUser`, `server/services/teammates/accounts.ts:261-280`).
 - `getBotToken` signs in with that password, caches and refreshes the session, and re-asserts the password when sign-in fails with invalid credentials (`getBotToken`, `server/services/teammates/accounts.ts:357-405`).
 - Migration 207 adds only `is_bot` and `bot_intellect`; the accounts are not inserted by SQL (`is_bot`, `migrations/207_teammate_bots.sql:9-16`).
-- When `TEAMMATE_BOT_PASSWORD` is unset, `teammateBotPassword` falls back to a fixed string committed in the code (`teammateBotPassword`, `server/env.ts:159`).
+- When `TEAMMATE_BOT_PASSWORD` is unset, `teammateBotPassword` falls back to a fixed string committed in the code (`teammateBotPassword`, `server/env.ts:162`).
 - One account may sit in several sessions at once (`is_bot`, `server/services/teammates/accounts.ts:10-13`).
 
 ### 3.3 Gap table for field ops
@@ -148,11 +148,11 @@ Everything in this section was read on the baseline. Corporate decision numbers 
 | Decide, free-standing or for an incident | `POST /api/decisions` with optional `response_to_incident_id` | `in_progress`; one decision per player per incident (409) | `server/routes/decisions.ts:310-390` |
 | Execute a decision | `POST /api/decisions/:id/execute` | `canExecute`: approved, or proposed and the caller created it | `server/routes/decisions.ts:1652-1764` |
 | Radio and chat | `POST /api/channels/:channelId/messages` with `content` and `message_type` | `assertChannelAccess` for every channel type | `server/routes/channels.ts:1018-1044` |
-| Bomb-squad sweep | `POST /api/sessions/:id/sweep` with `asset_id` and resources | Session access only; `performSweep` runs with no team check | `server/routes/sessions.ts:2762-2796` |
+| Bomb-squad sweep | `POST /api/sessions/:id/sweep` with `asset_id` and resources | Session access only; `performSweep` runs with no team check | `server/routes/sessions.ts:2767-2801` |
 
 The message body allows `content` of 1 to 5,000 characters and a `message_type` of `text`, `system`, `sitrep` or `alert` (`message_type`, `server/routes/channels.ts:129-132`). The default channels are Command, All Teams (`inter_agency`), Public and Trainer (`createDefaultChannels`, `server/services/channelService.ts:9-59`), plus one `team` channel per team with members (`ensureTeamChannels`, `server/services/channelService.ts:66-113`).
 
-`frontend/src/components/COP/teamResponseActions.ts` is a client registry only: labels, descriptions and keywords per team key in `TEAM_ACTION_REGISTRY` (`frontend/src/components/COP/teamResponseActions.ts:701-724`), resolved by substring match in `getTeamActions` (`frontend/src/components/COP/teamResponseActions.ts:726-750`). The panel turns the chosen labels into decision text; nothing on the server reads the registry. The player asset palette is `TEAM_ASSET_CATALOG` in the session page (`frontend/src/pages/SessionView.tsx:22-32`), also client-only.
+`frontend/src/components/COP/teamResponseActions.ts` is a client registry only: labels, descriptions and keywords per team key in `TEAM_ACTION_REGISTRY` (`frontend/src/components/COP/teamResponseActions.ts:701-724`), resolved by substring match in `getTeamActions` (`frontend/src/components/COP/teamResponseActions.ts:726-750`). The panel turns the chosen labels into decision text; nothing on the server reads the registry. The player asset palette is `TEAM_ASSET_CATALOG` in the session page (`frontend/src/pages/SessionView.tsx:23-33`), also client-only.
 
 What the corporate bots do (write messages, posts, emails and documents) covers only the radio and chat row of this table. Every other row needs the field-ops action layer of section 6.9.
 
@@ -184,7 +184,7 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 - `proposeAndExecuteDecision` inserts and executes decisions directly, not through the route (`proposeAndExecuteDecision`, `server/services/demoActionDispatcher.ts:157-251`).
 - `respondToPin` writes `player_triage_color` on casualties and sets hazards to `contained` (`respondToPin`, `server/services/demoActionDispatcher.ts:1178-1261`).
 
-**How they are toggled.** Only by `RUN_BACKGROUND_ENGINES`, which decides whether this process starts the scheduler at all (`runBackgroundEngines`, `server/index.ts:85-93`), and by `ENABLE_AUTO_INJECTS`, which disables the whole scheduler (`enableAutoInjects`, `server/env.ts:119-121`). The scheduler reads it once (`enableAutoInjects`, `server/services/injectSchedulerService.ts:235-259`). There is no per-session switch.
+**How they are toggled.** Only by `RUN_BACKGROUND_ENGINES`, which decides whether this process starts the scheduler at all (`runBackgroundEngines`, `server/index.ts:86-94`), and by `ENABLE_AUTO_INJECTS`, which disables the whole scheduler (`enableAutoInjects`, `server/env.ts:122-124`). The scheduler reads it once (`enableAutoInjects`, `server/services/injectSchedulerService.ts:235-259`). There is no per-session switch.
 
 **The demo agent.** `DemoAIAgentService` runs only for sessions created by `POST /api/demo/start` in `ai` or `hybrid` mode (`getDemoAIAgentService`, `server/routes/demo.ts:217-223`); that route creates its own session and enrols the demo bot users as participants (`resolveBotUserId`, `server/routes/demo.ts:117-138`). It does not play teams in ordinary sessions.
 
@@ -192,9 +192,9 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 
 **`flipUnstaffedOrgsToAi`.** The generator ticker selects only `social_media` sessions (`tick`, `server/services/engineTicker.ts:41-48`), is off when `ENABLE_EXECUTIVE_DECISIONS=false` (`enableExecutiveDecisions`, `server/services/engineTicker.ts:24-29`) and calls `flipUnstaffedOrgsToAi` once within `START_GRACE_MINUTES` of the start (`server/services/engineTicker.ts:62-67`). The function sets `sim_org_pages.control_mode` to `ai` for protagonist organisations whose teams have nobody (`flipUnstaffedOrgsToAi`, `server/services/pressureEngineService.ts:444-487`). It is corporate-only and never touches a field-ops team, so WS7 leaves it unchanged.
 
-**The session start path.** `PATCH /api/sessions/:id` with `in_progress` sets `start_time`, re-syncs state, clones pins and initialises objectives, gates and the environment (`start_time`, `server/routes/sessions.ts:1424-1512`), broadcasts `sessionStarted` (`server/routes/sessions.ts:1611-1624`) and calls the teammate hook. Nothing on this path plays a team; the queues act on the next 30-second tick.
+**The session start path.** `PATCH /api/sessions/:id` with `in_progress` sets `start_time`, re-syncs state, clones pins and initialises objectives, gates and the environment (`start_time`, `server/routes/sessions.ts:1429-1517`), broadcasts `sessionStarted` (`server/routes/sessions.ts:1616-1629`) and calls the teammate hook. Nothing on this path plays a team; the queues act on the next 30-second tick.
 
-**Why `sim_mode` cannot be the gate.** `simMode` is `social_media` for social crisis scenarios and null for every other session (`simMode`, `server/routes/sessions.ts:1283`), so every field-ops session carries the same value. The gate needs a new per-session setting (section 5.2).
+**Why `sim_mode` cannot be the gate.** `simMode` is `social_media` for social crisis scenarios and null for every other session (`simMode`, `server/routes/sessions.ts:1288`), so every field-ops session carries the same value. The gate needs a new per-session setting (section 5.2).
 
 ### 3.7 What a participant can read, and so what the brain must not use
 
@@ -203,7 +203,7 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 - The map pin shows it until a player tags (`triageColor`, `frontend/src/components/COP/CasualtyPin.tsx:51`).
 - The same `conditions` carry the observable signs a responder sees: `mobility`, `consciousness`, `breathing`, `bleeding` and `visible_description` (`server/services/warroomAiService.ts:8320-8339`).
 - The hazard list drops only `zones` (`stripZoneGroundTruth`, `server/routes/hazards.ts:9-13`) and otherwise returns every column (`scenario_hazards`, `server/routes/hazards.ts:40-46`).
-- The session route returns the whole session row with `current_state` (`current_state`, `server/routes/sessions.ts:1172-1180`) and the scene route the whole `rts_scene_configs` row (`server/routes/sessions.ts:971-1000`).
+- The session route returns the whole session row with `current_state` (`current_state`, `server/routes/sessions.ts:1177-1185`) and the scene route the whole `rts_scene_configs` row (`server/routes/sessions.ts:976-1005`).
 - `determineZone` is pure; with no ground-truth zones it falls back to 50, 150 and 300 m bands around the incident centre (`determineZone`, `server/services/geoUtils.ts:315-362`).
 - A player's map shows hazards, casualties and crowds only once every entry and exit pin is claimed (`allExitsClaimed`, `frontend/src/components/COP/MapView.tsx:754-759`), and asks for hazard zones only for the trainer (`includeZones`, `frontend/src/components/COP/MapView.tsx:1097-1098`).
 - After WS0 lands, a participant, and so an actor, gets casualties without WS0's `CASUALTY_ANSWER_KEYS`, a projected scene, hazard zones never, and 403 from every `/api/rts-scenes` verb (the prerequisites spec, section 9.1).
@@ -220,10 +220,10 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 
 - Placement geometry is GeoJSON with `[lng, lat]` order (`coords`, `server/services/placementValidationService.ts:24-26`); the master's contracts use `[lat, lng]` (master 10.1).
 - The evaluators find a hazard response by the prefix `[Hazard Response: …]` at the start of the description (`hazardMatch`, `server/services/decisionEvaluationOrchestrator.ts:879`; `hazardMatch`, `server/services/environmentalConsistencyService.ts:769`), so AI decision text keeps the panel's format.
-- The assess route counts only `MEDIC_TYPES` assets within 80 m (`server/routes/casualties.ts:222-243`); the triage palette offers `triage_officer` (`TEAM_ASSET_CATALOG`, `frontend/src/pages/SessionView.tsx:33-54`).
+- The assess route counts only `MEDIC_TYPES` assets within 80 m (`server/routes/casualties.ts:222-243`); the triage palette offers `triage_officer` (`TEAM_ASSET_CATALOG`, `frontend/src/pages/SessionView.tsx:34-55`).
 - Legacy compile stores a per-team workflow of ordered steps in `team_workflows` (`server/services/warroomAiService.ts:1249-1257`, written by `researchTeamWorkflows` at `server/services/warroomAiService.ts:8524-8535`), per-team `ForbiddenAction` lists (`server/services/warroomResearchService.ts:580-584`) and `StandardsFinding` lists (`server/services/warroomResearchService.ts:158-164`). For a new-flow scenario WS5 writes none of these keys. The same shapes live in `scenario_doctrine_snapshots.content.projection`, read through WS1's runtime accessor ([the compile spec](06-compile-and-review.md#2-decisions-and-assumptions), Choice 15; master 10.8 item 16).
 - The session status set includes `paused` (`status`, `migrations/001_initial_schema.sql:84-93`); the inject scheduler selects only `in_progress` (`in_progress`, `server/services/injectSchedulerService.ts:294-300`).
-- `shutdown` stops the two inject schedulers and the two watchdogs and nothing else (`shutdown`, `server/index.ts:328-352`; [finding 17.14](../field-ops-user-journey.html#i17-14)).
+- `shutdown` stops the two inject schedulers and the two watchdogs and nothing else (`shutdown`, `server/index.ts:331-356`; [finding 17.14](../field-ops-user-journey.html#i17-14)).
 
 ## 4. Target behaviour and acceptance criteria
 
@@ -1072,7 +1072,7 @@ Everything new lives in `server/services/fieldOps/bots/ (new)` (master section 7
 
 ### 6.2 Environment, flag and settings
 
-Added to `server/env.ts`, next to the teammate-bot block (`server/env.ts:151-175`):
+Added to `server/env.ts`, next to the teammate-bot block (`server/env.ts:154-178`):
 
 ```ts
   // ---------- Field-ops AI-operated agencies (docs/field-ops/08-people-or-ai.md) ----------
@@ -1150,7 +1150,7 @@ export function flagGate(flagOn: boolean): { status: 404; body: { error: string;
 
 The route answers 200 `{ data: AiAvailability }` to a trainer or admin whatever the flag, so WS2's page fills `PageCapabilities.ai_agencies` from one call per load (master 10.8 item 8).
 
-The production password rule exists because `teammateBotPassword` falls back to a string committed in the code (`server/env.ts:159`), and the bots sign in with it (`signInWithPassword`, `server/services/teammates/accounts.ts:339-343`), both checked on 25 Oct. With it, anyone who reads the repository could sign in as a pooled participant account. So every path that could use the pool checks `aiRuntimeAllowed`, and AI agencies stay off end to end (fail closed):
+The production password rule exists because `teammateBotPassword` falls back to a string committed in the code (`server/env.ts:162`), and the bots sign in with it (`signInWithPassword`, `server/services/teammates/accounts.ts:339-343`), both checked on 25 Oct. With it, anyone who reads the repository could sign in as a pooled participant account. So every path that could use the pool checks `aiRuntimeAllowed`, and AI agencies stay off end to end (fail closed):
 
 - availability answers `pool_unavailable`;
 - a seat cannot be set to AI or handed back (409 `AI_UNAVAILABLE`, section 6.5);
@@ -1227,7 +1227,7 @@ import { shouldRunNpcQueues } from './fieldOps/bots/sessionMode.js';
 
 Nothing else in the scheduler changes: detonation timers, deterioration, exit flow, movement and area monitors keep running in both modes, because they are the world, not a team. The demo route creates sessions without a settings row (`startDemoSchema`, `server/routes/demo.ts:56-247`), so demos keep the queues. `flipUnstaffedOrgsToAi` and the AI inject scheduler are untouched (section 3.6).
 
-**The start branch (master 10.8 item 26).** WS7 owns the start branch of `PATCH /api/sessions/:id` (`updates.start_time`, `server/routes/sessions.ts:1424-1425`). WS8's `claimSessionStart` (`server/services/fieldOps/editor/startGuard.ts (new)`) runs first. The play mode and the seats are fixed next, and today's re-sync, clones and initialisation follow unchanged:
+**The start branch (master 10.8 item 26).** WS7 owns the start branch of `PATCH /api/sessions/:id` (`updates.start_time`, `server/routes/sessions.ts:1429-1430`). WS8's `claimSessionStart` (`server/services/fieldOps/editor/startGuard.ts (new)`) runs first. The play mode and the seats are fixed next, and today's re-sync, clones and initialisation follow unchanged:
 
 ```ts
 import { claimSessionStart } from '../services/fieldOps/editor/startGuard.js'; // WS8
@@ -1278,7 +1278,7 @@ export function startClaimOutcome(claim: StartClaim, now: Date): StartClaimOutco
 2. In the `seats` mode, `ensureSessionSeats(id)` and `reconcileSeatHolders(id)`, once the seat service exists (T7.5).
 3. On an error or the timeout it logs `fieldops_ai_start_prepare_failed`, and the runtime's reconcile completes the seats within 15 seconds.
 
-**Status hook.** Beside the teammate hook (`onBotsChanged`, `server/routes/sessions.ts:1626-1635`), a fire-and-forget hook runs when the status changes:
+**Status hook.** Beside the teammate hook (`onBotsChanged`, `server/routes/sessions.ts:1631-1640`), a fire-and-forget hook runs when the status changes:
 
 ```ts
       if (status && status !== previousStatus) {
@@ -1596,7 +1596,7 @@ The value comes from `sessions.bot_intellect`, re-read every 30 seconds, so a ch
 
 ### 6.12 The lease and the runtime
 
-`FieldOpsBrainRuntime` (singleton, `getFieldOpsBrainRuntime()`) starts from the background-engines block of `server/index.ts` when `env.enableFieldopsAiTeams` is on and `aiRuntimeAllowed` holds, beside the teammate reconciler (`server/index.ts:103-105`). When the password rule fails it logs `fieldops_ai_runtime_refused` once at boot and does not start (section 6.3). Every `RECONCILE_MS` (15 seconds) it:
+`FieldOpsBrainRuntime` (singleton, `getFieldOpsBrainRuntime()`) starts from the background-engines block of `server/index.ts` when `env.enableFieldopsAiTeams` is on and `aiRuntimeAllowed` holds, beside the teammate reconciler (`server/index.ts:104-106`). When the password rule fails it logs `fieldops_ai_runtime_refused` once at boot and does not start (section 6.3). Every `RECONCILE_MS` (15 seconds) it:
 
 1. Selects sessions in `in_progress` or `paused` whose settings row says `seats`.
 2. Per session: `ensureSessionSeats`, `reconcileSeatHolders`, inserts a `starting` brain row for each agency with AI seats (`ignoreDuplicates`), stops the brains of agencies with none.
@@ -1754,7 +1754,7 @@ One event on the session room, `fieldops_ai.updated`, with data `{ reason: 'seat
 | --- | --- | --- | --- |
 | Setup, each agency card | `OperationSegment` (master 10.4) | WS1's `AgencyCard`, inside WS2's `AgencyLane` | Always on the new page; disabled when availability is off |
 | Session lobby, trainer | `FieldOpsLobbyPanel` with one `LobbySeatCard` per agency | `frontend/src/components/Session/SessionLobby.tsx`, beside the AI teammates block (`AITeammatesPanel`, `frontend/src/components/Session/SessionLobby.tsx:412-425`) | Trainer, session not social, view route answers 200 |
-| Live session, trainer | `AiAgencyConsole` and `AiDecisionLog` | `frontend/src/pages/SessionView.tsx`, a new trainer card after the Participants card (`markCardViewed`, `frontend/src/pages/SessionView.tsx:2469-2536`) | Trainer, play mode `seats` |
+| Live session, trainer | `AiAgencyConsole` and `AiDecisionLog` | `frontend/src/pages/SessionView.tsx`, a new trainer card after the Participants card (`markCardViewed`, `frontend/src/pages/SessionView.tsx:2477-2544`) | Trainer, play mode `seats` |
 | After-action review | `AiDecisionChip` | `frontend/src/components/AAR/DecisionsAIRatingsPanel.tsx`, after the decider name (`deciderName`, `frontend/src/components/AAR/DecisionsAIRatingsPanel.tsx:155-207`) | The decision-log route answers 200 |
 
 All components live in `frontend/src/components/FieldOps/Bots/ (new)`, use `WrIcon` glyphs only and no emoji (`docs/design/warroom/IMPLEMENTATION_SPEC.md:20`), and take their classes from `frontend/src/design/fieldops-lobby.css (new)` plus the existing `wr-` primitives.
@@ -1898,8 +1898,8 @@ A second start answers 409 `SESSION_ALREADY_STARTED` with the start time (sectio
 **Seat keys on existing screens.** `session_teams.team_role` now holds a seat key (section 6.5), so the three places that print it render `seatKeyText(team.team_role)` instead of the raw value:
 
 - the lobby's "Your team" card (`team.team_role`, `frontend/src/components/Session/SessionLobby.tsx:487`);
-- the first team list of the session view (`team.team_role`, `frontend/src/pages/SessionView.tsx:1686-1687`);
-- the second team list of the session view (`team.team_role`, `frontend/src/pages/SessionView.tsx:1759-1760`).
+- the first team list of the session view (`team.team_role`, `frontend/src/pages/SessionView.tsx:1694-1695`);
+- the second team list of the session view (`team.team_role`, `frontend/src/pages/SessionView.tsx:1767-1768`).
 
 A role typed with capitals, spaces or punctuation, as corporate roles usually are, does not match the key pattern and prints unchanged; a single lower-case word only gains a capital.
 
@@ -2135,7 +2135,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 
 - Actors are the corporate pooled accounts, ordinary participants with `is_bot` set. Their tokens are minted and cached in server memory by `getBotToken` and never leave the server; no route returns them.
 - An actor can read whatever any participant can read, including the leaks of finding 13.2. The brain discards those fields at once (section 6.8); the account itself cannot be used from outside unless its password is known.
-- The password falls back to a value committed in the code when `TEAMMATE_BOT_PASSWORD` is unset (`teammateBotPassword`, `server/env.ts:159`), and the bots sign in with it (`signInWithPassword`, `server/services/teammates/accounts.ts:339-343`). In production WS7 therefore fails closed without the variable: availability answers `pool_unavailable`, no seat can be set to AI, `ensureAgencyActor` never touches the pool and the runtime does not start (`aiRuntimeAllowed`, section 6.3). Setting it is a production prerequisite (master risk 16).
+- The password falls back to a value committed in the code when `TEAMMATE_BOT_PASSWORD` is unset (`teammateBotPassword`, `server/env.ts:162`), and the bots sign in with it (`signInWithPassword`, `server/services/teammates/accounts.ts:339-343`). In production WS7 therefore fails closed without the variable: availability answers `pool_unavailable`, no seat can be set to AI, `ensureAgencyActor` never touches the pool and the runtime does not start (`aiRuntimeAllowed`, section 6.3). Setting it is a production prerequisite (master risk 16).
 - An actor sits in one agency per session (unique index in migration 244) and is removed from the team when its agency has no AI seat left.
 
 ### 9.3 Hidden truth stays hidden
@@ -2168,7 +2168,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 ### 9.7 Abuse and load
 
 - Nudges are limited to one per agency every 30 seconds and 300 characters, and are mirrored into the team channel under the trainer's name.
-- Actors' requests go through the general limiter keyed per user (`limiter`, `server/index.ts:193-209`); the per-agency action budget keeps them far below it.
+- Actors' requests go through the general limiter keyed per user (`limiter`, `server/index.ts:196-212`); the per-agency action budget keeps them far below it.
 - The runtime ticks at most two brains at a time per process, makes model calls through the shared serial queue, and never runs on the request path.
 
 ### 9.8 Security items to close before production
@@ -2197,7 +2197,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 
 ### 10.2 Rollout
 
-1. **Development.** Flag on by default; run `npm test`; apply migrations 243 to 245 to the shared project (they are additive, master section 9); smoke test with a dev server that runs background engines only if no other server shares the database (`server/index.ts:85-91`).
+1. **Development.** Flag on by default; run `npm test`; apply migrations 243 to 245 to the shared project (they are additive, master section 9); smoke test with a dev server that runs background engines only if no other server shares the database (`server/index.ts:86-92`).
 2. **Staging run.** On the deployed staging service with the flag on and `FIELDOPS_BOTS_TRAINER_ALLOWLIST` set to the owner's id: run the checklist in 10.3 on one new-flow scenario and one legacy scenario, then run the scorecard.
 3. **Production, owner only.** Set `TEAMMATE_BOT_PASSWORD`, the flag on, the allow-list to the owner's id. Every other trainer sees AI disabled ("not available on your account yet") and keeps the `legacy` mode, so nothing changes for them.
 4. **Production, everyone.** Clear the allow-list after the scorecard passes (D21). New sessions get the `seats` mode.

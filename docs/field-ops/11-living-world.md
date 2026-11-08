@@ -5,7 +5,7 @@
 **Depends on:** [the master plan](00-master-plan.md); [01](01-prerequisites.md), [04](04-site-picker.md), [05](05-layout-step.md), [06](06-compile-and-review.md), [07](07-device-and-physics.md) and [08](08-people-or-ai.md); softly [09](09-after-publish.md)
 **Flags:** `ENABLE_FIELDOPS_WORLD_SIM`
 **Migrations:** 250 to 257 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -76,7 +76,7 @@ Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS
 | W8 | The crowd moves as groups of at most 50 people on flow fields towards usable exits, then towards a muster point. | The brief's "crowds as zone flows"; 400 groups bound the cost whatever the headcount. |
 | W9 | Engine state is integers (permille levels, whole seconds); randomness comes from named seeded streams; every snapshot carries a hash of the state. | Bit-identical replays for the After-Action Review and for tests. |
 | W10 | Worlds run in `node:worker_threads`, at most two threads hosting at most four worlds per process, with a 250 ms budget per one-second tick. | Master risk 19: the main thread runs every engine and Socket.IO (journey finding 4.14). |
-| W11 | One process runs a session's world, under a lease in the database with WS0's scope rule, and only where `env.runBackgroundEngines` is true. | Master 10.8 item 39 ("leased per session as WS0 leases jobs, so one process runs it"); a development server must never run a production world (`server/env.ts:104-114`). |
+| W11 | One process runs a session's world, under a lease in the database with WS0's scope rule, and only where `env.runBackgroundEngines` is true. | Master 10.8 item 39 ("leased per session as WS0 leases jobs, so one process runs it"); a development server must never run a production world (`server/env.ts:107-117`). |
 | W12 | Team and trainer commands are written to a table and applied at tick boundaries in a fixed order. | Determinism, replay after a restart, and no lost command when a request reaches a process that does not hold the lease. |
 | W13 | The world drives today's pins through a bridge: it creates and updates session hazard and casualty rows and places its arrived units as `placed_assets`. World-owned rows carry `properties.world_owned`. | Today's response panel, decision evaluation, scoring, counters and AI perception all read those rows; a parallel world nobody can respond to would be a second game. |
 | W14 | Coexistence is four narrow gates in existing services, each active only while the world runs, plus a hand-back that retires the compiled fire-spread children still waiting when the world stops (section 6.12). | Master section 9 ("the legacy behaviour is unchanged with it off"); fallback must be instant. |
@@ -133,7 +133,7 @@ All line numbers are at commit `588387f` (3 Nov 2026), with no uncommitted chang
 
 ### 3.4 The session engines and their cadence
 
-- **Verified.** The inject scheduler ticks every `injectSchedulerIntervalMs`, 30 seconds by default (`server/env.ts:122-123`, `server/services/injectSchedulerService.ts:227-234`), and runs `processSession` for the live sessions one after another (`server/services/injectSchedulerService.ts:315-335`). For each session, after injects and conditions, it runs pin resolution, the two deterioration services, the evacuation pipeline, the movement tick, the area monitors, the detonation timers and the sweep, patient and hazard queues, in that order (`server/services/injectSchedulerService.ts:1104-1186`). The patient queue sleeps two seconds inside the tick (`server/services/injectSchedulerService.ts:1785`).
+- **Verified.** The inject scheduler ticks every `injectSchedulerIntervalMs`, 30 seconds by default (`server/env.ts:125-126`, `server/services/injectSchedulerService.ts:227-234`), and runs `processSession` for the live sessions one after another (`server/services/injectSchedulerService.ts:315-335`). For each session, after injects and conditions, it runs pin resolution, the two deterioration services, the evacuation pipeline, the movement tick, the area monitors, the detonation timers and the sweep, patient and hazard queues, in that order (`server/services/injectSchedulerService.ts:1104-1186`). The patient queue sleeps two seconds inside the tick (`server/services/injectSchedulerService.ts:1785`).
 - **Verified.** The engine queues play teams: `checkHazardQueue` finds the fire and bomb teams by name and posts canned responses for active hazards (`server/services/injectSchedulerService.ts:1827-1865`). WS7 gates these queues by the session's play mode (master 10.8 item 15).
 - **Verified.** `startGeneratorEngines` ticks every `TICK_MS`, 60 seconds (`server/services/engineTicker.ts:18-33`), and its tick reads only `social_media` sessions (`server/services/engineTicker.ts:41-48`), so a field-ops world never meets it.
 - **Verified.** Exit flow moves crowd pins through claimed exits: `processExitFlow` (`server/services/exitFlowService.ts:91`) reads the session's claims (`server/services/exitFlowService.ts:100-104`), a session-wide `flow_rate_modifier` and compliance (`server/services/exitFlowService.ts:146-154`), counts every active placed asset as a marshal (`server/services/exitFlowService.ts:156-163`) and moves `min(headcount, effectiveFlowRate)` people per tick from a `BASE_FLOW_RATE_PER_MIN` of 40 (`server/services/exitFlowService.ts:18`, `server/services/exitFlowService.ts:169-173`, `server/services/exitFlowService.ts:222-245`), a per-minute rate applied per 30-second tick ([journey finding 13.14](../field-ops-user-journey.html#i13-14)).
@@ -152,7 +152,7 @@ All line numbers are at commit `588387f` (3 Nov 2026), with no uncommitted chang
 
 ### 3.6 How events reach browsers
 
-- **Verified.** One Socket.IO server is set up on the HTTP server (`server/index.ts:70-74`). On connection each socket joins `user:<id>` (`server/websocket/index.ts:68-72`); `join_session` checks the trainer, an admin or a participant and joins `session:<id>` (`server/websocket/index.ts:74-112`). There are no team rooms.
+- **Verified.** One Socket.IO server is set up on the HTTP server (`server/index.ts:71-75`). On connection each socket joins `user:<id>` (`server/websocket/index.ts:68-72`); `join_session` checks the trainer, an admin or a participant and joins `session:<id>` (`server/websocket/index.ts:74-112`). There are no team rooms.
 - **Verified.** `broadcastToSession` emits an `event` to the whole session room and to the internal bus (`server/services/websocketService.ts:62-73`); `emitToUser` emits to one user's room (`server/services/websocketService.ts:117-124`). Every hazard, casualty and placement change today reaches every member of the session.
 - **Verified.** The browser's client routes each `event` by its `type` (`frontend/src/lib/websocketClient.ts:101`, `frontend/src/lib/websocketClient.ts:188-200`), and `useWebSocket` subscribes a component to a list of types (`frontend/src/hooks/useWebSocket.ts:12-26`).
 
@@ -160,7 +160,7 @@ All line numbers are at commit `588387f` (3 Nov 2026), with no uncommitted chang
 
 - **Verified.** `MapView` takes `sessionId`, `scenarioId`, `teamName`, `showAllPins`, `bypassExitGate` and optional `children` rendered inside the map (`frontend/src/components/COP/MapView.tsx:127-204`). It draws each route of the environmental state as a `RoutePolyline` (`frontend/src/components/COP/MapView.tsx:1609-1615`), `BuildingStudOverlay` (`frontend/src/components/COP/MapView.tsx:1637-1645`), a `CrowdDensityOverlay` and a `WindIndicator` from `environmental_state.areas` and `wind` (`frontend/src/components/COP/MapView.tsx:1648-1654`), and gates hazards, casualties and crowds behind the exit claims (`frontend/src/components/COP/MapView.tsx:1878-1884`). It listens to eleven event types (`frontend/src/components/COP/MapView.tsx:762-782`).
 - **Verified.** `WindData` is `direction_degrees`, an optional `speed_kph` and a label (`frontend/src/components/COP/WindIndicator.tsx:5-9`); the indicator rotates a down arrow by the angle (`frontend/src/components/COP/WindIndicator.tsx:30-55`), so it reads the angle as where the wind comes from. `scoreWindAwareness` treats the same angle, its `windDir`, as where the wind goes (`server/services/spatialScoringService.ts:214-227`). No server code writes `environmental_state.wind`; it is read by spatial scoring (`server/services/spatialScoringService.ts:365`) and by the map.
-- **Verified.** Spectator mode is a URL parameter: `SessionView` renders `MapView` with `showAllPins` and `bypassExitGate` for `?spectator=true` (`frontend/src/pages/SessionView.tsx:1477-1502`), so a spectator sees every pin today.
+- **Verified.** Spectator mode is a URL parameter: `SessionView` renders `MapView` with `showAllPins` and `bypassExitGate` for `?spectator=true` (`frontend/src/pages/SessionView.tsx:1479-1504`), so a spectator sees every pin today.
 - **Verified.** WS0 makes `MapView` the live map for participants and spectators (`01-prerequisites.md` section 6.5), and WS4 mounts its `FieldOpsSceneOverlay` next to `BuildingStudOverlay` (`05-layout-step.md` section 7.16).
 
 ### 3.8 The debug sandbox
@@ -179,9 +179,9 @@ All line numbers are at commit `588387f` (3 Nov 2026), with no uncommitted chang
 
 ### 3.10 One process, one build
 
-- **Verified.** One Node process serves HTTP and sockets and, where `env.runBackgroundEngines` holds, runs every background engine (`server/index.ts:80-111`, `server/env.ts:104-114`). Shutdown stops the schedulers, closes the servers and exits after 10 seconds (`server/index.ts:328-352`).
+- **Verified.** One Node process serves HTTP and sockets and, where `env.runBackgroundEngines` holds, runs every background engine (`server/index.ts:81-114`, `server/env.ts:107-117`). Shutdown stops the schedulers, closes the servers and exits after 10 seconds (`server/index.ts:331-356`).
 - **Verified.** Production runs `node dist/server/index.js` after `tsc --project tsconfig.json` (`package.json:14`, `package.json:17`); development runs `tsx watch server/index.ts` (`package.json:12`); tests run `node --import tsx --test` with an explicit list of files (`package.json:25`). The compiler writes `dist/` from the repository root (`tsconfig.json:3-4`). No server code uses `worker_threads` today.
-- **Verified.** A session's status is one of `scheduled`, `in_progress`, `paused`, `completed` and `cancelled` (`server/routes/sessions.ts:51`). `start_time` is set once, on the first start (`server/routes/sessions.ts:1424-1426`); the start then clones the pins and loads the environmental state (`server/routes/sessions.ts:1472-1511`). Every engine computes elapsed time from `start_time`, so paused minutes count.
+- **Verified.** A session's status is one of `scheduled`, `in_progress`, `paused`, `completed` and `cancelled` (`server/routes/sessions.ts:56`). `start_time` is set once, on the first start (`server/routes/sessions.ts:1429-1431`); the start then clones the pins and loads the environmental state (`server/routes/sessions.ts:1477-1516`). Every engine computes elapsed time from `start_time`, so paused minutes count.
 
 ### 3.11 Where Design 7 and the code differ
 
@@ -2852,7 +2852,7 @@ The entry rule follows how the server runs: `tsx watch server/index.ts` in devel
 
 #### 6.11.3 Leases and the reconcile loop
 
-`startWorldRuntime()` runs inside the background-engines block of `server/index.ts` (`server/index.ts:85-106`), so only a process with `env.runBackgroundEngines` runs worlds, and only when `env.enableFieldopsWorldSim` is on. Its worker id is WS0's `WORKER_ID` and its scope WS0's job scope, so a development server never claims a production world (W11).
+`startWorldRuntime()` runs inside the background-engines block of `server/index.ts` (`server/index.ts:86-109`), so only a process with `env.runBackgroundEngines` runs worlds, and only when `env.enableFieldopsWorldSim` is on. Its worker id is WS0's `WORKER_ID` and its scope WS0's job scope, so a development server never claims a production world (W11).
 
 ```text
 every 5 seconds (WORLD_RECONCILE_MS):
@@ -2940,7 +2940,7 @@ A world that becomes ready after its session started is hosted with `until_tick`
 
 #### 6.11.10 Shutdown and retention
 
-- `stopWorldRuntime()` runs in `shutdown` right after WS0's `stopJobEngine` (`server/index.ts:328-336`): a last snapshot of each hosted world (at most 3 seconds in all), `fieldops_world_release(worker)`, then the threads are terminated, inside the 10-second exit.
+- `stopWorldRuntime()` runs in `shutdown` right after WS0's `stopJobEngine` (`server/index.ts:331-340`): a last snapshot of each hosted world (at most 3 seconds in all), `fieldops_world_release(worker)`, then the threads are terminated, inside the 10-second exit.
 - A daily sweep, in the same block, thins the snapshots of ended sessions to one in five, deletes events and snapshots older than 180 days except each session's last snapshot, and deletes road graphs that no model has used for 90 days.
 
 ### 6.12 Coexistence with today's engines
@@ -3031,11 +3031,11 @@ export declare function readFieldopsWorldSettings(source: Record<string, string 
 export declare function readFieldopsWorldFlag(source: Record<string, string | undefined>, nodeEnv: string): boolean;
 ```
 
-The flag's property name follows master 10.7 rule 5, and the reading rule is the one `enableTeammateBots` uses (`server/env.ts:155-157`). The settings are tuning values that master section 8 leaves to the workstream that names them; section 15.3 asks the master to list them. `FIELDOPS_WORLD_MAX_SESSIONS=0` is the operational switch that keeps the flag on for compile's library and turns live worlds off in one process.
+The flag's property name follows master 10.7 rule 5, and the reading rule is the one `enableTeammateBots` uses (`server/env.ts:158-160`). The settings are tuning values that master section 8 leaves to the workstream that names them; section 15.3 asks the master to list them. `FIELDOPS_WORLD_MAX_SESSIONS=0` is the operational switch that keeps the flag on for compile's library and turns live worlds off in one process.
 
 ### 6.14 Routes
 
-`server/routes/fieldOpsWorld.ts (new)` is a router with `mergeParams`, mounted at `/api/field-ops/sessions/:id/world` (master 10.3), as today's `teammateBotsRouter` is mounted under a session (`server/index.ts:266`). Every route runs `requireAuth`, then `requireFieldopsFlag(() => env.enableFieldopsWorldSim)` (the bare 404 while the flag is off, master 10.8 item 31), then its access check. Bodies go through `validate()` with the schemas of section 5.14 (400 `VALIDATION_FAILED`). Success bodies are `{ data }`. As WS0's job router is (`01-prerequisites.md` section 6.13), each router is built by a factory so the route tests can pass fakes: the module exports `createFieldOpsWorldRouter(deps)`, whose `deps` hold the runtime, the store, the access checks and the clock, and `fieldOpsWorldRouter`, built with the real ones; the library module exports `createSpreadLibraryRouter(deps)` and `fieldOpsSpreadLibraryRouter` the same way.
+`server/routes/fieldOpsWorld.ts (new)` is a router with `mergeParams`, mounted at `/api/field-ops/sessions/:id/world` (master 10.3), as today's `teammateBotsRouter` is mounted under a session (`server/index.ts:269`). Every route runs `requireAuth`, then `requireFieldopsFlag(() => env.enableFieldopsWorldSim)` (the bare 404 while the flag is off, master 10.8 item 31), then its access check. Bodies go through `validate()` with the schemas of section 5.14 (400 `VALIDATION_FAILED`). Success bodies are `{ data }`. As WS0's job router is (`01-prerequisites.md` section 6.13), each router is built by a factory so the route tests can pass fakes: the module exports `createFieldOpsWorldRouter(deps)`, whose `deps` hold the runtime, the store, the access checks and the clock, and `fieldOpsWorldRouter`, built with the real ones; the library module exports `createSpreadLibraryRouter(deps)` and `fieldOpsSpreadLibraryRouter` the same way.
 
 | Method and path | Who | Body | Success | Refusals |
 | --- | --- | --- | --- | --- |
@@ -3144,8 +3144,8 @@ The choice is the owner's (question 22).
 
 1. The imports and mounts of `fieldOpsWorldRouter` at `/api/field-ops/sessions/:id/world` and `fieldOpsSpreadLibraryRouter` at `/api/field-ops/spread-library`, next to the other field-ops routers.
 2. An import of `server/services/fieldOps/world/model/prepareJob.ts (new)`, so the job kind registers before the job engine starts (master 10.8 item 3).
-3. `startWorldRuntime()` inside the background-engines block, after `startGeneratorEngines()` (`server/index.ts:100-105`).
-4. `await stopWorldRuntime()` in `shutdown`, after WS0's `stopJobEngine()` (`server/index.ts:328-336`).
+3. `startWorldRuntime()` inside the background-engines block, after `startGeneratorEngines()` (`server/index.ts:101-106`).
+4. `await stopWorldRuntime()` in `shutdown`, after WS0's `stopJobEngine()` (`server/index.ts:331-340`).
 
 ## 7. Client
 
@@ -3155,7 +3155,7 @@ The choice is the owner's (question 22).
 | --- | --- | --- | --- |
 | The live map, everyone | `FieldOpsWorldLayer` with its layers and controls | one element in `frontend/src/components/COP/MapView.tsx`, next to `BuildingStudOverlay` (`frontend/src/components/COP/MapView.tsx:1637-1645`) and WS4's `FieldOpsSceneOverlay` | the view route answers 200 |
 | The units panel, team members | `WorldUnitPanel`, a Leaflet control inside the layer | `FieldOpsWorldLayer` | the caller's audience is `team` and its teams have units |
-| The world console, the trainer | `WorldConsole` | `frontend/src/pages/SessionView.tsx`, a trainer card after the Participants card (`frontend/src/pages/SessionView.tsx:2469-2536`), beside WS7's `AiAgencyConsole` | trainer, the session has a world row |
+| The world console, the trainer | `WorldConsole` | `frontend/src/pages/SessionView.tsx`, a trainer card after the Participants card (`frontend/src/pages/SessionView.tsx:2477-2544`), beside WS7's `AiAgencyConsole` | trainer, the session has a world row |
 | The lobby, the trainer | `WorldLobbyCard` | `frontend/src/components/Session/SessionLobby.tsx`, beside `AITeammatesPanel` (`frontend/src/components/Session/SessionLobby.tsx:412-425`) and WS7's `FieldOpsLobbyPanel` | trainer, the settings route answers 200 |
 | The After-Action Review | `WorldReplayPanel` | `frontend/src/components/AAR/AARDashboard.tsx`, after `PursuitTimeline` (`frontend/src/components/AAR/AARDashboard.tsx:1250`) | the replay route answers 200 |
 

@@ -5,7 +5,7 @@
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `04-site-picker.md`
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
 **Migrations:** 233, 234 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -159,7 +159,7 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 - **Verified.** Two migrations touch the table: `migrations/163_rts_scene_configs.sql` (the table at lines 7-39, indexes at 41-45, the `updated_at` trigger at 48-59, the draft column at 62-63, the public bucket `rts-scene-images` at 65-68, RLS and policies at 70-89) and `migrations/164_rts_enrichment_result.sql` (`enrichment_result` at lines 4-5). No other migration mentions it.
 - **Verified.** The read policy is `FOR SELECT USING (true)` (`migrations/163_rts_scene_configs.sql:73-74`); insert, update and delete are allowed when `created_by = auth.uid()` (`migrations/163_rts_scene_configs.sql:76-89`). Checked on the live project on 25 Oct 2026 (master risk 14): RLS is on, the read policy applies to every role and `anon` holds SELECT, so the public anon key alone, with no sign-in, reads every scene row, planted devices included; the bucket `rts-scene-images` is public. **Updated 8 Nov 2026:** migration 218, applied in production, replaced the read policy with one for the scene's creator and admins; the bucket is still public, and insert, update and delete are unchanged (section 9.2).
 - **Verified.** `scenario_id` cascades on scenario delete (`migrations/163_rts_scene_configs.sql:9`); the draft column `rts_scene_id` is `ON DELETE SET NULL` (`migrations/163_rts_scene_configs.sql:63`).
-- **Verified.** `server/routes/rtsScenes.ts` is mounted at `/api/rts-scenes` (`rtsScenesRouter` at `server/index.ts:296`). Every verb uses `requireAuth` alone (journey finding 4.1); WS0 adds `requireStaff` to every verb (`01-prerequisites.md` section 6.5.3) and leaves ownership between trainers to WS4 (section 6.10):
+- **Verified.** `server/routes/rtsScenes.ts` is mounted at `/api/rts-scenes` (`rtsScenesRouter` at `server/index.ts:299`). Every verb uses `requireAuth` alone (journey finding 4.1); WS0 adds `requireStaff` to every verb (`01-prerequisites.md` section 6.5.3) and leaves ownership between trainers to WS4 (section 6.10):
 
 | Verb and path | Behaviour | Where |
 | --- | --- | --- |
@@ -169,9 +169,9 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 | PATCH `/api/rts-scenes/:id` | Filters on the id alone; `allowedFields` include `scenario_id` and `enrichment_result` | `server/routes/rtsScenes.ts:124-196` |
 | POST `/api/rts-scenes/:id/upload-image` | Stores a base64 image and returns a public URL from `uploadRtsSceneImage` | `server/routes/rtsScenes.ts:199-240` |
 | DELETE `/api/rts-scenes/:id` | `delete()` filtered on the id alone | `server/routes/rtsScenes.ts:243-258` |
-- **Verified.** Scenes are read by scenario in three places, each with `select('*')` or a fixed column list: `GET /api/scenarios/:id/scene-config` (`server/routes/scenarios.ts:3382-3401`), `GET /api/sessions/:id/scene-config` (`server/routes/sessions.ts:971-1000`) and `loadClassifiedGrids` (`server/services/buildingStudService.ts:781-818`). The debug page lists and deletes scenes (`listSceneConfigs` at `frontend/src/pages/DebugRTSSim.tsx:1225`).
+- **Verified.** Scenes are read by scenario in three places, each with `select('*')` or a fixed column list: `GET /api/scenarios/:id/scene-config` (`server/routes/scenarios.ts:3382-3401`), `GET /api/sessions/:id/scene-config` (`server/routes/sessions.ts:976-1005`) and `loadClassifiedGrids` (`server/services/buildingStudService.ts:781-818`). The debug page lists and deletes scenes (`listSceneConfigs` at `frontend/src/pages/DebugRTSSim.tsx:1225`).
 - **Verified.** The legacy persist re-parents the one scene row to the newest scenario (`server/routes/warroom.ts:1204-1212`), journey finding 4.13.
-- **Verified.** The server parses JSON up to 10 MB for every route (`express.json` at `server/index.ts:252`).
+- **Verified.** The server parses JSON up to 10 MB for every route (`express.json` at `server/index.ts:255`).
 
 ### 3.6 How compile reads the scene today
 
@@ -182,7 +182,7 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 
 ### 3.7 The runtime canvas
 
-- **Verified.** `SceneCanvasView` (1,461 lines) is mounted by `SessionView` (`frontend/src/pages/SessionView.tsx:1486`, `frontend/src/pages/SessionView.tsx:2228`, `frontend/src/pages/SessionView.tsx:2624`) and by `ScenarioDetailView` (`frontend/src/components/Scenario/ScenarioDetailView.tsx:2491`). It loads the scene with `getSceneConfig` (`frontend/src/components/COP/SceneCanvasView.tsx:159`), which calls `/api/scenarios/:id/scene-config` (`frontend/src/lib/api.ts:695-698`). WS0 changes the choice of map (`01-prerequisites.md`, P0.1): participants and spectators always get the live `MapView`, which already outlines the building through `BuildingStudOverlay` (`frontend/src/components/COP/MapView.tsx:1637-1645`), and `SceneCanvasView` becomes the trainer's "Scene preview".
+- **Verified.** `SceneCanvasView` (1,461 lines) is mounted by `SessionView` (`frontend/src/pages/SessionView.tsx:1488`, `frontend/src/pages/SessionView.tsx:2236`, `frontend/src/pages/SessionView.tsx:2632`) and by `ScenarioDetailView` (`frontend/src/components/Scenario/ScenarioDetailView.tsx:2491`). It loads the scene with `getSceneConfig` (`frontend/src/components/COP/SceneCanvasView.tsx:159`), which calls `/api/scenarios/:id/scene-config` (`frontend/src/lib/api.ts:695-698`). WS0 changes the choice of map (`01-prerequisites.md`, P0.1): participants and spectators always get the live `MapView`, which already outlines the building through `BuildingStudOverlay` (`frontend/src/components/COP/MapView.tsx:1637-1645`), and `SceneCanvasView` becomes the trainer's "Scene preview".
 - **Verified.** It loads `planted_items` for everyone (`frontend/src/components/COP/SceneCanvasView.tsx:332-336`) and lists them in the wall-point panel (`plantedItems` at `frontend/src/components/COP/SceneCanvasView.tsx:1209-1227`), journey finding 4.3.
 - **Verified.** It fetches Street View for the active wall point when a key is set (`fetchStreetViewImage` effect at `frontend/src/components/COP/SceneCanvasView.tsx:450-475`).
 - **Verified.** Its evacuation preview spawns `pedestrian_count` people (`startEvacuation` at `frontend/src/components/COP/SceneCanvasView.tsx:650-673`) uniformly inside the polygon (`spawnPedestrians` at `frontend/src/lib/evacuation/engine.ts:194-237`).
@@ -196,7 +196,7 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 
 - **Verified.** `sharp` 0.33 is a root dependency (`package.json:99`) already used on the server (`server/services/scenarioMapImageService.ts:6`). `multer` 2 is a root dependency (`package.json:89`) with a memory-storage, size-limited, single-file pattern and a `MulterError` handler (`uploadPdf` at `server/routes/trainerAgreements.ts:226-248`) and a per-user limiter (`perUserLimit` at `server/routes/trainerAgreements.ts:215-224`).
 - **Verified.** A private bucket with a size and type limit is created in `migrations/212_trainer_agreements.sql:74-76`; files are read through signed URLs (`createSignedUrl` with `SIGNED_URL_SECONDS` at `server/routes/trainerAgreements.ts:166-172`; the constant is 300 seconds, defined near the top of the same file).
-- **Verified.** A flag-gated router answers 404 when its flag is off (`enableTeammateBots` gate at `server/routes/teammateBots.ts:25-33`). `requireStaff` admits trainers and admins (`server/middleware/auth.ts:88-100`). `validate()` returns a 400 with no `code` (`server/lib/validation.ts:5-31`). Background work is gated by `runBackgroundEngines` (`server/env.ts:112-114`).
+- **Verified.** A flag-gated router answers 404 when its flag is off (`enableTeammateBots` gate at `server/routes/teammateBots.ts:25-33`). `requireStaff` admits trainers and admins (`server/middleware/auth.ts:88-100`). `validate()` returns a 400 with no `code` (`server/lib/validation.ts:5-31`). Background work is gated by `runBackgroundEngines` (`server/env.ts:115-117`).
 - **Verified.** The saved map tables carry `highway_type` and `coordinates_json` for roads and `footprint_polygon_json` for buildings (`migrations/193_singapore_local_osm_cache.sql:5-40`).
 - **Verified.** Files under `shared/` import each other with a `.js` suffix (`shared/roleVisibility.ts:1`); the frontend imports them through the `@shared` alias (`frontend/vite.config.ts:10`). Client tests run under `node:test` and import pure modules from `frontend/src` (`frontend/tests/setupValidation.test.ts:1-14`).
 
@@ -1209,14 +1209,14 @@ Involved exits are not written to `exits`: the renderer orients an exit along `e
 
 ### 6.1 Router, mounting and gates (Proposed)
 
-`server/routes/fieldOpsScene.ts (new)` exports `fieldOpsSceneRouter`. `server/index.ts` mounts it with `app.use('/api/warroom/field-ops/scene', fieldOpsSceneRouter)` on the line before the `/api/warroom` mount (`warroomRouter` at `server/index.ts:286`), so the legacy router never sees these paths. Middleware, in order:
+`server/routes/fieldOpsScene.ts (new)` exports `fieldOpsSceneRouter`. `server/index.ts` mounts it with `app.use('/api/warroom/field-ops/scene', fieldOpsSceneRouter)` on the line before the `/api/warroom` mount (`warroomRouter` at `server/index.ts:289`), so the legacy router never sees these paths. Middleware, in order:
 
 1. WS0's `requireFieldopsV2` on every route (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`): when `env.enableFieldopsV2` is false it answers 404 `{ error: 'Not found' }`, the body of the app's 404 handler. It is applied per route, as WS0 asks, rather than with `router.use`.
 2. `requireAuth`, then WS0's trainer-or-admin guard `requireFieldopsTrainer` (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`, `01-prerequisites.md` AC0.40, master 10.8 item 31), which answers 403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` for anything but `trainer` and `admin` (the roles `requireStaff` admits at `server/middleware/auth.ts:88-100`, with a coded body). The router keeps no role check of its own; ownership stays its own check, answering 404 (section 6.5).
 3. Per-route `validate()` with the schemas of section 5.7.
 4. A handler wrapper that turns a thrown `SceneStoreError` into `{ error, code, details }` with its status, and anything else into 500 `{ error: 'Something went wrong with the scene. Your last save is safe.', code: 'INTERNAL' }` after logging the ids.
 
-Literal sub-paths (`/drafts`, `/by-scenario`) are registered before `/:sceneId`. Rate limits use the `perUserLimit` pattern (`server/routes/trainerAgreements.ts:215-224`): saves 1,800 an hour per user, photo uploads 240 an hour per user; the global limiter (`limiter` at `server/index.ts:193-211`) still applies.
+Literal sub-paths (`/drafts`, `/by-scenario`) are registered before `/:sceneId`. Rate limits use the `perUserLimit` pattern (`server/routes/trainerAgreements.ts:215-224`): saves 1,800 an hour per user, photo uploads 240 an hour per user; the global limiter (`limiter` at `server/index.ts:196-214`) still applies.
 
 ### 6.2 Endpoints
 

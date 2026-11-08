@@ -5,7 +5,7 @@
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `02-teams-and-doctrines.md`, `04-site-picker.md`; softly `07-device-and-physics.md` and `08-people-or-ai.md`
 **Flags:** `ENABLE_FIELDOPS_V2` with `VITE_ENABLE_FIELDOPS_V2`, and `ENABLE_FIELDOPS_BLUEPRINT`
 **Migrations:** 226, 227, 228 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
-**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
+**Baseline:** verified against commit 1cd539a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -140,9 +140,9 @@ All statements are **Verified** on the baseline unless tagged otherwise.
 ### 3.4 Server conventions
 
 - `validate()` parses `body`, `query` and `params` with zod and answers 400 `{ error, details }` without a `code` (`server/lib/validation.ts:5-36`); WS0 adds `VALIDATION_FAILED`.
-- Server flags are read once in `server/env.ts`. The "on in development, off in production" shape is the one used by `enableTeammateBots` (`server/env.ts:155-157`); the corporate `enableDocumentBlueprint` defaults to off everywhere (`server/env.ts:138-140`).
-- The global JSON parser accepts 10 MB (`server/index.ts:252`). The smaller parser for `/api/join` is mounted after it (`server/index.ts:256`); body-parser skips a request whose body is already parsed, so a smaller limit only takes effect when mounted before line 252 (read from the mount order; the skip is documented body-parser behaviour, not executed here).
-- Routers are mounted in `server/index.ts`: `/api/warroom` (`server/index.ts:286`) and `/api/warroom/social-crisis` (`server/index.ts:301`); unknown paths answer `{ error: 'Not found' }` (`server/index.ts:307-310`) and the error handler always answers 500 (`server/index.ts:313-323`).
+- Server flags are read once in `server/env.ts`. The "on in development, off in production" shape is the one used by `enableTeammateBots` (`server/env.ts:158-160`); the corporate `enableDocumentBlueprint` defaults to off everywhere (`server/env.ts:141-143`).
+- The global JSON parser accepts 10 MB (`server/index.ts:255`). The smaller parser for `/api/join` is mounted after it (`server/index.ts:259`); body-parser skips a request whose body is already parsed, so a smaller limit only takes effect when mounted before line 252 (read from the mount order; the skip is documented body-parser behaviour, not executed here).
+- Routers are mounted in `server/index.ts`: `/api/warroom` (`server/index.ts:289`) and `/api/warroom/social-crisis` (`server/index.ts:304`); unknown paths answer `{ error: 'Not found' }` (`server/index.ts:310-313`) and the error handler always answers 500 (`server/index.ts:316-326`).
 - `requireAuth` sets `req.user.id` and `req.user.role` (`server/middleware/auth.ts:20-82`); `requireStaff` admits trainers and admins (`server/middleware/auth.ts:88-99`). `isAdmin` and `hasCredit` are in `server/services/creditService.ts:31` and `server/services/creditService.ts:55-58`; the legacy 402 body and `lacksScenarioCredit` are at `server/routes/warroom.ts:31-39`.
 - A per-user rate limiter and multer error mapping already exist for agreement uploads (`server/routes/trainerAgreements.ts:214-248`).
 
@@ -1292,7 +1292,7 @@ The revision works as a compare-and-set:
 | `doctrines.enabled` | `env.enableFieldopsDoctrines` (WS1) |
 | `physics.enabled` | WS6's `physicsEnabledFor(user.role)` |
 | `document_aliasing` | `false` until the privacy programme replaces `withDocumentPrivacyScope` (section 9.4) |
-| `ai_configured` | `env.aiEnabled` (`server/env.ts:69`) |
+| `ai_configured` | `env.aiEnabled` (`server/env.ts:72`) |
 
 The page then completes `PageCapabilities` in the browser: `doctrines_library` from WS1's `fieldOpsTeamsApi.capabilities()` (its `library` field) and `ai_agencies` from WS7's `fieldOpsBotsApi.availability()` (`GET /api/field-ops/bots/availability`), each read once per page load, as WS1's and WS7's specs ask; the availability is passed to `AgencyLane` and every `AgencyCard`, and the CTA's "run by AI" count is the number of cards whose `operation` is `ai`. A 404 or 403 from either call (WS7's `requestOrNull` returns null) means off, and an off AI availability shows WS7's message, "AI-operated agencies are not enabled on this server." (master 10.8 item 8). The page treats `blueprint.enabled && blueprint.storage_ready && ai_configured` as "documents and radar available", and `doctrines.enabled && doctrines_library` as "doctrines on" for the cards and for readiness.
 
@@ -1616,8 +1616,8 @@ Stored job error codes (ledger and document rows): `RADAR_MODEL_FAILED`, `RADAR_
 
 Two edits in `server/index.ts`:
 
-1. Before the global parser (`server/index.ts:252`): `app.use('/api/warroom/field-ops/drafts', ...fieldOpsDraftBodyParsers);` where `fieldOpsDraftBodyParsers` is `[express.json({ limit: '384kb' }), mapBodyTooLarge]` and `mapBodyTooLarge` is a four-argument error middleware that answers 413 `PAYLOAD_TOO_LARGE` for `err.type === 'entity.too.large'` and calls `next(err)` otherwise. The global parser then skips these requests because their body is already parsed (P9). Multipart uploads are not JSON and pass through untouched.
-2. After the legacy War Room router (`server/index.ts:286`): `app.use('/api/warroom/field-ops', fieldOpsSetupRouter);`. The legacy router has no router-wide middleware and no path that matches `/field-ops/...`, so requests fall through to this router; other field-ops routers (WS0, WS3, WS4, WS5) share the prefix (master 10.8 item 3).
+1. Before the global parser (`server/index.ts:255`): `app.use('/api/warroom/field-ops/drafts', ...fieldOpsDraftBodyParsers);` where `fieldOpsDraftBodyParsers` is `[express.json({ limit: '384kb' }), mapBodyTooLarge]` and `mapBodyTooLarge` is a four-argument error middleware that answers 413 `PAYLOAD_TOO_LARGE` for `err.type === 'entity.too.large'` and calls `next(err)` otherwise. The global parser then skips these requests because their body is already parsed (P9). Multipart uploads are not JSON and pass through untouched.
+2. After the legacy War Room router (`server/index.ts:289`): `app.use('/api/warroom/field-ops', fieldOpsSetupRouter);`. The legacy router has no router-wide middleware and no path that matches `/field-ops/...`, so requests fall through to this router; other field-ops routers (WS0, WS3, WS4, WS5) share the prefix (master 10.8 item 3).
 
 ### 6.12 Logging
 
@@ -2480,7 +2480,7 @@ Covered in section 8.9: the models transcribe and never generate device detail; 
 | `VITE_ENABLE_FIELDOPS_V2` | `FIELDOPS_V2_ENABLED` from `isFieldOpsV2Enabled(import.meta.env)` | On in development builds, off in production builds | `/warroom/field-ops` is not registered; `/warroom` behaves exactly as today |
 | `ENABLE_FIELDOPS_BLUEPRINT` | `env.enableFieldopsBlueprint`, defined by this spec | On in development, off in production | Document, radar and blueprint routes answer 404; capabilities report `blueprint.enabled: false`; Setup takes a description only and has no radar; `footprint` stays null |
 
-Both server flags are read once, at boot (master section 8), so flipping one needs a restart but no build; `VITE_ENABLE_FIELDOPS_V2` is fixed when Vercel builds the frontend. The new property in `server/env.ts`, beside `enableDocumentBlueprint` (`server/env.ts:138-140`), with the shape of `enableTeammateBots` (`server/env.ts:155-157`):
+Both server flags are read once, at boot (master section 8), so flipping one needs a restart but no build; `VITE_ENABLE_FIELDOPS_V2` is fixed when Vercel builds the frontend. The new property in `server/env.ts`, beside `enableDocumentBlueprint` (`server/env.ts:141-143`), with the shape of `enableTeammateBots` (`server/env.ts:158-160`):
 
 ```ts
 // server/env.ts, inside the env object. Field-ops document drop zone, footprint radar and blueprint (docs/field-ops/03-setup-screen.md).
@@ -2886,7 +2886,7 @@ Every request other specs made of WS2, and every name they attribute to WS2, wit
 | WS6 | X6.6: confirm that the setup PATCH with `set.devices` replaces the whole list and refuses a stale `base_rev` with 409 `SETUP_REV_CONFLICT`, as `saveDeviceOverrides` relies on; return 400 details at `devices.N...` | Accepted; `set.device` also replaces one device by id. Inside the page, a direct save is followed by `refreshDraft()` (request R18) | Sections 5.9 and 6.4; T2.5 |
 | WS7 | Call `fieldOpsBotsApi.availability()` once per page load and pass it to `AgencyLane` and every `AgencyCard`; compute the "run by AI" count from the cards | Accepted | Sections 5.11 and 7.7; T2.16, T2.18 |
 | WS8 | Confirm `fieldOpsSetupV2Schema` and `pressureBodySchema` are exported from `setupSchemas.ts`; accept a seeded draft for **Start a new scenario from this one**; add `media` to `PRESSURE_ICON` | Accepted. Both schemas are exported from `server/lib/fieldOps/setupSchemas.ts (new)`; WS8 calls `createSeededDraft(user, seed)` (AC2.31); `PRESSURE_ICON` gains `media: 'megaphone'` and WS2's local map is dropped | Sections 5.8, 6.4 and 7.6; T2.3, T2.5, T2.18 |
-| WS3 | The name `warroomRouter` | Not a WS2 name: it is the existing corporate router mounted at `server/index.ts:286`, and WS3's sentence is right. WS2's router is `fieldOpsSetupRouter` | Section 6.11 |
+| WS3 | The name `warroomRouter` | Not a WS2 name: it is the existing corporate router mounted at `server/index.ts:289`, and WS3's sentence is right. WS2's router is `fieldOpsSetupRouter` | Section 6.11 |
 | WS3 | The name `SITE_DATA_UNAVAILABLE` | WS2's answer code for WS3's `SiteDataUnavailableError`, now defined | Sections 5.9 and 6.10 |
 | WS5 | The name `description_only` | Not a WS2 name: WS5's `BlueprintMode` value. Nothing to correct; "returns a blueprint" means `input.blueprint.status === 'ready'` | Section 6.8 |
 | WS5 | The name `compileFactSchema` | Not a WS2 name: WS5's own schema for `CompileBlueprintFact`; WS2 supplies `FieldOpsBlueprint` through `getReadyBlueprint` | Section 5.5 |
