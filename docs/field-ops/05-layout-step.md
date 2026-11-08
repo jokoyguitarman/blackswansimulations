@@ -4,8 +4,8 @@
 **Workstream:** WS4
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `04-site-picker.md`
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
-**Migrations:** 232, 233
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 233, 234 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -30,7 +30,7 @@
 - Calculating effects, bands or casualties, and storing overrides of calculated values: WS6 (`07-device-and-physics.md`). WS4 draws what WS6 returns.
 - Compile, Review and publish: WS5 (`06-compile-and-review.md`). Editing a published scenario: WS8 (`09-after-publish.md`).
 - Interior walls and stairwells for involved buildings; more than the two floors today's stairwells link.
-- Closing the permissive read policy on `rts_scene_configs`: an owner decision, raised as request R4.9 and made a production gate (section 9).
+- Closing the permissive read policy on `rts_scene_configs`: an owner decision, raised as request R4.9 and made a production gate (section 9). **Updated 8 Nov 2026:** migration 218 closed the read policy in production; the rest of R4.9 is open (section 9.2).
 - Fixing the legacy wizard's own scene bugs (journey findings 4.4, 4.5 and 4.13 on the legacy path); the new path avoids them by design.
 - Any model call. WS4 asks no model for anything (section 8).
 
@@ -52,7 +52,7 @@
 | D14 | Assumed | Street View goes. The trainer's photos are the only wall-point and hazard imagery. |
 | D15 | Assumed | At most 5 involved buildings and 6 devices; WS4's limits equal these caps. |
 | D22 | Assumed | Rings drawn from an unreviewed calculator carry WS6's "Unreviewed model" label. |
-| D23 | Assumed | Migrations 232 and 233 are additive and idempotent. |
+| D23 | Assumed | Migrations 233 and 234 are additive and idempotent. |
 | D24 | Assumed | Compile writes a draft scenario; a scene bound to a published scenario becomes read-only on this step. |
 | D25 | Assumed | The step lives only on the new page `/warroom/field-ops`; the legacy wizard keeps its own flow. |
 | D28 | Assumed | The mockup's layout wins on structure and copy; its emoji become `WrIcon` glyphs; its device sentence with named materials is replaced by WS6's safe summary (safety). |
@@ -90,9 +90,9 @@
 
 | Master 10.8 item | Where it lands here |
 | --- | --- |
-| 5: WS0's detectors, with a negative answer re-checked after about a minute | Section 5.10: applying 232 and 233 needs no restart |
+| 5: WS0's detectors, with a negative answer re-checked after about a minute | Section 5.10: applying 233 and 234 needs no restart |
 | 16: device pool and answer key kept out of `scenarios` columns | Section 6.12: `buildTrainerScene` gives the generator no planted items and returns the planted devices separately |
-| 21: foreign keys to `scenarios` cascade or set null | Migrations 232 and 233 add no foreign key to `scenarios`; the existing `scenario_id` cascades (`migrations/163_rts_scene_configs.sql:9`) |
+| 21: foreign keys to `scenarios` cascade or set null | Migrations 233 and 234 add no foreign key to `scenarios`; the existing `scenario_id` cascades (`migrations/163_rts_scene_configs.sql:9`) |
 | 22: the layout survives a replaced draft scenario | Section 6.12: `resolveSceneForCommit` takes `replacingScenarioId`, never links a scene itself, and `detachAuthoringScene` is called by WS5 before any delete |
 | 24: one `moderateDeviceText(text, options?)` | Sections 6.4 and 6.6: device notes pass `{ field: 'location_note' }`, decoy descriptions `{ maxLength: 200 }` |
 | 27: published scenarios edited only in WS8's editor | Sections 6.5 and 6.13: layout routes refuse writes to a published scene; WS8 uses the editable published mode and the save mapper |
@@ -157,9 +157,9 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 ### 3.5 The table, its migrations and its routes
 
 - **Verified.** Two migrations touch the table: `migrations/163_rts_scene_configs.sql` (the table at lines 7-39, indexes at 41-45, the `updated_at` trigger at 48-59, the draft column at 62-63, the public bucket `rts-scene-images` at 65-68, RLS and policies at 70-89) and `migrations/164_rts_enrichment_result.sql` (`enrichment_result` at lines 4-5). No other migration mentions it.
-- **Verified.** The read policy is `FOR SELECT USING (true)` (`migrations/163_rts_scene_configs.sql:73-74`); insert, update and delete are allowed when `created_by = auth.uid()` (`migrations/163_rts_scene_configs.sql:76-89`). Checked on the live project on 25 Oct 2026 (master risk 14): RLS is on, the read policy applies to every role and `anon` holds SELECT, so the public anon key alone, with no sign-in, reads every scene row, planted devices included; the bucket `rts-scene-images` is public.
+- **Verified.** The read policy is `FOR SELECT USING (true)` (`migrations/163_rts_scene_configs.sql:73-74`); insert, update and delete are allowed when `created_by = auth.uid()` (`migrations/163_rts_scene_configs.sql:76-89`). Checked on the live project on 25 Oct 2026 (master risk 14): RLS is on, the read policy applies to every role and `anon` holds SELECT, so the public anon key alone, with no sign-in, reads every scene row, planted devices included; the bucket `rts-scene-images` is public. **Updated 8 Nov 2026:** migration 218, applied in production, replaced the read policy with one for the scene's creator and admins; the bucket is still public, and insert, update and delete are unchanged (section 9.2).
 - **Verified.** `scenario_id` cascades on scenario delete (`migrations/163_rts_scene_configs.sql:9`); the draft column `rts_scene_id` is `ON DELETE SET NULL` (`migrations/163_rts_scene_configs.sql:63`).
-- **Verified.** `server/routes/rtsScenes.ts` is mounted at `/api/rts-scenes` (`rtsScenesRouter` at `server/index.ts:282`). Every verb uses `requireAuth` alone (journey finding 4.1); WS0 adds `requireStaff` to every verb (`01-prerequisites.md` section 6.5.3) and leaves ownership between trainers to WS4 (section 6.10):
+- **Verified.** `server/routes/rtsScenes.ts` is mounted at `/api/rts-scenes` (`rtsScenesRouter` at `server/index.ts:296`). Every verb uses `requireAuth` alone (journey finding 4.1); WS0 adds `requireStaff` to every verb (`01-prerequisites.md` section 6.5.3) and leaves ownership between trainers to WS4 (section 6.10):
 
 | Verb and path | Behaviour | Where |
 | --- | --- | --- |
@@ -169,9 +169,9 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 | PATCH `/api/rts-scenes/:id` | Filters on the id alone; `allowedFields` include `scenario_id` and `enrichment_result` | `server/routes/rtsScenes.ts:124-196` |
 | POST `/api/rts-scenes/:id/upload-image` | Stores a base64 image and returns a public URL from `uploadRtsSceneImage` | `server/routes/rtsScenes.ts:199-240` |
 | DELETE `/api/rts-scenes/:id` | `delete()` filtered on the id alone | `server/routes/rtsScenes.ts:243-258` |
-- **Verified.** Scenes are read by scenario in three places, each with `select('*')` or a fixed column list: `GET /api/scenarios/:id/scene-config` (`server/routes/scenarios.ts:3364-3383`), `GET /api/sessions/:id/scene-config` (`server/routes/sessions.ts:971-1000`) and `loadClassifiedGrids` (`server/services/buildingStudService.ts:781-818`). The debug page lists and deletes scenes (`listSceneConfigs` at `frontend/src/pages/DebugRTSSim.tsx:1225`).
+- **Verified.** Scenes are read by scenario in three places, each with `select('*')` or a fixed column list: `GET /api/scenarios/:id/scene-config` (`server/routes/scenarios.ts:3382-3401`), `GET /api/sessions/:id/scene-config` (`server/routes/sessions.ts:971-1000`) and `loadClassifiedGrids` (`server/services/buildingStudService.ts:781-818`). The debug page lists and deletes scenes (`listSceneConfigs` at `frontend/src/pages/DebugRTSSim.tsx:1225`).
 - **Verified.** The legacy persist re-parents the one scene row to the newest scenario (`server/routes/warroom.ts:1204-1212`), journey finding 4.13.
-- **Verified.** The server parses JSON up to 10 MB for every route (`express.json` at `server/index.ts:238`).
+- **Verified.** The server parses JSON up to 10 MB for every route (`express.json` at `server/index.ts:252`).
 
 ### 3.6 How compile reads the scene today
 
@@ -267,7 +267,7 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 17. **AC4.17** Given a scene bound to a published scenario, when a PUT or a photo upload arrives, then it answers 409 `SCENE_READ_ONLY`; `GET /api/warroom/field-ops/scene/by-scenario/:scenarioId` answers 200 to its creator and to an admin and 404 to another trainer. Test: `sceneStore.test.ts`, cases "read-only once published" and "by-scenario access".
 18. **AC4.18** Given only a keyboard, when the trainer opens "Place by form", chooses "Combustible", "12 m" and "north-east" and confirms, then a hazard exists at the point `pointFromBearing` returns and the live region announces it. Test: `frontend/tests/layoutPlacement.test.ts (new)` for the geometry; manual step M9 for the dialog and the announcement.
 19. **AC4.19** Given a participant, when any scene route is called, then the answer is 403 `FORBIDDEN` from WS0's `requireFieldopsTrainer`; given a trainer who did not create the draft or the scene, the answer is 404 `DRAFT_NOT_FOUND` or `SCENE_NOT_FOUND`. Test: `sceneStore.test.ts`, case "access".
-20. **AC4.20** Given migration 233 is not applied, when a scene route runs, then it answers 503 `LAYOUT_STORE_UNAVAILABLE` and the legacy `/api/rts-scenes` routes behave as before. Test: `sceneStore.test.ts`, case "store unavailable"; `server/services/fieldOps/layout/legacyGuard.test.ts (new)`, case "no column, no filter".
+20. **AC4.20** Given migration 234 is not applied, when a scene route runs, then it answers 503 `LAYOUT_STORE_UNAVAILABLE` and the legacy `/api/rts-scenes` routes behave as before. Test: `sceneStore.test.ts`, case "store unavailable"; `server/services/fieldOps/layout/legacyGuard.test.ts (new)`, case "no column, no filter".
 21. **AC4.21** Given a draft whose status is `compiling`, when a PUT, site sync, restore or photo upload arrives, then it answers 409 `DRAFT_COMPILING` from WS0's `assertDraftEditable`. Test: `sceneStore.test.ts`, case "compile lock".
 22. **AC4.22** Given a v2 row, when the legacy `GET /api/rts-scenes/:id`, PATCH, DELETE or upload is called with its id, then each answers 404, and the legacy list omits it. Test: `legacyGuard.test.ts`, case "v2 rows are hidden from the legacy routes".
 23. **AC4.23** Given a legacy scene created by trainer A, when trainer B calls `GET /api/rts-scenes/:id`, PATCH, DELETE or the image upload on it, then each answers 404 and nothing changes, and B's `GET /api/rts-scenes` lists only B's scenes; an admin keeps access to every scene. Test: `legacyGuard.test.ts`, case "owner checks on every legacy verb".
@@ -285,32 +285,31 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 
 | Data | Where | Readers |
 | --- | --- | --- |
-| The trainer's layout (`SceneConfigV2Authored`) | `rts_scene_configs.authored` (232) | WS4 routes, WS5 through `loadSceneForCompile`, WS8 through the by-scenario route. Never participants. |
-| The site the layout was built on | `rts_scene_configs.site_snapshot` and `site_fingerprint` (232) | WS4 site-change rules |
-| Involved-building footprints with their exits and wall points | `authored.involved` (source) and `rts_scene_configs.involved_layouts` (232, a projection without device data) | The runtime canvas through WS0's projection |
-| Crowd zones and the headcount used | `rts_scene_configs.crowd_zones` and `crowd_headcount` (233) | WS6 through `toCrowdZoneInputs`; the runtime canvas |
-| Photos | `rts_scene_photos` rows (233) and objects in the private bucket `fieldops-scene-photos` (233) | Signed URLs only |
-| Revisions | `rts_scene_revisions` (232) | WS4 restore |
+| The trainer's layout (`SceneConfigV2Authored`) | `rts_scene_configs.authored` (233) | WS4 routes, WS5 through `loadSceneForCompile`, WS8 through the by-scenario route. Never participants. |
+| The site the layout was built on | `rts_scene_configs.site_snapshot` and `site_fingerprint` (233) | WS4 site-change rules |
+| Involved-building footprints with their exits and wall points | `authored.involved` (source) and `rts_scene_configs.involved_layouts` (233, a projection without device data) | The runtime canvas through WS0's projection |
+| Crowd zones and the headcount used | `rts_scene_configs.crowd_zones` and `crowd_headcount` (234) | WS6 through `toCrowdZoneInputs`; the runtime canvas |
+| Photos | `rts_scene_photos` rows (234) and objects in the private bucket `fieldops-scene-photos` (234) | Signed URLs only |
+| Revisions | `rts_scene_revisions` (233) | WS4 restore |
 | Compatibility projection | the legacy columns of migration 163, written on every v2 save (section 5.8) | `SceneCanvasView`, `loadClassifiedGrids`, anything that reads a scene by scenario |
-| Draft to scene | `warroom_wizard_drafts.rts_scene_id` (existing) and `rts_scene_configs.draft_id` (232) | WS4, WS5 (`draftColumns`) |
+| Draft to scene | `warroom_wizard_drafts.rts_scene_id` (existing) and `rts_scene_configs.draft_id` (233) | WS4, WS5 (`draftColumns`) |
 
 The sim origin of every v2 position is the vertex mean of `site.primary.polygon` (L8). Latitude and longitude pairs are `[lat, lng]` everywhere, as in master 10.1.
 
-### 5.2 Migration 232: `migrations/232_rts_scene_configs_v2.sql (new)`
+### 5.2 Migration 233: `migrations/233_rts_scene_configs_v2.sql (new)`
 
 ```sql
--- Migration 232: field-ops v2 layout columns on rts_scene_configs, and layout revisions (WS4).
+-- Migration 233: field-ops v2 layout columns on rts_scene_configs, and layout revisions (WS4).
 --
 -- A v2 layout (docs/field-ops/05-layout-step.md, section 5) is stored next to the legacy columns,
 -- which every v2 save keeps writing as a projection so that existing readers keep working.
 -- Legacy rows get schema_version 1 and NULL or empty values in the new columns; nothing else
 -- about them changes. One Supabase project serves every environment, so this file is additive and
--- idempotent, and the code answers 503 LAYOUT_STORE_UNAVAILABLE until 232 and 233 are applied.
+-- idempotent, and the code answers 503 LAYOUT_STORE_UNAVAILABLE until 233 and 234 are applied.
 --
--- SECURITY: the server reads and writes these columns with the service role. The existing read
--- policy of migration 163 (USING (true)) applies to every role and anon holds SELECT (checked on
--- 25 Oct 2026), so the public anon key reads the new columns too; closing it is the owner decision
--- recorded as request R4.9 and a production gate for ENABLE_FIELDOPS_V2.
+-- SECURITY: the server reads and writes these columns with the service role. Migration 218 limits
+-- the read policy to the scene's creator and admins, so the anon key reads none of them; the rest
+-- of request R4.9 (the write policies, anon's grants, the public bucket) is the owner's decision.
 -- rts_scene_revisions has RLS enabled and no policy. No foreign key to scenarios is added
 -- (master 10.8 item 21).
 --
@@ -415,10 +414,10 @@ COMMENT ON TABLE rts_scene_revisions IS
   'Saved states of a v2 layout for restore. The newest 50 per scene are kept. Service role only.';
 ```
 
-### 5.3 Migration 233: `migrations/233_rts_scene_crowd_and_photos.sql (new)`
+### 5.3 Migration 234: `migrations/234_rts_scene_crowd_and_photos.sql (new)`
 
 ```sql
--- Migration 233: crowd zones, scene photos and the private photo bucket (WS4).
+-- Migration 234: crowd zones, scene photos and the private photo bucket (WS4).
 --
 -- crowd_zones holds where people stand (CrowdZone[]); crowd_headcount is the Setup headcount the
 -- last save used. rts_scene_photos indexes the trainer's photos, which live in the private bucket
@@ -1184,7 +1183,7 @@ The save handler runs `authoredCrossChecks` after the schema passes, with the pr
 | `planted_items` | one entry per placed non-main device (`threatLevel: 'secondary_device'`) and per decoy (`'decoy'`), with `concealmentDifficulty: 'moderate'`, `detonationTimer: null`, `discovered: false`, `assessed: false`, `assessmentCorrect: null`, `aiResponse: null`; a device's `wallPointId` is its anchor, else the nearest wall point within 15 m, else `free-<placement id>`; its `description` is empty |
 | `pedestrian_count` | `crowd_headcount`, else 120 |
 | `casualty_clusters` | `[]` |
-| `involved_layouts` (232) | `authored.involved` |
+| `involved_layouts` (233) | `authored.involved` |
 
 Involved exits are not written to `exits`: the renderer orients an exit along `edgeIndex` of the primary polygon, which would place them wrongly.
 
@@ -1210,14 +1209,14 @@ Involved exits are not written to `exits`: the renderer orients an exit along `e
 
 ### 6.1 Router, mounting and gates (Proposed)
 
-`server/routes/fieldOpsScene.ts (new)` exports `fieldOpsSceneRouter`. `server/index.ts` mounts it with `app.use('/api/warroom/field-ops/scene', fieldOpsSceneRouter)` on the line before the `/api/warroom` mount (`warroomRouter` at `server/index.ts:272`), so the legacy router never sees these paths. Middleware, in order:
+`server/routes/fieldOpsScene.ts (new)` exports `fieldOpsSceneRouter`. `server/index.ts` mounts it with `app.use('/api/warroom/field-ops/scene', fieldOpsSceneRouter)` on the line before the `/api/warroom` mount (`warroomRouter` at `server/index.ts:286`), so the legacy router never sees these paths. Middleware, in order:
 
 1. WS0's `requireFieldopsV2` on every route (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`): when `env.enableFieldopsV2` is false it answers 404 `{ error: 'Not found' }`, the body of the app's 404 handler. It is applied per route, as WS0 asks, rather than with `router.use`.
 2. `requireAuth`, then WS0's trainer-or-admin guard `requireFieldopsTrainer` (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`, `01-prerequisites.md` AC0.40, master 10.8 item 31), which answers 403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` for anything but `trainer` and `admin` (the roles `requireStaff` admits at `server/middleware/auth.ts:88-100`, with a coded body). The router keeps no role check of its own; ownership stays its own check, answering 404 (section 6.5).
 3. Per-route `validate()` with the schemas of section 5.7.
 4. A handler wrapper that turns a thrown `SceneStoreError` into `{ error, code, details }` with its status, and anything else into 500 `{ error: 'Something went wrong with the scene. Your last save is safe.', code: 'INTERNAL' }` after logging the ids.
 
-Literal sub-paths (`/drafts`, `/by-scenario`) are registered before `/:sceneId`. Rate limits use the `perUserLimit` pattern (`server/routes/trainerAgreements.ts:215-224`): saves 1,800 an hour per user, photo uploads 240 an hour per user; the global limiter (`limiter` at `server/index.ts:164-197`) still applies.
+Literal sub-paths (`/drafts`, `/by-scenario`) are registered before `/:sceneId`. Rate limits use the `perUserLimit` pattern (`server/routes/trainerAgreements.ts:215-224`): saves 1,800 an hour per user, photo uploads 240 an hour per user; the global limiter (`limiter` at `server/index.ts:193-211`) still applies.
 
 ### 6.2 Endpoints
 
@@ -2312,7 +2311,7 @@ Not applicable: WS4 makes no model call and sends no layout text, photo or posit
 | Read by scenario (published mode) | Yes (scene or scenario creator) | 404 | Yes | 403 | No route |
 | Copy a scenario's scene into a seeded draft (`copySceneForSeededDraft`, called by WS8's server code) | Yes, into her own draft, when she created the scenario or its scene | `SCENARIO_SCENE_NOT_FOUND` | Yes, into her own draft | 403 (WS8's route) | No route |
 | See crowd zones, involved footprints and photos at runtime | Through WS0's projection | Same | Same | Same, for sessions they can access | No |
-| See device positions (`authored`, `planted_items`) | WS4 routes only | No | Yes | Never (WS0's allow-list) | Today yes, with no sign-in, through the read policy (live check of 25 Oct 2026): gate R4.9 |
+| See device positions (`authored`, `planted_items`) | WS4 routes only | No | Yes | Never (WS0's allow-list) | Yes until migration 218, with no sign-in, through the read policy (live check of 25 Oct 2026): gate R4.9. **Updated 8 Nov 2026:** no longer, because 218 limits reads to the creator and admins |
 | Read or change a v2 row through `/api/rts-scenes` | 404 | 404 | 404 | 403 (WS0's `requireStaff`) | Not applicable |
 | Read or change a legacy scene through `/api/rts-scenes` | Yes | 404 (owner check, section 6.10) | Yes | 403 (WS0's `requireStaff`) | Not applicable |
 
@@ -2320,7 +2319,9 @@ Not applicable: WS4 makes no model call and sends no layout text, photo or posit
 
 **Verified.** `rts_scene_configs` has `FOR SELECT USING (true)` and owner-scoped insert, update and delete policies (`migrations/163_rts_scene_configs.sql:73-89`), and the bucket `rts-scene-images` is public (`migrations/163_rts_scene_configs.sql:65-68`). Checked on the live project on 25 Oct 2026 (master risk 14): RLS is on, the read policy applies to every role and `anon` holds SELECT, so the public anon key alone, with no sign-in, reads every scene row today, planted devices included, and would read the new `authored` column with device positions; a signed-in user can also insert rows of their own and update or delete them without the server's validation. Closing this is not additive, so it is the owner's decision, and it should be done soon on its own because it affects every existing scene.
 
-**Request R4.9** (to the owner, through the master plan): allocate a migration number after 248 for the statements below, and approve them. Until they are applied in production, `ENABLE_FIELDOPS_V2` stays off in production. The server uses the service role, so no server code changes; the legacy public image URLs in `wall_photo_urls` would stop resolving once the bucket is private, which the owner should weigh (the editor never calls the upload route, section 3.4).
+**Updated 8 Nov 2026.** Migration 218 (the launch security fix, applied in production) replaced the select policy with one for the scene's creator and admins. The anon key now reads no scene row, and a signed-in user reads only their own. The other statements below are still open: the owner-scoped insert, update and delete policies, `anon`'s grants and the public bucket. Whether they still gate `ENABLE_FIELDOPS_V2` in production is the owner's call; as written, the gate stands until they are applied.
+
+**Request R4.9** (to the owner, through the master plan): allocate a migration number after 249 for the statements below, and approve them. Until they are applied in production, `ENABLE_FIELDOPS_V2` stays off in production. The server uses the service role, so no server code changes; the legacy public image URLs in `wall_photo_urls` would stop resolving once the bucket is private, which the owner should weigh (the editor never calls the upload route, section 3.4).
 
 ```text
 DROP POLICY IF EXISTS rts_scene_configs_select ON rts_scene_configs;
@@ -2372,11 +2373,11 @@ Event names start with `fieldops_scene_` (section 10.3). Logged: ids (scene, dra
 | `VITE_ENABLE_FIELDOPS_V2` | the client build (WS2's page) | The `/warroom/field-ops` page, and so `LayoutShell`, exists only when on. Off: the legacy wizard and `SceneEditor` are the only scene UI, unchanged |
 | `ENABLE_FIELDOPS_PHYSICS` | WS6, through `physicsEnabledFor(role)` and the hook status; in production `true` behaves as `admin` until the D22 review (master section 8) | Ready: WS6's rings and `EffectsPanel` in the inspector. `disabled`: the legacy radius slider and the legacy bands drawn by `renderRTS` |
 
-Not flagged, on purpose: the legacy-route guard (it only hides v2 rows and does nothing before migration 232) and the extraction refactor (no behaviour change).
+Not flagged, on purpose: the legacy-route guard (it only hides v2 rows and does nothing before migration 233) and the extraction refactor (no behaviour change).
 
 ### 10.2 Rollout
 
-1. **Development**: apply 232 and 233; flags on by default (master section 8).
+1. **Development**: apply 233 and 234; flags on by default (master section 8).
 2. **Staging**: run the manual acceptance steps of section 11.4, including the legacy parity checklist with `VITE_ENABLE_FIELDOPS_V2` off and on.
 3. **Production gates**, all required before the flag goes on in production: request R4.9 decided and applied; WS0's participant allow-list live; the legacy parity checklist passed on staging; the photo sweeper observed completing a run on staging.
 4. **Production, owner's account first**, then everyone, as master section 12 describes.
@@ -2495,7 +2496,7 @@ Tasks are in build order. WS0's helpers, WS3's site contract and WS2's step regi
    - Tests: as listed. Commit 1.
 4. **T4.4 Migrations.**
    - Goal: storage for v2 layouts, crowd zones, revisions and photos.
-   - Files: `migrations/232_rts_scene_configs_v2.sql (new)`, `migrations/233_rts_scene_crowd_and_photos.sql (new)`.
+   - Files: `migrations/233_rts_scene_configs_v2.sql (new)`, `migrations/234_rts_scene_crowd_and_photos.sql (new)`.
    - Steps: copy sections 5.2 and 5.3; parse them with the PostgreSQL grammar; apply them by hand on a scratch database (a Supabase branch or a local Postgres, never the shared project), twice, to prove idempotence.
    - Done when: both apply twice without error; `rts_scene_configs` shows the new columns with legacy rows at `schema_version = 1`; the bucket exists with `public = false`.
    - Tests: the SQL parse; AC4.20 later covers the code side. Commit 2.
@@ -2600,7 +2601,7 @@ Tasks are in build order. WS0's helpers, WS3's site contract and WS2's step regi
 | Commit | Tasks | What it contains | Safe to ship alone because | Backtracking |
 | --- | --- | --- | --- | --- |
 | Commit 1: `fieldops(ws4): shared layout contract, geometry, crowd and footprint logic` | T4.1 to T4.3 | Shared types and pure modules, fixtures, seven test files | Nothing imports it at runtime yet | `git revert` commit 1. Nothing depends on it until commit 2; other workstreams that compiled against the types keep a stub of `shared/fieldOps/layout.ts (new)` from section 5.4 |
-| Commit 2: `fieldops(ws4): scene store, schemas, migrations 232 and 233, router` | T4.4 to T4.7 | Migrations, zod schemas, store, projection, site sync, router and mount | Routes answer 404 with the flag off and 503 before the migrations | Turn `ENABLE_FIELDOPS_V2` off first, then `git revert` commit 2. The migrations stay (additive, unused by legacy code); to remove them, run the rollback comments of 232 and 233 only after confirming no `schema_version = 2` rows are wanted |
+| Commit 2: `fieldops(ws4): scene store, schemas, migrations 233 and 234, router` | T4.4 to T4.7 | Migrations, zod schemas, store, projection, site sync, router and mount | Routes answer 404 with the flag off and 503 before the migrations | Turn `ENABLE_FIELDOPS_V2` off first, then `git revert` commit 2. The migrations stay (additive, unused by legacy code); to remove them, run the rollback comments of 233 and 234 only after confirming no `schema_version = 2` rows are wanted |
 | Commit 3: `fieldops(ws4): private scene photos, hand-off functions, legacy guard` | T4.8, T4.9, T4.17 | Photo pipeline and sweeper, `buildTrainerScene`, `resolveSceneForCommit`, `copySceneForSeededDraft`, the save mapper, the `rtsScenes.ts` guard and owner checks | The guard does nothing until a v2 row exists; photo routes are flag-gated | Revert commit 3. If WS5's v2 variant or WS8's **Start a new scenario from this one** already imports the hand-off functions, revert or disable it first; photos already stored stay in the private bucket and are swept once the code returns, or removed by emptying the bucket |
 | Commit 4: `refactor(scene-editor): extract the edit phase into a hook and canvas` | T4.10 | The move-only extraction and the loader tests | No behaviour change; M10 proves it | Revert commit 4 alone and the legacy editor returns to one file. Commit 5 depends on it, so revert commit 5 first if it has landed |
 | Commit 5: `fieldops(ws4): lay out the scene step` | T4.11 to T4.14, T4.18 | The step, its layers, photos panel, accessibility, stylesheet, registry line, the new glyphs, the editable published mode | Only reachable on the new page behind `VITE_ENABLE_FIELDOPS_V2` | Rebuild with `VITE_ENABLE_FIELDOPS_V2` off (Vercel) to hide it at once, then revert commit 5. Saved v2 scenes stay valid for a later re-apply |
@@ -2614,8 +2615,8 @@ Each commit passes `npm test`, `npx tsc --noEmit` and the frontend build on its 
 
 | File | Task |
 | --- | --- |
-| `migrations/232_rts_scene_configs_v2.sql (new)` | T4.4 |
-| `migrations/233_rts_scene_crowd_and_photos.sql (new)` | T4.4 |
+| `migrations/233_rts_scene_configs_v2.sql (new)` | T4.4 |
+| `migrations/234_rts_scene_crowd_and_photos.sql (new)` | T4.4 |
 | `shared/fieldOps/layout.ts (new)` | T4.1 |
 | `shared/fieldOps/sceneGeometry.ts (new)` | T4.2 |
 | `shared/fieldOps/wallPoints.ts (new)` | T4.2 |
@@ -2728,7 +2729,7 @@ WS4 changes none of the five files another session edits (README) except through
 | # | Risk | Mitigation |
 | --- | --- | --- |
 | 1 | The extraction changes the legacy editor's behaviour (master risk 10) | Move-only commit 4 of its own; loader tests; the parity checklist M10 before and after; revert path in section 13 |
-| 2 | The public anon key alone reads every scene row today, planted devices included, and would read v2 device positions (live check of 25 Oct 2026) until R4.9 is applied | Production gate and a request to close it soon (section 9.2); owner checks, the legacy guard and WS0's allow-list close the application paths meanwhile |
+| 2 | The public anon key alone reads every scene row today, planted devices included, and would read v2 device positions (live check of 25 Oct 2026) until R4.9 is applied | Production gate and a request to close it soon (section 9.2); owner checks, the legacy guard and WS0's allow-list close the application paths meanwhile. **Updated 8 Nov 2026:** migration 218 closed the read half; the write policies, `anon`'s grants and the public bucket remain |
 | 3 | WS3's site area changes shape | WS3 keeps `loadSiteArea` and its route stable (master 10.8 item 11); one adapter, `toSiteAreaForLayout`, on the server, and WS3's own layers on the client |
 | 4 | Deleting a draft scenario cascades to the trainer's layout (`migrations/163_rts_scene_configs.sql:9`) | `detachAuthoringScene`, which WS5 calls before it deletes any draft scenario (master 10.8 item 22) |
 | 5 | Re-projection after a primary change loses precision or misplaces items | Moves by map position; tests with 1e-9 degree tolerance; a `site_sync` revision before every change |
@@ -2792,14 +2793,14 @@ The first draft's requests R4.1 to R4.8 and R4.10 to R4.12 are settled: R4.1 by 
 
 | To | Request | Why |
 | --- | --- | --- |
-| `00-master-plan.md` (owner) | R4.9: approve closing the read policy and the public bucket of `migrations/163_rts_scene_configs.sql` with the statements of section 9.2, under a migration number after 248, soon and on its own; keep `ENABLE_FIELDOPS_V2` off in production until it is applied | Master risk 14: the anon key alone reads every scene row today; not additive, so the owner decides |
+| `00-master-plan.md` (owner) | R4.9: approve closing the read policy and the public bucket of `migrations/163_rts_scene_configs.sql` with the statements of section 9.2, under a migration number after 249, soon and on its own; keep `ENABLE_FIELDOPS_V2` off in production until it is applied. **Updated 8 Nov 2026:** migration 218 applied a narrower select policy in production; the other statements are still requested | Master risk 14: the anon key alone read every scene row until migration 218; not additive, so the owner decides |
 
 ## 16. Definition of done
 
 - [ ] AC4.1 to AC4.29 pass, each with the test named in section 4.3. **Added 3 Nov 2026:** AC4.30 too.
 - [ ] `npm test` passes with every file of sections 11.2 and 11.3 added to the `test` script in `package.json`; `npx tsc --noEmit` is clean at the root; the frontend build (`tsc && vite build`) is clean.
 - [ ] `node scripts/verify-field-ops-specs.mjs --only=05 --deep --strict` passes.
-- [ ] Migrations 232 and 233 apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), and every scene route answers 503 before they are applied.
+- [ ] Migrations 233 and 234 apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), and every scene route answers 503 before they are applied.
 - [ ] With `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2` off, the legacy wizard passes M10 and the scene routes answer 404.
 - [ ] No Street View request and no `VITE_GOOGLE_MAPS_API_KEY` read on the new path (AC4.12, M6); no emoji in the new components.
 - [ ] Stored photos carry no EXIF or GPS data (AC4.13, M3); the sweeper has completed a run on staging.

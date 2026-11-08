@@ -4,8 +4,8 @@
 **Workstream:** WS0
 **Depends on:** [the master plan](00-master-plan.md)
 **Flags:** `ENABLE_FIELDOPS_V2` (read once as `env.enableFieldopsV2`, defined here and reused by WS2 to WS5; it gates every `/api/warroom/field-ops/*` route this spec adds). No new flag. Settings: `FIELDOPS_JOBS_MAX_CONCURRENT`, `FIELDOPS_JOBS_MAX_ACTIVE_PER_USER`, `FIELDOPS_JOBS_LEASE_SECONDS`, `FIELDOPS_JOBS_HEARTBEAT_SECONDS`, `FIELDOPS_JOBS_SWEEP_SECONDS`.
-**Migrations:** 218, 219
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 219, 220 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -15,19 +15,19 @@
 
 1. **G0.1 A live map for wizard-built scenarios (journey 13.1).** Participants and spectators always get the interactive `MapView`. The trainer gets the live map by default and the static scene as an optional "Scene preview". The exit gate counts only entry and exit pins that a team in the session can claim, so it can no longer lock the map (journey 13.9).
 2. **G0.2 Participants never receive the answer key on the map paths.** An allow-list projection of the scene row (master 10.8 item 12) and a casualty projection that drops the true triage colour and the other answer-key fields. What stays exposed is named in section 9.2.
-3. **G0.3 A durable job engine.** Persisted jobs and stages (migration 219), a claim with a lease, a heartbeat and a sweeper, retry per stage, stage checkpoints so a restarted server resumes, concurrency caps, and a scope so a development server never claims a production job.
+3. **G0.3 A durable job engine.** Persisted jobs and stages (migration 220), a claim with a lease, a heartbeat and a sweeper, retry per stage, stage checkpoints so a restarted server resumes, concurrency caps, and a scope so a development server never claims a production job.
 4. **G0.4 A locked, draft-state compile with exact credits (journey 7.1, 7.3, 7.5; D24, D27).** One active compile per draft, the draft status `compiling`, `assertDraftEditable` refusing writes with 409 `DRAFT_COMPILING`, one credit taken at the start and refunded exactly once on a failure before the commit, and one commit function that makes the draft scenario visible to its owner and settles the credit in one transaction.
-5. **G0.5 The legacy `/persist` route on the engine.** Same request, same success body, run in an `immediate` mode, with today's inline path kept as the fallback while 218 or 219 is missing.
-6. **G0.6 Publish state (D24).** `scenarios.publish_state` (migration 218) and its effect on every existing reader: lists, single read, session creation, clone, edits and the dashboard.
+5. **G0.5 The legacy `/persist` route on the engine.** Same request, same success body, run in an `immediate` mode, with today's inline path kept as the fallback while 219 or 220 is missing.
+6. **G0.6 Publish state (D24).** `scenarios.publish_state` (migration 219) and its effect on every existing reader: lists, single read, session creation, clone, edits and the dashboard.
 7. **G0.7 Validated draft input (journey 5.4).** Schemas, caps, merge rules and a status whitelist on the legacy draft endpoints, a size ceiling for corporate drafts, a generic envelope check for `setup_v2` (`validateSetupV2Envelope`, D15), and new-page drafts hidden from the legacy picker.
 8. **G0.8 Helpers for everyone.** `server/lib/schemaFeatures.ts (new)`, `code: 'VALIDATION_FAILED'` on `validate()` 400 bodies, `env.enableFieldopsV2`, the trainer guard `requireFieldopsTrainer`, `shared/fieldOps/setupEnvelopeLimits.ts (new)` with the setup caps, and `shared/fieldOps/jobs.ts (new)` with the job vocabulary; on the client a jobs API module, a pure polling helper, the `useFieldOpsJob` hook and `describeJob` copy, all kept apart from `frontend/src/lib/api.ts`.
 
 **Non-goals**
 
-- Closing the `rts_scene_configs` select policy `USING (true)` and its public storage bucket (`migrations/163_rts_scene_configs.sql:66-74`, master risk 14). On the live project the policy applies to every role and the anon role holds SELECT, so the public anon key alone, with no sign-in, reads every scene row (read-only check, 25 Oct 2026). Closing it is not additive, so it is the owner's decision and a gate before production (WS4 request R4.9). WS0 names it in section 9.2 and does not change it.
+- Closing the `rts_scene_configs` select policy `USING (true)` and its public storage bucket (`migrations/163_rts_scene_configs.sql:66-74`, master risk 14). On the live project the policy applies to every role and the anon role holds SELECT, so the public anon key alone, with no sign-in, reads every scene row (read-only check, 25 Oct 2026). Closing it is not additive, so it is the owner's decision and a gate before production (WS4 request R4.9). WS0 names it in section 9.2 and does not change it. **Updated 8 Nov 2026:** migration 218, applied in production, has since limited the select policy to the creator and admins, so the anon key reads no scene row; the bucket is still public (master risk 14).
 - The privacy programme (`docs/privacy/`, master section 1): the whole-row `GET /api/scenarios/:id` for active scenarios (journey 8.1), the hazard, state and event payloads (journey 13.2), cross-trainer reads (journey 8.3) and the casualty `PATCH` that accepts `conditions` (journey 13.3). WS0 changes only what the live map makes reachable and what drafts need.
 - Owner checks between trainers on `/api/rts-scenes` (journey 4.1). WS0 makes those routes staff-only; ownership is a request to WS4 (section 15.4).
-- The `v2` compile variant, the Review page and publishing new-flow scenarios (WS5, master 10.8 item 4); the `fieldops_radar` and `fieldops_blueprint` job kinds (WS2); the `setup_v2` column and its schema (WS2, migration 225).
+- The `v2` compile variant, the Review page and publishing new-flow scenarios (WS5, master 10.8 item 4); the `fieldops_radar` and `fieldops_blueprint` job kinds (WS2); the `setup_v2` column and its schema (WS2, migration 226).
 - Any change to `SceneCanvasView` itself, to the corporate wizard's behaviour, or to the corporate durable-builds plan (`docs/durable-warroom-builds-plan.md` is a pattern only; it assumes migration 209, which is taken, master risk 12).
 - Deleting the legacy field-ops wizard (D25).
 
@@ -42,7 +42,7 @@
 | ID | Status | What it means here |
 | --- | --- | --- |
 | D15 | Assumed (D15) | `validateSetupV2Envelope` refuses more than 10 agencies, 6 pressure bodies, 3 adversaries, 6 devices or 5 involved buildings before WS2's detailed schema runs. The numbers are `SETUP_V2_ENVELOPE_LIMITS.caps` in `shared/fieldOps/setupEnvelopeLimits.ts (new)` (section 6.8). WS0 owns them (master 10.8 item 23): WS2's `SETUP_LIMITS` takes these caps and the 262,144-byte ceiling from that constant with a parity test, and WS6's `DEVICE_CAP` is 6. |
-| D23 | Assumed (D23) | Migrations 218 and 219 are additive and idempotent. Every reader works before they are applied (section 5.5). |
+| D23 | Assumed (D23) | Migrations 219 and 220 are additive and idempotent. Every reader works before they are applied (section 5.5). |
 | D24 | Assumed (D24) | A compiled field-ops scenario is written with `publish_state = 'draft'` and `is_active = false`. Only an explicit action publishes it: the legacy commit (inside its transaction) or WS5's publish routes. |
 | D25 | Assumed (D25) | The new page is `/warroom/field-ops` (WS2). WS0 keeps the legacy wizard working and hides new-page drafts from its list, without editing `frontend/src/pages/WarRoom.tsx`. |
 | D27 | Assumed (D27) | One scenario credit is taken when a compile starts (admins pay nothing, as today) and refunded exactly once if the job ends before WS0's commit. After the commit the credit is kept. The rule lives in SQL, on the job row. |
@@ -56,17 +56,17 @@
 | P0.3 | A job's `scope` is `production` only when `NODE_ENV=production` and the process runs on Render (`RENDER` is set); otherwise `local:<hostname>`. A runner claims only jobs of its own scope. | One Supabase project serves every environment (finding 17.17). `server/env.ts:44` already treats `RENDER` as the deploy marker, and `RUN_BACKGROUND_ENGINES` (`server/env.ts:104-114`) exists because a development server once ran production engines. |
 | P0.4 | `immediate` jobs run inside the request that started them and are never refused for process capacity; they count against the per-trainer cap and use up process capacity for background claims. | The legacy route must keep its response (G0.5) and was never capped; background jobs are the new load the cap protects. |
 | P0.5 | `FIELDOPS_JOBS_MAX_CONCURRENT=0` disables the engine: no claims, the legacy route uses its inline path, and the field-ops routes answer 503 `JOBS_UNAVAILABLE`. | An operational switch without a new flag (the master allocates none to WS0). |
-| P0.6 | `publish_state` is `NOT NULL DEFAULT 'published'`, with a check that a draft is never active. | The constant default is the backfill (existing rows and every insert that omits the column get `published`, as `is_bot` did in `migrations/207_teammate_bots.sql:15-16`). The check keeps drafts out of the read policy "Anyone authenticated can view active scenarios" (`migrations/002_rls_policies.sql:44-46`) whatever code runs. |
+| P0.6 | `publish_state` is `NOT NULL DEFAULT 'published'`, with a check that a draft is never active. | The constant default is the backfill (existing rows and every insert that omits the column get `published`, as `is_bot` did in `migrations/207_teammate_bots.sql:15-16`). The check keeps drafts out of every reader that filters on `is_active`, whatever code runs. **Updated 8 Nov 2026:** this named the browser read policy "Anyone authenticated can view active scenarios" (`migrations/002_rls_policies.sql:44-46`), which migration 218 replaced with "Creators and admins can view scenarios". |
 | P0.7 | A new-page draft is marked by `input.sim_mode = 'field_ops_v2'` (`FIELDOPS_V2_SIM_MODE`). The legacy list query excludes it; the legacy write endpoints refuse it with 409 `DRAFT_WRONG_FLOW`. | `sim_mode` already marks corporate drafts (`frontend/src/pages/SocialCrisisWizard.tsx:804`); WS2 writes exactly `{ sim_mode: 'field_ops_v2', scenario_type }` (master 10.8 item 6). |
 | P0.8 | Drafts are excluded from every scenario list, admins included; admins keep `GET /api/scenarios/:id`. | Journey Design 5: a draft "is not in the library and cannot be launched". WS5's Review reads drafts through its own routes. |
-| P0.9 | 219 enables row level security on `warroom_wizard_drafts` with no policy. | The compile lock is a status on that row; a browser holding the anon key must not be able to flip it. No client queries the table directly (only `server/routes/warroom.ts` does). The live project already has row level security on for this table with no policy (read-only check, 25 Oct 2026), so on it the statement is an idempotent no-op that records the state; a database built from the repository's migrations alone gets it here. WS2's migration 225 need not repeat it. |
+| P0.9 | 220 enables row level security on `warroom_wizard_drafts` with no policy. | The compile lock is a status on that row; a browser holding the anon key must not be able to flip it. No client queries the table directly (only `server/routes/warroom.ts` does). The live project already has row level security on for this table with no policy (read-only check, 25 Oct 2026), so on it the statement is an idempotent no-op that records the state; a database built from the repository's migrations alone gets it here. WS2's migration 226 need not repeat it. |
 | P0.10 | The compile lock is a draft status plus a partial unique index on active jobs per draft and lock key; writes check it twice: `assertDraftEditable` on the loaded row and a conditional update that refuses a row that became `compiling` in between. | Journey 7.5's fix is a compare-and-set; the index makes a second active compile impossible even if two starts race. |
 
 ### 2.3 Assumptions
 
 - **Assumed (D27):** the refund on a legacy compile follows the same rule as v2. Today the route refunds in an in-process `catch` (`server/routes/warroom.ts:1184-1188`); after WS0 the refund happens in SQL when the job fails or is cancelled, and never twice.
 - **Assumed (D24):** a scenario created outside the field-ops compile (quick generate, the corporate wizard, `POST /api/scenarios`, clone) is `published` by default and keeps today's `is_active` behaviour.
-- **Assumed (D23):** the owner applies 218 before 219; 219 refuses to run otherwise (section 5.2).
+- **Assumed (D23):** the owner applies 219 before 220; 220 refuses to run otherwise (section 5.2).
 - **Assumed (D15):** the generic caps apply only to `setup_v2`; the legacy field-ops input keeps the legacy limits of `/generate` (`server/routes/warroom.ts:74-133`) and a team cap of 12 (journey 5.4's fix).
 
 ## 3. Current state (verified)
@@ -80,7 +80,7 @@ All line numbers are at commit `7c16bde` (25 Oct 2026). `server/routes/warroom.t
 - **Verified.** The legacy wizard's layout step cannot be left without a saved scene: `stepValid` requires `rtsSceneId` at step 3 (`frontend/src/pages/WarRoom.tsx:526-538`). So every wizard-built scenario has a scene row and every one of its sessions renders `SceneCanvasView`.
 - **Verified.** `SceneCanvasView` declares `sessionId` and `showAllPins` but destructures only `scenarioId`, `height`, `fillHeight` and `onLoaded` (`frontend/src/components/COP/SceneCanvasView.tsx:35-42`, `frontend/src/components/COP/SceneCanvasView.tsx:82-87`). It loads scenario-level data once, by scenario id, through `getScenarioCasualties`, `getScenarioLocations`, `getScenarioHazards` and `getBuildingStuds` (`frontend/src/components/COP/SceneCanvasView.tsx:153-166`). It has no WebSocket subscription and makes no decision, placement, claim or assessment call.
 - **Verified.** `MapView` is session-aware: it loads the session's pins and claims through `getLocations` (`frontend/src/components/COP/MapView.tsx:646-687`), the session's hazards, casualties, placements and floor plans (`frontend/src/components/COP/MapView.tsx:1082-1143`), refreshes them every 30 seconds (`frontend/src/components/COP/MapView.tsx:1145-1191`) and listens to `location.claimed`, `placement.*`, `casualty.*` and the adversary events (`frontend/src/components/COP/MapView.tsx:761-781`).
-- **Verified.** `MapView` already outlines a wizard-built scenario's building: `BuildingStudOverlay` (`frontend/src/components/COP/MapView.tsx:1637-1645`) reads `GET /api/scenarios/:id/building-studs` (`server/routes/scenarios.ts:3389-3446`), whose grids come from the trainer scene's `building_polygon` whenever a scene is linked (`loadClassifiedGrids`, `server/services/buildingStudService.ts:781-825`).
+- **Verified.** `MapView` already outlines a wizard-built scenario's building: `BuildingStudOverlay` (`frontend/src/components/COP/MapView.tsx:1637-1645`) reads `GET /api/scenarios/:id/building-studs` (`server/routes/scenarios.ts:3407-3464`), whose grids come from the trainer scene's `building_polygon` whenever a scene is linked (`loadClassifiedGrids`, `server/services/buildingStudService.ts:781-825`).
 - **Verified.** Compile turns the scene's exits into entry and exit pins, its hazards into hazard rows and its planted items into the device pool (journey chapter 7). The pins are written with `claimable_by: ['all']` (`server/services/warroomPersistenceService.ts:305`), so `MapView` can claim them.
 
 ### 3.2 What participants receive today
@@ -88,9 +88,9 @@ All line numbers are at commit `7c16bde` (25 Oct 2026). `server/routes/warroom.t
 | Path | What it returns to a participant | Evidence |
 | --- | --- | --- |
 | `GET /api/sessions/:id/scene-config` | The whole scene row, including `planted_items` (the bomb-squad answer key), `enrichment_result`, `hazard_zones` (every hazard, before it appears) and `wall_inspection_points` | `server/routes/sessions.ts:970-1000` (**Verified**) |
-| `GET /api/scenarios/:id/scene-config` | The same whole row, to any signed-in user, with no session, role or owner check | `server/routes/scenarios.ts:3364-3383` (**Verified**) |
+| `GET /api/scenarios/:id/scene-config` | The same whole row, to any signed-in user, with no session, role or owner check | `server/routes/scenarios.ts:3382-3401` (**Verified**) |
 | `GET /api/rts-scenes/:id`, `GET /api/rts-scenes?scenario_id=` | The whole row by id, and a list of scene ids by scenario, to any signed-in user; `PATCH`, `DELETE` and the image upload have no role check either | `server/routes/rtsScenes.ts:73-121`, `server/routes/rtsScenes.ts:124-258` (**Verified**) |
-| `SceneCanvasView` for a participant | The scene and its building studs load; casualties, locations and hazards come from trainer-only routes (`server/routes/scenarios.ts:446-543`), fail with 403 and are replaced by empty arrays (`frontend/src/components/COP/SceneCanvasView.tsx:160-162`). The static preview therefore shows the building, exits and walls, and paints every wall point that holds a planted device red with a bomb icon (`frontend/src/components/COP/SceneCanvasView.tsx:964-969`) with a "Planted Devices" list on click (`frontend/src/components/COP/SceneCanvasView.tsx:1209-1227`) | **Verified** |
+| `SceneCanvasView` for a participant | The scene and its building studs load; casualties, locations and hazards come from trainer-only routes (`server/routes/scenarios.ts:464-561`), fail with 403 and are replaced by empty arrays (`frontend/src/components/COP/SceneCanvasView.tsx:160-162`). The static preview therefore shows the building, exits and walls, and paints every wall point that holds a planted device red with a bomb icon (`frontend/src/components/COP/SceneCanvasView.tsx:964-969`) with a "Planted Devices" list on click (`frontend/src/components/COP/SceneCanvasView.tsx:1209-1227`) | **Verified** |
 | `GET /api/sessions/:id/casualties` (and one casualty, the `PATCH` and the `assess` responses) | Every column; `conditions` minus only `treatment_requirements`, `transport_prerequisites` and `contraindications`, so `triage_color`, `triage_category`, `ideal_response_sequence`, `required_ppe`, `required_equipment`, `expected_time_to_treat_minutes`, `recommended_transport` and `deterioration_timeline` reach the browser | `server/routes/casualties.ts:10-28`, `server/routes/casualties.ts:40-75`, `server/routes/casualties.ts:147-160`, `server/routes/casualties.ts:255-274`; the keys are written at compile (`server/services/warroomAiService.ts:4140-4154`) and by the engines (`server/services/injectSchedulerService.ts:2120`) (**Verified**) |
 | `GET /api/sessions/:id/hazards?include_zones=true` | The hazard zones, which the route itself calls ground truth, to any caller who adds the parameter | `server/routes/hazards.ts:9-13`, `server/routes/hazards.ts:75-76` (**Verified**) |
 
@@ -117,7 +117,7 @@ The legacy wizard's `CompileStep` calls `wizardDraftPersist` and waits for one r
 7. Runs `stageGenerateAndPersist` and, if it throws, refunds in the same process (`server/routes/warroom.ts:1172-1189`).
 8. Writes the scenario id onto the spend row, marks the draft `persisted`, points the scene row at the new scenario and answers `{ data: { scenarioId, draft_id } }` (`server/routes/warroom.ts:1191-1214`).
 
-Nothing prevents a second request from starting a second compile and a second charge while the first runs (journey 7.5). A deploy or crash between steps 6 and 8 leaves the credit spent and no refund (journey 7.3); the shutdown handler force-exits after 10 seconds (`server/index.ts:333-337`).
+Nothing prevents a second request from starting a second compile and a second charge while the first runs (journey 7.5). A deploy or crash between steps 6 and 8 leaves the credit spent and no refund (journey 7.3); the shutdown handler force-exits after 10 seconds (`server/index.ts:347-351`).
 
 - **Verified.** `stageGenerateAndPersist` loads the trainer scene by `scene_context.rts_scene_id` (`server/services/warroomService.ts:1181-1193`), runs the generator, then calls `persistWarroomScenario` (`server/services/warroomService.ts:1689-1694`), then schedules a deferred building backfill and research linking (`server/services/warroomService.ts:1696-1728`), and returns `{ scenarioId, payload }` (`server/services/warroomService.ts:1730`).
 - **Verified.** `persistWarroomScenario` inserts the scenario row first, with `is_active` set true, before any child row (`server/services/warroomPersistenceService.ts:72-92`), writes the children one statement at a time, and on a thrown error deletes the scenario without checking the result (`server/services/warroomPersistenceService.ts:706-709`). `PersistOptions` carries only the centre, radius and buildings (`server/services/warroomPersistenceService.ts:39-44`).
@@ -149,15 +149,15 @@ Nothing prevents a second request from starting a second compile and a second ch
 
 | Reader | What it does today | Evidence |
 | --- | --- | --- |
-| `GET /api/scenarios` (library, `Sessions` page, create-session picker) | Admins see every row, trainers their own, everyone else only active rows | `server/routes/scenarios.ts:208-337`, visibility at `server/routes/scenarios.ts:219-226`; callers `frontend/src/lib/scenarioLibraryApi.ts:75-83` and `frontend/src/pages/Sessions.tsx:92` |
-| `GET /api/scenarios/:id` | The whole row; non-staff are refused only when the row is inactive | `server/routes/scenarios.ts:340-366` |
+| `GET /api/scenarios` (library, `Sessions` page, create-session picker) | Admins see every row, trainers their own, everyone else only the scenarios of sessions they joined (**updated 8 Nov 2026**: before the launch security fix, every active row) | `server/routes/scenarios.ts:214-345`, visibility at `server/routes/scenarios.ts:224-234`; callers `frontend/src/lib/scenarioLibraryApi.ts:75-83` and `frontend/src/pages/Sessions.tsx:92` |
+| `GET /api/scenarios/:id` | **Updated 8 Nov 2026:** the whole row to an admin, the creator and a trainer running one of its sessions; the row without `insider_knowledge` and `blueprint` to a player of one of its sessions; 403 to anyone else. Before the launch security fix, the whole row to anyone signed in, with inactive rows refused to non-staff | `server/routes/scenarios.ts:348-384` |
 | `POST /api/sessions` | Loads the scenario by id only, then consumes a session credit | `server/routes/sessions.ts:1237-1275` |
-| `POST /api/scenarios/:id/clone` | Staff, no owner check; copies chosen columns and template injects; the copy is inactive | `server/routes/scenarios.ts:1763-1906` |
-| `PATCH /api/scenarios/:id` | Owner or admin; content fields pass `canEditScenario`, `is_active` and the map fields do not | `server/routes/scenarios.ts:1532-1658`, content list at `server/routes/scenarios.ts:1561-1589` |
-| Content edits through `guardScenarioEdit` | Staff, owner, then `canEditScenario` (live session or no session credits gives 423) | `server/routes/scenarios.ts:39-69`, `server/services/scenarioEditService.ts:35-80` |
-| Other mutating routes (pins, regenerate, retry, maps, backfill, delete) | Owner or role checks only, no edit lock | `server/routes/scenarios.ts:618`, `server/routes/scenarios.ts:1668`, `server/routes/scenarios.ts:1909`, `server/routes/scenarios.ts:2132`, `server/routes/scenarios.ts:2543`, `server/routes/scenarios.ts:3036`, `server/routes/scenarios.ts:3259`, `server/routes/scenarios.ts:3325`, `server/routes/scenarios.ts:3452` |
+| `POST /api/scenarios/:id/clone` | Staff, no owner check; copies chosen columns and template injects; the copy is inactive | `server/routes/scenarios.ts:1781-1924` |
+| `PATCH /api/scenarios/:id` | Owner or admin; content fields pass `canEditScenario`, `is_active` and the map fields do not | `server/routes/scenarios.ts:1550-1676`, content list at `server/routes/scenarios.ts:1579-1607` |
+| Content edits through `guardScenarioEdit` | Staff, owner, then `canEditScenario` (live session or no session credits gives 423) | `server/routes/scenarios.ts:44-74`, `server/services/scenarioEditService.ts:35-80` |
+| Other mutating routes (pins, regenerate, retry, maps, backfill, delete) | Owner or role checks only, no edit lock | `server/routes/scenarios.ts:636`, `server/routes/scenarios.ts:1686`, `server/routes/scenarios.ts:1927`, `server/routes/scenarios.ts:2150`, `server/routes/scenarios.ts:2561`, `server/routes/scenarios.ts:3054`, `server/routes/scenarios.ts:3277`, `server/routes/scenarios.ts:3343`, `server/routes/scenarios.ts:3470` |
 | `GET /api/dashboard/stats` | `dashboard_stats` counts every scenario of the trainer, or of everyone for an admin | `server/routes/dashboard.ts:10-40`, `migrations/213_perf_stage1_indexes_and_rpcs.sql:53-69` |
-| The read policy for browsers | "Anyone authenticated can view active scenarios" | `migrations/002_rls_policies.sql:44-46` |
+| The read policy for browsers | **Updated 8 Nov 2026:** "Creators and admins can view scenarios", applied in production. It replaced "Anyone authenticated can view active scenarios" | `migrations/218_launch_access_locks.sql`, formerly `migrations/002_rls_policies.sql:44-46` |
 
 The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scenarios.tsx:170`, `frontend/src/pages/Scenarios.tsx:206-207`). That word now has two meanings; section 15.1 records the risk.
 
@@ -166,7 +166,7 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 - **Verified.** Missing-schema detection is copied per service. `insertTeamRowsWithOrgColumns` matches the error message against a regular expression and retries without the two columns (`server/services/socialCrisisPersistenceService.ts:61-96`); the pressure engine keeps a module-level tri-state `pageColumnsSupported` that, once false, stays false until the process restarts (`server/services/pressureEngineService.ts:122-147`).
 - **Verified.** `validate()` answers 400 `{ error: 'Validation failed', details: [{ field, message }] }` with no `code` (`server/lib/validation.ts:22-31`). Its readers: the client's `handleResponse` appends `details` to the message (`frontend/src/lib/api.ts:100-133`), `issuesFromServer` maps `details[].field` or `details[].path` onto Setup fields (`frontend/src/components/Scenario/setupValidation.ts:573-715`), and the corporate wizard calls it on a 400 (`frontend/src/pages/SocialCrisisWizard.tsx:638`, `frontend/src/pages/SocialCrisisWizard.tsx:1243`). None branches on a top-level `code`, so adding one is safe.
 - **Verified.** Flags are read once into `env` (`server/env.ts:51-190`); the pattern for "on in development, off in production" is `enableTeammateBots` (`server/env.ts:152-157`). `runBackgroundEngines` is on in production unless `RUN_BACKGROUND_ENGINES=false` and off elsewhere unless it is `true` (`server/env.ts:104-114`); `server/index.ts` starts the schedulers only when it is on (`server/index.ts:76-111`).
-- **Verified.** Routers are mounted in `server/index.ts`; `/api/warroom` is mounted at `server/index.ts:272` and `/api/warroom/social-crisis` after it at `server/index.ts:288`, so several routers already share a prefix. The JSON body limit is 10 MB (`server/index.ts:238`). Shutdown stops the schedulers, closes the server and exits after 10 seconds (`server/index.ts:313-341`).
+- **Verified.** Routers are mounted in `server/index.ts`; `/api/warroom` is mounted at `server/index.ts:286` and `/api/warroom/social-crisis` after it at `server/index.ts:302`, so several routers already share a prefix. The JSON body limit is 10 MB (`server/index.ts:252`). Shutdown stops the schedulers, closes the server and exits after 10 seconds (`server/index.ts:327-355`).
 - **Verified.** `requireStaff` exists for trainer-or-admin routes (`server/middleware/auth.ts:88-99`). `assertSessionAccess` admits the session's trainer, an admin or a participant and returns the session row with `trainer_id` (`server/lib/access.ts:40-78`); `assertScenarioOwner` admits the creator or an admin (`server/lib/access.ts:115-138`).
 - **Verified.** The root `test` script lists every test file (`package.json:25`), and client tests sit in `frontend/tests/` (`frontend/tests/setupValidation.test.ts:1-21`). A shared module is tested from `server/lib/` with a `.js` suffix (`server/lib/authLinkError.test.ts:1-3`). Client modules kept out of `frontend/src/lib/api.ts` already exist with their own base URL and headers (`frontend/src/lib/scenarioLibraryApi.ts:1-20`).
 
@@ -190,10 +190,10 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 | Exit gate | The gate counts only entry and exit pins that some team assigned in the session may claim. With none, it is open. Claims are written into the loaded locations once, so a rebuild keeps them. | None |
 | Answer key on the map paths | The scene row reaches anyone but the answer-key audience only through the allow-list projection; `/api/rts-scenes` is staff-only; casualty payloads drop the answer keys for participants; `include_zones` is honoured only for the answer-key audience. | None |
 | Draft input | The legacy draft endpoints validate `input` by flow (legacy field ops, corporate, new page), cap sizes, normalise team names to stored team objects, accept only `status: 'draft'` from the client, refuse new-page drafts and hide them from the legacy list. | None |
-| Publish state | Drafts are absent from every list, cannot be launched, cloned or edited through the standard routes, are 404 to everyone but their creator and admins, and do not count on the dashboard. | Migration 218 applied; before that, today's behaviour |
-| Jobs | Long field-ops work runs as persisted jobs with stages, a lease, a heartbeat, a sweeper, retry per stage and checkpoints; a restart resumes from the last finished stage. A queued or running job whose kind or variant no runner of its scope has registered is failed and refunded by the sweeper (`JOB_HANDLER_MISSING`). Job rows are never deleted, so a finished job stays readable. | Migration 219 applied and `FIELDOPS_JOBS_MAX_CONCURRENT` above 0 |
-| Compile | One active compile per draft; the draft is `compiling` while it runs and refuses writes with 409 `DRAFT_COMPILING`; one credit is taken at the start and refunded exactly once if the job ends before the commit; the commit links the draft, the scene and the ledger row and settles the credit in one transaction. A re-compile (`recompile: true`) of a draft that already has a scenario costs another credit; if it fails or is cancelled, the draft returns to `compiled` and keeps its previous scenario. | 218 and 219 applied |
-| Legacy `/persist` | Same request and success body; runs the legacy variant on the engine in `immediate` mode; falls back to today's inline path when 218 or 219 is missing or the engine is off. | 218 and 219 applied |
+| Publish state | Drafts are absent from every list, cannot be launched, cloned or edited through the standard routes, are 404 to everyone but their creator and admins, and do not count on the dashboard. | Migration 219 applied; before that, today's behaviour |
+| Jobs | Long field-ops work runs as persisted jobs with stages, a lease, a heartbeat, a sweeper, retry per stage and checkpoints; a restart resumes from the last finished stage. A queued or running job whose kind or variant no runner of its scope has registered is failed and refunded by the sweeper (`JOB_HANDLER_MISSING`). Job rows are never deleted, so a finished job stays readable. | Migration 220 applied and `FIELDOPS_JOBS_MAX_CONCURRENT` above 0 |
+| Compile | One active compile per draft; the draft is `compiling` while it runs and refuses writes with 409 `DRAFT_COMPILING`; one credit is taken at the start and refunded exactly once if the job ends before the commit; the commit links the draft, the scene and the ledger row and settles the credit in one transaction. A re-compile (`recompile: true`) of a draft that already has a scenario costs another credit; if it fails or is cancelled, the draft returns to `compiled` and keeps its previous scenario. | 219 and 220 applied |
+| Legacy `/persist` | Same request and success body; runs the legacy variant on the engine in `immediate` mode; falls back to today's inline path when 219 or 220 is missing or the engine is off. | 219 and 220 applied |
 | New routes | `GET /api/warroom/field-ops/jobs/:id`, `GET /api/warroom/field-ops/jobs`, `POST /api/warroom/field-ops/jobs/:id/cancel` and `POST /api/warroom/field-ops/drafts/:id/compile` with the body `{ variant, recompile?, retry_of? }`, all for trainers and admins only (`requireFieldopsTrainer`). | `ENABLE_FIELDOPS_V2`; 404 when off |
 
 ### 4.2 Acceptance criteria
@@ -216,9 +216,9 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 16. **AC0.16** Given a `setup_v2` value with 11 agencies, 7 pressure bodies, 4 adversaries, 7 devices, 6 involved buildings, a 12,001-character string, more than 262,144 bytes, nesting deeper than 12, more than 1,000 items in an array or `schema_version` 3, when `validateSetupV2Envelope` runs, then it returns `ok: false` with one issue per problem and the matching code; a valid value returns `ok: true` and its size in bytes. Proved by `server/lib/fieldOps/setupEnvelope.test.ts (new)`.
 17. **AC0.17** Given any request that fails `validate()`, when it answers 400, then the body carries `code: 'VALIDATION_FAILED'` and the same `error` and `details` as before. Proved by `server/lib/validation.test.ts (new)`.
 18. **AC0.18** Given a detector whose probe reports a missing column, when it is asked twice within 60 seconds, then the probe runs once and both answers are false; after 60 seconds it probes again; once it has answered true it never probes again; a network error is not cached; and concurrent callers share one probe. Proved by `server/lib/schemaFeatures.test.ts (new)`.
-19. **AC0.19** Given migration 218 is not applied, when the scenario list, the single read, session creation, clone, the edit routes and the dashboard run, then their queries carry no `publish_state` and their answers are today's. Proved by `server/services/scenarioPublishState.test.ts (new)`, case "a missing column changes nothing", and manual M8.
-20. **AC0.20** Given 218 is applied and a draft scenario exists, when another trainer reads it, then 404; when its creator or an admin reads it, then 200; when anyone lists scenarios, then it is absent; when a session is created on it, then 409 `SCENARIO_IS_DRAFT` before any credit moves; when it is cloned, patched (including `is_active: true`) or edited through a standard route, then 409 `SCENARIO_IS_DRAFT`; and the dashboard does not count it. Proved by `scenarioPublishState.test.ts`, case "draft refusals use one body", and manual M8.
-21. **AC0.21** Given 218 is applied, when any statement sets `is_active = true` on a row whose `publish_state` is `draft`, then the database rejects it with the check `scenarios_draft_not_active`. Proved by manual M9, on the migration applied twice on a scratch database.
+19. **AC0.19** Given migration 219 is not applied, when the scenario list, the single read, session creation, clone, the edit routes and the dashboard run, then their queries carry no `publish_state` and their answers are today's. Proved by `server/services/scenarioPublishState.test.ts (new)`, case "a missing column changes nothing", and manual M8.
+20. **AC0.20** Given 219 is applied and a draft scenario exists, when another trainer reads it, then 404; when its creator or an admin reads it, then 200; when anyone lists scenarios, then it is absent; when a session is created on it, then 409 `SCENARIO_IS_DRAFT` before any credit moves; when it is cloned, patched (including `is_active: true`) or edited through a standard route, then 409 `SCENARIO_IS_DRAFT`; and the dashboard does not count it. Proved by `scenarioPublishState.test.ts`, case "draft refusals use one body", and manual M8.
+21. **AC0.21** Given 219 is applied, when any statement sets `is_active = true` on a row whose `publish_state` is `draft`, then the database rejects it with the check `scenarios_draft_not_active`. Proved by manual M9, on the migration applied twice on a scratch database.
 22. **AC0.22** Given a draft whose status is `compiling`, when a `PATCH`, `DELETE`, geocode, research or compile start arrives, then it answers 409 `DRAFT_COMPILING` and writes nothing; and given a draft that becomes `compiling` between the read and the write of a `PATCH`, then the conditional update refuses the same way. Proved by `server/services/fieldOps/drafts/draftGuards.test.ts (new)` and manual M10.
 23. **AC0.23** Given a trainer with one scenario credit, when two compile starts for one draft arrive together, then exactly one job and one spend row are created and the other start answers 409 `DRAFT_COMPILING`. Proved by `scripts/fieldops-jobs-smoke.ts (new)`, case "double start", run as manual M11.
 24. **AC0.24** Given a running job whose stage fails without a retry left, when the runner ends it, then `fieldops_fail_job` refunds the credit once (a second call answers `already_finished` and writes nothing), restores the draft status for the legacy variant, sets `failed` for a variant that asks for it, or returns the draft to `compiled` when it already has a scenario (master 10.8 item 20), and deletes the uncommitted draft scenario after detaching any scene that points at it. Proved by `server/services/fieldOps/jobs/jobRunner.test.ts (new)`, case "a failed stage fails the job once", and the smoke script, case "refund exactly once".
@@ -226,7 +226,7 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 26. **AC0.26** Given a compile job whose commit succeeds, then the job's credit is `kept`, the spend row carries the scenario id, the draft points at the scenario with status `persisted` (legacy) or `compiled` (v2), the scene row points at the scenario when it belongs to the draft's author, and a cancel answers 409 `JOB_NOT_CANCELLABLE`. Proved by the smoke script, case "commit keeps the credit", and `server/routes/fieldOpsJobs.test.ts (new)`, case "cancel outcomes".
 27. **AC0.27** Given `ENABLE_FIELDOPS_V2` off, when a route this spec adds is called, then it answers 404 `{ error: 'Not found' }`; with it on, `GET /api/warroom/field-ops/jobs/:id` answers `{ data: FieldOpsJobView }` to the job's creator or an admin and 404 `JOB_NOT_FOUND` to anyone else. Proved by `fieldOpsJobs.test.ts`, cases "flag off hides the routes" and "a job is visible to its creator and admins".
 28. **AC0.28** Given a compile start on the field-ops route, when the variant is `legacy` or unregistered, then 400 `COMPILE_VARIANT_UNKNOWN`; when the variant's `enabled()` is false, then 404 `FIELDOPS_DISABLED`; when the draft already has a scenario and the body does not carry `recompile: true`, then 409 `ALREADY_COMPILED` with the variant's `alreadyCompiledMessage`; when the variant's `assertReady` fails, then 400 `DRAFT_NOT_READY` with the variant's `details` and no credit moves; otherwise 202 `{ data: { job_id } }`. Proved by `fieldOpsJobs.test.ts`, case "compile start outcomes".
-29. **AC0.29** Given 218 and 219 are applied and the engine is on, when the legacy wizard compiles, then the response is `{ data: { scenarioId, draft_id } }`, the job (kind `fieldops_compile`, variant `legacy`) succeeded, the scenario is published and active, and a second click during the compile answers 409 `DRAFT_COMPILING`; given 219 is missing, then the route runs today's inline path. Proved by `server/services/fieldOps/compile/legacyCompileVariant.test.ts (new)` and manual M13.
+29. **AC0.29** Given 219 and 220 are applied and the engine is on, when the legacy wizard compiles, then the response is `{ data: { scenarioId, draft_id } }`, the job (kind `fieldops_compile`, variant `legacy`) succeeded, the scenario is published and active, and a second click during the compile answers 409 `DRAFT_COMPILING`; given 220 is missing, then the route runs today's inline path. Proved by `server/services/fieldOps/compile/legacyCompileVariant.test.ts (new)` and manual M13.
 30. **AC0.30** Given a local development server, when its runner claims or sweeps, then it passes its own `local:<hostname>` scope and never claims, requeues or ends a job of another scope. Proved by `server/lib/fieldOps/jobSettings.test.ts (new)`, case "scope", `jobRunner.test.ts`, case "claims use the runner's scope", and the smoke script, case "requeue after the lease expires".
 31. **AC0.31** Given `FIELDOPS_JOBS_MAX_CONCURRENT` 2 and one `immediate` job running, when the runner ticks, then it claims at most one job; an `immediate` start is never refused for process capacity; and a trainer who already has `FIELDOPS_JOBS_MAX_ACTIVE_PER_USER` active jobs gets 429 `TOO_MANY_JOBS`. Proved by `jobRunner.test.ts`, case "capacity", and the smoke script, case "per-trainer cap".
 32. **AC0.32** Given a job view, when the client polls, then `nextPollDelay` gives 2 seconds during the first minute, 5 seconds after, 15 seconds while the tab is hidden, a doubling back-off up to 30 seconds after errors and `null` once the job is finished; and `describeJob` returns the copy of section 7.3 for every status. Proved by `frontend/tests/fieldOpsJobPolling.test.ts (new)` and `frontend/tests/fieldOpsDescribeJob.test.ts (new)`.
@@ -260,18 +260,18 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 
 ## 5. Data model
 
-WS0 owns migrations 218 and 219 (master section 9). Apply 218 first; 219 checks for it. Both are written for the one shared Supabase project: the code of section 6 detects whether each is applied (section 5.5) and keeps today's behaviour until it is.
+WS0 owns migrations 219 and 220 (master section 9). Apply 219 first; 220 checks for it. Both are written for the one shared Supabase project: the code of section 6 detects whether each is applied (section 5.5) and keeps today's behaviour until it is.
 
-### 5.1 Migration 218: `migrations/218_scenario_publish_state.sql (new)`
+### 5.1 Migration 219: `migrations/219_scenario_publish_state.sql (new)`
 
 ```sql
--- Migration 218: the publish state of a scenario (D24).
+-- Migration 219: the publish state of a scenario (D24).
 -- WS0, docs/field-ops/01-prerequisites.md section 5.1.
 --
 -- Additive and idempotent. The constant default is the backfill: every existing row, and every
 -- insert that omits the column, is 'published', so code that predates this migration is unaffected.
--- A draft can never be active (scenarios_draft_not_active), which keeps drafts out of the browser
--- read policy "Anyone authenticated can view active scenarios" (migrations/002_rls_policies.sql).
+-- A draft can never be active (scenarios_draft_not_active), which keeps drafts out of every reader
+-- that filters on is_active. Browsers read only their own scenarios since migration 218.
 --
 -- Rollback, after the code that reads the column is reverted (it also works without the column):
 --   DROP FUNCTION IF EXISTS public.fieldops_publish_scenario_row(UUID);
@@ -306,7 +306,7 @@ ALTER TABLE public.scenarios ENABLE ROW LEVEL SECURITY;
 
 -- publishScenarioRow (master 10.8 item 4): marks one draft published and active in one statement.
 -- Returns the resulting state, or NULL when the row does not exist. Called by the legacy commit
--- inside its transaction (migration 219); WS5 publishes new-flow scenarios with its own function.
+-- inside its transaction (migration 220); WS5 publishes new-flow scenarios with its own function.
 CREATE OR REPLACE FUNCTION public.fieldops_publish_scenario_row(p_scenario_id UUID)
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -335,15 +335,15 @@ GRANT EXECUTE ON FUNCTION public.fieldops_publish_scenario_row(UUID) TO service_
 COMMIT;
 ```
 
-### 5.2 Migration 219: `migrations/219_fieldops_jobs.sql (new)`
+### 5.2 Migration 220: `migrations/220_fieldops_jobs.sql (new)`
 
 The functions run with the caller's rights (the service role, which bypasses row level security) and set an empty `search_path`, so every name is schema-qualified. Each function is revoked from the public roles and granted to `service_role`, as `migrations/193_payment_portal.sql:181-185` does for `consume_credit`.
 
 ```sql
--- Migration 219: persisted field-ops jobs and stages, the compile lock and the credit rule (D27).
+-- Migration 220: persisted field-ops jobs and stages, the compile lock and the credit rule (D27).
 -- WS0, docs/field-ops/01-prerequisites.md section 5.2.
 --
--- Requires 218 (scenarios.publish_state). Additive and idempotent. The server reaches every object
+-- Requires 219 (scenarios.publish_state). Additive and idempotent. The server reaches every object
 -- with the service role only: the tables have row level security with no policy, and table
 -- privileges and EXECUTE are revoked from PUBLIC, anon and authenticated. Row level security is
 -- also enabled on warroom_wizard_drafts: no client reads it, and the lock must not be writable from
@@ -374,7 +374,7 @@ BEGIN
     SELECT 1 FROM information_schema.columns
      WHERE table_schema = 'public' AND table_name = 'scenarios' AND column_name = 'publish_state'
   ) THEN
-    RAISE EXCEPTION 'Apply migrations/218_scenario_publish_state.sql before 219_fieldops_jobs.sql';
+    RAISE EXCEPTION 'Apply migrations/219_scenario_publish_state.sql before 220_fieldops_jobs.sql';
   END IF;
 END $$;
 
@@ -1484,9 +1484,9 @@ stateDiagram-v2
 
 | Object | Detector (section 6.2) | While it is missing |
 | --- | --- | --- |
-| `scenarios.publish_state` (218) | `publishStateDetector`: `select('publish_state').limit(1)` on `scenarios` | Lists are unfiltered, no draft check runs, no query names the column, and the legacy `/persist` uses its inline path. Exactly today's behaviour. |
-| `fieldops_jobs` and the 219 functions | `jobsTableDetector`: `select('id').limit(1)` on `fieldops_jobs` | The runner idles and probes again after 60 seconds; the new routes answer 503 `JOBS_UNAVAILABLE`; the legacy `/persist` uses its inline path. An RPC that answers "function not found" is treated as missing too and marks the detector. |
-| Row level security on `warroom_wizard_drafts` (219) | none needed | The table stays as it is today; nothing in the server depends on the setting. |
+| `scenarios.publish_state` (219) | `publishStateDetector`: `select('publish_state').limit(1)` on `scenarios` | Lists are unfiltered, no draft check runs, no query names the column, and the legacy `/persist` uses its inline path. Exactly today's behaviour. |
+| `fieldops_jobs` and the 220 functions | `jobsTableDetector`: `select('id').limit(1)` on `fieldops_jobs` | The runner idles and probes again after 60 seconds; the new routes answer 503 `JOBS_UNAVAILABLE`; the legacy `/persist` uses its inline path. An RPC that answers "function not found" is treated as missing too and marks the detector. |
+| Row level security on `warroom_wizard_drafts` (220) | none needed | The table stays as it is today; nothing in the server depends on the setting. |
 
 ## 6. Server
 
@@ -1699,7 +1699,7 @@ export const PARTICIPANT_SCENE_FIELDS = [
   'interior_walls',
   'stairwells',
   'updated_at',
-  // WS4's runtime columns (migrations 232 and 233; master 10.8 item 28). Absent until those are
+  // WS4's runtime columns (migrations 233 and 234; master 10.8 item 28). Absent until those are
   // applied; schema_version is 1 on every scene the legacy editor saves.
   'schema_version',
   'involved_layouts',
@@ -1790,15 +1790,15 @@ export function canSeeScenarioAnswerKey(user: AccessUser, scenario: { created_by
 | Route | Today | After WS0 |
 | --- | --- | --- |
 | `GET /api/sessions/:id/scene-config` (`server/routes/sessions.ts:970-1000`) | Whole row to every session member | Whole row when `canSeeSessionAnswerKey`, otherwise `projectSceneForParticipant(row, { photos })`, where `photos` is fetched only for a row with `schema_version` 2 (see below). Access check and `{ data }` shape unchanged |
-| `GET /api/scenarios/:id/scene-config` (`server/routes/scenarios.ts:3364-3383`, one `maybeSingle` read) | Whole row to any signed-in user | Loads `created_by` and, when 218 is applied, `publish_state` of the scenario. Whole row when `canSeeScenarioAnswerKey`; 404 `{ error: 'Scenario not found' }` when the scenario is a draft and the caller is neither; otherwise the projection, with `photos` for a v2 row as on the session route |
+| `GET /api/scenarios/:id/scene-config` (`server/routes/scenarios.ts:3382-3401`, one `maybeSingle` read) | Whole row to any signed-in user | Loads `created_by` and, when 219 is applied, `publish_state` of the scenario. Whole row when `canSeeScenarioAnswerKey`; 404 `{ error: 'Scenario not found' }` when the scenario is a draft and the caller is neither; otherwise the projection, with `photos` for a v2 row as on the session route |
 | Every `/api/rts-scenes` route (`server/routes/rtsScenes.ts:10`, `server/routes/rtsScenes.ts:73`, `server/routes/rtsScenes.ts:94`, `server/routes/rtsScenes.ts:124`, `server/routes/rtsScenes.ts:199-202`, `server/routes/rtsScenes.ts:243`) | `requireAuth` only | `requireAuth, requireStaff` (403 "Trainer or admin access required"). Every caller is a staff page: the Scene Editor, both wizards and the debug page (callers of `frontend/src/lib/rts/sceneConfigApi.ts`) |
 | `GET /api/sessions/:id/casualties`, `GET .../casualties/:casualtyId`, `PATCH .../casualties/:casualtyId`, `POST .../assess` (`server/routes/casualties.ts:40-279`) | `stripGroundTruth` for everyone | Unchanged for the answer-key audience; `projectCasualtyForParticipant` for everyone else, on every row returned |
 | `GET /api/sessions/:id/hazards` and `GET .../hazards/:hazardId` (`server/routes/hazards.ts:16-110`) | `include_zones=true` from any caller returns zones | `include_zones` is honoured only for the answer-key audience; the detail route keeps stripping zones for everyone |
 | `GET /api/sessions/:id/locations` (`server/routes/sessions.ts:1002-1165`) | Counts every entry and exit pin | See section 6.5.4 |
 
-The casualty and hazard routes already load the session through `assertSessionAccess`, whose row carries `trainer_id` (`server/lib/access.ts:206-216`), so the audience check costs no query.
+The casualty and hazard routes already load the session through `assertSessionAccess`, whose row carries `trainer_id` (`server/lib/access.ts:257-267`), so the audience check costs no query.
 
-**Photos for v2 rows (master 10.8 item 28).** When the projected row has `schema_version` 2, both scene-config routes call WS4's `listRuntimeScenePhotos(sceneId)` (exported by `server/services/fieldOps/layout/index.ts (new)`, owned by WS4), which returns `RuntimeScenePhoto` entries with a position and a URL signed for 900 seconds, and pass them as `options.photos`. A legacy row (`schema_version` 1, or no column before 232) makes no call and gets no `photos` key. If the call throws, the route logs `fieldops_scene_photos_failed { scene_id }` at warn and answers without `photos`, so a storage error never blanks the map. The answer-key audience gets the whole row with the same `photos` key added, because the trainer's "Scene preview" draws them too (WS4's `SceneCanvasView` change).
+**Photos for v2 rows (master 10.8 item 28).** When the projected row has `schema_version` 2, both scene-config routes call WS4's `listRuntimeScenePhotos(sceneId)` (exported by `server/services/fieldOps/layout/index.ts (new)`, owned by WS4), which returns `RuntimeScenePhoto` entries with a position and a URL signed for 900 seconds, and pass them as `options.photos`. A legacy row (`schema_version` 1, or no column before 233) makes no call and gets no `photos` key. If the call throws, the route logs `fieldops_scene_photos_failed { scene_id }` at warn and answers without `photos`, so a storage error never blanks the map. The answer-key audience gets the whole row with the same `photos` key added, because the trainer's "Scene preview" draws them too (WS4's `SceneCanvasView` change).
 
 #### 6.5.4 The locations route and the exit gate
 
@@ -1845,10 +1845,10 @@ export function publishScenarioRow(scenarioId: string): Promise<PublishState | n
 
 `publishScenarioRow` is master 10.8 item 4's rule for legacy compiles. Its production path is inside the commit transaction: the legacy variant sets `commit.publish: true` and `fieldops_commit_compile` calls `fieldops_publish_scenario_row` (section 5.2), so a legacy scenario is published in the same transaction that links it. The TypeScript wrapper exists for the smoke script and the runbook. Publishing a new-flow scenario is WS5's.
 
-| Reader | Change when 218 is applied | Status and body |
+| Reader | Change when 219 is applied | Status and body |
 | --- | --- | --- |
 | `GET /api/scenarios` | `excludeDraftScenarios(query)` for every role, admins included (P0.8) | Unchanged shape |
-| `GET /api/scenarios/:id` | After the fetch: a draft whose `created_by` is not the caller answers 404 unless the caller is an admin | 404 `{ error: 'Scenario not found' }`, the route's existing body |
+| `GET /api/scenarios/:id` | After the fetch: a draft whose `created_by` is not the caller answers 404 unless the caller is an admin. **Updated 8 Nov 2026:** this check goes before the access checks the launch security fix added (`server/routes/scenarios.ts:364-376`), so a draft is never revealed by a 403 | 404 `{ error: 'Scenario not found' }`, the route's existing body |
 | `GET /api/scenarios/:id/scene-config` | Section 6.5.3 | 404 for a draft to others |
 | `POST /api/sessions` | The scenario select uses `withPublishState('initial_state, category')`; a draft is refused before the credit | 409 `scenarioIsDraftBody('This scenario is a draft. Publish it before you launch a session.')` |
 | `POST /api/scenarios/:id/clone` | The full-row read already includes the column; a draft source is refused before any insert | 409 `scenarioIsDraftBody()` |
@@ -2010,7 +2010,7 @@ Rules:
 
 ### 6.8 `validateSetupV2Envelope`
 
-WS2's zod schema validates the exact shape of `setup_v2` (migration 225, WS2). Before it runs, the generic envelope check bounds the work and applies D15. The limits live in `shared/` so the browser and WS2's shared schema read the same numbers; WS0 owns them (master 10.8 item 23):
+WS2's zod schema validates the exact shape of `setup_v2` (migration 226, WS2). Before it runs, the generic envelope check bounds the work and applies D15. The limits live in `shared/` so the browser and WS2's shared schema read the same numbers; WS0 owns them (master 10.8 item 23):
 
 ```ts
 // shared/fieldOps/setupEnvelopeLimits.ts (new). WS0. No imports (master 10.7).
@@ -2264,7 +2264,7 @@ A kind registered at import is enough for the boot sweeper: `server/index.ts` im
 #### 6.10.2 The store
 
 ```ts
-// server/services/fieldOps/jobs/jobStore.ts (new). WS0. The only module that calls the 219 functions.
+// server/services/fieldOps/jobs/jobStore.ts (new). WS0. The only module that calls the 220 functions.
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface StartJobInput {
@@ -2414,7 +2414,7 @@ Claiming (`tick`, every `sweepSeconds` when claiming is on, and on `kick`):
 2. When `sweepSeconds` have passed since the last sweep, `sweep({ scope, maxAgeMinutes: 1440, retentionDays: 7, handlers: registeredHandlers(), unregisteredGraceMinutes: 10 })` runs (own-scope jobs that no registered handler can run are failed and refunded after 10 minutes; jobs older than 24 hours time out; outputs of finished jobs older than 7 days are pruned) and each action is logged. The 10 minutes cover a deploy, when the old release, which may not know a new variant, still sweeps. A local runner's sweep touches only its own scope; only the production sweep also ends abandoned jobs of other scopes, and no sweep ever requeues another scope's job.
 3. Capacity is `maxConcurrent - runningCount()`, where running counts both immediate and claimed jobs in this process. When it is above 0, `claimJobs({ worker, scope, handlers, limit: min(capacity, 5), leaseSeconds })` claims and each claimed job runs as above. An immediate job is never refused for capacity (P0.4).
 
-Stopping (`stop`, on SIGTERM): clear the timers, abort every stage signal with reason `shutdown`, call `releaseLeases(worker)` so the next sweep, on whichever instance, requeues the jobs within `sweepSeconds`, and wait at most 5 seconds for the runs to settle. The process exits 10 seconds after SIGTERM in any case (`server/index.ts:333-337`).
+Stopping (`stop`, on SIGTERM): clear the timers, abort every stage signal with reason `shutdown`, call `releaseLeases(worker)` so the next sweep, on whichever instance, requeues the jobs within `sweepSeconds`, and wait at most 5 seconds for the runs to settle. The process exits 10 seconds after SIGTERM in any case (`server/index.ts:347-351`).
 
 #### 6.10.4 The job view
 
@@ -2431,7 +2431,7 @@ The view omits `scope`, `lease_owner`, `params`, the ledger ids and `draft_statu
 // server/services/fieldOps/jobs/jobEngine.ts (new). WS0.
 export const WORKER_ID: string;                  // crypto.randomUUID() once per process
 export const jobsTableDetector: SchemaDetector;  // probes fieldops_jobs
-/** FIELDOPS_JOBS_MAX_CONCURRENT > 0, 218 present and 219 present. */
+/** FIELDOPS_JOBS_MAX_CONCURRENT > 0, 219 present and 220 present. */
 export function jobsEngineEnabled(): Promise<boolean>;
 export function getJobStore(): JobStore;          // createSupabaseJobStore(supabaseAdmin)
 export function getJobRunner(): JobRunner;        // the process singleton
@@ -2443,7 +2443,7 @@ export function stopJobEngine(): Promise<void>;
 
 `startJobEngine` starts the runner with claiming on when `fieldopsJobsMaxConcurrent > 0` and either the scope is local or `env.runBackgroundEngines` is true, so a production process started with `RUN_BACKGROUND_ENGINES=false` serves HTTP and runs immediate jobs only. It logs `fieldops_jobs_engine_started { worker, scope, claim }`. A local server claims only `local:<hostname>` jobs, so it can never take a production job, whatever its `RUN_BACKGROUND_ENGINES` says (P0.3).
 
-`server/index.ts` (touched) gains three lines: the import and mount of `fieldOpsJobsRouter` at `/api/warroom/field-ops`, placed before the `warroomRouter` mount (`server/index.ts:272`), `startJobEngine()` after the block guarded by `runBackgroundEngines` (`server/index.ts:84-111`), and `await stopJobEngine()` as the first step of `shutdown` (`server/index.ts:314-322`). **Added 3 Nov 2026:** WS9's `await stopWorldRuntime()` comes right after it (`11-living-world.md` section 6.11), so with the runner's 5-second wait the world keeps at least 5 of the 10 seconds before the process exits.
+`server/index.ts` (touched) gains three lines: the import and mount of `fieldOpsJobsRouter` at `/api/warroom/field-ops`, placed before the `warroomRouter` mount (`server/index.ts:286`), `startJobEngine()` after the block guarded by `runBackgroundEngines` (`server/index.ts:84-111`), and `await stopJobEngine()` as the first step of `shutdown` (`server/index.ts:328-336`). **Added 3 Nov 2026:** WS9's `await stopWorldRuntime()` comes right after it (`11-living-world.md` section 6.11), so with the runner's 5-second wait the world keeps at least 5 of the 10 seconds before the process exits.
 
 ### 6.11 The compile kind and its variants (master 10.8 items 2, 3 and 20)
 
@@ -2558,7 +2558,7 @@ export async function startCompile(input: {
 
 1. The variant is registered, and is not `legacy` unless `allowLegacy`: else 400 `COMPILE_VARIANT_UNKNOWN`.
 2. `variant.enabled()`: else 404 `{ error: 'Not found', code: 'FIELDOPS_DISABLED' }`.
-3. `jobsEngineEnabled()`: else 503 `JOBS_UNAVAILABLE`. This is also the answer while 218 or 219 is missing, before any variant check runs, so a variant's own missing-schema code (WS5's `SCHEMA_MISSING`) never reports those two.
+3. `jobsEngineEnabled()`: else 503 `JOBS_UNAVAILABLE`. This is also the answer while 219 or 220 is missing, before any variant check runs, so a variant's own missing-schema code (WS5's `SCHEMA_MISSING`) never reports those two.
 4. The draft exists and the caller created it or is an admin: else 404 `DRAFT_NOT_FOUND`, so another trainer's draft is not revealed, as WS4, WS5 and WS8 do; the legacy route keeps today's 403 for a draft it does not own. It loads only `id, created_by, status, scenario_id, input` and the variant's `draftColumns`, never `select('*')`: whole field-ops draft rows reach 6.15 MB (section 3.5).
 5. The draft's flow matches the variant's `flow`: else 409 `DRAFT_WRONG_FLOW`.
 6. `assertDraftEditable`: else 409 `DRAFT_COMPILING`.
@@ -2641,7 +2641,7 @@ export interface PersistOptions {
   scenarioId?: string;
   /** Default true, today's behaviour. The engine passes false. */
   isActive?: boolean;
-  /** Written only when set, so callers that predate migration 218 never send the column. */
+  /** Written only when set, so callers that predate migration 219 never send the column. */
   publishState?: PublishState;
 }
 ```
@@ -2654,7 +2654,7 @@ The insert at `server/services/warroomPersistenceService.ts:72-92` spreads `id` 
 
 | Field | Value |
 | --- | --- |
-| `enabled` | `() => true`: the legacy route runs on the engine whenever 218 and 219 are applied and the engine is on, whatever `ENABLE_FIELDOPS_V2` says (master 10.8 item 20) |
+| `enabled` | `() => true`: the legacy route runs on the engine whenever 219 and 220 are applied and the engine is on, whatever `ENABLE_FIELDOPS_V2` says (master 10.8 item 20) |
 | `flow` | `legacy` |
 | `draftColumns` | `geo_result`, `phase1_preview`, `doctrines`, `validated_doctrines` |
 | `assertReady` | Today's three checks with today's messages, "Draft is missing geo_result", "Draft is missing phase1_preview" and "Draft is missing doctrines" (`server/routes/warroom.ts:1127-1130`); then the stored `input` must parse with `legacyFieldOpsDraftInputSchema`, else "The draft input is not valid." with one detail per issue |
@@ -2669,7 +2669,7 @@ The insert at `server/services/warroomPersistenceService.ts:72-92` spreads `id` 
 
 ```ts
 // server/services/fieldOps/compile/legacyPersist.ts (new). WS0.
-/** jobsEngineEnabled(): FIELDOPS_JOBS_MAX_CONCURRENT > 0 and migrations 218 and 219 applied. */
+/** jobsEngineEnabled(): FIELDOPS_JOBS_MAX_CONCURRENT > 0 and migrations 219 and 220 applied. */
 export function legacyPersistUsesEngine(): Promise<boolean>;
 
 /** Starts the legacy variant in immediate mode, runs it in this request and answers as today. */
@@ -2763,7 +2763,7 @@ The compile route lives in WS0's router because master 10.8 items 3 and 20 assig
 | `COMPILE_VARIANT_UNKNOWN` | 400 | `legacy` or an unregistered variant on the field-ops route | "This compile is not available." |
 | `NO_SCENARIO_CREDITS` | 402 | No scenario credit at the start | "No scenario credits. Invoice a client from Clients & billing to unlock the War Room." (today's text) |
 | `TOO_MANY_JOBS` | 429 | The trainer already has `FIELDOPS_JOBS_MAX_ACTIVE_PER_USER` active jobs | "You already have {n} builds running. Start this one when one of them finishes." |
-| `JOBS_UNAVAILABLE` | 503 | 218 or 219 missing, or the engine is off | "Field-operations jobs are not available on this server yet." |
+| `JOBS_UNAVAILABLE` | 503 | 219 or 220 missing, or the engine is off | "Field-operations jobs are not available on this server yet." |
 | `AI_NOT_CONFIGURED` | 503 | No model provider configured | "The AI provider is not configured on this server." |
 | `JOB_NOT_FOUND` | 404 | Missing, or another trainer's job | "Job not found" |
 | `JOB_NOT_CANCELLABLE` | 409 | Cancel of a finished job | "This job has already finished." |
@@ -2920,7 +2920,7 @@ export function stopSessionIdleSweeper(): void;
    Then record a `status_update` event with `metadata: { kind: 'idle_auto_end', reason, idle_minutes, last_human_activity_at }` and the ended copy of section 7.5 as its `description`. Broadcast `session.auto_ended` with `{ session_id, reason, ended_at, idle_end_minutes, idle_warn_minutes, max_hours }`. Log `session_auto_ended { sessionId, reason, idleMinutes }`.
 5. An error in one session is logged as `session_idle_sweep_failed { sessionId }` and never stops the others. No log line carries chat, post or decision text.
 
-**Wiring.** `server/index.ts` (touched) calls `startSessionIdleSweeper()` inside the `if (env.runBackgroundEngines)` block, after `getTeammateBotService().startReconciler()` (`server/index.ts:85-106`), so only the one process that runs the engines sweeps. `shutdown` calls `stopSessionIdleSweeper()` beside `injectScheduler.stop()` (`server/index.ts:314-338`).
+**Wiring.** `server/index.ts` (touched) calls `startSessionIdleSweeper()` inside the `if (env.runBackgroundEngines)` block, after `getTeammateBotService().startReconciler()` (`server/index.ts:85-106`), so only the one process that runs the engines sweeps. `shutdown` calls `stopSessionIdleSweeper()` beside `injectScheduler.stop()` (`server/index.ts:328-352`).
 
 **The settings.** `server/env.ts` (touched) reads them after the teammate-bot settings (`server/env.ts:160-161`). It uses the pure `readSessionIdleSettings(process.env)` in `server/lib/sessionIdleSettings.ts (new)`, which calls `readIntSetting` from `server/lib/fieldOps/jobSettings.ts (new)` exactly as section 6.4 declares it: a missing or non-integer value takes the default, and an integer is clamped to the range. When T0.23 lands before commit 2, it creates `jobSettings.ts` with `readIntSetting` alone, and commit 2 adds the rest of that file.
 
@@ -3203,8 +3203,8 @@ Rules for later specs: a new scene column is hidden unless the owning spec adds 
 
 | Exposure | Why it stays | Owner |
 | --- | --- | --- |
-| The `rts_scene_configs` select policy `USING (true)` and the public bucket `rts-scene-images` (`migrations/163_rts_scene_configs.sql:66-74`): the policy applies to every role and the anon role holds SELECT, so the public anon key alone, with no sign-in, reads every scene row through PostgREST, planted devices included (read-only check on the live project, 25 Oct 2026) | Closing it is not additive, so it is the owner's decision and a gate before production (master risk 14, WS4 request R4.9). WS0 does not touch it | Owner, WS4 |
-| `GET /api/scenarios/:id` returns the whole row of an active scenario, `insider_knowledge` and `sweep_device_pool` included, to any signed-in user (`server/routes/scenarios.ts:340-366`, journey 8.1), and the browser read policy does the same for active rows (`migrations/002_rls_policies.sql:44-46`) | The privacy programme's work (master section 1); WS0 adds only the draft 404 | Privacy programme |
+| The `rts_scene_configs` select policy `USING (true)` and the public bucket `rts-scene-images` (`migrations/163_rts_scene_configs.sql:66-74`): the policy applies to every role and the anon role holds SELECT, so the public anon key alone, with no sign-in, reads every scene row through PostgREST, planted devices included (read-only check on the live project, 25 Oct 2026) | Closing it is not additive, so it is the owner's decision and a gate before production (master risk 14, WS4 request R4.9). WS0 does not touch it. **Updated 8 Nov 2026:** migration 218 closed the select policy in production; the bucket is still public | Owner, WS4 |
+| `GET /api/scenarios/:id` returns the whole row of an active scenario, `insider_knowledge` and `sweep_device_pool` included, to any signed-in user (`server/routes/scenarios.ts:348-384`, journey 8.1), and the browser read policy does the same for active rows (`migrations/002_rls_policies.sql:44-46`). **Updated 8 Nov 2026:** the launch security fix closed most of this. The route answers 403 to anyone who neither created the scenario nor trains or plays one of its sessions, and the browser policy admits only the creator and admins (migration 218). A player of one of its sessions still receives `sweep_device_pool` and every column but `insider_knowledge` and `blueprint` | The privacy programme's work (master section 1); WS0 adds only the draft 404 | Privacy programme |
 | Hazard rows (`select('*')`: requirements and deterioration), `state.updated` broadcasts, decision consistency results, the session row's device pools, and the `is_live` flag on device events (journey 13.2) | Not on the paths the live map change opens; each needs its own serialiser | Privacy programme |
 | A participant may still `PATCH` a casualty's `conditions` and `status` (`server/routes/casualties.ts:105-165`, journey 13.3) | A write-path fix, not a read projection; the player UI sends only coordinates | Privacy programme |
 | Any trainer may read, edit or delete any trainer's scene through `/api/rts-scenes` (journey 4.1); WS0 removes only non-staff access | Owner checks belong with the scene store | WS4 (section 15.4) |
@@ -3215,8 +3215,8 @@ Rules for later specs: a new scene column is hidden unless the owning spec adds 
 ### 9.3 The job tables, the draft table and the functions
 
 - `fieldops_jobs` and `fieldops_job_stages` have row level security on with no policy, and table privileges revoked from `PUBLIC`, `anon` and `authenticated` (section 5.2). The server uses the service role (`server/lib/supabaseAdmin.ts`).
-- Every 218 and 219 function revokes `EXECUTE` from the public roles and grants it to `service_role` only, so a browser cannot call `fieldops_start_job`, take a credit or end someone's job through PostgREST.
-- Row level security on `warroom_wizard_drafts` (P0.9) closes direct browser reads and writes of drafts, which hold corporate document text today and `setup_v2` after WS2; it also keeps the compile lock out of a browser's reach. The live project already has it on; 219 makes the repository say so.
+- Every 219 and 220 function revokes `EXECUTE` from the public roles and grants it to `service_role` only, so a browser cannot call `fieldops_start_job`, take a credit or end someone's job through PostgREST.
+- Row level security on `warroom_wizard_drafts` (P0.9) closes direct browser reads and writes of drafts, which hold corporate document text today and `setup_v2` after WS2; it also keeps the compile lock out of a browser's reach. The live project already has it on; 220 makes the repository say so.
 - Every route checks the role with `requireFieldopsTrainer`, then ownership (`created_by` or admin) in code; a job id or a draft id alone gives nothing to another trainer (404).
 
 ### 9.4 Credits
@@ -3247,7 +3247,7 @@ The credit moves only inside SQL: `consume_credit` in the start transaction, a p
 | `SESSION_IDLE_WARN_MINUTES` | `env.sessionIdleWarnMinutes` | 5 | 0 to 60 | **Added 4 Nov 2026.** How long before the end the warning is shown; 0 sends no warning |
 | `SESSION_MAX_HOURS` | `env.sessionMaxHours` | 12 | 0 to 72 | **Added 4 Nov 2026.** Hours after the start when any session ends; 0 turns the limit off |
 
-With the defaults, a job whose process dies is requeued between 120 and 150 seconds later. The legacy wizard's compile has no flag: it moves onto the engine when 218 and 219 are applied and the engine is on, and back to its inline path when either is not.
+With the defaults, a job whose process dies is requeued between 120 and 150 seconds later. The legacy wizard's compile has no flag: it moves onto the engine when 219 and 220 are applied and the engine is on, and back to its inline path when either is not.
 
 ### 10.2 Rollout
 
@@ -3255,8 +3255,8 @@ With the defaults, a job whose process dies is requeued between 120 and 150 seco
 
 1. **Commit 1, the live map (no migration).** Deploy. Run M1 to M6 on a staging session of a wizard-built scenario. Then production. This is useful to every session at once and is independent of everything else.
 2. **Commits 2 and 3, helpers and draft validation (no migration).** Before deploying commit 3, run the read-only checks of section 10.3 on the shared database; raise a limit if a live draft would exceed it.
-3. **Commit 4 with migration 218.** Deploy the code first (it works without the column), then apply 218, then run M8 and M9.
-4. **Commit 5 with migration 219.** Deploy with `ENABLE_FIELDOPS_V2` off in production, apply 219, run the smoke script against a development server sharing the database (M11), then turn the flag on in development and staging only. The engine runs from this point; with no variant other than `legacy` registered, the field-ops compile route answers 400 `COMPILE_VARIANT_UNKNOWN` until WS5 ships.
+3. **Commit 4 with migration 219.** Deploy the code first (it works without the column), then apply 219, then run M8 and M9.
+4. **Commit 5 with migration 220.** Deploy with `ENABLE_FIELDOPS_V2` off in production, apply 220, run the smoke script against a development server sharing the database (M11), then turn the flag on in development and staging only. The engine runs from this point; with no variant other than `legacy` registered, the field-ops compile route answers 400 `COMPILE_VARIANT_UNKNOWN` until WS5 ships.
 5. **Commit 6, the legacy route on the engine.** Deploy; run M12 and M13 on staging, including a restart in the middle of a compile; watch the events of section 10.5 for a day; then production.
 
 ### 10.3 Read-only checks before commit 3
@@ -3292,7 +3292,7 @@ The ceilings must sit at least twice above the largest live value; a legacy draf
 - **The live map:** revert commit 1. Nothing is stored.
 - **The engine:** set `FIELDOPS_JOBS_MAX_CONCURRENT=0` and restart. New starts answer 503, the legacy route runs inline, and no process claims. Jobs already active are not claimed again; the sweeper still times them out (with refund) after 24 hours, and the owner can end them sooner with the runbook below.
 - **The routes:** set `ENABLE_FIELDOPS_V2=false`.
-- **The migrations:** each file states its rollback; the code tolerates their absence (section 5.5). Roll back 219 before 218.
+- **The migrations:** each file states its rollback; the code tolerates their absence (section 5.5). Roll back 220 before 219.
 
 ### 10.5 Runbook
 
@@ -3327,7 +3327,7 @@ All events use the existing pino logger with ids, counts, codes and durations on
 | `session_idle_cleared` | info | **Added 8 Nov 2026.** `sessionId` |
 | `session_idle_sweep_failed` | warn | **Added 4 Nov 2026.** `sessionId` |
 
-Watch after each release: `fieldops_job_failed` by code, any `discard_failed`, any `handler_missing` (a variant that was removed or renamed while jobs of it were waiting), any `fieldops_job_lease_lost` outside a deploy, and `fieldops_legacy_persist_inline` with reason `engine_unavailable` after 219 is applied.
+Watch after each release: `fieldops_job_failed` by code, any `discard_failed`, any `handler_missing` (a variant that was removed or renamed while jobs of it were waiting), any `fieldops_job_lease_lost` outside a deploy, and `fieldops_legacy_persist_inline` with reason `engine_unavailable` after 220 is applied.
 
 ## 11. Tests
 
@@ -3373,16 +3373,16 @@ All unit tests use `node:test` through `tsx`, as the root script does (`package.
 1. **M1** As a participant in a session of a wizard-built scenario: the live map loads, the exits are claimable, and hazards and casualties appear once every claimable exit is claimed.
 2. **M2** As that session's trainer: the trainer map opens on Live map; Scene preview shows the scene with its planted devices and the helper line; Live map returns.
 3. **M3** Claim an exit, then cause an adversary sighting event: the claim stays on the map.
-4. **M4** As the participant, call both scene-config routes: no `planted_items`, `hazard_zones`, `enrichment_result` or `wall_inspection_points`; as the trainer, the whole row. Once WS4's 232 and 233 are applied, repeat on a v2 scene: `photos` with signed URLs for both, and no `authored`, `site_snapshot` or `draft_id` for the participant.
+4. **M4** As the participant, call both scene-config routes: no `planted_items`, `hazard_zones`, `enrichment_result` or `wall_inspection_points`; as the trainer, the whole row. Once WS4's 233 and 234 are applied, repeat on a v2 scene: `photos` with signed URLs for both, and no `authored`, `site_snapshot` or `draft_id` for the participant.
 5. **M5** As the participant, call `GET /api/rts-scenes/<id>` and `PATCH /api/rts-scenes/<id>`: 403 for both, row unchanged.
 6. **M6** As the participant, list casualties: no `triage_color`; call hazards with `include_zones=true`: no `zones`. As the trainer: both as before.
 7. **M7** Create a draft with input `{ sim_mode: 'field_ops_v2', scenario_type: null }`: the legacy picker does not list it; the legacy `PATCH` answers 409 `DRAFT_WRONG_FLOW`.
-8. **M8** Before 218: the library, a session start, a clone and an edit behave as before. After 218, with a draft row inserted for trainer A: trainer B gets 404 on `GET /api/scenarios/:id`; A and an admin get 200; the library and the session picker omit it; a session start answers 409 and no ledger row appears; clone, `PATCH` (including `is_active: true`) and an inject edit answer 409; the dashboard count is one lower than the row count.
+8. **M8** Before 219: the library, a session start, a clone and an edit behave as before. After 219, with a draft row inserted for trainer A: trainer B gets 404 on `GET /api/scenarios/:id`; A and an admin get 200; the library and the session picker omit it; a session start answers 409 and no ledger row appears; clone, `PATCH` (including `is_active: true`) and an inject edit answer 409; the dashboard count is one lower than the row count.
 9. **M9** In SQL, setting `is_active = true` on that draft fails with `scenarios_draft_not_active`.
 10. **M10** During a legacy compile, save the draft from a second tab: "Not saved — retry"; the server log shows `fieldops_draft_write_refused` with `DRAFT_COMPILING`.
 11. **M11** Run the smoke script: every case passes and the cleanup leaves no rows.
 12. **M12** Start a legacy compile on a development server, stop the server during "Generating the scenario" (SIGTERM, then a second run with a hard kill), restart it: the job is requeued within 150 seconds, resumes, and the draft ends `persisted` with one scenario in the library and one spend row.
-13. **M13** On staging with 218 and 219: the legacy wizard compiles end to end with the same success screen and the scenario in the library; a second click during the compile shows the 409 message; with `FIELDOPS_JOBS_MAX_CONCURRENT=0` the inline path compiles as before.
+13. **M13** On staging with 219 and 220: the legacy wizard compiles end to end with the same success screen and the scenario in the library; a second click during the compile shows the 409 message; with `FIELDOPS_JOBS_MAX_CONCURRENT=0` the inline path compiles as before.
 14. **M14** **Added 4 Nov 2026.** On staging, with the defaults, start one corporate and one field-ops session with a person in each, then stop acting. At 25 minutes the warning shows on `/sessions/:id`, the trainer dashboard, the phone and the desktop screens. In the corporate session, press "I'm still here": the warning goes and the session continues. Leave the field-ops one: at 30 minutes it is completed, the trainer's banner links to the After-Action Review, the AAR opens with its final state, and the AI teammates stop within a minute. Call the keepalive route as a stranger (403) and for an unknown session id (404).
 
 ### 11.5 Additions to the `test` script
@@ -3413,7 +3413,7 @@ frontend/tests/fieldOpsDescribeJob.test.ts
 
 ## 12. Tasks
 
-The order follows the brief: the live map alone first, then the helpers, then 218, then 219 and the engine, then the legacy route on the engine. Each task adds its test files to `package.json` as it creates them.
+The order follows the brief: the live map alone first, then the helpers, then 219, then 220 and the engine, then the legacy route on the engine. Each task adds its test files to `package.json` as it creates them.
 
 1. **T0.1 The shared exit gate and the locations route.**
    - Goal: the gate counts only pins a team in the session may claim; the server marks each entry and exit pin.
@@ -3430,7 +3430,7 @@ The order follows the brief: the live map alone first, then the helpers, then 21
 3. **T0.3 Participant projections on the server.**
    - Goal: the answer key leaves no route a participant can call on the map paths.
    - Files: `server/lib/participantProjections.ts (new)`, `server/lib/participantProjections.test.ts (new)`, `server/routes/sessions.ts`, `server/routes/scenarios.ts`, `server/routes/casualties.ts`, `server/routes/hazards.ts`, `server/routes/rtsScenes.ts` (touched).
-   - Steps: write the module of section 6.5.2, with WS4's four runtime columns on the allow-list from the start (before 232 and 233 they are absent and simply not copied) and the pure `options.photos` handling; apply the route changes of section 6.5.3; the draft 404 on the scenario scene-config route waits for T0.13, and the photo call waits for T0.22.
+   - Steps: write the module of section 6.5.2, with WS4's four runtime columns on the allow-list from the start (before 233 and 234 they are absent and simply not copied) and the pure `options.photos` handling; apply the route changes of section 6.5.3; the draft 404 on the scenario scene-config route waits for T0.13, and the photo call waits for T0.22.
    - Done when: M4, M5 and M6 pass; the trainer's views are unchanged.
    - Tests: `participantProjections.test.ts`. Commit: 1.
 4. **T0.4 The session map choice.**
@@ -3481,9 +3481,9 @@ The order follows the brief: the live map alone first, then the helpers, then 21
     - Steps: section 6.8; the constant goes in the shared file, with no import, and the server module imports and re-exports it.
     - Done when: AC0.16 passes.
     - Tests: `setupEnvelope.test.ts`. Commit: 3.
-12. **T0.12 Migration 218 and the publish-state module.**
+12. **T0.12 Migration 219 and the publish-state module.**
     - Goal: the column, its checks and the module every reader uses.
-    - Files: `migrations/218_scenario_publish_state.sql (new)`, `server/services/scenarioPublishState.ts (new)`, `server/services/scenarioPublishState.test.ts (new)`.
+    - Files: `migrations/219_scenario_publish_state.sql (new)`, `server/services/scenarioPublishState.ts (new)`, `server/services/scenarioPublishState.test.ts (new)`.
     - Steps: copy the SQL of section 5.1 into the file; write the module of section 6.6.
     - Done when: the migration applies twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project); the module's tests pass with the column present and absent.
     - Tests: `scenarioPublishState.test.ts`. Commit: 4.
@@ -3491,13 +3491,13 @@ The order follows the brief: the live map alone first, then the helpers, then 21
     - Goal: every reader of section 6.6 behaves as its table says.
     - Files: `server/routes/scenarios.ts`, `server/routes/sessions.ts`, `server/routes/dashboard.ts`, `server/services/scenarioEditService.ts` (touched).
     - Steps: the list filter, the 404, the scene-config draft 404, the session refusal before the credit, clone, `PATCH`, the guard mapping, `assertNotDraftScenario` on each mutating route, the editability reason and the dashboard subtraction.
-    - Done when: M8 and M9 pass after 218 is applied, and M8's first half passes before it.
+    - Done when: M8 and M9 pass after 219 is applied, and M8's first half passes before it.
     - Tests: `scenarioPublishState.test.ts`; manual M8 and M9. Commit: 4.
-14. **T0.14 Migration 219.**
+14. **T0.14 Migration 220.**
     - Goal: the tables and functions of section 5.2.
-    - Files: `migrations/219_fieldops_jobs.sql (new)`.
-    - Steps: copy the SQL; apply it to a development branch or the shared project after 218.
-    - Done when: the parser check is clean; applying it twice is a no-op; applying it before 218 raises the guard's message.
+    - Files: `migrations/220_fieldops_jobs.sql (new)`.
+    - Steps: copy the SQL; apply it to a development branch or the shared project after 219.
+    - Done when: the parser check is clean; applying it twice is a no-op; applying it before 219 raises the guard's message.
     - Tests: the smoke script (T0.19). Commit: 5.
 15. **T0.15 The job engine.**
     - Goal: registry, store, runner, view and wiring.
@@ -3515,7 +3515,7 @@ The order follows the brief: the live map alone first, then the helpers, then 21
     - Goal: the four routes, the mount and the engine's start and stop.
     - Files: `server/routes/fieldOpsJobs.ts (new)`, `server/services/fieldOps/jobs/jobSchemas.ts (new)`, `server/routes/fieldOpsJobs.test.ts (new)`, `server/index.ts` (touched).
     - Steps: sections 6.10.5 and 6.13.
-    - Done when: AC0.27, AC0.28, AC0.36 and AC0.40 pass; with 219 absent the server boots, logs `fieldops_schema_missing` once and the routes answer 503.
+    - Done when: AC0.27, AC0.28, AC0.36 and AC0.40 pass; with 220 absent the server boots, logs `fieldops_schema_missing` once and the routes answer 503.
     - Tests: `fieldOpsJobs.test.ts`. Commit: 5.
 18. **T0.18 The jobs client.**
     - Goal: the modules WS2 and WS5 build on.
@@ -3544,12 +3544,12 @@ The order follows the brief: the live map alone first, then the helpers, then 21
 22. **T0.22 Trainer photos on v2 scene projections.**
     - Goal: AC0.35 (master 10.8 item 28), once WS4's photos exist.
     - Files: `server/routes/sessions.ts`, `server/routes/scenarios.ts` (touched); it imports `listRuntimeScenePhotos` from `server/services/fieldOps/layout/index.ts (new)`, which WS4 creates.
-    - Steps: section 6.5.3, "Photos for v2 rows". Land it after WS4's migrations 232 and 233 and its layout module.
+    - Steps: section 6.5.3, "Photos for v2 rows". Land it after WS4's migrations 233 and 234 and its layout module.
     - Done when: AC0.35 and the v2 half of M4 pass; a thrown photo call logs `fieldops_scene_photos_failed` and the map still loads.
     - Tests: `participantProjections.test.ts` (the pure half, from T0.3); manual M4. Commit: 7.
 23. **T0.23 Idle sessions end by themselves (added 4 Nov 2026; master D37). Build this first.**
     - Goal: sections 6.15 and 7.5; AC0.42 to AC0.47.
-    - **Updated 8 Nov 2026**, after the first build was reviewed: a revision touches only `server/services/sessionIdleSweeper.ts`, `server/services/sessionIdleSweeper.test.ts`, `frontend/src/components/Session/sessionIdleNoticeModel.ts` and `frontend/tests/sessionIdleNotice.test.ts`. It brings in the list `warnedFor`, `listIdleMarkers` and `readIdleMarkers`, the sweep's clear step (section 6.15), the reducer's change (section 7.5), the updates to AC0.42 and AC0.46, and AC0.47.
+    - **Updated 8 Nov 2026**, after the first build was reviewed: a revision touches only `server/services/sessionIdleSweeper.ts (new)`, `server/services/sessionIdleSweeper.test.ts (new)`, `frontend/src/components/Session/sessionIdleNoticeModel.ts (new)` and `frontend/tests/sessionIdleNotice.test.ts (new)`. It brings in the list `warnedFor`, `listIdleMarkers` and `readIdleMarkers`, the sweep's clear step (section 6.15), the reducer's change (section 7.5), the updates to AC0.42 and AC0.46, and AC0.47.
     - Files:
       - new: `server/services/sessionIdleSweeper.ts (new)`, `server/lib/sessionIdleSettings.ts (new)`, `server/lib/fieldOps/jobSettings.ts (new)` (`readIntSetting` only, when commit 2 has not landed), `frontend/src/components/Session/SessionIdleNotice.tsx (new)`, `frontend/src/components/Session/sessionIdleNoticeModel.ts (new)`, `frontend/src/components/Session/sessionIdleApi.ts (new)`, `server/services/sessionIdleSweeper.test.ts (new)`, `frontend/tests/sessionIdleNotice.test.ts (new)`;
       - touched: `server/env.ts`, `server/index.ts`, `server/routes/sessions.ts` (the keepalive route only), `frontend/src/pages/SessionView.tsx`, `frontend/src/components/SimDevice/TrainerSimDashboard.tsx`, `frontend/src/components/SimDevice/DeviceShell.tsx`, `frontend/src/components/SimDevice/DesktopShell.tsx` (one `SessionIdleNotice` each), `package.json` (the two test files).
@@ -3573,10 +3573,10 @@ Seven commits, each deployable alone, in this order; the seventh waits for WS4's
 | **1** "field-ops WS0: live map for wizard-built scenarios, exit gate, participant projections" | T0.1 to T0.4 | 13.1, 13.9 and the payload projections; no migration, no flag | Revert commit 1; it stores nothing. If only the page change misbehaves, revert `frontend/src/pages/SessionView.tsx` and `frontend/src/lib/sessionMapChoice.ts (new)` alone and keep the server projections, which are safe on their own |
 | **2** "field-ops WS0: schema features, VALIDATION_FAILED, flag and settings, job vocabulary" | T0.5 to T0.8 | Helpers with no user-visible change except the added `code` | Revert commit 2; nothing depends on it until commit 3. The `code` field is additive, so leaving it is also safe |
 | **3** "field-ops WS0: validated draft input, draft guards, setup envelope" | T0.9 to T0.11 | Journey 5.4 on the legacy endpoints; new-page drafts hidden from the legacy picker | If a real draft is refused, raise the constant in `LEGACY_DRAFT_LIMITS` in a hotfix, or revert commit 3. Data written meanwhile stays valid for the old code: team names become objects, which the legacy page already reads |
-| **4** "field-ops WS0: scenarios.publish_state (migration 218) and drafts in the readers" | T0.12, T0.13 | The column and every reader's draft rule | Revert commit 4 first; the old code ignores the column. No draft rows exist before commit 6 or WS5, so dropping the column with 218's rollback loses nothing |
-| **5** "field-ops WS0: persisted jobs (migration 219), engine, compile route, jobs client" | T0.14 to T0.19 | The engine, the routes behind `ENABLE_FIELDOPS_V2`, the client modules | Set `FIELDOPS_JOBS_MAX_CONCURRENT=0` (no deploy needed) or `ENABLE_FIELDOPS_V2=false`; then revert commit 5 if needed. The tables can stay unused; drop them with 219's rollback only when no job is queued or running |
+| **4** "field-ops WS0: scenarios.publish_state (migration 219) and drafts in the readers" | T0.12, T0.13 | The column and every reader's draft rule | Revert commit 4 first; the old code ignores the column. No draft rows exist before commit 6 or WS5, so dropping the column with 219's rollback loses nothing |
+| **5** "field-ops WS0: persisted jobs (migration 220), engine, compile route, jobs client" | T0.14 to T0.19 | The engine, the routes behind `ENABLE_FIELDOPS_V2`, the client modules | Set `FIELDOPS_JOBS_MAX_CONCURRENT=0` (no deploy needed) or `ENABLE_FIELDOPS_V2=false`; then revert commit 5 if needed. The tables can stay unused; drop them with 220's rollback only when no job is queued or running |
 | **6** "field-ops WS0: legacy /persist on the engine" | T0.20, T0.21 | G0.5 | Set `FIELDOPS_JOBS_MAX_CONCURRENT=0`: the route goes back to its inline path at once. To revert the code, first drain: wait until `SELECT count(*) FROM public.fieldops_jobs WHERE status IN ('queued','running')` is 0 (or end jobs with the runbook), because a reverted server no longer has the `legacy` variant and could not resume them. The pipeline split is behaviour-neutral, so reverting it restores the old composition exactly |
-| **7** "field-ops WS0: trainer photos on v2 scene projections" | T0.22 | AC0.35, after WS4's migrations 232 and 233 and its layout module | Revert commit 7; the projections fall back to commit 1's, without `photos`, and nothing is stored |
+| **7** "field-ops WS0: trainer photos on v2 scene projections" | T0.22 | AC0.35, after WS4's migrations 233 and 234 and its layout module | Revert commit 7; the projections fall back to commit 1's, without `photos`, and nothing is stored |
 
 If commit 6 must be rolled back after legacy jobs have committed, nothing is lost: those scenarios are published and their drafts are `persisted`, exactly as the inline path leaves them.
 
@@ -3586,8 +3586,8 @@ If commit 6 must be rolled back after legacy jobs have committed, nothing is los
 
 | File | Task | Purpose |
 | --- | --- | --- |
-| `migrations/218_scenario_publish_state.sql (new)` | T0.12 | Section 5.1 |
-| `migrations/219_fieldops_jobs.sql (new)` | T0.14 | Section 5.2 |
+| `migrations/219_scenario_publish_state.sql (new)` | T0.12 | Section 5.1 |
+| `migrations/220_fieldops_jobs.sql (new)` | T0.14 | Section 5.2 |
 | `shared/fieldOps/jobs.ts (new)` | T0.8 | Job and draft vocabulary, `FieldOpsJobView` |
 | `shared/fieldOps/exitGate.ts (new)` | T0.1 | Exit gate helpers |
 | `shared/fieldOps/setupEnvelopeLimits.ts (new)` | T0.11 | `SETUP_V2_ENVELOPE_LIMITS`, the one source of the setup caps |
@@ -3601,7 +3601,7 @@ If commit 6 must be rolled back after legacy jobs have committed, nothing is los
 | `server/services/fieldOps/drafts/draftGuards.ts (new)` | T0.10 | `assertDraftEditable`, `updateDraftIfEditable` |
 | `server/services/fieldOps/jobs/jobTypes.ts (new)` | T0.15 | Engine types |
 | `server/services/fieldOps/jobs/jobRegistry.ts (new)` | T0.15 | `registerJobKind` |
-| `server/services/fieldOps/jobs/jobStore.ts (new)` | T0.15 | The 219 functions |
+| `server/services/fieldOps/jobs/jobStore.ts (new)` | T0.15 | The 220 functions |
 | `server/services/fieldOps/jobs/jobRunner.ts (new)` | T0.15 | Claim, heartbeat, stages, retry, commit |
 | `server/services/fieldOps/jobs/jobView.ts (new)` | T0.15 | `toJobView` |
 | `server/services/fieldOps/jobs/jobEngine.ts (new)` | T0.15 | Detector, singletons, start and stop |
@@ -3674,7 +3674,7 @@ They do not exist yet, so they keep the `(new)` marker; their owners create them
 | R0.5 | A future answer key written into casualty `conditions` is missed by the deny-list | The rule of section 9.1 and the projection test; the writer of any new key adds it in the same change (section 15.4). Today none is missing: WS5's casualty rows add only `illustrative`, which is not an answer key, and WS6 writes no casualty rows |
 | R0.6 | "Draft" now means two things: the library's label for an inactive scenario (`frontend/src/pages/Scenarios.tsx:170`) and the publish state | Publish-state drafts never reach the library; the wording on WS5's Review is the UI sheet's to settle |
 | R0.7 | PostgREST may refuse the `or` filter on a JSON path in the legacy list | Closed: the live project accepts it (section 6.7, checked on 25 Oct 2026); AC0.15 ("the legacy list never returns it") still guards a regression |
-| R0.8 | Enabling row level security on `warroom_wizard_drafts` breaks a direct browser read nobody has found | It is already on in the live project, so 219 changes nothing there; the search found no direct reader (only `server/routes/warroom.ts` uses the table) for any other database built from the migrations |
+| R0.8 | Enabling row level security on `warroom_wizard_drafts` breaks a direct browser read nobody has found | It is already on in the live project, so 220 changes nothing there; the search found no direct reader (only `server/routes/warroom.ts` uses the table) for any other database built from the migrations |
 | R0.9 | The per-trainer cap of 2 refuses a third compile of a busy trainer or an admin running demonstrations | The setting goes up to 10 without a deploy |
 | R0.10 | A restart during `generate` repeats about a hundred model calls | One repeat at most (`maxAttempts` 2), and the checkpoint after `generate` protects the rest |
 | R0.11 | The scene is not locked during a compile, so editing it meanwhile changes what the legacy compile reads | As today; the scene store is WS4's |
@@ -3688,7 +3688,7 @@ They do not exist yet, so they keep the `(new)` marker; their owners create them
 
 1. **Spectator mode.** Should `?spectator=true` be limited to staff altogether? WS0 keeps it and gives non-staff spectators the participant map.
 2. **Corporate ceiling.** Answered on 25 Oct 2026: the largest live corporate draft input is 488,757 bytes (average about 37 KB), so 5,000,000 bytes leaves a tenfold margin. Section 10.3 re-runs the check before commit 3.
-3. **Live policies.** Answered on 25 Oct 2026: `warroom_wizard_drafts` has row level security on with no policy, so 219's statement only records it; `rts_scene_configs` has a select policy `USING (true)` for every role and the anon role holds SELECT, so the anon key alone reads every scene row (section 9.2, master risk 14).
+3. **Live policies.** Answered on 25 Oct 2026: `warroom_wizard_drafts` has row level security on with no policy, so 220's statement only records it; `rts_scene_configs` has a select policy `USING (true)` for every role and the anon role holds SELECT, so the anon key alone reads every scene row (section 9.2, master risk 14). **Updated 8 Nov 2026:** migration 218 has since closed that policy to the creator and admins.
 4. **PostgREST filter.** Answered on 25 Oct 2026: the project's PostgREST accepts `or=(input->>sim_mode.is.null,input->>sim_mode.neq.field_ops_v2)` (a read-only call to the live project, section 6.7), so no fallback is needed.
 5. **Legacy save messages.** The legacy page shows a fixed "Not saved — retry" when the server refuses a save. Should it show the field message? That needs an edit of `frontend/src/pages/WarRoom.tsx`, which WS0 avoids.
 6. **Admins and the cap.** Admins pay no credit (D27 keeps today's rule), but the per-trainer job cap applies to them. Is that wanted for demonstrations?
@@ -3711,12 +3711,12 @@ They do not exist yet, so they keep the `(new)` marker; their owners create them
 | WS5 (06) | The sweeper fails and refunds any job whose variant is not registered | Accepted (master 10.8 item 20), with the code `JOB_HANDLER_MISSING`, after a 10-minute grace that covers a deploy (R0.13) | Sections 5.2 and 6.10.3; AC0.38 |
 | WS5 (06) | `FieldOpsJobView` carries each stage's status and summary, `progress` in the `CompileProgress` shape, `error.code` and whether the credit was refunded | Modified (master 10.8 item 20): `progress` uses `CompileProgress`'s names, `stage`, `stage_index`, `stage_count`, `message`, `done`, `total` and `percent`, plus `stage_label` and `completed_stages`; `stage` is a plain string and `message` may be null. `credit_refunded` is added | Sections 5.3, 6.10.3 and 6.10.4; AC0.39 |
 | WS5 (06) | Any foreign key to `scenarios` is `ON DELETE CASCADE` or `ON DELETE SET NULL` | Accepted (master 10.8 item 21): no WS0 table has a foreign key to `scenarios`; `draft_id` and `retry_of` on `fieldops_jobs` are `ON DELETE SET NULL` | Section 5.2 |
-| WS6 (07), X6.13 | `isMissingRelationError` recognises PostgREST's missing-table answer for tables 237 to 241, and detectors re-check after about 60 seconds | Accepted (master 10.8 item 5): `PGRST205` and `42P01` for any table; a negative answer is re-checked after 60 seconds | Section 6.2; AC0.18 |
+| WS6 (07), X6.13 | `isMissingRelationError` recognises PostgREST's missing-table answer for tables 238 to 242, and detectors re-check after about 60 seconds | Accepted (master 10.8 item 5): `PGRST205` and `42P01` for any table; a negative answer is re-checked after 60 seconds | Section 6.2; AC0.18 |
 | WS8 (09) | `registerJobKind` accepts a kind with `consumesCredit: false` and `locksDraft: false` whose draft is a published scenario's source draft, and `lockKey` gives one active job per draft and key | Accepted | Sections 5.2 and 6.10.1 |
 | WS8 (09) | Export the client job poller Review uses; drop the request that WS8 widen the editability reason type | Accepted: `useFieldOpsJob`, `nextPollDelay` and `isNewerJobView` are exported, and WS0's editability request is withdrawn | Sections 6.6 and 7.3 |
-| WS9 (11, section 15.3) | **Added 3 Nov 2026.** Detectors for 249 to 255 (`fieldops_spread_materials`, `fieldops_world_models`, `fieldops_world_sessions`, `fieldops_world_events`, `fieldops_road_graphs`, `fieldops_world_knowledge`, `fieldops_weather_presets`) in master 10.8 item 5's list; at least 3 of the 10 shutdown seconds after `stopJobEngine` for `stopWorldRuntime` | Modified for the detectors: item 5 names WS0's helpers, not a list of tables, so WS9 builds its own with `createCachedDetector` and `isMissingRelationError`, which answer for any table, as WS6 does for 237 to 241. Accepted for shutdown: `stopJobEngine` waits at most 5 seconds (section 6.10), so `stopWorldRuntime()`, called right after it, has at least 5 of the 10 | Sections 6.2 and 6.10 |
+| WS9 (11, section 15.3) | **Added 3 Nov 2026.** Detectors for 250 to 256 (`fieldops_spread_materials`, `fieldops_world_models`, `fieldops_world_sessions`, `fieldops_world_events`, `fieldops_road_graphs`, `fieldops_world_knowledge`, `fieldops_weather_presets`) in master 10.8 item 5's list; at least 3 of the 10 shutdown seconds after `stopJobEngine` for `stopWorldRuntime` | Modified for the detectors: item 5 names WS0's helpers, not a list of tables, so WS9 builds its own with `createCachedDetector` and `isMissingRelationError`, which answer for any table, as WS6 does for 238 to 242. Accepted for shutdown: `stopJobEngine` waits at most 5 seconds (section 6.10), so `stopWorldRuntime()`, called right after it, has at least 5 of the 10 | Sections 6.2 and 6.10 |
 | Name `names_only` (cited by WS3) | A name attributed to WS0 | Not WS0's: it is WS3's own value of `SITE_SEARCH_MODES`. WS0 supplies only `isMissingRelationError` and `isMissingFunctionError`, which make WS3 pick that mode. WS3's text is right | None |
-| Name `SCHEMA_MISSING` (cited by WS5) | A name attributed to WS0 | Not WS0's: it is WS5's readiness code. On WS0's start route a missing 218 or 219 answers 503 `JOBS_UNAVAILABLE` before `assertReady` runs, so there WS5's code is reached only for 234 to 236; WS5's rows that list 218 and 219 under it should say so | Section 6.11, step 3 |
+| Name `SCHEMA_MISSING` (cited by WS5) | A name attributed to WS0 | Not WS0's: it is WS5's readiness code. On WS0's start route a missing 219 or 220 answers 503 `JOBS_UNAVAILABLE` before `assertReady` runs, so there WS5's code is reached only for 235 to 237; WS5's rows that list 219 and 220 under it should say so | Section 6.11, step 3 |
 
 ### 15.4 Requests WS0 makes of other specs
 
@@ -3738,9 +3738,9 @@ WS0 is done when all of the following hold, in addition to master section 11:
 1. AC0.1 to AC0.41 pass, each through the test or manual step named beside it. **Added 4 Nov 2026:** AC0.42 to AC0.47 too, and commit 0 has been in production for a day with `session_auto_ended` lines only for sessions nobody was playing.
 2. `npm test` passes with the seventeen new files in the script (section 11.5); `npx tsc --noEmit` is clean at the root; `tsc && vite build` succeeds in `frontend/`; the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project); `node scripts/verify-field-ops-specs.mjs --only=01` passes.
 3. M1 to M13 have been run on staging and recorded with their dates; the smoke script leaves no rows behind.
-4. Migrations 218 and 219 are applied in that order, each applied twice without change, with their rollbacks rehearsed on a development branch.
+4. Migrations 219 and 220 are applied in that order, each applied twice without change, with their rollbacks rehearsed on a development branch.
 5. With `ENABLE_FIELDOPS_V2` off in production, the four new routes answer 404; with `FIELDOPS_JOBS_MAX_CONCURRENT=0`, the legacy wizard compiles through its inline path exactly as before.
 6. No log line from WS0 code carries document text, descriptions, device specifics or model output (checked by reading the events of section 10.6).
-7. The items of section 9.2 are recorded with their owners, and master risk 14 (the `rts_scene_configs` policy) is put to the owner as a production gate.
+7. The items of section 9.2 are recorded with their owners, and master risk 14 (the `rts_scene_configs` policy) is put to the owner as a production gate (**updated 8 Nov 2026**: migration 218 met its read half; the public bucket remains).
 8. Journey findings 13.1, 13.9, 5.4, 7.1, 7.3 and 7.5 are marked fixed in the journey document's register with the commit ids; 13.2 is marked partly fixed (casualty payloads, zones and scenes).
 9. Every request of section 15.3 is built as answered there, and every request of section 15.4 has an answer from its owner or a change in the master plan's log.

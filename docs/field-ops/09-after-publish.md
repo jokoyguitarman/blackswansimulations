@@ -4,8 +4,8 @@
 **Workstream:** WS8
 **Depends on:** 00-master-plan.md, 01-prerequisites.md, 02-teams-and-doctrines.md, 03-setup-screen.md, 05-layout-step.md, 06-compile-and-review.md, 07-device-and-physics.md, 08-people-or-ai.md
 **Flags:** `ENABLE_FIELDOPS_EDITOR`
-**Migrations:** 245, 246, 247, 248
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 246, 247, 248, 249 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -93,7 +93,7 @@ Everything in this section was read on the baseline. Citations are to the files 
 - **Verified.** A `social_media_crisis` scenario is handed to `SocialScenarioEditor` (`frontend/src/components/Scenario/ScenarioDetailView.tsx:416-426`); every other scenario, field ops included, gets the tab frame whose tabs are listed in `TAB_META` (`frontend/src/components/Scenario/ScenarioDetailView.tsx:434-447`).
 - **Verified.** The only field-ops editor is the Standards tab. `saveDoctrine` sends the whole `insider_knowledge` object rebuilt from the client's copy (`frontend/src/components/Scenario/ScenarioDetailView.tsx:322-352`) and only logs a failure to the console. This is journey finding 8.9.
 - **Verified.** The field-ops branch never asks for editability: the file has no reference to it, although the client already has `getEditability` (`frontend/src/lib/api.ts:408`).
-- **Verified.** The Map Pins tab writes through three pin routes that check role and ownership but not the lock: the batch move `PATCH /api/scenarios/:id/pins` (`server/routes/scenarios.ts:618-761`), the create route that calls a model to enrich hazards (`server/routes/scenarios.ts:3110-3115`) and the delete route (`server/routes/scenarios.ts:3259-3322`). The create route also writes fixed blast rings of 15, 30 and 50 m for any explosion-like hazard (`server/routes/scenarios.ts:3144-3169`), a fourth blast assumption next to the three in journey finding 7.11.
+- **Verified.** The Map Pins tab writes through three pin routes that check role and ownership but not the lock: the batch move `PATCH /api/scenarios/:id/pins` (`server/routes/scenarios.ts:636-779`), the create route that calls a model to enrich hazards (`server/routes/scenarios.ts:3128-3133`) and the delete route (`server/routes/scenarios.ts:3277-3340`). The create route also writes fixed blast rings of 15, 30 and 50 m for any explosion-like hazard (`server/routes/scenarios.ts:3162-3187`), a fourth blast assumption next to the three in journey finding 7.11.
 
 ### 3.2 The corporate editor is the pattern to port
 
@@ -104,19 +104,19 @@ Everything in this section was read on the baseline. Citations are to the files 
 
 ### 3.3 Server edit paths and their guards
 
-**Verified.** `guardScenarioEdit` checks the trainer or admin role, ownership through `assertScenarioOwner`, and the lock through `canEditScenario`, answering 423 with `EDIT_LOCKED_LIVE_SESSION` or `EDIT_LOCKED_NO_CREDITS` (`server/routes/scenarios.ts:39-69`). The table lists every write route a field-ops scenario can reach today.
+**Verified.** `guardScenarioEdit` checks the trainer or admin role, ownership through `assertScenarioOwner`, and the lock through `canEditScenario`, answering 423 with `EDIT_LOCKED_LIVE_SESSION` or `EDIT_LOCKED_NO_CREDITS` (`server/routes/scenarios.ts:44-74`). The table lists every write route a field-ops scenario can reach today.
 
 | Route (`server/routes/scenarios.ts`) | Lock | Notes |
 | --- | --- | --- |
-| `PATCH /api/scenarios/:id` | Only when one of the content fields in `CONTENT_FIELDS` is present (`server/routes/scenarios.ts:1561-1589`) | `refresh_vicinity` runs a live Overpass query (`server/routes/scenarios.ts:1603-1622`); any update with geography starts background map generation (`server/routes/scenarios.ts:1624-1650`) |
-| `PATCH`, `POST`, `DELETE` of `/:id/injects` and `regenerate-image` | Yes, `guardScenarioEdit` (`server/routes/scenarios.ts:827-1070`) | `injectFieldsSchema` takes conditions as `z.unknown()` (`server/routes/scenarios.ts:784-797`) |
-| `PATCH /:id/teams/:teamId` | Yes (`server/routes/scenarios.ts:1140-1288`) | Team names are immutable here (`server/routes/scenarios.ts:1119-1122`) |
-| `PATCH /:id/objectives/:objectiveId` | Yes (`server/routes/scenarios.ts:1300-1357`) | Keeps the `scenarios.objectives` name list in sync (`server/routes/scenarios.ts:1325-1344`) |
+| `PATCH /api/scenarios/:id` | Only when one of the content fields in `CONTENT_FIELDS` is present (`server/routes/scenarios.ts:1579-1607`) | `refresh_vicinity` runs a live Overpass query (`server/routes/scenarios.ts:1621-1640`); any update with geography starts background map generation (`server/routes/scenarios.ts:1642-1668`) |
+| `PATCH`, `POST`, `DELETE` of `/:id/injects` and `regenerate-image` | Yes, `guardScenarioEdit` (`server/routes/scenarios.ts:845-1088`) | `injectFieldsSchema` takes conditions as `z.unknown()` (`server/routes/scenarios.ts:802-815`) |
+| `PATCH /:id/teams/:teamId` | Yes (`server/routes/scenarios.ts:1158-1306`) | Team names are immutable here (`server/routes/scenarios.ts:1137-1140`) |
+| `PATCH /:id/objectives/:objectiveId` | Yes (`server/routes/scenarios.ts:1318-1375`) | Keeps the `scenarios.objectives` name list in sync (`server/routes/scenarios.ts:1343-1362`) |
 | `PATCH`, `POST`, `DELETE` of `/:id/pins` | No | See section 3.1 |
-| `POST /:id/retry-routes` | No (`server/routes/scenarios.ts:1909-1964`) | Calls `fetchRouteGeometries`, which uses Overpass (`server/routes/scenarios.ts:1955-1964`) |
-| `POST /:id/retry-deterioration`, `/:id/retry-custom-facts` | No (`server/routes/scenarios.ts:2132`, `server/routes/scenarios.ts:2543`) | Model calls in the request |
-| `POST /:id/backfill-buildings` | No (`server/routes/scenarios.ts:3452-3477`) | `backfillBuildingsForScenario` fetches from Overpass (`server/services/buildingStudService.ts:1254`) |
-| `POST /:id/generate-maps` | No (`server/routes/scenarios.ts:1668-1751`) | Static images from tiles (section 3.8) |
+| `POST /:id/retry-routes` | No (`server/routes/scenarios.ts:1927-1982`) | Calls `fetchRouteGeometries`, which uses Overpass (`server/routes/scenarios.ts:1973-1982`) |
+| `POST /:id/retry-deterioration`, `/:id/retry-custom-facts` | No (`server/routes/scenarios.ts:2150`, `server/routes/scenarios.ts:2561`) | Model calls in the request |
+| `POST /:id/backfill-buildings` | No (`server/routes/scenarios.ts:3470-3495`) | `backfillBuildingsForScenario` fetches from Overpass (`server/services/buildingStudService.ts:1254`) |
+| `POST /:id/generate-maps` | No (`server/routes/scenarios.ts:1686-1769`) | Static images from tiles (section 3.8) |
 
 ### 3.4 The edit lock and who may edit
 
@@ -208,7 +208,7 @@ Two kinds of inject are partly locked. A **linked inject** is one a gate or the 
 
 | Value | Derived from | Recomputed when | How |
 | --- | --- | --- | --- |
-| `scenarios.objectives` (the name list) | `scenario_objectives` names, in creation order | Any objective change | In the same revision, as the corporate route does (`server/routes/scenarios.ts:1325-1344`) |
+| `scenarios.objectives` (the name list) | `scenario_objectives` names, in creation order | Any objective change | In the same revision, as the corporate route does (`server/routes/scenarios.ts:1343-1362`) |
 | `scenario_teams.required_roles` | Roster labels (D16) | Any roster change | In the same revision |
 | `scenario_teams.charter`, `expected_actions`, `scoring_rubric` | The doctrine snapshot through WS1's functions | Doctrine refresh only | Section 4.5 |
 | Scene-derived pins (exits, wall points, hazards, device markers) | The scene | Layout save | WS5's scene row builder, matched on `scene_item_id` |
@@ -262,7 +262,7 @@ The existing `idx_sessions_scenario` index serves it (`migrations/001_initial_sc
 
 | Race | Without help | Handling |
 | --- | --- | --- |
-| A session starts while an edit is being applied | Start copies hazards and casualties before it writes the status (section 3.5), so an edit that commits in between leaves the session with old copies and new injects | WS8 ships `fieldops_claim_session_start`, which locks the same scenario row, flips the session to `in_progress` only if it is still `scheduled` with no start time, and pins the session's revision, all in one transaction. WS7 owns the start branch of `PATCH /api/sessions/:id` and calls it first (master 10.8 item 26), so an edit and a start serialise: the edit either lands before the start, or is refused with 423. As a safety net while WS7's change or migration 248 is not yet deployed, after each apply WS8 looks for sessions whose start time falls inside the apply window, records `start_race_detected` in the audit and tells the trainer "A session started while this change was saved. It may show a mix of old and new content; restart it to be sure." |
+| A session starts while an edit is being applied | Start copies hazards and casualties before it writes the status (section 3.5), so an edit that commits in between leaves the session with old copies and new injects | WS8 ships `fieldops_claim_session_start`, which locks the same scenario row, flips the session to `in_progress` only if it is still `scheduled` with no start time, and pins the session's revision, all in one transaction. WS7 owns the start branch of `PATCH /api/sessions/:id` and calls it first (master 10.8 item 26), so an edit and a start serialise: the edit either lands before the start, or is refused with 423. As a safety net while WS7's change or migration 249 is not yet deployed, after each apply WS8 looks for sessions whose start time falls inside the apply window, records `start_race_detected` in the audit and tells the trainer "A session started while this change was saved. It may show a mix of old and new content; restart it to be sure." |
 | Two editors (two tabs, or the owner and an admin) | Last write wins | Every write carries the revision the client loaded; a stale one gets 409 `REVISION_CONFLICT` with the head revision (section 4.3) |
 | A regeneration is running when a session starts | The proposal would apply mid-session | The proposal can still be shown, but applying it answers 423 until the session ends; it expires after 24 hours |
 | A double start of the same session | Duplicate clones (journey finding 11.2) | The claim's compare-and-set lets one start through; the other gets `claimed = false` |
@@ -333,7 +333,7 @@ The existing `idx_sessions_scenario` index serves it (`migrations/001_initial_sc
 
 **Rollback.** After applying, the toast offers **Undo** for 10 minutes, and History offers **Revert to here** on the previous revision (section 4.3). A proposal whose base revision is no longer the head becomes `stale` and answers 409 `PROPOSAL_STALE` ("This scenario changed after the proposal was made. Run it again."). Proposals expire after 24 hours.
 
-**The stored setup copy (Proposed).** Regeneration, device recalculation and the reopened Setup lanes all read one row per published scenario in `fieldops_scenario_setups` (migration 246):
+**The stored setup copy (Proposed).** Regeneration, device recalculation and the reopened Setup lanes all read one row per published scenario in `fieldops_scenario_setups` (migration 247):
 
 | Column | Content |
 | --- | --- |
@@ -367,9 +367,9 @@ The three cases are exactly the `update` values of WS1's `checkDoctrineUpdates` 
 
 **What runs (Proposed).** Every 30 seconds, for every session in progress whose scenario has enabled pressure bodies, the runtime makes one deterministic decision per body and carries out at most one step per body. It runs in the process that runs the background engines (section 3.6) and only when `ENABLE_FIELDOPS_EDITOR` is on and the kill switch allows.
 
-**Compiled steps.** WS5 writes each pressure body's steps as plain timed template injects in the body's own wording (`06-compile-and-review.md`, section 8.5). In a session the runtime manages, it takes those injects over at its first tick, so the inject scheduler no longer sends them there (section 6.9), and it sends each rung itself at the body's timing, using the compiled wording when there is one. In a session the runtime never took over (the flag off, or migration 245 missing), the compiled steps fire at their compiled minutes and never stand down, which is WS5's behaviour on its own. A takeover lasts for the session: switching the runtime off afterwards silences that session's pressure rather than handing the steps back to the scheduler.
+**Compiled steps.** WS5 writes each pressure body's steps as plain timed template injects in the body's own wording (`06-compile-and-review.md`, section 8.5). In a session the runtime manages, it takes those injects over at its first tick, so the inject scheduler no longer sends them there (section 6.9), and it sends each rung itself at the body's timing, using the compiled wording when there is one. In a session the runtime never took over (the flag off, or migration 246 missing), the compiled steps fire at their compiled minutes and never stand down, which is WS5's behaviour on its own. A takeover lasts for the session: switching the runtime off afterwards silences that session's pressure rather than handing the steps back to the scheduler.
 
-**Tables (migration 245).** `fieldops_pressure_bodies` holds the bodies of a scenario; `fieldops_pressure_sessions` holds a session's pause switch; `fieldops_pressure_body_state` holds each body's state in a session (status, rung, step count, last step minute, when it was answered and by whom, when it went public, when and why it stood down, a pending trainer command); `fieldops_pressure_actions` is the ledger of every step, unique per session, body and step number, which doubles as the claim that stops two processes taking the same step; `fieldops_pressure_switches` is the kill switch.
+**Tables (migration 246).** `fieldops_pressure_bodies` holds the bodies of a scenario; `fieldops_pressure_sessions` holds a session's pause switch; `fieldops_pressure_body_state` holds each body's state in a session (status, rung, step count, last step minute, when it was answered and by whom, when it went public, when and why it stood down, a pending trainer command); `fieldops_pressure_actions` is the ledger of every step, unique per session, body and step number, which doubles as the claim that stops two processes taking the same step; `fieldops_pressure_switches` is the kill switch.
 
 **The ladder.** A body's escalation rungs come from the setup field `escalation`, normalised (trimmed, empty items dropped, a first item that only says "statement", "public statement" or "first statement" dropped because the opening is always a statement, at most four, each at most 200 characters). With E rungs:
 
@@ -482,7 +482,7 @@ Both refusals are keyed on the scenario being new-flow, not on the editor flag (
 
 ### 5.1 Overview
 
-WS8 owns migrations 245 to 248. All four are additive: new tables, new indexes and new functions. None of them alters an existing table, drops anything, or widens a shared CHECK list: the runtime reuses the event types and inject types that exist (section 3.7) and leaves `generation_source` null on its runtime injects, which the CHECK allows because the column is nullable. Every new table has RLS enabled and no policy, because the server reaches the database only with the service role (master section 9); every new function is `SECURITY DEFINER` with a fixed `search_path` and executable only by `service_role`, following `migrations/193_payment_portal.sql:182-185`.
+WS8 owns migrations 246 to 249. All four are additive: new tables, new indexes and new functions. None of them alters an existing table, drops anything, or widens a shared CHECK list: the runtime reuses the event types and inject types that exist (section 3.7) and leaves `generation_source` null on its runtime injects, which the CHECK allows because the column is nullable. Every new table has RLS enabled and no policy, because the server reaches the database only with the service role (master section 9); every new function is `SECURITY DEFINER` with a fixed `search_path` and executable only by `service_role`, following `migrations/193_payment_portal.sql:182-185`.
 
 ```mermaid
 erDiagram
@@ -506,12 +506,12 @@ erDiagram
 
 The audit table and the kill switch have no relationships drawn: audit rows deliberately carry no foreign key so they outlive the scenario, and the switch is a single row.
 
-### 5.2 Migration 245: pressure runtime tables
+### 5.2 Migration 246: pressure runtime tables
 
-File `migrations/245_fieldops_pressure_runtime.sql (new)`.
+File `migrations/246_fieldops_pressure_runtime.sql (new)`.
 
 ```sql
--- Migration 245: field-ops pressure runtime (WS8, docs/field-ops/09-after-publish.md section 5.2).
+-- Migration 246: field-ops pressure runtime (WS8, docs/field-ops/09-after-publish.md section 5.2).
 -- Pressure bodies per published scenario, runtime state per session and body, a ledger of steps that
 -- is also the claim stopping two processes from taking the same step, the compiled steps the runtime
 -- sends itself in a session (so the inject scheduler skips them there), and a global kill switch.
@@ -678,12 +678,12 @@ COMMENT ON COLUMN fieldops_pressure_bodies.stand_down_check IS
 COMMIT;
 ```
 
-### 5.3 Migration 246: scenario revisions, the stored setup copy and session pins
+### 5.3 Migration 247: scenario revisions, the stored setup copy and session pins
 
-File `migrations/246_fieldops_scenario_revisions.sql (new)`.
+File `migrations/247_fieldops_scenario_revisions.sql (new)`.
 
 ```sql
--- Migration 246: field-ops scenario revisions (WS8, docs/field-ops/09-after-publish.md section 5.3).
+-- Migration 247: field-ops scenario revisions (WS8, docs/field-ops/09-after-publish.md section 5.3).
 -- One row per applied change to a published field-ops scenario, the scenario's stored setup copy,
 -- and the revision each session started on. Service role only: RLS on, no policies.
 -- Additive and idempotent. Requires migration 160 (warroom_wizard_drafts).
@@ -762,12 +762,12 @@ COMMENT ON TABLE fieldops_session_revisions IS 'WS8: the scenario revision a ses
 COMMIT;
 ```
 
-### 5.4 Migration 247: edit audit and edit jobs
+### 5.4 Migration 248: edit audit and edit jobs
 
-File `migrations/247_fieldops_edit_audit_and_jobs.sql (new)`.
+File `migrations/248_fieldops_edit_audit_and_jobs.sql (new)`.
 
 ```sql
--- Migration 247: field-ops edit audit and edit jobs (WS8, docs/field-ops/09-after-publish.md section 5.4).
+-- Migration 248: field-ops edit audit and edit jobs (WS8, docs/field-ops/09-after-publish.md section 5.4).
 -- fieldops_edit_jobs holds proposals (regeneration, doctrine refresh, device recalculation, layout sync,
 -- revert) until they are applied, discarded or expire; job_id points at WS0's persisted job when a model
 -- runs. fieldops_edit_audit records who did what and when, with surface hashes and no content; it has no
@@ -856,14 +856,14 @@ COMMENT ON TABLE fieldops_edit_audit IS
 COMMIT;
 ```
 
-### 5.5 Migration 248: the edit-apply function
+### 5.5 Migration 249: the edit-apply function
 
-File `migrations/248_fieldops_edit_apply.sql (new)`. It defines the **editable surface** (which tables and columns the editor may read and write), a way to read it and hash it, the baseline, the single apply path, the start claim and the session pin.
+File `migrations/249_fieldops_edit_apply.sql (new)`. It defines the **editable surface** (which tables and columns the editor may read and write), a way to read it and hash it, the baseline, the single apply path, the start claim and the session pin.
 
-The surface is driven by two tables. `fieldops_editor_tables` gives each table a scope (`scenario_row` for the scenario itself, `template` for tables whose template rows have `session_id IS NULL`, `child` for rows keyed by `scenario_id`) and whether rows may be inserted or deleted. `fieldops_editor_allowlist` lists the columns of each table and whether each may be written on insert, on update, or neither (an empty list means "read for display and hashing, never written"). Column names are checked against this list before any dynamic SQL runs, and every identifier is quoted with `format('%I')`. Scene columns are seeded from `information_schema` minus a deny-list, so WS4's layout columns (migration 232) are picked up without this file knowing their names; `fieldops_editor_seed_allowlist()` can be run again after a later migration and is called by the server once at boot (section 6.15).
+The surface is driven by two tables. `fieldops_editor_tables` gives each table a scope (`scenario_row` for the scenario itself, `template` for tables whose template rows have `session_id IS NULL`, `child` for rows keyed by `scenario_id`) and whether rows may be inserted or deleted. `fieldops_editor_allowlist` lists the columns of each table and whether each may be written on insert, on update, or neither (an empty list means "read for display and hashing, never written"). Column names are checked against this list before any dynamic SQL runs, and every identifier is quoted with `format('%I')`. Scene columns are seeded from `information_schema` minus a deny-list, so WS4's layout columns (migration 233) are picked up without this file knowing their names; `fieldops_editor_seed_allowlist()` can be run again after a later migration and is called by the server once at boot (section 6.15).
 
 ```sql
--- Migration 248: field-ops edit-apply function (WS8, docs/field-ops/09-after-publish.md section 5.5).
+-- Migration 249: field-ops edit-apply function (WS8, docs/field-ops/09-after-publish.md section 5.5).
 -- fieldops_editor_tables and fieldops_editor_allowlist define the editable surface;
 -- fieldops_editor_surface and fieldops_editor_surface_hash read and hash it;
 -- fieldops_editor_ensure_baseline creates revision 0 with the setup copy and the pressure bodies;
@@ -871,7 +871,7 @@ The surface is driven by two tables. `fieldops_editor_tables` gives each table a
 -- while a session is live; fieldops_claim_session_start is the start guard WS7's start branch calls;
 -- fieldops_pin_session_revision records the revision a session started on.
 -- Every function is SECURITY DEFINER with a fixed search_path and executable only by service_role.
--- Requires migrations 245, 246 and 247. Additive and idempotent.
+-- Requires migrations 246, 247 and 248. Additive and idempotent.
 -- Rollback, once the code that calls these functions is switched off:
 --   DROP FUNCTION IF EXISTS fieldops_claim_session_start(uuid);
 --   DROP FUNCTION IF EXISTS fieldops_pin_session_revision(uuid, text);
@@ -1517,7 +1517,7 @@ Notes on the function's behaviour that the server relies on:
 
 - A failed operation aborts the whole transaction, so a change set applies completely or not at all.
 - `expect` compares JSON values, so the server never computes a hash; it sends back the values it read through `fieldops_editor_surface`.
-- `scenario_teams.operation` is in the allow-list before WS7's migration 242 adds it. An insert or update naming it fails until then, so the server sends it only when WS0's detector finds the column (section 5.7).
+- `scenario_teams.operation` is in the allow-list before WS7's migration 243 adds it. An insert or update naming it fails until then, so the server sends it only when WS0's detector finds the column (section 5.7).
 - A delete of an inject that a pursuit response references fails with a foreign-key error (section 3.8), which the server maps to 409 `ROW_REFERENCED`; the editor's linked-inject rule refuses such a delete before it is sent.
 
 ### 5.6 Shared types (owned by WS8)
@@ -1972,9 +1972,9 @@ The code ships before the owner applies the SQL (master section 9). Detection us
 
 | Missing | Detected by | Behaviour |
 | --- | --- | --- |
-| Any of 245 to 248 | `hasEditorSchema`, a cached detector: the relation `fieldops_scenario_revisions` (`isMissingRelationError`) and the function `fieldops_apply_edit` (`isMissingFunctionError`, which WS0 adds). A negative answer is re-checked after about a minute (master 10.8 item 5), so applying the migrations needs no restart | `GET /api/field-ops/editor/capabilities` answers `editor: false, reason: 'not_migrated'`; the library opens the existing detail view; the pressure ticker skips every session. The legacy write guard still refuses content writes to published new-flow scenarios (master 10.8 item 27), and the D5 refusal still applies |
-| `scenarios.publish_state` (WS0, 218) or `warroom_wizard_drafts.setup_v2` (WS2, 225) | WS0's detectors | No scenario classifies as new-flow, so every scenario keeps its current view and routes |
-| `scenario_teams.operation` (WS7, 242) | `hasTeamOperation` (`isMissingColumnError`) | The People or AI default is not shown in the editor and no operation names the column |
+| Any of 246 to 249 | `hasEditorSchema`, a cached detector: the relation `fieldops_scenario_revisions` (`isMissingRelationError`) and the function `fieldops_apply_edit` (`isMissingFunctionError`, which WS0 adds). A negative answer is re-checked after about a minute (master 10.8 item 5), so applying the migrations needs no restart | `GET /api/field-ops/editor/capabilities` answers `editor: false, reason: 'not_migrated'`; the library opens the existing detail view; the pressure ticker skips every session. The legacy write guard still refuses content writes to published new-flow scenarios (master 10.8 item 27), and the D5 refusal still applies |
+| `scenarios.publish_state` (WS0, 219) or `warroom_wizard_drafts.setup_v2` (WS2, 226) | WS0's detectors | No scenario classifies as new-flow, so every scenario keeps its current view and routes |
+| `scenario_teams.operation` (WS7, 243) | `hasTeamOperation` (`isMissingColumnError`) | The People or AI default is not shown in the editor and no operation names the column |
 | WS5's snapshot tables | WS5's recorder answers `{ recorded: false, reason: 'not_migrated' }` | The revision's summary carries `snapshot_sync_pending`; the editor shows "The doctrine record could not be saved yet. It will be retried." and retries on the next load |
 | WS4's published layout mode | WS4's export reports itself unavailable | Capabilities `layout_published_mode: false`; the Layout section says "Layout editing after publish is not available yet." |
 
@@ -2093,7 +2093,7 @@ export async function assertEditorWritable(req: Request, res: Response, scenario
 2. `decideEditorAccess`: a role other than `trainer` or `admin` gets 403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }`, exactly the body of WS0's `requireFieldopsTrainer` (master 10.8 item 31; `01-prerequisites.md` AC0.40), which the routes also mount before this check (section 6.15), so a caller sees the same refusal whichever answers first; a trainer who is not `created_by` gets 404 `SCENARIO_NOT_FOUND`, so the route does not reveal another trainer's scenario (the existence leak of journey finding 8.3); an admin always passes.
 3. `lockFromEditability` maps `canEditScenario`'s result to an `EditorLock`. A thrown check becomes `reason: 'check_failed'` and `editable: false` (fail closed, as `SocialScenarioEditor` does). WS0 adds a `draft` reason to `canEditScenario`; the editor refuses drafts before it asks, so a `draft` answer here is treated as `check_failed`. `can_end_live_session` is true only when the live session's status is `paused` and the caller is its `trainer_id` or an admin. `scheduled_sessions` counts this scenario's sessions in `scheduled`.
 4. `editorCapabilities` returns null when the flag is off (the route then answers 404), `{ editor: false, reason: 'not_migrated' }` when the schema is missing, and otherwise sets `pressure_runtime` to `runBackgroundEngines && switches.runtime_enabled`, `regeneration` to `aiEnabled`, `model_voice` to `aiEnabled && switches.llm_enabled`, `layout_published_mode` from WS4, and `physics` from WS6's `physicsEnabledFor(role)`.
-5. `assertEditorWritable` runs 2, then classification, then the lock, in that order, and answers exactly the lock bodies the corporate guard uses (`server/routes/scenarios.ts:56-65`), so the client handles one set of codes.
+5. `assertEditorWritable` runs 2, then classification, then the lock, in that order, and answers exactly the lock bodies the corporate guard uses (`server/routes/scenarios.ts:61-70`), so the client handles one set of codes.
 
 ### 6.3 The editor state
 
@@ -2332,7 +2332,7 @@ export function detectRacedSessions(
 `applyEdit` records the time, calls `supabaseAdmin.rpc('fieldops_apply_edit', ...)`, maps any error with `mapApplyError` and throws an `ApplyError`. On success it reads the scenario's sessions whose `start_time` falls inside the apply window and, when any exists, writes a `start_race_detected` audit row and returns their ids. It then runs the after-apply work, none of which can undo the revision:
 
 1. `invalidateScenario(scenarioId)` (`server/lib/scenarioCache.ts:113-116`).
-2. When the revision touched `scenario_locations`, `scenario_hazards`, `scenario_casualties` or `rts_scene_configs`, `generateScenarioMaps` and the upload of its images, in the background, as the corporate route does (`server/routes/scenarios.ts:1624-1650`).
+2. When the revision touched `scenario_locations`, `scenario_hazards`, `scenario_casualties` or `rts_scene_configs`, `generateScenarioMaps` and the upload of its images, in the background, as the corporate route does (`server/routes/scenarios.ts:1642-1668`).
 3. For a `device_recalc` or `layout_sync` revision, WS5's `recordPhysicsSnapshot`, then WS6's `recordEffectIndex` with that snapshot's id (X6.11); for a `doctrine_refresh`, WS5's `recordDoctrineSnapshot` with the projection, WS1's `recordDoctrineUsage` and `invalidateRuntimeDoctrines`. A recorder that fails marks the revision's summary `snapshot_sync_pending`; the next editor load retries it, keyed by the revision number.
 4. One `fieldops_edit_applied` log line with ids, counts and duration.
 
@@ -2854,7 +2854,7 @@ export async function executeStep(
 5. **Tell the trainer.** `emitToUser(session.trainer_id, { type: 'fieldops_pressure.updated', data: { session_id, body_id, status, rung }, timestamp })`. Never the session room.
 6. A publish failure marks the ledger row `failed` with `PRESSURE_PUBLISH_FAILED` and still advances the state, so a body never repeats a message; the console shows "This message could not be published." for that step.
 
-**The scheduler filter.** WS5 compiles every pressure step as a plain timed template inject (`06-compile-and-review.md`, section 8.5), which the scheduler would otherwise publish at its minute whatever the body's state. One predicate is added where the scheduler builds `injectsToPublish` (`server/services/injectSchedulerService.ts:670-672`): `&& !takenOver.has(inject.id)`, with `takenOver` from WS8's `loadPressureTakeovers(sessionId)` in `pressureStore.ts`, read once per session per tick. It reads the session's takeover rows whatever the flag and the kill switch, so turning either off mid-session stops that session's pressure instead of releasing every past-due compiled step at once; it answers an empty set only when migration 245 is missing. A session the runtime never took over (the flag was off when it ran) therefore behaves exactly as today, and its compiled pressure steps fire at their minutes with no stand-down. The filter runs before the scheduler's model gate, so a taken-over step never costs a call. The scheduler is not otherwise changed; WS7 edits a different block of the same file (`08-people-or-ai.md`, section 6.4).
+**The scheduler filter.** WS5 compiles every pressure step as a plain timed template inject (`06-compile-and-review.md`, section 8.5), which the scheduler would otherwise publish at its minute whatever the body's state. One predicate is added where the scheduler builds `injectsToPublish` (`server/services/injectSchedulerService.ts:670-672`): `&& !takenOver.has(inject.id)`, with `takenOver` from WS8's `loadPressureTakeovers(sessionId)` in `pressureStore.ts`, read once per session per tick. It reads the session's takeover rows whatever the flag and the kill switch, so turning either off mid-session stops that session's pressure instead of releasing every past-due compiled step at once; it answers an empty set only when migration 246 is missing. A session the runtime never took over (the flag was off when it ran) therefore behaves exactly as today, and its compiled pressure steps fire at their minutes with no stand-down. The filter runs before the scheduler's model gate, so a taken-over step never costs a call. The scheduler is not otherwise changed; WS7 edits a different block of the same file (`08-people-or-ai.md`, section 6.4).
 
 **The ticker.**
 
@@ -2968,7 +2968,7 @@ export function fieldOpsLegacyWriteGuard(): RequestHandler;
 4. A new-flow draft is passed on to the route, where WS0's edit guard answers 409 `SCENARIO_IS_DRAFT` (`01-prerequisites.md`, section 6).
 5. For a published new-flow scenario, whatever the editor flag (master 10.8 item 27): `POST /generate-maps`, `POST /clone`, `DELETE` of the scenario, and a `PATCH` of the scenario whose body has only `is_active` are allowed; every other write is refused with `FIELDOPS_EDITOR_REQUIRED`. The message is "This scenario is edited in the field-ops editor. Open it from the library." with the editor on, and "This scenario is edited in the field-ops editor, which is switched off on this server." with it off.
 
-The middleware classifies with `classifyScenario` (cached), refuses the write with 500 `EDIT_FAILED` ("Could not check this scenario. Try again.") when classification throws, writes the refusal in the `{ error, code }` shape, and logs `fieldops_vicinity_refresh_refused` or `fieldops_legacy_write_refused` with the scenario id and the path. It is the only change to `server/routes/scenarios.ts`: one line after `const router = Router();` (`server/routes/scenarios.ts:32`). `POST /api/injects` can also write a template inject into any scenario (journey finding 12.8); its handler gets the same check through the exported `assertLegacyTemplateWriteAllowed(scenarioId)`, called when `scenario_id` is set and `session_id` is not.
+The middleware classifies with `classifyScenario` (cached), refuses the write with 500 `EDIT_FAILED` ("Could not check this scenario. Try again.") when classification throws, writes the refusal in the `{ error, code }` shape, and logs `fieldops_vicinity_refresh_refused` or `fieldops_legacy_write_refused` with the scenario id and the path. It is the only change to `server/routes/scenarios.ts`: one line after `const router = Router();` (`server/routes/scenarios.ts:37`). `POST /api/injects` can also write a template inject into any scenario (journey finding 12.8); its handler gets the same check through the exported `assertLegacyTemplateWriteAllowed(scenarioId)`, called when `scenario_id` is set and `session_id` is not.
 
 ### 6.11 The session start guard
 
@@ -2979,7 +2979,7 @@ export type StartClaim =
   | { claimed: false; start_time: string | null; scenario_id: string; revision_no: number | null }
   | { claimed: null; reason: 'not_migrated' };
 
-/** Calls fieldops_claim_session_start; answers { claimed: null } when migration 248 is not applied. */
+/** Calls fieldops_claim_session_start; answers { claimed: null } when migration 249 is not applied. */
 export async function claimSessionStart(sessionId: string): Promise<StartClaim>;
 ```
 
@@ -2993,7 +2993,7 @@ if claim.claimed === null: keep today's behaviour
 continue with the re-sync, the clones and the initialisation as today
 ```
 
-Because the claim flips the status under the scenario row lock, any edit that has not committed by then is refused with 423, and any edit that committed before it is in the content the start copies. The claim also closes journey finding 11.2 (a double start doubles the world). WS8 does not edit `server/routes/sessions.ts`; WS7 calls the claim first and then materialises its seats. Until WS7's change and migration 248 are both deployed, the race fallback of section 4.2 applies.
+Because the claim flips the status under the scenario row lock, any edit that has not committed by then is refused with 423, and any edit that committed before it is in the content the start copies. The claim also closes journey finding 11.2 (a double start doubles the world). WS8 does not edit `server/routes/sessions.ts`; WS7 calls the claim first and then materialises its seats. Until WS7's change and migration 249 are both deployed, the race fallback of section 4.2 applies.
 
 ### 6.12 Routes and contracts
 
@@ -3039,7 +3039,7 @@ All bodies are `{ data }` on success and `{ error, code, details? }` on failure 
 
 Direct edits apply at once and answer the new revision; the client then reloads the section it changed. The client follows a regeneration with WS0's `useFieldOpsJob(job_id)`, which polls `GET /api/warroom/field-ops/jobs/:id`, and reads the proposal from the edit-job route when the job completes. The session revision route serves the After-Action Review (master 10.8 item 30): it answers only the revision number and two times, never content, and 404 when the session does not belong to the scenario.
 
-**Pressure** (router `fieldOpsPressureRouter`, `Router({ mergeParams: true })`, mounted at `/api/field-ops/sessions/:id/pressure`, as the bot router is mounted under a session id at `server/index.ts:252`):
+**Pressure** (router `fieldOpsPressureRouter`, `Router({ mergeParams: true })`, mounted at `/api/field-ops/sessions/:id/pressure`, as the bot router is mounted under a session id at `server/index.ts:266`):
 
 | Method and path | Who | Body | Success | Errors |
 | --- | --- | --- | --- | --- |
@@ -3432,7 +3432,7 @@ export const pressureSwitchesSchema = z.object({
 ### 6.15 Wiring
 
 - **`server/env.ts`**: one property, in the pattern of `enableTeammateBots` (`server/env.ts:155-157`): `enableFieldopsEditor: process.env.ENABLE_FIELDOPS_EDITOR === 'true' || (nodeEnv !== 'production' && process.env.ENABLE_FIELDOPS_EDITOR !== 'false')`.
-- **`server/index.ts`**: mount `fieldOpsEditorMetaRouter` at `/api/field-ops/editor`, `fieldOpsEditorRouter` at `/api/field-ops/scenarios` and `fieldOpsPressureRouter` at `/api/field-ops/sessions/:id/pressure`, among the API routes and before the 404 handler (`server/index.ts:247-296`). Every route's first middleware is WS0's `requireFieldopsFlag(() => env.enableFieldopsEditor)`, per route rather than per router as WS0 requires, so with the flag off each answers WS0's 404 body and no other router under `/api/field-ops` is shadowed. After `requireAuth`, every route except the session revision route, which participants of the session also read, runs WS0's `requireFieldopsTrainer` (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`), which answers any role other than trainer or admin with 403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` (master 10.8 item 31; `01-prerequisites.md` AC0.40); the two switch routes then keep their admin check, and ownership stays each route's own check (404 on the editor routes, section 6.2). Inside the background-engines block (`server/index.ts:85-106`), start `startPressureTicker(io)` when the flag is on; in the shutdown handler (`server/index.ts:314-338`), await `stopPressureTicker()`. At boot, with the flag on and the schema present, call `fieldops_editor_seed_allowlist` once and log the column count; a failure is logged and the editor reports `not_migrated`.
+- **`server/index.ts`**: mount `fieldOpsEditorMetaRouter` at `/api/field-ops/editor`, `fieldOpsEditorRouter` at `/api/field-ops/scenarios` and `fieldOpsPressureRouter` at `/api/field-ops/sessions/:id/pressure`, among the API routes and before the 404 handler (`server/index.ts:261-310`). Every route's first middleware is WS0's `requireFieldopsFlag(() => env.enableFieldopsEditor)`, per route rather than per router as WS0 requires, so with the flag off each answers WS0's 404 body and no other router under `/api/field-ops` is shadowed. After `requireAuth`, every route except the session revision route, which participants of the session also read, runs WS0's `requireFieldopsTrainer` (`server/lib/fieldOps/requireFieldopsFlag.ts (new)`), which answers any role other than trainer or admin with 403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` (master 10.8 item 31; `01-prerequisites.md` AC0.40); the two switch routes then keep their admin check, and ownership stays each route's own check (404 on the editor routes, section 6.2). Inside the background-engines block (`server/index.ts:85-106`), start `startPressureTicker(io)` when the flag is on; in the shutdown handler (`server/index.ts:328-352`), await `stopPressureTicker()`. At boot, with the flag on and the schema present, call `fieldops_editor_seed_allowlist` once and log the column count; a failure is logged and the editor reports `not_migrated`.
 - **`server/routes/scenarios.ts`**: the guard line of section 6.10.
 - **`server/routes/injects.ts`**: the template-write check of section 6.10 in the create handler.
 - **WS0's engine**: `regenerate.ts` registers its kind when `fieldOpsEditor.ts` imports it (master 10.8 item 3).
@@ -3914,13 +3914,13 @@ Rewrite INPUT.template in the register above.
 | Legacy routes on a new-flow scenario | The guard of section 6.10, before the existing role and owner checks |
 | Session revision (After-Action Review) | `requireAuth`; an admin, the scenario's creator, the session's trainer, or a row in `session_participants` for this session; the session must belong to the scenario in the path (404 otherwise); the answer carries the revision number and two times only |
 
-**Database.** All WS8 tables have RLS enabled and no policy, so the anonymous and authenticated keys can read and write none of them; all WS8 functions are `SECURITY DEFINER` with `search_path = public` and executable only by `service_role` (migration 248, after `migrations/193_payment_portal.sql:182-185`). The apply function builds SQL only from identifiers that are in its allow-list tables, quotes each with `format('%I')`, and passes every value as a bound parameter.
+**Database.** All WS8 tables have RLS enabled and no policy, so the anonymous and authenticated keys can read and write none of them; all WS8 functions are `SECURITY DEFINER` with `search_path = public` and executable only by `service_role` (migration 249, after `migrations/193_payment_portal.sql:182-185`). The apply function builds SQL only from identifiers that are in its allow-list tables, quotes each with `format('%I')`, and passes every value as a bound parameter.
 
 **Abuse limits.** The per-user limits and the payload caps of section 4.3; one regeneration running per scenario (a partial unique index); 20 regenerations per scenario per day; the phrasing budget; proposals that expire after 24 hours; the pressure caps and the kill switch of section 4.6.
 
 **The answer key.** Device specifics, effects and doctrine text appear in WS8's data only inside the stored setup copy, revisions and proposals, all behind RLS, and are read only through owner-checked routes. WS8 writes no answer-key data to columns of `scenarios` (master 10.8 item 16); the only `scenarios` columns it writes are title, description, briefing, difficulty, duration, the objective names and the team briefs. Pressure state goes to the trainer's own socket room, never the session room. The after-action route is for the session's trainer and admins only.
 
-**The scene row.** The layout the editor changes lives in `rts_scene_configs`, which the live database lets anyone read with the public anon key alone, signed in or not, planted devices included: its SELECT policy is `USING (true)` for every role, `anon` holds SELECT, and the bucket `rts-scene-images` is public (checked on 25 Oct; master risk 14). WS8 does not widen this, because a layout revision writes only the columns WS4's save writes, but a planted position moved in the editor is exactly as exposed as one written at compile. Closing the policy and the bucket is the owner's decision on WS4's R4.9 and a gate before production (master risk 14), so it is review item 7 below.
+**The scene row.** The layout the editor changes lives in `rts_scene_configs`, which the live database lets anyone read with the public anon key alone, signed in or not, planted devices included: its SELECT policy is `USING (true)` for every role, `anon` holds SELECT, and the bucket `rts-scene-images` is public (checked on 25 Oct; master risk 14). **Updated 8 Nov 2026:** migration 218 has since closed the policy to the creator and admins in production; the bucket is still public. WS8 does not widen this, because a layout revision writes only the columns WS4's save writes, but a planted position moved in the editor is exactly as exposed as one written at compile. Closing the policy and the bucket is the owner's decision on WS4's R4.9 and a gate before production (master risk 14), so it is review item 7 below.
 
 **Prompt injection.** The only WS8 prompt carries the trainer's own pressure fields inside a delimited data block with an instruction to ignore instructions in it, and its output is validated (section 8.1). Regeneration passes no free text from the trainer. Library doctrine text reaches prompts only through WS1's and WS5's paths, which treat it as data (master risk 2).
 
@@ -3936,7 +3936,7 @@ Rewrite INPUT.template in the register above.
 4. No WS8 log line or audit row contains a field value (a search of a staging day's logs for known test strings).
 5. A participant's socket receives no `fieldops_pressure.updated` event (manual step M12).
 6. A paused session can be ended only by its trainer or an admin (AC8.6).
-7. The owner has closed the read policy of `rts_scene_configs` and made `rts-scene-images` private (master risk 14, WS4's R4.9), or has recorded that the editor ships before that; with the anon key, a scene row edited in the editor can then not be read.
+7. The owner has closed the read policy of `rts_scene_configs` and made `rts-scene-images` private (master risk 14, WS4's R4.9), or has recorded that the editor ships before that; with the anon key, a scene row edited in the editor can then not be read. **Updated 8 Nov 2026:** the policy half is met by migration 218 in production; the bucket is still public.
 8. The session revision route answers a participant of another session with 403 and never returns content (AC8.29).
 
 ## 10. Flags, rollout and observability
@@ -3953,13 +3953,13 @@ Rewrite INPUT.template in the register above.
 
 Turning the flag off is safe at any time: every WS8 table is additive, nothing is deleted, and a published new-flow scenario stays readable and runnable but cannot be changed until the flag is on again, because the legacy routes refuse its content writes either way. The flag is read once at boot (master section 8), so turning it on or off needs a restart and no build.
 
-**The kill switch.** `fieldops_pressure_switches` (migration 245), changed by admins through `PUT /api/field-ops/editor/pressure-switches`. `runtime_enabled = false` stops every pressure step from the next tick, including the compiled steps of sessions already taken over; `llm_enabled = false` makes every body use templates. Each change writes a `kill_switch` audit row and logs `fieldops_pressure_kill_switch`.
+**The kill switch.** `fieldops_pressure_switches` (migration 246), changed by admins through `PUT /api/field-ops/editor/pressure-switches`. `runtime_enabled = false` stops every pressure step from the next tick, including the compiled steps of sessions already taken over; `llm_enabled = false` makes every body use templates. Each change writes a `kill_switch` audit row and logs `fieldops_pressure_kill_switch`.
 
 **Tuning values.** All limits are constants in `EDITOR_LIMITS` and `PRESSURE_LIMITS` (section 5.6), not environment settings, because master section 8 allocates no setting to WS8. If the owner wants them tunable without a release, section 15 asks the master plan to allocate them.
 
 **Rollout.**
 
-1. Development: flag on by default; apply 245 to 248 in order after WS0's 218 and 219, WS2's 225 and WS5's 234 to 236.
+1. Development: flag on by default; apply 246 to 249 in order after WS0's 219 and 220, WS2's 226 and WS5's 235 to 237.
 2. Staging: run the checklist below on one scenario compiled by the new flow.
 3. Production, flag off: apply the migrations, deploy, confirm the boot log line with the allow-list column count, and confirm the legacy detail view is unchanged.
 4. Production, flag on, while `ENABLE_FIELDOPS_V2` is still limited: only trainers who can compile new-flow scenarios see the editor, which bounds the first users. Watch the dashboards for a week.
@@ -4045,7 +4045,7 @@ Each task adds its test files to the `test` script in `package.json` in the same
 
 1. **T8.1 Write the four migrations.**
    - Goal: the tables and functions of section 5, applicable in order on the shared Supabase project.
-   - Files: `migrations/245_fieldops_pressure_runtime.sql (new)`, `migrations/246_fieldops_scenario_revisions.sql (new)`, `migrations/247_fieldops_edit_audit_and_jobs.sql (new)`, `migrations/248_fieldops_edit_apply.sql (new)`.
+   - Files: `migrations/246_fieldops_pressure_runtime.sql (new)`, `migrations/247_fieldops_scenario_revisions.sql (new)`, `migrations/248_fieldops_edit_audit_and_jobs.sql (new)`, `migrations/249_fieldops_edit_apply.sql (new)`.
    - Steps: copy the SQL of sections 5.2 to 5.5; apply to a development database; run each file a second time to prove idempotence; call `fieldops_editor_seed_allowlist()` and note the row count.
    - Done when: all four apply twice without error; the anonymous key cannot select from any new table or call any new function; `SELECT fieldops_editor_surface_hash(<a scenario id>)` returns 32 hexadecimal characters.
    - Tests: manual step M6 (crafted operation refused).
@@ -4246,7 +4246,7 @@ Six commits, each one deployable on its own with the flag off. The order puts th
 
 | Commit | Tasks | Ships | Verify before the next commit | Backtracking |
 | --- | --- | --- | --- | --- |
-| C1 Schema and contracts | T8.1 to T8.4 | Migrations 245 to 248, the shared modules, the schemas, the flag property and the detectors. No route, no UI | Migrations apply twice; `npm test` and both type checks pass; the checker passes | Revert the commit. The migrations are additive and unused, so they can stay; if they must go, run the rollback comments of 248, 247, 246, 245 in that order |
+| C1 Schema and contracts | T8.1 to T8.4 | Migrations 246 to 249, the shared modules, the schemas, the flag property and the detectors. No route, no UI | Migrations apply twice; `npm test` and both type checks pass; the checker passes | Revert the commit. The migrations are additive and unused, so they can stay; if they must go, run the rollback comments of 249, 248, 247, 246 in that order |
 | C2 Editor core | T8.5 to T8.12 | Capabilities, access, the lock, the baseline, the state, direct edits, revisions, revert, proposals, the legacy guard and D5 refusal, the start claim wrapper | Manual steps M1, M3, M6, M7, M8 on staging; a legacy scenario's routes behave as before | Turn `ENABLE_FIELDOPS_EDITOR` off: the routes vanish, while the legacy guard keeps refusing content writes to published new-flow scenarios (master 10.8 item 27) and the D5 refusals. To lift both, revert the one line in `server/routes/scenarios.ts`, which departs from item 27 and needs the owner's consent. Revisions, audit rows, setup copies and bodies already written stay valid and unused |
 | C3 Proposals across workstreams | T8.13 to T8.16 | The compile adapter, regeneration, doctrine notices and refresh, device and layout previews, adding an agency | M9, M10; a device change on staging gives one proposal | Revert the commit: those routes answer 404 and open proposals expire within 24 hours; revisions already applied stay revertible through C2's history |
 | C4 Pressure runtime | T8.17 to T8.19 | Store, signals, runtime, ticker, phrasing, controls, after-action, the pressure and switch routes | M11, M12 on staging with two processes | First set `runtime_enabled = false` through the switch route (stops every step within one tick); wait until the sessions the runtime took over have ended, because reverting removes the scheduler predicate and their past-due compiled steps would then publish together; then revert the commit. Published pressure injects stay as session rows, so finished sessions keep their history |
@@ -4261,10 +4261,10 @@ Six commits, each one deployable on its own with the flag off. The order puts th
 
 | File | Section |
 | --- | --- |
-| `migrations/245_fieldops_pressure_runtime.sql (new)` | 5.2 |
-| `migrations/246_fieldops_scenario_revisions.sql (new)` | 5.3 |
-| `migrations/247_fieldops_edit_audit_and_jobs.sql (new)` | 5.4 |
-| `migrations/248_fieldops_edit_apply.sql (new)` | 5.5 |
+| `migrations/246_fieldops_pressure_runtime.sql (new)` | 5.2 |
+| `migrations/247_fieldops_scenario_revisions.sql (new)` | 5.3 |
+| `migrations/248_fieldops_edit_audit_and_jobs.sql (new)` | 5.4 |
+| `migrations/249_fieldops_edit_apply.sql (new)` | 5.5 |
 | `shared/fieldOps/editor.ts (new)` | 5.6 |
 | `shared/fieldOps/pressure.ts (new)` | 5.6, 6.9 |
 | `server/lib/fieldOps/editorSchemas.ts (new)` | 6.14 |
@@ -4376,8 +4376,8 @@ None of the five files another session edits is touched (the README lists them).
 | 13 | Editing `expected_actions` or the rubric changes how later sessions are scored, so two sessions of one scenario may be graded differently | Each session is pinned to its revision (`fieldops_session_revisions`), and the After-Action Review shows it ("Ran on revision 7", master 10.8 item 30, T8.27) |
 | 14 | Revisions and checkpoints grow for scenarios edited often | Operations beyond the newest 1,000 are pruned and checkpoints come every 25 revisions (section 4.3); retention is question 5 |
 | 15 | A published new-flow scenario cloned through the legacy clone route becomes a legacy scenario without a source draft, setup copy or device pool | The editor does not serve it, and the library opens it in the existing detail view; WS5 lists the missing device pool as its risk 6, for the privacy programme |
-| 16 | Because the legacy routes refuse content writes whatever the flag (master 10.8 item 27), a published new-flow scenario cannot be changed at all while the editor flag is off or migrations 245 to 248 are missing | Intended by the ruling, so the revision history stays true; the refusal says the editor is switched off; the scenario can still be run, cloned, deactivated and deleted; the flag goes on with the migrations, before trainers rely on edits |
-| 17 | The layout the editor writes is readable with the public anon key, planted positions included (master risk 14) | Review item 7 of section 9: the owner closes the policy and the bucket (WS4's R4.9) before production |
+| 16 | Because the legacy routes refuse content writes whatever the flag (master 10.8 item 27), a published new-flow scenario cannot be changed at all while the editor flag is off or migrations 246 to 249 are missing | Intended by the ruling, so the revision history stays true; the refusal says the editor is switched off; the scenario can still be run, cloned, deactivated and deleted; the flag goes on with the migrations, before trainers rely on edits |
+| 17 | The layout the editor writes is readable with the public anon key, planted positions included (master risk 14; **updated 8 Nov 2026**: migration 218 closed the policy, the public bucket remains) | Review item 7 of section 9: the owner closes the policy and the bucket (WS4's R4.9) before production |
 
 ### 15.2 Open questions
 
@@ -4401,7 +4401,7 @@ None of the five files another session edits is touched (the README lists them).
 | WS0 (`01-prerequisites.md`, section 15) | Widen the client's editability `reason` type to include `draft` when the editor reads field-ops editability; the standard routes answer 409 `SCENARIO_IS_DRAFT` for drafts | Declined, as not needed, and WS8's side is withdrawn: the editor never reads the client's editability type. It reports locks through its own `EditorLock`, refuses drafts with 409 `SCENARIO_IS_DRAFT` before it asks `canEditScenario`, and treats a `draft` answer as `check_failed`; the legacy guard passes drafts on to WS0's own refusal | Sections 6.2, 6.3 and 6.10 |
 | WS1 (`02-teams-and-doctrines.md`, section 15) | Detect newer and retired versions with `checkDoctrineUpdates` (with `retired_at`); preview with `resolveDoctrineForCompile` on the one card against the source draft, `buildDoctrineSnapshot` and `charterColumnsFromSnapshot` with the team's roster; show doctrines through the projection route; use the pure `validateAgencyCard` and `collectAgencyIssues`; no published mode: `RosterEditor`'s edit mode and `DoctrinePill`'s `updateText` | Accepted. The notices come from `checkDoctrineUpdates`; the preview passes the one card, the source draft and the scenario's owner as `trainerId`, and the team's roster to `charterColumnsFromSnapshot`; the Agencies panel shows doctrine content from the projection route, uses `RosterEditor` in edit mode and puts the notice in `DoctrinePill`'s `updateText`; agency edits are checked with `validateAgencyCard` and `collectAgencyIssues`. WS8's published-mode request is withdrawn | Sections 4.4, 4.5, 6.4, 6.8 and 7.2; T8.15, T8.21 |
 | WS4 (`05-layout-step.md`, R4.8) | Use `LayoutShell` with `mode: 'published'` and `GET /api/warroom/field-ops/scene/by-scenario/:scenarioId`; editing a published scene is WS8's, since the layout routes refuse it | Accepted. The editor loads the scene from the by-scenario route and edits it through the editable published mode the reconciliation asks WS4 to add, whose `onSave` becomes a layout proposal mapped with WS4's pure save mapper; a scene WS4 marks `published` or `copy` changes only this way | Sections 4.1, 6.8 and 7.2; T8.16, T8.22 |
-| WS4 (`05-layout-step.md`, R4.13) | Allow `blast_site` in the allow-list seed for `rts_scene_configs`, or recompute it after applying `toSceneSaveColumns` | Accepted: the seed of migration 248 no longer excludes `blast_site`, the main device's position, so the layout proposal writes the value WS4's mapper returns and moving the main device in a published layout moves it | Sections 5.5 and 6.8 |
+| WS4 (`05-layout-step.md`, R4.13) | Allow `blast_site` in the allow-list seed for `rts_scene_configs`, or recompute it after applying `toSceneSaveColumns` | Accepted: the seed of migration 249 no longer excludes `blast_site`, the main device's position, so the layout proposal writes the value WS4's mapper returns and moving the main device in a published layout moves it | Sections 5.5 and 6.8 |
 | WS5 (`06-compile-and-review.md`, section 15) | Record doctrine refreshes with `recordDoctrineSnapshot` (projection included); use the exports of section 6.15 as the contract; run regeneration inside `runInCallScope` with `dedupMode: 'batched'`; note that there is no unpublish in version 1 | Accepted. The projection comes from WS1's `applySnapshotToPayload`; only `compileAdapter.ts` imports WS5, one method per export of 6.15; regeneration runs inside `runInCallScope` with 12 calls, a five-minute deadline and `dedupMode: 'batched'`; no unpublish answers question 8, and risk 11 relies on it | Sections 4.5, 6.8 and 15.2; T8.13, T8.14 |
 | WS6 (`07-device-and-physics.md`, X6.11) | Rewrite physics only by recomputing with `getEffectsForCompile` and recording a new snapshot, then `recordEffectIndex`; never change a radius in place except as a `manual_override` in the device | Accepted. Device, people-present and layout changes recompute with `getEffectsForCompile({ setup, scene, role })`; after the apply, WS5's `recordPhysicsSnapshot` stores the result and `recordEffectIndex` runs with that row's id; map-object edits never touch a hazard, and the only trainer figure is the device's `manual_override` | Sections 4.1, 6.5 and 6.8; T8.16 |
 | WS7 (`08-people-or-ai.md`, section 15) | Use a session-runtime subtree other than `/api/field-ops/sessions/:id/ai`; do not use the pooled bot accounts for the pressure runtime | Accepted. The pressure routes are under `/api/field-ops/sessions/:id/pressure` (master 10.3), and the runtime publishes as the session's trainer through `publishInjectToSession`, never signing in as a bot | Sections 4.6 and 6.12 |
@@ -4425,7 +4425,7 @@ WS8 is done when the master's global definition (section 11 of `00-master-plan.m
 1. AC8.1 to AC8.30 pass, each through the test named in section 4.8, and every new test file of section 11 is in the `test` script of `package.json`.
 2. `npm test` passes; `npx tsc --noEmit` passes for the server and shared code and for the frontend; `npm --prefix frontend run build` passes.
 3. `node scripts/verify-field-ops-specs.mjs --only=09 --deep --allow-missing --strict` reports no problems, and the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project).
-4. Migrations 245 to 248 apply on the shared project after WS0's, WS2's and WS5's migrations, twice without error, and each rollback comment has been tried on a branch database.
+4. Migrations 246 to 249 apply on the shared project after WS0's, WS2's and WS5's migrations, twice without error, and each rollback comment has been tried on a branch database.
 5. With `ENABLE_FIELDOPS_EDITOR` off, every editor and pressure route answers 404, the legacy detail view and routes behave as today apart from the D5 refusals, and the pressure ticker never starts (manual step M1).
 6. The staging checklist of section 10 passes, including a start during a save, a regeneration with undo, a doctrine refresh, a moved planted device, and a session with three pressure bodies on two processes (manual steps M5, M9, M10 and M11).
 7. The security review items of section 9 are closed.

@@ -4,8 +4,8 @@
 **Workstream:** WS7
 **Depends on:** [the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the compile and review spec](06-compile-and-review.md), [the device and physics spec](07-device-and-physics.md) (text moderation), [the after-publish spec](09-after-publish.md) (the start claim)
 **Flags:** `ENABLE_FIELDOPS_AI_TEAMS` (new, this spec); existing `ENABLE_TEAMMATE_BOTS` is not required
-**Migrations:** 242, 243, 244
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 243, 244, 245 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -39,7 +39,7 @@
 - the actor allow-list gains WS9's world routes, and `FORBIDDEN_KEYS` is exported for WS9's test (section 6.8);
 - the closed action set gains `dispatch_unit` and `share_report` (sections 5.5, 5.6, 6.9 and 6.10).
 
-Migration 244 is amended in place for the two kinds, because it is not applied yet (section 5.4). The additions are tested by AC7.34 and built in task T7.20, and WS9's request is answered in section 15.3.
+Migration 245 is amended in place for the two kinds, because it is not applied yet (section 5.4). The additions are tested by AC7.34 and built in task T7.20, and WS9's request is answered in section 15.3.
 
 **Master decisions this spec rests on**
 
@@ -53,7 +53,7 @@ Migration 244 is amended in place for the two kinds, because it is not applied y
 | D16 | Assumed | Seats are labels and personas. No seat has a permission the others lack. |
 | D17 | Assumed | An Unverified doctrine is usable, so an AI agency may play from one; the decision log records the doctrine status beside every action. |
 | D21 | Assumed | `ENABLE_FIELDOPS_AI_TEAMS` is off in production until a staging run passes the scorecard in section 10.4. |
-| D23 | Assumed | Migrations 242 to 244 are additive and idempotent; code runs before they are applied. |
+| D23 | Assumed | Migrations 243 to 245 are additive and idempotent; code runs before they are applied. |
 | D28 | Assumed | The mockup wins for `OperationSegment` structure and copy, with `WrIcon` glyphs instead of the mockup's sprite (section 7.2). |
 
 **Choices made in this spec (Proposed)**
@@ -106,7 +106,7 @@ Everything in this section was read on the baseline. Corporate decision numbers 
 
 **Observability and the scorecard.** Per-bot `BotStats` (actions, failures, counts by kind, model calls, fallbacks, last action and error) are memory only (`BotStats`, `server/services/teammates/types.ts:86-94`) and reach the trainer through `view` (`server/services/teammates/teammateBotService.ts:506-534`). Each turn is logged through `logger.info` (`server/services/teammates/teammateBotService.ts:243`). The scorecard is an offline script over the database, `scripts/teammates-scorecard.ts`, with a run-to-run comparison in `scripts/teammates-compare.ts` (operating guide, `docs/ai-teammate-bots-plan.md:417-418`). Behaviour layers can be switched off by environment, for example `teammateBotsPlanner` (`server/env.ts:168-171`).
 
-**Routes and lobby.** `teammateBotsRouter` is mounted at `/api/sessions/:id/bots` (`server/index.ts:252`), answers 404 when `enableTeammateBots` is off (`server/routes/teammateBots.ts:25-31`), is limited to the owning trainer by `ownerGuard` (`server/routes/teammateBots.ts:35-44`), and mirrors a nudge into the bot's team channel through `chat_messages` (`server/routes/teammateBots.ts:193-232`). The lobby renders `AITeammatesPanel` only when `isSocialSim` (`frontend/src/components/Session/SessionLobby.tsx:412-425`), and the panel hides itself on 404 (`setHidden`, `frontend/src/components/Session/AITeammatesPanel.tsx:28-40`).
+**Routes and lobby.** `teammateBotsRouter` is mounted at `/api/sessions/:id/bots` (`server/index.ts:266`), answers 404 when `enableTeammateBots` is off (`server/routes/teammateBots.ts:25-31`), is limited to the owning trainer by `ownerGuard` (`server/routes/teammateBots.ts:35-44`), and mirrors a nudge into the bot's team channel through `chat_messages` (`server/routes/teammateBots.ts:193-232`). The lobby renders `AITeammatesPanel` only when `isSocialSim` (`frontend/src/components/Session/SessionLobby.tsx:412-425`), and the panel hides itself on 404 (`setHidden`, `frontend/src/components/Session/AITeammatesPanel.tsx:28-40`).
 
 ### 3.2 The bot account pool
 
@@ -207,7 +207,7 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 - `determineZone` is pure; with no ground-truth zones it falls back to 50, 150 and 300 m bands around the incident centre (`determineZone`, `server/services/geoUtils.ts:315-362`).
 - A player's map shows hazards, casualties and crowds only once every entry and exit pin is claimed (`allExitsClaimed`, `frontend/src/components/COP/MapView.tsx:754-759`), and asks for hazard zones only for the trainer (`includeZones`, `frontend/src/components/COP/MapView.tsx:1097-1098`).
 - After WS0 lands, a participant, and so an actor, gets casualties without WS0's `CASUALTY_ANSWER_KEYS`, a projected scene, hazard zones never, and 403 from every `/api/rts-scenes` verb (the prerequisites spec, section 9.1).
-- The anon key alone reads every `rts_scene_configs` row, planted devices included (master risk 14, checked live on 25 Oct).
+- The anon key alone reads every `rts_scene_configs` row, planted devices included (master risk 14, checked live on 25 Oct). **Updated 8 Nov 2026:** migration 218 has since limited it to the creator and admins.
 
 ### 3.8 Lobby, seats and joining today
 
@@ -223,7 +223,7 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 - The assess route counts only `MEDIC_TYPES` assets within 80 m (`server/routes/casualties.ts:222-243`); the triage palette offers `triage_officer` (`TEAM_ASSET_CATALOG`, `frontend/src/pages/SessionView.tsx:33-54`).
 - Legacy compile stores a per-team workflow of ordered steps in `team_workflows` (`server/services/warroomAiService.ts:1249-1257`, written by `researchTeamWorkflows` at `server/services/warroomAiService.ts:8524-8535`), per-team `ForbiddenAction` lists (`server/services/warroomResearchService.ts:580-584`) and `StandardsFinding` lists (`server/services/warroomResearchService.ts:158-164`). For a new-flow scenario WS5 writes none of these keys. The same shapes live in `scenario_doctrine_snapshots.content.projection`, read through WS1's runtime accessor ([the compile spec](06-compile-and-review.md#2-decisions-and-assumptions), Choice 15; master 10.8 item 16).
 - The session status set includes `paused` (`status`, `migrations/001_initial_schema.sql:84-93`); the inject scheduler selects only `in_progress` (`in_progress`, `server/services/injectSchedulerService.ts:294-300`).
-- `shutdown` stops the two inject schedulers and the two watchdogs and nothing else (`shutdown`, `server/index.ts:314-338`; [finding 17.14](../field-ops-user-journey.html#i17-14)).
+- `shutdown` stops the two inject schedulers and the two watchdogs and nothing else (`shutdown`, `server/index.ts:328-352`; [finding 17.14](../field-ops-user-journey.html#i17-14)).
 
 ## 4. Target behaviour and acceptance criteria
 
@@ -268,7 +268,7 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 26. **AC7.26** Given `extractAndPlaceInfrastructureFromText` computes a placement that `validatePlacement` blocks, then it is not inserted. Proved by manual step 9 and `placementGate.test.ts`.
 27. **AC7.27** Given the server restarts with the flag off while a `seats` session runs, then no brain of that session runs, the NPC queues stay off for it, and the trainer can still complete it. Proved by `sessionMode.test.ts`, case "flag off keeps seats mode", and manual step 10.
 28. **AC7.28** Given a session's log rows, when the scorecard runs, then it reports steps done on time, blocked actions, model calls per agency-hour and fallbacks exactly as computed by hand for the fixture. Proved by `scorecard.test.ts`.
-29. **AC7.29** Given a scheduled session, when two start requests arrive together, then `claimSessionStart` lets exactly one start it, and the other answers 409 `SESSION_ALREADY_STARTED` with the start time and copies nothing; given migration 248 is not applied (`claimed: null`), then today's start runs. Whenever a start goes ahead, the play mode is locked and the seats exist before the response. Proved by `sessionMode.test.ts`, case "start claim first", and manual step 11.
+29. **AC7.29** Given a scheduled session, when two start requests arrive together, then `claimSessionStart` lets exactly one start it, and the other answers 409 `SESSION_ALREADY_STARTED` with the start time and copies nothing; given migration 249 is not applied (`claimed: null`), then today's start runs. Whenever a start goes ahead, the play mode is locked and the seats exist before the response. Proved by `sessionMode.test.ts`, case "start claim first", and manual step 11.
 30. **AC7.30** Given a new-flow scenario with snapshot rows, when a brain loads its doctrine, then it reads only `loadDoctrineSnapshots` and WS1's accessor and never selects `scenarios.insider_knowledge`. A library row plans from `buildDoctrinePlan`, a legacy-research row from its projected workflow, and a legacy scenario with no rows from the accessor's `teamWorkflow`. Every step's intent comes from `classifyStepIntent` on its label. Proved by `doctrineAdapter.test.ts`, cases "new-flow never reads insider_knowledge" and "intent from the label".
 31. **AC7.31** Given entry and exit pins that a team of the session may claim and that are not all claimed, when the brain perceives, then it sees the pins but no casualty or hazard, as a player's `MapView` shows none. Given a path outside the actor allow-list, such as `/api/rts-scenes`, the scene-config route, `/api/warroom/field-ops/physics/calc` or `/api/field-ops/devices`, then the actor client refuses it without a network call. Proved by `projection.test.ts`, cases "exit gate" and "actor path allow-list".
 32. **AC7.32** Given production, the flag on and no `TEAMMATE_BOT_PASSWORD`, then availability answers `pool_unavailable`, setting a seat to AI answers 409 `AI_UNAVAILABLE`, no actor is enrolled and the runtime does not start. Proved by `availability.test.ts`, case "fail closed", which covers `aiRuntimeAllowed` as every caller uses it.
@@ -281,22 +281,22 @@ What the corporate bots do (write messages, posts, emails and documents) covers 
 
 | Object | Migration | Written by | Read by | Purpose |
 | --- | --- | --- | --- | --- |
-| `scenario_teams.operation` | 242 | WS5 compile (master 10.8 item 14) | Seat materialisation | The setup default per agency. `NULL` on legacy rows means people. |
-| `fieldops_session_settings` | 242 | WS7 seat service and settings route | `shouldRunNpcQueues`, runtime, lobby | Play mode, its lock, the session-wide AI pause. |
-| `fieldops_session_seats` | 242 | WS7 seat service | Lobby, console, runtime, planner | One row per roster seat per agency per session. |
-| `fieldops_agency_actors` | 243 | WS7 actor enrolment | Runtime, decision log, after-action labels | The pooled account acting for one AI agency in one session. |
-| `fieldops_agency_brains` | 244 | WS7 runtime | Runtime, console | One brain per AI agency: status, lease, persisted step state, memory and budget. |
-| `fieldops_brain_decisions` | 244 | WS7 runtime | Console "Why?", after-action review, scorecard | The decision log: one row per turn that chose an action. |
-| `fieldops_claim_brain_lease`, `fieldops_release_brain_lease` | 244 | WS7 runtime | | The lease, on the database clock. |
+| `scenario_teams.operation` | 243 | WS5 compile (master 10.8 item 14) | Seat materialisation | The setup default per agency. `NULL` on legacy rows means people. |
+| `fieldops_session_settings` | 243 | WS7 seat service and settings route | `shouldRunNpcQueues`, runtime, lobby | Play mode, its lock, the session-wide AI pause. |
+| `fieldops_session_seats` | 243 | WS7 seat service | Lobby, console, runtime, planner | One row per roster seat per agency per session. |
+| `fieldops_agency_actors` | 244 | WS7 actor enrolment | Runtime, decision log, after-action labels | The pooled account acting for one AI agency in one session. |
+| `fieldops_agency_brains` | 245 | WS7 runtime | Runtime, console | One brain per AI agency: status, lease, persisted step state, memory and budget. |
+| `fieldops_brain_decisions` | 245 | WS7 runtime | Console "Why?", after-action review, scorecard | The decision log: one row per turn that chose an action. |
+| `fieldops_claim_brain_lease`, `fieldops_release_brain_lease` | 245 | WS7 runtime | | The lease, on the database clock. |
 | `sessions.bot_intellect` | existing (207) | WS7 settings route | WS7 runtime | The session's AI pace, 0 to 100, default 70. |
 | `session_teams.team_role` | existing (011) | WS7 seat service | Lobby and team modals (display, through `seatKeyText`) | The seat key of seated people and actors (WS1's `RosterSeat.key`). |
 
 All new tables are reached only through the service role. RLS is enabled with no policy, so the anon and authenticated keys see nothing (master section 9). Nothing new is written to `scenarios` (master 10.8 item 16).
 
-### 5.2 Migration `242_fieldops_operation_and_seats.sql`
+### 5.2 Migration `243_fieldops_operation_and_seats.sql`
 
 ```sql
--- Migration 242: People or AI for field-ops agencies (docs/field-ops/08-people-or-ai.md, section 5.2).
+-- Migration 243: People or AI for field-ops agencies (docs/field-ops/08-people-or-ai.md, section 5.2).
 --
 --   scenario_teams.operation   the setup default per agency, copied by compile (WS5) from
 --                              AgencyCard.operation. NULL on legacy rows means people.
@@ -388,10 +388,10 @@ COMMENT ON TABLE public.fieldops_session_seats IS
 COMMIT;
 ```
 
-### 5.3 Migration `243_fieldops_bot_enrolment.sql`
+### 5.3 Migration `244_fieldops_bot_enrolment.sql`
 
 ```sql
--- Migration 243: the pooled account that acts for an AI-operated field-ops agency
+-- Migration 244: the pooled account that acts for an AI-operated field-ops agency
 -- (docs/field-ops/08-people-or-ai.md, section 5.3).
 --
 -- The accounts themselves are the corporate teammate pool (migration 207, user_profiles.is_bot),
@@ -438,10 +438,10 @@ COMMENT ON TABLE public.fieldops_agency_actors IS
 COMMIT;
 ```
 
-### 5.4 Migration `244_fieldops_brain_state_and_decisions.sql`
+### 5.4 Migration `245_fieldops_brain_state_and_decisions.sql`
 
 ```sql
--- Migration 244: agency brains, their lease and the decision log
+-- Migration 245: agency brains, their lease and the decision log
 -- (docs/field-ops/08-people-or-ai.md, section 5.4).
 --
 --   fieldops_agency_brains     one row per AI-operated agency per session: status, lease,
@@ -515,7 +515,7 @@ CREATE TABLE IF NOT EXISTS public.fieldops_brain_decisions (
   doctrine_id UUID,
   doctrine_version INTEGER,
   doctrine_status TEXT CHECK (doctrine_status IS NULL OR doctrine_status IN ('unverified', 'verified', 'retired')),
-  -- Added 3 Nov 2026: dispatch_unit and share_report (WS9's live world); 244 is not applied yet, so it is amended in place.
+  -- Added 3 Nov 2026: dispatch_unit and share_report (WS9's live world); 245 is not applied yet, so it is amended in place.
   action_kind TEXT NOT NULL CHECK (action_kind IN (
     'claim_location', 'place_asset', 'respond_to_pin', 'triage_tag', 'decide',
     'respond_to_incident', 'radio', 'liaise', 'sweep_asset', 'idle',
@@ -1259,7 +1259,7 @@ export type StartClaimOutcome =
 
 export function startClaimOutcome(claim: StartClaim, now: Date): StartClaimOutcome {
   if (claim.claimed === true) return { proceed: true, start_time: claim.start_time };
-  if (claim.claimed === null) return { proceed: true, start_time: now.toISOString() }; // migration 248 not applied
+  if (claim.claimed === null) return { proceed: true, start_time: now.toISOString() }; // migration 249 not applied
   return {
     proceed: false,
     body: { error: 'This session has already started.', code: 'SESSION_ALREADY_STARTED', details: { start_time: claim.start_time } },
@@ -1269,7 +1269,7 @@ export function startClaimOutcome(claim: StartClaim, now: Date): StartClaimOutco
 
 - **`claimed: true`.** The status is already `in_progress` and the start time is the claim's. The update later in the handler writes the same values.
 - **`claimed: false`.** Another start won. The answer is 409 and nothing is copied twice, which also closes journey finding 11.2 (a double start doubles the world).
-- **`claimed: null`.** Migration 248 is not applied, so today's behaviour runs.
+- **`claimed: null`.** Migration 249 is not applied, so today's behaviour runs.
 - **The claim throws.** The handler's existing catch answers 500, and the session stays `scheduled` unless the claim committed before its answer was lost (risk 14 in section 15.1).
 
 `prepareFieldOpsSessionStart(sessionId, user)` never throws and gives up after 5 seconds. It does nothing when the flag is off or the tables are missing. Otherwise:
@@ -2136,7 +2136,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 - Actors are the corporate pooled accounts, ordinary participants with `is_bot` set. Their tokens are minted and cached in server memory by `getBotToken` and never leave the server; no route returns them.
 - An actor can read whatever any participant can read, including the leaks of finding 13.2. The brain discards those fields at once (section 6.8); the account itself cannot be used from outside unless its password is known.
 - The password falls back to a value committed in the code when `TEAMMATE_BOT_PASSWORD` is unset (`teammateBotPassword`, `server/env.ts:159`), and the bots sign in with it (`signInWithPassword`, `server/services/teammates/accounts.ts:339-343`). In production WS7 therefore fails closed without the variable: availability answers `pool_unavailable`, no seat can be set to AI, `ensureAgencyActor` never touches the pool and the runtime does not start (`aiRuntimeAllowed`, section 6.3). Setting it is a production prerequisite (master risk 16).
-- An actor sits in one agency per session (unique index in migration 243) and is removed from the team when its agency has no AI seat left.
+- An actor sits in one agency per session (unique index in migration 244) and is removed from the team when its agency has no AI seat left.
 
 ### 9.3 Hidden truth stays hidden
 
@@ -2144,7 +2144,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 - Triage colours come only from the START-style sort of observable signs. The true colour arrives in the participant response and is dropped by the projection before any other code sees it; it is never logged, stored or sent to a model.
 - Placement preflight uses `validatePlacement` in process, which reads blast radii internally; only the allowed or blocked result reaches the planner, the same feedback a player gets from a 422.
 - Device specifics and calculated effects never reach the brain (WS6's X6.10, master 10.8 item 16). It reads no `DeviceSpec` field, no physics snapshot and no effect index, `FORBIDDEN_KEYS` carries WS6's device and effect keys, and the actor client refuses the physics routes and the device library with every other request outside `ACTOR_REQUESTS` (section 6.8).
-- The anon key alone reads every `rts_scene_configs` row, planted devices included (master risk 14, checked live on 25 Oct). The brain never reads that table or a scene route, and after WS0 `/api/rts-scenes` answers 403 to its participant token.
+- The anon key alone reads every `rts_scene_configs` row, planted devices included (master risk 14, checked live on 25 Oct). **Updated 8 Nov 2026:** migration 218 has since limited it to the creator and admins. The brain never reads that table or a scene route, and after WS0 `/api/rts-scenes` answers 403 to its participant token.
 
 ### 9.4 Prompt injection
 
@@ -2168,7 +2168,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 ### 9.7 Abuse and load
 
 - Nudges are limited to one per agency every 30 seconds and 300 characters, and are mirrored into the team channel under the trainer's name.
-- Actors' requests go through the general limiter keyed per user (`limiter`, `server/index.ts:164-195`); the per-agency action budget keeps them far below it.
+- Actors' requests go through the general limiter keyed per user (`limiter`, `server/index.ts:193-209`); the per-agency action budget keeps them far below it.
 - The runtime ticks at most two brains at a time per process, makes model calls through the shared serial queue, and never runs on the request path.
 
 ### 9.8 Security items to close before production
@@ -2176,7 +2176,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 1. `TEAMMATE_BOT_PASSWORD` is set on the production service and differs from the code default.
 2. A penetration check confirms a participant token gets 403 or 404 from every WS7 route except availability.
 3. `findForbiddenKeys` found nothing across the staging run (log count zero).
-4. Migrations 242 to 244 are applied and RLS is on for all five tables.
+4. Migrations 243 to 245 are applied and RLS is on for all five tables.
 5. The UI spec sheet and the design review accept the AI labels on chat lines and in the after-action review.
 
 ## 10. Flags, rollout and observability
@@ -2197,7 +2197,7 @@ At most one call per brain per turn, about 1,500 prompt tokens and at most 400 c
 
 ### 10.2 Rollout
 
-1. **Development.** Flag on by default; run `npm test`; apply migrations 242 to 244 to the shared project (they are additive, master section 9); smoke test with a dev server that runs background engines only if no other server shares the database (`server/index.ts:85-91`).
+1. **Development.** Flag on by default; run `npm test`; apply migrations 243 to 245 to the shared project (they are additive, master section 9); smoke test with a dev server that runs background engines only if no other server shares the database (`server/index.ts:85-91`).
 2. **Staging run.** On the deployed staging service with the flag on and `FIELDOPS_BOTS_TRAINER_ALLOWLIST` set to the owner's id: run the checklist in 10.3 on one new-flow scenario and one legacy scenario, then run the scorecard.
 3. **Production, owner only.** Set `TEAMMATE_BOT_PASSWORD`, the flag on, the allow-list to the owner's id. Every other trainer sees AI disabled ("not available on your account yet") and keeps the `legacy` mode, so nothing changes for them.
 4. **Production, everyone.** Clear the allow-list after the scorecard passes (D21). New sessions get the `seats` mode.
@@ -2315,7 +2315,7 @@ All server and shared tests use `node:test` with `node:assert/strict` through `t
 8. **After-action review.** Complete the session; the decisions panel shows "AI · <seat label>" on AI decisions and "Why?" opens the step and reason; a participant can read the log only now.
 9. **Finding 15.7.** From a local script against a scratch session, call `extractAndPlaceInfrastructureFromText` with a centre inside an incident site's blast radius and decision text that asks for a command post: no `placed_assets` row is written and `fieldops_extraction_placement_blocked` is logged.
 10. **Flag off mid-session.** Restart with the flag off during a `seats` session: no brain runs, the queues stay off, the trainer can complete the session.
-11. **Start claim.** With WS8's migration 248 applied, press Start on one scheduled session from two trainer tabs at once: one start succeeds, the other answers 409 `SESSION_ALREADY_STARTED`, the session has one copy of its pins, and its seats exist when the lobby moves on.
+11. **Start claim.** With WS8's migration 249 applied, press Start on one scheduled session from two trainer tabs at once: one start succeeds, the other answers 409 `SESSION_ALREADY_STARTED`, the session has one copy of its pins, and its seats exist when the lobby moves on.
 
 ## 12. Tasks
 
@@ -2330,7 +2330,7 @@ Tasks are in build order. WS7 starts after WS1 and WS5 have landed (master secti
    - Commit: `fieldops-ai(1)`.
 2. **T7.2 Migrations and detectors.**
    - Goal: the tables and lease functions, and code that tolerates their absence.
-   - Files: `migrations/242_fieldops_operation_and_seats.sql (new)`, `migrations/243_fieldops_bot_enrolment.sql (new)`, `migrations/244_fieldops_brain_state_and_decisions.sql (new)`, `server/services/fieldOps/bots/features.ts (new)`.
+   - Files: `migrations/243_fieldops_operation_and_seats.sql (new)`, `migrations/244_fieldops_bot_enrolment.sql (new)`, `migrations/245_fieldops_brain_state_and_decisions.sql (new)`, `server/services/fieldOps/bots/features.ts (new)`.
    - Steps: copy sections 5.2 to 5.4 verbatim; implement the four detectors of section 5.7 with WS0's helpers.
    - Done when: the three files apply in order on the shared project, a second application changes nothing, the detectors answer false before and true after, and RLS is enabled on the five new tables.
    - Tests: manual (SQL applied twice); the detectors are exercised through T7.3's tests.
@@ -2449,10 +2449,10 @@ Tasks are in build order. WS7 starts after WS1 and WS5 have landed (master secti
     - Commit: `fieldops-ai(6)`.
 19. **T7.19 The start claim first.**
     - Goal: master 10.8 item 26; a start and an edit, or two starts, never interleave.
-    - Depends on: WS8's `server/services/fieldOps/editor/startGuard.ts (new)` being in the tree; migration 248 may still be unapplied.
+    - Depends on: WS8's `server/services/fieldOps/editor/startGuard.ts (new)` being in the tree; migration 249 may still be unapplied.
     - Files: touched `server/routes/sessions.ts`, `server/services/fieldOps/bots/sessionMode.ts (new)` from T7.3, `server/services/fieldOps/bots/sessionMode.test.ts (new)` from T7.3.
     - Steps: add `startClaimOutcome` and the claim line at the head of the start branch, exactly as section 6.4 shows.
-    - Done when: AC7.29 passes; manual step 11 passes on staging; with migration 248 unapplied, a start behaves as before.
+    - Done when: AC7.29 passes; manual step 11 passes on staging; with migration 249 unapplied, a start behaves as before.
     - Tests: `sessionMode.test.ts`, case "start claim first"; manual step 11.
     - Commit: `fieldops-ai(7)`.
 20. **T7.20 AI agencies in a live world (added 3 Nov 2026; D33, D34).**
@@ -2469,7 +2469,7 @@ Seven commits, each shippable on its own with the flag off in production, prefix
 
 | Commit | Tasks | What ships | Backtracking |
 | --- | --- | --- | --- |
-| `fieldops-ai(1): vocabulary, settings, schemas, migrations 242-244` | T7.1, T7.2 | Types, zod, env properties, three migrations, detectors. Nothing reads them yet. | Revert the commit. The migrations stay applied: they are additive and unused, and their rollback comments drop them if ever needed. |
+| `fieldops-ai(1): vocabulary, settings, schemas, migrations 243-245` | T7.1, T7.2 | Types, zod, env properties, three migrations, detectors. Nothing reads them yet. | Revert the commit. The migrations stay applied: they are additive and unused, and their rollback comments drop them if ever needed. |
 | `fieldops-ai(2): session play mode and the NPC queue gate` | T7.3 | With the flag on, new sessions of allowed trainers run in `seats` mode: the engine stops playing teams (finding 12.1), with no AI yet. | First, set the flag off and restart: new sessions are `legacy` again. A running `seats` session can be returned to the queues by an admin with `update public.fieldops_session_settings set play_mode = 'legacy' where session_id = '<id>';`. Last, revert the commit: the wrapper disappears and the queues run everywhere as before. |
 | `fieldops-ai(3): seats, actors and lobby routes` | T7.4, T7.5, T7.6 | Seats per session, actor enrolment, availability, view, settings and seat routes. | The flag off makes every route except availability answer 404. Revert removes the router mount; seat rows stay unused. An actor already enrolled stays a ready participant; remove it from its team with a delete on `session_teams` for the actor's user id. |
 | `fieldops-ai(4): the agency brain` | T7.7 to T7.12 | Perception, doctrine, planner, executor, model text, budgets, runtime, lease and live-control routes. | First pause AI per session (settings route) or for one agency; then the flag off and a restart stops every brain within one lease period; then revert. Brain rows and the decision log stay for the record. |
@@ -2489,9 +2489,9 @@ Order: commits 1 to 6 in sequence. Commit 6 depends only on commit 1 and can mov
 | `server/lib/fieldOps/aiAgencySchemas.ts (new)` | zod schemas (section 6.15) |
 | `server/lib/fieldOps/aiAgency.test.ts (new)` | Tests of the shared module |
 | `server/lib/fieldOps/aiAgencySchemas.test.ts (new)` | Schema tests |
-| `migrations/242_fieldops_operation_and_seats.sql (new)` | Section 5.2 |
-| `migrations/243_fieldops_bot_enrolment.sql (new)` | Section 5.3 |
-| `migrations/244_fieldops_brain_state_and_decisions.sql (new)` | Section 5.4 |
+| `migrations/243_fieldops_operation_and_seats.sql (new)` | Section 5.2 |
+| `migrations/244_fieldops_bot_enrolment.sql (new)` | Section 5.3 |
+| `migrations/245_fieldops_brain_state_and_decisions.sql (new)` | Section 5.4 |
 | `server/services/fieldOps/bots/types.ts (new)` | Server-only types |
 | `server/services/fieldOps/bots/features.ts (new)` | Detectors |
 | `server/services/fieldOps/bots/availability.ts (new)` | Availability and the flag gate |
@@ -2644,7 +2644,7 @@ Only requests still open after the master's rulings and the other specs' answers
 
 1. AC7.1 to AC7.33 pass, each by the test or manual step named beside it. **Added 3 Nov 2026:** AC7.34 too, and with no live world the AI agencies' decision log is unchanged.
 2. All 21 new test files (section 11) are in the `test` script of `package.json` and `npm test` passes; `npx tsc --noEmit` is clean for the server, `shared/` and the frontend; `tsc && vite build` succeeds in `frontend/`.
-3. Migrations 242 to 244 are applied on the shared project, re-application is a no-op, and the code ran correctly before they were applied (detectors false).
+3. Migrations 243 to 245 are applied on the shared project, re-application is a no-op, and the code ran correctly before they were applied (detectors false).
 4. With the flag off in production the legacy behaviour is unchanged: no settings rows are written, the NPC queues run, the corporate bots behave as before, and the setup segment shows the disabled message.
 5. A session in the `seats` mode logs no NPC queue events, and no AI action is ever attributed to a seat a person holds (scorecard seat integrity 0).
 6. The staging run of section 10.3 passes and its scorecard meets the thresholds of section 10.4 (D21), or the owner accepts the gaps in writing.

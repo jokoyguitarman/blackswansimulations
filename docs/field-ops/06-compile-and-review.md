@@ -4,8 +4,8 @@
 **Workstream:** WS5
 **Depends on:** [the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the setup screen spec](03-setup-screen.md), [the site picker spec](04-site-picker.md), [the layout step spec](05-layout-step.md), and softly [the device and physics spec](07-device-and-physics.md). **Added 3 Nov 2026:** WS9's living world spec, `11-living-world.md`, for the stored spread library and the compile-time fire spread (master 10.8 item 38)
 **Flags:** `ENABLE_FIELDOPS_V2`, `ENABLE_FIELDOPS_BLUEPRINT`, `ENABLE_FIELDOPS_DOCTRINES`, and `ENABLE_FIELDOPS_PHYSICS` as a soft dependency. Settings: `FIELDOPS_COMPILE_MAX_LLM_CALLS` (default 160, 40 to 400) and `FIELDOPS_COMPILE_MAX_MINUTES` (default 30, 5 to 120).
-**Migrations:** 234, 235, 236
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 235, 236, 237 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -16,11 +16,11 @@
 1. **Nothing half-built is ever visible (7.1).** Every row of a compiled scenario is written by one PostgreSQL function in one transaction, or not at all. The scenario is written as a draft (`publish_state = 'draft'`, `is_active = false`, D24) and is published only by an explicit, audited action.
 2. **The document is honoured (D1).** Every fact the blueprint extracted either maps to generated content with its provenance stored beside it, or appears in "Notes we couldn't place". A deterministic post-pass proves nothing was silently dropped.
 3. **Added 3 Nov 2026.** **No research step (D12, D29, D31).** The similar-cases research, the per-team standards research and the deterioration physics research are gone from the v2 compile. Doctrines come from the library as versioned snapshots, matched in the agency's country first (D3, D29); spread and deterioration physics come from WS9's stored library (D31); the area dossier stays (D18) but reads hospitals, police and fire stations from the saved tables, never live (D5, D13).
-4. **A compiled scenario owns its snapshots.** The doctrine and physics snapshots live in their own tables (migration 234), never in `scenarios` columns (master 10.8 item 16). Today's runtime readers keep working through WS1's runtime accessor, which reads a projection stored in the snapshot in the shape they already use.
+4. **A compiled scenario owns its snapshots.** The doctrine and physics snapshots live in their own tables (migration 235), never in `scenarios` columns (master 10.8 item 16). Today's runtime readers keep working through WS1's runtime accessor, which reads a projection stored in the snapshot in the shape they already use.
 5. **Physics drives casualties when it is on.** With `ENABLE_FIELDOPS_PHYSICS` on, WS6's calculated bands and crowd-zone casualty plan replace the fixed 33 and 66 per cent bands; with it off, the legacy bands stay (7.6, 7.11, D8, D10).
 6. **Credits, caps and restarts behave (D27).** One credit is taken at start and WS0 refunds it if the job fails before WS0's commit (master 10.8 item 20); a restart resumes from the stage in flight; a compile can never exceed `FIELDOPS_COMPILE_MAX_LLM_CALLS` model calls or `FIELDOPS_COMPILE_MAX_MINUTES` minutes.
 7. **Review and publish match the mockup (D28).** `CompileReviewStep`, `CompilePanel`, `ReviewPage` and `PublishBar` reproduce state 4 of `docs/design/warroom/field-ops-setup.html`, with `WrIcon` instead of emoji.
-8. **Legacy is untouched.** With `ENABLE_FIELDOPS_V2` off, nothing in this spec runs. The legacy `/persist` compile is WS0's: it runs on WS0's engine whenever migrations 218 and 219 are applied and the engine is on, whatever the flag (master 10.8 item 20), and this spec does not change it.
+8. **Legacy is untouched.** With `ENABLE_FIELDOPS_V2` off, nothing in this spec runs. The legacy `/persist` compile is WS0's: it runs on WS0's engine whenever migrations 219 and 220 are applied and the engine is on, whatever the flag (master 10.8 item 20), and this spec does not change it.
 9. **Added 3 Nov 2026.** **Every detail builds the world (D36).** Each input the trainer gives in Setup and in the layout step reaches at least one compiled part (the narrative, injects, pins, casualties, deterioration, the fire-spread timeline or knowledge), and section 6.17 says which.
 10. **Added 3 Nov 2026.** **Fire spread survives the removal of the research step (master 10.8 item 35).** The pins stage simulates fire spread from stored parameters over the trainer's layout and writes today's fire-spread pins. A compile without the stored library, or one whose simulation runs out of time, still finishes and says so in Review.
 
@@ -30,11 +30,11 @@
 - The setup screen, the blueprint extraction and `buildCompileInput` (WS2); the doctrine library and its snapshot builder (WS1); the scene store (WS4); the calculator and the casualty allocation (WS6).
 - Editing a published scenario and the pressure runtime (WS8, master 10.8 item 18). Review edits drafts only.
 - AI-operated agencies at runtime (WS7). This spec only writes `scenario_teams.operation` (master 10.8 item 14).
-- Closing finding 8.1 for published scenarios, or the `rts_scene_configs` read policy (master risk 14, an owner decision).
+- Closing finding 8.1 for published scenarios, or the `rts_scene_configs` read policy (master risk 14, an owner decision). **Updated 8 Nov 2026:** the launch security fix narrowed finding 8.1 and closed that read policy (migration 218; master 10.8 item 16 and risk 14).
 - Changing the runtime detonation model or the pin editor's own blast assumptions (master risk 15).
 - Splitting `server/services/warroomAiService.ts` (finding 7.10). v2 wraps it with additive, optional inputs.
 - Incident types other than the four live bombing types (D11).
-- **Added 3 Nov 2026.** The live world (D32 to D35): the simulation that evolves the scenario during a session, units, fog of war, and weather and traffic as mechanics are WS9's (`11-living-world.md`, master 10.8 item 39). So are the spread library, migrations 249 to 256 and the simulation code; compile only calls `loadSpreadLibrary`, `deteriorationFactsFor` and `buildSpreadTimeline` (item 38) and still writes today's scripted escalation.
+- **Added 3 Nov 2026.** The live world (D32 to D35): the simulation that evolves the scenario during a session, units, fog of war, and weather and traffic as mechanics are WS9's (`11-living-world.md`, master 10.8 item 39). So are the spread library, migrations 250 to 257 and the simulation code; compile only calls `loadSpreadLibrary`, `deteriorationFactsFor` and `buildSpreadTimeline` (item 38) and still writes today's scripted escalation.
 
 ## 2. Decisions and assumptions
 
@@ -44,7 +44,7 @@
 
 | ID | Status in the master | What it means here |
 | --- | --- | --- |
-| D1 | Decided | The coverage ledger (migration 235) accounts for every blueprint fact; unplaced facts are listed in Review with "Add as an inject", "Add to objectives" or "Ignore". |
+| D1 | Decided | The coverage ledger (migration 236) accounts for every blueprint fact; unplaced facts are listed in Review with "Add as an inject", "Add to objectives" or "Ignore". |
 | D3 | Decided | `assertReady` refuses to start a compile while any agency lacks a usable doctrine, from one call of WS1's `resolveDoctrineForCompile`; publish re-checks that every team has a doctrine snapshot. |
 | D8 | Decided | Device effects are calculated by WS6's deterministic code; compile only consumes `CompileEffects` and the reduced prompt text. |
 | D10 | Decided | The headcount comes from `setup_v2.incident.people_present`; where people stand comes from WS4's crowd zones through WS6's casualty plan. |
@@ -70,7 +70,7 @@
 | Choice 2 | Every row id is a UUID generated in TypeScript before the persist, and every parent link (spawn parent, blast-zone hazard, sighting inject, provenance item) is resolved by id in the payload builder. | Finding 7.8: spawn pins are linked by display label with `(0, 0)` fallbacks. Ids known in advance remove the read-back queries and make the payload testable without a database. |
 | Choice 3 | A re-compile of an unpublished draft writes a new draft scenario, and the old one is discarded only after WS0's commit has pointed the draft at the new one. A published scenario is never replaced: `assertReady` refuses with `ALREADY_PUBLISHED`. | Master 10.8 items 2 and 4; finding 7.4 (re-compile un-links first). |
 | Choice 4 | Before deleting any draft scenario (a replaced one, a reopened one, an orphan found by the reconciler), WS5 calls WS4's `detachAuthoringScene` with its id, and the SQL delete refuses while an authoring scene still points at the scenario (master 10.8 item 22). | `rts_scene_configs.scenario_id` cascades on delete (`migrations/163_rts_scene_configs.sql:9`): deleting the old draft would delete the trainer's scene. WS4's function unbinds only authoring rows, so a copy made for that scenario is deleted with it. |
-| Choice 5 | v2 writes the bomb-squad device pool into `scenario_physics_snapshots.device_pool` and `[]` into `scenarios.sweep_device_pool`; session start reads the pool through `loadDevicePoolForScenario`. | The pool holds which devices are live and where (an answer key), and `scenarios` rows are readable by every signed-in user (master 10.8 item 16). |
+| Choice 5 | v2 writes the bomb-squad device pool into `scenario_physics_snapshots.device_pool` and `[]` into `scenarios.sweep_device_pool`; session start reads the pool through `loadDevicePoolForScenario`. | The pool holds which devices are live and where (an answer key), and every player of the scenario's sessions receives `scenarios.sweep_device_pool` from `GET /api/scenarios/:id` (master 10.8 item 16; **updated 8 Nov 2026**: before the launch security fix, every signed-in user could read it). |
 | Choice 6 | v2 never writes `scenarios.blueprint`. | The field-ops document may state device positions and timings; the column is part of the readable row. |
 | Choice 7 | Facts of kind `device` never enter a prompt. They are realised by deterministic code: WS6's device specs, the device pool and the report injects, worded from fixed library templates. | Master 10.8 item 17 and section 6 of the common brief. |
 | Choice 8 | The doctrine, physics and blueprint modes are fixed when the job starts and stored in the compile manifest; a resumed job uses the stored modes, not the current flags. | A flag flip during a compile must not change what half of the scenario is built from. |
@@ -189,7 +189,7 @@ Team names are matched exactly first, then normalised, then by substring (`resol
 
 ### 3.7 Device data on the readable scenario row
 
-**Verified.** Every signed-in user can read active `scenarios` rows (`migrations/002_rls_policies.sql:44-46`), and `GET /api/scenarios/:id` returns the whole row with only an `is_active` check for non-trainers (`server/routes/scenarios.ts:340-366`). Planted devices become `sweep_device_pool` entries with `is_live`, the trainer's description and positions (`server/services/warroomAiService.ts:8585-8599`), written on the scenario (`server/services/warroomPersistenceService.ts:89`). At session start the pool is copied into the session (`server/services/sessionPinCloningService.ts:178-196`). The sweep reads `is_live` (`server/services/bombSquadSweepService.ts:54-56`), spreads the whole entry into the spawned hazard's `properties` (`server/services/bombSquadSweepService.ts:88-92`) and shows its `description` to players (`server/services/bombSquadSweepService.ts:127-129`). `detonation_timer` is written (`server/services/warroomAiService.ts:8595`) and never read; the sweep uses a fixed two minutes (`server/services/bombSquadSweepService.ts:55-56`). The tip injects quote the trainer's device description (`server/services/warroomAiService.ts:8612-8614`).
+**Verified.** Every signed-in user could read active `scenarios` rows (`migrations/002_rls_policies.sql:44-46`), and `GET /api/scenarios/:id` returned the whole row with only an `is_active` check for non-trainers. **Updated 8 Nov 2026:** since the launch security fix, a browser reads only the scenarios it created, or any as an admin (migration 218, applied in production). The route answers 403 to anyone who neither created the scenario nor trains or plays one of its sessions, and a player of one of its sessions receives the row without `insider_knowledge` and `blueprint`, `sweep_device_pool` included (`server/routes/scenarios.ts:348-384`). Planted devices become `sweep_device_pool` entries with `is_live`, the trainer's description and positions (`server/services/warroomAiService.ts:8585-8599`), written on the scenario (`server/services/warroomPersistenceService.ts:89`). At session start the pool is copied into the session (`server/services/sessionPinCloningService.ts:178-196`). The sweep reads `is_live` (`server/services/bombSquadSweepService.ts:54-56`), spreads the whole entry into the spawned hazard's `properties` (`server/services/bombSquadSweepService.ts:88-92`) and shows its `description` to players (`server/services/bombSquadSweepService.ts:127-129`). `detonation_timer` is written (`server/services/warroomAiService.ts:8595`) and never read; the sweep uses a fixed two minutes (`server/services/bombSquadSweepService.ts:55-56`). The tip injects quote the trainer's device description (`server/services/warroomAiService.ts:8612-8614`).
 
 ### 3.8 The client compile step and the API client
 
@@ -283,12 +283,12 @@ sequenceDiagram
 6. **Reviewing.** Review shows the counts, the storyline with a source tag on every line, how much came from the document, the doctrines with "v2 available" and "Retired" notices, the physics summary, the notes that could not be placed, the blockers and the review count. The trainer can edit, add or remove an inject, edit or add an objective, resolve a note, acknowledge a review item, and move a team to a newer doctrine version. Each edit is atomic and audited.
 7. **Publishing.** With no blockers, "Publish scenario" sets `publish_state = 'published'` and `is_active = true` in one transaction with a publish event. The scenario then appears in the library and can be launched; editing moves to WS8's editor.
 8. **Re-compiling.** On a compiled, unpublished draft, "Compile again" asks for confirmation ("This uses another scenario credit. The scenario you are reviewing is replaced when the new compile finishes; until then it stays as it is."). The start body carries `recompile: true` (master 10.8 item 20). The earlier draft scenario is discarded only after the new one commits; after a failed or cancelled re-compile the draft returns to `compiled` with its earlier scenario. A published draft cannot be compiled again.
-9. **Legacy.** With `ENABLE_FIELDOPS_V2` off, the routes in this spec and WS0's start route answer 404, so the v2 variant cannot start. The legacy wizard's `/persist` route is WS0's: it runs on WS0's engine whenever migrations 218 and 219 are applied and the engine is on, whatever the flag, and inline as in section 3.1 otherwise (master 10.8 item 20). Nothing in this spec changes it.
+9. **Legacy.** With `ENABLE_FIELDOPS_V2` off, the routes in this spec and WS0's start route answer 404, so the v2 variant cannot start. The legacy wizard's `/persist` route is WS0's: it runs on WS0's engine whenever migrations 219 and 220 are applied and the engine is on, whatever the flag, and inline as in section 3.1 otherwise (master 10.8 item 20). Nothing in this spec changes it.
 10. **Added 3 Nov 2026.** **The world it builds.** The compile uses every detail the trainer gave (section 6.17). Fire spreads from her hazards through the walls she drew, by their materials, as delayed fire hazards that appear while a hazard is left uncontained. How things get worse is written from stored physics facts and agrees with that spread. Each doctrine shows the country it came from. When the stored data is not installed or the simulation runs out of time, the draft is still built and Review says what is missing.
 
 ### 4.3 Acceptance criteria
 
-1. **AC5.1** Given `ENABLE_FIELDOPS_V2` is off, when any route of section 6.8 is called, then it answers WS0's bare 404 `{ error: 'Not found' }`, and a legacy draft still compiles through `/api/warroom/wizard/drafts/:id/persist` with the same response shape (on WS0's engine when 218 and 219 are applied, master 10.8 item 20). Proved by `server/routes/fieldOpsCompile.test.ts` (new), case "flag off answers 404", and manual step 1 of section 11.4.
+1. **AC5.1** Given `ENABLE_FIELDOPS_V2` is off, when any route of section 6.8 is called, then it answers WS0's bare 404 `{ error: 'Not found' }`, and a legacy draft still compiles through `/api/warroom/wizard/drafts/:id/persist` with the same response shape (on WS0's engine when 219 and 220 are applied, master 10.8 item 20). Proved by `server/routes/fieldOpsCompile.test.ts` (new), case "flag off answers 404", and manual step 1 of section 11.4.
 2. **AC5.2** Given a v2 draft in which one agency has no doctrine, when the trainer starts a compile, then the start is refused with 400 `DRAFT_NOT_READY` whose details contain `{ code: 'DOCTRINE_MISSING', agency_id }`, and no credit row is written. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "assertReady refuses a team with no doctrine".
 3. **AC5.3** Given a ready draft, when the compile runs, then the stages run in the order of section 6.3, each done stage returns an output that WS0 stores as its checkpoint and a summary of counts only, and the weighted `progress.percent` of WS0's job view never decreases. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "stage order, checkpoints and progress".
 4. **AC5.4** Given a payload whose last insert violates a constraint, when the persist function runs, then no row exists for that scenario id in `scenarios` or any child, snapshot, provenance, coverage or manifest table, and the job fails with `COMPILE_PERSIST_FAILED` and is refunded. Proved by manual step 4 of section 11.4 (staging SQL) and `v2Variant.test.ts`, case "persist failure fails the job before a draft is written".
@@ -313,7 +313,7 @@ sequenceDiagram
 23. **AC5.23** Given a published scenario, when any Review edit route is called, then it answers 409 `NOT_A_DRAFT` and nothing changes. Proved by `fieldOpsCompile.test.ts`, case "edits refused after publish".
 24. **AC5.24** Given a trainer edits an inject's title in Review, when the edit commits, then the inject's title changes, its provenance becomes `trainer` with the previous value kept in `original_provenance`, and one review decision is written. Proved by `fieldOpsCompile.test.ts`, case "inject edit", and manual step 9 of section 11.4.
 25. **AC5.25** Given an unplaced note, when the trainer chooses "Add as an inject", then an inject exists with provenance `fromdoc` and the ledger row is `added`; when she chooses "Ignore", the row is `ignored`; the unplaced count drops by one either way. Proved by `reviewView.test.ts`, case "note resolution", and `fieldOpsCompile.test.ts`, case "note routes".
-26. **AC5.26** Given a site in Singapore, when the dossier stage runs, then facilities come from the saved tables only and no Overpass or Nominatim request is made; given a centre outside the saved coverage (WS3's status `outside_coverage`) or migration 231 missing (`unavailable`), the dossier is empty and says "No saved map data covers this area." Proved by `server/services/fieldOps/compile/dossier.test.ts` (new).
+26. **AC5.26** Given a site in Singapore, when the dossier stage runs, then facilities come from the saved tables only and no Overpass or Nominatim request is made; given a centre outside the saved coverage (WS3's status `outside_coverage`) or migration 232 missing (`unavailable`), the dossier is empty and says "No saved map data covers this area." Proved by `server/services/fieldOps/compile/dossier.test.ts` (new).
 27. **AC5.27** Given any compile, when its log lines are captured, then none contains document text, description text or device specifics, only counts, ids, stage keys and durations. Proved by `v2Variant.test.ts`, case "logs carry counts and ids only".
 28. **AC5.28** Given scene hazards, exits and crowd zones, when the payload is built, then each location pin built from the scene carries `conditions.scene_item_id` and each hazard `properties.scene_item_id`, and each team row carries `operation` when the column exists. Proved by `persistPayload.test.ts`, case "scene item ids and operation".
 29. **AC5.29** Given agency cards with display names, roster keys and archetypes, when the payload is built, then each `scenario_teams.team_name` equals its card's `display_name`, `function_key` is the card's archetype key, and the keys of `charter.roster` equal the card's roster keys in order. Proved by `persistPayload.test.ts`, case "team rows follow the cards".
@@ -324,7 +324,7 @@ sequenceDiagram
 ### 4.4 Acceptance criteria for the 3 Nov requirements (added 3 Nov 2026)
 
 33. **AC5.33** Given library mode, a fake spread library and a fake `deteriorationFactsFor` that returns the fixture's facts, when the deterioration stage runs with a recording fake chat client, then `researchDeteriorationPhysics` is never called, exactly one model call is made (`generateDeteriorationTimeline`), its `deteriorationResearch` argument begins with the fixture's facts unchanged and then holds the conditions, structure and spread blocks of section 8.9, and the hazard list it receives holds no fire-spread pin. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "stored deterioration facts".
-34. **AC5.34** Given WS9's `loadSpreadLibrary()` answers null (migration 249 missing), when a compile runs, then it commits a draft; `buildSpreadTimeline` and `deteriorationFactsFor` are not called; the deterioration input starts with an empty facts block; the manifest's `warnings` hold `spread_library_missing` once and `counts.fire_spread_pins` is 0; the physics snapshot's `spread.status` is `library_missing`; and Review shows the item `spread_library_missing:scenario`, which does not block publishing. Proved by `v2Variant.test.ts`, case "no spread library", and `server/services/fieldOps/compile/reviewView.test.ts` (new), case "spread items".
+34. **AC5.34** Given WS9's `loadSpreadLibrary()` answers null (migration 250 missing), when a compile runs, then it commits a draft; `buildSpreadTimeline` and `deteriorationFactsFor` are not called; the deterioration input starts with an empty facts block; the manifest's `warnings` hold `spread_library_missing` once and `counts.fire_spread_pins` is 0; the physics snapshot's `spread.status` is `library_missing`; and Review shows the item `spread_library_missing:scenario`, which does not block publishing. Proved by `v2Variant.test.ts`, case "no spread library", and `server/services/fieldOps/compile/reviewView.test.ts` (new), case "spread items".
 35. **AC5.35** Given the fixture scene of section 11.3 (two combustible hazards among five, interior walls of drywall, glass and concrete with doors, a 60-minute exercise) and a fake `buildSpreadTimeline` that returns the timeline fixture, when the pins stage runs, then `buildSpreadTimeline` is called once with the studs of the compile's one stud grid (the ids of today's `generateStudGrids` call over the primary polygon at 5 m), the walls with their materials, door widths and door positions, both hazards with their radius, type and blast band, the frozen library and `durationMin: 60`. `generateFireSpreadSpawnPins` then receives that timeline with the snapshot minutes from 5 to 55, and the fixture's four fire-spread pins are delayed fire hazards with `parent_pin_id` set to the nearest hazard's id, `properties.spawned_from = 'environmental_timeline'` and provenance `calc` on lane `physics`, one of them at T+45. Proved by `server/services/fieldOps/compile/spreadInputs.test.ts` (new) and `server/services/fieldOps/compile/spreadTimeline.test.ts` (new).
 36. **AC5.36** Given a fake `buildSpreadTimeline` that never settles, or one that rejects, when the pins stage runs with a fake clock, then after 90 seconds (or at the rejection) the stage finishes without fire-spread pins and the job does not fail; the manifest's warnings hold `spread_timeline_timeout` (or `spread_timeline_failed`); the physics snapshot's `spread.status` is `timeout` (or `failed`); a result that arrives after the budget is ignored; and Review shows the item `spread_not_simulated:scenario`. Given the stage signal aborts first, the stage ends as WS0 aborts it. Proved by `spreadTimeline.test.ts`, cases "time-out", "failure", "late result" and "abort", and `reviewView.test.ts`, case "spread items".
 37. **AC5.37** Given the fixture's setup (time "Saturday 14:10", weather "Light rain, 28 °C") and scene (two stairwells, one blocked; twelve interior walls of three materials; exits on the mall and the car park; a device planted at a wall point), when the v2 prompts are built, then the narrative, universal inject, team inject, layout-knowledge, casualty, dossier and deterioration prompts each hold the conditions block with "Saturday 14:10 (a weekend afternoon)" and "Light rain, 28 °C"; the layout-knowledge, team inject, dossier and deterioration prompts hold the structure block naming both stairwells, the blocked one as blocked, the wall materials with their counts and the exits per building; no prompt holds a device field or a wall point id; each device pool entry carries the wall point id of its placement; and with no `sceneDetails` input every prompt is byte-identical to today's. Proved by `server/services/fieldOps/compile/sceneDetails.test.ts` (new) and `server/services/fieldOps/compile/devicePool.test.ts` (new), case "inspection points".
@@ -338,27 +338,27 @@ sequenceDiagram
 
 | Data | Table or column | Readable by participants? | Migration |
 | --- | --- | --- | --- |
-| The compiled scenario and its children | `scenarios` (draft until published), `scenario_teams`, `scenario_injects`, `scenario_objectives`, `scenario_locations`, `scenario_hazards`, `scenario_casualties`, `scenario_equipment`, `scenario_gates` | As today (finding 8.1); a draft is `is_active = false` and WS0 answers 404 to other trainers | existing, plus WS0's 218 |
-| Doctrine snapshot per team (versioned record) | `scenario_doctrine_snapshots` | No (RLS on, no policy) | 234 |
-| Physics snapshot and the bomb-squad device pool | `scenario_physics_snapshots` | No | 234 |
-| Provenance of every generated item | `scenario_content_provenance` | No | 235 |
-| Coverage ledger and "Notes we couldn't place" | `scenario_coverage_ledger` | No | 235 |
-| Compile manifest (modes, counts, calls, coverage) | `fieldops_compile_manifests` | No | 236 |
-| Stage outputs (checkpoints) | WS0's `fieldops_job_stages.output`, cleared at the commit (Choice 11) | No | WS0's 219 |
-| Review decisions (audit of draft edits) | `fieldops_review_decisions` | No | 236 |
-| Publish events | `fieldops_publish_events` | No | 236 |
-| Doctrine projection for today's readers | `scenario_doctrine_snapshots.content.projection`, served by WS1's runtime accessor; `scenario_teams.charter`, `expected_actions`, `scoring_rubric` in library mode | No for the projection; the team columns as today | 234, existing |
+| The compiled scenario and its children | `scenarios` (draft until published), `scenario_teams`, `scenario_injects`, `scenario_objectives`, `scenario_locations`, `scenario_hazards`, `scenario_casualties`, `scenario_equipment`, `scenario_gates` | As today (finding 8.1); a draft is `is_active = false` and WS0 answers 404 to other trainers | existing, plus WS0's 219 |
+| Doctrine snapshot per team (versioned record) | `scenario_doctrine_snapshots` | No (RLS on, no policy) | 235 |
+| Physics snapshot and the bomb-squad device pool | `scenario_physics_snapshots` | No | 235 |
+| Provenance of every generated item | `scenario_content_provenance` | No | 236 |
+| Coverage ledger and "Notes we couldn't place" | `scenario_coverage_ledger` | No | 236 |
+| Compile manifest (modes, counts, calls, coverage) | `fieldops_compile_manifests` | No | 237 |
+| Stage outputs (checkpoints) | WS0's `fieldops_job_stages.output`, cleared at the commit (Choice 11) | No | WS0's 220 |
+| Review decisions (audit of draft edits) | `fieldops_review_decisions` | No | 237 |
+| Publish events | `fieldops_publish_events` | No | 237 |
+| Doctrine projection for today's readers | `scenario_doctrine_snapshots.content.projection`, served by WS1's runtime accessor; `scenario_teams.charter`, `expected_actions`, `scoring_rubric` in library mode | No for the projection; the team columns as today | 235, existing |
 
-**Added 3 Nov 2026.** Migration 234 also gives each doctrine snapshot row the card's and the doctrine's country and WS1's match of the two (D29), and each physics snapshot row a `spread` record of what the fire spread and the deterioration facts were built from (D31). The compiled scenario keeps nothing of WS9's spread library but its hash and version label in that record; the frozen copy of Choice 17 lives only in the inputs checkpoint, which WS0 clears at the commit (Choice 11). WS9's own tables (migrations 249 to 256) are not touched.
+**Added 3 Nov 2026.** Migration 235 also gives each doctrine snapshot row the card's and the doctrine's country and WS1's match of the two (D29), and each physics snapshot row a `spread` record of what the fire spread and the deterioration facts were built from (D31). The compiled scenario keeps nothing of WS9's spread library but its hash and version label in that record; the frozen copy of Choice 17 lives only in the inputs checkpoint, which WS0 clears at the commit (Choice 11). WS9's own tables (migrations 250 to 257) are not touched.
 
-Migrations 234 to 236 must be applied after WS0's 218 and 219, because the functions write `scenarios.publish_state` and read the draft status WS0 sets. Each file is additive and idempotent, every table has RLS on with no policy, and every foreign key to `scenarios` is `ON DELETE CASCADE` or `ON DELETE SET NULL`, because WS5 deletes replaced and reopened draft scenarios (master 10.8 item 21). Every function revokes `EXECUTE` from `PUBLIC`, `anon` and `authenticated` and grants it to `service_role` only, as `migrations/193_payment_portal.sql:181-185` does: the functions run with the caller's rights, so a browser holding the anon key must not reach them through PostgREST.
+Migrations 235 to 237 must be applied after WS0's 219 and 220, because the functions write `scenarios.publish_state` and read the draft status WS0 sets. Each file is additive and idempotent, every table has RLS on with no policy, and every foreign key to `scenarios` is `ON DELETE CASCADE` or `ON DELETE SET NULL`, because WS5 deletes replaced and reopened draft scenarios (master 10.8 item 21). Every function revokes `EXECUTE` from `PUBLIC`, `anon` and `authenticated` and grants it to `service_role` only, as `migrations/193_payment_portal.sql:181-185` does: the functions run with the caller's rights, so a browser holding the anon key must not reach them through PostgREST.
 
-### 5.2 Migration 234: doctrine and physics snapshots
+### 5.2 Migration 235: doctrine and physics snapshots
 
-**Added 3 Nov 2026.** The file gains two `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements: `card_country`, `doctrine_country` and `country_match` on `scenario_doctrine_snapshots` (D29, section 6.18), and `spread` on `scenario_physics_snapshots` (D31, section 6.16). They follow the `CREATE TABLE` statements rather than changing them, so the same file creates the tables with the columns and also upgrades a copy of the tables made before 3 Nov. Migration 234 is not applied anywhere yet, so the number stays (as master section 9 does for WS1's 220 to 222).
+**Added 3 Nov 2026.** The file gains two `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` statements: `card_country`, `doctrine_country` and `country_match` on `scenario_doctrine_snapshots` (D29, section 6.18), and `spread` on `scenario_physics_snapshots` (D31, section 6.16). They follow the `CREATE TABLE` statements rather than changing them, so the same file creates the tables with the columns and also upgrades a copy of the tables made before 3 Nov. Migration 235 is not applied anywhere yet, so the number stays (as master section 9 does for WS1's 221 to 223).
 
 ```sql
--- migrations/234_fieldops_compile_snapshots.sql
+-- migrations/235_fieldops_compile_snapshots.sql
 -- WS5, docs/field-ops/06-compile-and-review.md section 5.2.
 -- The doctrine and physics snapshots of a compiled field-ops scenario. They live here and never in
 -- columns of scenarios, because every signed-in user can read active scenario rows
@@ -469,10 +469,10 @@ COMMENT ON COLUMN public.scenario_physics_snapshots.spread IS
 COMMIT;
 ```
 
-### 5.3 Migration 235: provenance and coverage
+### 5.3 Migration 236: provenance and coverage
 
 ```sql
--- migrations/235_fieldops_provenance_coverage.sql
+-- migrations/236_fieldops_provenance_coverage.sql
 -- WS5, docs/field-ops/06-compile-and-review.md section 5.3.
 -- Where each generated item of a compiled field-ops scenario came from, and the coverage ledger that
 -- proves every blueprint fact was either placed or listed as a note (D1).
@@ -562,19 +562,19 @@ ALTER TABLE public.scenario_coverage_ledger ENABLE ROW LEVEL SECURITY;
 COMMIT;
 ```
 
-### 5.4 Migration 236: manifests, review decisions, publish events and the functions
+### 5.4 Migration 237: manifests, review decisions, publish events and the functions
 
 **Added 3 Nov 2026.** The persist function also writes the three country columns of each doctrine snapshot row and the physics snapshot's `spread`, which the payload builder fills (section 6.13). The fire-spread pins need no SQL change: they are hazard rows like any other, inserted by the same statement as their parents. The manifest's `warnings` and `counts` carry the spread warnings and `fire_spread_pins` in their existing JSON columns.
 
 ```sql
--- migrations/236_fieldops_compile_publish.sql
+-- migrations/237_fieldops_compile_publish.sql
 -- WS5, docs/field-ops/06-compile-and-review.md sections 5.4 and 6.
 -- Compile manifests, review decisions, publish events, and the server-only functions that persist a
 -- compiled draft atomically, discard a replaced, reopened or orphaned draft scenario, apply a Review
 -- edit and publish. Stage outputs are WS0's checkpoints (fieldops_job_stages.output), not stored here.
--- Requires WS0's migration 218 (scenarios.publish_state) and 219 (jobs and the draft status), and
--- WS4's 232 (rts_scene_configs.draft_id, read by the discard guard).
--- Added 3 Nov 2026: requires 234 with its country and spread columns, which the persist function writes.
+-- Requires WS0's migration 219 (scenarios.publish_state) and 220 (jobs and the draft status), and
+-- WS4's 233 (rts_scene_configs.draft_id, read by the discard guard).
+-- Added 3 Nov 2026: requires 235 with its country and spread columns, which the persist function writes.
 -- Additive and idempotent (CREATE TABLE IF NOT EXISTS, CREATE OR REPLACE FUNCTION). RLS on, no policy.
 -- The functions run with the caller's rights and are executable by service_role only.
 -- Rollback (after ENABLE_FIELDOPS_V2 is off):
@@ -765,7 +765,7 @@ BEGIN
       USING COALESCE(p_payload -> 'teams', '[]'::jsonb);
   END IF;
 
-  -- scenario_teams.operation is WS7's migration 242 (master 10.8 item 14); write it only when it exists.
+  -- scenario_teams.operation is WS7's migration 243 (master 10.8 item 14); write it only when it exists.
   SELECT EXISTS (
     SELECT 1
       FROM information_schema.columns c
@@ -1833,7 +1833,7 @@ export interface CompileInputs {
   doctrines: DoctrineSnapshot[];      // buildDoctrineSnapshot of each resolveDoctrineForCompile result; [] in legacy_research mode
   effects: CompileEffects;
   replaces_scenario_id: string | null;
-  /** Added 3 Nov 2026. WS9's library as loadSpreadLibrary() returned it, frozen for the job (Choice 17); null while 249 is missing. */
+  /** Added 3 Nov 2026. WS9's library as loadSpreadLibrary() returned it, frozen for the job (Choice 17); null while 250 is missing. */
   spread_library: SpreadLibrary | null;
   spread_library_hash: string | null; // SHA-256 hex of the library's canonical JSON; null with it
   /** Added 3 Nov 2026. The trainer's details of section 6.17, read once from WS4's scene and WS2's setup. */
@@ -2097,7 +2097,7 @@ No new key is added to `insider_knowledge`, and nothing derived from a `DeviceSp
 | WS8 editor (published scenarios) | both snapshots and provenance | the same loaders and `loadProvenance(scenarioId)`; WS8 writes back through the recorders of section 6.15 |
 | Session runtime engines and the trainer screens of section 3.4 | `content.projection` per team | WS1's runtime accessor `getRuntimeDoctrineContext`, built on `loadDoctrineSnapshots`; for a scenario without snapshot rows (every legacy scenario) it falls back to `insider_knowledge`, so legacy reads are unchanged |
 | Team scoring and player team context | `scenario_teams.charter`, `expected_actions`, `scoring_rubric` | unchanged readers (`server/services/teamScoreService.ts:229-246`, `server/services/teamCharterService.ts:722-815`) |
-| WS6 effect index (`recordEffectIndex(scenarioId, physicsSnapshotId)`) | the physics snapshot row's `mode` and `payload` | called once from `onCommitted`; WS6 writes only its own `fieldops_effect_index` (migration 240), which cascades with the scenario (master 10.8 items 16 and 21) |
+| WS6 effect index (`recordEffectIndex(scenarioId, physicsSnapshotId)`) | the physics snapshot row's `mode` and `payload` | called once from `onCommitted`; WS6 writes only its own `fieldops_effect_index` (migration 241), which cascades with the scenario (master 10.8 items 16 and 21) |
 | **Added 3 Nov 2026.** WS9's live world, and WS8 | the physics snapshot without its device pool: `mode`, `payload` (`CompileEffects`), `reviewed` and `spread` | `loadPhysicsSnapshot(scenarioId)` in `server/services/fieldOps/compile/snapshotReaders.ts (new)`; null for a scenario without a row and for a missing table. WS9 builds the live world from WS5's snapshots (master 10.8 item 39) |
 
 **Added 3 Nov 2026. Delayed pins at session start (master 10.8 item 40).** Today `cloneScenarioPinsForSession` (`server/services/sessionPinCloningService.ts:89-197`) skips every delayed hazard and keeps the template's `parent_pin_id`, so no pre-generated child pin, and no fire-spread pin of section 6.16, ever reaches a session (journey finding 13.7). For a new-flow scenario (`sim_mode` `field_ops_v2`), the function also copies the delayed hazards and casualties. It builds a map from each template hazard id to its session copy, and rewrites every copied row's `parent_pin_id` through that map; a child whose parent was not copied keeps no parent. The deterioration service then finds the session's delayed children and reveals them as it was written to (`server/services/hazardDeteriorationService.ts:100-123`). A legacy scenario's copy is exactly today's.
@@ -2110,20 +2110,20 @@ The session's lists show any row whose `appears_at_minutes` has passed, whatever
 
 | Probe | Missing means |
 | --- | --- |
-| `scenarios.publish_state` (WS0's 218) and `fieldops_jobs` (219) | `assertReady` returns `SCHEMA_MISSING` ("This server is not ready to compile field-ops scenarios yet."); no credit moves. On WS0's start route a missing 218 or 219 already answers 503 `JOBS_UNAVAILABLE` before `assertReady` runs (`01-prerequisites.md` section 6.11, step 3), so there `SCHEMA_MISSING` is reached only for 234 to 236; the compile-state view still shows it for all five |
-| the four tables of 234 and 235 | the same |
-| the columns `scenario_doctrine_snapshots.country_match` and `scenario_physics_snapshots.spread` (234) | **Added 3 Nov 2026.** the same: the persist function writes them, so a copy of 234 made before 3 Nov is reported as missing until the file is applied again |
-| `fieldops_compile_manifests` and the function `fieldops_persist_compiled_scenario` (236) | the same; the Review and publish routes answer 503 `SCHEMA_NOT_READY` |
-| `scenario_teams.operation` (WS7's 242) and the charter columns (194) | not an error: the persist function skips the columns (section 5.4) |
-| WS9's spread library (migration 249) | **Added 3 Nov 2026.** not an error, and not probed by WS5: WS9's `loadSpreadLibrary()` answers null, and the compile runs without fire-spread pins and with an empty facts block (section 6.16) |
+| `scenarios.publish_state` (WS0's 219) and `fieldops_jobs` (220) | `assertReady` returns `SCHEMA_MISSING` ("This server is not ready to compile field-ops scenarios yet."); no credit moves. On WS0's start route a missing 219 or 220 already answers 503 `JOBS_UNAVAILABLE` before `assertReady` runs (`01-prerequisites.md` section 6.11, step 3), so there `SCHEMA_MISSING` is reached only for 235 to 237; the compile-state view still shows it for all five |
+| the four tables of 235 and 236 | the same |
+| the columns `scenario_doctrine_snapshots.country_match` and `scenario_physics_snapshots.spread` (235) | **Added 3 Nov 2026.** the same: the persist function writes them, so a copy of 235 made before 3 Nov is reported as missing until the file is applied again |
+| `fieldops_compile_manifests` and the function `fieldops_persist_compiled_scenario` (237) | the same; the Review and publish routes answer 503 `SCHEMA_NOT_READY` |
+| `scenario_teams.operation` (WS7's 243) and the charter columns (194) | not an error: the persist function skips the columns (section 5.4) |
+| WS9's spread library (migration 250) | **Added 3 Nov 2026.** not an error, and not probed by WS5: WS9's `loadSpreadLibrary()` answers null, and the compile runs without fire-spread pins and with an empty facts block (section 6.16) |
 
-`loadDevicePoolForScenario` treats a missing 234 table as "no snapshot" and returns the legacy column, so session start never depends on WS5's migrations. `loadDoctrineSnapshots` returns `[]` for a missing table, and the recorders answer `{ recorded: false, reason: 'not_migrated' }` (section 6.15). An rpc that answers "function not found" marks its detector missing.
+`loadDevicePoolForScenario` treats a missing 235 table as "no snapshot" and returns the legacy column, so session start never depends on WS5's migrations. `loadDoctrineSnapshots` returns `[]` for a missing table, and the recorders answer `{ recorded: false, reason: 'not_migrated' }` (section 6.15). An rpc that answers "function not found" marks its detector missing.
 
 ## 6. Server
 
 ### 6.1 Module layout
 
-All new server code sits in `server/services/fieldOps/compile/ (new)` and one router, `server/routes/fieldOpsCompile.ts (new)`, mounted at `/api/warroom/field-ops` in `server/index.ts` next to the other routers (`server/index.ts:249-291`).
+All new server code sits in `server/services/fieldOps/compile/ (new)` and one router, `server/routes/fieldOpsCompile.ts (new)`, mounted at `/api/warroom/field-ops` in `server/index.ts` next to the other routers (`server/index.ts:263-305`).
 
 | File | Role | Pure? |
 | --- | --- | --- |
@@ -2192,7 +2192,7 @@ registerCompileVariant(v2CompileVariant);
 
 | Check | Detail code | Message for a person | Step |
 | --- | --- | --- | --- |
-| Migrations 218, 219 and 234 to 236 are applied (section 5.9) | `SCHEMA_MISSING` | "This server is not ready to compile field-ops scenarios yet." | compile |
+| Migrations 219, 220 and 235 to 237 are applied (section 5.9) | `SCHEMA_MISSING` | "This server is not ready to compile field-ops scenarios yet." | compile |
 | WS2's `buildCompileInput(draft.id, user)` answers `ok` and its `readiness.canCompile` is true | `SETUP_MISSING`, `SETUP_INVALID` (from WS2's failure codes), then WS2's `readiness.compileBlockers` as they are | WS2's own messages, one detail each; "Setup is not ready to compile." as the result's message | setup |
 | The incident type is one of the four live types (D11) | `INCIDENT_TYPE_NOT_BUILDABLE` | "This incident type is not built yet, so it cannot be compiled." | setup |
 | `setup_v2.site` is set | `SITE_MISSING` | "Choose the site on the setup screen." | setup |
@@ -2249,13 +2249,13 @@ The modes are decided here and again, identically, in the inputs stage, which st
 5. Physics mode `calculated`: WS6's `getEffectsForCompile({ setup, scene, role })`, checked with `compileEffectsSchema`; a failure is `COMPILE_EFFECTS_INVALID`. It makes no model call, so the stage's budget for it is zero (WS6's request X6.7). Mode `legacy_bands`: WS6 is not called; WS5 builds `CompileEffects` itself from the planted devices with `legacyBandsFromRadius(scene radius)`, `source: 'manual_override'`, `casualty_plan: null`, and `confinement` from `extras.mainDeviceSetting` (`indoor` for either interior setting, else `outdoor`).
 6. The inputs hash is SHA-256 over the canonical JSON of the setup, the facts, the scene fingerprint (WS3's `siteFingerprint` plus WS4's layout revision), the doctrine ids and versions, the effects and the modes.
 7. **Added 3 Nov 2026.** Doctrine country: the cards of step 4 carry `country`, and WS1's resolution names each doctrine's country (master 10.8 item 37). The payload builder later copies WS1's `DoctrineSnapshot` fields `card_country`, `country` and `country_match` into the row's columns (section 6.18); no other doctrine step changes.
-8. **Added 3 Nov 2026.** WS9's `loadSpreadLibrary()` is called once (Choice 17). Its result, or null while migration 249 is missing, is kept as `spread_library` with `spread_library_hash`, the SHA-256 hex of its canonical JSON. An error thrown by the call is treated as null and logged as `fieldops_compile_spread_skipped` with reason `library_error`. The call makes no model call.
+8. **Added 3 Nov 2026.** WS9's `loadSpreadLibrary()` is called once (Choice 17). Its result, or null while migration 250 is missing, is kept as `spread_library` with `spread_library_hash`, the SHA-256 hex of its canonical JSON. An error thrown by the call is treated as null and logged as `fieldops_compile_spread_skipped` with reason `library_error`. The call makes no model call.
 9. **Added 3 Nov 2026.** `readSceneDetails(scene, setup)` (section 6.17) reads the walls, stairwells, exits, involved buildings and hazards of WS4's `SceneConfigV2`, and the time of day and weather label of the setup, into `details`. It reads no device field.
 10. **Added 3 Nov 2026.** The inputs hash of step 6 also covers `spread_library_hash` and `details`, so a `retry_of` job reuses a stage's output only when the stored physics and the trainer's details are unchanged.
 
 #### 6.4.2 dossier (D18 under D5 and D13)
 
-1. Facilities: WS3's `listFacilitiesNear(centre, { radiusM: 5000, kinds: ['hospital', 'police', 'fire_station'], maxPerKind: 5 })` over `osm_sg_facilities` (WS3's migration 231, `04-site-picker.md` section 6.9), with `centre` being `setup_v2.site.centre`; hospitals are widened to 10,000 m, WS3's cap, when fewer than two lie within 5 km, and `clinic` is not counted as a hospital. An `ok` answer carries WS3's `data_version`, which every dossier provenance row records as `evidence.data_version` beside the manifest's `site_data_version`. When it answers `{ status: 'outside_coverage' }` the dossier has no facilities (step 2). When it answers `{ status: 'unavailable' }` (231 not applied), a name-match fallback reads `osm_sg_buildings` inside the 5 km bounding box where `building_type` is `hospital` or `fire_station`, or `name` matches `hospital`, `polyclinic`, `police`, `neighbourhood police` or `fire station` (case-insensitive), keeps the nearest five hospitals, three police and three fire stations, and records `source: 'name_match'`. No Overpass or Nominatim call is made (D5); `fetchOsmVicinityByCoordinates`, `expandHospitalSearch` and the research-hospital geocoding of section 3.2 are never called.
+1. Facilities: WS3's `listFacilitiesNear(centre, { radiusM: 5000, kinds: ['hospital', 'police', 'fire_station'], maxPerKind: 5 })` over `osm_sg_facilities` (WS3's migration 232, `04-site-picker.md` section 6.9), with `centre` being `setup_v2.site.centre`; hospitals are widened to 10,000 m, WS3's cap, when fewer than two lie within 5 km, and `clinic` is not counted as a hospital. An `ok` answer carries WS3's `data_version`, which every dossier provenance row records as `evidence.data_version` beside the manifest's `site_data_version`. When it answers `{ status: 'outside_coverage' }` the dossier has no facilities (step 2). When it answers `{ status: 'unavailable' }` (232 not applied), a name-match fallback reads `osm_sg_buildings` inside the 5 km bounding box where `building_type` is `hospital` or `fire_station`, or `name` matches `hospital`, `polyclinic`, `police`, `neighbourhood police` or `fire station` (case-insensitive), keeps the nearest five hospitals, three police and three fire stations, and records `source: 'name_match'`. No Overpass or Nominatim call is made (D5); `fetchOsmVicinityByCoordinates`, `expandHospitalSearch` and the research-hospital geocoding of section 3.2 are never called.
 2. Outside the saved coverage the facility list is empty and the dossier carries `coverage: 'none'` with the sentence "No saved map data covers this area." (D13); the stage does not fail.
 3. Routes: the saved roads within 3 km through `fetchLocalSingaporeRouteGeometries` (`server/services/osmVicinityService.ts:652-722`), exported for this purpose; `fetchRouteGeometries` is not used because it falls back to Overpass (section 3.5).
 4. Nearby hazards: the same call with WS3's kinds `fuel_station` and `power_substation` within 1,000 m gives the saved nearby hazards; they are kept as data in the dossier and are never fetched live.
@@ -2488,7 +2488,7 @@ A consumer takes at most 12 facts; the rest are unplaced with `over_cap`. Sugges
 
 ### 6.8 Routes
 
-`server/routes/fieldOpsCompile.ts (new)` exports `createFieldOpsCompileRouter(deps)`, so tests can pass fake loaders and a fake `rpc`; `server/index.ts` mounts `createFieldOpsCompileRouter(defaultDeps)` at `/api/warroom/field-ops`. Every route uses `requireAuth`, then WS0's `requireFieldopsV2`, which answers the bare 404 `{ error: 'Not found' }` while `env.enableFieldopsV2` is off, then WS0's `requireFieldopsTrainer`, which answers anyone but a trainer or an admin with 403 `FORBIDDEN` and "Only trainers can use the War Room", the legacy routes' text (`01-prerequisites.md` section 6.4). The gates are set per route, not with `router.use`, because several routers share the `/api/warroom/field-ops` prefix. Each route then validates with `validate()` and the schemas of section 5.6, and answers 404 `DRAFT_NOT_FOUND` (or `SCENARIO_NOT_FOUND`) when the caller neither owns the draft or scenario nor is an admin, so a draft's existence is never revealed (master 10.8 item 4). Every draft read names its columns (`id, created_by, status, scenario_id, rts_scene_id, setup_v2_rev`) and never selects `*`, because full field-ops draft rows reach 6.15 MB (live check, 25 Oct 2026). Edit routes call WS0's `assertDraftEditable`, which refuses with 409 `DRAFT_COMPILING` while a re-compile runs. Each edit and publish answers with the fresh `ReviewView`, so the client never keeps a stale copy (findings 8.8 and 8.9). Edits are limited to 60 a minute and publishes to 10 a minute per user, keyed on `req.user.id` with the existing `express-rate-limit` pattern (`server/index.ts:197`).
+`server/routes/fieldOpsCompile.ts (new)` exports `createFieldOpsCompileRouter(deps)`, so tests can pass fake loaders and a fake `rpc`; `server/index.ts` mounts `createFieldOpsCompileRouter(defaultDeps)` at `/api/warroom/field-ops`. Every route uses `requireAuth`, then WS0's `requireFieldopsV2`, which answers the bare 404 `{ error: 'Not found' }` while `env.enableFieldopsV2` is off, then WS0's `requireFieldopsTrainer`, which answers anyone but a trainer or an admin with 403 `FORBIDDEN` and "Only trainers can use the War Room", the legacy routes' text (`01-prerequisites.md` section 6.4). The gates are set per route, not with `router.use`, because several routers share the `/api/warroom/field-ops` prefix. Each route then validates with `validate()` and the schemas of section 5.6, and answers 404 `DRAFT_NOT_FOUND` (or `SCENARIO_NOT_FOUND`) when the caller neither owns the draft or scenario nor is an admin, so a draft's existence is never revealed (master 10.8 item 4). Every draft read names its columns (`id, created_by, status, scenario_id, rts_scene_id, setup_v2_rev`) and never selects `*`, because full field-ops draft rows reach 6.15 MB (live check, 25 Oct 2026). Edit routes call WS0's `assertDraftEditable`, which refuses with 409 `DRAFT_COMPILING` while a re-compile runs. Each edit and publish answers with the fresh `ReviewView`, so the client never keeps a stale copy (findings 8.8 and 8.9). Edits are limited to 60 a minute and publishes to 10 a minute per user, keyed on `req.user.id` with the existing `express-rate-limit` pattern (`server/index.ts:211`).
 
 | Method | Path | Body | Success | Errors |
 | --- | --- | --- | --- | --- |
@@ -2703,7 +2703,7 @@ export declare function buildCasualtyRows(input: {
 
 ### 6.14 Legacy unchanged: how the router chooses
 
-- The legacy page (`/warroom`, `frontend/src/pages/WarRoom.tsx`) keeps calling `POST /api/warroom/wizard/drafts/:id/persist` through `api.warroom.wizardDraftPersist` (`frontend/src/lib/api.ts:2320-2328`). That route is WS0's: it runs the legacy variant on WS0's engine in `immediate` mode whenever migrations 218 and 219 are applied and the engine is on, whatever the flag, and today's inline path otherwise (master 10.8 item 20). It never reaches WS5's code.
+- The legacy page (`/warroom`, `frontend/src/pages/WarRoom.tsx`) keeps calling `POST /api/warroom/wizard/drafts/:id/persist` through `api.warroom.wizardDraftPersist` (`frontend/src/lib/api.ts:2320-2328`). That route is WS0's: it runs the legacy variant on WS0's engine in `immediate` mode whenever migrations 219 and 220 are applied and the engine is on, whatever the flag, and today's inline path otherwise (master 10.8 item 20). It never reaches WS5's code.
 - The new page (`/warroom/field-ops`, behind `VITE_ENABLE_FIELDOPS_V2`) is the only caller of `POST /api/warroom/field-ops/drafts/:id/compile` with `variant: 'v2'`. WS0's route offers only non-legacy variants and refuses `v2` with 404 while `env.enableFieldopsV2` is off.
 - Inside v2, the doctrine, physics and blueprint modes are fixed at start from `env.enableFieldopsDoctrines`, WS6's `decidePhysicsModeForCompile(role)` and `env.enableFieldopsBlueprint` (Choice 8).
 - A draft made by the new page has no `geo_result`, `phase1_preview` or `doctrines`, so the legacy route refuses it with its existing 400 (`server/routes/warroom.ts:1127-1130`); the legacy wizard does not list such drafts (master 10.8 item 6).
@@ -2894,7 +2894,7 @@ The record is built as the pins stage builds it, except that `facts_chars` is co
 | --- | --- | --- | --- | --- |
 | `built` | as generated, 0 to 12 | none | none | `fieldops_compile_spread_built` |
 | `no_spread`: no studs, no hazards or an empty timeline | none | none | none | `fieldops_compile_spread_skipped`, `no_spread` |
-| `library_missing`: migration 249 missing, or the load failed | none | `spread_library_missing` | `spread_library_missing:scenario` | `fieldops_compile_spread_skipped`, `library_missing` or `library_error` |
+| `library_missing`: migration 250 missing, or the load failed | none | `spread_library_missing` | `spread_library_missing:scenario` | `fieldops_compile_spread_skipped`, `library_missing` or `library_error` |
 | `timeout` | none | `spread_timeline_timeout` | `spread_not_simulated:scenario` | `fieldops_compile_spread_skipped`, `timeout` |
 | `failed` | none | `spread_timeline_failed` | `spread_not_simulated:scenario` | `fieldops_compile_spread_skipped`, `failed` |
 
@@ -3490,7 +3490,7 @@ There is one line per fire-spread pin, in minute order, and '' when there are no
 - Every route in section 6.8 requires a signed-in trainer or admin; anyone else gets 403 `FORBIDDEN` from WS0's `requireFieldopsTrainer`. Ownership is checked on the server from `warroom_wizard_drafts.created_by` or `scenarios.created_by`; a caller who is neither the owner nor an admin gets 404, so the existence of another trainer's draft is never revealed (master 10.8 item 4). The client is never trusted for roles (master 10.3).
 - The scene is used only when its `created_by` is the draft's owner (`SCENE_NOT_OWNED`, finding 6.5).
 - Edits while a re-compile runs are refused with WS0's 409 `DRAFT_COMPILING`; edits and publish after publishing are refused with 409 `NOT_A_DRAFT` inside the SQL function, under a row lock, so a race between an edit and a publish cannot slip through.
-- A draft scenario is `is_active = false` (and WS0's check keeps a draft inactive), so the read policy "Anyone authenticated can view active scenarios" (`migrations/002_rls_policies.sql:44-46`) does not return it, and WS0 answers 404 to other trainers on `GET /api/scenarios/:id` and refuses to create a session from it (master 10.8 item 4; `01-prerequisites.md` P0.6 and P0.8).
+- A draft scenario is `is_active = false` (and WS0's check keeps a draft inactive), so no reader that filters on `is_active` returns it (**updated 8 Nov 2026**: this named the read policy "Anyone authenticated can view active scenarios" (`migrations/002_rls_policies.sql:44-46`), which migration 218 replaced with one for the creator and admins), and WS0 answers 404 to other trainers on `GET /api/scenarios/:id` and refuses to create a session from it (master 10.8 item 4; `01-prerequisites.md` P0.6 and P0.8).
 
 ### 9.2 Database access
 
@@ -3507,9 +3507,9 @@ There is one line per fire-spread pin, in minute order, and '' when there are no
 | The bomb-squad device pool (which device is live, where) | `scenario_physics_snapshots.device_pool`; `scenarios.sweep_device_pool` is `[]` | Item 16 and the common brief: no answer key in `scenarios` columns |
 | Doctrine snapshots and their reader projection | `scenario_doctrine_snapshots` | Item 16 (Choice 15) |
 | The document's blueprint | never on `scenarios` (WS2 keeps it with the document, `03-setup-screen.md` P2) | Choice 6 |
-| Provenance, coverage, manifests, decisions | 235 and 236 tables | Not for participants |
+| Provenance, coverage, manifests, decisions | 236 and 237 tables | Not for participants |
 
-What stays exposed is what legacy compile already exposes and v2 still has to write for today's readers: `insider_knowledge` keys such as `team_intelligence_dossiers`, `custom_facts`, `layout_ground_truth` and `adversary_profiles` on a published scenario's row (finding 8.1, the privacy programme's to close), the scene's planted positions through `rts_scene_configs`, which the public anon key alone reads with no sign-in, because its select policy is `USING (true)` for every role and `anon` holds `SELECT` (checked on the live database on 25 Oct 2026; master risk 14, an owner decision), and hazard and casualty rows to anyone the legacy routes admit. v2 adds no new key to that row (section 5.7).
+What stays exposed is what legacy compile already exposes and v2 still has to write for today's readers: `insider_knowledge` keys such as `team_intelligence_dossiers`, `custom_facts`, `layout_ground_truth` and `adversary_profiles` on a published scenario's row (finding 8.1, the privacy programme's to close), the scene's planted positions through `rts_scene_configs`, which the public anon key alone read with no sign-in, because its select policy was `USING (true)` for every role and `anon` holds `SELECT` (checked on the live database on 25 Oct 2026; master risk 14, an owner decision; **updated 8 Nov 2026**: migration 218 has since limited it to the creator and admins, and any signed-in user still reads the whole scene through `GET /api/scenarios/:id/scene-config` until WS0's projection), and hazard and casualty rows to anyone the legacy routes admit. v2 adds no new key to that row (section 5.7).
 
 ### 9.4 Device safety
 
@@ -3577,12 +3577,12 @@ const clampInt = (raw: string | undefined, fallback: number, min: number, max: n
 
 ### 10.3 Rollout
 
-1. **Migrations.** The owner applies 218 and 219 (WS0) and WS4's 232, then 234, 235 and 236, on the shared project. Each is additive; nothing reads the new tables while the flag is off (master section 9).
+1. **Migrations.** The owner applies 219 and 220 (WS0) and WS4's 233, then 235, 236 and 237, on the shared project. Each is additive; nothing reads the new tables while the flag is off (master section 9).
 2. **Development.** All flags on. The fixture of section 11.3 compiles, reviews and publishes; AC5.1 to AC5.32 pass.
 3. **Staging checklist** (one session run end to end): compile a document-driven draft with two devices; kill the server during the injects stage and watch it resume; force a call cap of 40 and watch it fail and refund; re-compile and check the old draft is gone and the scene survives; edit, resolve a note, update a doctrine, publish; start a session and check the device pool reaches the session; run one legacy wizard compile and compare its response and row counts with a run from before the change.
 4. **Gate before production.** WS1's runtime accessor (Choice 15) is live, so library-mode scenarios are judged against their doctrines; until then, compiled scenarios would fall back to the universal rules (`server/services/decisionEvaluationOrchestrator.ts:871-874`).
 5. **Production, owner's account,** then everyone, by setting `ENABLE_FIELDOPS_V2` and building with `VITE_ENABLE_FIELDOPS_V2` (master 12).
-6. **Added 3 Nov 2026.** **Stored physics.** WS9's migration 249 and its reviewed spread library are applied on the shared project before v2 compiles in production, so production drafts get fire spread and stored facts. Without them compile still runs, with the warning and Review item of section 6.16. The staging run of step 3 adds: a draft with a combustible hazard behind a drywall partition gets fire-spread hazards that appear while the hazard is uncontained; and a compile on a development project without 249 finishes and shows the item.
+6. **Added 3 Nov 2026.** **Stored physics.** WS9's migration 250 and its reviewed spread library are applied on the shared project before v2 compiles in production, so production drafts get fire spread and stored facts. Without them compile still runs, with the warning and Review item of section 6.16. The staging run of step 3 adds: a draft with a combustible hazard behind a drywall partition gets fire-spread hazards that appear while the hazard is uncontained; and a compile on a development project without 250 finishes and shows the item.
 7. **Added 3 Nov 2026.** **Doctrines in production.** `ENABLE_FIELDOPS_DOCTRINES` is on in production before trainers compile v2 there, so production compiles run in library mode and never research doctrines (D29; section 6.19).
 
 **Rollback.** Turn `ENABLE_FIELDOPS_V2` off. Compiled drafts and published v2 scenarios stay valid for the legacy readers: published scenarios are ordinary rows; session start reads the device pool through `loadDevicePoolForScenario`, which stays in place. Reverting the code of commit 3 (section 13) would leave published v2 scenarios without a device pool at session start, so that revert must keep `snapshotReaders.ts` and its call.
@@ -3720,18 +3720,18 @@ Six agencies with doctrines: "SPF - Cordon" (Police and Security v3, verified), 
 10. **Doctrine update (AC5.12).** Publish a new version of the LTA doctrine in the library; Review shows "v2 available"; Update changes the snapshot and the team's charter columns.
 11. **Publish (AC5.22, AC5.14).** Publish; the scenario appears in the library; start a session and check that `sessions.sweep_device_pool` holds the snapshot's pool and the report injects fire.
 12. **Reopen.** On another compiled draft, reopen; Setup is editable, the scenario is gone and the scene survives.
-13. **Added 3 Nov 2026.** **Fire spread (AC5.35).** With 249 applied and the library seeded, compile a draft with a combustible hazard behind a drywall partition. Review shows "{n} fire-spread hazards"; in a session, leave the hazard uncontained and watch a delayed fire hazard appear at its minute.
-14. **Added 3 Nov 2026.** **No library (AC5.34).** On a development project without 249, compile. It finishes, the manifest's warnings hold `spread_library_missing`, and Review shows the item without blocking Publish.
+13. **Added 3 Nov 2026.** **Fire spread (AC5.35).** With 250 applied and the library seeded, compile a draft with a combustible hazard behind a drywall partition. Review shows "{n} fire-spread hazards"; in a session, leave the hazard uncontained and watch a delayed fire hazard appear at its minute.
+14. **Added 3 Nov 2026.** **No library (AC5.34).** On a development project without 250, compile. It finishes, the manifest's warnings hold `spread_library_missing`, and Review shows the item without blocking Publish.
 15. **Added 3 Nov 2026.** **Doctrine country (AC5.38).** Give a Singapore agency a Malaysian doctrine. Review shows "A Malaysia doctrine for a Singapore agency" and one more item to review.
 
 ## 12. Tasks
 
-Prerequisites: WS0's engine, 218 and 219, `server/lib/schemaFeatures.ts (new)`, `registerCompileVariant`, the trainer guard and the job client; WS1's snapshot functions (`resolveDoctrineForCompile`, `buildDoctrineSnapshot`, `applySnapshotToPayload`, `doctrineResearchContext`, `stripDoctrineKeys`, `parseDoctrineSnapshot`, `recordDoctrineUsage`, `getDoctrineHeads`) and its edits C2 and C4 to `server/services/warroomService.ts` and `server/services/warroomAiService.ts`, which merge first; WS2's `buildCompileInput`, `getReadyBlueprint` and step registry; WS3's `listFacilitiesNear`; WS4's hand-off functions (`loadSceneForCompile`, `getLayoutReadiness`, `buildTrainerScene`, `resolveSceneForCommit`, `detachAuthoringScene`) and migration 232. Stubs with the final names are enough to start tasks T5.1 to T5.9; WS5 keeps its stand-in for `buildCompileInput` until WS2's commit C4 lands (WS2's request R14).
+Prerequisites: WS0's engine, 219 and 220, `server/lib/schemaFeatures.ts (new)`, `registerCompileVariant`, the trainer guard and the job client; WS1's snapshot functions (`resolveDoctrineForCompile`, `buildDoctrineSnapshot`, `applySnapshotToPayload`, `doctrineResearchContext`, `stripDoctrineKeys`, `parseDoctrineSnapshot`, `recordDoctrineUsage`, `getDoctrineHeads`) and its edits C2 and C4 to `server/services/warroomService.ts` and `server/services/warroomAiService.ts`, which merge first; WS2's `buildCompileInput`, `getReadyBlueprint` and step registry; WS3's `listFacilitiesNear`; WS4's hand-off functions (`loadSceneForCompile`, `getLayoutReadiness`, `buildTrainerScene`, `resolveSceneForCommit`, `detachAuthoringScene`) and migration 233. Stubs with the final names are enough to start tasks T5.1 to T5.9; WS5 keeps its stand-in for `buildCompileInput` until WS2's commit C4 lands (WS2's request R14).
 
 1. **T5.1 Migrations.**
    - Goal: the tables and functions of sections 5.2 to 5.4.
-   - Files: `migrations/234_fieldops_compile_snapshots.sql (new)`, `migrations/235_fieldops_provenance_coverage.sql (new)`, `migrations/236_fieldops_compile_publish.sql (new)`.
-   - Steps: copy the SQL; apply it twice on a scratch database, after 218 and 219.
+   - Files: `migrations/235_fieldops_compile_snapshots.sql (new)`, `migrations/236_fieldops_provenance_coverage.sql (new)`, `migrations/237_fieldops_compile_publish.sql (new)`.
+   - Steps: copy the SQL; apply it twice on a scratch database, after 219 and 220.
    - Done when: the three files apply twice without error; manual steps 4 to 6 of section 11.4 pass on development.
    - Tests: manual steps 4 to 6. Commit 1.
 2. **T5.2 Shared types, schemas and settings.**
@@ -3833,9 +3833,9 @@ These tasks need WS9's `loadSpreadLibrary`, `deteriorationFactsFor` and `buildSp
     - Tests: `sceneDetails.test.ts`, added to `package.json`, and the "inspection points" case of `devicePool.test.ts`. Commit 3.
 19. **T5.19 Doctrine country.**
     - Goal: D29 and master 10.8 item 37. The country of each doctrine is stored with its snapshot.
-    - Files: the SQL of T5.1 (the columns of 234 and the inserts of 236), `shared/fieldOps/compile.ts (new)`, `server/lib/fieldOps/compileSchemas.ts (new)`, `server/services/fieldOps/compile/persistPayload.ts (new)`, `server/services/fieldOps/compile/snapshotRecorders.ts (new)`.
+    - Files: the SQL of T5.1 (the columns of 235 and the inserts of 237), `shared/fieldOps/compile.ts (new)`, `server/lib/fieldOps/compileSchemas.ts (new)`, `server/services/fieldOps/compile/persistPayload.ts (new)`, `server/services/fieldOps/compile/snapshotRecorders.ts (new)`.
     - Steps: sections 5.2, 5.4 to 5.6, 6.13 and 6.18.
-    - Done when: the payload half of AC5.38 passes, and the migrations apply twice on a scratch database, also over a copy of 234 made without the columns.
+    - Done when: the payload half of AC5.38 passes, and the migrations apply twice on a scratch database, also over a copy of 235 made without the columns.
     - Tests: the country cases of `compileShared.test.ts`, `compileSchemas.test.ts`, `persistPayload.test.ts` and `snapshotReaders.test.ts`. Commits 1, 2 and 4.
 20. **T5.20 Review for the 3 Nov changes.**
     - Goal: Review shows the doctrine countries, the fire spread and the new review items.
@@ -3856,16 +3856,16 @@ Each commit adds its own test files to the `test` script of `package.json` and l
 
 | Commit | Contents | Tasks | Backtracking |
 | --- | --- | --- | --- |
-| 1. "fieldops compile: migrations 234 to 236, shared types, schemas and settings" | SQL files, `shared/fieldOps/compile.ts` (new), `compileSchemas.ts`, the two settings | T5.1, T5.2 | Revert the commit. No code reads the tables yet. If the migrations were applied, leave them (unread and empty) or run their rollback comments after `select count(*) from public.fieldops_compile_manifests` returns 0. |
+| 1. "fieldops compile: migrations 235 to 237, shared types, schemas and settings" | SQL files, `shared/fieldOps/compile.ts` (new), `compileSchemas.ts`, the two settings | T5.1, T5.2 | Revert the commit. No code reads the tables yet. If the migrations were applied, leave them (unread and empty) or run their rollback comments after `select count(*) from public.fieldops_compile_manifests` returns 0. |
 | 2. "fieldops compile: call budget, feature detection and snapshot readers" | `callScope.ts`, the `chat()` hook, `schemaReady.ts`, `snapshotReaders.ts`, `snapshotRecorders.ts`, the session-start reader | T5.3, T5.4 | Revert. Without a scope `chat()` is unchanged, and the session-start reader falls back to the column, so reverting only restores today's code. Check one legacy session start after the revert. Keep this commit if later commits stay, because published v2 scenarios need `loadDevicePoolForScenario` (section 10.3). |
 | 3. "fieldops compile: generator extensions, honour layer, dossier and device wording" | the additive changes to `warroomAiService.ts`, `warroomService.ts` and `osmVicinityService.ts`; `honour.ts`, `blueprintFacts.ts`, `dossier.ts`, `dedupBatch.ts`, `pressureInjects.ts`, `devicePool.ts`, `casualtyBands.ts` | T5.5 to T5.8 | Revert. Every new input is optional, so legacy behaviour returns exactly. If the legacy parity check of T5.5 fails, revert only the hunk that moves `generateContextAwareCasualties`; it is self-contained. |
 | 4. "fieldops compile: v2 variant, stages, payload and persist" | `persistPayload.ts`, the stage modules, `v2Variant.ts`, `checkpoints.ts`, `persistStage.ts`, `reconcile.ts`, the fixtures | T5.9, T5.10 | Turn `ENABLE_FIELDOPS_V2` off: no new job starts. Then revert. Jobs in flight end failed and refunded by WS0's sweeper, which fails jobs whose variant is not registered (master 10.8 item 20). The reconciler discards what a failed job left; by hand, detach the trainer's scene first with WS4's predicate, `update public.rts_scene_configs set scenario_id = null where scenario_id = '<scenario id>' and draft_id is not null;`, then run `select public.fieldops_discard_draft_scenario('<scenario id>', '<admin id>', 'orphaned');`. |
 | 5. "fieldops review: view, edits, publish and routes" | `reviewSources.ts`, `reviewView.ts`, `reviewEdits.ts`, `publish.ts`, `fieldOpsCompile.ts`, the mount in `server/index.ts` | T5.11, T5.12 | Revert. Compiled drafts stay as drafts (inactive and invisible to players); trainers cannot review or publish them until the commit returns. Published scenarios are not affected. |
 | 6. "fieldops review: Compile and review step" | the client files and `fieldops-review.css`, the step registry line, the journey register | T5.13 to T5.15 | Revert. WS2's stand-in for `CompileReviewStep` returns through the one import line; the server is unchanged. |
 
-**Added 3 Nov 2026.** Tasks T5.16 to T5.20 land inside the commits above, so no commit ever builds the research call that D31 removes. Commit 1 also carries the columns of 234, the inserts of 236 and the new shared types and schemas (T5.19). Commit 2 also carries `loadPhysicsSnapshot` and the recorders' handling of the country and spread columns (T5.19, T5.20). Commit 3 also carries `spreadInputs.ts`, the pure half of `spreadTimeline.ts`, `sceneDetails.ts`, the `sceneDetails` input of `warroomAiService.ts` and the optional `snapshotMinutes` of `warroomService.ts` (T5.17, T5.18). Commit 4 also carries the library load, the pins stage's call, the deterioration stage's stored facts and the payload's country and spread fields (T5.16, T5.17, T5.19). Commits 5 and 6 also carry the Review view, items and copy (T5.20).
+**Added 3 Nov 2026.** Tasks T5.16 to T5.20 land inside the commits above, so no commit ever builds the research call that D31 removes. Commit 1 also carries the columns of 235, the inserts of 237 and the new shared types and schemas (T5.19). Commit 2 also carries `loadPhysicsSnapshot` and the recorders' handling of the country and spread columns (T5.19, T5.20). Commit 3 also carries `spreadInputs.ts`, the pure half of `spreadTimeline.ts`, `sceneDetails.ts`, the `sceneDetails` input of `warroomAiService.ts` and the optional `snapshotMinutes` of `warroomService.ts` (T5.17, T5.18). Commit 4 also carries the library load, the pins stage's call, the deterioration stage's stored facts and the payload's country and spread fields (T5.16, T5.17, T5.19). Commits 5 and 6 also carry the Review view, items and copy (T5.20).
 
-**Added 3 Nov 2026.** Backtracking for these parts: reverting commit 3's hunks in `warroomService.ts` and `warroomAiService.ts` restores today's code exactly, because both additions are optional and the legacy call passes neither. If WS9's functions misbehave on staging, the pins stage's fallback already keeps the compile running (Choice 18); to stop calling them altogether, make `runSpreadTimeline` answer `library_missing` at once, which keeps compiles running with the warning and the Review item. The new columns of 234 are nullable and no legacy code reads them, so they need no rollback of their own.
+**Added 3 Nov 2026.** Backtracking for these parts: reverting commit 3's hunks in `warroomService.ts` and `warroomAiService.ts` restores today's code exactly, because both additions are optional and the legacy call passes neither. If WS9's functions misbehave on staging, the pins stage's fallback already keeps the compile running (Choice 18); to stop calling them altogether, make `runSpreadTimeline` answer `library_missing` at once, which keeps compiles running with the warning and the Review item. The new columns of 235 are nullable and no legacy code reads them, so they need no rollback of their own.
 
 ## 14. File map
 
@@ -3873,9 +3873,9 @@ Each commit adds its own test files to the `test` script of `package.json` and l
 
 | File | Purpose |
 | --- | --- |
-| `migrations/234_fieldops_compile_snapshots.sql (new)` | Doctrine and physics snapshots |
-| `migrations/235_fieldops_provenance_coverage.sql (new)` | Provenance and the coverage ledger |
-| `migrations/236_fieldops_compile_publish.sql (new)` | Manifests, decisions, publish events, five functions |
+| `migrations/235_fieldops_compile_snapshots.sql (new)` | Doctrine and physics snapshots |
+| `migrations/236_fieldops_provenance_coverage.sql (new)` | Provenance and the coverage ledger |
+| `migrations/237_fieldops_compile_publish.sql (new)` | Manifests, decisions, publish events, five functions |
 | `shared/fieldOps/compile.ts (new)` | Shared types, constants and pure helpers |
 | `server/lib/fieldOps/compileSchemas.ts (new)` | zod schemas |
 | `server/services/ai/callScope.ts (new)` | The compile call budget |
@@ -4004,7 +4004,7 @@ These are created by their owners and listed in their file maps; this spec only 
 | 12 | A discard after the draft let go of its scenario fails, leaving an unpublishable draft scenario behind | No draft points at it, so nobody can publish or run it; the reconciler retries the detach and the delete every 5 minutes; `fieldops_draft_discard_failed` is watched |
 | 13 | **Added 3 Nov 2026.** The fire-spread simulation, even in WS9's worker thread, competes for the one Render instance's CPU while a compile runs (master risk 19) | One call per run of the pins stage, for at most 90 seconds; WS0's `FIELDOPS_JOBS_MAX_CONCURRENT` bounds how many compiles run at once; the record's `studs` and `ms` are logged; WS9 coarsens the grid (risk 19) |
 | 14 | **Added 3 Nov 2026.** WS9's final signatures or shapes differ from what this spec passes | Two modules, `spreadInputs.ts` and `spreadTimeline.ts`, are the only code that knows them, and a type error at the call shows a change at once; section 15.4 asks WS9 to confirm |
-| 15 | **Added 3 Nov 2026.** An environment without migration 249, or with an empty library, compiles without fire spread and with an empty facts block, and nobody notices | The manifest warning, the Review item, the log event `fieldops_compile_spread_skipped`, and step 6 of section 10.3 before production |
+| 15 | **Added 3 Nov 2026.** An environment without migration 250, or with an empty library, compiles without fire spread and with an empty facts block, and nobody notices | The manifest warning, the Review item, the log event `fieldops_compile_spread_skipped`, and step 6 of section 10.3 before production |
 | 16 | **Added 3 Nov 2026.** Once WS9's live world ships, the compiled fire-spread pins and the live fire disagree | Compile writes the scripted escalation that a session falls back to; WS9 decides which a live session shows (master 10.8 item 39, risk 19) |
 | 17 | **Added 3 Nov 2026.** Hazards outside the primary building's grid, for example in an involved building more than 150 m away, get no compile-time spread | Counted in `hazards_outside_grid` and in the stage summary; WS9's live world covers involved buildings; question 11 |
 
@@ -4033,7 +4033,7 @@ Every request other specs made of WS5, the names they attribute to WS5, and the 
 | WS0 (01) | Key the last stage `persist`, return `{ scenario_id, scene_id }` in its summary, and call `ctx.reserveScenarioId(id)` as soon as the persist function returns the id | Modified: the id is generated in TypeScript (Choice 2), so the stage records it with `ctx.reserveScenarioId(id)` before the rpc, which leaves no moment when a written scenario is unknown to WS0; the key and the summary are as asked | Section 6.4.12; AC5.3 |
 | WS0 (01) | Drop the dependency on `fieldops_compile_draft_written` for the refund | Accepted (master 10.8 item 20): the marker is gone; WS0 refunds from `credit_state` and deletes the uncommitted draft scenario; the reconciler only marks the manifest | Sections 2.1 (D27), 6.5 and 6.6 |
 | WS0 (01) | Do not define `POST /api/warroom/field-ops/drafts/:id/compile` in your router | Accepted (master 10.8 item 20) | Section 6.8; T5.12 |
-| WS0 (01) | Section 4.2 item 9: the legacy `/persist` runs on WS0's engine whenever 218 and 219 are applied and the engine is on, whatever the flag | Accepted (master 10.8 item 20) | Goal 8; sections 4.2 item 9 and 6.14 |
+| WS0 (01) | Section 4.2 item 9: the legacy `/persist` runs on WS0's engine whenever 219 and 220 are applied and the engine is on, whatever the flag | Accepted (master 10.8 item 20) | Goal 8; sections 4.2 item 9 and 6.14 |
 | WS1 (02) | Call `resolveDoctrineForCompile({ draftId, trainerId, agencies, incidentType })` once per check and map `agency_no_doctrine` and `agency_doctrine_retired` to `DOCTRINE_MISSING` and `DOCTRINE_RETIRED`; then `buildDoctrineSnapshot`, `applySnapshotToPayload` per team, `stripDoctrineKeys` and `recordDoctrineUsage` | Accepted (master 10.8 items 13 and 16), with `doctrineResearchContext` for the generators; `recordDoctrineUsage` runs in `onCommitted`, after WS0's commit, so a failed job records no usage | Sections 6.2, 6.4.1, 6.4.3 and 6.5 |
 | WS1 (02) | Return `team_name`, `mode` and `content` from `loadDoctrineSnapshots`, an empty list for a missing table, and type the projection with `DoctrineReaderProjection` | Accepted: the rows are `DoctrineSnapshotRow`, a superset of WS1's `StoredDoctrineRow` | Sections 5.5, 5.9 and 6.15; AC5.32 |
 | WS1 (02) | Pass `function_key` on each user team, skip `researchTeamWorkflows` and `classifyTeamTypes` in library mode, and show "update available" from `getDoctrineHeads` or `checkDoctrineUpdates` | Accepted: WS1's edits C2 and C4 replace WS5's own `teamTypes` input, which is dropped; Review compares the heads' `offered_version` and `content_hash` | Sections 6.4.3, 6.4.5, 6.9 and 6.11 |
@@ -4050,7 +4050,7 @@ Every request other specs made of WS5, the names they attribute to WS5, and the 
 | WS1 (02) | Name attributed to WS5: `StoredDoctrineRow` | Not WS5's: WS1's input type; WS5's rows are `DoctrineSnapshotRow`, a superset of it | Sections 5.5 and 6.15 |
 | WS4 (05) | Name attributed to WS5: `photoUrls` | Not WS5's: WS4's `buildTrainerScene` option; WS5 does not pass it, so no photo reaches a model | Choice 16; section 6.4.1 |
 | WS6 (07) | Name attributed to WS5: `clamped_radius` | Not WS5's: WS6's `EffectNote`. WS5's ceilings are 2,000 m for the lethal, serious and thermal radii and 5,000 m for the minor and fragment radii, so WS6's 3,000 m clamp fits; Review mentions a capped radius | Sections 5.6 and 6.9 |
-| WS6 (07) | Name attributed to WS5: `fieldops_effect_index` | Not WS5's: WS6's table (migration 240), written by WS6's `recordEffectIndex`, which WS5 calls from `onCommitted` | Sections 5.8 and 6.5 |
+| WS6 (07) | Name attributed to WS5: `fieldops_effect_index` | Not WS5's: WS6's table (migration 241), written by WS6's `recordEffectIndex`, which WS5 calls from `onCommitted` | Sections 5.8 and 6.5 |
 | WS8 (09) | Name attributed to WS5: `snapshot_sync_pending` | Not WS5's: WS8's revision flag, set when WS5's recorder answers `{ recorded: false, reason: 'not_migrated' }`, which section 6.15 now defines | Section 6.15 |
 | UI sheet (10) | Name attributed to WS5: `SetupIssueSummary` | Not WS5's: the corporate component in `frontend/src/components/Scenario/SetupIssues.tsx:102-166`; the publish bar's blocker list follows it | Section 7.5 |
 | UI sheet (10) | Change AC5.21's pill from "1 AI-estimated" to "1 calculated from assumed inputs", and define the Review hazard count | Accepted: the hazard count is the template hazards not in the delayed state | AC5.21; sections 5.5 and 6.9 |
@@ -4076,7 +4076,7 @@ WS5 is done when the master's global definition (section 11 of `00-master-plan.m
 1. **Added 3 Nov 2026.** AC5.1 to AC5.40 pass, each through the test named in sections 4.3 and 4.4, and every file of section 11.1 is in the `test` script of `package.json`.
 2. `npm test` and `npx tsc --noEmit` pass for server, shared and frontend; `vite build` passes.
 3. `node scripts/verify-field-ops-specs.mjs --only=06 --deep --allow-missing --strict` reports no problems, and the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project).
-4. Migrations 234 to 236 are applied on the shared project after 218 and 219, twice without error, and manual steps 4 to 6 of section 11.4 pass.
+4. Migrations 235 to 237 are applied on the shared project after 219 and 220, twice without error, and manual steps 4 to 6 of section 11.4 pass.
 5. With `ENABLE_FIELDOPS_V2` off, the legacy compile is unchanged (manual step 1) and every route of this spec answers 404.
 6. The staging checklist of section 10.3 passes, including a restart mid-compile, a capped compile that refunds, a re-compile that keeps the scene, a reopen, and a published scenario whose session receives the device pool.
 7. WS1's runtime accessor is live before `ENABLE_FIELDOPS_V2` is turned on in production (section 10.3 step 4).

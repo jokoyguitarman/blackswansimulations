@@ -4,8 +4,8 @@
 **Workstream:** WS2
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `02-teams-and-doctrines.md`, `04-site-picker.md`; softly `07-device-and-physics.md` and `08-people-or-ai.md`
 **Flags:** `ENABLE_FIELDOPS_V2` with `VITE_ENABLE_FIELDOPS_V2`, and `ENABLE_FIELDOPS_BLUEPRINT`
-**Migrations:** 225, 226, 227
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 226, 227, 228 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -16,8 +16,8 @@
 1. **G1 The page.** `FieldOpsWizard` at `/warroom/field-ops` (D25) with a three-step shell (Setup, Lay out the scene, Compile & review), a step registry that WS4 and WS5 plug into with one line each, a credits chip, draft create, save and resume, and a save state machine that never loses work silently.
 2. **G2 The Setup screen.** `SetupHero`, `FootprintRadar`, `IncidentLane`, `AgencyLane`, `PressureLane`, `AdversaryLane` and `ReadinessList`, with mount points and props for WS3's `SiteLane`, WS6's `DevicesCard`, WS1's `AgencyCard` and `DoctrineDrawer`, laid out as the mockup's Setup state (D28).
 3. **G3 The envelope.** `FieldOpsSetupV2` and `SetupPatch` as hand-written types in `shared/fieldOps/setup.ts (new)` and zod schemas in `server/lib/fieldOps/setupSchemas.ts (new)`, kept in step by a parity test; caps from D15; character limits and sanitation; per-key replace or merge; optimistic concurrency with a revision; a byte cap; schema versioning.
-4. **G4 Documents.** PDF, DOCX and TXT up to 10 MB, the first 50,000 characters kept with a visible truncation warning, the text stored in `fieldops_documents` (migration 226), a plain privacy notice, and the text always treated as data (D19).
-5. **G5 The footprint radar.** One model call with a strict JSON schema on WS0's job engine (job kind `fieldops_radar`), pure and unit-tested guard-rails, proposals pre-ticked and removable, each with its evidence sentence and offsets, kept in a ledger (`fieldops_radar_results`, migration 227).
+4. **G4 Documents.** PDF, DOCX and TXT up to 10 MB, the first 50,000 characters kept with a visible truncation warning, the text stored in `fieldops_documents` (migration 227), a plain privacy notice, and the text always treated as data (D19).
+5. **G5 The footprint radar.** One model call with a strict JSON schema on WS0's job engine (job kind `fieldops_radar`), pure and unit-tested guard-rails, proposals pre-ticked and removable, each with its evidence sentence and offsets, kept in a ledger (`fieldops_radar_results`, migration 228).
 6. **G6 The blueprint.** The corporate two-pass, chunked, never-drop extraction reused with a field-ops schema on WS0's engine (job kind `fieldops_blueprint`), stored with the document, served to WS5 by `getReadyBlueprint`.
 7. **G7 Readiness.** One rule registry, evaluated in the browser and on the server, with blockers, warnings, information and confirmations, field-level notes and jump anchors; WS1, WS3 and WS6 add rules with one line each; a missing doctrine blocks compile but not the scene (D3).
 8. **G8 The hand-off.** `buildCompileInput(draftId, user)` and `getReadyBlueprint(draftId)` as the contract WS5 consumes.
@@ -70,11 +70,11 @@ Related decisions this spec relies on but does not own: D2 and D26 (WS1's librar
 | 6 | The new page writes exactly `{ sim_mode: 'field_ops_v2', scenario_type }` (WS0's `FIELDOPS_V2_SIM_MODE`) into the legacy `input` column. WS0's legacy list query already hides these drafts and its legacy write routes refuse them (WS0's choice P0.7); `WarRoom.tsx` only gains the link and a redirect for an address that names a v2 draft (section 7.1). |
 | 7 | Creates `frontend/src/components/FieldOps/stepRegistry.ts (new)` and `StepMountProps` (section 7.3). WS4 and WS5 each replace one import line. |
 | 8 | `AgencyLane` hosts WS1's `AgencyCard` with WS1's `AgencyCardProps`; WS7's `OperationSegment` renders inside the card through the card's `renderOperation` prop, fed with WS7's availability, read once per page load (section 7.7). |
-| 5 | Feature detection uses WS0's `createCachedDetector`, `isMissingColumnError` and `isMissingRelationError` from `server/lib/schemaFeatures.ts (new)`; a missing answer is re-checked after about a minute, so applying 225 to 227 needs no restart (section 5.12). |
+| 5 | Feature detection uses WS0's `createCachedDetector`, `isMissingColumnError` and `isMissingRelationError` from `server/lib/schemaFeatures.ts (new)`; a missing answer is re-checked after about a minute, so applying 226 to 228 needs no restart (section 5.12). |
 | 9 | The radar returns `DeviceHint` objects; the radar job maps them with WS6's `devicesFromHints` and keeps WS6's `unmapped` items in the ledger for Review; every device free-text field passes WS6's `moderateDeviceText(text, { field })`; `SETUP_LIMITS.devicesMax` equals WS6's `DEVICE_CAP`. |
 | 10 | The radar job calls WS3's `resolveSiteHint` once per run with `{ place_text, involved, country, coords: null }` and keeps `built.site = { resolution, selection }` in the ledger; `applyRadarResult` applies `selection` only to a draft with no site; the page passes the site proposal and `built.site` to WS3's `SiteLane` as `proposal`; the save route calls WS3's `normaliseSiteSelection` with the context from `buildSiteSelectionContext`, and answers 400 `VALIDATION_FAILED` with `site.<path>` details when it refuses or 503 `SITE_DATA_UNAVAILABLE` when the context cannot be read; the default radius is WS3's `SITE_LIMITS.radiusDefault`. |
 | 16 | Nothing WS2 writes reaches a `scenarios` column: the blueprint stays on `fieldops_documents` (P2), and the hand-off tells WS5 not to copy device facts or document text (section 6.8). |
-| 21 | No WS2 table references `scenarios`: 226 and 227 reference only `warroom_wizard_drafts` (cascade), `user_profiles` and `fieldops_documents` (set null). |
+| 21 | No WS2 table references `scenarios`: 227 and 228 reference only `warroom_wizard_drafts` (cascade), `user_profiles` and `fieldops_documents` (set null). |
 | 23 | `SETUP_LIMITS` takes the D15 caps and the 262,144-byte ceiling from WS0's `SETUP_V2_ENVELOPE_LIMITS`, copied as literals because a shared file cannot import a server module (master 10.7 rule 1), with a parity test (section 5.3). |
 | 24 | Device text passes `moderateDeviceText(text, { field })`; adversary behaviour and blueprint narratives pass the text with `{ maxLength }` only (section 8.5 rule 10 and section 8.7). |
 | 29 | Files other workstreams create are named with their owner in sections 5 to 7 and keep their `(new)` marker; the file map lists WS2's own files and the existing files it touches (section 14). |
@@ -84,13 +84,13 @@ Related decisions this spec relies on but does not own: D2 and D26 (WS1's librar
 All **Proposed**; each is used by later sections.
 
 - **P1 One document per draft.** `brief.document` is a single reference in master 10.2; uploading again replaces it.
-- **P2 The blueprint lives with the document.** It is stored on the `fieldops_documents` row (migration 226), never in `scenarios.blueprint`, because it holds device facts and every signed-in user can read active `scenarios` rows (master 10.8 item 16).
+- **P2 The blueprint lives with the document.** It is stored on the `fieldops_documents` row (migration 227), never in `scenarios.blueprint`, because it holds device facts and every signed-in user can read active `scenarios` rows (master 10.8 item 16).
 - **P3 One writer for `setup_v2`.** The browser writes every key through the PATCH route, except `brief.document` (written by the document routes) and `footprint` (copied by the server from the radar ledger when the browser adopts a result), so evidence cannot be forged by a client.
 - **P4 Whole-key replace for lists.** `devices`, `site`, `agencies`, `pressure` and `adversaries` are replaced as a whole; `incident` and `options` are merged field by field; one revision number guards the whole envelope.
 - **P5 The radar runs when asked.** It runs when the trainer presses Read or Re-detect, and once automatically after a document upload succeeds. It never runs silently on the primary button.
 - **P6 Budgets are code constants.** Per-draft and per-user caps on radar and blueprint runs are constants in `server/services/fieldOps/setup/budgets.ts (new)`; the master allocates no WS2 setting.
 - **P7 Setup is read-only once compiled.** A `compiled` draft refuses setup writes with 409 `SETUP_LOCKED_COMPILED`; Review edits the compiled draft, and WS5's reopen action returns it to `draft` when the trainer wants Setup back.
-- **P8 RLS on the draft table.** `setup_v2` holds device specifics and no browser code reads the table. RLS is already on, with no policy, in the live database (checked on 25 Oct 2026), and WS0's migration 219 records it, so migration 225 adds no RLS statement; WS2's new tables 226 and 227 enable RLS with no policy.
+- **P8 RLS on the draft table.** `setup_v2` holds device specifics and no browser code reads the table. RLS is already on, with no policy, in the live database (checked on 25 Oct 2026), and WS0's migration 220 records it, so migration 226 adds no RLS statement; WS2's new tables 227 and 228 enable RLS with no policy.
 - **P9 A smaller body limit for the draft routes.** A 384 KB JSON parser is mounted for `/api/warroom/field-ops/drafts` before the global 10 MB parser.
 
 ### 2.4 Sibling contracts
@@ -141,8 +141,8 @@ All statements are **Verified** on the baseline unless tagged otherwise.
 
 - `validate()` parses `body`, `query` and `params` with zod and answers 400 `{ error, details }` without a `code` (`server/lib/validation.ts:5-36`); WS0 adds `VALIDATION_FAILED`.
 - Server flags are read once in `server/env.ts`. The "on in development, off in production" shape is the one used by `enableTeammateBots` (`server/env.ts:155-157`); the corporate `enableDocumentBlueprint` defaults to off everywhere (`server/env.ts:138-140`).
-- The global JSON parser accepts 10 MB (`server/index.ts:238`). The smaller parser for `/api/join` is mounted after it (`server/index.ts:242`); body-parser skips a request whose body is already parsed, so a smaller limit only takes effect when mounted before line 238 (read from the mount order; the skip is documented body-parser behaviour, not executed here).
-- Routers are mounted in `server/index.ts`: `/api/warroom` (`server/index.ts:272`) and `/api/warroom/social-crisis` (`server/index.ts:287`); unknown paths answer `{ error: 'Not found' }` (`server/index.ts:293-296`) and the error handler always answers 500 (`server/index.ts:299-309`).
+- The global JSON parser accepts 10 MB (`server/index.ts:252`). The smaller parser for `/api/join` is mounted after it (`server/index.ts:256`); body-parser skips a request whose body is already parsed, so a smaller limit only takes effect when mounted before line 252 (read from the mount order; the skip is documented body-parser behaviour, not executed here).
+- Routers are mounted in `server/index.ts`: `/api/warroom` (`server/index.ts:286`) and `/api/warroom/social-crisis` (`server/index.ts:301`); unknown paths answer `{ error: 'Not found' }` (`server/index.ts:307-310`) and the error handler always answers 500 (`server/index.ts:313-323`).
 - `requireAuth` sets `req.user.id` and `req.user.role` (`server/middleware/auth.ts:20-82`); `requireStaff` admits trainers and admins (`server/middleware/auth.ts:88-99`). `isAdmin` and `hasCredit` are in `server/services/creditService.ts:31` and `server/services/creditService.ts:55-58`; the legacy 402 body and `lacksScenarioCredit` are at `server/routes/warroom.ts:31-39`.
 - A per-user rate limiter and multer error mapping already exist for agreement uploads (`server/routes/trainerAgreements.ts:214-248`).
 
@@ -176,7 +176,7 @@ All statements are **Verified** on the baseline unless tagged otherwise.
 ### 3.7 Where the brief, the journey or the mockup differ from the code
 
 1. The brief names `App.tsx` as the router; the router is `frontend/src/main.tsx`, so the route is added there.
-2. The journey stores the blueprint in `scenarios.blueprint`. That column is readable by every signed-in user on active rows (`migrations/002_rls_policies.sql:44-46`), and the field-ops blueprint carries device facts, so it is stored on `fieldops_documents` (P2).
+2. The journey stores the blueprint in `scenarios.blueprint`. That column was readable by every signed-in user on active rows (`migrations/002_rls_policies.sql:44-46`). **Updated 8 Nov 2026:** since the launch security fix, players no longer receive it, but the creator, admins and the scenario's trainers do. The field-ops blueprint carries device facts, so it is still stored on `fieldops_documents` (P2).
 3. The mockup offers "Add another document" (`docs/design/warroom/field-ops-setup.html:447`); the data model holds one document, so the drop zone replaces it (section 7.12).
 4. The mockup gives pressure cards a register word and a country line (`docs/design/warroom/field-ops-setup.html:860-861`); `PressureBody` has neither (master 10.2 refinements), so both are dropped (section 7.12).
 5. The journey says the location "must be found in the saved map data"; this spec does that through WS3's `resolveSiteHint` rather than its own lookup.
@@ -245,9 +245,9 @@ stateDiagram-v2
 25. **AC2.25** Given a valid v2 draft, when WS5 calls `buildCompileInput(draftId, user)`, then it receives the draft's `status`, `scenario_id`, `rts_scene_id` and `setup_v2_rev`, the parsed setup, the compile-gate readiness, the document text and the blueprint result; for a legacy draft it receives `{ ok: false, code: 'LEGACY_DRAFT' }`. Test: `compileInput.test.ts`, "hand-off contract".
 26. **AC2.26** Given each combination of the two flags, the storage detectors and `physicsEnabledFor(role)`, when the capabilities are built, then the object matches section 5.11; and given WS1's and WS7's answers (including 404 and 403), when the page completes `PageCapabilities`, then `doctrines_library` and `ai_agencies` follow them. Tests: `capabilities.test.ts`, "capability matrix"; `fieldOpsSetupLogic.test.ts`, "page capabilities".
 27. **AC2.27** Given the extracted lane components, when they render the corporate inputs captured from `frontend/src/pages/SocialCrisisWizard.tsx`, then `renderToStaticMarkup` returns exactly the markup of the original inline JSX; `frontend/tests/setupValidation.test.ts` still passes; and the generic issue helpers return what `pickIssue` and `indexIssues` return. Tests: `frontend/tests/laneComponents.test.tsx (new)`, "markup unchanged"; `frontend/tests/laneIssues.test.ts (new)`, "issue helpers unchanged".
-28. **AC2.28** Given migration 225 is not applied, when the capabilities are read, then `v2.storage_ready` is false, every draft route answers 503 `SETUP_STORAGE_MISSING`, the page says "Field-operations setup is not ready on this server yet" with a link to the legacy wizard, and the legacy wizard is unaffected. Test: `setupGates.test.ts`, "a missing column answers 503".
+28. **AC2.28** Given migration 226 is not applied, when the capabilities are read, then `v2.storage_ready` is false, every draft route answers 503 `SETUP_STORAGE_MISSING`, the page says "Field-operations setup is not ready on this server yet" with a link to the legacy wizard, and the legacy wizard is unaffected. Test: `setupGates.test.ts`, "a missing column answers 503".
 29. **AC2.29** Given a layout blocker, when the trainer presses Lay out the scene, then the field notes are revealed and the first blocker is focused; with none, the setup is saved and the registry's layout component mounts with a non-null `draftId`. Test: `fieldOpsSetupLogic.test.ts`, "step guard".
-30. **AC2.30** Given migrations 225 to 227 are applied (RLS on `warroom_wizard_drafts` is already on and recorded by WS0's 219), when a signed-in browser client selects from `warroom_wizard_drafts`, `fieldops_documents` or `fieldops_radar_results` with the anon key, then no rows come back, while the server still reads and writes them. Test: manual M10, on the migrations applied twice on a scratch database.
+30. **AC2.30** Given migrations 226 to 228 are applied (RLS on `warroom_wizard_drafts` is already on and recorded by WS0's 220), when a signed-in browser client selects from `warroom_wizard_drafts`, `fieldops_documents` or `fieldops_radar_results` with the anon key, then no rows come back, while the server still reads and writes them. Test: manual M10, on the migrations applied twice on a scratch database.
 31. **AC2.31** Given the stored setup of a published scenario with a document, a footprint and devices with `fact_ids`, when WS8 calls `createSeededDraft(user, seed)`, then a new v2 draft owned by the caller is created at revision 1 with the same lanes, no document, no footprint, empty `fact_ids` and no credit taken; and given a setup that fails `fieldOpsSetupV2Schema`, then nothing is created and the result is `SETUP_INVALID`. Test: `applySetupPatch.test.ts`, "seeded draft".
 32. **AC2.32** **Added 3 Nov 2026.** Given a radar run whose document names the country "Viet Nam", when the guard stage builds the agency cards, then the site proposal's `country` is the `shared/countries.ts` name for VN and every new card has `country` 'VN'. Given no country in the text and a site resolved from the saved map data, every new card has 'SG'; given neither, null. A card the lane adds follows the same rule through `laneAgencyCountry`, and changing a card's country re-posts the match for that card. Tests: `radarJob.test.ts`, "card country"; `radarGuardRails.test.ts`, "country variants"; `fieldOpsSetupLogic.test.ts`, "lane card country".
 33. **AC2.33** **Added 3 Nov 2026.** Given a stored draft whose cards have no `country` key, when it is loaded, saved or handed to compile, then each card reads `country: null` and nothing is refused. Given a card with `country` 'sg' or 'XX', when it is saved, then the route answers 400 `VALIDATION_FAILED` with a detail at `agencies.N.country`. Test: `setupSchemas.test.ts`, "card country".
@@ -260,10 +260,10 @@ stateDiagram-v2
 
 Three files, applied in order by the owner, all additive and idempotent. Until they are applied the code detects the missing columns and tables (section 5.12) and the legacy wizard is unaffected.
 
-`migrations/225_fieldops_setup_v2.sql (new)`:
+`migrations/226_fieldops_setup_v2.sql (new)`:
 
 ```sql
--- Migration 225: field-ops setup payload on the wizard draft (WS2, docs/field-ops/03-setup-screen.md)
+-- Migration 226: field-ops setup payload on the wizard draft (WS2, docs/field-ops/03-setup-screen.md)
 --
 -- The field-ops setup screen at /warroom/field-ops keeps its whole Setup state in one validated
 -- JSONB column, guarded by a revision number for optimistic concurrency. Legacy field-ops drafts
@@ -272,7 +272,7 @@ Three files, applied in order by the owner, all additive and idempotent. Until t
 --
 -- SECURITY: setup_v2 holds device specifics, the answer key of a bomb-squad exercise. The server
 -- reads this table with the service role and no browser code queries it. RLS is already enabled
--- on warroom_wizard_drafts with no policy (live check, 25 Oct 2026; recorded by WS0's 219), so
+-- on warroom_wizard_drafts with no policy (live check, 25 Oct 2026; recorded by WS0's 220), so
 -- PostgREST returns no rows to a browser and this file does not repeat the statement.
 --
 -- Rollback, only after the code that reads these columns is gone:
@@ -336,10 +336,10 @@ COMMENT ON COLUMN warroom_wizard_drafts.setup_v2_schema_version IS
   'schema_version of the stored setup_v2 (2 today). Code refuses to write a version it does not know.';
 ```
 
-`migrations/226_fieldops_documents.sql (new)`:
+`migrations/227_fieldops_documents.sql (new)`:
 
 ```sql
--- Migration 226: field-ops documents and their blueprint (WS2, docs/field-ops/03-setup-screen.md)
+-- Migration 227: field-ops documents and their blueprint (WS2, docs/field-ops/03-setup-screen.md)
 --
 -- One row per document a trainer drops into the field-ops setup screen: the extracted text (the
 -- first 50,000 characters; the original file is not kept), its counts and truncation, and the
@@ -349,7 +349,7 @@ COMMENT ON COLUMN warroom_wizard_drafts.setup_v2_schema_version IS
 --
 -- SECURITY: service role only. RLS is enabled with no anon or authenticated policy.
 --
--- Rollback (drop fieldops_radar_results from migration 227 first):
+-- Rollback (drop fieldops_radar_results from migration 228 first):
 --   DROP TRIGGER IF EXISTS trg_fieldops_documents_updated_at ON fieldops_documents;
 --   DROP FUNCTION IF EXISTS set_fieldops_documents_updated_at();
 --   DROP TABLE IF EXISTS fieldops_documents;
@@ -431,10 +431,10 @@ COMMENT ON COLUMN fieldops_documents.blueprint_text_hash IS
   'sha256 of the analysed text (description plus document) the blueprint was built from; a different current hash means stale.';
 ```
 
-`migrations/227_fieldops_radar_results.sql (new)`:
+`migrations/228_fieldops_radar_results.sql (new)`:
 
 ```sql
--- Migration 227: footprint radar ledger (WS2, docs/field-ops/03-setup-screen.md)
+-- Migration 228: footprint radar ledger (WS2, docs/field-ops/03-setup-screen.md)
 --
 -- Every footprint radar run on a field-ops draft: its status, the hash and size of the text it
 -- read, and the guard-railed result (proposals with evidence, plus the agency cards, device specs,
@@ -1300,8 +1300,8 @@ The page then completes `PageCapabilities` in the browser: `doctrines_library` f
 
 | Missing | Detected by | Behaviour |
 | --- | --- | --- |
-| Migration 225 | WS0's `isMissingColumnError` on the first select of `setup_v2`, cached by `createCachedDetector` (WS0, `server/lib/schemaFeatures.ts (new)`) | Every draft route answers 503 `SETUP_STORAGE_MISSING`; capabilities report `v2.storage_ready: false`; the page shows "Field-operations setup is not ready on this server yet." with a link to `/warroom?legacy=1` |
-| Migration 226 or 227 | `isMissingRelationError` on `fieldops_documents` or `fieldops_radar_results` | Document, radar and blueprint routes answer 503 `DOCUMENT_STORAGE_MISSING`; capabilities report `blueprint.storage_ready: false`; the page hides the drop zone and the radar as if the flag were off |
+| Migration 226 | WS0's `isMissingColumnError` on the first select of `setup_v2`, cached by `createCachedDetector` (WS0, `server/lib/schemaFeatures.ts (new)`) | Every draft route answers 503 `SETUP_STORAGE_MISSING`; capabilities report `v2.storage_ready: false`; the page shows "Field-operations setup is not ready on this server yet." with a link to `/warroom?legacy=1` |
+| Migration 227 or 228 | `isMissingRelationError` on `fieldops_documents` or `fieldops_radar_results` | Document, radar and blueprint routes answer 503 `DOCUMENT_STORAGE_MISSING`; capabilities report `blueprint.storage_ready: false`; the page hides the drop zone and the radar as if the flag were off |
 | WS0's jobs tables | WS0's `jobsTableDetector` | Radar and blueprint starts answer 503 `JOBS_UNAVAILABLE` (WS0's code); nothing else changes |
 
 WS0's cached detectors trust a "missing" answer for 60 seconds (`missingTtlMs`) and a caller that meets a missing-schema error on a real query calls `markMissing()`, so applying a migration needs no restart.
@@ -1616,8 +1616,8 @@ Stored job error codes (ledger and document rows): `RADAR_MODEL_FAILED`, `RADAR_
 
 Two edits in `server/index.ts`:
 
-1. Before the global parser (`server/index.ts:238`): `app.use('/api/warroom/field-ops/drafts', ...fieldOpsDraftBodyParsers);` where `fieldOpsDraftBodyParsers` is `[express.json({ limit: '384kb' }), mapBodyTooLarge]` and `mapBodyTooLarge` is a four-argument error middleware that answers 413 `PAYLOAD_TOO_LARGE` for `err.type === 'entity.too.large'` and calls `next(err)` otherwise. The global parser then skips these requests because their body is already parsed (P9). Multipart uploads are not JSON and pass through untouched.
-2. After the legacy War Room router (`server/index.ts:272`): `app.use('/api/warroom/field-ops', fieldOpsSetupRouter);`. The legacy router has no router-wide middleware and no path that matches `/field-ops/...`, so requests fall through to this router; other field-ops routers (WS0, WS3, WS4, WS5) share the prefix (master 10.8 item 3).
+1. Before the global parser (`server/index.ts:252`): `app.use('/api/warroom/field-ops/drafts', ...fieldOpsDraftBodyParsers);` where `fieldOpsDraftBodyParsers` is `[express.json({ limit: '384kb' }), mapBodyTooLarge]` and `mapBodyTooLarge` is a four-argument error middleware that answers 413 `PAYLOAD_TOO_LARGE` for `err.type === 'entity.too.large'` and calls `next(err)` otherwise. The global parser then skips these requests because their body is already parsed (P9). Multipart uploads are not JSON and pass through untouched.
+2. After the legacy War Room router (`server/index.ts:286`): `app.use('/api/warroom/field-ops', fieldOpsSetupRouter);`. The legacy router has no router-wide middleware and no path that matches `/field-ops/...`, so requests fall through to this router; other field-ops routers (WS0, WS3, WS4, WS5) share the prefix (master 10.8 item 3).
 
 ### 6.12 Logging
 
@@ -2431,7 +2431,7 @@ What WS5 consumes, through `getReadyBlueprint` or `buildCompileInput`: the timel
 | --- | --- | --- |
 | A trainer reads or edits another trainer's draft, document or radar run | Every route loads the draft and answers 404 unless the caller created it or is an admin; documents and runs are reached only through their draft | Section 6.3, gate 5 |
 | A participant or a guest calls the routes | Trainer or admin role required (403); the client route also uses `roles` | Sections 6.3 and 7.1 |
-| A browser reads the tables directly with the anon key | RLS enabled with no policy on `warroom_wizard_drafts` (already on, recorded by WS0's 219), `fieldops_documents` and `fieldops_radar_results` (226 and 227) | Section 5.1 |
+| A browser reads the tables directly with the anon key | RLS enabled with no policy on `warroom_wizard_drafts` (already on, recorded by WS0's 220), `fieldops_documents` and `fieldops_radar_results` (227 and 228) | Section 5.1 |
 | Oversized or malformed draft input stalls the process (finding 5.4) | Strict zod per key, caps from D15, a 256 KB envelope cap, a 384 KB body parser in front of the 10 MB one, an `input` column of exactly two keys | Sections 5.8, 5.9, 6.11 |
 | Path traversal through `scenario_type` (finding 2.2) | `input.scenario_type` is written only from the four live keys | Section 6.4 |
 | A hostile file (wrong type, NUL bytes, a decompression bomb in a DOCX, a PDF that never finishes) | Extension and content must agree; 10 MB cap; 20-second timeout per reader; 50,000-character text cap; the file itself is never stored or served | Section 6.5 |
@@ -2443,7 +2443,7 @@ What WS5 consumes, through `getReadyBlueprint` or `buildCompileInput`: the timel
 
 ### 9.2 Answer-key exposure
 
-`setup_v2` holds device specifics, and the ledger holds the radar's device proposals: together they are the answer key of a bomb-squad exercise. They live only in the draft row and the two new tables, all with RLS on and no policy, and are served only through the owner-checked routes above. WS2 writes nothing to `scenarios` (master 10.8 item 16), and the hand-off tells WS5 not to either (section 6.8). The blueprint is kept on `fieldops_documents`, not in `scenarios.blueprint` (P2). Master risk 14 is WS4's and the owner's: the 25 Oct live check found that `rts_scene_configs` has a SELECT policy `USING (true)` for every role and that `anon` holds SELECT, so the public anon key alone, with no sign-in, reads every scene row, planted devices included, and the bucket `rts-scene-images` is public. Nothing in WS2 widens it, and WS2 stores no device detail in that table. No component under `frontend/src/components/FieldOps/` and no WS2 page loads a live map provider; WS3's static guard (AC3.22) scans the page and that folder (D5).
+`setup_v2` holds device specifics, and the ledger holds the radar's device proposals: together they are the answer key of a bomb-squad exercise. They live only in the draft row and the two new tables, all with RLS on and no policy, and are served only through the owner-checked routes above. WS2 writes nothing to `scenarios` (master 10.8 item 16), and the hand-off tells WS5 not to either (section 6.8). The blueprint is kept on `fieldops_documents`, not in `scenarios.blueprint` (P2). Master risk 14 is WS4's and the owner's: the 25 Oct live check found that `rts_scene_configs` has a SELECT policy `USING (true)` for every role and that `anon` holds SELECT, so the public anon key alone, with no sign-in, reads every scene row, planted devices included, and the bucket `rts-scene-images` is public. **Updated 8 Nov 2026:** migration 218 has since closed the policy to the creator and admins in production; the bucket is still public. Nothing in WS2 widens it, and WS2 stores no device detail in that table. No component under `frontend/src/components/FieldOps/` and no WS2 page loads a live map provider; WS3's static guard (AC3.22) scans the page and that folder (D5).
 
 ### 9.3 Logging
 
@@ -2492,16 +2492,16 @@ enableFieldopsBlueprint:
 | `ENABLE_FIELDOPS_V2` | `ENABLE_FIELDOPS_BLUEPRINT` | Migrations | Result |
 | --- | --- | --- | --- |
 | off | any | any | Legacy only; new routes 404 |
-| on | off | 225 | Setup with a description and five lanes; no documents, radar or blueprint |
-| on | on | 225 only | As above: 226 and 227 missing hide documents and the radar (section 5.12) |
-| on | on | 225 to 227 | Full Setup |
+| on | off | 226 | Setup with a description and five lanes; no documents, radar or blueprint |
+| on | on | 226 only | As above: 227 and 228 missing hide documents and the radar (section 5.12) |
+| on | on | 226 to 228 | Full Setup |
 | on | any | none | Capabilities say not ready; draft routes 503; the page links to the legacy wizard |
 
 `ENABLE_FIELDOPS_DOCTRINES` (WS1), `ENABLE_FIELDOPS_PHYSICS` (WS6) and `ENABLE_FIELDOPS_AI_TEAMS` (WS7) reach the page only through the capabilities object. The corporate `ENABLE_DOCUMENT_BLUEPRINT` is not read.
 
 ### 10.2 Rollout
 
-1. **Migrations.** The owner applies 225, 226 and 227 to the shared project; nothing reads them until a flag is on (master 9).
+1. **Migrations.** The owner applies 226, 227 and 228 to the shared project; nothing reads them until a flag is on (master 9).
 2. **Development.** Both flags default on; the automated tests and manual steps M1 to M10 pass.
 3. **Staging session.** A preview build with `VITE_ENABLE_FIELDOPS_V2=true` against a server with both server flags on: build one scenario from the fixture brief, one from a real 30-page PDF, one with a knife-attack description, one description-only; check the conflict banner with two tabs; check the logs for text (there must be none).
 4. **Production, owner first.** The server flags are global, so this step turns them on while the production build keeps `VITE_ENABLE_FIELDOPS_V2` off and the owner uses a preview build that has it on. No production page calls the new routes, and they require a trainer.
@@ -2609,9 +2609,9 @@ Every new test file is appended to the explicit list of the root `test` script (
 
 In order. Each task names its commit (section 13). "Tests" means written, passing and added to `package.json`.
 
-1. **T2.1 Migrations 225 to 227.**
+1. **T2.1 Migrations 226 to 228.**
    - Goal: the three SQL files of section 5.1.
-   - Files: `migrations/225_fieldops_setup_v2.sql (new)`, `migrations/226_fieldops_documents.sql (new)`, `migrations/227_fieldops_radar_results.sql (new)`.
+   - Files: `migrations/226_fieldops_setup_v2.sql (new)`, `migrations/227_fieldops_documents.sql (new)`, `migrations/228_fieldops_radar_results.sql (new)`.
    - Steps: copy the SQL verbatim; apply twice to a scratch database; check that legacy draft rows keep revision 0 and null setup.
    - Done when: both applications succeed with no error; `\d warroom_wizard_drafts` shows the three columns and RLS enabled; the legacy wizard still saves drafts.
    - Tests: manual M10 after T2.6. Commit: C1.
@@ -2643,7 +2643,7 @@ In order. Each task names its commit (section 13). "Tests" means written, passin
    - Goal: capabilities, list, create, get, patch and delete (section 6.2), the router, and the two edits of section 6.11.
    - Files: `server/routes/fieldOpsSetup.ts (new)`, `server/services/fieldOps/setup/capabilities.ts (new)` (first version, WS stand-ins), `server/index.ts` (touched).
    - Steps: wire `validate()`, the gates and the store; mount the body parser before the global one and the router after the War Room router.
-   - Done when: with V2 on and migration 225 applied, `curl` creates, reads, patches (200 then 409 on a stale revision) and deletes a draft; with V2 off every route answers 404; M6 passes.
+   - Done when: with V2 on and migration 226 applied, `curl` creates, reads, patches (200 then 409 on a stale revision) and deletes a draft; with V2 off every route answers 404; M6 passes.
    - Tests: route logic is covered by T2.5's tests; manual M5, M6. Commit: C1.
 7. **T2.7 Documents.**
    - Goal: section 6.5 and the document routes.
@@ -2748,7 +2748,7 @@ Six commits, each green on `npm test`, `npx tsc --noEmit` and the frontend build
 
 | Commit | Tasks | What it delivers | Backtracking |
 | --- | --- | --- | --- |
-| C1 "field-ops setup: storage, envelope and draft routes" | T2.1 to T2.6 | Migrations 225 to 227, the shared envelope, the schemas with parity, the flag, the draft logic and routes, the mounting | Revert the commit; the routes disappear and `server/index.ts` returns to its previous mounts. Leave the migrations applied (additive, nothing reads them). If the body parser misbehaves, revert only its line in `server/index.ts`; the PATCH route still enforces the 256 KB cap after parsing |
+| C1 "field-ops setup: storage, envelope and draft routes" | T2.1 to T2.6 | Migrations 226 to 228, the shared envelope, the schemas with parity, the flag, the draft logic and routes, the mounting | Revert the commit; the routes disappear and `server/index.ts` returns to its previous mounts. Leave the migrations applied (additive, nothing reads them). If the body parser misbehaves, revert only its line in `server/index.ts`; the PATCH route still enforces the 256 KB cap after parsing |
 | C2 "field-ops setup: documents" | T2.7 | Upload, extraction, truncation, removal | Turn `ENABLE_FIELDOPS_BLUEPRINT` off (routes 404), then revert. Stored documents stay in `fieldops_documents` and are deleted with their drafts; `brief.document` references remain valid JSON that C1's code accepts |
 | C3 "field-ops setup: footprint radar" | T2.8 to T2.10 | Footprint helpers, prompt, schema, evidence, guard-rails, job, routes | Turn the blueprint flag off; WS0's sweeper fails any queued radar job whose kind is no longer registered, and the next start marks its row abandoned. Revert the commit; stored `setup_v2.footprint` values still parse, because the footprint types and schemas landed in C1 |
 | C4 "field-ops setup: blueprint, readiness and the compile hand-off" | T2.11 to T2.14 | Blueprint job and `getReadyBlueprint`, readiness registry, capabilities, `buildCompileInput` | Revert; WS5 falls back to its own stand-in for `buildCompileInput` (request R14 asks WS5 to keep one until C4 is in). Documents keep their blueprint columns |
@@ -2765,9 +2765,9 @@ Order of landing relative to siblings: C1 needs WS0's `server/lib/schemaFeatures
 
 | File | Purpose | Commit |
 | --- | --- | --- |
-| `migrations/225_fieldops_setup_v2.sql (new)` | `setup_v2` columns, checks and index (RLS on the draft table is already on) | C1 |
-| `migrations/226_fieldops_documents.sql (new)` | Documents and their blueprint | C1 |
-| `migrations/227_fieldops_radar_results.sql (new)` | The radar ledger | C1 |
+| `migrations/226_fieldops_setup_v2.sql (new)` | `setup_v2` columns, checks and index (RLS on the draft table is already on) | C1 |
+| `migrations/227_fieldops_documents.sql (new)` | Documents and their blueprint | C1 |
+| `migrations/228_fieldops_radar_results.sql (new)` | The radar ledger | C1 |
 | `shared/fieldOps/setupDeps.ts (new)` | The one import point for sibling contracts | C1 |
 | `shared/fieldOps/setupStandIns.ts (new)` | Stand-in sibling types and lists, deleted after the last replacement | C1 |
 | `shared/fieldOps/setup.ts (new)` | Envelope types, limits, helpers, pure validator | C1 |
@@ -2823,7 +2823,7 @@ Order of landing relative to siblings: C1 needs WS0's `server/lib/schemaFeatures
 | File | Change | Commit |
 | --- | --- | --- |
 | `server/env.ts` | Adds `enableFieldopsBlueprint` | C1 |
-| `server/index.ts` | The draft-route body parser before line 238 and the router mount after line 272 | C1 |
+| `server/index.ts` | The draft-route body parser before line 252 and the router mount after line 286 | C1 |
 | `package.json` | The new test files appended to the `test` script | C1 to C6 |
 | `frontend/src/components/Scenario/SetupIssues.tsx` | Becomes re-exports of `LaneIssues` under the same names | C5 |
 | `frontend/src/pages/SocialCrisisWizard.tsx` | Inline lane heads, add tiles, radar shell, chips and CTA cells replaced by the shared components; no handler or state changes | C5 |
@@ -2848,7 +2848,7 @@ Files that other workstreams create and this workstream only imports (WS0's sche
 | 6 | Revision conflicts annoy trainers with two tabs | Per-key Keep my changes; layout, compile and publish writes never bump the setup revision |
 | 7 | The lane extraction changes the corporate screen (master: corporate screens must not change) | Markup-equivalence tests written before the swap, its own commit (C5), manual M9 |
 | 8 | Site polygons push the setup past 256 KB | WS3 caps a polygon at 500 points (`SITE_LIMITS.polygonMaxPoints` in its spec), so a primary and five involved buildings stay near 75 KB; the byte cap answers with a clear message, and the size signal of section 10.4 warns early |
-| 9 | The answer key leaks through the draft table | RLS with no policy (migration 225), never written to `scenarios` |
+| 9 | The answer key leaks through the draft table | RLS with no policy (migration 226), never written to `scenarios` |
 | 10 | `WarRoom.tsx` is also edited by another session (master risk 8) | Seven small, helper-based edits, applied last (C6) and rebased onto `master` |
 | 11 | Cost of repeated runs | One radar call per run, at most four blueprint calls, per-draft and per-user caps, one active run per draft |
 | 12 | A not-live type in a long document hides useful proposals (A1 stops everything) | The trainer can choose a live type, after which Re-detect proposes normally with a mismatch warning |
@@ -2859,7 +2859,7 @@ Files that other workstreams create and this workstream only imports (WS0's sche
 2. **Q2** Should document text expire (for example 180 days after the draft was last changed)? Proposed: no expiry in version 1; documents live as long as their draft. An expiry job needs an owner.
 3. **Q3** Should admins bypass the radar and blueprint budgets? Proposed: no; they bypass only the credit check.
 4. **Q4** Rule A1 withholds every proposal for a not-live type, including the site. Is withholding the site right? Proposed: yes, as A1 says "name that tile and stop".
-5. **Q5** Does the live project hold policies on `warroom_wizard_drafts` that the repository does not show (journey finding 8.4)? Answered by the 25 Oct live check: RLS is on and there are no policies, and WS0's 219 records it, so migration 225 no longer enables RLS itself.
+5. **Q5** Does the live project hold policies on `warroom_wizard_drafts` that the repository does not show (journey finding 8.4)? Answered by the 25 Oct live check: RLS is on and there are no policies, and WS0's 220 records it, so migration 226 no longer enables RLS itself.
 6. **Q6** Is 256 KB the right setup cap? With WS3's 500-point polygons the site needs about 75 KB, ten full agency cards about 40 KB and the footprint at most 64 KB. Proposed: keep 256 KB and revisit after the staging session's size signal.
 7. **Q7** The radar pre-ticks an agency when WS1's `matchAgencies` finds an archetype or any candidate at 0.40 or more. Is 0.40 right next to WS1's 0.60 threshold (D26)? Proposed: tune with WS1 after the staging session.
 
@@ -2872,7 +2872,7 @@ Every request other specs made of WS2, and every name they attribute to WS2, wit
 | WS0 | Register `fieldops_radar` and `fieldops_blueprint` with `registerJobKind` (no `commit`, `locksDraft: false`, `consumesCredit: false`, at module import) | Accepted (master 10.8 items 1 and 3). Each kind has its own `lockKey` and `maxJobAttempts: 2`; starts go through `startJob` and `kick()` | Sections 6.6 and 6.7; T2.10, T2.12 |
 | WS0 | Call `assertDraftEditable` on the loaded row and write with `updateDraftIfEditable` | Modified. Gate 8 calls `assertDraftEditable` and sends its body. Setup writes keep WS2's compare-and-set, which has the same `.neq('status', 'compiling')` filter plus `.eq('setup_v2_rev', base_rev)`, because `updateDraftIfEditable(draftId, payload, select)` has no revision filter | Sections 5.9 and 6.3; T2.5 |
 | WS0 | Run `validateSetupV2Envelope` before the `setup_v2` schema, map `too_large` to 413 `SETUP_TOO_LARGE` and other issues to 400 `VALIDATION_FAILED`, and assert that `SETUP_LIMITS` equals `SETUP_V2_ENVELOPE_LIMITS.caps` and the byte cap equals `maxBytes` | Accepted (master 10.8 item 23). The parity case is "limits equal WS0's envelope" | Sections 5.3 and 6.4; T2.3 |
-| WS0 | Create drafts whose legacy `input` passes `fieldOpsV2LegacyInputSchema`; migration 225 may enable RLS on `warroom_wizard_drafts` | Accepted for the input schema. Modified for RLS: 225 no longer has the statement, because the 25 Oct live check found RLS already on with no policies and WS0's 219 records it | Sections 2.3 (P8), 5.1 and 6.4; T2.1, T2.5 |
+| WS0 | Create drafts whose legacy `input` passes `fieldOpsV2LegacyInputSchema`; migration 226 may enable RLS on `warroom_wizard_drafts` | Accepted for the input schema. Modified for RLS: 226 no longer has the statement, because the 25 Oct live check found RLS already on with no policies and WS0's 220 records it | Sections 2.3 (P8), 5.1 and 6.4; T2.1, T2.5 |
 | WS1 | Host `AgencyCard` in `AgencyLane` with one card open at a time; render WS7's `OperationSegment` in `renderOperation(variant)`; pass `evidenceQuote`, and `doctrinesEnabled` from the capabilities call | Accepted (master 10.8 item 8) | Section 7.7; T2.18 |
 | WS1 | Validate `setup_v2.agencies` with `AgencyListSchema`; call `collectAgencyIssues(agencies, { doctrinesEnabled, aiAvailability })` in `agencyIssuesRule` so the two AI warnings reach the list and the save route; refresh doctrine status with `POST /api/field-ops/doctrines/refs` on load | Modified. All accepted, except that the save route returns no readiness and never refuses a card for a warning; the AI warnings reach the page's list and the compile hand-off, whose context takes WS7's `availabilityFor` | Sections 5.6, 5.8, 6.8 and 7.7; T2.3, T2.13, T2.14 |
 | WS1 | R1, R3 and R5 adopted, with `ARCHETYPE_LABELS` added; call `suggestAgenciesForIncident` to preload a blank lane | Accepted for `ARCHETYPE_LABELS`. Modified for the preload: a blank lane under a live type fetches the suggestion at once (`fieldOpsTeamsApi.suggest`, which runs `suggestAgenciesForIncident`) and lists the names, and one click adds the cards, because cards in the lane count as the trainer's own and a later radar run would only link to them | Sections 5.2 and 7.7; T2.2, T2.18 |
@@ -2880,13 +2880,13 @@ Every request other specs made of WS2, and every name they attribute to WS2, wit
 | WS3 | Pass `{ place_text, involved }` to `resolveSiteHint`; add an optional `country`; map normaliser failures to 400 `VALIDATION_FAILED` with `{ field: 'site.<path>', message, code }` details; map `SiteDataUnavailableError` to 503 `SITE_DATA_UNAVAILABLE`; emit `fieldops_site_selected` when `siteFingerprint` changes; take the `site.ok` text from `describeSite(site).readiness`; note the static guard (AC3.22) | Accepted, all of it. WS2 also uses `toggleInvolved` and `siteReadinessRules` in place of the earlier names, passes `proposal` to `SiteLane`, and lets `applyRadarResult` apply `built.site.selection` to a draft with no site, as WS3's `proposal_received` expects | Sections 5.2, 5.4, 5.6, 5.9, 6.6, 6.10, 6.12, 7.5 to 7.7, 7.9 and 9; T2.5, T2.10, T2.13, T2.18 |
 | WS4 | R4.4: `StepMountProps` include `draftId`, `setup`, `draftStatus`, `role`, `goToStep(step, focus?)` with the focus `site`, and `setHero(hero)`; Setup re-reads the draft on return from the layout step | Accepted (master 10.8 item 7) | Section 7.3; T2.17 |
 | WS5 | Keep each `FieldOpsBlueprint` array in a stable order; show **Reopen for editing** in the read-only banner, calling `reopenDraft`; give the step hero an action slot for **Compile again** | Accepted | Sections 8.7, 7.6 and 7.3 (`StepHeroContent.actions`); T2.11, T2.17, T2.18 |
-| WS6 | X6.3: enable RLS on `warroom_wizard_drafts` in migration 225 and confirm the live state | Declined: the 25 Oct live check found RLS on with no policies, and WS0's 219 records it, so no WS2 statement is needed | Sections 2.3 (P8) and 5.1 |
+| WS6 | X6.3: enable RLS on `warroom_wizard_drafts` in migration 226 and confirm the live state | Declined: the 25 Oct live check found RLS on with no policies, and WS0's 220 records it, so no WS2 statement is needed | Sections 2.3 (P8) and 5.1 |
 | WS6 | X6.4: pass `siteAreaM2`; validate with `devicesSchema` on the server and `validateDevices` on the client with the library's material keys from `loadPhysicsLibrary`; put `deviceReadinessRules` in the registry; use "Calculated from assumed inputs" | Modified. All accepted, except that `validateDevices` with the material keys runs on the server, after `devicesSchema`, because `loadPhysicsLibrary` is a server function; in the browser the registry runs `deviceReadinessRules` | Sections 5.6, 5.9, 7.7, 7.9 and 7.12; T2.5, T2.13, T2.18 |
 | WS6 | X6.5: write each device's `fact_ids` when the radar builds the devices (for example by evidence overlap), and keep the mapper's `unmapped` items in the ledger | Modified. `unmapped` items are kept as `device_unmapped`. `linkDeviceFacts` makes the links when `buildCompileInput` runs, by evidence overlap first and role second, because the blueprint is usually ready minutes after the radar and its indexes are stable only for its text hash; stored devices keep `fact_ids` empty | Sections 5.5, 6.6, 6.8 and 8.5; T2.10, T2.14 |
 | WS6 | X6.6: confirm that the setup PATCH with `set.devices` replaces the whole list and refuses a stale `base_rev` with 409 `SETUP_REV_CONFLICT`, as `saveDeviceOverrides` relies on; return 400 details at `devices.N...` | Accepted; `set.device` also replaces one device by id. Inside the page, a direct save is followed by `refreshDraft()` (request R18) | Sections 5.9 and 6.4; T2.5 |
 | WS7 | Call `fieldOpsBotsApi.availability()` once per page load and pass it to `AgencyLane` and every `AgencyCard`; compute the "run by AI" count from the cards | Accepted | Sections 5.11 and 7.7; T2.16, T2.18 |
 | WS8 | Confirm `fieldOpsSetupV2Schema` and `pressureBodySchema` are exported from `setupSchemas.ts`; accept a seeded draft for **Start a new scenario from this one**; add `media` to `PRESSURE_ICON` | Accepted. Both schemas are exported from `server/lib/fieldOps/setupSchemas.ts (new)`; WS8 calls `createSeededDraft(user, seed)` (AC2.31); `PRESSURE_ICON` gains `media: 'megaphone'` and WS2's local map is dropped | Sections 5.8, 6.4 and 7.6; T2.3, T2.5, T2.18 |
-| WS3 | The name `warroomRouter` | Not a WS2 name: it is the existing corporate router mounted at `server/index.ts:272`, and WS3's sentence is right. WS2's router is `fieldOpsSetupRouter` | Section 6.11 |
+| WS3 | The name `warroomRouter` | Not a WS2 name: it is the existing corporate router mounted at `server/index.ts:286`, and WS3's sentence is right. WS2's router is `fieldOpsSetupRouter` | Section 6.11 |
 | WS3 | The name `SITE_DATA_UNAVAILABLE` | WS2's answer code for WS3's `SiteDataUnavailableError`, now defined | Sections 5.9 and 6.10 |
 | WS5 | The name `description_only` | Not a WS2 name: WS5's `BlueprintMode` value. Nothing to correct; "returns a blueprint" means `input.blueprint.status === 'ready'` | Section 6.8 |
 | WS5 | The name `compileFactSchema` | Not a WS2 name: WS5's own schema for `CompileBlueprintFact`; WS2 supplies `FieldOpsBlueprint` through `getReadyBlueprint` | Section 5.5 |
@@ -2919,7 +2919,7 @@ WS2 is done when all of these hold (with master section 11):
 2. `npm test` passes with all 21 new test files in the `package.json` list; `npx tsc --noEmit` is clean; `npm --prefix frontend run build` is clean with the new shared files type-checked.
 3. `node scripts/verify-field-ops-specs.mjs` passes, and the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project).
 4. With `VITE_ENABLE_FIELDOPS_V2` and `ENABLE_FIELDOPS_V2` off, `/warroom`, the legacy wizard and the corporate wizard behave exactly as before (M1, M2, M9).
-5. Migrations 225 to 227 are applied in the shared project, re-running them is a no-op, and the code tolerated their absence (AC2.28).
+5. Migrations 226 to 228 are applied in the shared project, re-running them is a no-op, and the code tolerated their absence (AC2.28).
 6. No document text, description, filename, quote or device detail appears in any log line during the staging session.
 7. The security items of section 9 are closed: RLS checked (M10), ownership 404s checked, the upload refusals checked (AC2.16).
 8. Every task T2.1 to T2.20 is ticked and the diff matches the file map of section 14.

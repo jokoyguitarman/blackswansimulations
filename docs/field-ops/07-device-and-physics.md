@@ -4,8 +4,8 @@
 **Workstream:** WS6
 **Depends on:** `00-master-plan.md`, `03-setup-screen.md`, `05-layout-step.md`; it also uses WS0's helpers (`01-prerequisites.md`) and WS5's snapshot table (`06-compile-and-review.md`)
 **Flags:** `ENABLE_FIELDOPS_PHYSICS` (`true`, `admin` or `false`, read through `physicsEnabledFor(role)`); the library reads follow `ENABLE_FIELDOPS_V2`
-**Migrations:** 237, 238, 239, 240, 241
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 238, 239, 240, 241, 242 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -20,7 +20,7 @@ This is a training platform for responders and crisis managers. The document spe
 3. **One calculator (finding 7.11).** A pure module, `server/services/fieldOps/physics/calculator.ts (new)`, that applies named published relationships to the resolved device and its environment and returns radii for named injury and damage thresholds, a fragment hazard range, a thermal reach and structural bands, each with units, an uncertainty band and a provenance label. It is deterministic, clamps every input to a documented range, carries `model_version`, and never searches for, suggests or optimises a position, a time or a quantity.
 4. **Casualties from who stands where (D10, finding 7.6).** A pure function from per-zone headcounts (WS4's crowd zones and the setup headcount) and the estimates to per-zone and total outcome bands that always sum to the headcount. It replaces the fixed bands and the pedestrian tiers for the new flow when physics is on.
 5. **Blanks are filled by fixed rules (master 10.8 item 17).** Library defaults by device type, role, size and venue fill every blank; a model may only read which container or size the trainer's own words already state, from a closed list, with a verbatim quote. Every value shows Yours, Library or Assumed.
-6. **A reviewed library (D22).** Five additive migrations (237 to 241): device presets, explosive materials with published TNT-equivalence factors, injury and damage thresholds, an effect-result index, and the review record. Admin maintenance routes, seed files populated from cited public sources, and an "Unreviewed model" label on every result until a qualified reviewer signs off.
+6. **A reviewed library (D22).** Five additive migrations (238 to 242): device presets, explosive materials with published TNT-equivalence factors, injury and damage thresholds, an effect-result index, and the review record. Admin maintenance routes, seed files populated from cited public sources, and an "Unreviewed model" label on every result until a qualified reviewer signs off.
 7. **The mockup's device card (D28).** `DevicesCard`, `DeviceForm`, `EffectsPanel` and `ProvenanceChip`, matching state 1 of `docs/design/warroom/field-ops-setup.html`, with the differences that safety and the data model require (section 7.8). WS4 gets `EffectsPanel`, `useDeviceEffects` and the preview-ring contract for the layout step.
 8. **Compile consumes it cleanly.** `getEffectsForCompile` returns WS5's `CompileEffects`, WS5 stores it in its physics snapshot and calls `recordEffectIndex`; nothing is written to `scenarios` columns (master 10.8 item 16).
 
@@ -31,14 +31,14 @@ This is a training platform for responders and crisis managers. The document spe
 - Deciding whether a device would function, or modelling its initiation. Initiation, handling and timing are story categories that never enter a calculation (section 5.3, property P9).
 - Toxic dispersion. Chemical "other hazard" entries are recorded and labelled "not calculated in this release"; only fuel and flammable gas feed the thermal reach (incident types other than bombings are D11's "soon").
 - Structural collapse dynamics. Structural effects are damage bands by overpressure thresholds.
-- Closing the `rts_scene_configs` read policy (master risk 14, an owner decision held by WS4's request R4.9).
+- Closing the `rts_scene_configs` read policy (master risk 14, an owner decision held by WS4's request R4.9). **Updated 8 Nov 2026:** migration 218 closed it in production; the bucket is still public.
 - An admin screen for the library. Admins use the routes in section 6.6 in this release (section 15, question Q4).
 
 ## 2. Decisions and assumptions
 
 **Added 3 Nov 2026.** Master D31 extends the stored physics of section 5.7 with spread and deterioration parameters: materials, fire and smoke behaviour, structural resistance and gas plumes. WS9 specifies them, and WS5's compile uses them first (master 10.8 item 35). Master 10.8 item 36 listed this spec for revision; the next note says why none is needed.
 
-**Added 3 Nov 2026.** WS9's spec now exists (`11-living-world.md`). The spread library is WS9's own: migration 249, its seed files and its own review record, modelled on this spec's D22 review (its W24). This spec's calculator and library are unchanged. WS9 reads each device's structural and thermal radii from WS5's physics snapshot and never computes a blast effect (its D8). It asks only that those fields keep their names (section 15.3). Nothing in this spec needs revising for D31 beyond that.
+**Added 3 Nov 2026.** WS9's spec now exists (`11-living-world.md`). The spread library is WS9's own: migration 250, its seed files and its own review record, modelled on this spec's D22 review (its W24). This spec's calculator and library are unchanged. WS9 reads each device's structural and thermal radii from WS5's physics snapshot and never computes a blast effect (its D8). It asks only that those fields keep their names (section 15.3). Nothing in this spec needs revising for D31 beyond that.
 
 ### 2.1 Master decisions this spec implements
 
@@ -48,10 +48,10 @@ This is a training platform for responders and crisis managers. The document spe
 | D8 | Decided | Every field is optional except `id` and `type`. Entered values are used as given inside the documented ranges of section 5.2 (a value outside them is refused with a message, never silently changed), blanks are filled by library rules and labelled, and effects come from deterministic code. |
 | D10 | Decided | The headcount comes from `setup_v2.incident.people_present`; where people stand comes from WS4's crowd zones through `toCrowdZoneInputs`. The casualty function never invents a headcount or a position. |
 | D15 | Assumed | `DEVICE_CAP = 6`, equal to WS0's `SETUP_V2_ENVELOPE_LIMITS.caps.devices`, from which WS2's device limit also comes (master 10.8 items 9 and 23); a parity test keeps them equal (AC6.1). |
-| D22 | Assumed | Every `EffectEstimate` carries `review.state`; it is `unreviewed`, and the UI shows "Unreviewed model", until an approved review exists for the deployed `model_version` and `dataset_version` (migration 241). Production cannot run with `ENABLE_FIELDOPS_PHYSICS=true` before that: the server downgrades it to `admin` (gate G6.D22, section 10.2). |
+| D22 | Assumed | Every `EffectEstimate` carries `review.state`; it is `unreviewed`, and the UI shows "Unreviewed model", until an approved review exists for the deployed `model_version` and `dataset_version` (migration 242). Production cannot run with `ENABLE_FIELDOPS_PHYSICS=true` before that: the server downgrades it to `admin` (gate G6.D22, section 10.2). |
 | D28 | Assumed | `DevicesCard` and `EffectsPanel` follow the mockup's state 1 and the layout inspector's effects block; every difference is listed in section 7.8 for the UI spec sheet. |
 | D11 | Decided | Only the four live bombing types reach this code. `IncidentTypeKey` (master 10.1) selects the venue defaults. |
-| D23 | Assumed | Migrations 237 to 241 are additive and idempotent; the code works before they are applied (section 6.2). |
+| D23 | Assumed | Migrations 238 to 242 are additive and idempotent; the code works before they are applied (section 6.2). |
 
 Settled interface decisions this spec owns or consumes (master 10.8): item 9 (`deviceSpecFromHint`, `validateDevices`, `moderateDeviceText`, `deviceReadinessRules`, `physicsEnabledFor(role)`, `DEVICE_CAP`), item 11 (WS4 provides `toCrowdZoneInputs`, `confinementAt`, `allocateCrowd` and `simToLatLng`), item 16 (`getEffectsForCompile` returns WS5's `CompileEffects`; WS5 stores it and calls `recordEffectIndex`; nothing reaches `scenarios` columns), item 17 (no model is asked for a position, a time, a quantity, a material or an initiation method), item 21 (the effect index cascades with its scenario), item 23 (the device cap comes from WS0's envelope limits) and item 24 (one free-text check, `moderateDeviceText(text, options?)`).
 
@@ -64,9 +64,9 @@ All **Proposed**.
 | DC1 | A stored `DeviceSpec` holds only what the trainer entered, what her document states, categories a model read from her words (origin Assumed until she confirms), and a default `type` when nothing states one. Library values are never stored in it; the server resolves blanks on every calculation and compile snapshots the resolved device. | A library correction then reaches every unpublished draft, and a compiled scenario still keeps exactly what it was built with (master principle "a compiled scenario owns a snapshot"). |
 | DC2 | Origins follow the mockup: `yours` for entered or document values; `library` only for a published reference value attached to an input the trainer stated (the TNT-equivalence factor of the material she picked); `assumed` for every blank filled by a rule (preset, venue, layout or default) and for categories read from her words. | The mockup's effects table (`ptbl`) labels the TNT equivalent "Library" (`docs/design/warroom/field-ops-setup.html:587`), the confinement "Assumed · venue type" (`:591`) and a fully blank device "assumed" (`:609`). |
 | DC3 | Two result sources only come from WS6: `calculated` and `manual_override`. `stored` marks a result read back from WS5's snapshot. `ai_estimated` is never produced by WS6; it remains the label of legacy compiles, whose casualty range came from a model (row M4). | Master 10.8 item 17 and principle "deterministic code does the physics". |
-| DC4 | The reference library lives in three tables (237 to 239) with bundled seed files of the same shape. The loader reads the tables and falls back to the seed files per table when a table is missing or empty; `dataset_version` is a hash of the rows actually used, so the same data gives the same version from either source. | Code must work before a migration is applied (master section 9), and results must be reproducible. |
+| DC4 | The reference library lives in three tables (238 to 240) with bundled seed files of the same shape. The loader reads the tables and falls back to the seed files per table when a table is missing or empty; `dataset_version` is a hash of the rows actually used, so the same data gives the same version from either source. | Code must work before a migration is applied (master section 9), and results must be reproducible. |
 | DC5 | Model internals (scaled-distance curves, fragment and thermal relationships, environment multipliers, casualty mixes, venue defaults, container capacities, oracle points) are versioned JSON files in the repository, not database rows. They change only with code, and `model_version` changes with them. | An admin edit must never silently change the physics; library rows are reference values a reviewer signs off, curves are part of the model. |
-| DC6 | Manual overrides and trainer-set environment values are stored in the device's own `DeviceSpec` (fields `effect_overrides` and `environment`), written by `EffectsPanel`'s inspector variant with WS6's own client function `saveDeviceOverrides`, which calls WS2's setup save route (a PATCH with `base_rev`); the host then calls WS2's `refreshDraft()` (WS2's request R18). Not in `rts_scene_configs`. | `rts_scene_configs` is readable with the public anon key alone, without signing in (master risk 14, checked on the live project on 25 Oct 2026); the draft is reached only through checked routes. |
+| DC6 | Manual overrides and trainer-set environment values are stored in the device's own `DeviceSpec` (fields `effect_overrides` and `environment`), written by `EffectsPanel`'s inspector variant with WS6's own client function `saveDeviceOverrides`, which calls WS2's setup save route (a PATCH with `base_rev`); the host then calls WS2's `refreshDraft()` (WS2's request R18). Not in `rts_scene_configs`. | `rts_scene_configs` was readable with the public anon key alone, without signing in (master risk 14, checked on the live project on 25 Oct 2026; **updated 8 Nov 2026**: migration 218 limits it to the creator and admins, and `GET /api/scenarios/:id/scene-config` still returns whole rows to any signed-in user until WS0's projection); the draft is reached only through checked routes. |
 | DC7 | The setup preview needs no position: its illustrative casualty figure spreads the headcount evenly over the primary building's footprint area around the device. When the site is not yet set it shows radii only. | The mockup shows a figure in setup (`docs/design/warroom/field-ops-setup.html:596`), but the calculator never chooses a position. |
 | DC8 | Casualties for devices that go off at T+0 are computed jointly (each sample point takes the most severe band of any of those devices); every other device gets a separate "if it goes off" figure that is not added to the initial count. | A person has one outcome; a later device meets a crowd that has already moved, which is the runtime's business. |
 | DC9 | Free-text device fields (`summary`, `other_label`, `location_note`, `responder_note`, override reasons) pass `moderateDeviceText` on the client and the server, are never parsed for meaning, and are never sent to a model, with one exception: the category reader receives `summary` and `other_label` to read a container or size. | The brief's safety stance item 3 and master 10.8 item 17. |
@@ -131,9 +131,9 @@ Not blast models, so out of this table: adversary-caused patients spawned 5 to 2
 - **Validation.** `validate()` parses `{ body, query, params }` with zod and answers 400 `{ error: 'Validation failed', details }` without a code (`server/lib/validation.ts:5-36`); WS0 adds `code: 'VALIDATION_FAILED'` (master 10.3).
 - **Auth.** `requireAuth` takes the role from app metadata or `user_profiles` (`server/middleware/auth.ts:20-82`); `requireStaff` allows trainer or admin (`server/middleware/auth.ts:87-99`); `requireAdmin` allows admin only (`server/middleware/auth.ts:102-112`). The wizard routes check the role inline and answer "Only trainers can use the War Room" (`server/routes/warroom.ts:198-199`).
 - **Credits.** `isAdmin` (`server/services/creditService.ts:31`) and `hasCredit` (`server/services/creditService.ts:55-58`); the wizard's entry gate `lacksScenarioCredit` is private to its router (`server/routes/warroom.ts:31-39`).
-- **Rate limits.** A global per-user `limiter` on `/api/` (`server/index.ts:164-196`), and per-route limiters keyed on the verified user id after `requireAuth`, as `perUserLimit` does (`server/routes/trainerAgreements.ts:214-222`).
-- **Flags and routers.** Flags are expressions on `env`, for example `enableDocumentBlueprint` (`server/env.ts:140`) and `enableTeammateBots` with its development default (`server/env.ts:155-157`). Routers mount in `server/index.ts`; `warroomRouter` takes `/api/warroom` (`server/index.ts:272`).
-- **Logging.** pino with `redact` paths for authorisation headers, cookies and `*.password`, `*.token`, `*.apiKey`, `*.secret` (`server/lib/logger.ts:28-39`); `pinoHttp` logs requests without bodies (`server/index.ts:231`).
+- **Rate limits.** A global per-user `limiter` on `/api/` (`server/index.ts:193-210`), and per-route limiters keyed on the verified user id after `requireAuth`, as `perUserLimit` does (`server/routes/trainerAgreements.ts:214-222`).
+- **Flags and routers.** Flags are expressions on `env`, for example `enableDocumentBlueprint` (`server/env.ts:140`) and `enableTeammateBots` with its development default (`server/env.ts:155-157`). Routers mount in `server/index.ts`; `warroomRouter` takes `/api/warroom` (`server/index.ts:286`).
+- **Logging.** pino with `redact` paths for authorisation headers, cookies and `*.password`, `*.token`, `*.apiKey`, `*.secret` (`server/lib/logger.ts:28-39`); `pinoHttp` logs requests without bodies (`server/index.ts:245`).
 - **Model calls.** `chatJson` takes `ChatOptions` with a tier, `json` (a strict schema), `maxTokens`, `temperature`, `label`, `budgetKey` and `budgetLimit` (`server/services/ai/chatClient.ts:35-66`, `chatJson` at `server/services/ai/chatClient.ts:421-441`); `JsonSchemaSpec` is `{ name, schema }` (`server/services/ai/chatCore.ts:23-26`).
 - **Bundled files.** Server code reads bundled files relative to `process.cwd()`, as `ASSETS_DIR` does (`server/services/trainerAgreements/template.ts:18`), so they work both under `tsx` and after `tsc`.
 - **Tests.** The root test script lists files explicitly (`package.json:25`); shared modules are tested from `server/lib` with a `.js` import, as for `parseAuthLinkError` (`server/lib/authLinkError.test.ts:1-3`); client tests import TypeScript modules from `frontend/src`, as for `collectSetupIssues` (`frontend/tests/setupValidation.test.ts:1-21`).
@@ -142,9 +142,9 @@ Not blast models, so out of this table: adversary-caused patients spawned 5 to 2
 
 ### 3.5 Security-relevant facts
 
-- **Verified.** Active `scenarios` rows are readable by every signed-in user (`migrations/002_rls_policies.sql:44-46`) and `GET /api/scenarios/:id` returns the whole row (`server/routes/scenarios.ts:346`), which is journey finding 8.1. Legacy compile writes the bomb-squad pool, with `is_live` and the right procedure, into `sweep_device_pool` (`server/services/warroomAiService.ts:8672`).
-- **Verified.** `rts_scene_configs` has a select policy `USING (true)` (`migrations/163_rts_scene_configs.sql:70-74`). The live project was checked on 25 Oct 2026 (master risk 14): RLS is on, the policy applies to every role and `anon` holds SELECT, so the public anon key alone, without signing in, reads every scene row, planted-device positions included; the bucket `rts-scene-images` is public.
-- **Verified.** No migration file enables RLS on `warroom_wizard_drafts` (`migrations/160_warroom_wizard_drafts.sql:5-50`; the only later mention adds `rts_scene_id`, `migrations/163_rts_scene_configs.sql:62-63`), but the live database has RLS on for it with no policies (checked 25 Oct 2026), and WS0's migration 219 records that with an idempotent statement. Device specifics live in that table's `setup_v2` column (WS2) and are reached only through WS2's checked routes.
+- **Verified.** Active `scenarios` rows were readable by every signed-in user (`migrations/002_rls_policies.sql:44-46`) and `GET /api/scenarios/:id` returned the whole row (`server/routes/scenarios.ts:354`), which is journey finding 8.1. **Updated 8 Nov 2026:** since the launch security fix, the browser policy admits only the creator and admins (migration 218). The route still returns `sweep_device_pool` to every player of the scenario's sessions, dropping only `insider_knowledge` and `blueprint` (`server/routes/scenarios.ts:348-384`). Legacy compile writes the bomb-squad pool, with `is_live` and the right procedure, into `sweep_device_pool` (`server/services/warroomAiService.ts:8672`).
+- **Verified.** `rts_scene_configs` has a select policy `USING (true)` (`migrations/163_rts_scene_configs.sql:70-74`). The live project was checked on 25 Oct 2026 (master risk 14): RLS is on, the policy applies to every role and `anon` holds SELECT, so the public anon key alone, without signing in, reads every scene row, planted-device positions included; the bucket `rts-scene-images` is public. **Updated 8 Nov 2026:** migration 218, applied in production, replaced the policy with one for the creator and admins; the bucket is still public.
+- **Verified.** No migration file enables RLS on `warroom_wizard_drafts` (`migrations/160_warroom_wizard_drafts.sql:5-50`; the only later mention adds `rts_scene_id`, `migrations/163_rts_scene_configs.sql:62-63`), but the live database has RLS on for it with no policies (checked 25 Oct 2026), and WS0's migration 220 records that with an idempotent statement. Device specifics live in that table's `setup_v2` column (WS2) and are reached only through WS2's checked routes.
 
 ## 4. Target behaviour and acceptance criteria
 
@@ -189,7 +189,7 @@ Not blast models, so out of this table: adversary-caused patients spawned 5 to 2
 - **AC6.20** Given each of the modes `true`, `admin` and `false` and the roles trainer and admin, then `physicsModeAllows` returns the truth table of section 10.1 (`server/services/fieldOps/physics/physicsMode.test.ts (new)`); and the calc route answers 404 where it returns false (manual step A6.4).
 - **AC6.21** Given production, the mode `true` and no approved review for the current versions, then `effectivePhysicsMode` returns `admin` (`server/services/fieldOps/physics/physicsMode.test.ts (new)`, "D22 gate").
 - **AC6.22** Given an approved review for the current `model_version` and `dataset_version`, then estimates carry `review.state` `reviewed`; after a material edit changes `dataset_version`, then they carry `unreviewed` (`server/services/fieldOps/physics/library.test.ts (new)`, "review state follows versions").
-- **AC6.23** Given that migrations 237 to 241 are not applied, when the calculator, `getEffectsForCompile` and `recordEffectIndex` run, then the library comes from the seed files with the same `dataset_version` the seeded tables give, the index write returns `{ skipped: 'table_missing' }`, and review state is `unreviewed` (`server/services/fieldOps/physics/library.test.ts (new)`, "seed fallback"; `server/services/fieldOps/physics/compileEffects.test.ts (new)`, "tables missing").
+- **AC6.23** Given that migrations 238 to 242 are not applied, when the calculator, `getEffectsForCompile` and `recordEffectIndex` run, then the library comes from the seed files with the same `dataset_version` the seeded tables give, the index write returns `{ skipped: 'table_missing' }`, and review state is `unreviewed` (`server/services/fieldOps/physics/library.test.ts (new)`, "seed fallback"; `server/services/fieldOps/physics/compileEffects.test.ts (new)`, "tables missing").
 - **AC6.24** Given a device with `effect_overrides.lethal_m` of 10, when it is computed, then the lethal radius is 10 with source `manual_override`, the calculated value is kept beside it, casualties use 10 m, and the index row has `has_manual_override` true (`server/services/fieldOps/physics/compileEffects.test.ts (new)`, "overrides").
 - **AC6.25** Given `getEffectsForCompile` and `recordEffectIndex` run against a recording fake database, then the only table written is `fieldops_effect_index` and no `scenarios` column is touched (`server/services/fieldOps/physics/compileEffects.test.ts (new)`, "never writes scenarios").
 - **AC6.26** Given a calc and a compile with distinctive marker values in every device text and number field, when the captured log lines are searched, then no marker appears (`server/services/fieldOps/physics/compileEffects.test.ts (new)`, "no device specifics in logs").
@@ -212,10 +212,10 @@ Not blast models, so out of this table: adversary-caused patients spawned 5 to 2
 | zod schemas of route bodies | `server/lib/fieldOps/physicsSchemas.ts (new)` | WS6 | Section 6.6 |
 | zod schemas of the data files and seed rows | `server/lib/fieldOps/physicsDataSchemas.ts (new)` | WS6 | Section 5.6 |
 | Model data and seed files | `server/services/fieldOps/physics/data/ (new)` | WS6 | Section 5.6 and 5.7 |
-| Library tables, effect index, review record | `migrations/237_fieldops_device_presets.sql (new)` to `migrations/241_fieldops_physics_reviews.sql (new)` | WS6 | Section 5.8 |
-| Where `devices` is stored | `warroom_wizard_drafts.setup_v2.devices` | WS2 (column, migration 225) | Validated with `devicesSchema` by WS2's save route |
+| Library tables, effect index, review record | `migrations/238_fieldops_device_presets.sql (new)` to `migrations/242_fieldops_physics_reviews.sql (new)` | WS6 | Section 5.8 |
+| Where `devices` is stored | `warroom_wizard_drafts.setup_v2.devices` | WS2 (column, migration 226) | Validated with `devicesSchema` by WS2's save route |
 | Where a device is planted | WS4's `PlacedDevice` in `rts_scene_configs` | WS4 | Holds no effects and no overrides (choice DC6) |
-| Where compiled effects are kept | WS5's `scenario_physics_snapshots.payload` | WS5 (migration 234) | The full `CompileEffects`; WS6's index points at it |
+| Where compiled effects are kept | WS5's `scenario_physics_snapshots.payload` | WS5 (migration 235) | The full `CompileEffects`; WS6's index points at it |
 
 ### 5.2 The device contract
 
@@ -731,10 +731,10 @@ interface OraclesFile extends DataFileHeader {
 
 ### 5.7 Seed files and library rows
 
-**Proposed.** `server/services/fieldOps/physics/data/seed/materials.json (new)`, `server/services/fieldOps/physics/data/seed/thresholds.json (new)` and `server/services/fieldOps/physics/data/seed/presets.json (new)` share the data-file header and hold `rows` whose fields are exactly the columns of migrations 238, 239 and 237 without `id`, `status`, `review_state`, `version`, the actor columns and timestamps.
+**Proposed.** `server/services/fieldOps/physics/data/seed/materials.json (new)`, `server/services/fieldOps/physics/data/seed/thresholds.json (new)` and `server/services/fieldOps/physics/data/seed/presets.json (new)` share the data-file header and hold `rows` whose fields are exactly the columns of migrations 239, 240 and 238 without `id`, `status`, `review_state`, `version`, the actor columns and timestamps.
 
 - **Materials.** One row per material the mockup's charge select offers (`docs/design/warroom/field-ops-setup.html:550`), plus one row with `is_unknown_default` true. The label is the material's common name only; the composition in brackets on the mockup's first option is not carried. Factors and Gurney velocities come from S1 and S4. Until the reviewer chooses otherwise, the unknown row uses the reference material itself (TNT), whose factor is 1 by definition.
-- **Thresholds.** Exactly the nine keys of migration 239, from S5, S6 and S7.
+- **Thresholds.** Exactly the nine keys of migration 240, from S5, S6 and S7.
 - **Presets.** At least one row per device type for size `medium`, role `any` and venue `any`, plus `small` and `large`; masses and capacities from S9.
 
 `dataset_version` is the first 16 hex characters of the SHA-256 of the canonical JSON of the active rows (keys sorted, rows ordered by key, numbers as decimal strings with no trailing zeros), over the three tables in the order materials, thresholds, presets, excluding ids, status, review state, version, actors and timestamps. The seed files and the seeded tables therefore give the same version.
@@ -744,7 +744,7 @@ interface OraclesFile extends DataFileHeader {
 All five are additive and idempotent, enable RLS with no policy, and are safe for the code already running on the shared Supabase project: nothing reads them until WS6 ships, and WS6 detects them before use (section 5.9).
 
 ```sql
--- Migration 237: field-ops device presets (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
+-- Migration 238: field-ops device presets (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
 --
 -- Library defaults the assumption engine uses for device fields a trainer leaves blank, keyed by
 -- device type, role, size class and venue class. Values are typical figures transcribed from the
@@ -813,7 +813,7 @@ COMMENT ON COLUMN fieldops_device_presets.review_state IS
 ```
 
 ```sql
--- Migration 238: field-ops explosive materials (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
+-- Migration 239: field-ops explosive materials (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
 --
 -- A closed pick-list of named materials. Each carries the published TNT-equivalence factors
 -- for pressure and impulse, used only to scale effects. Labels are names only.
@@ -881,7 +881,7 @@ COMMENT ON COLUMN fieldops_explosive_materials.aliases IS
 ```
 
 ```sql
--- Migration 239: field-ops injury and damage thresholds (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
+-- Migration 240: field-ops injury and damage thresholds (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
 --
 -- Published criteria that turn calculated overpressure and fragment energy into named bands.
 -- The keys are a closed list; the values are transcribed from the sources in source_ref.
@@ -940,7 +940,7 @@ COMMENT ON COLUMN fieldops_injury_thresholds.applies_to IS
 ```
 
 ```sql
--- Migration 240: field-ops effect-result index (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
+-- Migration 241: field-ops effect-result index (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
 --
 -- One row per device of a compiled new-flow scenario: the model and dataset versions, the review
 -- state and the main radii. The full result lives in WS5's scenario_physics_snapshots.payload;
@@ -956,7 +956,7 @@ CREATE TABLE IF NOT EXISTS fieldops_effect_index (
   scenario_id UUID NOT NULL REFERENCES scenarios(id) ON DELETE CASCADE,
   draft_id UUID REFERENCES warroom_wizard_drafts(id) ON DELETE SET NULL,
   -- WS5's scenario_physics_snapshots.id. No foreign key, so this migration does not depend on
-  -- migration 234 being applied first.
+  -- migration 235 being applied first.
   snapshot_id UUID,
   device_id TEXT NOT NULL CHECK (device_id ~ '^[A-Za-z0-9_-]{1,40}$'),
   device_index SMALLINT NOT NULL CHECK (device_index BETWEEN 0 AND 5),
@@ -993,7 +993,7 @@ COMMENT ON TABLE fieldops_effect_index IS
 ```
 
 ```sql
--- Migration 241: field-ops physics reviews and library changes (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
+-- Migration 242: field-ops physics reviews and library changes (WS6, docs/field-ops/07-device-and-physics.md section 5.8)
 --
 -- The D22 review record: who reviewed which model and dataset version, against which checklist,
 -- with which oracle results and library contents, and the decision. Also an append-only log of
@@ -1059,11 +1059,11 @@ COMMENT ON TABLE fieldops_physics_library_changes IS
 
 | Table missing | Behaviour |
 | --- | --- |
-| 237, 238 or 239 | The loader uses the matching seed file for that table; results are identical to a seeded table and carry the same `dataset_version`. The admin library routes answer 503 `LIBRARY_TABLES_MISSING`. |
-| 240 | `recordEffectIndex` returns `{ skipped: 'table_missing' }` and logs once; compile continues. |
-| 241 | Review state is `unreviewed`; the review routes answer 503 `LIBRARY_TABLES_MISSING`; the production gate keeps physics at `admin` at most. |
-| WS2's `setup_v2` (225) | WS6 has nothing to read; the calc route still works on request bodies. |
-| WS5's snapshot table (234) | WS5's concern; `recordEffectIndex` stores `snapshot_id` null if WS5 passes none. |
+| 238, 239 or 240 | The loader uses the matching seed file for that table; results are identical to a seeded table and carry the same `dataset_version`. The admin library routes answer 503 `LIBRARY_TABLES_MISSING`. |
+| 241 | `recordEffectIndex` returns `{ skipped: 'table_missing' }` and logs once; compile continues. |
+| 242 | Review state is `unreviewed`; the review routes answer 503 `LIBRARY_TABLES_MISSING`; the production gate keeps physics at `admin` at most. |
+| WS2's `setup_v2` (226) | WS6 has nothing to read; the calc route still works on request bodies. |
+| WS5's snapshot table (235) | WS5's concern; `recordEffectIndex` stores `snapshot_id` null if WS5 passes none. |
 
 ## 6. Server
 
@@ -1637,7 +1637,7 @@ export function toCasualtyPlan(initial: CasualtyResult, lightYellowShare: number
 export function indexRowsFor(scenarioId: string, snapshotId: string, draftId: string | null, effects: CompileEffects): EffectIndexRow[];
 export function toStudBlastBands(estimate: EffectEstimate): Array<{ band: 'kill' | 'critical' | 'serious' | 'minor'; minM: number; maxM: number }>;
 
-/** One row of fieldops_effect_index (migration 240). */
+/** One row of fieldops_effect_index (migration 241). */
 export interface EffectIndexRow {
   scenario_id: string; draft_id: string | null; snapshot_id: string; device_id: string; device_index: number;
   device_role: 'main' | 'secondary'; model_version: string; dataset_version: string; review_state: 'reviewed' | 'unreviewed';
@@ -1675,7 +1675,7 @@ export interface EffectIndexRow {
 1. When the job starts, WS5 stores `decidePhysicsModeForCompile(role)` in its manifest (WS5 choice 8), so a flag flip cannot change a running compile.
 2. In its inputs stage, in `calculated` mode only, WS5 calls `getEffectsForCompile({ setup, scene, role })` and checks the result with `compileEffectsSchema`. Inside: the data and the library are loaded (seed fallback, section 6.2); each device planted in WS4's scene gets its surroundings from `confinementAt` and its position from `simToLatLng`; each device is resolved and calculated with its own overrides; the crowd comes from `toCrowdZoneInputs(crowdGeometryOf(scene), setup.incident.people_present)`, is sampled (section 6.5), and `casualtiesFor` runs for the planted devices whose timing is `at_start`. An unplanted device is calculated with venue defaults and has null `placed_at` and `confinement`; WS4's readiness already blocks compile while a device is unplanted. The function makes no model call, so WS5's stage budget for WS6 is zero calls.
 3. WS5 stores the result as-is in `scenario_physics_snapshots.payload`; it uses `bands_m` for its blast bands and guide circles, `casualty_plan` for its patient targets (capped at 60 pins and scaled, labelled illustrative), `confinement` for the indoor or outdoor sentence (row M15), `container_category` and `placed_at` for the bomb-squad pool and the device report wording (row M10), and the main device's `prompt_summary` in the T+0 inject. Device specifics never enter a prompt (WS5 choice 7).
-4. After its persist function commits, WS5 calls `recordEffectIndex(scenarioId, physicsSnapshotId)`. It reads that snapshot row's `mode` and `payload`; skips with `not_calculated` for `legacy_bands`, `snapshot_missing` when there is no such row, and `table_missing` when migration 240 is not applied; otherwise it upserts one row per device from `indexRowsFor` on `(scenario_id, device_id)`, deletes the scenario's rows for devices no longer present, fills `draft_id` from the wizard draft whose `scenario_id` is that scenario (or null), and returns `{ written }`. The call therefore replaces the scenario's index: repeated with the same snapshot it leaves the same rows, and with a newer snapshot it moves every row to it, so WS8 can retry it after a revision (AC6.29).
+4. After its persist function commits, WS5 calls `recordEffectIndex(scenarioId, physicsSnapshotId)`. It reads that snapshot row's `mode` and `payload`; skips with `not_calculated` for `legacy_bands`, `snapshot_missing` when there is no such row, and `table_missing` when migration 241 is not applied; otherwise it upserts one row per device from `indexRowsFor` on `(scenario_id, device_id)`, deletes the scenario's rows for devices no longer present, fills `draft_id` from the wizard draft whose `scenario_id` is that scenario (or null), and returns `{ written }`. The call therefore replaces the scenario's index: repeated with the same snapshot it leaves the same rows, and with a newer snapshot it moves every row to it, so WS8 can retry it after a revision (AC6.29).
 5. **Manual overrides** are recorded where the trainer set them, in `DeviceSpec.effect_overrides` (choice DC6). They reach the estimate as `source: 'manual_override'` with the calculated band kept beside them, travel inside the snapshot, set the device's `source` and the "Set by hand" label in `CompileEffects`, set `has_manual_override` in the index, and WS5's Review and the After-Action Review show them as Manual.
 
 WS8 calls the same two functions (`09-after-publish.md` section 6): `getEffectsForCompile` with the scenario's stored setup copy and the scene WS4 reads by scenario, and `recordEffectIndex` after a device or layout revision has recorded a new physics snapshot. A radius changes only through the calculator or a `manual_override` in the device. `getEffectsForCompile` makes no database write; `recordEffectIndex` reads WS5's snapshot row and writes only `fieldops_effect_index`. Neither touches `scenarios` (master 10.8 item 16).
@@ -1697,7 +1697,7 @@ WS8 calls the same two functions (`09-after-publish.md` section 6): `getEffectsF
 | `SETUP_UNAVAILABLE` | 409 | `calc` with `source: 'draft'` | This draft's setup could not be read. Reopen Setup and save it again. |
 | `REVIEW_INCOMPLETE` | 409 | reviews | An approval needs every checklist item answered yes or not applicable and every oracle point passing. |
 | `RATE_LIMITED` | 429 | limited routes | Too many requests. Please wait a moment. |
-| `LIBRARY_TABLES_MISSING` | 503 | admin routes | The physics library tables are not installed yet (migrations 237 to 241). |
+| `LIBRARY_TABLES_MISSING` | 503 | admin routes | The physics library tables are not installed yet (migrations 238 to 242). |
 | `PHYSICS_UNAVAILABLE` | 503 | `calc`, `assume` | Effects cannot be calculated right now. Your device details are saved. |
 | `INTERNAL` | 500 | all | Something went wrong. Please try again. |
 
@@ -1733,7 +1733,7 @@ export function currentPhysicsMode(): PhysicsFlagMode;      // effectivePhysicsM
 export function physicsEnabledFor(role: string | undefined): boolean;   // physicsModeAllows(currentPhysicsMode(), role)
 ```
 
-`server/index.ts` imports both routers and mounts them immediately before `warroomRouter` (`server/index.ts:272`): `fieldOpsPhysicsRouter` at `/api/warroom/field-ops/physics` and `fieldOpsDevicesRouter` at `/api/field-ops/devices`. The global per-user limiter and the 10 MB JSON parser already apply; the routes add their own limits and the 512 KB size check from `content-length`.
+`server/index.ts` imports both routers and mounts them immediately before `warroomRouter` (`server/index.ts:286`): `fieldOpsPhysicsRouter` at `/api/warroom/field-ops/physics` and `fieldOpsDevicesRouter` at `/api/field-ops/devices`. The global per-user limiter and the 10 MB JSON parser already apply; the routes add their own limits and the 512 KB size check from `content-length`.
 
 ## 7. Client
 
@@ -2279,12 +2279,12 @@ Every refusal on a WS6 route is logged as `fieldops_device_text_rejected` with t
 
 | Data | Where it lives | Who can reach it | How |
 | --- | --- | --- | --- |
-| `DeviceSpec` | `warroom_wizard_drafts.setup_v2.devices` (WS2) | The draft's creator and admins, through WS2's draft routes | The routes check ownership as today (`server/routes/warroom.ts:564`); RLS is on with no policy in the live database (checked 25 Oct 2026; WS0's 219 records it) |
+| `DeviceSpec` | `warroom_wizard_drafts.setup_v2.devices` (WS2) | The draft's creator and admins, through WS2's draft routes | The routes check ownership as today (`server/routes/warroom.ts:564`); RLS is on with no policy in the live database (checked 25 Oct 2026; WS0's 220 records it) |
 | Resolved devices and estimates | Calc responses (not stored); WS5's snapshot | The requesting trainer; WS5's draft and Review routes | Snapshot table with RLS on and no policy (master 10.8 item 16) |
 | Effect index | `fieldops_effect_index` | Admins, through the admin routes | RLS on, no policy |
-| Library rows | 237 to 239 | Trainers read material labels and factors; admins read and write everything | RLS on, no policy; routes check the role |
-| Reviews and library changes | 241 | Admins | RLS on, no policy |
-| Planted positions | `rts_scene_configs` (WS4) | Anyone holding the public anon key, without signing in (live check, 25 Oct 2026) | Master risk 14, an owner decision; WS6 stores nothing there (choice DC6) |
+| Library rows | 238 to 240 | Trainers read material labels and factors; admins read and write everything | RLS on, no policy; routes check the role |
+| Reviews and library changes | 242 | Admins | RLS on, no policy |
+| Planted positions | `rts_scene_configs` (WS4) | The scene's creator and admins since migration 218 (**updated 8 Nov 2026**; before it, anyone holding the public anon key, live check of 25 Oct 2026), and any signed-in user through `GET /api/scenarios/:id/scene-config` until WS0's projection | Master risk 14, an owner decision; WS6 stores nothing there (choice DC6) |
 
 Nothing in this workstream writes a column of `scenarios`, and nothing reaches a participant: participants never call these routes (403), and WS7's AI agencies must not perceive device specifics (request X6.10).
 
@@ -2293,7 +2293,7 @@ Nothing in this workstream writes a column of `scenarios`, and nothing reaches a
 - **Who.** The wizard routes need a trainer or admin role; trainer access itself is granted by an admin after an application (`migrations/212_trainer_agreements.sql:1-6`). The admin routes need the admin role.
 - **How much.** 90 calculations a minute per user; 30 category readings an hour per user and a scenario credit unless admin; admin writes 120 an hour; bodies at most 512 KB; at most 6 devices, 21 zones and 128 samples a zone.
 - **What.** No function takes a desired effect and returns an input, a position or a time (P10). The calculator answers only "what would this trainer-chosen device do here".
-- **Audit.** Every admin library change and every review is recorded in migration 241's tables with the actor.
+- **Audit.** Every admin library change and every review is recorded in migration 242's tables with the actor.
 
 ### 9.5 Logging
 
@@ -2360,7 +2360,7 @@ The D22 gate has two halves.
 ### 10.3 Rollout
 
 1. **Development.** The flag defaults to `true`; build and run the tests.
-2. **Migrations.** The owner applies 237 to 241 (one Supabase project serves every environment, so this is done once) and an admin calls `POST /api/field-ops/devices/admin/seed`. Before that, everything runs on the seed files (section 5.9).
+2. **Migrations.** The owner applies 238 to 242 (one Supabase project serves every environment, so this is done once) and an admin calls `POST /api/field-ops/devices/admin/seed`. Before that, everything runs on the seed files (section 5.9).
 3. **Staging.** A staging session run with the checklist of section 10.5.
 4. **Production, admins only.** `ENABLE_FIELDOPS_PHYSICS=admin`; the owner builds one scenario end to end.
 5. **Review.** The D22 review is recorded and approved for the deployed versions (gate G6.D22).
@@ -2437,7 +2437,7 @@ All server and shared tests use `node:test` through `tsx`. Tests of `shared/` mo
 - **A6.2** Type a refused note and a responder cue; check the message and that only the cue is saved.
 - **A6.3** With WS4: plant both devices, paint zones, override a radius; check the inspector and the rings.
 - **A6.4** With `ENABLE_FIELDOPS_PHYSICS` set to `true`, `admin` and `false`, call the calc route as a trainer and as an admin; check 200 or 404 as in section 10.1.
-- **A6.5** On a database without migrations 237 to 241, calculate; apply them, seed, calculate again; the `dataset_version` is the same.
+- **A6.5** On a database without migrations 238 to 242, calculate; apply them, seed, calculate again; the `dataset_version` is the same.
 - **A6.6** Edit a material as an admin; the label becomes Unreviewed; record an approved review; it becomes Reviewed; with `NODE_ENV=production` and the flag `true`, revoke it and check the downgrade in the capabilities response.
 - **A6.7** With WS5: compile; check the snapshot payload, the index rows and the Review physics panel.
 - **A6.8** Search the server log of steps A6.1 to A6.7 for the marker values; none appears.
@@ -2508,8 +2508,8 @@ Ordered; each names its commit (section 13). WS1's `shared/fieldOps/vocabulary.t
     - Done when: sums, monotonicity, joint and potential, and symmetry cases pass.
     - Tests: `server/services/fieldOps/physics/casualties.test.ts (new)`. Commit: CM2.
 11. **T6.11 Migrations.**
-    - Goal: migrations 237 to 241 as in section 5.8.
-    - Files: `migrations/237_fieldops_device_presets.sql (new)`, `migrations/238_fieldops_explosive_materials.sql (new)`, `migrations/239_fieldops_injury_thresholds.sql (new)`, `migrations/240_fieldops_effect_index.sql (new)`, `migrations/241_fieldops_physics_reviews.sql (new)`.
+    - Goal: migrations 238 to 242 as in section 5.8.
+    - Files: `migrations/238_fieldops_device_presets.sql (new)`, `migrations/239_fieldops_explosive_materials.sql (new)`, `migrations/240_fieldops_injury_thresholds.sql (new)`, `migrations/241_fieldops_effect_index.sql (new)`, `migrations/242_fieldops_physics_reviews.sql (new)`.
     - Steps: copy the SQL; run each twice on a scratch database to prove idempotence; run the rollback comments in reverse order.
     - Done when: each file applies twice without error and the rollbacks remove everything they created.
     - Tests: manual step A6.5. Commit: CM3.
@@ -2582,7 +2582,7 @@ Every commit passes `npm test` (with its new test files added to the script), `n
 | --- | --- | --- | --- |
 | CM1 | T6.1 to T6.5 | `fieldops(ws6): device contract, moderation, hint mapper and effects types` | Revert the commit. Nothing at runtime imports these files yet. If WS2, WS4 or WS5 already import them, revert their imports first or keep CM1 and fix forward, because a flag cannot hide a missing type. |
 | CM2 | T6.6 to T6.10 | `fieldops(ws6): calculator, reference data and casualty function` | Revert the commit. No route or compile path reaches the calculator until CM4 and CM5. A wrong transcribed value is fixed forward with a new `file_version` and `model_version`, never by editing a released version in place. |
-| CM3 | T6.11 to T6.13 | `fieldops(ws6): migrations 237 to 241, library loader, physics flag` | Set `ENABLE_FIELDOPS_PHYSICS=false`, then revert the code. The migrations are additive and unused without the code; leave them, or roll them back with their rollback comments in the order 241, 240, 239, 238, 237 once no code reads them. |
+| CM3 | T6.11 to T6.13 | `fieldops(ws6): migrations 238 to 242, library loader, physics flag` | Set `ENABLE_FIELDOPS_PHYSICS=false`, then revert the code. The migrations are additive and unused without the code; leave them, or roll them back with their rollback comments in the order 242, 241, 240, 239, 238 once no code reads them. |
 | CM4 | T6.14 to T6.16 | `fieldops(ws6): physics routes, category reader and library admin` | Set the flag to `false` (the wizard routes answer 404 at once) or revert. Admin edits already made stay in the tables with their change log. |
 | CM5 | T6.17 | `fieldops(ws6): effects for compile and the effect index` | Set the flag to `false`: new compiles fix `legacy_bands` at start, while running ones keep their stored mode (WS5 choice 8). Revert only after WS5 stops importing these functions (WS6 is a soft dependency of WS5, master section 6). Index rows already written stay valid. |
 | CM6 | T6.18, T6.21 | `fieldops(ws6): device card, effects panel and provenance chips` | Set the flag to `false` (the card shows the disabled effects state) or revert after WS2 removes its `DevicesCard` import, or keep a stub that renders nothing. Draft `devices` stay valid. |
@@ -2601,7 +2601,7 @@ Every commit passes `npm test` (with its new test files added to the script), `n
 | Physics tests and fixtures | `server/services/fieldOps/physics/calculator.test.ts (new)`, `server/services/fieldOps/physics/casualties.test.ts (new)`, `server/services/fieldOps/physics/resolveDevice.test.ts (new)`, `server/services/fieldOps/physics/categoryReader.test.ts (new)`, `server/services/fieldOps/physics/library.test.ts (new)`, `server/services/fieldOps/physics/compileEffects.test.ts (new)`, `server/services/fieldOps/physics/physicsMode.test.ts (new)`, `server/services/fieldOps/physics/__fixtures__/physicsFixture.ts (new)`, `server/services/fieldOps/physics/__fixtures__/hints.ts (new)` |
 | Physics data | `server/services/fieldOps/physics/data/blast-curves.json (new)`, `server/services/fieldOps/physics/data/fragments.json (new)`, `server/services/fieldOps/physics/data/thermal.json (new)`, `server/services/fieldOps/physics/data/environment.json (new)`, `server/services/fieldOps/physics/data/casualty-mix.json (new)`, `server/services/fieldOps/physics/data/containers.json (new)`, `server/services/fieldOps/physics/data/oracles.json (new)`, `server/services/fieldOps/physics/data/seed/materials.json (new)`, `server/services/fieldOps/physics/data/seed/thresholds.json (new)`, `server/services/fieldOps/physics/data/seed/presets.json (new)` |
 | Routes | `server/routes/fieldOpsDevices.ts (new)` |
-| Migrations | `migrations/237_fieldops_device_presets.sql (new)`, `migrations/238_fieldops_explosive_materials.sql (new)`, `migrations/239_fieldops_injury_thresholds.sql (new)`, `migrations/240_fieldops_effect_index.sql (new)`, `migrations/241_fieldops_physics_reviews.sql (new)` |
+| Migrations | `migrations/238_fieldops_device_presets.sql (new)`, `migrations/239_fieldops_explosive_materials.sql (new)`, `migrations/240_fieldops_injury_thresholds.sql (new)`, `migrations/241_fieldops_effect_index.sql (new)`, `migrations/242_fieldops_physics_reviews.sql (new)` |
 | Client | `frontend/src/components/FieldOps/Devices/DevicesCard.tsx (new)`, `frontend/src/components/FieldOps/Devices/DeviceForm.tsx (new)`, `frontend/src/components/FieldOps/Devices/EffectsPanel.tsx (new)`, `frontend/src/components/FieldOps/Devices/ProvenanceChip.tsx (new)`, `frontend/src/components/FieldOps/Devices/useDeviceEffects.ts (new)`, `frontend/src/components/FieldOps/Devices/useSetupEffects.ts (new)`, `frontend/src/components/FieldOps/Devices/usePhysicsCatalogue.ts (new)`, `frontend/src/components/FieldOps/Devices/devicesApi.ts (new)`, `frontend/src/components/FieldOps/Devices/deviceView.ts (new)`, `frontend/src/components/FieldOps/Devices/deviceCopy.ts (new)`, `frontend/src/components/FieldOps/Devices/index.ts (new)`, `frontend/src/design/fieldops-devices.css (new)` |
 | Client test | `frontend/tests/fieldOpsDevices.test.ts (new)` |
 
@@ -2610,7 +2610,7 @@ Every commit passes `npm test` (with its new test files added to the script), `n
 | File | Change |
 | --- | --- |
 | `server/env.ts` | Adds `enableFieldopsPhysics` (section 6.9) |
-| `server/index.ts` | Imports the two routers and mounts them before `warroomRouter` (`server/index.ts:272`) |
+| `server/index.ts` | Imports the two routers and mounts them before `warroomRouter` (`server/index.ts:286`) |
 | `package.json` | Adds the fourteen new test files to the `test` script (`package.json:25`) |
 
 **Files other workstreams create that WS6 imports, without changing them** (master 10.8 item 29):
@@ -2650,11 +2650,11 @@ WS2 renders `DevicesCard` in its own `IncidentLane`; WS4 renders `EffectsPanel` 
 | R6.8 | The data files are not found at runtime | Read relative to `process.cwd()` as other bundled assets are; a missing file makes physics unavailable (503) and compile falls back to legacy with a warning |
 | R6.9 | A library edit changes the numbers of unpublished drafts | Intended (choice DC1); visible through `dataset_version` and the Unreviewed label; compiled scenarios keep their snapshots |
 | R6.10 | The illustrative casualty figure is read as a prediction | The "illustrative" tag, the range in the title, Review wording, D22 item `labels_and_copy` |
-| R6.11 | Planted positions are readable with the public anon key alone, without signing in (master risk 14, live check of 25 Oct 2026) | Owner decision and a gate before production; WS6 adds nothing to `rts_scene_configs` (choice DC6) |
+| R6.11 | Planted positions are readable with the public anon key alone, without signing in (master risk 14, live check of 25 Oct 2026). **Updated 8 Nov 2026:** migration 218 closed that path in production; any signed-in user still reads them through `GET /api/scenarios/:id/scene-config` until WS0's projection | Owner decision and a gate before production; WS6 adds nothing to `rts_scene_configs` (choice DC6) |
 
 ### 15.2 Open questions
 
-- **Q1** Answered on 25 Oct 2026: RLS is on for `warroom_wizard_drafts` in the live database, with no policies, and WS0's migration 219 records it (section 3.5).
+- **Q1** Answered on 25 Oct 2026: RLS is on for `warroom_wizard_drafts` in the live database, with no policies, and WS0's migration 220 records it (section 3.5).
 - **Q2** Who is the D22 reviewer, and what qualification statement is enough for the review record?
 - **Q3** Should a trainer be able to override casualty counts directly? This spec lets her override radii, and casualties follow them.
 - **Q4** Is an admin screen for the library and the reviews wanted in this release, or are the routes enough?
@@ -2674,7 +2674,7 @@ Every request other specs made of WS6, and the two names attributed to WS6 that 
 | `03-setup-screen.md` (WS2, R7) | Settle one form for the second argument of `moderateDeviceText` | Settled by master 10.8 item 24: the second argument is an options object. WS2 passes `{ field: 'summary' }` for the device summary and blueprint device narratives and `{ field: 'other_label' }` for container text and item labels. Adversary behaviour is not a device field, so it passes the text alone or `{ maxLength: 400 }`, not `'responder_note'` | Section 9.2 |
 | `03-setup-screen.md` (WS2, R11) | Keep `DevicesCardProps` as WS2 lists them, keep `devices.N...` paths in `devicesSchema` errors, and leave "no device" to WS2's `devices.none` | Accepted. The props equal WS2's list; WS8's published mode adds two optional props WS2 never passes (`mode`, `publishedBands`). Errors carry `devices.N...` paths, and `deviceReadinessRules` gives no item for an empty list | Sections 5.4 and 7.2; the device test |
 | `05-layout-step.md` (WS4, R4.3) | `useDeviceEffects` with WS4's contract, returning an `EffectRingSet` per device; an inspector `EffectsPanel` that owns override storage; a server-callable `moderateDeviceText(text)`; a stable `id` on every device, main first; consume `toCrowdZoneInputs`, `confinementAt`, `allocateCrowd` and `simToLatLng` | Accepted. The hook has WS4's signature and returns `EffectRingSet` shapes; the inspector saves overrides with `saveDeviceOverrides` through WS2's `set.device`; `moderateDeviceText(text)` works with the text alone (item 24); ids are stable, main device first; WS6 calls `confinementAt`, `toCrowdZoneInputs(crowdGeometryOf(scene), headcount)`, which runs `allocateCrowd`, and `simToLatLng`. In the published layout the override is read-only (X6.14) | Sections 5.2, 5.3, 6.7, 7.4, 7.9 and 7.10 |
-| `06-compile-and-review.md` (WS5) | Declare any foreign key from WS6's tables to `scenarios` `ON DELETE CASCADE` or `ON DELETE SET NULL` | Accepted (master 10.8 item 21): `fieldops_effect_index.scenario_id` cascades and its `draft_id` is set null; no other WS6 table refers to `scenarios` | Section 5.8, migration 240 |
+| `06-compile-and-review.md` (WS5) | Declare any foreign key from WS6's tables to `scenarios` `ON DELETE CASCADE` or `ON DELETE SET NULL` | Accepted (master 10.8 item 21): `fieldops_effect_index.scenario_id` cascades and its `draft_id` is set null; no other WS6 table refers to `scenarios` | Section 5.8, migration 241 |
 | `06-compile-and-review.md` (WS5) | Return `CompileEffects` exactly as WS5's section 5.5; `decidePhysicsModeForCompile` returning `calculated` or `legacy_bands`; `moderateDeviceText` up to 4,000 characters; confirm row M8 against WS5's section 6.12 and the 60-patient cap | Accepted. Filled field by field as WS5's section 5.5 and checked with `compileEffectsSchema` in the compile test, with three confinement values; the text alone is capped at 4,000. Row M8 confirmed: the legacy pin-editor code is unchanged, and WS5's new persist draws the guide circles at the calculated lethal, serious and fragment radii; `casualty_plan` carries full counts, and WS5 places at most 60 patients, scaled and labelled illustrative | Sections 3.2, 6.7, 6.9 and 9.2 |
 | `08-people-or-ai.md` (WS7) | A stably named shared `moderateDeviceText` returning `ok` and a reason, usable on any short text | Accepted: `shared/fieldOps/deviceModeration.ts (new)`, called with the text alone (item 24) | Section 9.2 |
 | `09-after-publish.md` (WS8) | Let `getEffectsForCompile` run for a published scenario from the stored setup copy and the source draft id; make `recordEffectIndex` replace a scenario's index; give `DevicesCard` a published mode | Modified. The function takes the setup copy and the scene and never reads the draft, so it takes no draft id. `recordEffectIndex` replaces the scenario's rows, so a second call is harmless (AC6.29). `DevicesCard` has a published mode in which every edit, overrides included, goes to WS8's `onChange` and the card saves nothing (AC6.30) | Sections 6.7 and 7.2; T6.17 and T6.21 |
@@ -2685,7 +2685,7 @@ Every request other specs made of WS6, and the two names attributed to WS6 that 
 
 ### 15.4 Requests WS6 makes of other specs
 
-Only the requests still open. Settled and dropped: X6.1 and X6.2 (master risk 15, section 8 and 10.1 now say it), X6.3 (the live check: RLS is on, recorded by WS0's 219), X6.4 to X6.6 (taken in by WS2: `siteAreaM2` in its props, `devicesSchema` and `validateDevices` with the library's material keys, `deviceReadinessRules` in its registry, `linkDeviceFacts`, AC2.8, AC2.9 and its `set.device` merge) and X6.13 (master 10.8 item 5). Taken in by their owners in the second reconciliation:
+Only the requests still open. Settled and dropped: X6.1 and X6.2 (master risk 15, section 8 and 10.1 now say it), X6.3 (the live check: RLS is on, recorded by WS0's 220), X6.4 to X6.6 (taken in by WS2: `siteAreaM2` in its props, `devicesSchema` and `validateDevices` with the library's material keys, `deviceReadinessRules` in its registry, `linkDeviceFacts`, AC2.8, AC2.9 and its `set.device` merge) and X6.13 (master 10.8 item 5). Taken in by their owners in the second reconciliation:
 - X6.7: WS5 budgets zero model calls for `getEffectsForCompile` and says "Calculated from assumed inputs" (`06-compile-and-review.md` section 6.4.1).
 - X6.8 and X6.9: WS4 keeps `PlacedDevice` free of effects, caps painted zones at 20, and keeps crowd polygons in the `latLngToSim` frame (`05-layout-step.md` section 5.4).
 - X6.10: WS7's AI agencies perceive no device specifics and never call the physics routes (`08-people-or-ai.md` sections 6.8 and 15.3).
@@ -2703,7 +2703,7 @@ WS6 is done when master section 11 holds and, in particular:
 1. AC6.1 to AC6.30 pass, each through the test it names, and manual steps A6.1 to A6.9 are recorded.
 2. `npm test` passes with all fourteen new test files in the `package.json` script; `npx tsc --noEmit` is clean for the server and `shared/`; `npm --prefix frontend run build` passes.
 3. `node scripts/verify-field-ops-specs.mjs` passes for this document, and the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project).
-4. Migrations 237 to 241 apply on a scratch database (a Supabase branch or a local Postgres, never the shared project), twice without error, and the code was shown to work before they were applied (AC6.23).
+4. Migrations 238 to 242 apply on a scratch database (a Supabase branch or a local Postgres, never the shared project), twice without error, and the code was shown to work before they were applied (AC6.23).
 5. Every data-file value carries a source locator; oracles O1 to O3 pass.
 6. With `ENABLE_FIELDOPS_PHYSICS=false` the new flow behaves as legacy (404 from the wizard routes, disabled effects, fixed bands in compile), and the legacy wizard is unchanged.
 7. No device specific appears in any log line (AC6.26 and manual A6.8); nothing is written to a `scenarios` column (AC6.25).

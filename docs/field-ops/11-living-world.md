@@ -4,8 +4,8 @@
 **Workstream:** WS9
 **Depends on:** [the master plan](00-master-plan.md); [01](01-prerequisites.md), [04](04-site-picker.md), [05](05-layout-step.md), [06](06-compile-and-review.md), [07](07-device-and-physics.md) and [08](08-people-or-ai.md); softly [09](09-after-publish.md)
 **Flags:** `ENABLE_FIELDOPS_WORLD_SIM`
-**Migrations:** 249 to 256
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 250 to 257 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -15,7 +15,7 @@ This spec is new as a whole on 3 Nov 2026, so its text carries no "Added" marker
 
 **Goals**
 
-1. **G9.1 The spread library (slice 1; D31; master 10.8 item 38).** Stored, reviewed parameters for materials (how each ignites, how fast fire spreads over it, how long it burns, its smoke yield, how long a wall of it resists burn-through, how long a structure of it resists fire), for hazard behaviour, for exposure and for weather. They live in migration 249, come from seed files that carry a source note per row, and pass a review gate like WS6's (D22). `loadSpreadLibrary`, `hazardEventsFor` and `deteriorationFactsFor` serve WS5.
+1. **G9.1 The spread library (slice 1; D31; master 10.8 item 38).** Stored, reviewed parameters for materials (how each ignites, how fast fire spreads over it, how long it burns, its smoke yield, how long a wall of it resists burn-through, how long a structure of it resists fire), for hazard behaviour, for exposure and for weather. They live in migration 250, come from seed files that carry a source note per row, and pass a review gate like WS6's (D22). `loadSpreadLibrary`, `hazardEventsFor` and `deteriorationFactsFor` serve WS5.
 2. **G9.2 Fire spread kept at compile (slice 1; master 10.8 item 35).** `buildSpreadTimeline` runs today's `runEnvironmentalSimulation` with the stored parameters in a worker thread, under a time limit and a size limit, so WS5's pins stage keeps today's fire-spread pins without the research step and without blocking the server (journey finding 4.14).
 3. **G9.3 One starting world (slice 2; D36).** A `WorldModel` built once per scenario revision by a job kind of WS9's own (master 10.8 item 39) from WS5's snapshots, WS4's scene, WS6's effects, WS3's roads and facilities, and WS8's setup copy.
 4. **G9.4 A live simulation (slice 2; D32).** Fire, smoke, gas, structure, plumes, crowd flows and casualty exposure, stepped once a second, deterministic and replayable, reacting to suppression, ventilation, cordons, exit control, shoring, rescue and evacuation.
@@ -51,7 +51,7 @@ This spec is new as a whole on 3 Nov 2026, so its text carries no "Added" marker
 | D10 | Decided | The crowd is the setup headcount, placed by WS4's crowd zones and `allocateCrowd`; the world moves it. |
 | D13 | Assumed | A site outside the saved data cannot be chosen, so a world always has saved roads around it. An origin outside the road box enters at the box edge (section 6.8.3). |
 | D22 | Assumed | When WS6's physics snapshot is unreviewed, the world's initial damage carries "Unreviewed model" too. The spread library has its own review record, modelled on WS6's (W24). |
-| D23 | Assumed | Migrations 249 to 255 are additive and idempotent, and every reader works before they are applied (section 5.13). Number 256 stays unused in version 1. |
+| D23 | Assumed | Migrations 250 to 256 are additive and idempotent, and every reader works before they are applied (section 5.13). Number 257 stays unused in version 1. |
 | D28 | Assumed | The mockup draws no WS9 surface, so WS9 follows the UI sheet's conventions: `fo-` classes in its own stylesheet, `WrIcon` glyphs and no emoji. |
 | D31 | Decided | All spread and deterioration physics is stored data, seeded and reviewed during development. The simulation, the compile-time timeline and the facts block call no model. |
 | D32 | Decided | Slice 2: the live simulation of fire, smoke, structure, gas and smoke plumes and crowds, reacting to the teams. |
@@ -60,13 +60,13 @@ This spec is new as a whole on 3 Nov 2026, so its text carries no "Added" marker
 | D35 | Decided | Slice 5: weather and traffic change spread, plumes, visibility, travel speed and casualties. |
 | D36 | Decided | Section 6.6 maps each detail the trainer gives to the part of the world it builds; AC9.14 proves none is dropped. |
 
-Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS0's detectors for every table and function of 249 to 255); items 12 and 28 (fog filtering runs after WS0's participant projections and never widens them); item 16 (device positions and effects live only in WS9's tables, with row level security on and no policy, never in a `scenarios` column); item 17 (WS9 asks no model anything); item 21 (every foreign key to `scenarios` cascades); item 26 (WS9 does not touch the start branch of `PATCH /api/sessions/:id`; it reads the revision WS8's start claim pinned); item 31 (one refusal for a role, the bare 404 for a flag, WS0's client error class); item 32 (the prepare job's stages use WS0's stage context names); items 35 and 38 (the spread library and the compile-time timeline); item 39 (the live world's seams).
+Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS0's detectors for every table and function of 250 to 256); items 12 and 28 (fog filtering runs after WS0's participant projections and never widens them); item 16 (device positions and effects live only in WS9's tables, with row level security on and no policy, never in a `scenarios` column); item 17 (WS9 asks no model anything); item 21 (every foreign key to `scenarios` cascades); item 26 (WS9 does not touch the start branch of `PATCH /api/sessions/:id`; it reads the revision WS8's start claim pinned); item 31 (one refusal for a role, the bare 404 for a flag, WS0's client error class); item 32 (the prepare job's stages use WS0's stage context names); items 35 and 38 (the spread library and the compile-time timeline); item 39 (the live world's seams).
 
 ### 2.2 WS9 design decisions (Proposed)
 
 | # | Decision | Why |
 | --- | --- | --- |
-| W1 | `loadSpreadLibrary()` answers null while migration 249 is missing and also while its tables hold no complete library. There is no seed-file fallback at run time; the seed files reach the tables through an admin route. | Master 10.8 item 38 fixes the null; a fallback would let an unseeded, unreviewed set of numbers drive compile without anyone noticing. |
+| W1 | `loadSpreadLibrary()` answers null while migration 250 is missing and also while its tables hold no complete library. There is no seed-file fallback at run time; the seed files reach the tables through an admin route. | Master 10.8 item 38 fixes the null; a fallback would let an unseeded, unreviewed set of numbers drive compile without anyone noticing. |
 | W2 | `buildSpreadTimeline` passes the stored parameters to `runEnvironmentalSimulation` through one new optional argument and a time scale of 1. Without the argument the function is exactly today's. | Item 38 says "runs today's `runEnvironmentalSimulation`"; the function hard-codes its wall and hazard tables (section 3.2), so the stored physics must reach it somehow, and legacy callers must not change. |
 | W3 | The live world uses a new steppable engine in `server/services/fieldOps/world/engine/ (new)`, not today's batch function. | Today's function runs the whole session in one call, builds neighbours in O(N²), lets fire spread only inside hazard radii and cannot take an intervention (section 3.2). |
 | W4 | Inside the primary building the world is a grid of 3 m cells, the runtime stud spacing, clipped to the outline with no exterior padding; 4 m and then 5 m cells when the building would need more than 20,000. | Journey chapter 13: the runtime grid is 3 m and the compile grid 5 m; today's grids pad 150 m of outdoor studs around the polygon (section 3.2), which is what makes them large. |
@@ -179,7 +179,7 @@ All line numbers are at commit `588387f` (3 Nov 2026), with no uncommitted chang
 
 ### 3.10 One process, one build
 
-- **Verified.** One Node process serves HTTP and sockets and, where `env.runBackgroundEngines` holds, runs every background engine (`server/index.ts:80-111`, `server/env.ts:104-114`). Shutdown stops the schedulers, closes the servers and exits after 10 seconds (`server/index.ts:314-338`).
+- **Verified.** One Node process serves HTTP and sockets and, where `env.runBackgroundEngines` holds, runs every background engine (`server/index.ts:80-111`, `server/env.ts:104-114`). Shutdown stops the schedulers, closes the servers and exits after 10 seconds (`server/index.ts:328-352`).
 - **Verified.** Production runs `node dist/server/index.js` after `tsc --project tsconfig.json` (`package.json:14`, `package.json:17`); development runs `tsx watch server/index.ts` (`package.json:12`); tests run `node --import tsx --test` with an explicit list of files (`package.json:25`). The compiler writes `dist/` from the repository root (`tsconfig.json:3-4`). No server code uses `worker_threads` today.
 - **Verified.** A session's status is one of `scheduled`, `in_progress`, `paused`, `completed` and `cancelled` (`server/routes/sessions.ts:51`). `start_time` is set once, on the first start (`server/routes/sessions.ts:1424-1426`); the start then clones the pins and loads the environmental state (`server/routes/sessions.ts:1472-1511`). Every engine computes elapsed time from `start_time`, so paused minutes count.
 
@@ -208,11 +208,11 @@ All line numbers are at commit `588387f` (3 Nov 2026), with no uncommitted chang
 
 | Slice | Delivers | Lands with | Without it, or when it fails |
 | --- | --- | --- | --- |
-| 1 | Migration 249, the seed files and the review record; `loadSpreadLibrary`, `hazardEventsFor`, `deteriorationFactsFor`; `buildSpreadTimeline` in a worker; the library admin routes | WS5 (master 10.8 item 35) | `loadSpreadLibrary` answers null: WS5 compiles with no fire-spread pins and an empty facts block and records a warning (item 38) |
-| 2 | Migrations 250 to 252; the world model and its job kind; the engine for fire, smoke, gas, structure, plumes, crowds and exposure; the runtime, lease, log, snapshots and recovery; the bridge and the four gates; the console, the lobby card and the map layers; the replay panel | After WS5 and WS6 | No world rows: the session runs today's scripted escalation |
-| 3 | Migration 253; road graphs, speed classes and units; dispatch, routing, arrival as placed assets and tasks | After slice 2 | No units: teams place assets as today; the world's fires respond only to today's pin resolution and decisions |
-| 4 | Migration 254; observation, knowledge, reports; fog filtering of every payload; broadcast redaction | After slice 3 | `fog_enabled` is false: every participant sees the whole world except the devices |
-| 5 | Migration 255; `WeatherSetting` presets, the effects of weather, traffic profiles, cordons, closures, jams; WS2's stored weather setting | After slice 4 | Fixed defaults: the default weather of section 2.3 and free-flow road speeds |
+| 1 | Migration 250, the seed files and the review record; `loadSpreadLibrary`, `hazardEventsFor`, `deteriorationFactsFor`; `buildSpreadTimeline` in a worker; the library admin routes | WS5 (master 10.8 item 35) | `loadSpreadLibrary` answers null: WS5 compiles with no fire-spread pins and an empty facts block and records a warning (item 38) |
+| 2 | Migrations 251 to 253; the world model and its job kind; the engine for fire, smoke, gas, structure, plumes, crowds and exposure; the runtime, lease, log, snapshots and recovery; the bridge and the four gates; the console, the lobby card and the map layers; the replay panel | After WS5 and WS6 | No world rows: the session runs today's scripted escalation |
+| 3 | Migration 254; road graphs, speed classes and units; dispatch, routing, arrival as placed assets and tasks | After slice 2 | No units: teams place assets as today; the world's fires respond only to today's pin resolution and decisions |
+| 4 | Migration 255; observation, knowledge, reports; fog filtering of every payload; broadcast redaction | After slice 3 | `fog_enabled` is false: every participant sees the whole world except the devices |
+| 5 | Migration 256; `WeatherSetting` presets, the effects of weather, traffic profiles, cordons, closures, jams; WS2's stored weather setting | After slice 4 | Fixed defaults: the default weather of section 2.3 and free-flow road speeds |
 
 Each slice is switched on by the same flag; a slice whose migration is missing degrades as in the last column (section 5.13).
 
@@ -222,7 +222,7 @@ The test files are in section 11.1. Pure modules are tested without a database o
 
 **Slice 1: the spread library and the compile-time timeline**
 
-1. **AC9.1** Given migration 249 is not applied, when `loadSpreadLibrary()` runs, then it resolves to null without throwing and logs `fieldops_spread_library_missing` once per minute; given the tables exist but hold no active rows, then it also resolves to null and logs `fieldops_spread_library_empty`; given the seeded tables, then it resolves to a `SpreadLibrary` with a 16-hex `dataset_version`. Test: `server/services/fieldOps/world/spreadLibrary.test.ts (new)`, "null when missing or empty".
+1. **AC9.1** Given migration 250 is not applied, when `loadSpreadLibrary()` runs, then it resolves to null without throwing and logs `fieldops_spread_library_missing` once per minute; given the tables exist but hold no active rows, then it also resolves to null and logs `fieldops_spread_library_empty`; given the seeded tables, then it resolves to a `SpreadLibrary` with a 16-hex `dataset_version`. Test: `server/services/fieldOps/world/spreadLibrary.test.ts (new)`, "null when missing or empty".
 2. **AC9.2** Given seeded rows with one required default removed (`unknown_wall`, `contents_generic`, `frame_unknown`, any of the six hazard types or any exposure agent), when the library loads, then it resolves to null and logs `fieldops_spread_library_invalid` with the missing keys. Test: `spreadLibrary.test.ts`, "integrity".
 3. **AC9.3** Given the same active rows in any order, and given the seed files, when `datasetVersionOf` runs on each, then all give the same `dataset_version`; changing one number changes it. Test: `spreadLibrary.test.ts`, "dataset version".
 4. **AC9.4** Given each of WS4's six hazard types at each severity, when `hazardEventsFor(hazard, library)` runs twice, then both results are deep-equal arrays of `HazardEvent` objects with exactly the fields of `server/services/rtsSceneEnrichmentService.ts:113-124`, no `eventType` of `explode`, `spreadRadius` at most the row's `max_radius_m`, and events in ascending `triggerTimeSec`; an unknown type gives an empty array. Test: `server/services/fieldOps/world/hazardEvents.test.ts (new)`.
@@ -304,23 +304,23 @@ The test files are in section 11.1. Pure modules are tested without a database o
 
 | Data | Where | Migration | Readers |
 | --- | --- | --- | --- |
-| Material, hazard, exposure and weather-effect rows; the review record; the change log | `fieldops_spread_materials`, `fieldops_spread_hazards`, `fieldops_spread_exposure`, `fieldops_spread_weather_effects`, `fieldops_spread_reviews`, `fieldops_spread_changes` | 249 | `loadSpreadLibrary` (WS5's compile, WS9's world, the admin routes) |
-| The static world of one scenario revision | `fieldops_world_models` | 250 | The runtime; the replay route |
-| One row per session with a world: settings, status, lease, clock; the hand-back | `fieldops_world_sessions` and five functions | 251 | The runtime; the world routes; the gates of section 6.12 |
-| Commands, events and snapshots | `fieldops_world_commands`, `fieldops_world_events`, `fieldops_world_snapshots` | 252 | The runtime (replay, recovery); the replay route |
-| Road speeds, cached road graphs, units | `fieldops_road_speed_classes`, `fieldops_road_graphs`, `fieldops_world_units` | 253 | The prepare job; the runtime; the world routes |
-| What each team knows, and the reports teams share | `fieldops_world_knowledge`, `fieldops_world_reports` | 254 | The fog filter of section 6.10; the views |
-| Weather presets and traffic profiles | `fieldops_weather_presets`, `fieldops_traffic_profiles` | 255 | `weatherFromLabel`, the console, routing |
+| Material, hazard, exposure and weather-effect rows; the review record; the change log | `fieldops_spread_materials`, `fieldops_spread_hazards`, `fieldops_spread_exposure`, `fieldops_spread_weather_effects`, `fieldops_spread_reviews`, `fieldops_spread_changes` | 250 | `loadSpreadLibrary` (WS5's compile, WS9's world, the admin routes) |
+| The static world of one scenario revision | `fieldops_world_models` | 251 | The runtime; the replay route |
+| One row per session with a world: settings, status, lease, clock; the hand-back | `fieldops_world_sessions` and five functions | 252 | The runtime; the world routes; the gates of section 6.12 |
+| Commands, events and snapshots | `fieldops_world_commands`, `fieldops_world_events`, `fieldops_world_snapshots` | 253 | The runtime (replay, recovery); the replay route |
+| Road speeds, cached road graphs, units | `fieldops_road_speed_classes`, `fieldops_road_graphs`, `fieldops_world_units` | 254 | The prepare job; the runtime; the world routes |
+| What each team knows, and the reports teams share | `fieldops_world_knowledge`, `fieldops_world_reports` | 255 | The fog filter of section 6.10; the views |
+| Weather presets and traffic profiles | `fieldops_weather_presets`, `fieldops_traffic_profiles` | 256 | `weatherFromLabel`, the console, routing |
 | The structured weather of a draft and of a published scenario | `setup_v2.options.weather_setting` (WS2, request in section 15.3) and WS8's setup copy | none of WS9's | The world model |
 | Unit positions as today's game sees them | `placed_assets` rows with `properties.world_unit_id` | existing (`migrations/124_placed_assets.sql`) | Today's checks and map |
 | World fires, collapses and exposure casualties as today's game sees them | `scenario_hazards` and `scenario_casualties` rows of the session, with `properties.world_owned` or `conditions.spawned_from` | existing | Today's response layer |
 
-Every WS9 table has row level security enabled with no policy, and its privileges are revoked from `PUBLIC`, `anon` and `authenticated`, as WS0 does for its job tables (`01-prerequisites.md` section 5.2): the world tables hold answer keys (device positions, hidden fires, what a team has not seen). Every function revokes `EXECUTE` from the same roles and grants it to `service_role`, as `migrations/193_payment_portal.sql:182-185` does for `consume_credit`. Every foreign key to `scenarios` or `sessions` cascades (master 10.8 item 21). The tables carrying `updated_at` use the existing `update_updated_at_column()` (`migrations/001_initial_schema.sql:333`). Apply 249 to 255 in order; 251 checks that 250 is present and 252 to 254 that 251 is. Number 256 stays unused in version 1.
+Every WS9 table has row level security enabled with no policy, and its privileges are revoked from `PUBLIC`, `anon` and `authenticated`, as WS0 does for its job tables (`01-prerequisites.md` section 5.2): the world tables hold answer keys (device positions, hidden fires, what a team has not seen). Every function revokes `EXECUTE` from the same roles and grants it to `service_role`, as `migrations/193_payment_portal.sql:182-185` does for `consume_credit`. Every foreign key to `scenarios` or `sessions` cascades (master 10.8 item 21). The tables carrying `updated_at` use the existing `update_updated_at_column()` (`migrations/001_initial_schema.sql:333`). Apply 250 to 256 in order; 252 checks that 251 is present and 253 to 255 that 252 is. Number 257 stays unused in version 1.
 
-### 5.2 Migration 249: `migrations/249_fieldops_spread_library.sql (new)`
+### 5.2 Migration 250: `migrations/250_fieldops_spread_library.sql (new)`
 
 ```sql
--- Migration 249: the stored spread and deterioration library (D31; master 10.8 items 35 and 38).
+-- Migration 250: the stored spread and deterioration library (D31; master 10.8 items 35 and 38).
 -- WS9, docs/field-ops/11-living-world.md section 5.2.
 --
 -- Additive and idempotent. loadSpreadLibrary answers null until these tables hold a complete active
@@ -541,16 +541,16 @@ REVOKE ALL ON TABLE public.fieldops_spread_changes FROM PUBLIC, anon, authentica
 COMMIT;
 ```
 
-### 5.3 Migration 250: `migrations/250_fieldops_world_models.sql (new)`
+### 5.3 Migration 251: `migrations/251_fieldops_world_models.sql (new)`
 
 ```sql
--- Migration 250: the static world model of a compiled scenario revision (D36; master 10.8 item 39).
+-- Migration 251: the static world model of a compiled scenario revision (D36; master 10.8 item 39).
 -- WS9, docs/field-ops/11-living-world.md section 5.3.
 --
 -- One row per scenario and inputs hash, written by the fieldops_world_prepare job and reused by every
 -- session of that revision. The model holds answer-key data (device positions and radii, hidden
 -- hazards), so only the service role reaches it. Additive and idempotent; unread until a world runs.
--- road_graph_id points at fieldops_road_graphs (migration 253) without a foreign key, so this file
+-- road_graph_id points at fieldops_road_graphs (migration 254) without a foreign key, so this file
 -- applies on its own.
 --
 -- Rollback, tried on a branch database only, never on the shared project (sessions then run without a world):
@@ -592,15 +592,15 @@ REVOKE ALL ON TABLE public.fieldops_world_models FROM PUBLIC, anon, authenticate
 COMMIT;
 ```
 
-### 5.4 Migration 251: `migrations/251_fieldops_world_sessions.sql (new)`
+### 5.4 Migration 252: `migrations/252_fieldops_world_sessions.sql (new)`
 
 The lease follows WS0's job lease (`01-prerequisites.md` section 6.10): a worker id per process, a scope that keeps a development server off production rows, a heartbeat that answers `lost` to anyone but the holder, and a release at shutdown.
 
 ```sql
--- Migration 251: one live world per session, its settings, status, clock and lease (D32; item 39).
+-- Migration 252: one live world per session, its settings, status, clock and lease (D32; item 39).
 -- WS9, docs/field-ops/11-living-world.md section 5.4.
 --
--- Requires 250. Additive and idempotent. Rows are created by the world runtime for sessions of
+-- Requires 251. Additive and idempotent. Rows are created by the world runtime for sessions of
 -- world-eligible scenarios, or by the lobby card before the start; nothing else reads them, so
 -- applying the file changes no running behaviour. Service role only.
 --
@@ -617,7 +617,7 @@ BEGIN;
 DO $$
 BEGIN
   IF to_regclass('public.fieldops_world_models') IS NULL THEN
-    RAISE EXCEPTION 'Apply migrations/250_fieldops_world_models.sql before 251_fieldops_world_sessions.sql';
+    RAISE EXCEPTION 'Apply migrations/251_fieldops_world_models.sql before 252_fieldops_world_sessions.sql';
   END IF;
 END $$;
 
@@ -834,13 +834,13 @@ GRANT EXECUTE ON FUNCTION public.fieldops_world_hand_back(UUID) TO service_role;
 COMMIT;
 ```
 
-### 5.5 Migration 252: `migrations/252_fieldops_world_log.sql (new)`
+### 5.5 Migration 253: `migrations/253_fieldops_world_log.sql (new)`
 
 ```sql
--- Migration 252: commands, the append-only event log and the snapshots of a live world (item 39).
+-- Migration 253: commands, the append-only event log and the snapshots of a live world (item 39).
 -- WS9, docs/field-ops/11-living-world.md section 5.5.
 --
--- Requires 251. Additive and idempotent. Commands are written by the world routes and applied by
+-- Requires 252. Additive and idempotent. Commands are written by the world routes and applied by
 -- the lease holder at tick boundaries; events are appended in batches and never updated; snapshots
 -- hold the whole engine state once a minute for recovery and the After-Action Review. Service role only.
 --
@@ -855,7 +855,7 @@ BEGIN;
 DO $$
 BEGIN
   IF to_regclass('public.fieldops_world_sessions') IS NULL THEN
-    RAISE EXCEPTION 'Apply migrations/251_fieldops_world_sessions.sql before 252_fieldops_world_log.sql';
+    RAISE EXCEPTION 'Apply migrations/252_fieldops_world_sessions.sql before 253_fieldops_world_log.sql';
   END IF;
 END $$;
 
@@ -948,13 +948,13 @@ REVOKE EXECUTE ON FUNCTION public.fieldops_world_events_append_only() FROM PUBLI
 COMMIT;
 ```
 
-### 5.6 Migration 253: `migrations/253_fieldops_world_units.sql (new)`
+### 5.6 Migration 254: `migrations/254_fieldops_world_units.sql (new)`
 
 ```sql
--- Migration 253: road speed classes, cached road graphs and the units of a live world (D33).
+-- Migration 254: road speed classes, cached road graphs and the units of a live world (D33).
 -- WS9, docs/field-ops/11-living-world.md section 5.6.
 --
--- Requires 251. Additive and idempotent. The road graph is built once per road box and saved-data
+-- Requires 252. Additive and idempotent. The road graph is built once per road box and saved-data
 -- version from osm_sg_roads (migrations/193_singapore_local_osm_cache.sql) and shared by every
 -- scenario whose box matches; it holds only public map data. Units are per session. Service role only.
 --
@@ -967,7 +967,7 @@ BEGIN;
 DO $$
 BEGIN
   IF to_regclass('public.fieldops_world_sessions') IS NULL THEN
-    RAISE EXCEPTION 'Apply migrations/251_fieldops_world_sessions.sql before 253_fieldops_world_units.sql';
+    RAISE EXCEPTION 'Apply migrations/252_fieldops_world_sessions.sql before 254_fieldops_world_units.sql';
   END IF;
 END $$;
 
@@ -1056,13 +1056,13 @@ REVOKE ALL ON TABLE public.fieldops_world_units FROM PUBLIC, anon, authenticated
 COMMIT;
 ```
 
-### 5.7 Migration 254: `migrations/254_fieldops_world_visibility.sql (new)`
+### 5.7 Migration 255: `migrations/255_fieldops_world_visibility.sql (new)`
 
 ```sql
--- Migration 254: what each team of a live world knows, and the reports teams share (D34).
+-- Migration 255: what each team of a live world knows, and the reports teams share (D34).
 -- WS9, docs/field-ops/11-living-world.md section 5.7.
 --
--- Requires 251. Additive and idempotent. The lease holder keeps knowledge in memory and upserts the
+-- Requires 252. Additive and idempotent. The lease holder keeps knowledge in memory and upserts the
 -- changed entries every 10 seconds; the fog filter of today's hazard and casualty routes reads them
 -- when the process serving a request does not hold the world. Service role only.
 --
@@ -1075,7 +1075,7 @@ BEGIN;
 DO $$
 BEGIN
   IF to_regclass('public.fieldops_world_sessions') IS NULL THEN
-    RAISE EXCEPTION 'Apply migrations/251_fieldops_world_sessions.sql before 254_fieldops_world_visibility.sql';
+    RAISE EXCEPTION 'Apply migrations/252_fieldops_world_sessions.sql before 255_fieldops_world_visibility.sql';
   END IF;
 END $$;
 
@@ -1126,13 +1126,13 @@ REVOKE ALL ON TABLE public.fieldops_world_reports FROM PUBLIC, anon, authenticat
 COMMIT;
 ```
 
-### 5.8 Migration 255: `migrations/255_fieldops_weather_traffic.sql (new)`
+### 5.8 Migration 256: `migrations/256_fieldops_weather_traffic.sql (new)`
 
 ```sql
--- Migration 255: weather presets and stored traffic profiles (D35; D5: no live feed).
+-- Migration 256: weather presets and stored traffic profiles (D35; D5: no live feed).
 -- WS9, docs/field-ops/11-living-world.md section 5.8.
 --
--- Additive and idempotent; independent of 250 to 254. Seeded from reviewed files with a source per
+-- Additive and idempotent; independent of 251 to 255. Seeded from reviewed files with a source per
 -- row. Without this file the world uses its built-in presets and free-flow road speeds.
 --
 -- Rollback, tried on a branch database only, never on the shared project:
@@ -1190,7 +1190,7 @@ REVOKE ALL ON TABLE public.fieldops_traffic_profiles FROM PUBLIC, anon, authenti
 COMMIT;
 ```
 
-### 5.9 Migration 256
+### 5.9 Migration 257
 
 Not used in version 1. It stays in WS9's range for the next revision of this spec (for example CCTV observers or a vertical model), so a later change need not ask for a new allocation.
 
@@ -1724,7 +1724,7 @@ export interface WeatherPreset {
   setting: WeatherSetting;
   label_keywords: readonly string[];
 }
-/** The presets of section 5.12.6, used when migration 255 is missing; the seed file holds the same rows. */
+/** The presets of section 5.12.6, used when migration 256 is missing; the seed file holds the same rows. */
 export declare const BUILTIN_WEATHER_PRESETS: readonly WeatherPreset[];
 
 /** NFKC, lower case, '&' to 'and', punctuation to spaces, runs of spaces collapsed, trimmed. */
@@ -1993,11 +1993,11 @@ Every reader detects a missing table with WS0's helpers (`server/lib/schemaFeatu
 
 | Missing | Behaviour |
 | --- | --- |
-| 249 | `loadSpreadLibrary()` is null: WS5 compiles without fire-spread pins and with an empty facts block (item 38); no world starts (`LIBRARY_MISSING`); the library admin routes answer 503 `LIBRARY_TABLES_MISSING` |
-| 250, 251 or 252 | No world row is created and no world starts; the world routes answer 409 `WORLD_NOT_AVAILABLE` with reason `TABLES_MISSING`; the session runs today's escalation |
-| 253 | The world runs without units: the units panel says "Units are not available on this server yet."; the dispatch route answers 409 `WORLD_NOT_AVAILABLE` |
-| 254 | The world runs with fog of war off for every session, whatever the setting, and the lobby card says so |
-| 255 | Weather comes from `BUILTIN_WEATHER_PRESETS`; traffic is free flow; the console's preset list is the built-in one |
+| 250 | `loadSpreadLibrary()` is null: WS5 compiles without fire-spread pins and with an empty facts block (item 38); no world starts (`LIBRARY_MISSING`); the library admin routes answer 503 `LIBRARY_TABLES_MISSING` |
+| 251, 252 or 253 | No world row is created and no world starts; the world routes answer 409 `WORLD_NOT_AVAILABLE` with reason `TABLES_MISSING`; the session runs today's escalation |
+| 254 | The world runs without units: the units panel says "Units are not available on this server yet."; the dispatch route answers 409 `WORLD_NOT_AVAILABLE` |
+| 255 | The world runs with fog of war off for every session, whatever the setting, and the lobby card says so |
+| 256 | Weather comes from `BUILTIN_WEATHER_PRESETS`; traffic is free flow; the console's preset list is the built-in one |
 
 ### 5.14 Server validation: `server/lib/fieldOps/worldSchemas.ts (new)`
 
@@ -2061,7 +2061,7 @@ Everything lives under `server/services/fieldOps/world/ (new)`, the area master 
 | `server/services/fieldOps/world/bridge/pinBridge.ts (new)` | database | `applyBridgeOps`, `handBackWorldPins`, `sweepInspectionPoint` |
 | `server/services/fieldOps/world/bridge/worldGates.ts (new)` | cache | `isWorldActive`, `isWorldOwned`, `worldExitFactor`, `deviceDetonated(sessionId, sceneItemId)`, which queues a `device_detonated` command when the session's world is active |
 | `server/services/fieldOps/world/runtime/worldRuntime.ts (new)` | process | `getWorldRuntime`, `startWorldRuntime`, `stopWorldRuntime` |
-| `server/services/fieldOps/world/runtime/worldStore.ts (new)` | database | every read and write of migrations 251 to 254 |
+| `server/services/fieldOps/world/runtime/worldStore.ts (new)` | database | every read and write of migrations 252 to 255 |
 | `server/services/fieldOps/world/runtime/backPressure.ts (new)` | pure | `nextDegradeLevel` |
 | `server/services/fieldOps/world/index.ts (new)` | | the exports of section 6.18 |
 
@@ -2074,7 +2074,7 @@ Two routers: `server/routes/fieldOpsWorld.ts (new)` (the session world, master 1
 import type { HazardEvent } from '../../rtsSceneEnrichmentService.js';
 import type { SpreadHazardInput, SpreadLibrary } from '../../../../shared/fieldOps/world.js';
 
-/** Null while migration 249 is missing, while its tables hold no complete active library, or on a read failure with no earlier good library. */
+/** Null while migration 250 is missing, while its tables hold no complete active library, or on a read failure with no earlier good library. */
 export declare function loadSpreadLibrary(): Promise<SpreadLibrary | null>;
 export declare function invalidateSpreadLibrary(): void;
 /** Steps 4 to 7 below as a pure function, so tests and the seed check build a library without a database. */
@@ -2097,7 +2097,7 @@ export declare function deteriorationFactsFor(
 
 `loadSpreadLibrary` runs these steps:
 
-1. `spreadTablesDetector`, a WS0 cached detector on `fieldops_spread_materials`, says whether 249 is applied. Missing: answer null and log `fieldops_spread_library_missing` at most once a minute.
+1. `spreadTablesDetector`, a WS0 cached detector on `fieldops_spread_materials`, says whether 250 is applied. Missing: answer null and log `fieldops_spread_library_missing` at most once a minute.
 2. A cached library younger than 60 seconds is returned as it is. Every admin write calls `invalidateSpreadLibrary`.
 3. Read the active rows of the four tables with explicit column lists and map them to `MaterialBehaviour`, `HazardBehaviour`, `ExposureBehaviour` and `WeatherEffect`; numbers come back as JavaScript numbers, arrays as arrays.
 4. Check integrity: every key of `SPREAD_REQUIRED_KEYS`, every exposure agent and every weather condition is present; every hazard's `contents_key` names an active `contents` row; no alias resolves to two keys; incapacitation bands ascend; every number is finite; the canonical JSON of the library is at most 262,144 bytes, so WS5 can freeze it in a stage checkpoint (its Choice 17; the seed library is about 40 KB). No active row at all is "empty", logged `fieldops_spread_library_empty`; anything else wrong is logged `fieldops_spread_library_invalid` with the failing keys. Either way the answer is the last good library this process loaded, or null.
@@ -2105,7 +2105,7 @@ export declare function deteriorationFactsFor(
 6. `dataset_version` is the first 16 hex characters of the SHA-256 of the canonical JSON of the active rows: keys sorted, rows ordered by their key, numbers written as decimal strings without trailing zeros, over materials, hazards, exposure and weather effects in that order, without status, version, actor and timestamp columns. The seed files give the same version as the tables seeded from them (AC9.3). `version` is `fo-spread-1.0.0:` followed by the dataset version, the label WS5 records in its spread record.
 7. `review` comes from `reviewStateFor` over `fieldops_spread_reviews`: the latest row for `SPREAD_MODEL_VERSION` and this `dataset_version` decides; `approved` is `reviewed`, anything else or no row `unreviewed`.
 
-**Admin writes** (`spreadLibraryAdmin.ts`), behind the admin routes of section 6.14: `seedWorldTables` fills every empty WS9 table (249, 253 and 255) from its seed file after `seedFileSchema`, and refuses a table that already has rows; `writeLibraryRow` updates one row, increments `row_version` and writes a change row with the dataset versions before and after; `retireLibraryRow` sets `status` to `retired`; `recordSpreadReview` refuses a stale view (409 `VERSION_MISMATCH` unless `expected_dataset_version` is the current one), refuses `approved` unless every checklist answer is `yes` or `not_applicable` (409 `REVIEW_INCOMPLETE`), and stores the canonical rows in `library_snapshot`. Every text field passes `moderateDeviceText(text, { maxLength })` (WS6, master 10.8 item 24) before it is written (AC9.55). The review checklist covers: the wall burn-through times, the contents spread and burn rates, the structural frames, the exposure bands and shares, the hazard rows, the weather factors, the road speeds and traffic shares, the source of every row, and the absence of device content.
+**Admin writes** (`spreadLibraryAdmin.ts`), behind the admin routes of section 6.14: `seedWorldTables` fills every empty WS9 table (250, 254 and 256) from its seed file after `seedFileSchema`, and refuses a table that already has rows; `writeLibraryRow` updates one row, increments `row_version` and writes a change row with the dataset versions before and after; `retireLibraryRow` sets `status` to `retired`; `recordSpreadReview` refuses a stale view (409 `VERSION_MISMATCH` unless `expected_dataset_version` is the current one), refuses `approved` unless every checklist answer is `yes` or `not_applicable` (409 `REVIEW_INCOMPLETE`), and stores the canonical rows in `library_snapshot`. Every text field passes `moderateDeviceText(text, { maxLength })` (WS6, master 10.8 item 24) before it is written (AC9.55). The review checklist covers: the wall burn-through times, the contents spread and burn rates, the structural frames, the exposure bands and shares, the hazard rows, the weather factors, the road speeds and traffic shares, the source of every row, and the absence of device content.
 
 ### 6.3 `hazardEventsFor`
 
@@ -2271,11 +2271,11 @@ AC9.14 builds the mockup fixture and checks that each row lands.
 
 `loadWorldInputs(scenarioId)` in `server/services/fieldOps/world/model/worldInputs.ts (new)` reads, with the service role:
 
-1. **The revision.** The latest `revision_no` of WS8's `fieldops_scenario_revisions` (`09-after-publish.md` section 5.3), or null when migration 246 is missing.
+1. **The revision.** The latest `revision_no` of WS8's `fieldops_scenario_revisions` (`09-after-publish.md` section 5.3), or null when migration 247 is missing.
 2. **The setup copy.** WS8's `fieldops_scenario_setups.setup_v2`, else the `setup_v2` of the draft whose `scenario_id` is this scenario (WS5 never writes that draft after publish), else the model fails with `MODEL_FAILED` and reason `setup_missing`.
 3. **The scene.** WS4's `loadSceneByScenario(ctx, scenarioId): Promise<SceneLoadView>` (`server/services/fieldOps/layout/index.ts (new)`, `05-layout-step.md` section 6.4). The world reads the view's `scene`, a `SceneConfigV2` with its wall points and each hazard's `material`, and ignores `photos`, `readiness` and `read_only`. `ctx` is a `SceneCtx` (`server/services/fieldOps/layout/sceneStore.ts (new)`) that the job builds: its `user` is the scenario's creator (`scenarios.created_by`, `migrations/001_initial_schema.sql:53`) with that user's role, so WS4's by-scenario rule admits it whoever runs the session (`05-layout-step.md` section 6.5); its `repo`, `loadSiteArea` and `moderateDeviceText` are WS4's production wiring, and `now` the clock. `SCENARIO_SCENE_NOT_FOUND`, a null `scene` or a legacy scene (`schema_version` 1): not eligible (section 6.11.1). `LAYOUT_STORE_UNAVAILABLE`: the inputs stage fails and WS0's job engine retries it.
 4. **The physics.** WS5's `loadPhysicsSnapshot(scenarioId)` (`server/services/fieldOps/compile/snapshotReaders.ts (new)`, `06-compile-and-review.md` section 6.15), which answers the mode, the review flag and `CompileEffects` without the device pool. Each device's radii come from its `estimate`, WS6's `EffectEstimate` (`07-device-and-physics.md` section 5.3): `glass_breakage`, `structural_light`, `structural_moderate` and `structural_severe` from `structural[].radius.central`, `thermal_m` from `thermal.radius.central`, `minor_m` from `bands_m.minor`. In `legacy_bands` mode there are no structural radii, so the world maps the bands it has: `lethal` as severe, `serious` as moderate, `minor` as light and as glass. No snapshot: the world starts without a blast.
-5. **The teams.** `scenario_teams` (`team_name`, `function_key`, and `operation` when WS7's migration 242 is applied), each with WS1's `actionScopeFor({ team_name, function_key })` (`shared/fieldOps/actionScope.ts (new)`) for `zone_access`, `can_triage` and `can_sweep`.
+5. **The teams.** `scenario_teams` (`team_name`, `function_key`, and `operation` when WS7's migration 243 is applied), each with WS1's `actionScopeFor({ team_name, function_key })` (`shared/fieldOps/actionScope.ts (new)`) for `zone_access`, `can_triage` and `can_sweep`.
 6. **The site area and facilities.** WS3's `loadSiteArea(site)` for the primary's `place_class` and `levels`, and `listFacilitiesNear(site.centre, { radiusM: 10000, kinds: ['fire_station', 'police', 'ambulance_station', 'hospital', 'power_substation'], maxPerKind: 10 })` (`04-site-picker.md` sections 6.5 and 6.9), neither of which calls a network service.
 7. **Stored data.** `loadSpreadLibrary()` (null fails the model with `LIBRARY_MISSING`), the road speed classes, the weather presets and the traffic profiles.
 
@@ -2631,7 +2631,7 @@ re-routing: every 15 ticks an en-route unit's ETA is recomputed; it re-plans at 
       or slowed by more than 20 per cent
 ```
 
-Without migration 253 there are no speed classes and no graph, so there are no units (section 5.13). Without 255, `trafficFactor` is 1.
+Without migration 254 there are no speed classes and no graph, so there are no units (section 5.13). Without 256, `trafficFactor` is 1.
 
 #### 6.8.5 The life of a unit
 
@@ -2735,7 +2735,7 @@ the lobby's WorldSettings.weather, when set, replaces it before the start; the c
 #### 6.9.4 Traffic and the incident
 
 ```text
-trafficFactor(group, day_type, hour): fieldops_traffic_profiles for region SG (section 5.12.5); 1 without migration 255
+trafficFactor(group, day_type, hour): fieldops_traffic_profiles for region SG (section 5.12.5); 1 without migration 256
       day_type ← incident.when.day; hour ← the hour of incident.when.time plus the world's elapsed time
 incidentFactor(edge, unit):
       0     the trainer closed it; or a collapsed involved building's outline lies within 10 m (debris);
@@ -2817,7 +2817,7 @@ The trainer's view is the whole world, sent as `fieldops_world.trainer` to the t
 ```text
 isWorldEligible(session, scenario):
     env.enableFieldopsWorldSim
-    and migrations 250 to 252 are applied (WS0 detectors)
+    and migrations 251 to 253 are applied (WS0 detectors)
     and the scenario has a v2 scene (rts_scene_configs.schema_version 2 with its scenario_id)
     and it is a field-ops session (sessions.sim_mode is null) of a scenario that is not a social-media crisis
     and the session's world settings do not say enabled = false
@@ -2940,7 +2940,7 @@ A world that becomes ready after its session started is hosted with `until_tick`
 
 #### 6.11.10 Shutdown and retention
 
-- `stopWorldRuntime()` runs in `shutdown` right after WS0's `stopJobEngine` (`server/index.ts:314-322`): a last snapshot of each hosted world (at most 3 seconds in all), `fieldops_world_release(worker)`, then the threads are terminated, inside the 10-second exit.
+- `stopWorldRuntime()` runs in `shutdown` right after WS0's `stopJobEngine` (`server/index.ts:328-336`): a last snapshot of each hosted world (at most 3 seconds in all), `fieldops_world_release(worker)`, then the threads are terminated, inside the 10-second exit.
 - A daily sweep, in the same block, thins the snapshots of ended sessions to one in five, deletes events and snapshots older than 180 days except each session's last snapshot, and deletes road graphs that no model has used for 90 days.
 
 ### 6.12 Coexistence with today's engines
@@ -2961,7 +2961,7 @@ A world that becomes ready after its session started is hosted with `until_tick`
 | `engineTicker` | Not involved: social-media sessions only | As today |
 | `cloneScenarioPinsForSession` | Changed by WS5, not by WS9: for a new-flow scenario it also copies the delayed hazards and casualties, with every `parent_pin_id` remapped to the session's copy (master 10.8 item 40; `06-compile-and-review.md` section 5.8). The world starts after it, from the cloned rows, so the session already holds the compiled fire-spread children, each hidden at `appears_at_minutes` 1,000,000 until it is revealed (section 3.1). WS9 adds no filter to the session lists: while the world runs, the gate above stops the reveal, so those children stay hidden | A legacy scenario's copy is today's; a new-flow one is WS5's |
 
-Every gate calls `isWorldActive(sessionId)`, which answers from the runtime's memory when this process holds the world, else from `fieldops_world_sessions` (`running` or `paused`) cached for 15 seconds, and false whenever the flag is off or migration 251 is missing. So with no world every service behaves exactly as today (AC9.28). The touched lines are small: one filter each in `server/services/hazardDeteriorationService.ts` and `server/services/pinResolutionService.ts`, one factor in `server/services/exitFlowService.ts`, and one call after a detonation in `server/services/injectSchedulerService.ts`. A gate that turns false at a fallback or a trainer stop would let today's deterioration reveal those children on top of the world's fires, so the hand-back retires them first (section 6.12.3).
+Every gate calls `isWorldActive(sessionId)`, which answers from the runtime's memory when this process holds the world, else from `fieldops_world_sessions` (`running` or `paused`) cached for 15 seconds, and false whenever the flag is off or migration 252 is missing. So with no world every service behaves exactly as today (AC9.28). The touched lines are small: one filter each in `server/services/hazardDeteriorationService.ts` and `server/services/pinResolutionService.ts`, one factor in `server/services/exitFlowService.ts`, and one call after a detonation in `server/services/injectSchedulerService.ts`. A gate that turns false at a fallback or a trainer stop would let today's deterioration reveal those children on top of the world's fires, so the hand-back retires them first (section 6.12.3).
 
 #### 6.12.2 The bridge
 
@@ -2991,7 +2991,7 @@ The true colour goes into `conditions.triage_color`, one of WS0's `CASUALTY_ANSW
 
 #### 6.12.3 Handing the pins back
 
-`handBackWorldPins(session)` runs at every end that leaves the session going: a fallback for any reason, the trainer's stop (`TRAINER_STOPPED`) and the reconcile's `NO_CAPACITY` (section 6.11.3). It calls `fieldops_world_hand_back(session_id)` (migration 251, section 5.4), which makes both changes below in one transaction, before any gate can answer false to today's engines:
+`handBackWorldPins(session)` runs at every end that leaves the session going: a fallback for any reason, the trainer's stop (`TRAINER_STOPPED`) and the reconcile's `NO_CAPACITY` (section 6.11.3). It calls `fieldops_world_hand_back(session_id)` (migration 252, section 5.4), which makes both changes below in one transaction, before any gate can answer false to today's engines:
 
 1. **The world's hazards.** Every hazard of the session whose `properties.world_owned` is true gets `world_owned: false` and `world_handed_back: true`. The pins the world created have an empty `deterioration_timeline`, so today's deterioration leaves them as they are while pin resolution and the response panel resume. The cloned scene hazards keep WS5's timelines and resume today's escalation from their current stage.
 2. **The compiled fire-spread children still waiting.** Every hazard of the session that is still `delayed` and whose `properties.spawned_from` is `environmental_timeline` is retired, so that escalation never adds them on top of the fires the world already made. Its `status` stays `delayed`, which `scenario_hazards` admits (`migrations/139_hazard_status_delayed.sql:1-4`); its `spawn_condition.trigger` becomes `superseded_by_world`, which today's deterioration never reveals, because its child loop skips every `spawn_condition` whose trigger is not `parent_unresolved` (`server/services/hazardDeteriorationService.ts:108-118`); its `properties.world_superseded` is set; and its `appears_at_minutes` stays at 1,000,000, the hidden minute item 40's copy gave it, which the update also writes in case a row lacks it, so no session list ever returns it (section 3.1). Children revealed before a late world started are no longer `delayed`, so they stay ordinary hazards, as do the session's other pre-generated children.
@@ -3035,7 +3035,7 @@ The flag's property name follows master 10.7 rule 5, and the reading rule is the
 
 ### 6.14 Routes
 
-`server/routes/fieldOpsWorld.ts (new)` is a router with `mergeParams`, mounted at `/api/field-ops/sessions/:id/world` (master 10.3), as today's `teammateBotsRouter` is mounted under a session (`server/index.ts:252`). Every route runs `requireAuth`, then `requireFieldopsFlag(() => env.enableFieldopsWorldSim)` (the bare 404 while the flag is off, master 10.8 item 31), then its access check. Bodies go through `validate()` with the schemas of section 5.14 (400 `VALIDATION_FAILED`). Success bodies are `{ data }`. As WS0's job router is (`01-prerequisites.md` section 6.13), each router is built by a factory so the route tests can pass fakes: the module exports `createFieldOpsWorldRouter(deps)`, whose `deps` hold the runtime, the store, the access checks and the clock, and `fieldOpsWorldRouter`, built with the real ones; the library module exports `createSpreadLibraryRouter(deps)` and `fieldOpsSpreadLibraryRouter` the same way.
+`server/routes/fieldOpsWorld.ts (new)` is a router with `mergeParams`, mounted at `/api/field-ops/sessions/:id/world` (master 10.3), as today's `teammateBotsRouter` is mounted under a session (`server/index.ts:266`). Every route runs `requireAuth`, then `requireFieldopsFlag(() => env.enableFieldopsWorldSim)` (the bare 404 while the flag is off, master 10.8 item 31), then its access check. Bodies go through `validate()` with the schemas of section 5.14 (400 `VALIDATION_FAILED`). Success bodies are `{ data }`. As WS0's job router is (`01-prerequisites.md` section 6.13), each router is built by a factory so the route tests can pass fakes: the module exports `createFieldOpsWorldRouter(deps)`, whose `deps` hold the runtime, the store, the access checks and the clock, and `fieldOpsWorldRouter`, built with the real ones; the library module exports `createSpreadLibraryRouter(deps)` and `fieldOpsSpreadLibraryRouter` the same way.
 
 | Method and path | Who | Body | Success | Refusals |
 | --- | --- | --- | --- | --- |
@@ -3059,7 +3059,7 @@ The flag's property name follows master 10.7 rule 5, and the reading rule is the
 
 | Method and path | Body | Success | Refusals |
 | --- | --- | --- | --- |
-| `GET /api/field-ops/spread-library` | none | 200 `{ rows, dataset_version, version, review, review_history }`, every table of 249, 253 and 255 with retired rows | 503 `LIBRARY_TABLES_MISSING` |
+| `GET /api/field-ops/spread-library` | none | 200 `{ rows, dataset_version, version, review, review_history }`, every table of 250, 254 and 256 with retired rows | 503 `LIBRARY_TABLES_MISSING` |
 | `POST /api/field-ops/spread-library/seed` | `{ tables?: string[] }` | 200 `{ inserted, dataset_version }` | 409 `LIBRARY_NOT_EMPTY`; 503 `LIBRARY_TABLES_MISSING` |
 | `PATCH /api/field-ops/spread-library/:table/:key` | the table's patch schema | 200 `{ row, dataset_version }` | 404 `ROW_NOT_FOUND`; 400 `LIBRARY_TEXT_REFUSED` |
 | `POST /api/field-ops/spread-library/:table/:key/retire` | none | 200 `{ row, dataset_version }` | 404 `ROW_NOT_FOUND`; 409 `ROW_REQUIRED` for a required key |
@@ -3126,7 +3126,7 @@ One Render instance runs the API, the sockets and every engine (master section 1
 | Database writes | at most 150 a minute per world, 600 per process | section 6.11.6; AC9.26 |
 | Socket traffic | one delta per audience every 2 seconds, at most 64 KB | `buildDelta` |
 | Memory | 512 MB per thread | `resourceLimits` |
-| Road graph | 200,000 nodes, 400,000 edges, 24 MB stored | `buildRoadGraph` and the 253 check |
+| Road graph | 200,000 nodes, 400,000 edges, 24 MB stored | `buildRoadGraph` and the 254 check |
 | Spread timeline | 20,000 studs; a 120-second backstop under WS5's 90-second budget and signal | `SPREAD_LIMITS` |
 
 **Added 3 Nov 2026. Verified: the instance these budgets run on.** Render's settings and metrics on 3 Nov 2026 show the backend on one Standard instance with 1 CPU and 2 GB. Over the day before, it used about 0.2 CPU and 0.4 GB. The table assumes 2 CPUs: two world threads beside the main thread. On 1 CPU the threads share the core with the API, the sockets and every engine, so the main thread's 50 ms lag target is not expected to hold with four worlds. There are two ways to run it:
@@ -3145,7 +3145,7 @@ The choice is the owner's (question 22).
 1. The imports and mounts of `fieldOpsWorldRouter` at `/api/field-ops/sessions/:id/world` and `fieldOpsSpreadLibraryRouter` at `/api/field-ops/spread-library`, next to the other field-ops routers.
 2. An import of `server/services/fieldOps/world/model/prepareJob.ts (new)`, so the job kind registers before the job engine starts (master 10.8 item 3).
 3. `startWorldRuntime()` inside the background-engines block, after `startGeneratorEngines()` (`server/index.ts:100-105`).
-4. `await stopWorldRuntime()` in `shutdown`, after WS0's `stopJobEngine()` (`server/index.ts:314-322`).
+4. `await stopWorldRuntime()` in `shutdown`, after WS0's `stopJobEngine()` (`server/index.ts:328-336`).
 
 ## 7. Client
 
@@ -3469,7 +3469,7 @@ The client is never trusted for a role or a team: every check runs on the server
 - **Scenarios.** Nothing of WS9's is written to a column of `scenarios` (master 10.8 item 16). The model reads WS5's physics snapshot through `loadPhysicsSnapshot`, which leaves out the device pool.
 - **Devices.** Device positions reach only the trainer's audience as `device_markers`. A team learns of a device only as today's game reveals it: a sweep that finds it, or its detonation.
 - **Casualties.** The true colour of an exposure casualty is written to `conditions.triage_color`, which WS0's projection removes for participants (`01-prerequisites.md` section 6.5.2).
-- **The scene's read policy.** Today any holder of the anon key can read every `rts_scene_configs` row, planted-device positions included (master risk 14). Fog of war cannot repair that: it is the owner's production gate (`05-layout-step.md` section 9.2), and section 9.7 repeats it as a gate for WS9.
+- **The scene's read policy.** Any holder of the anon key could read every `rts_scene_configs` row, planted-device positions included (master risk 14). Fog of war cannot repair that: it is the owner's production gate (`05-layout-step.md` section 9.2), and section 9.7 repeats it as a gate for WS9. **Updated 8 Nov 2026:** migration 218, applied in production, limits the read policy to the scene's creator and admins, so this gate is met. `GET /api/scenarios/:id/scene-config` still returns the whole row to any signed-in user until WS0's projection lands (`01-prerequisites.md` section 6.5.3).
 
 ### 9.3 Fog of war is a server-side boundary
 
@@ -3493,7 +3493,7 @@ WS9's log events start with `fieldops_world_` or `fieldops_spread_` (master 10.5
 ### 9.7 Before production
 
 1. The D31 review of the spread library is recorded for the deployed dataset (W24). Until then production runs worlds only for admins' sessions.
-2. The owner has decided on the `rts_scene_configs` read policy (master risk 14): fog of war is pointless while the anon key reads the layout's device positions.
+2. The owner has decided on the `rts_scene_configs` read policy (master risk 14): fog of war is pointless while the anon key reads the layout's device positions. **Updated 8 Nov 2026:** met, because migration 218 closed the read policy in production.
 3. Production runs one instance (master section 12), so every socket is served by the process holding the worlds (risk R9.6).
 4. The soak of section 11.3 passes on the staging instance with four worlds at the largest size.
 5. The security review of this spec's routes closes its items, with WS7's projection check run against WS9's views.
@@ -3523,12 +3523,12 @@ The project has one Supabase database for development, preview and production. S
 
 | Step | Slices | Where | What is switched | Move on when |
 | --- | --- | --- | --- | --- |
-| 1 | 1 | the shared project, then staging | Apply 249 once on the shared project after its scratch runs; seed the library once with `POST /api/field-ops/spread-library/seed`; staging's compile runs with it under `ENABLE_FIELDOPS_V2` | Five compiles of the mockup scenario produce fire-spread pins and a facts block; `fieldops_spread_timeline_built` shows each under 60 seconds; the D31 review is requested |
+| 1 | 1 | the shared project, then staging | Apply 250 once on the shared project after its scratch runs; seed the library once with `POST /api/field-ops/spread-library/seed`; staging's compile runs with it under `ENABLE_FIELDOPS_V2` | Five compiles of the mockup scenario produce fire-spread pins and a facts block; `fieldops_spread_timeline_built` shows each under 60 seconds; the D31 review is requested |
 | 2 | 1 | production | Nothing to apply or seed: production reads the same tables | WS5's compile in production logs `fieldops_spread_library_loaded` with the seeded version |
-| 3 | 2 | the shared project, then staging | Apply 250 to 252 once, in order, after their scratch runs; on staging `ENABLE_FIELDOPS_WORLD_SIM=true` and `FIELDOPS_WORLD_MAX_SESSIONS=2` | Manual steps M1 to M6 pass; the soak of section 11.3 passes; a week with no `fieldops_world_fallback` other than `TRAINER_STOPPED` and `SESSION_ENDED` |
-| 4 | 3 | the shared project, then staging | Apply 253 once after its scratch runs; seed its speed classes with the seed route and `{ tables: ['fieldops_road_speed_classes'] }`; prepare road graphs for the seeded sites | M7 and M8 pass; dispatch to arrival within 10 per cent of the predicted time in five runs |
-| 5 | 4 | the shared project, then staging | Apply 254 once after its scratch runs; fog on in test sessions | M10 passes; the AC9.46 corpus passes against staging data; an AI agency plays a fog session to the end |
-| 6 | 5 | the shared project, then staging | Apply 255 once after its scratch runs; seed its two tables with `{ tables: ['fieldops_weather_presets', 'fieldops_traffic_profiles'] }` | M11 and M12 pass |
+| 3 | 2 | the shared project, then staging | Apply 251 to 253 once, in order, after their scratch runs; on staging `ENABLE_FIELDOPS_WORLD_SIM=true` and `FIELDOPS_WORLD_MAX_SESSIONS=2` | Manual steps M1 to M6 pass; the soak of section 11.3 passes; a week with no `fieldops_world_fallback` other than `TRAINER_STOPPED` and `SESSION_ENDED` |
+| 4 | 3 | the shared project, then staging | Apply 254 once after its scratch runs; seed its speed classes with the seed route and `{ tables: ['fieldops_road_speed_classes'] }`; prepare road graphs for the seeded sites | M7 and M8 pass; dispatch to arrival within 10 per cent of the predicted time in five runs |
+| 5 | 4 | the shared project, then staging | Apply 255 once after its scratch runs; fog on in test sessions | M10 passes; the AC9.46 corpus passes against staging data; an AI agency plays a fog session to the end |
+| 6 | 5 | the shared project, then staging | Apply 256 once after its scratch runs; seed its two tables with `{ tables: ['fieldops_weather_presets', 'fieldops_traffic_profiles'] }` | M11 and M12 pass |
 | 7 | all | production | `ENABLE_FIELDOPS_WORLD_SIM=true`, `FIELDOPS_WORLD_MAX_SESSIONS=2`; worlds run for admins only until the review is approved | The gates of section 9.7 hold; two weeks of admin-run sessions with no unexplained fallback |
 | 8 | all | production | Review approved for the deployed `dataset_version`; `FIELDOPS_WORLD_MAX_SESSIONS=4` | `fieldops_world_main_lag` shows the main thread's lag under 50 ms at the 95th percentile with four worlds |
 
@@ -3539,7 +3539,7 @@ All through the existing `pino` logger, snake case with the `fieldops_` prefix, 
 | Event | When | Fields |
 | --- | --- | --- |
 | `fieldops_spread_library_loaded` | a library is loaded into the cache | `dataset_version`, `version`, `rows`, `review_state`, `ms` |
-| `fieldops_spread_library_missing` | 249 is not applied (at most once a minute) | none |
+| `fieldops_spread_library_missing` | 250 is not applied (at most once a minute) | none |
 | `fieldops_spread_library_empty` | the tables hold no active row | none |
 | `fieldops_spread_library_invalid` | the integrity check fails | `missing_keys` (library keys only), `problems` (count) |
 | `fieldops_spread_library_changed` | an admin route writes | `table`, `key`, `actor_id`, `dataset_version` |
@@ -3570,7 +3570,7 @@ There is no alerting system today, so during steps 3 to 8 the owner reads the Re
 | One process | `FIELDOPS_WORLD_MAX_SESSIONS=0` and a restart | Hosted worlds are snapshotted and released at shutdown, then fall back with `NO_CAPACITY` 120 seconds later; compile keeps its library |
 | The feature | `ENABLE_FIELDOPS_WORLD_SIM=false` and a restart | No world runs; `isWorldActive` is false everywhere, so every hazard, world-owned or not, escalates as today and the routes answer 404 |
 | A bad library row | `POST /api/field-ops/spread-library/retire` or `PATCH` the row | The next load uses the corrected rows; worlds already running keep their frozen library (section 6.11.7) |
-| The schema | None on the shared project: the set never runs a rollback there. With the flag off nothing reads the world tables, so they stay, additive and unused (D23). The rollback comments at the top of 255 down to 249 are tried, in that order, on a branch database only | Rows the bridge wrote to `scenario_hazards`, `scenario_casualties` and `placed_assets` stay as ordinary rows |
+| The schema | None on the shared project: the set never runs a rollback there. With the flag off nothing reads the world tables, so they stay, additive and unused (D23). The rollback comments at the top of 256 down to 250 are tried, in that order, on a branch database only | Rows the bridge wrote to `scenario_hazards`, `scenario_casualties` and `placed_assets` stay as ordinary rows |
 
 ### 10.5 Runbook
 
@@ -3578,7 +3578,7 @@ There is no alerting system today, so during steps 3 to 8 the owner reads the Re
 | --- | --- | --- |
 | A session shows "Live world stopped" | `fieldops_world_fallback` for the session | `WORLD_BEHIND`: lower `FIELDOPS_WORLD_MAX_SESSIONS`; `ENGINE_ERROR`: keep the log lines and the session id for a bug; `NO_CAPACITY`: raise the cap or wait for a session to end |
 | Map, chat or injects feel slow while worlds run | `fieldops_world_main_lag` over 50 ms | Lower the cap to 2; if it persists, set it to 0 and report the stats lines |
-| Compile has no fire-spread pins | `fieldops_spread_library_missing`, `_empty` or `_invalid`; `fieldops_spread_timeline_failed` | Apply 249 on the shared project after its scratch runs, seed it, or fix the rows the invalid line names; for repeated `timeout` or `aborted` codes, report the building's stud count |
+| Compile has no fire-spread pins | `fieldops_spread_library_missing`, `_empty` or `_invalid`; `fieldops_spread_timeline_failed` | Apply 250 on the shared project after its scratch runs, seed it, or fix the rows the invalid line names; for repeated `timeout` or `aborted` codes, report the building's stud count |
 | A team says it sees nothing | the session's settings and `fieldops_world_stats` | With fog on and no units dispatched, a team sees only what its posts and placed assets cover, which is expected. Turn fog off in the lobby for a training run that needs the full picture |
 | A world did not start | `fieldops_world_prepare_failed` and the row's reason | `WORLD_TOO_LARGE`: the building is beyond the grid limits and the session runs today's escalation; `STARTED_TOO_LATE`: prepare earlier from the lobby |
 
@@ -3625,7 +3625,7 @@ Server and shared tests use `node:test` through `tsx`; client tests live in `fro
 
 - `server/services/fieldOps/world/__fixtures__/marinaCourtWorld.ts (new)`: the mockup scenario as the model builder's loaders return it, matched to WS5's compile fixture of the same building (`06-compile-and-review.md` section 11): WS4's scene with walls of materials `''`, `Plasterboard`, `concrete` and `glass window`, two stairwells, four exits, six wall points, three hazards and two crowd zones; WS5's physics snapshot with the main device's radii and a pool entry anchored at a wall point; the setup with the label "afternoon thunderstorm" at 15:30 on a weekday; the site area with the primary and two involved buildings; four facilities (two fire stations, a police post and a hospital).
 - `server/services/fieldOps/world/__fixtures__/roads.ts (new)`: hand-made road rows (the crossing, the one-way street and the service road of AC9.35) and `gridRoads(n, spacingM)`, a generated street grid of mixed road types for routing and the soak; no row comes from the network.
-- `server/services/fieldOps/world/__fixtures__/fakeWorldStore.ts (new)`: an in-memory store with the semantics of 251 and 252: the claim, heartbeat, finish, release and hand-back functions with their lease rules and scopes, a small `scenario_hazards` table for the hand-back, append-only events, snapshots and commands, and a switch to fail the next write.
+- `server/services/fieldOps/world/__fixtures__/fakeWorldStore.ts (new)`: an in-memory store with the semantics of 252 and 253: the claim, heartbeat, finish, release and hand-back functions with their lease rules and scopes, a small `scenario_hazards` table for the hand-back, append-only events, snapshots and commands, and a switch to fail the next write.
 - `server/services/fieldOps/world/__fixtures__/library.ts (new)`: the seed library built with `buildSpreadLibrary` from the seed files, and helpers that remove a key or change one number.
 - `server/services/__fixtures__/envSimGolden.json (new)`: the output of `runEnvironmentalSimulation` for the fixture building with today's analyses, recorded on the baseline before `environmentalSimService.ts` is touched, by running its test with `RECORD_GOLDEN=1` (T9.3).
 - `server/services/fieldOps/world/__fixtures__/worldStates.ts (new)`: the seeded generator of random world states and audiences for AC9.46.
@@ -3699,9 +3699,9 @@ The tasks follow the slices of section 4.2 (master section 6, build-order item 7
    - Steps: write the types and constants of section 5.10, including `CONTENTS_MATERIAL_OPTIONS`, which WS4's hazard panel and save check import, and the catalogue of section 5.10.1, with `as const` arrays and no enums (master 10.7 rule 4); write the pure rules of section 5.10.2, `weatherFromLabel` with `BUILTIN_WEATHER_PRESETS`; write the zod schemas of section 5.14; register the test file.
    - Done when: `npm run typecheck` and `npm --prefix frontend run build` pass with the new shared files, and `npm test` runs the new file green.
    - Tests: `worldRules.test.ts`, every case of section 11.1. Commit: 1.
-2. **T9.2 Migration 249 and the library's seed files.**
+2. **T9.2 Migration 250 and the library's seed files.**
    - Goal: the stored library exists and can be filled from files whose every row names its source (D31).
-   - Files: `migrations/249_fieldops_spread_library.sql (new)`; in `server/services/fieldOps/world/data/seed/ (new)`: `spread-materials.json`, `spread-hazards.json`, `spread-exposure.json` and `spread-weather-effects.json`.
+   - Files: `migrations/250_fieldops_spread_library.sql (new)`; in `server/services/fieldOps/world/data/seed/ (new)`: `spread-materials.json`, `spread-hazards.json`, `spread-exposure.json` and `spread-weather-effects.json`.
    - Steps: write the SQL of section 5.2; write the rows of sections 5.12.1 to 5.12.4 and the weather effects of section 5.12.5, each with `source_ref` and `source_note`, under the file header of section 5.12.
    - Done when: the migration applies twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), and its rollback comments run cleanly on a branch database; there, a query as `anon` or `authenticated` on any of the six tables is refused; every seed file passes `seedFileSchema`.
    - Tests: the "seed hygiene" case lands with T9.3. Commit: 1.
@@ -3709,7 +3709,7 @@ The tasks follow the slices of section 4.2 (master section 6, build-order item 7
    - Goal: WS5's two adapters have the functions of master 10.8 item 38, with the signatures its section 15.4 asked for.
    - Files: `server/services/fieldOps/world/spreadLibrary.ts (new)`, `server/services/fieldOps/world/__fixtures__/library.ts (new)`, `server/services/fieldOps/world/spreadLibrary.test.ts (new)`, `server/services/fieldOps/world/hazardEvents.test.ts (new)`, `package.json` (touched).
    - Steps: register the `spreadTablesDetector` with WS0's detectors; write `loadSpreadLibrary` by the seven steps of section 6.2 around the pure `buildSpreadLibrary`; write sections 6.3 and 6.4.
-   - Done when: with 249 applied and seeded, `loadSpreadLibrary()` answers a library whose `version` is `fo-spread-1.0.0:` and 16 hex characters; with 249 missing it answers null and logs one `fieldops_spread_library_missing` line a minute.
+   - Done when: with 250 applied and seeded, `loadSpreadLibrary()` answers a library whose `version` is `fo-spread-1.0.0:` and 16 hex characters; with 250 missing it answers null and logs one `fieldops_spread_library_missing` line a minute.
    - Tests: `spreadLibrary.test.ts`, `hazardEvents.test.ts`. Commit: 1.
 4. **T9.4 The flag, the settings and the library's admin routes.**
    - Goal: the owner can seed, correct, retire and review the library; the flag and settings are read once at start.
@@ -3726,16 +3726,16 @@ The tasks follow the slices of section 4.2 (master section 6, build-order item 7
 
 **Slice 2: the world and its runtime (falls back to today's escalation)**
 
-6. **T9.6 Migrations 250 to 252.**
+6. **T9.6 Migrations 251 to 253.**
    - Goal: the world's model, session rows, lease functions and log exist, readable by the service role only.
-   - Files: `migrations/250_fieldops_world_models.sql (new)`, `migrations/251_fieldops_world_sessions.sql (new)`, `migrations/252_fieldops_world_log.sql (new)`.
+   - Files: `migrations/251_fieldops_world_models.sql (new)`, `migrations/252_fieldops_world_sessions.sql (new)`, `migrations/253_fieldops_world_log.sql (new)`.
    - Steps: the SQL of sections 5.3 to 5.5.
-   - Done when: the three apply twice in order without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), and their rollback comments run cleanly on a branch database; there, 251 applied without 250 raises its check, an `UPDATE` or `DELETE` on `fieldops_world_events` raises, `fieldops_world_claim` and `fieldops_world_hand_back` called as `authenticated` are refused, and `fieldops_world_hand_back` on a fixture session changes exactly the rows AC9.56 names.
+   - Done when: the three apply twice in order without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), and their rollback comments run cleanly on a branch database; there, 252 applied without 251 raises its check, an `UPDATE` or `DELETE` on `fieldops_world_events` raises, `fieldops_world_claim` and `fieldops_world_hand_back` called as `authenticated` are refused, and `fieldops_world_hand_back` on a fixture session changes exactly the rows AC9.56 names.
    - Tests: covered through the fake store's rules in T9.10. Commit: 3.
 7. **T9.7 The world model and the prepare job.**
    - Goal: every detail of the compiled scenario becomes one stored, hashed `WorldModel` (D36).
    - Files: in `server/services/fieldOps/world/model/ (new)`: `worldModel.ts`, `buildWorldModel.ts`, `worldInputs.ts`, `worldModelStore.ts`, `prepareJob.ts` and `buildWorldModel.test.ts`; `server/services/fieldOps/world/__fixtures__/marinaCourtWorld.ts (new)`; `package.json` (touched).
-   - Steps: section 6.6, reading the scene through WS4's `loadSceneByScenario(ctx, scenarioId)` with the job's `SceneCtx` (section 6.6.2) and each hazard's `material`; the job kind with its four stages, the roads stage skipped while 253 is missing.
+   - Steps: section 6.6, reading the scene through WS4's `loadSceneByScenario(ctx, scenarioId)` with the job's `SceneCtx` (section 6.6.2) and each hazard's `material`; the job kind with its four stages, the roads stage skipped while 254 is missing.
    - Done when: for a v2 scenario on a development server, "Prepare the world" ends with `fieldops_world_prepare_done` and a model row within the limits of `WORLD_LIMITS`, also when the session's trainer did not create the scenario.
    - Tests: `buildWorldModel.test.ts`, including "hazard material" (AC9.57). Commit: 3.
 8. **T9.8 The engine: state, randomness, grid, fire, smoke and gas.**
@@ -3783,9 +3783,9 @@ The tasks follow the slices of section 4.2 (master section 6, build-order item 7
 
 **Slice 3: units (falls back to placing assets by hand)**
 
-15. **T9.15 Migration 253 and the road graph.**
+15. **T9.15 Migration 254 and the road graph.**
     - Goal: one cached, routable graph per site box, built from the saved roads.
-    - Files: `migrations/253_fieldops_world_units.sql (new)`; `road-speed-classes.json` in the seed folder; in `server/services/fieldOps/world/roads/ (new)`: `roadGraph.ts`, `roadGraphStore.ts` and `roadGraph.test.ts`; `server/services/fieldOps/world/__fixtures__/roads.ts (new)`; the prepare job's roads stage; `package.json` (touched).
+    - Files: `migrations/254_fieldops_world_units.sql (new)`; `road-speed-classes.json` in the seed folder; in `server/services/fieldOps/world/roads/ (new)`: `roadGraph.ts`, `roadGraphStore.ts` and `roadGraph.test.ts`; `server/services/fieldOps/world/__fixtures__/roads.ts (new)`; the prepare job's roads stage; `package.json` (touched).
     - Steps: sections 5.6 and 6.8.3.
     - Done when: preparing a world for a seeded site builds the graph once and reads it from `fieldops_road_graphs` the second time.
     - Tests: `roadGraph.test.ts`. Commit: 5.
@@ -3810,9 +3810,9 @@ The tasks follow the slices of section 4.2 (master section 6, build-order item 7
 
 **Slice 4: fog of war (falls back to every team seeing the world but the devices)**
 
-19. **T9.19 Migration 254, observation, knowledge and reports.**
+19. **T9.19 Migration 255, observation, knowledge and reports.**
     - Goal: each team sees what its units and posts can see, plus what others report.
-    - Files: `migrations/254_fieldops_world_visibility.sql (new)`, `server/services/fieldOps/world/engine/visibility.ts (new)`, `server/services/fieldOps/world/fog/views.ts (new)`, extended with the team audiences, `server/services/fieldOps/world/__fixtures__/worldStates.ts (new)`, in `server/services/fieldOps/world/fog/`: `visibility.test.ts` and `views.test.ts`; the report route; `package.json` (touched).
+    - Files: `migrations/255_fieldops_world_visibility.sql (new)`, `server/services/fieldOps/world/engine/visibility.ts (new)`, `server/services/fieldOps/world/fog/views.ts (new)`, extended with the team audiences, `server/services/fieldOps/world/__fixtures__/worldStates.ts (new)`, in `server/services/fieldOps/world/fog/`: `visibility.test.ts` and `views.test.ts`; the report route; `package.json` (touched).
     - Steps: sections 5.7 and 6.10.1 to 6.10.4.
     - Done when: AC9.42, AC9.43 and AC9.46 pass.
     - Tests: `visibility.test.ts`, `views.test.ts`. Commit: 6.
@@ -3825,9 +3825,9 @@ The tasks follow the slices of section 4.2 (master section 6, build-order item 7
 
 **Slice 5: weather and traffic (falls back to the default weather and free-flow roads)**
 
-21. **T9.21 Migration 255, weather presets and the weather's full effects.**
+21. **T9.21 Migration 256, weather presets and the weather's full effects.**
     - Goal: weather changes spread, plumes, visibility, travel and casualties from stored rows (D35).
-    - Files: `migrations/255_fieldops_weather_traffic.sql (new)`; `weather-presets-sg.json` and `traffic-profiles-sg.json` in the seed folder; `server/services/fieldOps/world/weather/weatherData.ts (new)`; `server/services/fieldOps/world/engine/weather.ts (new)`, extended with the road and walking factors; `server/services/fieldOps/world/engine/weather.test.ts (new)`; `package.json` (touched).
+    - Files: `migrations/256_fieldops_weather_traffic.sql (new)`; `weather-presets-sg.json` and `traffic-profiles-sg.json` in the seed folder; `server/services/fieldOps/world/weather/weatherData.ts (new)`; `server/services/fieldOps/world/engine/weather.ts (new)`, extended with the road and walking factors; `server/services/fieldOps/world/engine/weather.test.ts (new)`; `package.json` (touched).
     - Steps: sections 5.8, 6.9.1 and 6.9.3.
     - Done when: AC9.49 and AC9.51 pass, and M11 passes.
     - Tests: `weather.test.ts`. Commit: 7.
@@ -3850,13 +3850,13 @@ Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run t
 
 | Commit | Tasks | Leaves working | Check | Backtracking |
 | --- | --- | --- | --- | --- |
-| 1. "WS9: the spread library, its seeds and admin routes" | T9.1 to T9.4 | WS5 can call `loadSpreadLibrary`, `hazardEventsFor` and `deteriorationFactsFor`; admins seed and review the library | `GET /api/field-ops/spread-library` as an admin; AC9.1 to AC9.6, AC9.11 to AC9.13, AC9.34, AC9.48, AC9.55 | Revert the commit; 249's tables stay on the shared project, unread. If WS5's code already imports the loader, keep `spreadLibrary.ts` and make `loadSpreadLibrary` answer null at once instead, which WS5 treats as a missing library: no fire-spread pins and an empty facts block (master 10.8 item 38) |
+| 1. "WS9: the spread library, its seeds and admin routes" | T9.1 to T9.4 | WS5 can call `loadSpreadLibrary`, `hazardEventsFor` and `deteriorationFactsFor`; admins seed and review the library | `GET /api/field-ops/spread-library` as an admin; AC9.1 to AC9.6, AC9.11 to AC9.13, AC9.34, AC9.48, AC9.55 | Revert the commit; 250's tables stay on the shared project, unread. If WS5's code already imports the loader, keep `spreadLibrary.ts` and make `loadSpreadLibrary` answer null at once instead, which WS5 treats as a missing library: no fire-spread pins and an empty facts block (master 10.8 item 38) |
 | 2. "WS9: the compile-time spread timeline in a worker" | T9.5 | `buildSpreadTimeline` for WS5; today's simulation unchanged without parameters | The golden test; AC9.7 to AC9.10 | Revert. If WS5 already imports `buildSpreadTimeline`, keep the module and make it reject with `worker_failed` at once instead, which WS5 treats as no fire-spread pins; the golden test proves `environmentalSimService.ts` is back to today's behaviour either way |
-| 3. "WS9: the world model and the engine" | T9.6 to T9.9 | A world can be prepared and stepped in tests; nothing runs in a session yet | AC9.14 to AC9.24, AC9.57 | Revert; the tables and functions of 250 to 252 stay on the shared project, unused. If AC9.24 fails, backtrack to section 6.6.3 and lower `WORLD_LIMITS.maxCells` (and AC9.15 with it) before commit 4, rather than loosening the budget |
+| 3. "WS9: the world model and the engine" | T9.6 to T9.9 | A world can be prepared and stepped in tests; nothing runs in a session yet | AC9.14 to AC9.24, AC9.57 | Revert; the tables and functions of 251 to 253 stay on the shared project, unused. If AC9.24 fails, backtrack to section 6.6.3 and lower `WORLD_LIMITS.maxCells` (and AC9.15 with it) before commit 4, rather than loosening the budget |
 | 4. "WS9: the runtime, the bridge, the routes and the client" | T9.10 to T9.14 | Live worlds in development sessions, with fallback; the console, lobby card and replay | M1 to M6, M9; AC9.25 to AC9.33 (AC9.31 without its road closure, which passes with commit 5), AC9.52 to AC9.54, AC9.56 | First stop the running worlds from their consoles, so each hands back and retires its fire-spread children; then set `ENABLE_FIELDOPS_WORLD_SIM=false` and revert. World-owned hazards left on session rows carry a property nothing reads any more and escalate as today. If the gates misbehave, backtrack to section 6.12 and narrow them before re-applying |
-| 5. "WS9: units over the saved roads" | T9.15 to T9.18 | Dispatch, travel, arrival as placed assets, sweeps, transport | M7, M8; AC9.34 to AC9.41 | Revert; 253's tables stay on the shared project, unused. Unit assets already placed stay as ordinary placements; the placements route's 409 goes with the revert |
-| 6. "WS9: fog of war" | T9.19, T9.20 | Team views, last-known markers, reports, the filters on today's routes and broadcasts | M10, M13; AC9.42 to AC9.47 | Turn fog off in the lobby for affected sessions, then revert; 254's tables stay on the shared project, unused. The touched routes and broadcasts return to today's; `MapView`'s refetch check is harmless without the signal. If AC9.46 ever fails on real data, backtrack to section 6.10.4 before re-enabling fog |
-| 7. "WS9: weather and traffic" | T9.21 to T9.23 | Stored presets and effects, traffic profiles, closures and jams, Setup's weather | M11, M12; AC9.48 to AC9.51 | Revert; 255's tables stay on the shared project, unused. The world falls back to `BUILTIN_WEATHER_PRESETS` and free-flow speeds (section 5.13) |
+| 5. "WS9: units over the saved roads" | T9.15 to T9.18 | Dispatch, travel, arrival as placed assets, sweeps, transport | M7, M8; AC9.34 to AC9.41 | Revert; 254's tables stay on the shared project, unused. Unit assets already placed stay as ordinary placements; the placements route's 409 goes with the revert |
+| 6. "WS9: fog of war" | T9.19, T9.20 | Team views, last-known markers, reports, the filters on today's routes and broadcasts | M10, M13; AC9.42 to AC9.47 | Turn fog off in the lobby for affected sessions, then revert; 255's tables stay on the shared project, unused. The touched routes and broadcasts return to today's; `MapView`'s refetch check is harmless without the signal. If AC9.46 ever fails on real data, backtrack to section 6.10.4 before re-enabling fog |
+| 7. "WS9: weather and traffic" | T9.21 to T9.23 | Stored presets and effects, traffic profiles, closures and jams, Setup's weather | M11, M12; AC9.48 to AC9.51 | Revert; 256's tables stay on the shared project, unused. The world falls back to `BUILTIN_WEATHER_PRESETS` and free-flow speeds (section 5.13) |
 
 Backtracking within a commit: when a task shows that an earlier decision of this spec is wrong (a budget missed, a gate too wide, a seed value implausible in play), the builder stops, changes the decision in this document first (section 2.2 and the section that applies it), adjusts the criteria, and only then the code. The D31 review can change any seed value without a code change, through the admin routes.
 
@@ -3871,13 +3871,13 @@ Backtracking within a commit: when a task shows that an earlier decision of this
 | `server/lib/fieldOps/worldSchemas.ts (new)` | The zod schemas (section 5.14) | T9.1 |
 | `server/lib/fieldOps/worldSettings.ts (new)` | The flag and settings readers (section 6.13) | T9.4 |
 | `server/lib/fieldOps/worldRules.test.ts (new)` | Tests of the two shared modules and the schemas | T9.1 |
-| `migrations/249_fieldops_spread_library.sql (new)` | The spread library (section 5.2) | T9.2 |
-| `migrations/250_fieldops_world_models.sql (new)` | World models (section 5.3) | T9.6 |
-| `migrations/251_fieldops_world_sessions.sql (new)` | World sessions and the lease functions (section 5.4) | T9.6 |
-| `migrations/252_fieldops_world_log.sql (new)` | Commands, events, snapshots (section 5.5) | T9.6 |
-| `migrations/253_fieldops_world_units.sql (new)` | Speed classes, road graphs, units (section 5.6) | T9.15 |
-| `migrations/254_fieldops_world_visibility.sql (new)` | Knowledge and reports (section 5.7) | T9.19 |
-| `migrations/255_fieldops_weather_traffic.sql (new)` | Weather presets and traffic profiles (section 5.8) | T9.21 |
+| `migrations/250_fieldops_spread_library.sql (new)` | The spread library (section 5.2) | T9.2 |
+| `migrations/251_fieldops_world_models.sql (new)` | World models (section 5.3) | T9.6 |
+| `migrations/252_fieldops_world_sessions.sql (new)` | World sessions and the lease functions (section 5.4) | T9.6 |
+| `migrations/253_fieldops_world_log.sql (new)` | Commands, events, snapshots (section 5.5) | T9.6 |
+| `migrations/254_fieldops_world_units.sql (new)` | Speed classes, road graphs, units (section 5.6) | T9.15 |
+| `migrations/255_fieldops_world_visibility.sql (new)` | Knowledge and reports (section 5.7) | T9.19 |
+| `migrations/256_fieldops_weather_traffic.sql (new)` | Weather presets and traffic profiles (section 5.8) | T9.21 |
 | `server/services/fieldOps/world/data/seed/ (new)` | The seven seed files of section 5.12 | T9.2, T9.15, T9.21 |
 | `server/services/fieldOps/world/spreadLibrary.ts (new)` | The loader, `hazardEventsFor`, `deteriorationFactsFor` | T9.3 |
 | `server/services/fieldOps/world/spreadLibraryAdmin.ts (new)` | Seeding, row edits, retirement, reviews | T9.4 |
@@ -3931,7 +3931,7 @@ Several of these are also touched by other workstreams (`server/env.ts` and `ser
 | --- | --- | --- |
 | `server/services/fieldOps/jobs/jobRegistry.ts (new)` | WS0 | `registerJobKind` for `fieldops_world_prepare` |
 | `server/services/fieldOps/jobs/jobEngine.ts (new)` | WS0 | `WORKER_ID` and the job scope, reused for world leases (W11) |
-| `server/lib/schemaFeatures.ts (new)` | WS0 | The cached table detectors for 249 to 255 |
+| `server/lib/schemaFeatures.ts (new)` | WS0 | The cached table detectors for 250 to 256 |
 | `server/lib/fieldOps/requireFieldopsFlag.ts (new)` | WS0 | `requireFieldopsFlag` and `requireFieldopsTrainer` |
 | `server/lib/participantProjections.ts (new)` | WS0 | The projections WS9's fog filters run after |
 | `frontend/src/lib/fieldOps/fieldOpsHttp.ts (new)` | WS0 | `fieldOpsRequest` and `FieldOpsApiError` |
@@ -4002,7 +4002,7 @@ WS9's own questions:
 | Master plan (`00-master-plan.md`) | List `FIELDOPS_WORLD_MAX_SESSIONS`, `FIELDOPS_WORLD_WORKERS`, `FIELDOPS_WORLD_LEASE_SECONDS`, `FIELDOPS_WORLD_TICK_BUDGET_MS` and `FIELDOPS_WORLD_SNAPSHOT_SECONDS` with their defaults and bounds beside `ENABLE_FIELDOPS_WORLD_SIM` in section 8 | Section 6.13; they are operational switches, `FIELDOPS_WORLD_MAX_SESSIONS=0` above all |
 | Master plan (`00-master-plan.md`) | In 10.8 item 38, record the optional `signal` of `buildSpreadTimeline`'s input, the `version` label of `SpreadLibrary` and the pure `buildSpreadLibrary` | Both were asked for by WS5 (its section 15.4); item 38 should stay the one statement of the contract |
 | Master plan (`00-master-plan.md`) | In section 12, state that one instance is required while `ENABLE_FIELDOPS_WORLD_SIM` is on; in risk 14's row, add that fog of war depends on closing the scene read policy | R9.6; section 9.7 |
-| WS0 (`01-prerequisites.md`) | Include detectors for 249 to 255 (`fieldops_spread_materials`, `fieldops_world_models`, `fieldops_world_sessions`, `fieldops_world_events`, `fieldops_road_graphs`, `fieldops_world_knowledge`, `fieldops_weather_presets`) in the detector list of master 10.8 item 5; leave at least 3 of the 10 shutdown seconds after `stopJobEngine` for `stopWorldRuntime` | Section 5.13; section 6.11.10 |
+| WS0 (`01-prerequisites.md`) | Include detectors for 250 to 256 (`fieldops_spread_materials`, `fieldops_world_models`, `fieldops_world_sessions`, `fieldops_world_events`, `fieldops_road_graphs`, `fieldops_world_knowledge`, `fieldops_weather_presets`) in the detector list of master 10.8 item 5; leave at least 3 of the 10 shutdown seconds after `stopJobEngine` for `stopWorldRuntime` | Section 5.13; section 6.11.10 |
 | WS1 (`02-teams-and-doctrines.md`) | Keep `zone_access`, `can_triage` and `can_sweep` in `ArchetypeActionScope` with their meanings, and add a row to WS9's unit catalogue whenever an archetype is added | `tasksForUnit` and the access rule read them (AC9.34, AC9.39) |
 | WS2 (`03-setup-screen.md`) | Store `setup_v2.options.weather_setting: WeatherSetting \| null` beside the label `options.weather`, validated with WS9's `weatherSettingSchema`, and offer the presets of section 5.12.6 next to the label | Master 10.8 item 39; W23. `incident.when` already gives `day` and `time`, which is all WS9 needs |
 | WS3 (`04-site-picker.md`) | Keep the facility kinds `fire_station`, `ambulance_station`, `police` and `hospital` stable, with `listFacilitiesNear` returning each facility's kind, name and position; keep the active data version's label readable for the road graph's cache key | Unit origins (section 6.8.2) and the cache (section 6.8.3) |
@@ -4038,7 +4038,7 @@ WS9 is done when every line below holds on staging, and the production lines hol
 
 1. AC9.1 to AC9.57 pass: each through its test file of section 11.1, all listed in the `test` script (section 11.5), and those with manual steps through M1 to M13 on staging.
 2. `npm test`, `npm run typecheck`, `npm run lint` and `npm --prefix frontend run build` pass on the final commit.
-3. Migrations 249 to 255 have each applied twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), and their rollback comments have run cleanly on a branch database; after those scratch runs, each is applied once, in order, on the shared project; 256 is unused.
+3. Migrations 250 to 256 have each applied twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), and their rollback comments have run cleanly on a branch database; after those scratch runs, each is applied once, in order, on the shared project; 257 is unused.
 4. The seed library is loaded through the admin route; either the D31 review is recorded for the deployed `dataset_version`, or production runs worlds only for admins' sessions and shows "Unreviewed model" (W24).
 5. WS5's compile calls `loadSpreadLibrary`, `deteriorationFactsFor` and `buildSpreadTimeline` and no longer asks a model for hazard events or deterioration physics (master 10.8 item 38); legacy callers of `runEnvironmentalSimulation` are byte-identical to the baseline (AC9.10).
 6. With `ENABLE_FIELDOPS_WORLD_SIM` off, every session behaves exactly as today (AC9.28, AC9.30, M1); with it on, a world that falls behind or fails hands its hazards back and the session continues with today's escalation (AC9.27, M5).

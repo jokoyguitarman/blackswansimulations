@@ -4,8 +4,8 @@
 **Workstream:** WS3
 **Depends on:** [the master plan](00-master-plan.md#10-shared-contracts) and [the prerequisites spec](01-prerequisites.md#6-server) (WS0: `env.enableFieldopsV2`, `requireFieldopsV2`, the schema-feature helpers, `VALIDATION_FAILED`); for named types only, `02-teams-and-doctrines.md` (the vocabulary) and `03-setup-screen.md` (the readiness rule and lane-props contracts)
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
-**Migrations:** 228, 229, 230, 231
-**Baseline:** verified against commit 588387f (3 Nov 2026); see the README.
+**Migrations:** 229, 230, 231, 232 (**updated 8 Nov 2026**: every field-ops number moved up by one; master section 9)
+**Baseline:** verified against commit a0fb07a (8 Nov 2026); see the README.
 
 ## 1. Purpose, goals and non-goals
 
@@ -20,7 +20,7 @@ WS3 moves the first half of the Scene Editor (its "map" phase: find the building
 5. One contract: `SiteSelection` and `BuildingRef` with their constants and pure helpers in `shared/fieldOps/site.ts (new)` and their zod schemas in `server/lib/fieldOps/siteSchemas.ts (new)`, plus the exports fixed by master 10.8 items 10 and 11 (`SiteHintResolution`, `resolveSiteHint`, `SiteSearchResult`, `normaliseSiteSelection`, `buildSiteSelectionContext`, `SITE_LIMITS`, `ringFingerprint`, `siteFingerprint`, `loadSiteArea`) and `siteToLegacyLocation` for compile.
 6. Honest coverage (D13): outside the saved data the lane says "No saved map data for this area yet" and stops. There is no live fallback.
 7. No live map data in new code (D5): no Overpass, Nominatim or Google call anywhere WS3 or the new client writes, enforced by a static test; map tiles only through the tile proxy, which this spec hardens.
-8. Additive and flagged: everything new sits behind `ENABLE_FIELDOPS_V2`, and every server path works, in a degraded mode, before migrations 228 to 231 are applied.
+8. Additive and flagged: everything new sits behind `ENABLE_FIELDOPS_V2`, and every server path works, in a degraded mode, before migrations 229 to 232 are applied.
 
 **Non-goals**
 
@@ -35,7 +35,7 @@ WS3 moves the first half of the Scene Editor (its "map" phase: find the building
 
 ## 2. Decisions and assumptions
 
-**Added 3 Nov 2026.** One addition for WS1's revision for D29 (`02-teams-and-doctrines.md`): `SiteDataVersion` also reports the data version's `region`, so WS1's `defaultAgencyCountry` can read the saved map data's country instead of assuming Singapore (sections 5.2 and 6.7, AC3.32, answered in section 15.4). Nothing already built changes: `osm_sg_data_versions.region` exists in migration 228. WS9's living world (`11-living-world.md`) also starts its units at WS3's facilities and builds its road graph from the saved roads; it asks only that the facility kinds and the data version's label stay as they are (section 15.4).
+**Added 3 Nov 2026.** One addition for WS1's revision for D29 (`02-teams-and-doctrines.md`): `SiteDataVersion` also reports the data version's `region`, so WS1's `defaultAgencyCountry` can read the saved map data's country instead of assuming Singapore (sections 5.2 and 6.7, AC3.32, answered in section 15.4). Nothing already built changes: `osm_sg_data_versions.region` exists in migration 229. WS9's living world (`11-living-world.md`) also starts its units at WS3's facilities and builds its road graph from the saved roads; it asks only that the facility kinds and the data version's label stay as they are (section 15.4).
 
 **Decisions from the master plan that this spec applies**
 
@@ -46,8 +46,8 @@ WS3 moves the first half of the Scene Editor (its "map" phase: find the building
 | D9 | Involved buildings are stored as footprints with a kind and a label. Only the primary gets an interior later (WS4). | Decided |
 | D13 | Outside the saved data's coverage the lane says so and stops. The admin import path is documented in section 6.11. | Assumed (D13) |
 | D15 | At most five involved buildings besides the primary (`SITE_LIMITS.maxInvolved`). | Assumed (D15) |
-| D18 | The dossier's hospitals, police and fire stations come from `osm_sg_facilities` (migration 231), read through `listFacilitiesNear`. | Assumed (D18) |
-| D23 | WS3's migrations are 228 to 231, additive and idempotent. | Assumed (D23) |
+| D18 | The dossier's hospitals, police and fire stations come from `osm_sg_facilities` (migration 232), read through `listFacilitiesNear`. | Assumed (D18) |
+| D23 | WS3's migrations are 229 to 232, additive and idempotent. | Assumed (D23) |
 | D25 | The picker lives on the new page; `SceneEditor.tsx` is not edited. | Assumed (D25) |
 | D28 | Where the mockup and this spec differ, the mockup wins unless accessibility, the data model or the design brief requires otherwise. The differences are listed for the UI sheet in section 15. | Assumed (D28) |
 | 10.8 item 5 | Missing tables, columns and functions are detected with WS0's helpers, including `isMissingFunctionError`; a negative answer is re-checked after about a minute (section 5.5). | Settled (master) |
@@ -75,7 +75,7 @@ WS3 moves the first half of the Scene Editor (its "map" phase: find the building
 - The share of buildings that will gain an address is unknown until the extract runs (section 5.6).
 - The densest 600 m circle in Singapore holds fewer than 1,500 building footprints (the area cap). Not measured.
 
-**Checked on the live project on 25 Oct 2026** (read-only, reported in the reconciliation brief; no database tool was used for this spec): the project runs PostgreSQL 17.6, so the stored generated column of migration 229 is supported; `pg_trgm` 1.6 is available but not installed, and on Supabase it is created with `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions`, which is the statement migration 229 runs. The trigram index is therefore expected to exist once 229 is applied; the fallback without it stays, in case the owner applies the migration under a role that cannot create extensions.
+**Checked on the live project on 25 Oct 2026** (read-only, reported in the reconciliation brief; no database tool was used for this spec): the project runs PostgreSQL 17.6, so the stored generated column of migration 230 is supported; `pg_trgm` 1.6 is available but not installed, and on Supabase it is created with `CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA extensions`, which is the statement migration 230 runs. The trigram index is therefore expected to exist once 230 is applied; the fallback without it stays, in case the owner applies the migration under a role that cannot create extensions.
 
 ## 3. Current state (verified)
 
@@ -176,7 +176,7 @@ So the brief's four colours are all verified: the green dashed ring `#22c55e`, t
 - The hospitals, police and fire-station query is `runOverpassQuery` (`server/services/osmVicinityService.ts:167-192`).
 - The whole diagnostic router runs `requireAuth` and `requireStaff` (`server/routes/debug.ts:47`). `/building-studs` parses `osmSource`, `lat`, `lng` and `radius` (`server/routes/debug.ts:68-83`), skips road footprints in local-cache mode (`server/routes/debug.ts:161-168`) and caps road centre-lines by radius (`server/routes/debug.ts:189-196`).
 - The tile proxy interpolates raw `z`, `x` and `y`, rotates the `a`, `b` and `c` subdomains, sends `User-Agent: Prophyion/1.0`, has no timeout and no cache, and answers with `Access-Control-Allow-Origin: *` and a one-day `Cache-Control` (`server/routes/tileProxy.ts:9-36`). It needs no authentication.
-- It is mounted at `server/index.ts:283`, after helmet (`server/index.ts:114-118`), whose version 8.1.0 sends `Cross-Origin-Resource-Policy: same-origin` by default because the options there do not change it, and after the CORS allow-list with credentials (`server/index.ts:121-156`). The app trusts one proxy hop (`server/index.ts:67`), rate-limits every `/api/` request at 10,000 per 15 minutes per user (`server/index.ts:164-197`), parses JSON up to 10 MB (`server/index.ts:238`) and answers unknown routes with `{ "error": "Not found" }` (`server/index.ts:294-296`).
+- It is mounted at `server/index.ts:297`, after helmet (`server/index.ts:114-118`), whose version 8.1.0 sends `Cross-Origin-Resource-Policy: same-origin` by default because the options there do not change it, and after the CORS allow-list with credentials (`server/index.ts:121-156`). The app trusts one proxy hop (`server/index.ts:67`), rate-limits every `/api/` request at 10,000 per 15 minutes per user (`server/index.ts:193-211`), parses JSON up to 10 MB (`server/index.ts:252`) and answers unknown routes with `{ "error": "Not found" }` (`server/index.ts:308-310`).
 - The report-only CSP lists `nominatim.openstreetmap.org` and the OpenStreetMap tile hosts but not the API origin, in either `img-src` or `connect-src` (`frontend/vercel.json:48-49`). In development Vite proxies `/api` to port 3001 (`frontend/vite.config.ts:20-25`).
 
 ### 3.7 The legacy location hand-off and the conventions this spec follows
@@ -213,7 +213,7 @@ So the brief's four colours are all verified: the green dashed ring `#22c55e`, t
 | Primary filled cyan (mockup) | Primary filled navy in the edit phase (section 3.2) | Mockup style, by D28 (section 7.3) |
 | Data note "Map data: saved OpenStreetMap for Singapore. Nothing is fetched live." (mockup, `docs/design/warroom/field-ops-setup.html:663`) | Not built | Master 10.8 item 10 copy, which is binding |
 | A `train` icon on the station row (mockup) | `WrIcon` has none | WS3 adds `train` to `WrIcon` (section 7.9) |
-| Type labels such as "Shopping mall · building" (mockup, `docs/design/warroom/field-ops-setup.html:635-640`) | Rows keep only the raw `building` tag (section 3.5) | A derived `place_class` column (migration 228) |
+| Type labels such as "Shopping mall · building" (mockup, `docs/design/warroom/field-ops-setup.html:635-640`) | Rows keep only the raw `building` tag (section 3.5) | A derived `place_class` column (migration 229) |
 
 ## 4. Target behaviour and acceptance criteria
 
@@ -241,7 +241,7 @@ Test files are listed in section 11; each criterion names the test case that pro
 - **AC3.2** Given the same index, when the query is "018900" or "1 marina way", then the address row is first with `match` `exact_address`. Proved by `siteRanking.test.ts`, cases "a postcode puts its address first" and "a house number and street put the address first".
 - **AC3.3** Given any query, when it contains `%`, `_`, a backslash or quotes, then the server normalises it, never passes a wildcard to SQL and answers 200 (with no results if nothing is left); a query over 80 characters answers 400 `VALIDATION_FAILED`. Proved by `server/lib/fieldOps/siteSearchText.test.ts (new)`, case "removes wildcards and operators", and `server/routes/fieldOpsSite.test.ts (new)`, cases "search with wildcards answers 200" and "search over 80 characters answers 400".
 - **AC3.4** Given the dropdown, when the trainer types one character, then no request is sent; when she types "mar", then exactly one request is sent 250 ms after the last keystroke; when she repeats a query within five minutes, then it is answered from the client cache; when an older request returns after a newer one, then its results are ignored. Proved by `frontend/tests/placeSearchState.test.ts (new)`, cases "below two characters nothing is sent", "debounces to one request", "repeats come from the cache" and "a stale response is dropped".
-- **AC3.5** Given migration 229 is not applied, when the trainer searches, then the response has `mode` `names_only`, results come from the `name` columns of the base tables, and nothing fails. Proved by `server/services/fieldOps/site/siteSearch.test.ts (new)`, case "falls back to names only when the index is missing".
+- **AC3.5** Given migration 230 is not applied, when the trainer searches, then the response has `mode` `names_only`, results come from the `name` columns of the base tables, and nothing fails. Proved by `server/services/fieldOps/site/siteSearch.test.ts (new)`, case "falls back to names only when the index is missing".
 - **AC3.6** Given the index is loaded on the shared project, when the search candidates function runs for ten common queries, then the 95th-percentile execution time is under 80 ms with the trigram index and under 150 ms without it. Proved by manual step M7 in section 11.3.
 - **AC3.7** Given a building result, when the trainer picks it, then the selection has `radius_m` 150, the building as `primary` with its `osm_id`, `centre` equal to the vertex mean of its polygon, and the area is requested once for that centre. Proved by `frontend/tests/siteLaneState.test.ts (new)`, case "picking a building sets the primary and the default radius", and manual step M2.
 - **AC3.8** Given a street result, when the trainer picks it, then there is no primary and the lane prompts her to click a building; when she clicks a footprint, then it becomes the primary and the centre moves to its vertex mean. Proved by `siteLaneState.test.ts`, case "a street pick waits for a footprint click".
@@ -263,12 +263,12 @@ Test files are listed in section 11; each criterion names the test case that pro
 - **AC3.24** Given the importer, when it runs without `--apply`, then it writes nothing; when `--project-ref` does not match `SUPABASE_URL`, then it refuses; when a session is `in_progress`, then it refuses unless `--allow-live-sessions` is given; when a sweep would leave fewer than 90 per cent of the previous version's rows, then it refuses. Proved by `server/lib/fieldOps/osmImportGuard.test.ts (new)`, the "guard" group.
 - **AC3.25** Given extract features, when the generator's pure helpers run, then a building with its own address tags gets `addr_source` `way`, a building containing an address point gets `node`, "S018900" becomes "018900", facility tags map to the kinds of section 6.11, and the search rows, street clusters and importance values match the fixture. Proved by `server/lib/fieldOps/osmExtract.test.ts (new)`.
 - **AC3.26** Given an active version with a source timestamp of 2 Nov 2026, then the data note reads "Map data: saved OpenStreetMap for Singapore. Extract of 2 Nov 2026."; given the legacy version, it reads "Map data: saved OpenStreetMap for Singapore.". Proved by `site.test.ts`, case "the data note adds the extract date when known".
-- **AC3.27** Given a centre and a 5 km radius, when `listFacilitiesNear` runs, then it returns at most 50 facilities per kind, nearest first, each with a distance; given migration 231 is missing, then it returns `status` `unavailable`. Proved by `server/services/fieldOps/site/facilities.test.ts (new)`.
+- **AC3.27** Given a centre and a 5 km radius, when `listFacilitiesNear` runs, then it returns at most 50 facilities per kind, nearest first, each with a distance; given migration 232 is missing, then it returns `status` `unavailable`. Proved by `server/services/fieldOps/site/facilities.test.ts (new)`.
 - **AC3.28** Given the hint `{ place_text: "Marina Court Mall", involved: [car park next door, the MRT station] }`, when `resolveSiteHint` runs, then the status is `resolved` with the mall's footprint; the car park at 82 m is `inside_radius` and in `selection.involved`; the station at 207 m is outside with `expand_to` 220 and not in the selection; and `selection` passes `normaliseSiteSelection` with radius 150. Given two candidates with equal rank, the status is `ambiguous` with both and no selection; given nothing, `not_found`. Proved by `siteHint.test.ts`, cases "resolves the place and builds the selection", "two equal matches are ambiguous" and "no match is not found".
 - **AC3.29** Given a keyboard-only user, when she uses the lane, then she can search, pick, change the radius, add a building inside the ring from the "Add a building inside the radius" list, change a role and remove a building without a pointer. Proved by manual step M8.
-- **AC3.30** Given `ENABLE_FIELDOPS_V2` is off and migrations 228 to 231 are applied, when a trainer uses the legacy wizard, then the Scene Editor's map phase, Fetch Buildings and the local cache behave exactly as before. Proved by manual step M9.
+- **AC3.30** Given `ENABLE_FIELDOPS_V2` is off and migrations 229 to 232 are applied, when a trainer uses the legacy wizard, then the Scene Editor's map phase, Fetch Buildings and the local cache behave exactly as before. Proved by manual step M9.
 - **AC3.31** Given the radar's resolution with a ready selection, when `SiteLane` receives it as `proposal`, with no site, after the trainer cleared the site, or with a site set, then the lane leaves the site as it is: only WS2's merge applies a radar selection, and only to a draft with no site. Proved by `frontend/tests/siteLaneState.test.ts (new)`, case "the lane never applies the radar's site".
-- **AC3.32** **Added 3 Nov 2026.** Given an active data version whose `region` is 'SG', when `getSiteCoverage` or `buildSiteSelectionContext` runs, then `data_version.region` is 'SG'; given migration 228 missing, `data_version` is null, and WS1's `defaultAgencyCountry` falls back to its own 'SG'. Proved by `siteArea.test.ts`, case "the data version reports its region".
+- **AC3.32** **Added 3 Nov 2026.** Given an active data version whose `region` is 'SG', when `getSiteCoverage` or `buildSiteSelectionContext` runs, then `data_version.region` is 'SG'; given migration 229 missing, `data_version` is null, and WS1's `defaultAgencyCountry` falls back to its own 'SG'. Proved by `siteArea.test.ts`, case "the data version reports its region".
 
 ## 5. Data model
 
@@ -276,12 +276,12 @@ Test files are listed in section 11; each criterion names the test case that pro
 
 | Data | Where | Owner |
 | --- | --- | --- |
-| The trainer's site choice (`SiteSelection`) | `warroom_wizard_drafts.setup_v2.site` (WS2's migration 225). Nothing is added to the draft by WS3 | Contract WS3, column WS2 |
-| Buildings, roads, addresses, place classes | `osm_sg_buildings`, `osm_sg_roads` plus the columns of migration 228 | WS3 |
-| Which extract is loaded | `osm_sg_data_versions` (migration 228) | WS3 |
-| The type-ahead index | `osm_sg_search_index` (migration 229) | WS3 |
-| The area read | `fieldops_site_area` (migration 230) | WS3 |
-| Facilities for the area dossier | `osm_sg_facilities` (migration 231) | WS3 (read by WS5) |
+| The trainer's site choice (`SiteSelection`) | `warroom_wizard_drafts.setup_v2.site` (WS2's migration 226). Nothing is added to the draft by WS3 | Contract WS3, column WS2 |
+| Buildings, roads, addresses, place classes | `osm_sg_buildings`, `osm_sg_roads` plus the columns of migration 229 | WS3 |
+| Which extract is loaded | `osm_sg_data_versions` (migration 229) | WS3 |
+| The type-ahead index | `osm_sg_search_index` (migration 230) | WS3 |
+| The area read | `fieldops_site_area` (migration 231) | WS3 |
+| Facilities for the area dossier | `osm_sg_facilities` (migration 232) | WS3 (read by WS5) |
 
 **Proposed.** The draft keeps the selection only: the centre, the radius, the primary and involved polygons and their names. The surrounding footprints and streets are read again from the saved tables whenever a screen needs them (master section 4). The primary and involved polygons are copied into the selection on purpose, so that a later re-import never moves a building the trainer has already laid out.
 
@@ -695,16 +695,16 @@ export declare function looksLikePostcode(normalised: string): boolean; // exact
 export declare function cleanPostcode(raw: string | null | undefined): string | null; // the first run of exactly six digits
 ```
 
-Because `normaliseSearchText` keeps only letters, digits and single spaces, a normalised query can never contain a `LIKE` wildcard or a text-search operator. The SQL in migration 229 still escapes both, as a second line of defence.
+Because `normaliseSearchText` keeps only letters, digits and single spaces, a normalised query can never contain a `LIKE` wildcard or a text-search operator. The SQL in migration 230 still escapes both, as a second line of defence.
 
 ### 5.4 Migrations
 
 The four files are applied in order. Each is idempotent, additive, keeps RLS on with no permissive policy, and revokes its functions from browser roles. All three environments share one Supabase project (finding 17.17), so each must be safe for code already running: the legacy local-cache code selects explicit columns (section 3.6), so new columns never change what it reads.
 
-**228: data versions, addresses and place classes.**
+**229: data versions, addresses and place classes.**
 
 ```sql
--- migrations/228_osm_sg_addresses_and_versions.sql (WS3)
+-- migrations/229_osm_sg_addresses_and_versions.sql (WS3)
 -- Records which OpenStreetMap extract is loaded, and adds address, place-class, tag and
 -- version columns to the saved tables. Additive and idempotent; safe to re-run.
 -- Requires migrations/193_singapore_local_osm_cache.sql.
@@ -754,7 +754,7 @@ ALTER TABLE public.osm_sg_data_versions ENABLE ROW LEVEL SECURITY;
 -- The rows already loaded were imported before versions existed.
 INSERT INTO public.osm_sg_data_versions
   (label, region, status, source_name, generator_version, operator_note, activated_at)
-SELECT 'sg-legacy', 'SG', 'active', 'Singapore extract imported before migration 228', 'sg-osm-1',
+SELECT 'sg-legacy', 'SG', 'active', 'Singapore extract imported before migration 229', 'sg-osm-1',
        'Date and source were not recorded; source_updated_at is null on every row.', now()
 WHERE NOT EXISTS (SELECT 1 FROM public.osm_sg_data_versions WHERE region = 'SG');
 
@@ -792,7 +792,7 @@ COMMENT ON COLUMN public.osm_sg_buildings.place_class IS
 COMMENT ON COLUMN public.osm_sg_buildings.osm_tags IS
   'Allow-listed raw tags kept for re-derivation, at most 16 keys (see the generator).';
 COMMENT ON COLUMN public.osm_sg_buildings.data_version_id IS
-  'The import that last wrote this row; null for rows loaded before migration 228.';
+  'The import that last wrote this row; null for rows loaded before migration 229.';
 
 CREATE OR REPLACE FUNCTION public.fieldops_osm_activate_version(p_label text)
 RETURNS void
@@ -831,15 +831,15 @@ REVOKE ALL ON FUNCTION public.fieldops_osm_activate_version(text) FROM anon, aut
 GRANT EXECUTE ON FUNCTION public.fieldops_osm_activate_version(text) TO service_role;
 ```
 
-**229: the search index.**
+**230: the search index.**
 
 ```sql
--- migrations/229_osm_sg_search_index.sql (WS3)
+-- migrations/230_osm_sg_search_index.sql (WS3)
 -- A narrow type-ahead index of addresses, named buildings and street names, filled by the
 -- importer from the generator's osm-sg-search-index.ndjson. Prefix search uses a C-collation
 -- btree, word-prefix search a tsvector GIN index, substring search a pg_trgm GIN index when the
 -- extension can be created (otherwise a scan of this narrow table).
--- Requires 228_osm_sg_addresses_and_versions.sql.
+-- Requires 229_osm_sg_addresses_and_versions.sql.
 -- Before it is applied, search falls back to names only on the base tables.
 -- Rollback, only while no deployed code reads these objects:
 --   DROP FUNCTION IF EXISTS public.fieldops_site_search_features();
@@ -1026,13 +1026,13 @@ GRANT EXECUTE ON FUNCTION public.fieldops_site_search_features() TO service_role
 
 **Why these indexes.** The measured timings are about 514 ms for a building name search and 46 ms for a road name search on the base tables (common brief). The building rows carry their footprint JSON, so a scan of them is slow; a type-ahead with a 250 ms debounce needs well under 100 ms on the server to feel instant. The index table is narrow (text and two numbers, roughly 170,000 rows at most, section 5.6), so even a full scan of it costs about what the road scan costs. On top of that: the C-collation btree answers "starts with" as an index range; the `tsvector` GIN index answers "a word starts with" for every word, with no extension; and `pg_trgm`, when it can be created, answers "contains" from an index. Without `pg_trgm` the substring branch runs only for queries of three characters or more and scans the narrow table. A plain `LIKE 'abc%'` with a parameter cannot use a btree in a generic plan, which a SQL function gets; the explicit range on `COLLATE "C"` can, which is why the prefix branches are written as ranges. Targets, measured in acceptance (AC3.6): a 95th-percentile server time under 80 ms with the trigram index and under 150 ms without it.
 
-**230: the site-area function.**
+**231: the site-area function.**
 
 ```sql
--- migrations/230_fieldops_site_area.sql (WS3)
+-- migrations/231_fieldops_site_area.sql (WS3)
 -- One round trip for the buildings and streets around a point, nearest first, using the existing
 -- bounding-box indexes. Exact polygon distances and clipping are done in TypeScript (siteArea.ts).
--- Requires 228_osm_sg_addresses_and_versions.sql (it reads place_class and the address columns).
+-- Requires 229_osm_sg_addresses_and_versions.sql (it reads place_class and the address columns).
 -- Before it is applied, loadSiteArea pages the base tables instead.
 -- Rollback: DROP FUNCTION IF EXISTS public.fieldops_site_area(double precision, double precision, integer, integer, integer);
 
@@ -1123,13 +1123,13 @@ GRANT EXECUTE ON FUNCTION public.fieldops_site_area(double precision, double pre
 
 The bounding-box distance is never larger than the true distance to a footprint, so filtering on it never drops a building that touches the circle; `loadSiteArea` then computes the exact distance and drops the rest.
 
-**231: facilities for the area dossier.**
+**232: facilities for the area dossier.**
 
 ```sql
--- migrations/231_osm_sg_facilities.sql (WS3)
+-- migrations/232_osm_sg_facilities.sql (WS3)
 -- Hospitals, clinics, police, fire and ambulance stations, fuel stations, power substations and
 -- surveillance cameras from the same extract, for the area dossier (D18) that WS5 builds.
--- Requires 228_osm_sg_addresses_and_versions.sql.
+-- Requires 229_osm_sg_addresses_and_versions.sql.
 -- Before it is applied, listFacilitiesNear answers status 'unavailable' and WS5 keeps its legacy path.
 -- Rollback: DROP TABLE IF EXISTS public.osm_sg_facilities;
 
@@ -1177,10 +1177,10 @@ WS0's helpers in `server/lib/schemaFeatures.ts (new)` detect each missing object
 
 | Missing | Detected by | Behaviour until it is applied |
 | --- | --- | --- |
-| 228 (columns, `osm_sg_data_versions`) | `isMissingColumnError` on `place_class`, `isMissingRelationError` on the versions table | Area rows carry no place class or address (`type_label` "Building"); search runs in `names_only` mode; coverage uses `SITE_COVERAGE_FALLBACK`; `data_version` is null; the data note has no date |
-| 229 (`osm_sg_search_index` and its functions) | `isMissingRelationError`, or WS0's `isMissingFunctionError` | `names_only` mode: two capped `ilike` queries on the base tables' `name` columns, buildings first, no addresses. The dropdown's note says addresses are not searchable yet |
-| 230 (`fieldops_site_area`) | Missing function | `loadSiteArea` pages the base tables by bounding box, 1,000 rows a page, at most 3,000 buildings and 3,000 streets, as the legacy code does |
-| 231 (`osm_sg_facilities`) | `isMissingRelationError` | `listFacilitiesNear` returns `{ status: 'unavailable' }` |
+| 229 (columns, `osm_sg_data_versions`) | `isMissingColumnError` on `place_class`, `isMissingRelationError` on the versions table | Area rows carry no place class or address (`type_label` "Building"); search runs in `names_only` mode; coverage uses `SITE_COVERAGE_FALLBACK`; `data_version` is null; the data note has no date |
+| 230 (`osm_sg_search_index` and its functions) | `isMissingRelationError`, or WS0's `isMissingFunctionError` | `names_only` mode: two capped `ilike` queries on the base tables' `name` columns, buildings first, no addresses. The dropdown's note says addresses are not searchable yet |
+| 231 (`fieldops_site_area`) | Missing function | `loadSiteArea` pages the base tables by bounding box, 1,000 rows a page, at most 3,000 buildings and 3,000 streets, as the legacy code does |
+| 232 (`osm_sg_facilities`) | `isMissingRelationError` | `listFacilitiesNear` returns `{ status: 'unavailable' }` |
 
 ### 5.6 Data volumes, and what is unknown until the extract runs
 
@@ -1305,7 +1305,7 @@ export const siteCoverageRequestSchema = z.object({
 
 ### 6.3 Routes
 
-Mounted in `server/index.ts` as `app.use('/api/warroom/field-ops/site', fieldOpsSiteRouter)`, next to WS2's field-ops routers after the existing `warroomRouter` mount (`server/index.ts:272`), which has no router-wide middleware and no path under `/field-ops` (`03-setup-screen.md` section 6.11). Every route runs, in this order: WS0's `requireFieldopsV2` gate, `requireAuth`, the trainer check, a per-user limiter, `validate()`, the handler. The gate sits on each route, not on the router, because several routers share the `/api/warroom/field-ops` prefix (master 10.8 item 3; `01-prerequisites.md` section 6.4).
+Mounted in `server/index.ts` as `app.use('/api/warroom/field-ops/site', fieldOpsSiteRouter)`, next to WS2's field-ops routers after the existing `warroomRouter` mount (`server/index.ts:286`), which has no router-wide middleware and no path under `/field-ops` (`03-setup-screen.md` section 6.11). Every route runs, in this order: WS0's `requireFieldopsV2` gate, `requireAuth`, the trainer check, a per-user limiter, `validate()`, the handler. The gate sits on each route, not on the router, because several routers share the `/api/warroom/field-ops` prefix (master 10.8 item 3; `01-prerequisites.md` section 6.4).
 
 | Method and path | Request | 200 body | Cache-Control |
 | --- | --- | --- | --- |
@@ -1324,13 +1324,13 @@ Errors, with the body `{ "error": <sentence>, "code": <CODE>, "details": [...] }
 | 400 | `VALIDATION_FAILED` | `POST /validate` only: the normaliser refuses the site. The body is WS0's `validationErrorBody`, and each detail is `{ field: 'site.<path>', message, code }` with a `SITE_*` code of section 5.2, the same shape WS2's save route returns (`03-setup-screen.md` section 6.4) | "Validation failed", with the normaliser's messages in `details` |
 | 401 | none (existing body) | No or bad token (`requireAuth`) | `Missing authorization header` or `Invalid or expired token` |
 | 403 | `FORBIDDEN` | The user is not a trainer or an admin | "Only trainers can use the War Room" (`server/routes/warroom.ts:198-199`) |
-| 404 | none | `ENABLE_FIELDOPS_V2` is off | `{ "error": "Not found" }`, the same body as the app's 404 handler (`server/index.ts:294-296`) |
+| 404 | none | `ENABLE_FIELDOPS_V2` is off | `{ "error": "Not found" }`, the same body as the app's 404 handler (`server/index.ts:308-310`) |
 | 429 | `RATE_LIMITED` | Over the per-user limit | "Too many map requests. Wait a moment and try again." |
 | 503 | `SITE_DATA_UNAVAILABLE` | A read of the saved tables failed for a reason other than a missing migration | "The saved map data could not be read. Try again in a moment." |
 
 Outside coverage is a state, not an error: `area` answers 200 with `coverage` `outside_bbox` or `no_data_nearby` and empty lists, and `coverage` answers 200 with the point's state.
 
-Per-user limits, keyed `user:<id>` after `requireAuth` with the `perUserLimit` pattern of `server/routes/trainerAgreements.ts:214-222` but a one-minute window: search 120, area 40, validate 30, coverage 60. The global limiter still applies on top (`server/index.ts:164-197`).
+Per-user limits, keyed `user:<id>` after `requireAuth` with the `perUserLimit` pattern of `server/routes/trainerAgreements.ts:214-222` but a one-minute window: search 120, area 40, validate 30, coverage 60. The global limiter still applies on top (`server/index.ts:193-211`).
 
 The trainer check is WS0's one trainer-or-admin guard, `requireFieldopsTrainer` (`01-prerequisites.md`, AC0.40), which answers 403 with the body above; until it lands, the router holds the same middleware: if `req.user.role` is neither `trainer` nor `admin`, answer 403 with that body. The flag gate is WS0's `requireFieldopsV2`, which reads `env.enableFieldopsV2` and answers 404 `{ "error": "Not found" }` when it is off; the value is read once at boot (master section 8), so a change takes effect when the server restarts, with no build.
 
@@ -1391,7 +1391,7 @@ Rows that match no rule are dropped. Then:
 1. Clamp `radius_m` to an integer from 50 to 500. `fetched_radius_m = min(radius_m + 100, 600)`.
 2. If `centre` is outside every coverage box, return `coverage: 'outside_bbox'` with empty lists, without reading the tables.
 3. Look in a cache of 100 entries, ten minutes each, keyed by the centre rounded to five decimals, `fetched_radius_m` and the data-version label.
-4. With migration 230: `rpc('fieldops_site_area', { p_lat, p_lng, p_radius_m: fetched_radius_m, p_max_buildings: 2000, p_max_streets: 1000 })`. Without it: page both base tables by bounding box, 1,000 rows a page, at most 3,000 rows each, selecting only the columns that exist (section 5.5).
+4. With migration 231: `rpc('fieldops_site_area', { p_lat, p_lng, p_radius_m: fetched_radius_m, p_max_buildings: 2000, p_max_streets: 1000 })`. Without it: page both base tables by bounding box, 1,000 rows a page, at most 3,000 rows each, selecting only the columns that exist (section 5.5).
 5. `shapeSiteArea(rows, request)`, a pure function:
    - Buildings: parse the footprint (pairs with finite numbers only, at least three), `simplifyRing` to 500 vertices, `distance_m = distanceToPolygonM(centre, polygon)`, keep those within `fetched_radius_m`, sort by distance then `osm_id`, keep the first 1,500, round coordinates to seven decimals, add the vertex-mean `centroid`, the class label as `type_label` ("Building" when the class is null), and `address_line` from `addressLine` when any address part is present.
    - Streets: parse the line, cut it with `clipPolylineToCircle` at `fetched_radius_m`, drop it if nothing is left, thin each segment to 400 points, keep the 800 nearest by `distanceToPolylineM`.
@@ -1449,7 +1449,7 @@ On success it returns `{ ok: true, site, warnings, fingerprint: siteFingerprint(
 
 - Read the `active` rows of `osm_sg_data_versions`. Each row's `coverage` becomes a box after checking that the four numbers are finite and ordered; an SG row without one uses `SITE_COVERAGE_FALLBACK`.
 - `data_version` is the SG active row as `{ label, extract_date }`, with `extract_date` the UTC date of `source_timestamp`, or null. **Added 3 Nov 2026:** it also carries the row's `region`, so `SiteSelectionContext.data_version` reports the saved data's country (AC3.32).
-- With migration 228 missing: `{ boxes: [SITE_COVERAGE_FALLBACK], data_version: null }`.
+- With migration 229 missing: `{ boxes: [SITE_COVERAGE_FALLBACK], data_version: null }`.
 
 `coverageAt(point)` answers `outside_bbox` when the point is outside every box; otherwise it asks the area function for 300 m with one building and one street, and answers `inside` if anything comes back and `no_data_nearby` if not (P8). `GET /coverage` returns the boxes, the version, `siteDataNote(data_version)` and, when `lat` and `lng` are given, the point's state.
 
@@ -1493,7 +1493,7 @@ On success it returns `{ ok: true, site, warnings, fingerprint: siteFingerprint(
 `listFacilitiesNear(centre: LatLng, opts?: { radiusM?: number; kinds?: FacilityKind[]; maxPerKind?: number }): Promise<FacilitiesNearResult>` in `server/services/fieldOps/site/facilities.ts (new)`, for WS5's dossier (D18):
 
 1. `radiusM` defaults to 5,000 and is capped at 10,000; `kinds` defaults to all of `FACILITY_KINDS`; `maxPerKind` defaults to 50.
-2. Outside every coverage box: `{ status: 'outside_coverage' }`. Migration 231 missing: `{ status: 'unavailable' }`.
+2. Outside every coverage box: `{ status: 'outside_coverage' }`. Migration 232 missing: `{ status: 'unavailable' }`.
 3. One bounding-box query on `osm_sg_facilities (lat, lng)`, filtered by `kind`, at most 5,000 rows.
 4. Distance in local metres; keep those within the radius; per kind, nearest first then by name; at most `maxPerKind` each; `address_line` from `addressLine`.
 
@@ -1531,7 +1531,7 @@ The layout re-reads the surroundings rather than storing them, so a reloaded lay
 
 | Mode | Flags | What it does |
 | --- | --- | --- |
-| Dry run (default) | `--manifest <path>` | Checks the files against the manifest, checks that migrations 228 to 231 are applied, prints the plan and the counts. Writes nothing |
+| Dry run (default) | `--manifest <path>` | Checks the files against the manifest, checks that migrations 229 to 232 are applied, prints the plan and the counts. Writes nothing |
 | Export | `--export-current <dir>` | Reads every row of the four tables, in `osm_id` order, into NDJSON files and a manifest in the generator's format. Read-only; this is the rollback copy |
 | Apply | `--manifest <path> --apply --project-ref <ref> --confirm-shared-database` | Inserts the version row as `importing`; upserts buildings, roads, facilities (on `osm_id`) and index rows (on `id`) with `data_version_id`; checks the row counts against the manifest; marks the version `verified` |
 | Activate | `--activate <label> --project-ref <ref> --confirm-shared-database` | Calls `fieldops_osm_activate_version` |
@@ -1550,7 +1550,7 @@ The legacy `--roads` and `--buildings` flags keep working for an empty database,
 
 **Runbook.**
 
-1. Apply migrations 228, 229, 230 and 231, in order, outside a live session (each adds columns or indexes under a short lock).
+1. Apply migrations 229, 230, 231 and 232, in order, outside a live session (each adds columns or indexes under a short lock).
 2. Run the importer with `--export-current server/data/generated/before-<date>` and keep the copy until the new version has been active for a release.
 3. Place a fresh Singapore PBF at the generator's default input path, `server/data/Singapore.osm.pbf` (the owner chooses the extract provider; the current file's source is not recorded). This is an operator download, not a call the app makes.
 4. `npm run generate:sg-osm -- --input server/data/Singapore.osm.pbf --label sg-<yyyy-mm-dd> --source-name "<provider and file>" --stats`, then read the counts with the owner.
@@ -1612,7 +1612,7 @@ What version 1 lacks, and an owner decision must precede: a `--region` flag in b
 - An upstream 5xx answers 502; other statuses pass through, as today.
 - `createTileProxyRouter(deps)` takes `fetchImpl`, `timeoutMs` and the cache limits, for the test; `tileProxyRouter` stays the default export the app mounts.
 
-Tile requests carry no token, so the global `limiter` already counts them by client address through its `keyGenerator`, at 10,000 per 15 minutes in production (`server/index.ts:164-197`); no second limiter is added. Authentication is not added either: tile images are requested by the browser without an `Authorization` header. The tiles reach the cross-origin production front end only because the tile layer asks for them in CORS mode (`crossOrigin="anonymous"`, `frontend/src/components/SceneEditor/SceneEditor.tsx:1875`): helmet's default `Cross-Origin-Resource-Policy: same-origin` is enforced by browsers on no-cors requests only. `SiteMap` keeps that attribute (section 7.3), which is also what lets auto-trace read the pixels. This is checked by hand in production (manual step M4).
+Tile requests carry no token, so the global `limiter` already counts them by client address through its `keyGenerator`, at 10,000 per 15 minutes in production (`server/index.ts:193-211`); no second limiter is added. Authentication is not added either: tile images are requested by the browser without an `Authorization` header. The tiles reach the cross-origin production front end only because the tile layer asks for them in CORS mode (`crossOrigin="anonymous"`, `frontend/src/components/SceneEditor/SceneEditor.tsx:1875`): helmet's default `Cross-Origin-Resource-Policy: same-origin` is enforced by browsers on no-cors requests only. `SiteMap` keeps that attribute (section 7.3), which is also what lets auto-trace read the pixels. This is checked by hand in production (manual step M4).
 
 ## 7. Client
 
@@ -1981,7 +1981,7 @@ Not applicable: WS3 makes no model call. The footprint radar's model call belong
 
 **Authentication and authorisation.** Every site route runs `requireAuth` and the trainer-or-admin check, and answers 404 while `ENABLE_FIELDOPS_V2` is off (section 6.3). The server reads the tables with the service role, so the route is the only gate. The new tables (`osm_sg_data_versions`, `osm_sg_search_index`, `osm_sg_facilities`) have RLS on and no policy, so the browser's anon key reads nothing (master section 9). The four new functions revoke `EXECUTE` from `PUBLIC`, `anon` and `authenticated` and grant it to `service_role` only, so they cannot be called through the public RPC endpoint either.
 
-**Cost and abuse.** Per-user limits of 120 searches, 40 area reads, 30 validations and 60 coverage checks a minute sit under the global limiter. The area read is bounded three times: the radius is capped at 600 m in SQL, the SQL limits rows to 3,000 buildings and 2,000 streets, and the shaped response to 1,500 buildings, 800 streets, 500 vertices a footprint and 1.5 MB. Server caches are bounded (500 searches, 100 areas, 1,000 tiles or 24 MB). The `/validate` body is bounded by the schema (at most 21 polygons of 501 points); the app-wide JSON limit stays 10 MB (`server/index.ts:238`).
+**Cost and abuse.** Per-user limits of 120 searches, 40 area reads, 30 validations and 60 coverage checks a minute sit under the global limiter. The area read is bounded three times: the radius is capped at 600 m in SQL, the SQL limits rows to 3,000 buildings and 2,000 streets, and the shaped response to 1,500 buildings, 800 streets, 500 vertices a footprint and 1.5 MB. Server caches are bounded (500 searches, 100 areas, 1,000 tiles or 24 MB). The `/validate` body is bounded by the schema (at most 21 polygons of 501 points); the app-wide JSON limit stays 10 MB (`server/index.ts:252`).
 
 **Input handling.** Every query and body goes through `validate()` with the zod schemas of section 6.2. The search text is normalised to letters, digits and single spaces before it reaches SQL, so it carries no `LIKE` wildcard or text-search operator; the SQL still escapes `%`, `_` and backslashes and quotes every text-search token with `quote_literal`. No SQL is built from strings in TypeScript: the functions take parameters, and the names-only fallback passes an escaped value to `ilike`.
 
@@ -1993,7 +1993,7 @@ Not applicable: WS3 makes no model call. The footprint radar's model call belong
 
 **Privacy.** The saved tables hold public OpenStreetMap data: footprints, street names, addresses and the names of public facilities, and no personal data. Search text, place labels and polygons are never logged (section 10.4). The site a trainer picks lives in her draft, which only WS2's owner-checked draft routes return; WS3 adds no route that reads a draft.
 
-**The answer key.** WS3 writes nothing to `scenarios` (master 10.8 item 16) and stores no device data. Master risk 14 is unchanged by WS3: the live check of 25 Oct 2026 found that the public anon key alone, with no sign-in, reads every `rts_scene_configs` row, planted devices included, and that the bucket `rts-scene-images` is public. WS3's own tables are not in that position, because they have RLS on with no policy.
+**The answer key.** WS3 writes nothing to `scenarios` (master 10.8 item 16) and stores no device data. Master risk 14 is unchanged by WS3: the live check of 25 Oct 2026 found that the public anon key alone, with no sign-in, reads every `rts_scene_configs` row, planted devices included, and that the bucket `rts-scene-images` is public. **Updated 8 Nov 2026:** migration 218 has since closed the policy to the creator and admins in production; the bucket is still public. WS3's own tables are not in that position, because they have RLS on with no policy.
 
 **Safety stance.** This workstream handles no device information. The facilities table records public map features, including fuel stations and power substations, so that the responders' area dossier can name nearby hazards (D18); nothing in WS3 ranks places by crowding, vulnerability or effect, and the picker never suggests where anything should be placed.
 
@@ -2016,7 +2016,7 @@ Not flag-gated, on purpose: the tile proxy changes (valid requests get the same 
 ### 10.2 Rollout
 
 1. Merge the shared contract and the server code with the flag off in production (on in development, master section 8).
-2. Apply migrations 228 to 231 (section 6.11 runbook, step 1). The code already tolerates them missing (section 5.5) and starts using them within about a minute.
+2. Apply migrations 229 to 232 (section 6.11 runbook, step 1). The code already tolerates them missing (section 5.5) and starts using them within about a minute.
 3. Run the re-extract and import with the guard (task T3.14), and activate the version.
 4. Build a staging front end with `VITE_ENABLE_FIELDOPS_V2` and turn `ENABLE_FIELDOPS_V2` on: run the manual steps of section 11.3.
 5. Production for the owner's account, then everyone, together with WS2's page (slice B of master section 6).
@@ -2043,7 +2043,7 @@ Pino, snake case, prefix `fieldops_` (master 10.5). Never the query text, a plac
 | `fieldops_site_selected` | info | `draft_id`, `radius_m`, `involved`, `custom_polygons`, `data_version`, `fingerprint` | WS2's draft save, when `siteFingerprint` changes (WS2's save route emits it) |
 | `fieldops_tile_proxy` | warn | `status`, `reason` (`bad_params`, `timeout`, `upstream`) | the tile proxy, for failures only |
 
-What to watch after launch: the 95th percentile of `ms` for search and area, the share of `names_only` searches (should be zero once 229 is applied), the share of truncated areas (if above a few per cent, revisit the cap), and any `fieldops_site_data_unavailable`.
+What to watch after launch: the 95th percentile of `ms` for search and area, the share of `names_only` searches (should be zero once 230 is applied), the share of truncated areas (if above a few per cent, revisit the cap), and any `fieldops_site_data_unavailable`.
 
 ## 11. Tests
 
@@ -2113,7 +2113,7 @@ All automated tests use `node:test` through `tsx`, as the `test` script does tod
 
 **`server/services/fieldOps/site/siteSearch.test.ts (new)`** (AC3.5): uses the index and the ranking when the RPC answers; "falls back to names only when the index is missing" (`mode` `names_only`); retries once in names-only mode after a missing-function error; a one-character query makes no call; a cache hit makes no call; any other error throws `SiteDataUnavailableError`.
 
-**`server/services/fieldOps/site/siteArea.test.ts (new)`** (AC3.18, AC3.19): "outside the boxes returns an empty area" without a database call; "caps buildings, vertices and size" (2,000 synthetic buildings, one of 1,200 vertices, a street of 900 points: 1,500 buildings, at most 500 vertices, segments of at most 400 points, `truncated` true, serialised size at most 1.5 MB); streets come back as clipped segments; `no_data_nearby` when nothing is within the radius; the fallback pages the base tables when the function is missing (`source` `table_scan`). **Added 3 Nov 2026** (AC3.32): "the data version reports its region", through an injected version row and with migration 228 missing.
+**`server/services/fieldOps/site/siteArea.test.ts (new)`** (AC3.18, AC3.19): "outside the boxes returns an empty area" without a database call; "caps buildings, vertices and size" (2,000 synthetic buildings, one of 1,200 vertices, a street of 900 points: 1,500 buildings, at most 500 vertices, segments of at most 400 points, `truncated` true, serialised size at most 1.5 MB); streets come back as clipped segments; `no_data_nearby` when nothing is within the radius; the fallback pages the base tables when the function is missing (`source` `table_scan`). **Added 3 Nov 2026** (AC3.32): "the data version reports its region", through an injected version row and with migration 229 missing.
 
 **`server/services/fieldOps/site/siteHint.test.ts (new)`** (AC3.18, AC3.28): "outside coverage by country or coordinates" (country "Malaysia"; coordinates at lat 3.1; nothing is searched); "resolves the place and builds the selection" (AC3.28); "two equal matches are ambiguous"; a street as the best result is `ambiguous` with no selection; "no match is not found"; involved items keep only matches within 600 m of the primary; a car-park item with no name match takes the nearest car park within 500 m; an involved item that resolves to the primary is dropped; involved items are not searched when the place is not resolved; a read failure makes the whole resolution `unavailable`.
 
@@ -2154,7 +2154,7 @@ All automated tests use `node:test` through `tsx`, as the `test` script does tod
 
 | Step | What to do | Pass when |
 | --- | --- | --- |
-| M1 | Apply 228 to 231 in order on the shared project, then apply each again | No error on either run; `SELECT public.fieldops_site_search_features()` reports whether the trigram index exists |
+| M1 | Apply 229 to 232 in order on the shared project, then apply each again | No error on either run; `SELECT public.fieldops_site_search_features()` reports whether the trigram index exists |
 | M2 | On staging, search "Marina" or a known mall and pick a building | The ring, colours, labels, HUD, the line under the box and the head pill are as section 4.1 says |
 | M3 | Shrink the radius to 80 m and grow it to 240 m with the network panel open | No request while shrinking or up to the fetched radius; one request beyond it |
 | M4 | On the production build (front end and API on different origins), auto-trace a building, then draw one | Tiles load from the API origin; the trace returns an outline; no debug pop-up; no CORS or CORP error in the console; Enter, Esc and Backspace work while drawing |
@@ -2189,9 +2189,9 @@ Tasks run in this order. T3.1 to T3.3 need nothing from other workstreams except
    - Done when: the test passes on the tree, and the planted-host case fails the scanner as expected.
    - Tests: that file.
    - Commit: commit 1.
-4. **T3.4 Migrations 228 to 231.**
+4. **T3.4 Migrations 229 to 232.**
    - Goal: the schema of section 5.4.
-   - Files: new `migrations/228_osm_sg_addresses_and_versions.sql (new)`, `migrations/229_osm_sg_search_index.sql (new)`, `migrations/230_fieldops_site_area.sql (new)`, `migrations/231_osm_sg_facilities.sql (new)`.
+   - Files: new `migrations/229_osm_sg_addresses_and_versions.sql (new)`, `migrations/230_osm_sg_search_index.sql (new)`, `migrations/231_fieldops_site_area.sql (new)`, `migrations/232_osm_sg_facilities.sql (new)`.
    - Steps: copy the SQL of section 5.4 verbatim; apply twice on a local Supabase stack to prove idempotence; hand the files to the owner, who applies them to the shared project outside a live session.
    - Done when: manual step M1 passes and M9 shows the legacy path unchanged.
    - Tests: manual M1 and M9.
@@ -2207,7 +2207,7 @@ Tasks run in this order. T3.1 to T3.3 need nothing from other workstreams except
    - Goal: sections 5.5 and 6.7.
    - Files: new `server/services/fieldOps/site/siteFeatures.ts (new)`, `server/services/fieldOps/site/siteCoverage.ts (new)`, `server/services/fieldOps/site/siteErrors.ts (new)`.
    - Steps: build the four detectors on WS0's `createCachedDetector`, `isMissingColumnError`, `isMissingRelationError` and `isMissingFunctionError`, with WS0's default 60-second re-check after a miss; the coverage cache.
-   - Done when: with migration 228 missing, `getSiteCoverage` returns the fallback box and logs `fieldops_site_feature` once; with it applied, the active version's box. **Added 3 Nov 2026:** and its `data_version` carries the row's `region` (AC3.32).
+   - Done when: with migration 229 missing, `getSiteCoverage` returns the fallback box and logs `fieldops_site_feature` once; with it applied, the active version's box. **Added 3 Nov 2026:** and its `data_version` carries the row's `region` (AC3.32).
    - Tests: covered through `siteArea.test.ts`, `siteHint.test.ts` and `facilities.test.ts`.
    - Commit: commit 3.
 7. **T3.7 Search.**
@@ -2281,7 +2281,7 @@ Six commits. Each leaves `npm test`, the frontend build and the server type-chec
 | Commit | Message | Tasks | Verify before pushing | Backtracking step |
 | --- | --- | --- | --- | --- |
 | 1 | `fieldops(site): shared site contract, schemas and the no-live-data guard` | T3.1, T3.2, T3.3 | `npm test`; `tsc` in `frontend/`; `npx tsc --noEmit` for the server | Revert commit 1. Nothing imports these files until commit 3 and WS2's save route; if WS2 already imports them, revert WS2's import first or keep commit 1 |
-| 2 | `fieldops(site): migrations 228 to 231 and the re-extract tools` | T3.4, T3.5 | `npm test`; the migrations applied twice locally; a dry-run import on the test extract | Revert commit 2 to restore the old scripts (their legacy flags still work). Applied migrations stay: they are additive and nothing in the legacy path reads them; drop them only with the rollback comments in each file, and only if no deployed code reads them |
+| 2 | `fieldops(site): migrations 229 to 232 and the re-extract tools` | T3.4, T3.5 | `npm test`; the migrations applied twice locally; a dry-run import on the test extract | Revert commit 2 to restore the old scripts (their legacy flags still work). Applied migrations stay: they are additive and nothing in the legacy path reads them; drop them only with the rollback comments in each file, and only if no deployed code reads them |
 | 3 | `fieldops(site): site search, area, validation, hints and routes` | T3.6, T3.7, T3.8, T3.9 | `npm test`; the four routes answer in development with the flag on and 404 with it off | Turn `ENABLE_FIELDOPS_V2` off first (an environment change and a restart, no build); then revert commit 3, which removes the mount. WS2's save route must stop calling `normaliseSiteSelection` first, or keep commit 3 and only turn the flag off |
 | 4 | `fieldops(site): harden the tile proxy` | T3.10 | `npm test`; the legacy Scene Editor's map phase loads tiles and auto-traces | Revert commit 4 alone: the proxy returns to today's behaviour; nothing else depends on it |
 | 5 | `fieldops(site): the site lane` | T3.11, T3.12, T3.13 | `npm test`; `npm run build` in `frontend/`; manual M2, M3, M4 and M8 inside WS2's page | Revert commit 5; WS2's page loses lane 2, so put WS2's stand-in import back first. The optional auto-trace parameter and the two glyphs are additive; keep a glyph if another lane uses it |
@@ -2313,10 +2313,10 @@ T3.14 is an operation, not a commit. Its backtracking step is the rollback of se
 | `server/services/fieldOps/site/facilities.ts (new)` | `listFacilitiesNear` (section 6.9) |
 | `server/services/fieldOps/site/fixtures/searchRows.json (new)` | Fixture F3 |
 | `server/routes/fieldOpsSite.ts (new)` | The router (section 6.3) |
-| `migrations/228_osm_sg_addresses_and_versions.sql (new)` | Section 5.4 |
-| `migrations/229_osm_sg_search_index.sql (new)` | Section 5.4 |
-| `migrations/230_fieldops_site_area.sql (new)` | Section 5.4 |
-| `migrations/231_osm_sg_facilities.sql (new)` | Section 5.4 |
+| `migrations/229_osm_sg_addresses_and_versions.sql (new)` | Section 5.4 |
+| `migrations/230_osm_sg_search_index.sql (new)` | Section 5.4 |
+| `migrations/231_fieldops_site_area.sql (new)` | Section 5.4 |
+| `migrations/232_osm_sg_facilities.sql (new)` | Section 5.4 |
 | `frontend/src/components/FieldOps/Site/SiteLane.tsx (new)` | `SiteLane` |
 | `frontend/src/components/FieldOps/Site/PlaceSearch.tsx (new)` | `PlaceSearch` |
 | `frontend/src/components/FieldOps/Site/RadiusControl.tsx (new)` | `RadiusControl` |
@@ -2393,7 +2393,7 @@ T3.14 is an operation, not a commit. Its backtracking step is the rollback of se
 
 1. **Outside Singapore (D13).** Confirm that the picker stops with no live fallback. If another region will ever be imported, decide the region model of section 6.11 and whether the tables keep their `osm_sg_` names.
 2. **The extract.** Which provider supplies the PBF, and how often is it refreshed (quarterly would keep the addresses current)?
-3. **`pg_trgm`.** Answered by the live check of 25 Oct 2026: version 1.6 is available, and migration 229 creates it in the `extensions` schema (section 2). The owner only confirms that the role applying migrations may create extensions.
+3. **`pg_trgm`.** Answered by the live check of 25 Oct 2026: version 1.6 is available, and migration 230 creates it in the `extensions` schema (section 2). The owner only confirms that the role applying migrations may create extensions.
 4. **Area caps.** Is 1,500 buildings enough for the densest 600 m circle? This query, read-only, gives the densest cells of about 1.1 km, roughly the area of such a circle:
 
 ```sql
@@ -2410,7 +2410,7 @@ SELECT round(center_lat::numeric, 2) AS lat_cell,
 6. **Facility kinds.** D18 names hospitals, police and fire stations within 5 km and nearby hazards. Are fuel stations, power substations and surveillance cameras wanted in the dossier, or should the extract drop them?
 7. **The sweep.** Run it one release after activation (proposed) or straight away?
 8. **CSP.** Who updates `frontend/vercel.json` when the policy is enforced, so that it lists the API origin and drops Nominatim?
-9. **Database version.** Answered by the live check of 25 Oct 2026: PostgreSQL 17.6, so the stored generated column of migration 229 is supported.
+9. **Database version.** Answered by the live check of 25 Oct 2026: PostgreSQL 17.6, so the stored generated column of migration 230 is supported.
 
 ### 15.3 Differences from the mockup, for the UI sheet (D28)
 
@@ -2460,7 +2460,7 @@ WS3 is done when all of these hold, together with master section 11:
 2. Every test file of section 11.1 is in the `test` list of `package.json` and `npm test` passes; `npx tsc --noEmit` is clean for the server, and `npm run build` in `frontend/` is clean with the new `shared/fieldOps/` files type-checked.
 3. `node scripts/verify-field-ops-specs.mjs` passes for this spec, and the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project).
 4. With `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2` off, the site routes answer 404, `/warroom/field-ops` is absent, and the legacy wizard's Scene Editor behaves exactly as before (M9).
-5. Migrations 228 to 231 are applied on the shared project, re-running them changes nothing (M1), and the code was shown to work without them (`names_only`, `table_scan`, `unavailable`).
+5. Migrations 229 to 232 are applied on the shared project, re-running them changes nothing (M1), and the code was shown to work without them (`names_only`, `table_scan`, `unavailable`).
 6. A re-extract has been imported through the guard, its version is active, the data note shows its date, and the address share and facility counts have been reported to the owner (T3.14).
 7. The static guard passes: no Overpass, Nominatim or Google call and no direct tile host in WS3's files or the new client tree.
 8. No search text, place label, address or polygon appears in any log line during the staging run, and no new secret was added.

@@ -823,6 +823,19 @@ function checkPlaceholders(doc) {
 /* ------------------------------------------------------------------ */
 
 const migrationNames = new Map(); // number -> Set(filenames)
+const existingMigrations = new Map(); // number -> filenames in migrations/
+try {
+  for (const file of fs.readdirSync(path.join(ROOT, 'migrations'))) {
+    const m = /^(\d{3})_.*\.sql$/.exec(file);
+    if (!m) continue;
+    if (!existingMigrations.has(Number(m[1]))) existingMigrations.set(Number(m[1]), []);
+    existingMigrations.get(Number(m[1])).push(file);
+  }
+} catch {
+  // No migrations folder: every number above 217 is treated as planned.
+}
+const latestExistingMigration = existingMigrations.size > 0 ? Math.max(...existingMigrations.keys()) : 217;
+
 function ownerOf(number) {
   for (const [ws, [from, to]] of ranges) {
     if (number >= from && number <= to) return ws;
@@ -835,9 +848,14 @@ function checkMigrations(doc) {
     for (const m of text.matchAll(/\b(\d{3})_([a-z0-9][a-z0-9_]*)\.sql\b/g)) {
       const number = Number(m[1]);
       const filename = `${m[1]}_${m[2]}.sql`;
-      if (number <= 217) {
+      if (number <= latestExistingMigration) {
         if (!existsRel(`migrations/${filename}`)) {
-          error(doc.name, n, 'migration_missing', `migrations/${filename} does not exist`);
+          const taken = existingMigrations.get(number);
+          if (taken && ownerOf(number) !== null) {
+            error(doc.name, n, 'migration_taken', `${filename}: ${number} is already taken by ${taken.join(', ')}; move the field-ops numbers up (master section 9)`);
+          } else {
+            error(doc.name, n, 'migration_missing', `migrations/${filename} does not exist`);
+          }
         }
         continue;
       }
@@ -849,7 +867,8 @@ function checkMigrations(doc) {
       if (ranges.size === 0) continue;
       const ownerWs = ownerOf(number);
       if (ownerWs === null) {
-        (number > 248 ? warn : error)(doc.name, n, 'migration_unallocated', `${filename}: ${number} is outside every allocated range`);
+        const lastAllocated = Math.max(...[...ranges.values()].map(([, to]) => to));
+        (number > lastAllocated ? warn : error)(doc.name, n, 'migration_unallocated', `${filename}: ${number} is outside every allocated range`);
         continue;
       }
       if (doc.kind === 'spec' && ownerWs !== doc.ws) {
