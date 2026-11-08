@@ -33,7 +33,7 @@
 
 ## 2. Decisions and assumptions
 
-**Added 4 Nov 2026. Build this first: idle sessions end by themselves (master D37).** A session with no human activity for 30 minutes ends, after a warning at 25, and any session ends 12 hours after it started. This protects the AI budget for every session type, so task T0.23 ships alone, as commit 0, before anything else in this spec (sections 6.15 and 7.5, AC0.42 to AC0.46). It needs no migration and no flag; setting `SESSION_IDLE_END_MINUTES=0` and `SESSION_MAX_HOURS=0` turns it off.
+**Added 4 Nov 2026. Build this first: idle sessions end by themselves (master D37).** A session with no human activity for 30 minutes ends, after a warning at 25, and any session ends 12 hours after it started. This protects the AI budget for every session type, so task T0.23 ships alone, as commit 0, before anything else in this spec (sections 6.15 and 7.5, AC0.42 to AC0.47). It needs no migration and no flag; setting `SESSION_IDLE_END_MINUTES=0` and `SESSION_MAX_HOURS=0` turns it off.
 
 **Added 3 Nov 2026.** WS9's living world (`11-living-world.md`) asks two things of this spec, and both need no change to WS0's design: WS9 builds its own table detectors with WS0's helpers, and `shutdown` calls WS9's `stopWorldRuntime()` right after `stopJobEngine()` (section 6.10, answered in section 15.3).
 
@@ -242,10 +242,10 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 42. **AC0.42** **Added 4 Nov 2026.** Given the default settings and a session that started at 10:00 with its last human activity at 10:20, when `decideIdleAction` runs, then it answers:
     - `none` at 10:44;
     - `warn` with `idle` and `endsAt` 10:50 at 10:45;
-    - `none` at 10:46 when `warnedFor` is `idle`;
+    - `none` at 10:46 when `warnedFor` holds `idle` (**updated 8 Nov 2026**: `warnedFor` is now a list);
     - `end` with `idle` and `idleMinutes` 30 at 10:50.
 
-    Given no human activity at all, the idle clock runs from 10:00. Given steady activity, it answers `warn` with `max_duration` at 21:55 and `end` with `max_duration` at 22:00. With `SESSION_IDLE_END_MINUTES=0` the idle rule never fires; with `SESSION_MAX_HOURS=0` the limit never fires; with `SESSION_IDLE_WARN_MINUTES=0` there is no warning. Proved by `server/services/sessionIdleSweeper.test.ts (new)`, case "the rule".
+    Given no human activity at all, the idle clock runs from 10:00. Given steady activity, it answers `warn` with `max_duration` at 21:55 and `end` with `max_duration` at 22:00. **Updated 8 Nov 2026:** at 21:57, with activity at 21:56 and `warnedFor` holding `max_duration`, it answers `none`. With `SESSION_IDLE_END_MINUTES=0` the idle rule never fires; with `SESSION_MAX_HOURS=0` the limit never fires; with `SESSION_IDLE_WARN_MINUTES=0` there is no warning. Proved by `server/services/sessionIdleSweeper.test.ts (new)`, case "the rule".
 43. **AC0.43** **Added 4 Nov 2026.** Given a session whose only rows in the last hour are chat from a bot account, NPC chat (`sender_id` null, `sender_stakeholder_id` set), engine events (`actor_id` null), the sweeper's own warning and a bot's social post, when `latestHumanActivity` runs, then it answers null. Given one chat message, decision, player action, social post, event or participant join by a human, it answers that row's time. Given a query that fails, it answers the current time. Proved by `sessionIdleSweeper.test.ts`, case "what counts as a person", against an in-memory fake of the store's queries.
 44. **AC0.44** **Added 4 Nov 2026.** Given a session idle for 30 minutes, when `runIdleSweep` runs, then:
     - `completeIfRunning` is called once;
@@ -255,7 +255,8 @@ The library calls an inactive scenario a "Draft" today (`frontend/src/pages/Scen
 
     Given the trainer ended or paused the session between the read and the write (`completeIfRunning` answers false), nothing else happens. Given an error in one session, the next session is still swept. Given a warning already recorded since the last activity, no second warning is recorded. Proved by `sessionIdleSweeper.test.ts`, case "a sweep".
 45. **AC0.45** **Added 4 Nov 2026.** Given a running session, when its participant presses "I'm still here" (`POST /api/sessions/:id/keepalive`), then one `status_update` event with the participant as `actor_id` and `metadata.kind` `idle_keepalive` is recorded, `session.idle_cleared` is broadcast, and the answer is 204. A second press within 60 seconds records nothing. A bot account gets 204 and nothing is recorded. A session that is not running answers 409 `SESSION_NOT_RUNNING`. The access check before it is the route's existing `assertSessionAccess`. Proved by `sessionIdleSweeper.test.ts`, case "I'm still here", and manual step M14 for the route's 403 and 404.
-46. **AC0.46** **Added 4 Nov 2026.** Given the events `session.idle_warning`, then `session.idle_cleared`, then `session.idle_warning` and `session.auto_ended`, when they reach `idleNoticeReducer`, then the state goes from hidden to warning, back to hidden, to warning, then to ended. `idleNoticeCopy` gives the four texts of section 7.5, the "I'm still here" button only for the idle warning, and the After-Action Review link only to the trainer. On staging, a session left alone shows the warning at 25 minutes and ends at 30 on all four screens (manual step M14). Proved by `frontend/tests/sessionIdleNotice.test.ts (new)` and manual step M14.
+46. **AC0.46** **Added 4 Nov 2026.** Given the events `session.idle_warning`, then `session.idle_cleared`, then `session.idle_warning` and `session.auto_ended`, when they reach `idleNoticeReducer`, then the state goes from hidden to warning, back to hidden, to warning, then to ended. **Updated 8 Nov 2026:** a `session.idle_cleared` that arrives while the 12-hour warning shows leaves that warning showing, and one that arrives after the end leaves the end showing. `idleNoticeCopy` gives the four texts of section 7.5, the "I'm still here" button only for the idle warning, and the After-Action Review link only to the trainer. On staging, a session left alone shows the warning at 25 minutes and ends at 30 on all four screens (manual step M14). Proved by `frontend/tests/sessionIdleNotice.test.ts (new)` and manual step M14.
+47. **AC0.47** **Added 8 Nov 2026.** Given a session that started at 10:00, a 12-hour warning recorded at 21:55 and a player acting every minute after it, when the sweeps of 21:56 to 21:59 run, then none records a second 12-hour warning. Given an idle warning recorded at 10:45 and a player's chat message at 10:47, when the sweep of 10:48 runs, then it records one `status_update` event with `metadata.kind` `idle_cleared` and broadcasts `session.idle_cleared` once, and the sweep of 10:49 records and broadcasts nothing. Given an idle warning answered with "I'm still here" instead, no clear is recorded, because the press already broadcast one. Given a session that started at 00:00 with its last human activity at 11:28, the idle warning at 11:53 and the 12-hour warning at 11:55 are each recorded once, and the session ends at 11:58 with `idle`. Proved by `sessionIdleSweeper.test.ts`, cases "the markers" and "a sweep".
 
 ## 5. Data model
 
@@ -2834,16 +2835,29 @@ export function decideIdleAction(input: {
   now: number;                  // ms since the epoch
   startTime: string;            // sessions.start_time
   lastHumanAt: string | null;   // the latest time of the table above, after startTime; null when none
-  warnedFor: IdleReason | null; // a warning of this reason already exists after max(startTime, lastHumanAt)
+  warnedFor: readonly IdleReason[]; // the warnings that still stand, from readIdleMarkers
   settings: IdleSettings;
 }): IdleAction;
+
+/** The sweeper's and the keepalive's own session_events rows, read back. */
+export interface IdleMarker {
+  kind: 'idle_warning' | 'idle_cleared' | 'idle_keepalive'; // metadata.kind
+  reason: IdleReason | null;    // metadata.reason of a warning; null for the other two
+  created_at: string;
+}
+
+/** Pure. Which warnings still stand, and whether players came back after an idle warning nobody has cleared. */
+export function readIdleMarkers(
+  markers: readonly IdleMarker[],
+  lastActiveIso: string,        // max(startTime, lastHumanAt)
+): { warnedFor: IdleReason[]; clearIdleWarning: boolean };
 
 /** The database reads and writes, injected so the sweep is tested without Supabase. */
 export interface IdleSweepStore {
   listRunningSessions(): Promise<Array<{ id: string; start_time: string }>>;
   listBotUserIds(): Promise<string[]>;
   latestHumanActivity(sessionId: string, sinceIso: string, botIds: readonly string[]): Promise<string | null>;
-  latestWarning(sessionId: string, sinceIso: string): Promise<IdleReason | null>;
+  listIdleMarkers(sessionId: string, sinceIso: string): Promise<IdleMarker[]>;
   /** status 'completed' and end_time now(), only while status is still 'in_progress'; false when nothing changed. */
   completeIfRunning(sessionId: string): Promise<boolean>;
   /** actor_id is null for the sweeper's own rows, and the person's id for "I'm still here". */
@@ -2871,31 +2885,40 @@ export function startSessionIdleSweeper(): void; // setInterval(runIdleSweep, 60
 export function stopSessionIdleSweeper(): void;
 ```
 
+**Updated 8 Nov 2026**, after the first build was reviewed. `warnedFor` was a single reason read by `latestWarning` from the last activity onwards. That gave the 12-hour warning again at the next sweep after any action in its last five minutes, and made the two warnings alternate each minute when both were due. Now `warnedFor` is a list, and `listIdleMarkers` with the pure `readIdleMarkers` replaces `latestWarning`. The same markers also tell the sweeper when players came back by acting, so it can clear the warning on every screen (step 2 of the sweep below).
+
 `decideIdleAction` follows these rules, in this order:
 
-1. **The 12-hour limit.** When `maxHours` is above 0, the limit is `startTime + maxHours`. At or after it the answer is `end` with `max_duration`. From `idleWarnMinutes` before it, the answer is `warn` with `max_duration`, unless `warnedFor` is `max_duration`.
-2. **The idle rule.** When `idleEndMinutes` is above 0, the session has been idle since `lastActive = max(startTime, lastHumanAt)`. At or after `lastActive + idleEndMinutes` the answer is `end` with `idle`, and `idleMinutes` is the whole minutes since `lastActive`. From `idleWarnMinutes` before that, the answer is `warn` with `idle` and `endsAt = lastActive + idleEndMinutes`, unless `warnedFor` is `idle`.
+1. **The 12-hour limit.** When `maxHours` is above 0, the limit is `startTime + maxHours`. At or after it the answer is `end` with `max_duration`. From `idleWarnMinutes` before it, the answer is `warn` with `max_duration`, unless `warnedFor` holds `max_duration`.
+2. **The idle rule.** When `idleEndMinutes` is above 0, the session has been idle since `lastActive = max(startTime, lastHumanAt)`. At or after `lastActive + idleEndMinutes` the answer is `end` with `idle`, and `idleMinutes` is the whole minutes since `lastActive`. From `idleWarnMinutes` before that, the answer is `warn` with `idle` and `endsAt = lastActive + idleEndMinutes`, unless `warnedFor` holds `idle`.
 3. Otherwise `none`. A warning never moves the end: only human activity does, and the "I'm still here" press is human activity.
+
+**Which warnings stand** (`readIdleMarkers`; **added 8 Nov 2026**). The markers are read from the session's `start_time`, and `lastActive` is `max(start_time, lastHumanAt)`:
+
+- `warnedFor` holds `max_duration` when any warning with that reason exists. The limit never moves, so activity never repeats its warning.
+- `warnedFor` holds `idle` when an idle warning is later than `lastActive`. Activity moves the idle end, so each quiet spell gets its own warning.
+- `clearIdleWarning` is true when the latest idle warning is earlier than `lastActive` and no `idle_cleared` or `idle_keepalive` marker is later than that warning. Players came back by acting, and the screens still show the warning.
 
 **The store's queries** (`createSupabaseIdleSweepStore`, with `supabaseAdmin`):
 
 - `listRunningSessions`: `sessions` with `status = 'in_progress'` and `start_time` not null, `id, start_time`.
 - `listBotUserIds`: `user_profiles` with `is_bot = true`, `id`, read once per sweep.
 - `latestHumanActivity`: for each source of the table, one query. Each has `.eq('session_id', id)`, `.gt(<time column>, sinceIso)` and its "counts when" filter: `.not(<column>, 'is', null)` and, when there are bot ids, `.not(<column>, 'in', '(<ids>)')`. Each ends with `.order(<time column>, { ascending: false })` and `.limit(1)`. The answer is the largest time found, or null. `sinceIso` is the session's `start_time`. A failed query counts as activity now, so a database hiccup never ends a session.
-- `latestWarning`: `session_events` with `event_type = 'trainer_alert'`, `metadata->>kind = 'idle_warning'` and `created_at > sinceIso`, newest first; the answer is its `metadata.reason`, or null.
+- `listIdleMarkers` (**updated 8 Nov 2026**; it replaces `latestWarning`): `session_events` with `.in('metadata->>kind', ['idle_warning', 'idle_cleared', 'idle_keepalive'])` and `created_at > sinceIso`, newest first, at most 100 rows. Each row gives `{ kind, reason: metadata.reason or null, created_at }`. `sinceIso` is the session's `start_time`.
 - `completeIfRunning`: `update({ status: 'completed', end_time: <now> }).eq('id', id).eq('status', 'in_progress').select('id')`. It answers true when one row came back, so a session the trainer ended or paused a moment earlier is left as it is.
 - `recordEvent`: an insert into `session_events` with `actor_id` null, so the sweeper's own rows never count as human activity.
 
 **A sweep** (`runIdleSweep`). Sessions are handled one after another, and a session whose last sweep is still running is skipped (the `inFlight` pattern of `server/services/engineTicker.ts:21-77`). For each session:
 
-1. Read `lastHumanAt`, then `warnedFor` with `sinceIso = max(start_time, lastHumanAt)`, then call `decideIdleAction`.
-2. **`warn`.** Record a `trainer_alert` event with `metadata: { kind: 'idle_warning', reason, ends_at }` and the warning copy of section 7.5 as its `description`. Broadcast `session.idle_warning` with `{ session_id, reason, ends_at, idle_end_minutes, idle_warn_minutes, max_hours }` through `getWebSocketService().broadcastToSession` (`server/services/websocketService.ts:62-73`). Log `session_idle_warning { sessionId, reason, endsAt }`.
-3. **`end`.** Call `completeIfRunning`; when it answers false, stop. Otherwise do what the trainer's end does:
+1. Read `lastHumanAt` and the markers since `start_time`, then `readIdleMarkers(markers, max(start_time, lastHumanAt))`, then call `decideIdleAction` with its `warnedFor`. (**Updated 8 Nov 2026**: this step read `latestWarning`.)
+2. **Clear** (**added 8 Nov 2026**). When `clearIdleWarning` is true and the answer is not `end`, record a `status_update` event with the description "Player activity resumed, so the session continues." and `metadata: { kind: 'idle_cleared' }`. Broadcast `session.idle_cleared` with `{ session_id }`, and log `session_idle_cleared { sessionId }`. The clear comes before a warning in the same sweep, so the screens end up showing the warning.
+3. **`warn`.** Record a `trainer_alert` event with `metadata: { kind: 'idle_warning', reason, ends_at }` and the warning copy of section 7.5 as its `description`. Broadcast `session.idle_warning` with `{ session_id, reason, ends_at, idle_end_minutes, idle_warn_minutes, max_hours }` through `getWebSocketService().broadcastToSession` (`server/services/websocketService.ts:62-73`). Log `session_idle_warning { sessionId, reason, endsAt }`.
+4. **`end`.** Call `completeIfRunning`; when it answers false, stop. Otherwise do what the trainer's end does:
    - `snapshotFinalStateOnCompletion(sessionId)` (`server/services/scenarioStateService.ts:544-573`);
    - the AI-teammate hook `getTeammateBotService().onBotsChanged(sessionId)`, imported as `server/routes/sessions.ts:1626-1635` imports it.
 
    Then record a `status_update` event with `metadata: { kind: 'idle_auto_end', reason, idle_minutes, last_human_activity_at }` and the ended copy of section 7.5 as its `description`. Broadcast `session.auto_ended` with `{ session_id, reason, ended_at, idle_end_minutes, idle_warn_minutes, max_hours }`. Log `session_auto_ended { sessionId, reason, idleMinutes }`.
-4. An error in one session is logged as `session_idle_sweep_failed { sessionId }` and never stops the others. No log line carries chat, post or decision text.
+5. An error in one session is logged as `session_idle_sweep_failed { sessionId }` and never stops the others. No log line carries chat, post or decision text.
 
 **Wiring.** `server/index.ts` (touched) calls `startSessionIdleSweeper()` inside the `if (env.runBackgroundEngines)` block, after `getTeammateBotService().startReconciler()` (`server/index.ts:85-106`), so only the one process that runs the engines sweeps. `shutdown` calls `stopSessionIdleSweeper()` beside `injectScheduler.stop()` (`server/index.ts:314-338`).
 
@@ -3133,7 +3156,7 @@ export type IdleNoticeState =
   | { kind: 'warning'; reason: 'idle' | 'max_duration'; endsAt: string }
   | { kind: 'ended'; reason: 'idle' | 'max_duration' };
 
-/** session.idle_warning shows the warning, session.idle_cleared hides it, session.auto_ended shows the end. */
+/** session.idle_warning shows the warning, session.idle_cleared hides an idle warning only, session.auto_ended shows the end. */
 export function idleNoticeReducer(state: IdleNoticeState, event: { type: string; data: Record<string, unknown> }): IdleNoticeState;
 
 /** The banner's words, from the state, the settings in the event and the viewer's role. */
@@ -3142,6 +3165,8 @@ export function idleNoticeCopy(
   input: { role: 'trainer' | 'player'; idleEndMinutes: number; idleWarnMinutes: number; maxHours: number; formatTime: (iso: string) => string },
 ): { text: string; action: 'still_here' | 'open_aar' | null } | null;
 ```
+
+**Updated 8 Nov 2026:** `session.idle_cleared` hides only the idle warning; a 12-hour warning and the end stay. The sweeper now also sends a clear when players come back by acting (section 6.15, step 2 of the sweep), and activity does not move the 12-hour limit.
 
 `frontend/src/components/Session/SessionIdleNotice.tsx (new)` takes `{ sessionId: string; role: 'trainer' | 'player' }`. It subscribes with `useWebSocket({ sessionId, eventTypes: ['session.idle_warning', 'session.idle_cleared', 'session.auto_ended'], onEvent })` (`frontend/src/hooks/useWebSocket.ts:25-26`) and feeds each event to `idleNoticeReducer`. A warning is a `role="status"` strip across the top; the end is a `role="alert"` strip. `sendKeepalive(sessionId)` in `frontend/src/components/Session/sessionIdleApi.ts (new)` posts to `/api/sessions/:id/keepalive` with its own `apiUrl` and `getAuthHeaders`, the local helpers each SimDevice component already keeps (`frontend/src/components/SimDevice/DeviceShell.tsx:15-31`), so `frontend/src/lib/api.ts` stays untouched, as section 14.2 requires. Times are shown with `toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })`. The warning events carry the three settings as `idle_end_minutes`, `idle_warn_minutes` and `max_hours`, so the client hard-codes no number.
 
@@ -3299,6 +3324,7 @@ All events use the existing pino logger with ids, counts, codes and durations on
 | `fieldops_scene_photos_failed` | warn | `scene_id` |
 | `session_idle_warning` | info | **Added 4 Nov 2026.** `sessionId`, `reason`, `endsAt` |
 | `session_auto_ended` | info | **Added 4 Nov 2026.** `sessionId`, `reason`, `idleMinutes` |
+| `session_idle_cleared` | info | **Added 8 Nov 2026.** `sessionId` |
 | `session_idle_sweep_failed` | warn | **Added 4 Nov 2026.** `sessionId` |
 
 Watch after each release: `fieldops_job_failed` by code, any `discard_failed`, any `handler_missing` (a variant that was removed or renamed while jobs of it were waiting), any `fieldops_job_lease_lost` outside a deploy, and `fieldops_legacy_persist_inline` with reason `engine_unavailable` after 219 is applied.
@@ -3327,8 +3353,8 @@ All unit tests use `node:test` through `tsx`, as the root script does (`package.
 | `server/routes/fieldOpsJobs.test.ts (new)` | An Express app with `createFieldOpsJobsRouter(fakes)` on an ephemeral port, called with `fetch`. "flag off hides the routes" (404 `{ error: 'Not found' }` on all four); "participants are refused" (403 `{ error: 'Only trainers can use the War Room', code: 'FORBIDDEN' }` on all four, and no store call); `available()` false gives 503; "start body" (an extra key, a non-boolean `recompile` and a malformed `retry_of` give 400 `VALIDATION_FAILED`; `retry_of_invalid` from the store gives 400 with the `retry_of` detail; a valid body reaches `startCompile` with `recompile` and `retryOf`); "a job is visible to its creator and admins" (another trainer gets 404); list filters and the `limit` bound; "cancel outcomes" (`cancelled`, `cancel_requested`, `not_cancellable` as 409, `not_found` as 404); "compile start outcomes" (legacy and unknown variants 400, a variant whose `enabled()` is false 404 `FIELDOPS_DISABLED`, another trainer's draft 404 `DRAFT_NOT_FOUND`, `DRAFT_NOT_READY` with details, `ALREADY_COMPILED` with the variant's message unless `recompile` is true, 402, 409, 429, 202 with `job_id` and one `kick`) |
 | `frontend/tests/sessionMapChoice.test.ts (new)` | "participants always get the live map" with `hasSceneConfig` `true`, `false` and `null`; "the trainer defaults to the live map and may preview the scene" (toggle only when the scene exists; `scene` mode without a scene stays live); "spectator props follow the role"; `sessionMapAudience` for the four combinations |
 | `frontend/tests/fieldOpsJobPolling.test.ts (new)` | 0 before anything loads; 2,000 ms at 10 s; 5,000 ms at 61 s; 15,000 ms when hidden; 2,000, 4,000, 8,000, 16,000 and 30,000 ms after one to five errors; `null` for each finished status; option overrides; `isNewerJobView` with an older `updated_at`, a newer one and a finished view arriving before a running one |
-| `server/services/sessionIdleSweeper.test.ts (new)` | **Added 4 Nov 2026.** "the rule" (AC0.42): `decideIdleAction` at each minute of AC0.42, the 12-hour limit, and each setting at 0. "what counts as a person" (AC0.43): an in-memory fake of the six sources, with bot, NPC, engine and human rows, and a failing query answering now. "a sweep" (AC0.44): `runIdleSweep` with a fake store, a fixed clock and spies for `onEnded` and `broadcast`; a lost compare-and-set, an error in one of two sessions, no repeated warning. "I'm still here" (AC0.45): `recordKeepalive` for a person, a second press within 60 seconds, a bot and a session that is not running. "settings": `readSessionIdleSettings` gives 30, 5 and 12 from an empty source, clamps `'5000'` to 1,440 and reads `'abc'` as the default |
-| `frontend/tests/sessionIdleNotice.test.ts (new)` | **Added 4 Nov 2026.** `idleNoticeReducer` over the event sequence of AC0.46; `idleNoticeCopy` for the four texts of section 7.5 with a fixed `formatTime`, the button only for the idle warning, the After-Action Review link only for the trainer |
+| `server/services/sessionIdleSweeper.test.ts (new)` | **Added 4 Nov 2026.** "the rule" (AC0.42): `decideIdleAction` at each minute of AC0.42, the 12-hour limit, and each setting at 0. "what counts as a person" (AC0.43): an in-memory fake of the six sources, with bot, NPC, engine and human rows, and a failing query answering now. "a sweep" (AC0.44): `runIdleSweep` with a fake store, a fixed clock and spies for `onEnded` and `broadcast`; a lost compare-and-set, an error in one of two sessions, no repeated warning. "I'm still here" (AC0.45): `recordKeepalive` for a person, a second press within 60 seconds, a bot and a session that is not running. "settings": `readSessionIdleSettings` gives 30, 5 and 12 from an empty source, clamps `'5000'` to 1,440 and reads `'abc'` as the default. **Added 8 Nov 2026:** "the markers" (AC0.47): `readIdleMarkers` with a 12-hour warning older than the last activity (it stands), an idle warning older than the last activity with and without a later `idle_cleared` or `idle_keepalive` (clear only without), and an idle warning newer than the last activity (it stands, no clear). "a sweep" adds the cases of AC0.47, with a fake store whose `listIdleMarkers` reads back the events the sweep records |
+| `frontend/tests/sessionIdleNotice.test.ts (new)` | **Added 4 Nov 2026.** `idleNoticeReducer` over the event sequence of AC0.46; `idleNoticeCopy` for the four texts of section 7.5 with a fixed `formatTime`, the button only for the idle warning, the After-Action Review link only for the trainer. **Added 8 Nov 2026:** a `session.idle_cleared` while the 12-hour warning shows, and one after the end, change nothing |
 | `frontend/tests/fieldOpsDescribeJob.test.ts (new)` | Every row of the copy deck in section 7.3, with the step text ("Step 1 of 2" for `stage_index` 0 and `stage_count` 2) and the refund sentence for `none`, `refunded` and `kept`; `formatJobDuration` for 45 s, 60 s and 252 s |
 
 ### 11.2 Fixtures
@@ -3522,7 +3548,8 @@ The order follows the brief: the live map alone first, then the helpers, then 21
     - Done when: AC0.35 and the v2 half of M4 pass; a thrown photo call logs `fieldops_scene_photos_failed` and the map still loads.
     - Tests: `participantProjections.test.ts` (the pure half, from T0.3); manual M4. Commit: 7.
 23. **T0.23 Idle sessions end by themselves (added 4 Nov 2026; master D37). Build this first.**
-    - Goal: sections 6.15 and 7.5; AC0.42 to AC0.46.
+    - Goal: sections 6.15 and 7.5; AC0.42 to AC0.47.
+    - **Updated 8 Nov 2026**, after the first build was reviewed: a revision touches only `server/services/sessionIdleSweeper.ts`, `server/services/sessionIdleSweeper.test.ts`, `frontend/src/components/Session/sessionIdleNoticeModel.ts` and `frontend/tests/sessionIdleNotice.test.ts`. It brings in the list `warnedFor`, `listIdleMarkers` and `readIdleMarkers`, the sweep's clear step (section 6.15), the reducer's change (section 7.5), the updates to AC0.42 and AC0.46, and AC0.47.
     - Files:
       - new: `server/services/sessionIdleSweeper.ts (new)`, `server/lib/sessionIdleSettings.ts (new)`, `server/lib/fieldOps/jobSettings.ts (new)` (`readIntSetting` only, when commit 2 has not landed), `frontend/src/components/Session/SessionIdleNotice.tsx (new)`, `frontend/src/components/Session/sessionIdleNoticeModel.ts (new)`, `frontend/src/components/Session/sessionIdleApi.ts (new)`, `server/services/sessionIdleSweeper.test.ts (new)`, `frontend/tests/sessionIdleNotice.test.ts (new)`;
       - touched: `server/env.ts`, `server/index.ts`, `server/routes/sessions.ts` (the keepalive route only), `frontend/src/pages/SessionView.tsx`, `frontend/src/components/SimDevice/TrainerSimDashboard.tsx`, `frontend/src/components/SimDevice/DeviceShell.tsx`, `frontend/src/components/SimDevice/DesktopShell.tsx` (one `SessionIdleNotice` each), `package.json` (the two test files).
@@ -3533,7 +3560,7 @@ The order follows the brief: the live map alone first, then the helpers, then 21
       4. `recordKeepalive` and the route.
       5. The wiring in `server/index.ts`.
       6. The pure notice model and its test, then the component and its four mounts.
-    - Done when: AC0.42 to AC0.46 pass; `npm test`, `npx tsc --noEmit` and `npm --prefix frontend run build` pass; on a development server with `RUN_BACKGROUND_ENGINES=true` pointed at a Supabase branch, never the shared project (its engines would sweep production sessions), a session left alone is warned at 25 minutes and completed at 30; M14 passes on staging.
+    - Done when: AC0.42 to AC0.47 pass; `npm test`, `npx tsc --noEmit` and `npm --prefix frontend run build` pass; on a development server with `RUN_BACKGROUND_ENGINES=true` pointed at a Supabase branch, never the shared project (its engines would sweep production sessions), a session left alone is warned at 25 minutes and completed at 30; M14 passes on staging.
     - Tests: `server/services/sessionIdleSweeper.test.ts (new)`, `frontend/tests/sessionIdleNotice.test.ts (new)`; manual M14. Commit: 0.
 
 ## 13. Commit plan and backtracking
@@ -3655,6 +3682,7 @@ They do not exist yet, so they keep the `(new)` marker; their owners create them
 | R0.13 | During a deploy the old release still sweeps and does not know a variant the new release added, so it could fail the new variant's queued jobs as unregistered | The sweep fails such a job only after 10 minutes and only when no live lease holds it; a deploy's overlap is shorter. A job failed this way is refunded, and the trainer starts it again |
 | R0.14 | **Added 4 Nov 2026.** A real exercise goes quiet, for example during a long briefing, and the idle rule ends it | The warning at 25 minutes on every screen, the "I'm still here" button, a threshold the owner can raise without a build (`SESSION_IDLE_END_MINUTES`), and an admin can set an ended session back to `in_progress` |
 | R0.15 | **Added 4 Nov 2026.** Some human activity is written to a table the rule does not read, so a played session looks idle | The rule reads the six sources where every player action recorded today lands (section 6.15). A feature that records players elsewhere adds its table to `latestHumanActivity` in the same change, and M14 is repeated |
+| R0.16 | **Added 8 Nov 2026.** At a booth demonstration, the live world's only players between visitors are its two AI players, so a quiet half hour at the stand ends the world mid-block | For the event days, set `SESSION_IDLE_END_MINUTES=0` on Render; the 12-hour limit stays on. Remove the setting after the event. If booth events become regular, a later task can exempt booth worlds instead |
 
 ### 15.2 Open questions
 
@@ -3707,7 +3735,7 @@ Only the requests still open after master 10.8 items 20 to 33. Answered in the s
 
 WS0 is done when all of the following hold, in addition to master section 11:
 
-1. AC0.1 to AC0.41 pass, each through the test or manual step named beside it. **Added 4 Nov 2026:** AC0.42 to AC0.46 too, and commit 0 has been in production for a day with `session_auto_ended` lines only for sessions nobody was playing.
+1. AC0.1 to AC0.41 pass, each through the test or manual step named beside it. **Added 4 Nov 2026:** AC0.42 to AC0.47 too, and commit 0 has been in production for a day with `session_auto_ended` lines only for sessions nobody was playing.
 2. `npm test` passes with the seventeen new files in the script (section 11.5); `npx tsc --noEmit` is clean at the root; `tsc && vite build` succeeds in `frontend/`; the migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project); `node scripts/verify-field-ops-specs.mjs --only=01` passes.
 3. M1 to M13 have been run on staging and recorded with their dates; the smoke script leaves no rows behind.
 4. Migrations 218 and 219 are applied in that order, each applied twice without change, with their rollbacks rehearsed on a development branch.
