@@ -31,6 +31,7 @@ import { FloorPlanOverlay } from './FloorPlanOverlay';
 import { BuildingStudOverlay } from './BuildingStudOverlay';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { api } from '../../lib/api';
+import { applyClaim, exitGateState } from '@shared/fieldOps/exitGate';
 import type { LatLngExpression } from 'leaflet';
 
 type WebSocketEvent = {
@@ -666,6 +667,8 @@ export const MapView = ({
                 coordinates: loc.coordinates ?? {},
                 conditions: conds,
                 claimable_by: loc.claimable_by as string[] | undefined,
+                claimable_in_session: (loc as { claimable_in_session?: boolean })
+                  .claimable_in_session,
                 claimed_by_team: (loc.claimed_by_team as string) ?? null,
                 claimed_as: (loc.claimed_as as string) ?? null,
                 claim_exclusivity: (loc.claim_exclusivity as string) ?? null,
@@ -735,6 +738,7 @@ export const MapView = ({
         conditions: (sl.conditions ?? {}) as Record<string, unknown>,
         claimable_by: (sl.claimable_by as string[] | undefined) ??
           ((sl.conditions as Record<string, unknown>)?.claimable_by as string[]) ?? ['all'],
+        claimable_in_session: sl.claimable_in_session,
         claimed_by_team:
           (sl.claimed_by_team as string | null) ??
           ((sl.conditions as Record<string, unknown>)?.claimed_by_team as string | null) ??
@@ -751,12 +755,9 @@ export const MapView = ({
     setEntryExitPins(eeLocations);
   }, [scenarioLocations]);
 
-  const allExitsClaimed =
-    bypassExitGate || (entryExitPins.length > 0 && entryExitPins.every((p) => !!p.claimed_by_team));
-  const exitClaimProgress = {
-    claimed: entryExitPins.filter((p) => !!p.claimed_by_team).length,
-    total: entryExitPins.length,
-  };
+  const gate = exitGateState(entryExitPins);
+  const allExitsClaimed = bypassExitGate || gate.open;
+  const exitClaimProgress = { claimed: gate.claimed, total: gate.total };
 
   // Listen for state updates: evacuation zones, environmental_state, placements, location claims
   useWebSocket({
@@ -827,18 +828,14 @@ export const MapView = ({
       }
       if (event.type === 'location.claimed') {
         const { location } = event.data as { location: Record<string, unknown> };
-        if (location?.id) {
-          setEntryExitPins((prev) =>
-            prev.map((p) =>
-              p.id === location.id
-                ? {
-                    ...p,
-                    claimed_by_team: (location.claimed_by_team as string) ?? null,
-                    claimed_as: (location.claimed_as as string) ?? null,
-                    claim_exclusivity: (location.claim_exclusivity as string) ?? null,
-                  }
-                : p,
-            ),
+        if (typeof location?.id === 'string') {
+          setScenarioLocations((prev) =>
+            applyClaim(prev, {
+              location_id: location.id as string,
+              claimed_by_team: (location.claimed_by_team as string) ?? null,
+              claimed_as: (location.claimed_as as string) ?? null,
+              claim_exclusivity: (location.claim_exclusivity as string) ?? null,
+            }),
           );
         }
       }
@@ -1945,17 +1942,13 @@ export const MapView = ({
               onClaim={async (locationId, tn, claimedAs, claimExclusivity) => {
                 try {
                   await api.locations.claim(sessionId, locationId, tn, claimedAs, claimExclusivity);
-                  setEntryExitPins((prev) =>
-                    prev.map((p) =>
-                      p.id === locationId
-                        ? {
-                            ...p,
-                            claimed_by_team: tn,
-                            claimed_as: claimedAs,
-                            claim_exclusivity: claimExclusivity,
-                          }
-                        : p,
-                    ),
+                  setScenarioLocations((prev) =>
+                    applyClaim(prev, {
+                      location_id: locationId,
+                      claimed_by_team: tn,
+                      claimed_as: claimedAs,
+                      claim_exclusivity: claimExclusivity,
+                    }),
                   );
                 } catch (err: unknown) {
                   const msg = err instanceof Error ? err.message : 'Failed to claim this point';
@@ -1966,16 +1959,13 @@ export const MapView = ({
                       | Record<string, unknown>
                       | undefined;
                     if (found?.claimed_by_team) {
-                      setEntryExitPins((prev) =>
-                        prev.map((p) =>
-                          p.id === locationId
-                            ? {
-                                ...p,
-                                claimed_by_team: found.claimed_by_team as string,
-                                claimed_as: (found.claimed_as as string) ?? null,
-                              }
-                            : p,
-                        ),
+                      setScenarioLocations((prev) =>
+                        applyClaim(prev, {
+                          location_id: locationId,
+                          claimed_by_team: found.claimed_by_team as string,
+                          claimed_as: (found.claimed_as as string) ?? null,
+                          claim_exclusivity: (found.claim_exclusivity as string) ?? null,
+                        }),
                       );
                     }
                   }
@@ -2087,7 +2077,7 @@ export const MapView = ({
       )}
 
       {/* Exit claiming progress banner */}
-      {!allExitsClaimed && entryExitPins.length > 0 && (
+      {!allExitsClaimed && exitClaimProgress.total > 0 && (
         <div
           className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] px-4 py-2 rounded border"
           style={{

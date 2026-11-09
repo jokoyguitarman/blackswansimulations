@@ -11,6 +11,8 @@ export interface EntryExitData {
   coordinates: { lat: number; lng: number };
   conditions: Record<string, unknown>;
   claimable_by: string[];
+  /** False when no team assigned in this session may claim the pin. */
+  claimable_in_session?: boolean;
   claimed_by_team: string | null;
   claimed_as: string | null;
   claim_exclusivity: string | null;

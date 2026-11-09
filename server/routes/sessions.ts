@@ -22,6 +22,11 @@ import { insiderRouter } from './insider.js';
 import { performSweep } from '../services/bombSquadSweepService.js';
 import { hospitalRouter } from './hospital.js';
 import { consumeCredit, refundCredit, isAdmin } from '../services/creditService.js';
+import { exitGateState, isPinClaimableInSession } from '../../shared/fieldOps/exitGate.js';
+import {
+  canSeeSessionAnswerKey,
+  projectSceneForParticipant,
+} from '../lib/participantProjections.js';
 import {
   broadcastIdleEvent,
   createSupabaseIdleSweepStore,
@@ -997,7 +1002,12 @@ router.get('/:id/scene-config', requireAuth, async (req: AuthenticatedRequest, r
       .eq('scenario_id', session.scenario_id)
       .maybeSingle();
 
-    return res.json({ data: data || null });
+    const row = (data as Record<string, unknown> | null) ?? null;
+    if (!row) return res.json({ data: null });
+    if (canSeeSessionAnswerKey(user, { trainer_id: access.session?.trainer_id ?? null })) {
+      return res.json({ data: row });
+    }
+    return res.json({ data: projectSceneForParticipant(row) });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /sessions/:id/scene-config');
     return res.status(500).json({ error: 'Internal server error' });
@@ -1053,7 +1063,7 @@ router.get(
         return res.json({ data: [] });
       }
 
-      const [locResult, claimsResult] = await Promise.all([
+      const [locResult, claimsResult, teamsResult] = await Promise.all([
         supabaseAdmin
           .from('scenario_locations')
           .select(
@@ -1065,6 +1075,7 @@ router.get(
           .from('session_location_claims')
           .select('location_id, claimed_by_team, claimed_as, claim_exclusivity')
           .eq('session_id', sessionId),
+        supabaseAdmin.from('session_teams').select('team_name').eq('session_id', sessionId),
       ]);
 
       if (locResult.error) {
@@ -1074,6 +1085,21 @@ router.get(
         );
         return res.status(500).json({ error: 'Failed to fetch locations' });
       }
+      if (teamsResult.error) {
+        logger.error(
+          { error: teamsResult.error, sessionId },
+          'Failed to fetch session teams for the exit gate',
+        );
+        return res.status(500).json({ error: 'Failed to fetch locations' });
+      }
+
+      const sessionTeams = [
+        ...new Set(
+          (teamsResult.data ?? [])
+            .map((row) => (row as { team_name?: unknown }).team_name)
+            .filter((name): name is string => typeof name === 'string'),
+        ),
+      ];
 
       // Build a lookup of per-session claims
       const claimMap = new Map<
@@ -1149,18 +1175,28 @@ router.get(
         new Set((qaRows ?? []).map((r) => (r as { category: string }).category)),
       );
 
-      const entryExitRows = visFiltered.filter((r) => {
-        const conds = r.conditions as Record<string, unknown> | null;
-        return conds?.pin_category === 'entry_exit' || r.pin_category === 'entry_exit';
+      const isEntryExit = (row: { conditions: unknown; pin_category: unknown }) => {
+        const conds = row.conditions as Record<string, unknown> | null;
+        return conds?.pin_category === 'entry_exit' || row.pin_category === 'entry_exit';
+      };
+      const teamList = (value: unknown): string[] | null => {
+        if (!Array.isArray(value)) return null;
+        return value.filter((item): item is string => typeof item === 'string');
+      };
+      const located = visFiltered.map((row) => {
+        if (!isEntryExit(row)) return row;
+        return {
+          ...row,
+          claimable_in_session: isPinClaimableInSession(teamList(row.claimable_by), sessionTeams),
+        };
       });
-      const exitClaimTotal = entryExitRows.length;
-      const exitClaimCount = entryExitRows.filter((r) => !!r.claimed_by_team).length;
+      const gate = exitGateState(located.filter(isEntryExit));
 
       res.json({
-        data: visFiltered,
+        data: located,
         map_revealed_categories: mapRevealedCategories,
-        exit_claim_progress: { claimed: exitClaimCount, total: exitClaimTotal },
-        all_exits_claimed: exitClaimTotal > 0 && exitClaimCount >= exitClaimTotal,
+        exit_claim_progress: { claimed: gate.claimed, total: gate.total },
+        all_exits_claimed: gate.open,
       });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /sessions/:id/locations');

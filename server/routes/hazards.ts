@@ -3,6 +3,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { assertSessionAccess } from '../lib/access.js';
+import { canSeeSessionAnswerKey } from '../lib/participantProjections.js';
 
 const router = Router();
 
@@ -72,7 +73,9 @@ router.get('/sessions/:id/hazards', requireAuth, async (req, res) => {
       return { ...h, current_image_url: h.image_url, current_description: null };
     });
 
-    const includeZones = req.query.include_zones === 'true';
+    const includeZones =
+      req.query.include_zones === 'true' &&
+      canSeeSessionAnswerKey(user, { trainer_id: access.session?.trainer_id ?? null });
     const responseData = includeZones ? enriched : enriched.map(stripZoneGroundTruth);
     return res.json({ data: responseData, elapsed_minutes: elapsedMinutes });
   } catch (err) {

@@ -23,6 +23,10 @@ import {
   redactScenarioForPlayer,
   sessionTrainerScenarioIds,
 } from '../lib/access.js';
+import {
+  canSeeScenarioAnswerKey,
+  projectSceneForParticipant,
+} from '../lib/participantProjections.js';
 import { canEditScenario } from '../services/scenarioEditService.js';
 import { sanitizeTeamTargeting } from '../services/socialCrisisPersistenceService.js';
 import { generatePostImage } from '../services/mediaGenerationService.js';
@@ -3382,18 +3386,40 @@ router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 router.get('/:id/scene-config', requireAuth, async (req: AuthenticatedRequest, res) => {
   try {
     const { id: scenarioId } = req.params;
-    const { data, error } = await supabaseAdmin
-      .from('rts_scene_configs')
-      .select('*')
-      .eq('scenario_id', scenarioId)
-      .maybeSingle();
+    const user = req.user;
+    if (!user?.id) return res.status(401).json({ error: 'Not authenticated' });
 
-    if (error) {
-      logger.error({ error, scenarioId }, 'Failed to load scene config for scenario');
+    const [scenarioResult, sceneResult] = await Promise.all([
+      supabaseAdmin.from('scenarios').select('created_by').eq('id', scenarioId).maybeSingle(),
+      supabaseAdmin
+        .from('rts_scene_configs')
+        .select('*')
+        .eq('scenario_id', scenarioId)
+        .maybeSingle(),
+    ]);
+
+    if (scenarioResult.error || sceneResult.error) {
+      logger.error(
+        { error: scenarioResult.error ?? sceneResult.error, scenarioId },
+        'Failed to load scene config for scenario',
+      );
       return res.status(500).json({ error: 'Failed to load scene config' });
     }
 
-    return res.json({ data: data || null });
+    const row = (sceneResult.data as Record<string, unknown> | null) ?? null;
+    if (!row) return res.json({ data: null });
+    const createdBy =
+      (scenarioResult.data as { created_by?: string | null } | null)?.created_by ?? null;
+    if (canSeeScenarioAnswerKey(user, { created_by: createdBy })) {
+      return res.json({ data: row });
+    }
+    if (
+      user.role === 'trainer' &&
+      (await sessionTrainerScenarioIds(user.id)).includes(scenarioId)
+    ) {
+      return res.json({ data: row });
+    }
+    return res.json({ data: projectSceneForParticipant(row) });
   } catch (err) {
     logger.error({ error: err }, 'Error in GET /scenarios/:id/scene-config');
     return res.status(500).json({ error: 'Internal server error' });

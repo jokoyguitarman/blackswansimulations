@@ -17,6 +17,7 @@ import { artFor } from '../lib/scenarioArt';
 import { IncidentsPanel } from '../components/Incidents/IncidentsPanel';
 import { MapView } from '../components/COP/MapView';
 import { SceneCanvasView } from '../components/COP/SceneCanvasView';
+import { chooseSessionMap, sessionMapAudience, type TrainerMapMode } from '../lib/sessionMapChoice';
 import type { DraggableAssetDef } from '../components/COP/AssetPalette';
 import { CreateDecisionForm } from '../components/Forms/CreateDecisionForm';
 
@@ -703,6 +704,7 @@ export const SessionView = () => {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [hasSceneConfig, setHasSceneConfig] = useState<boolean | null>(null);
+  const [trainerMapMode, setTrainerMapMode] = useState<TrainerMapMode>('live');
   const [selectedIncidentId, setSelectedIncidentId] = useState<string | null>(null);
   // Card notification state: 'new' = green dot, 'viewed' = yellow dot, 'none' = no dot
   const [cardNotifications, setCardNotifications] = useState<
@@ -1028,16 +1030,17 @@ export const SessionView = () => {
     if (showMapModule) setMapHasBeenOpened(true);
   }, [showMapModule]);
 
-  // Check if session's scenario has a trainer scene config (RTS canvas view)
+  // Check if session's scenario has a trainer scene config (RTS canvas view).
+  // Only the trainer's own map offers Scene preview, so nobody else needs the check.
   useEffect(() => {
-    if (!id) return;
+    if (!id || !isTrainer || isSpectator) return;
     api.sessions
       .getSceneConfig(id)
       .then(({ data }) => {
         setHasSceneConfig(!!data);
       })
       .catch(() => setHasSceneConfig(false));
-  }, [id]);
+  }, [id, isTrainer, isSpectator]);
 
   // Mount MapView as soon as the map module is shown so Leaflet gets into the DOM.
   useEffect(() => {
@@ -1360,6 +1363,12 @@ export const SessionView = () => {
     }
   };
 
+  const choice = chooseSessionMap({
+    audience: sessionMapAudience({ isSpectator, isStaff: isTrainer }),
+    hasSceneConfig,
+    trainerMapMode,
+  });
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center scanline">
@@ -1484,30 +1493,37 @@ export const SessionView = () => {
       <div className="h-[calc(100vh-4rem)] w-full overflow-hidden bg-bg relative flex">
         {/* Map area */}
         <div className={isGodView ? 'relative flex-1' : 'absolute inset-0'}>
-          {hasSceneConfig === true ? (
-            <SceneCanvasView
-              scenarioId={session?.scenarios?.id ?? session?.scenario_id}
+          <MapView
+            sessionId={id}
+            scenarioId={session?.scenarios?.id ?? session?.scenario_id}
+            incidents={[]}
+            resources={[]}
+            isVisible={true}
+            fillHeight
+            showAllPins={choice.liveMap.showAllPins}
+            hidePrebuiltZones={choice.liveMap.hidePrebuiltZones}
+            bypassExitGate={choice.liveMap.bypassExitGate}
+            locationsRefreshTrigger={locationsRefreshTrigger}
+            sessionStartTime={session?.start_time ?? undefined}
+            currentState={mergeInjectEffects(
+              (session?.current_state as Record<string, unknown>) ?? {},
+              session?.inject_state_effects,
+            )}
+            initialCenter={
+              session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
+                ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [number, number])
+                : [1.3521, 103.8198]
+            }
+            initialZoom={16}
+            teamName="Spectator"
+            draggableAssets={[]}
+            scenarioType={
+              ((session?.current_state as Record<string, unknown>)?.scenario_type as string) ??
+              undefined
+            }
+          >
+            <DemoMapAnimator
               sessionId={id}
-              fillHeight
-              showAllPins
-            />
-          ) : hasSceneConfig === false ? (
-            <MapView
-              sessionId={id}
-              scenarioId={session?.scenarios?.id ?? session?.scenario_id}
-              incidents={[]}
-              resources={[]}
-              isVisible={true}
-              fillHeight
-              showAllPins
-              hidePrebuiltZones
-              bypassExitGate
-              locationsRefreshTrigger={locationsRefreshTrigger}
-              sessionStartTime={session?.start_time ?? undefined}
-              currentState={mergeInjectEffects(
-                (session?.current_state as Record<string, unknown>) ?? {},
-                session?.inject_state_effects,
-              )}
               initialCenter={
                 session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
                   ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
@@ -1517,27 +1533,8 @@ export const SessionView = () => {
                   : [1.3521, 103.8198]
               }
               initialZoom={16}
-              teamName="Spectator"
-              draggableAssets={[]}
-              scenarioType={
-                ((session?.current_state as Record<string, unknown>)?.scenario_type as string) ??
-                undefined
-              }
-            >
-              <DemoMapAnimator
-                sessionId={id}
-                initialCenter={
-                  session?.scenarios?.center_lat != null && session?.scenarios?.center_lng != null
-                    ? ([session.scenarios.center_lat, session.scenarios.center_lng] as [
-                        number,
-                        number,
-                      ])
-                    : [1.3521, 103.8198]
-                }
-                initialZoom={16}
-              />
-            </MapView>
-          ) : null}
+            />
+          </MapView>
         </div>
 
         {/* God View: Activity ticker sidebar */}
@@ -2232,14 +2229,11 @@ export const SessionView = () => {
               </div>
             )}
             <div className="flex-1 min-h-0 rounded border border-border overflow-hidden">
-              {hasSceneConfig === true ? (
-                <SceneCanvasView
-                  scenarioId={session?.scenarios?.id ?? session?.scenario_id}
-                  sessionId={id}
-                  fillHeight
-                />
-              ) : hasSceneConfig === false && mapModuleReady && mapHasBeenOpened ? (
+              {mapModuleReady && mapHasBeenOpened ? (
                 <MapView
+                  showAllPins={choice.liveMap.showAllPins}
+                  hidePrebuiltZones={choice.liveMap.hidePrebuiltZones}
+                  bypassExitGate={choice.liveMap.bypassExitGate}
                   sessionId={id}
                   scenarioId={session?.scenarios?.id ?? session?.scenario_id}
                   incidents={[]}
@@ -2583,6 +2577,38 @@ export const SessionView = () => {
                     Trainer Map — all markings and pins
                   </h3>
                   <div className="ml-auto flex items-center gap-2">
+                    {choice.showSceneToggle && (
+                      <div
+                        role="group"
+                        aria-label="Trainer map view"
+                        className="flex items-center gap-1"
+                      >
+                        <button
+                          type="button"
+                          aria-pressed={trainerMapMode === 'live'}
+                          onClick={() => setTrainerMapMode('live')}
+                          className={`${
+                            trainerMapMode === 'live'
+                              ? 'military-button'
+                              : 'military-button-outline'
+                          } px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap`}
+                        >
+                          Live map
+                        </button>
+                        <button
+                          type="button"
+                          aria-pressed={trainerMapMode === 'scene'}
+                          onClick={() => setTrainerMapMode('scene')}
+                          className={`${
+                            trainerMapMode === 'scene'
+                              ? 'military-button'
+                              : 'military-button-outline'
+                          } px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap`}
+                        >
+                          Scene preview
+                        </button>
+                      </div>
+                    )}
                     <button
                       onClick={async () => {
                         const scId = session?.scenarios?.id ?? session?.scenario_id;
@@ -2610,16 +2636,18 @@ export const SessionView = () => {
                     >
                       {backfillLoading ? 'Loading…' : 'Backfill Buildings'}
                     </button>
-                    <button
-                      onClick={() => setInspectStudsMode((v) => !v)}
-                      className={`military-button px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap ${
-                        inspectStudsMode
-                          ? 'border-accent text-accent bg-accent/10'
-                          : 'border-border text-muted hover:bg-surface-2'
-                      }`}
-                    >
-                      {inspectStudsMode ? 'Inspect: On' : 'Inspect Studs'}
-                    </button>
+                    {choice.view !== 'scene_preview' && (
+                      <button
+                        onClick={() => setInspectStudsMode((v) => !v)}
+                        className={`military-button px-3 py-1.5 text-[10px] terminal-text whitespace-nowrap ${
+                          inspectStudsMode
+                            ? 'border-accent text-accent bg-accent/10'
+                            : 'border-border text-muted hover:bg-surface-2'
+                        }`}
+                      >
+                        {inspectStudsMode ? 'Inspect: On' : 'Inspect Studs'}
+                      </button>
+                    )}
                     {backfillMsg && (
                       <span className="text-[10px] terminal-text text-success max-w-[200px] truncate">
                         {backfillMsg}
@@ -2627,15 +2655,21 @@ export const SessionView = () => {
                     )}
                   </div>
                 </div>
+                {choice.view === 'scene_preview' && (
+                  <p className="text-xs terminal-text text-muted px-1 pt-2">
+                    Scene preview: the scene as you laid it out, including planted devices. It does
+                    not update during the session, and players never see it.
+                  </p>
+                )}
                 <div className="flex-1 min-h-0 rounded border border-border overflow-hidden">
-                  {hasSceneConfig === true ? (
+                  {choice.view === 'scene_preview' ? (
                     <SceneCanvasView
                       scenarioId={session?.scenarios?.id ?? session?.scenario_id}
                       sessionId={id}
                       fillHeight
                       showAllPins
                     />
-                  ) : hasSceneConfig === false ? (
+                  ) : (
                     <MapView
                       sessionId={id}
                       scenarioId={session?.scenarios?.id ?? session?.scenario_id}
@@ -2684,7 +2718,7 @@ export const SessionView = () => {
                           ?.scenario_type as string) ?? undefined
                       }
                     />
-                  ) : null}
+                  )}
                 </div>
               </div>
 

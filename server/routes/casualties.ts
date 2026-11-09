@@ -4,6 +4,10 @@ import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { hasMarshalProximity } from '../services/exitFlowService.js';
 import { assertSessionAccess, assertTeamMembership } from '../lib/access.js';
+import {
+  canSeeSessionAnswerKey,
+  projectCasualtyForParticipant,
+} from '../lib/participantProjections.js';
 
 const router = Router();
 
@@ -25,6 +29,22 @@ function stripGroundTruth(
     for (const k of GROUND_TRUTH_KEYS) delete cleaned[k];
     return { ...c, conditions: cleaned };
   });
+}
+
+function trainerIdOf(session: { trainer_id?: string | null } | undefined): string | null {
+  return session?.trainer_id ?? null;
+}
+
+function presentCasualty(
+  user: { id: string; role?: string },
+  trainerId: string | null,
+  row: Record<string, unknown>,
+  keepToday: boolean,
+): Record<string, unknown> {
+  if (canSeeSessionAnswerKey(user, { trainer_id: trainerId })) {
+    return keepToday ? (stripGroundTruth([row])[0] ?? row) : row;
+  }
+  return projectCasualtyForParticipant(row);
 }
 
 function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -64,8 +84,13 @@ router.get('/sessions/:id/casualties', requireAuth, async (req, res) => {
       return res.status(500).json({ error: 'Failed to fetch casualties' });
     }
 
+    const trainerId = trainerIdOf(access.session);
+    const rows = (casualties ?? []) as Array<Record<string, unknown>>;
+    const data = canSeeSessionAnswerKey(user, { trainer_id: trainerId })
+      ? stripGroundTruth(rows)
+      : rows.map((row) => projectCasualtyForParticipant(row));
     return res.json({
-      data: stripGroundTruth((casualties ?? []) as Array<Record<string, unknown>>),
+      data,
       elapsed_minutes: elapsedMinutes,
     });
   } catch (err) {
@@ -94,8 +119,14 @@ router.get('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, res)
       return res.status(404).json({ error: 'Casualty not found' });
     }
 
-    const [cleaned] = stripGroundTruth([casualty as Record<string, unknown>]);
-    return res.json({ data: cleaned });
+    return res.json({
+      data: presentCasualty(
+        user,
+        trainerIdOf(access.session),
+        casualty as Record<string, unknown>,
+        true,
+      ),
+    });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in GET casualty detail');
     return res.status(500).json({ error: 'Internal server error' });
@@ -157,7 +188,14 @@ router.patch('/sessions/:id/casualties/:casualtyId', requireAuth, async (req, re
       return res.status(500).json({ error: 'Failed to update casualty' });
     }
 
-    return res.json({ data: updated });
+    return res.json({
+      data: presentCasualty(
+        user,
+        trainerIdOf(access.session),
+        updated as Record<string, unknown>,
+        false,
+      ),
+    });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in PATCH casualty');
     return res.status(500).json({ error: 'Internal server error' });
@@ -271,7 +309,14 @@ router.post('/sessions/:id/casualties/:casualtyId/assess', requireAuth, async (r
       return res.status(500).json({ error: 'Failed to update assessment' });
     }
 
-    return res.json({ data: updated });
+    return res.json({
+      data: presentCasualty(
+        user,
+        trainerIdOf(access.session),
+        updated as Record<string, unknown>,
+        false,
+      ),
+    });
   } catch (err) {
     logger.error({ err }, 'Unexpected error in POST assess casualty');
     return res.status(500).json({ error: 'Internal server error' });

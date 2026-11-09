@@ -1,5 +1,5 @@
 import { Router, json } from 'express';
-import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
+import { requireAuth, requireStaff, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { uploadRtsSceneImage } from '../lib/storage.js';
 import { logger } from '../lib/logger.js';
@@ -7,7 +7,7 @@ import { logger } from '../lib/logger.js';
 const router = Router();
 
 // POST /api/rts-scenes — create a new scene config
-router.post('/', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+router.post('/', requireAuth, requireStaff, json(), async (req: AuthenticatedRequest, res) => {
   try {
     const user = req.user!;
     const {
@@ -70,7 +70,7 @@ router.post('/', requireAuth, json(), async (req: AuthenticatedRequest, res) => 
 });
 
 // GET /api/rts-scenes/:id — load a scene config
-router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/:id', requireAuth, requireStaff, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { data, error } = await supabaseAdmin
@@ -91,7 +91,7 @@ router.get('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 // GET /api/rts-scenes?scenario_id=... — load scene config for a scenario
-router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.get('/', requireAuth, requireStaff, async (req: AuthenticatedRequest, res) => {
   try {
     const scenarioId = req.query.scenario_id as string;
     const createdBy = req.query.created_by as string;
@@ -121,7 +121,7 @@ router.get('/', requireAuth, async (req: AuthenticatedRequest, res) => {
 });
 
 // PATCH /api/rts-scenes/:id — update scene config
-router.patch('/:id', requireAuth, json(), async (req: AuthenticatedRequest, res) => {
+router.patch('/:id', requireAuth, requireStaff, json(), async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const updates: Record<string, unknown> = {};
@@ -199,6 +199,7 @@ router.patch('/:id', requireAuth, json(), async (req: AuthenticatedRequest, res)
 router.post(
   '/:id/upload-image',
   requireAuth,
+  requireStaff,
   json({ limit: '10mb' }),
   async (req: AuthenticatedRequest, res) => {
     try {
@@ -240,7 +241,7 @@ router.post(
 );
 
 // DELETE /api/rts-scenes/:id
-router.delete('/:id', requireAuth, async (req: AuthenticatedRequest, res) => {
+router.delete('/:id', requireAuth, requireStaff, async (req: AuthenticatedRequest, res) => {
   try {
     const { id } = req.params;
     const { error } = await supabaseAdmin.from('rts_scene_configs').delete().eq('id', id);
