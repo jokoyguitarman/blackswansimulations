@@ -601,6 +601,10 @@ export function SocialGlanceBoard({ sections }: { sections: SectionsMap }) {
           <IntelFlowStrip items={intelItems} />
         </div>
       )}
+
+      {sections.social_interdependency && (
+        <InterdependencyGlance data={(sections.social_interdependency.data || {}) as Dict} />
+      )}
     </div>
   );
 }
@@ -643,6 +647,247 @@ export function SocialSentimentSectionData({ data }: { data: Dict }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const IMPACT_STYLE: Record<string, { label: string; bg: string; fg: string }> = {
+  told: { label: 'Told', bg: '#E8EEF5', fg: '#1E3A5F' },
+  enabled: { label: 'Enabled', bg: '#E7F6EE', fg: '#15803D' },
+  late: { label: 'Late', bg: '#FEF3C7', fg: '#B45309' },
+  withheld: { label: 'Withheld', bg: '#FEE2E2', fg: '#B91C1C' },
+  handed_off: { label: 'Handed off', bg: '#FEF3C7', fg: '#B45309' },
+  held: { label: 'Held', bg: '#FEF3C7', fg: '#B45309' },
+  unanswered: { label: 'Empty seat', bg: '#FEE2E2', fg: '#B91C1C' },
+  consequence: { label: 'Hit', bg: '#F3E8FF', fg: '#6B21A8' },
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  decision_log: 'Decision log',
+  email: 'Email',
+  intel: 'Intel',
+  escalation: 'Escalation',
+  public_post: 'Public line',
+  draft: 'Draft',
+};
+
+function impactStyle(kind: unknown) {
+  return IMPACT_STYLE[String(kind)] || { label: String(kind || '—'), bg: '#F4F1EB', fg: '#1E3A5F' };
+}
+
+function InterdependencyGlance({ data }: { data: Dict }) {
+  const coverage = (data.coverage || {}) as Dict;
+  return (
+    <div className="military-border p-4 bg-surface">
+      <div className="text-xs font-extrabold text-brand">Inter-agency interdependency</div>
+      <p className="text-[11px] text-muted mt-1">
+        Decision log {String(coverage.decision_log_count ?? 0)} · {String(coverage.effects ?? 0)}{' '}
+        team-to-team effects · intel shared {String(coverage.intel_shared ?? 0)}, withheld{' '}
+        {String(coverage.intel_withheld ?? 0)} · escalations {String(coverage.escalations ?? 0)} ·
+        public lines {String(coverage.public_lines ?? 0)} · drafts held{' '}
+        {String(coverage.drafts_held ?? 0)}
+      </p>
+    </div>
+  );
+}
+
+export function InterdependencyMatrix({ data }: { data: Dict }) {
+  const teams = arr(data.teams);
+  const cells = arr(data.cells);
+  const decisions = arr(data.decisions);
+  const agencyCells = arr(data.agency_cells);
+  const coverage = (data.coverage || {}) as Dict;
+  const orgCount = new Set(teams.map((t) => String(t.org || '')).filter(Boolean)).size;
+  const [includeSameAgency, setIncludeSameAgency] = React.useState(orgCount < 2);
+  const pair = new Map(cells.map((c) => [`${c.from}\0${c.to}`, c]));
+
+  const effectTitle = (cell: Dict | undefined): string => {
+    if (!cell) return '';
+    return arr(cell.effects)
+      .map((effect) => {
+        const minute = effect.at_minute == null ? '' : `T+${effect.at_minute} `;
+        return `${minute}${impactStyle(effect.kind).label}: ${effect.summary}`;
+      })
+      .join('\n');
+  };
+
+  return (
+    <div className="space-y-4">
+      {typeof data.note === 'string' && data.note ? (
+        <p className="text-xs text-muted">{data.note}</p>
+      ) : null}
+      <div className="flex flex-wrap gap-2 text-[10px]">
+        <span className="font-bold text-brand">
+          Decision log {String(coverage.decision_log_count ?? 0)}
+        </span>
+        <span className="text-muted">
+          {String(coverage.emails_naming_another_team ?? 0)} emails named another team
+        </span>
+        <span className="text-muted">{String(coverage.effects ?? 0)} effects</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        {Object.values(IMPACT_STYLE).map((style) => (
+          <span
+            key={style.label}
+            className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full"
+            style={{ backgroundColor: style.bg, color: style.fg }}
+          >
+            {style.label}
+          </span>
+        ))}
+        {orgCount >= 2 && (
+          <button
+            type="button"
+            onClick={() => setIncludeSameAgency((value) => !value)}
+            className="text-[10px] font-bold text-brand underline"
+          >
+            {includeSameAgency ? 'Hide pairs inside one agency' : 'Show pairs inside one agency'}
+          </button>
+        )}
+      </div>
+
+      {teams.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="text-[10px] border-collapse min-w-full">
+            <caption className="text-left text-[10px] font-extrabold uppercase text-muted mb-1">
+              Rows decide. Columns feel the impact.
+            </caption>
+            <thead>
+              <tr>
+                <th className="p-1 text-left text-muted font-bold">Decision by</th>
+                {teams.map((team) => (
+                  <th
+                    key={String(team.name)}
+                    className="p-1 text-left font-bold align-bottom max-w-[92px]"
+                    style={{ color: teamColor(team.name) }}
+                    title={team.staffed === false ? `${team.name} (empty seat)` : String(team.name)}
+                  >
+                    <span className="block leading-tight">
+                      {String(team.name)}
+                      {team.staffed === false ? (
+                        <span className="block font-normal text-muted">empty</span>
+                      ) : null}
+                    </span>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {teams.map((row) => (
+                <tr key={String(row.name)}>
+                  <th
+                    className="p-1 text-left font-bold whitespace-nowrap"
+                    style={{ color: teamColor(row.name) }}
+                  >
+                    {String(row.name)}
+                  </th>
+                  {teams.map((column) => {
+                    if (row.name === column.name) {
+                      return (
+                        <td key={String(column.name)} className="p-1 text-center text-muted">
+                          —
+                        </td>
+                      );
+                    }
+                    const found = pair.get(`${row.name}\0${column.name}`);
+                    if (!found || (!includeSameAgency && found.same_org === true)) {
+                      return <td key={String(column.name)} className="p-1" />;
+                    }
+                    const style = impactStyle(found.headline);
+                    return (
+                      <td key={String(column.name)} className="p-1" title={effectTitle(found)}>
+                        <span
+                          className="inline-block rounded px-1.5 py-0.5 font-extrabold uppercase"
+                          style={{ backgroundColor: style.bg, color: style.fg }}
+                        >
+                          {style.label}
+                          {num(found.email_count) ? ` ${found.email_count}` : ''}
+                        </span>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {agencyCells.length > 0 && (
+        <div>
+          <div className="text-[10px] font-extrabold uppercase text-muted mb-1.5">
+            Between agencies
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {agencyCells.map((cell, i) => {
+              const style = impactStyle(cell.headline);
+              return (
+                <span
+                  key={i}
+                  className="text-[10px] font-bold rounded-full px-2 py-1"
+                  style={{ backgroundColor: style.bg, color: style.fg }}
+                >
+                  {String(cell.from)} → {String(cell.to)} · {style.label}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="text-[10px] font-extrabold uppercase text-muted mb-1.5">
+          Decisions and the team they hit
+        </div>
+        {decisions.length === 0 ? (
+          <p className="text-xs text-muted">No decision was visible in this window.</p>
+        ) : (
+          <div className="space-y-2">
+            {decisions.map((decision, i) => {
+              const impacts = arr(decision.impacts);
+              return (
+                <div key={i} className="border border-border rounded-lg bg-surface px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-extrabold text-brand">
+                      T+{decision.at_minute == null ? '?' : String(decision.at_minute)}
+                    </span>
+                    <span
+                      className="text-[10px] font-extrabold"
+                      style={{ color: teamColor(decision.by) }}
+                    >
+                      {String(decision.by || 'Unassigned')}
+                    </span>
+                    <span className="text-[9px] font-bold uppercase text-muted">
+                      {SOURCE_LABEL[String(decision.source)] || String(decision.source || '')}
+                    </span>
+                  </div>
+                  <p className="text-xs text-ink mt-1">{String(decision.what || '')}</p>
+                  {impacts.length === 0 ? (
+                    <p className="text-[10px] text-muted mt-1">No other team was named.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5 mt-1.5">
+                      {impacts.map((impact, j) => {
+                        const style = impactStyle(impact.kind);
+                        return (
+                          <span
+                            key={j}
+                            className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full"
+                            style={{ backgroundColor: style.bg, color: style.fg }}
+                            title={String(impact.summary || '')}
+                          >
+                            {String(impact.team)} · {style.label}
+                            {impact.same_org === true ? ' · same agency' : ''}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

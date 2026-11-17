@@ -36,6 +36,7 @@ const SECTION_LABELS: Record<string, string> = {
   social_team_sales: 'Team deep-dive: Sales',
   social_team_other: 'Team deep-dive: other teams',
   social_information_flow: 'Cross-team information flow',
+  social_interdependency: 'Inter-agency interdependency matrix',
   social_misinformation: 'Misinformation and moderation',
   social_sentiment: 'Sentiment journey and turning points',
   social_crisis_standards: 'Crisis communication standards',
@@ -80,6 +81,91 @@ const EXCLUDED_EVENT_TYPES = ['ai_step_start', 'ai_step_end', 'inject_cancelled'
 
 function getEventType(e: Record<string, unknown>): string {
   return (e.event_type ?? e.type) as string;
+}
+
+function drawInterdependency(
+  doc: InstanceType<typeof PDFDocument>,
+  data: Record<string, unknown>,
+): void {
+  const note = typeof data.note === 'string' ? data.note : '';
+  doc.font('Helvetica').fontSize(9).fillColor(PDF_COLORS.ink).text(note, { width: 512 });
+  doc.moveDown(0.4);
+
+  const coverage = (data.coverage || {}) as Record<string, unknown>;
+  const bits = [
+    `Decision log ${coverage.decision_log_count ?? 0}`,
+    `Emails naming another team ${coverage.emails_naming_another_team ?? 0}`,
+    `Intel shared ${coverage.intel_shared ?? 0}`,
+    `Intel withheld ${coverage.intel_withheld ?? 0}`,
+    `Escalations ${coverage.escalations ?? 0}`,
+    `Public lines ${coverage.public_lines ?? 0}`,
+    `Drafts held ${coverage.drafts_held ?? 0}`,
+  ];
+  doc.fontSize(8).fillColor(PDF_COLORS.muted).text(bits.join('   ·   '), { width: 512 });
+  doc.moveDown(0.5);
+
+  doc
+    .font('Helvetica-Bold')
+    .fontSize(11)
+    .fillColor(PDF_COLORS.navy)
+    .text('Decisions and who they hit');
+  doc.moveDown(0.2);
+  const decisions = Array.isArray(data.decisions) ? data.decisions : [];
+  if (decisions.length === 0) {
+    doc.font('Helvetica').fontSize(9).fillColor(PDF_COLORS.ink).text('None recorded.');
+  }
+  for (const row of decisions.slice(0, 30) as Array<Record<string, unknown>>) {
+    const impacts = Array.isArray(row.impacts) ? row.impacts : [];
+    const impactText =
+      impacts.length > 0
+        ? impacts
+            .map((impact) => {
+              const item = impact as Record<string, unknown>;
+              return `${item.team} (${item.kind})`;
+            })
+            .join('; ')
+        : 'no other team named';
+    const minute = row.at_minute == null ? 'T+?' : `T+${row.at_minute}`;
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor(PDF_COLORS.ink)
+      .text(`${minute}  ${row.by}: ${row.what}`, { width: 512 });
+    doc.fontSize(8).fillColor(PDF_COLORS.muted).text(`Impact: ${impactText}`, { width: 512 });
+    doc.moveDown(0.15);
+  }
+
+  doc.moveDown(0.4);
+  doc.font('Helvetica-Bold').fontSize(11).fillColor(PDF_COLORS.navy).text('Team to team');
+  doc.moveDown(0.2);
+  const cells = Array.isArray(data.cells) ? data.cells : [];
+  if (cells.length === 0) {
+    doc.font('Helvetica').fontSize(9).fillColor(PDF_COLORS.ink).text('No cross-team effect.');
+  }
+  for (const row of cells.slice(0, 40) as Array<Record<string, unknown>>) {
+    const emails = Number(row.email_count) > 0 ? ` · ${row.email_count} emails` : '';
+    const scope = row.same_org === true ? ' · same agency' : '';
+    doc
+      .font('Helvetica')
+      .fontSize(9)
+      .fillColor(PDF_COLORS.ink)
+      .text(`${row.from} → ${row.to}: ${row.headline}${emails}${scope}`, { width: 512 });
+  }
+
+  const agencyCells = Array.isArray(data.agency_cells) ? data.agency_cells : [];
+  if (agencyCells.length > 0) {
+    doc.moveDown(0.4);
+    doc.font('Helvetica-Bold').fontSize(11).fillColor(PDF_COLORS.navy).text('Agency to agency');
+    doc.moveDown(0.2);
+    for (const row of agencyCells.slice(0, 20) as Array<Record<string, unknown>>) {
+      doc
+        .font('Helvetica')
+        .fontSize(9)
+        .fillColor(PDF_COLORS.ink)
+        .text(`${row.from} → ${row.to}: ${row.headline}`, { width: 512 });
+    }
+  }
+  doc.fillColor(PDF_COLORS.ink);
 }
 
 function cellValue(v: unknown): string {
@@ -255,7 +341,40 @@ export async function generateExcel(aarData: AARData): Promise<Buffer> {
                 ]);
               }
             }
-            if (!obj.questions && !obj.gaps) {
+            if (key === 'social_interdependency' && Array.isArray(obj.decisions)) {
+              sheet.addRow(['Decisions']);
+              sheet.addRow(['at_minute', 'by', 'source', 'what', 'impacts']);
+              for (const row of (obj.decisions as Array<Record<string, unknown>>).slice(0, 100)) {
+                const impacts = Array.isArray(row.impacts) ? row.impacts : [];
+                sheet.addRow([
+                  cellValue(row.at_minute),
+                  cellValue(row.by),
+                  cellValue(row.source),
+                  cellValue(row.what),
+                  impacts
+                    .map((impact) => {
+                      const item = impact as Record<string, unknown>;
+                      return `${item.team} (${item.kind})`;
+                    })
+                    .join('; '),
+                ]);
+              }
+              sheet.addRow([]);
+              sheet.addRow(['Team to team']);
+              sheet.addRow(['from', 'to', 'headline', 'email_count', 'same_org']);
+              for (const row of ((obj.cells as Array<Record<string, unknown>>) || []).slice(
+                0,
+                100,
+              )) {
+                sheet.addRow([
+                  cellValue(row.from),
+                  cellValue(row.to),
+                  cellValue(row.headline),
+                  cellValue(row.email_count),
+                  cellValue(row.same_org),
+                ]);
+              }
+            } else if (!obj.questions && !obj.gaps) {
               sheet.addRow([readableValue(entry.data)]);
             }
           }
@@ -612,7 +731,13 @@ export async function generatePDF(aarData: AARData): Promise<Buffer> {
           }
           if (entry.data != null) {
             doc.fontSize(9);
-            if (Array.isArray(entry.data) && entry.data.length > 0) {
+            if (
+              key === 'social_interdependency' &&
+              typeof entry.data === 'object' &&
+              !Array.isArray(entry.data)
+            ) {
+              drawInterdependency(doc, entry.data as Record<string, unknown>);
+            } else if (Array.isArray(entry.data) && entry.data.length > 0) {
               const first = entry.data[0] as Record<string, unknown>;
               const cols = Object.keys(first);
               const colW = 70;

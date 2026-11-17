@@ -137,10 +137,15 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
   }
 
   // DM attribution: message id -> player id, via the dm_sent player_action.
+  // Email recipient teams live on the email_sent action, not on sim_emails.
   const dmAttribution = new Map<string, string>();
+  const emailMetaById = new Map<string, Record<string, unknown>>();
   for (const a of actions) {
     if (a.action_type === 'dm_sent' && a.target_id) {
       dmAttribution.set(String(a.target_id), String(a.player_id));
+    }
+    if (a.action_type === 'email_sent' && a.target_id) {
+      emailMetaById.set(String(a.target_id), (a.metadata as Record<string, unknown>) || {});
     }
   }
 
@@ -200,6 +205,7 @@ export async function buildPlayerLedger(sessionId: string): Promise<PlayerLedger
       timestamp: String(e.created_at),
       content: subject + String(e.body_text || ''),
       grade: (e.sop_compliance_score as Record<string, unknown>) || null,
+      metadata: emailMetaById.get(String(e.id)) ?? null,
     });
   }
 

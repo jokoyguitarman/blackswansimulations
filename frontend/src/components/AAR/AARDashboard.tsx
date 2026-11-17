@@ -6,6 +6,7 @@ import {
   SocialGlanceBoard,
   SocialSentimentSectionData,
   SocialInformationFlowSectionData,
+  InterdependencyMatrix,
   SocialTeamSectionData,
   SocialExecutiveSectionData,
   socialSectionsPresent,
@@ -39,6 +40,7 @@ const AAR_SECTION_KEYS = [
   'social_team_sales',
   'social_team_other',
   'social_information_flow',
+  'social_interdependency',
   'social_misinformation',
   'social_sentiment',
   'social_crisis_standards',
@@ -73,6 +75,7 @@ const AAR_SECTION_LABELS: Record<(typeof AAR_SECTION_KEYS)[number], string> = {
   social_team_sales: 'Team deep-dive: Sales',
   social_team_other: 'Team deep-dive: other teams',
   social_information_flow: 'Cross-team information flow',
+  social_interdependency: 'Inter-agency interdependency matrix',
   social_misinformation: 'Misinformation and moderation',
   social_sentiment: 'Sentiment journey and turning points',
   social_crisis_standards: 'Crisis communication standards',
@@ -610,6 +613,9 @@ function SectionDataDisplay({ keyName, data }: { keyName: string; data: unknown 
   if (keyName === 'social_information_flow' && typeof data === 'object' && !Array.isArray(data)) {
     return <SocialInformationFlowSectionData data={data as Record<string, unknown>} />;
   }
+  if (keyName === 'social_interdependency' && typeof data === 'object' && !Array.isArray(data)) {
+    return <InterdependencyMatrix data={data as Record<string, unknown>} />;
+  }
   if (keyName === 'social_executive' && typeof data === 'object' && !Array.isArray(data)) {
     return <SocialExecutiveSectionData data={data as Record<string, unknown>} />;
   }
@@ -872,8 +878,7 @@ export const AARDashboard = ({ sessionId }: AARDashboardProps) => {
       .get(sessionId)
       .then((res) => {
         const cs = (res.data as Record<string, unknown>)?.current_state as
-          | Record<string, unknown>
-          | undefined;
+          Record<string, unknown> | undefined;
         if (cs?.heat_meter) setHeatMeter(cs.heat_meter as typeof heatMeter);
       })
       .catch(() => {});

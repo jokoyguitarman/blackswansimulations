@@ -3,10 +3,11 @@ import { logger } from '../lib/logger.js';
 import { env } from '../env.js';
 import { chat, systemUser } from './ai/chatClient.js';
 import { buildSocialMediaAARData } from './aarSocialMediaService.js';
-import { buildPlayerLedger } from './playerLedgerService.js';
+import { buildPlayerLedger, type PlayerLedger } from './playerLedgerService.js';
 import { getIntelStatus, type IntelStatusEntry } from './intelSharingService.js';
 import type { SectionEntry } from './aarSectionService.js';
 import { resolveTeamFunction } from '../lib/stakeholderContract.js';
+import { buildInterdependencyMatrix } from './interdependencyMatrix.js';
 
 /**
  * Social-crisis section-based AAR (mirrors aarSectionService for field-ops).
@@ -34,6 +35,7 @@ export const SOCIAL_AAR_SECTION_KEYS = [
   'social_team_sales',
   'social_team_other',
   'social_information_flow',
+  'social_interdependency',
   'social_misinformation',
   'social_sentiment',
   'social_crisis_standards',
@@ -58,6 +60,7 @@ export const SOCIAL_SECTION_LABELS: Record<SocialAARSectionKey, string> = {
   social_team_sales: 'Team deep-dive: Sales',
   social_team_other: 'Team deep-dive: other teams',
   social_information_flow: 'Cross-team information flow',
+  social_interdependency: 'Inter-agency interdependency matrix',
   social_misinformation: 'Misinformation and moderation',
   social_sentiment: 'Sentiment journey and turning points',
   social_crisis_standards: 'Crisis communication standards',
@@ -87,7 +90,7 @@ function teamSectionFor(teamFunction: string): SocialAARSectionKey {
 
 const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
   social_executive:
-    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If executive_decisions is non-empty, name each leadership decision (T+), who was told and who found out on their own, and whether the organisation communicated it in the right order before it leaked — this is usually the decisive lesson. If organisations is non-empty (several organisations took part), compare them briefly by avg_composite and name the strongest and weakest organisation with the team that drove each. End with a one-sentence overall verdict.',
+    'Write the executive verdict of this social-media crisis exercise: how the crisis unfolded, whether the response succeeded, and the single most important lesson. Reference the final outcome dimensions by their scenario-specific labels, the team composite scores, and the intel-sharing outcome. If stakeholder_preemption is non-empty, credit the teams that reached stakeholders before those stakeholders acted (name the stakeholder and what was withdrawn or revised, with T+ minutes). If executive_decisions is non-empty, name each leadership decision (T+), who was told and who found out on their own, and whether the organisation communicated it in the right order before it leaked — this is usually the decisive lesson. If headline_counts.decision_log_entries is 0, say that no decision was written to the decision log and that cross-team effects are in the interdependency matrix (headline_counts.interdependency_edges cells). If organisations is non-empty (several organisations took part), compare them briefly by avg_composite and name the strongest and weakest organisation with the team that drove each. End with a one-sentence overall verdict.',
   social_timeline:
     'Reconstruct the session chronologically in phases (opening, escalation, turning point, resolution). Pair each pressure beat (inject, watchdog challenge, consequence) with the team response that followed — or note the silence. Cite T+ minutes throughout. Identify the single most consequential moment.',
   social_public_comms:
@@ -110,6 +113,8 @@ const SOCIAL_SECTION_INSTRUCTIONS: Record<SocialAARSectionKey, string> = {
     'This is the dedicated review of the teams outside the preset functions (teams[] — one block per team, e.g. Fleet Operations, Driver Relations, Investigations). For EACH team, using its mission, complete task record, artifacts with grades, member ledger and role-fit signals: state clearly (1) what it did well, (2) what it should have done differently, and (3) one member-level note per member. Judge each team against its own charter, not against the preset functions. Cite T+ times.',
   social_information_flow:
     'Assess how information moved (or failed to move) across teams: every intel dependency with its holder, deadline, share time and consequence; email/chat coordination volume; escalations. Connect withheld or late intel to the public consequences it caused. Name the strongest and weakest handoff.',
+  social_interdependency:
+    "Read the interdependency matrix as the record of which team's decision changed another team's situation. For each material cell, name the deciding team, the team that felt it, the T+ minute, and the kind of impact (told, enabled, late, withheld, handed off, held in clearance, empty seat, or a consequence that fired). Use the decision rows, including rows whose impacts are empty: a public line or a draft that named nobody still happened, and say that no other team was bound by it. If coverage.decision_log_count is 0, say the log was empty and these rows were reconstructed from mail, intel, escalations, public lines and drafts. Do not invent a dependency that is not in cells or decisions. Close with the single handoff that most changed the exercise.",
   social_misinformation:
     'Assess rumour control: response latency on harmful posts, what was never addressed and its reach, report precision (valid vs frivolous flags), and dispute outcomes. Distinguish activity from effectiveness. Name the most damaging unaddressed claim.',
   social_sentiment:
@@ -142,6 +147,110 @@ function downsample<T>(rows: T[], max: number): T[] {
 function gradeNumber(grade: Record<string, unknown> | null, key: string): number | null {
   const v = grade?.[key];
   return typeof v === 'number' && !Number.isNaN(v) ? Math.round(v) : null;
+}
+
+const MATRIX_ACTION_TYPES = new Set([
+  'escalated',
+  'draft_submitted_for_approval',
+  'draft_approved',
+  'draft_published',
+]);
+
+function sessionInterdependency(
+  ledger: PlayerLedger,
+  intelStatus: IntelStatusEntry[],
+  executiveDecisions: Array<{
+    at_minute: number;
+    decided_by: string | null;
+    summary: string;
+    informed: string[];
+    reactions: Array<{
+      actor: string;
+      outcome: string;
+      title: string;
+      fired_minute: number | null;
+    }>;
+  }>,
+  teams: Array<{ team_name: string; member_count: number }>,
+  orgOf: (teamName: string) => string | null,
+  tPlus: (iso: string | null | undefined) => number | null,
+) {
+  return buildInterdependencyMatrix({
+    teams: teams.map((t) => ({
+      name: t.team_name,
+      org: orgOf(t.team_name),
+      staffed: t.member_count > 0,
+    })),
+    emails: ledger.players.flatMap((p) => {
+      if (!p.team_name) return [];
+      return p.entries
+        .filter((e) => e.kind === 'email')
+        .map((e) => {
+          const meta = e.metadata ?? {};
+          const to = Array.isArray(meta.recipient_teams) ? meta.recipient_teams.map(String) : [];
+          return {
+            at_minute: tPlus(e.timestamp),
+            from_team: p.team_name as string,
+            to_teams: to,
+            text: e.content,
+          };
+        });
+    }),
+    intel: intelStatus.map((i) => ({
+      title: i.source_title,
+      holder_team: i.holder_team,
+      needed_by: i.needed_by,
+      shared: i.shared,
+      shared_at_minutes: i.shared_at_minutes,
+      shared_by_team: i.shared_by_team,
+      deadline_minutes: i.deadline_minutes,
+      deadline_missed: i.deadline_missed,
+    })),
+    decisions: executiveDecisions.map((d) => ({
+      at_minute: d.at_minute,
+      by_team: d.decided_by,
+      summary: d.summary,
+      informed: d.informed,
+      reactions: d.reactions.map((r) => ({
+        actor: r.actor,
+        outcome: r.outcome,
+        title: r.title,
+        at_minute: r.fired_minute,
+      })),
+    })),
+    actions: ledger.players.flatMap((p) => {
+      if (!p.team_name) return [];
+      return p.entries
+        .filter((e) => e.kind === 'action' && MATRIX_ACTION_TYPES.has(e.action_type || ''))
+        .map((e) => {
+          const meta = e.metadata ?? {};
+          const documentTeam =
+            typeof meta.document_team === 'string'
+              ? meta.document_team
+              : typeof meta.team_name === 'string'
+                ? meta.team_name
+                : null;
+          return {
+            at_minute: tPlus(e.timestamp),
+            team: p.team_name as string,
+            action_type: e.action_type || '',
+            text: e.content,
+            document_team: documentTeam,
+          };
+        });
+    }),
+    posts: ledger.players.flatMap((p) => {
+      if (!p.team_name) return [];
+      return p.entries
+        .filter((e) => e.kind === 'post')
+        .map((e) => ({
+          at_minute: tPlus(e.timestamp),
+          team: p.team_name as string,
+          text: e.content,
+          overall: gradeNumber(e.grade, 'overall'),
+        }));
+    }),
+  });
 }
 
 // ─── Section data assembly ───────────────────────────────────────────────────
@@ -350,6 +459,15 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     is_positive: c.is_positive,
   }));
 
+  const interdependency = sessionInterdependency(
+    ledger,
+    intelStatus,
+    social.executive_decisions ?? [],
+    social.team_performance,
+    (teamName) => identityOf(teamName).org_display,
+    tPlus,
+  );
+
   const sections: SocialSectionsMap = {};
 
   // 1. Executive summary — also the data source for the report's visual layer
@@ -384,6 +502,8 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
         intel_dependencies: intelStatus.length,
         intel_shared: intelStatus.filter((i) => i.shared).length,
         intel_missed: intelStatus.filter((i) => !i.shared && i.deadline_missed).length,
+        decision_log_entries: interdependency.coverage.decision_log_count,
+        interdependency_edges: interdependency.coverage.effects,
       },
     },
     analysis: null,
@@ -655,6 +775,11 @@ export async function buildSocialSectionsData(sessionId: string): Promise<Social
     },
     analysis: null,
   };
+
+  // 8b. Who decided, and which other team it landed on. Omitted for a one-team exercise.
+  if (social.team_performance.length >= 2) {
+    sections.social_interdependency = { data: interdependency, analysis: null };
+  }
 
   // 9. Misinformation and moderation
   sections.social_misinformation = {
