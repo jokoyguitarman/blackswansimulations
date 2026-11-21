@@ -207,6 +207,16 @@
   cursor: not-allowed;
   transform: none;
 }
+.wr-btn.wr-btn--blocked {
+  opacity: 0.6;
+  cursor: pointer;
+}
+.wr-map.wr-invalid {
+  border-color: var(--danger) !important;
+  transition:
+    box-shadow 0.3s ease,
+    border-color 0.3s ease;
+}
 .wr-lbl {
   display: block;
   font-size: 11px;

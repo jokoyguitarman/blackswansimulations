@@ -9,6 +9,28 @@ import type {
   TrainerAgreementStatus,
   TrainerEnrollment,
 } from '@shared/trainerAgreements';
+import type { PageCoverage } from '@shared/sessionPageCoverage';
+
+export type SessionPageCoverageDTO = PageCoverage & { applies: boolean };
+
+export class ApiError extends Error {
+  status: number;
+  code: string | undefined;
+  body: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    status: number,
+    code: string | undefined,
+    body: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.code = code;
+    this.body = body;
+  }
+}
 
 /**
  * API Client - Centralized API calls with authentication
@@ -129,7 +151,13 @@ const handleResponse = async <T>(response: Response): Promise<T> => {
       }
     }
 
-    throw new Error(errorMessage);
+    const errorBody = error && typeof error === 'object' ? (error as Record<string, unknown>) : {};
+    throw new ApiError(
+      errorMessage,
+      response.status,
+      typeof errorBody.code === 'string' ? errorBody.code : undefined,
+      errorBody,
+    );
   }
   if (response.status === 204 || response.headers.get('content-length') === '0') {
     return {} as T;
@@ -1091,6 +1119,12 @@ export const api = {
       return handleResponse<{
         data: { total: number; ready: number; all_ready: boolean; participants: unknown[] };
       }>(await fetch(apiUrl(`/api/sessions/${sessionId}/ready-status`), { headers }));
+    },
+    getPageCoverage: async (sessionId: string) => {
+      const headers = await getAuthHeaders();
+      return handleResponse<{ data: SessionPageCoverageDTO }>(
+        await fetch(apiUrl(`/api/sessions/${sessionId}/page-coverage`), { headers }),
+      );
     },
     inviteByEmail: async (sessionId: string, email: string, role: string) => {
       const headers = await getAuthHeaders();

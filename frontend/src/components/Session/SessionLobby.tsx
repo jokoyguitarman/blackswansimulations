@@ -1,5 +1,11 @@
-import { useState, useEffect, type CSSProperties } from 'react';
-import { api } from '../../lib/api';
+import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { api, ApiError } from '../../lib/api';
+import {
+  PAGES_UNASSIGNED,
+  pageCoverageMessage,
+  type PageCoverage,
+  type PageCoverageItem,
+} from '@shared/sessionPageCoverage';
 import { BriefingView } from './BriefingView';
 import { ParticipantManagement } from './ParticipantManagement';
 import { JoinLinkPanel } from './JoinLinkPanel';
@@ -37,7 +43,7 @@ interface SessionLobbyProps {
       };
     }>;
   };
-  onStartSession?: () => void;
+  onStartSession?: () => Promise<void> | void;
   onSessionUpdate?: () => void;
 }
 
@@ -63,7 +69,14 @@ export const SessionLobby = ({
   >([]);
   const [showTeamAssignmentModal, setShowTeamAssignmentModal] = useState(false);
   const [showPageAssignmentModal, setShowPageAssignmentModal] = useState(false);
+  const [coverage, setCoverage] = useState<(PageCoverage & { applies: boolean }) | null>(null);
+  const [coverageAlert, setCoverageAlert] = useState(false);
+  const [flashPages, setFlashPages] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const pagesSectionRef = useRef<HTMLDivElement>(null);
+  const pagesHeadingRef = useRef<HTMLHeadingElement>(null);
   const isSocialSim = session.sim_mode === 'social_media';
+  const loadCoverageRef = useRef<() => void>(() => {});
   const [wsConnected, setWsConnected] = useState(false);
   const botIds = new Set(
     (session.participants || []).filter((p) => p.user?.is_bot).map((p) => p.user_id),
@@ -87,6 +100,7 @@ export const SessionLobby = ({
         unsubscribers.push(
           websocketClient.on('participant.ready_status_updated', (event) => {
             if (!isMounted) return;
+            loadCoverageRef.current();
 
             if (event.data) {
               setReadyStatus({
@@ -120,6 +134,13 @@ export const SessionLobby = ({
             if (onSessionUpdate) {
               onSessionUpdate();
             }
+          }),
+        );
+
+        unsubscribers.push(
+          websocketClient.on('session.page_assignments_updated', () => {
+            if (!isMounted) return;
+            loadCoverageRef.current();
           }),
         );
       } catch (error) {
@@ -230,9 +251,66 @@ export const SessionLobby = ({
     }
   };
 
+  const loadCoverage = useCallback(async () => {
+    if (!isTrainer || !isSocialSim) return;
+    try {
+      const result = await api.sessions.getPageCoverage(sessionId);
+      setCoverage(result.data);
+      if (result.data.covered) setCoverageAlert(false);
+    } catch (error) {
+      console.error('Failed to load page coverage:', error);
+    }
+  }, [sessionId, isTrainer, isSocialSim]);
+  loadCoverageRef.current = loadCoverage;
+
+  useEffect(() => {
+    loadCoverage();
+  }, [loadCoverage]);
+
+  const pagesBlocked = Boolean(coverage?.applies && !coverage.covered);
+  const uncoveredCount = coverage?.uncovered.length ?? 0;
+  const eligibleCount = (session.participants || []).filter(
+    (p) => p.role !== 'observer' && p.user_id !== user?.id,
+  ).length;
+
+  const revealPageProblems = () => {
+    setCoverageAlert(true);
+    setFlashPages(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const el = pagesSectionRef.current;
+        if (!el) return;
+        const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+        el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
+        pagesHeadingRef.current?.focus({ preventScroll: true });
+        if (!reduce) {
+          el.querySelectorAll<HTMLElement>('[data-page-uncovered="true"]').forEach((row) =>
+            row.animate(
+              [
+                { boxShadow: '0 0 0 0 rgba(220, 38, 38, 0.55)' },
+                { boxShadow: '0 0 0 12px rgba(220, 38, 38, 0)' },
+              ],
+              { duration: 750, iterations: 3, easing: 'ease-out' },
+            ),
+          );
+        }
+      });
+    });
+  };
+
+  useEffect(() => {
+    if (!flashPages) return;
+    const t = window.setTimeout(() => setFlashPages(false), 4000);
+    return () => window.clearTimeout(t);
+  }, [flashPages]);
+
   const handleStartSession = async () => {
     if (!readyStatus?.all_ready) {
       alert('All participants must be ready before starting the session');
+      return;
+    }
+    if (pagesBlocked) {
+      revealPageProblems();
       return;
     }
 
@@ -256,8 +334,23 @@ export const SessionLobby = ({
       }
     }
 
-    if (onStartSession) {
-      onStartSession();
+    if (!onStartSession) return;
+    setStarting(true);
+    try {
+      await onStartSession();
+    } catch (error) {
+      if (error instanceof ApiError && error.code === PAGES_UNASSIGNED) {
+        const body = error.body as { pages?: PageCoverageItem[]; uncovered?: PageCoverageItem[] };
+        setCoverage({
+          applies: true,
+          covered: false,
+          pages: body.pages ?? coverage?.pages ?? [],
+          uncovered: body.uncovered ?? [],
+        });
+        revealPageProblems();
+      }
+    } finally {
+      setStarting(false);
     }
   };
 
@@ -364,16 +457,62 @@ export const SessionLobby = ({
                 ))}
               </div>
             )}
+            {coverageAlert && pagesBlocked && coverage && (
+              <div
+                className="wr-lockstrip locked"
+                role="alert"
+                style={{ borderColor: 'var(--danger)' }}
+              >
+                <WrIcon name="alert" size={16} className="mt-0.5" />
+                <div className="flex-1">
+                  <div className="font-bold">Session can't start yet</div>
+                  <div>{pageCoverageMessage(coverage.uncovered)}</div>
+                  {eligibleCount < coverage.pages.length && (
+                    <div className="text-xs text-muted mt-1">
+                      Each person can run only one page. You have {eligibleCount} player(s) for{' '}
+                      {coverage.pages.length} pages — add AI teammates to fill the gap.
+                    </div>
+                  )}
+                </div>
+                <button type="button" className="wr-btn" onClick={revealPageProblems}>
+                  Show me
+                </button>
+                <button
+                  type="button"
+                  className="wr-btn ghost"
+                  aria-label="Dismiss"
+                  onClick={() => setCoverageAlert(false)}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             <button
               onClick={handleStartSession}
-              disabled={!readyStatus.all_ready}
-              className="wr-btn accent lg w-full"
+              disabled={starting || !readyStatus.all_ready}
+              aria-disabled={pagesBlocked && readyStatus.all_ready && !starting ? true : undefined}
+              aria-describedby={pagesBlocked ? 'lobby-pages-gate-note' : undefined}
+              className={`wr-btn accent lg w-full${pagesBlocked && readyStatus.all_ready && !starting ? ' wr-btn--blocked' : ''}`}
             >
               <WrIcon name="play" />
-              {readyStatus.all_ready
-                ? 'Start session'
-                : `Waiting · ${readyStatus.total - readyStatus.ready} participant${readyStatus.total - readyStatus.ready === 1 ? '' : 's'} not ready`}
+              {starting
+                ? 'Starting…'
+                : !readyStatus.all_ready
+                  ? `Waiting · ${readyStatus.total - readyStatus.ready} participant${readyStatus.total - readyStatus.ready === 1 ? '' : 's'} not ready`
+                  : pagesBlocked
+                    ? `Start session · ${uncoveredCount} page${uncoveredCount === 1 ? '' : 's'} need${uncoveredCount === 1 ? 's' : ''} a player`
+                    : 'Start session'}
             </button>
+            {pagesBlocked && (
+              <div id="lobby-pages-gate-note" className="wr-note">
+                <WrIcon name="alert" size={13} />
+                <span>
+                  {uncoveredCount} page{uncoveredCount === 1 ? '' : 's'} still need
+                  {uncoveredCount === 1 ? 's' : ''} a player. Every page must have someone assigned
+                  before you can start.
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -418,6 +557,7 @@ export const SessionLobby = ({
               onChanged={() => {
                 loadReadyStatus();
                 loadMyTeams();
+                loadCoverage();
                 if (onSessionUpdate) onSessionUpdate();
               }}
             />
@@ -440,6 +580,70 @@ export const SessionLobby = ({
             </div>
           )}
       </div>
+
+      {isTrainer && isSocialSim && coverage?.applies && coverage.pages.length > 0 && (
+        <div
+          ref={pagesSectionRef}
+          id="lobby-page-assignments"
+          className={`wr-map${flashPages ? ' wr-invalid' : ''}`}
+          aria-labelledby="lobby-page-assignments-title"
+        >
+          <div
+            className="wr-sech"
+            style={{ margin: '0 0 12px', '--g': 'var(--f-org)' } as CSSProperties}
+          >
+            <h2 id="lobby-page-assignments-title" ref={pagesHeadingRef} tabIndex={-1}>
+              <WrIcon name="phone" size={16} /> Page assignments
+              <span className="n">
+                {coverage.pages.length - coverage.uncovered.length} / {coverage.pages.length}
+              </span>
+            </h2>
+            <p>
+              Every organisation page needs at least one player or AI teammate before the session
+              can start.
+            </p>
+            <div className="ml-auto">
+              <button onClick={() => setShowPageAssignmentModal(true)} className="wr-btn accent">
+                <WrIcon name="phone" /> Manage pages
+              </button>
+            </div>
+          </div>
+          {coverage.uncovered.length > 0 && (
+            <div className="wr-note" style={{ margin: '0 0 12px' }}>
+              <WrIcon name="alert" size={13} />
+              <span>{pageCoverageMessage(coverage.uncovered)}</span>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {coverage.pages.map((pg) => {
+              const missing = pg.assignees.length === 0;
+              return (
+                <div
+                  key={pg.org_key}
+                  data-page-uncovered={missing ? 'true' : 'false'}
+                  className={`wr-node${missing ? ' wr-invalid' : ''}`}
+                  style={{ '--g': missing ? 'var(--danger)' : 'var(--success)' } as CSSProperties}
+                >
+                  <div className="font-extrabold text-ink text-sm truncate" title={pg.display_name}>
+                    {pg.display_name}
+                    {pg.is_primary ? ' · crisis page' : ''}
+                  </div>
+                  {missing ? (
+                    <div className="wr-note">
+                      <WrIcon name="alert" size={13} />
+                      <span>Nobody assigned</span>
+                    </div>
+                  ) : (
+                    <div className="text-xs text-muted mt-1">
+                      {pg.assignees.map((a) => a.full_name + (a.is_bot ? ' (AI)' : '')).join(', ')}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Team assignments */}
       <div className="wr-map">
@@ -617,6 +821,7 @@ export const SessionLobby = ({
               loadReadyStatus();
               // Reload team assignments
               loadMyTeams();
+              loadCoverage();
               // Call parent update callback if provided
               if (onSessionUpdate) {
                 onSessionUpdate();
@@ -633,6 +838,7 @@ export const SessionLobby = ({
           onClose={() => setShowTeamAssignmentModal(false)}
           onSuccess={() => {
             loadMyTeams();
+            loadCoverage();
             if (onSessionUpdate) {
               onSessionUpdate();
             }
@@ -644,8 +850,12 @@ export const SessionLobby = ({
       {showPageAssignmentModal && (
         <PageAssignmentModal
           sessionId={sessionId}
-          onClose={() => setShowPageAssignmentModal(false)}
+          onClose={() => {
+            setShowPageAssignmentModal(false);
+            loadCoverage();
+          }}
           onSuccess={() => {
+            loadCoverage();
             if (onSessionUpdate) {
               onSessionUpdate();
             }

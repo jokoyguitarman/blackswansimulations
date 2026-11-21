@@ -84,6 +84,8 @@ export interface Situation {
     displayName: string;
     handle: string;
     address: string;
+    /** Directory address and the legacy address, when the directory has one. */
+    addresses: string[];
     teamName: string | null;
     isPageHolder: boolean;
     pageHandle: string | null;
@@ -340,15 +342,21 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
   // Addresses come from the session directory (per-organisation domains,
   // docs/session-bugfix-spec-2026-09-20.md §10.3); the local derivation is only a fallback.
   const addressByUser = new Map<string, string>();
+  const legacyAddressByUser = new Map<string, string>();
   try {
     const { getSessionPlayerDirectory } = await import('../playerDirectoryService.js');
     for (const d of await getSessionPlayerDirectory(sessionCtx.sessionId)) {
       addressByUser.set(d.user_id, d.address);
+      if (d.legacy_address) legacyAddressByUser.set(d.user_id, d.legacy_address);
     }
   } catch {
     /* fall back to the local derivation */
   }
   const address = addressByUser.get(userId) ?? simAddressFor(displayName);
+  const myAddressList = [address, legacyAddressByUser.get(userId)].filter((a): a is string =>
+    Boolean(a),
+  );
+  const myAddresses = new Set(myAddressList.map((a) => a.toLowerCase()));
 
   // Teams and teammates.
   const teams = new Map<string, Teammate[]>();
@@ -458,7 +466,11 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
     (Array.isArray(e.target_teams) && e.target_teams.length > 0 && Boolean(e.inject_id));
   const priorityRank = (e: SimEmail) =>
     e.priority === 'urgent' || e.priority === 'high' ? 0 : e.priority === 'normal' ? 1 : 2;
+  const addressedToMe = (list: string[] | null | undefined) =>
+    (list ?? []).some((a) => myAddresses.has(a.toLowerCase()));
+  const ccOnly = (e: SimEmail) => addressedToMe(e.cc_addresses) && !addressedToMe(e.to_addresses);
   const unanswered = inboundToMe
+    .filter((e) => !ccOnly(e))
     .filter((e) => !repliedTo.has(e.id) && !memory.repliedEmails.has(e.id))
     .filter((e) => (e.from_address ?? '').toLowerCase() !== 'system@sim.local')
     .sort((a, b) => {
@@ -645,6 +657,7 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
       displayName,
       handle,
       address,
+      addresses: myAddressList,
       teamName,
       isPageHolder: Boolean(myPage),
       pageHandle,
