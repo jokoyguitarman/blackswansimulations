@@ -1456,7 +1456,12 @@ router.patch(
         return res.status(403).json({ error: 'Access denied' });
       }
 
-      if (status === 'in_progress' && session.status === 'scheduled' && !session.start_time) {
+      const previousStatus = session.status as string;
+      // First start from any status. Pausing a scheduled session does not set
+      // start_time, so scheduled → paused → in_progress must still be gated.
+      const claimingStart = status === 'in_progress' && !session.start_time;
+
+      if (claimingStart) {
         const coverage = await getSessionPageCoverage(id);
         if (coverage.applies && !coverage.covered) {
           logger.info(
@@ -1479,10 +1484,33 @@ router.patch(
       if (auto_complete_on_objectives !== undefined)
         updates.auto_complete_on_objectives = auto_complete_on_objectives;
 
-      if (status === 'in_progress' && !session.start_time) {
+      if (claimingStart) {
         updates.start_time = new Date().toISOString();
+      }
+      if (status === 'completed' || status === 'cancelled') {
+        updates.end_time = new Date().toISOString();
+      }
 
+      // Claim the row before start side effects, so a second click cannot run them too.
+      let updateBuilder = supabaseAdmin.from('sessions').update(updates).eq('id', id);
+      if (claimingStart) {
+        updateBuilder = updateBuilder.eq('status', previousStatus).is('start_time', null);
+      }
+      const updated = await updateBuilder.select().single();
+      const error = updated.error;
+      let data = updated.data;
+
+      if (error) {
+        if (claimingStart && error.code === 'PGRST116') {
+          return res.status(409).json({ error: 'Session already started' });
+        }
+        logger.error({ error, sessionId: id }, 'Failed to update session');
+        return res.status(500).json({ error: 'Failed to update session' });
+      }
+
+      if (claimingStart && data) {
         const scenarioId = (session as { scenario_id?: string }).scenario_id;
+        let nextState: Record<string, unknown> | null = null;
 
         // Re-sync scenario content into the session at START (not create).
         // current_state was snapshotted from scenario.initial_state when the
@@ -1508,7 +1536,7 @@ router.patch(
                 ((sessionRow?.current_state ?? {}) as Record<string, unknown>) || {};
               // Scenario keys overwrite their stale snapshots; runtime-only
               // keys (absent from initial_state) are preserved as-is.
-              updates.current_state = { ...currentState, ...liveInitial };
+              nextState = { ...currentState, ...liveInitial };
 
               if (liveScenario.category === 'social_media_crisis') {
                 const { seedOrgPages } = await import('../services/ambientContentService.js');
@@ -1558,6 +1586,26 @@ router.patch(
             'Failed to initialize session gate progress, continuing with session start',
           );
         }
+
+        // Write the re-synced scenario state before the environmental seed, which
+        // reads current_state and merges its own keys on top.
+        if (nextState) {
+          const follow = await supabaseAdmin
+            .from('sessions')
+            .update({ current_state: nextState })
+            .eq('id', id)
+            .select()
+            .single();
+          if (follow.error) {
+            logger.error(
+              { error: follow.error, sessionId: id },
+              'Failed to write re-synced scenario state after claiming the start',
+            );
+          } else if (follow.data) {
+            data = follow.data;
+          }
+        }
+
         // Load pre-authored environmental seed (one random variant) into session state
         try {
           await loadAndApplyEnvironmentalState(id);
@@ -1567,26 +1615,6 @@ router.patch(
             'Failed to load environmental state, continuing with session start',
           );
         }
-      }
-      if (status === 'completed' || status === 'cancelled') {
-        updates.end_time = new Date().toISOString();
-      }
-
-      const previousStatus = (session as { status?: string }).status;
-      const startingFromScheduled = status === 'in_progress' && previousStatus === 'scheduled';
-      const updateBuilder = supabaseAdmin.from('sessions').update(updates).eq('id', id);
-      const { data, error } = await (
-        startingFromScheduled ? updateBuilder.eq('status', 'scheduled') : updateBuilder
-      )
-        .select()
-        .single();
-
-      if (error) {
-        if (startingFromScheduled && error.code === 'PGRST116') {
-          return res.status(409).json({ error: 'Session already started' });
-        }
-        logger.error({ error, sessionId: id }, 'Failed to update session');
-        return res.status(500).json({ error: 'Failed to update session' });
       }
 
       // Snapshot final state when session completes so counters persist for AAR review
@@ -1669,8 +1697,9 @@ router.patch(
         }
       }
 
-      // Broadcast session start event so lobby clients auto-transition
-      if (status === 'in_progress' && previousStatus === 'scheduled') {
+      // Broadcast the first start (including a never-started session that was paused).
+      // A later resume already has start_time, so claimingStart is false.
+      if (claimingStart) {
         try {
           getWebSocketService().sessionStarted(id, {
             session_id: id,

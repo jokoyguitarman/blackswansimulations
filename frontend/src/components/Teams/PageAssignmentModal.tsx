@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { api } from '../../lib/api';
-import { computePageCoverage, isPlayerRunPage } from '@shared/sessionPageCoverage';
+import {
+  computePageCoverage,
+  isPlayerRunPage,
+  type PageCoverageItem,
+} from '@shared/sessionPageCoverage';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 function apiUrl(path: string): string {
@@ -27,6 +31,7 @@ interface PageAssignmentModalProps {
 
 interface Participant {
   user_id: string;
+  role?: string | null;
   user?: { id: string; full_name: string };
 }
 
@@ -51,22 +56,54 @@ export const PageAssignmentModal = ({
   const [pages, setPages] = useState<OrgPage[]>([]);
   // userId -> org_key ('' = none)
   const [selection, setSelection] = useState<Record<string, string>>({});
+  const [trainerId, setTrainerId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
       const sessionResult = await api.sessions.get(sessionId);
-      const session = sessionResult.data as { participants?: Participant[] };
+      const session = sessionResult.data as {
+        trainer_id?: string | null;
+        participants?: Participant[];
+      };
       const parts = session?.participants || [];
       setParticipants(parts);
+      setTrainerId(session?.trainer_id ?? null);
+
+      let coveragePages: PageCoverageItem[] = [];
+      try {
+        const coverage = await api.sessions.getPageCoverage(sessionId);
+        if (coverage.data.applies) coveragePages = coverage.data.pages;
+      } catch (coverageError) {
+        console.error('Failed to load page coverage for the assignment modal:', coverageError);
+      }
 
       const headers = await getAuthHeaders();
       const res = await fetch(apiUrl(`/api/social/pages/session/${sessionId}`), { headers });
       const json = await res.json();
-      // Players may only be assigned protagonist pages run by players; antagonist (rival)
-      // and pressure (union / regulator / NGO) pages are trainer/AI-driven, and AI-operated
-      // offices have nobody to assign — all excluded from the assignment pool.
-      const loadedPages = ((json.data || []) as OrgPage[]).filter((pg) => isPlayerRunPage(pg));
+      // Same player-run set as the start gate. Coverage supplies the scenario's
+      // display names and drops orgs removed from the scenario.
+      const coverageByKey = new Map(coveragePages.map((p) => [p.org_key, p]));
+      let loadedPages = ((json.data || []) as OrgPage[]).filter((pg) => isPlayerRunPage(pg));
+      if (coverageByKey.size > 0) {
+        loadedPages = loadedPages
+          .filter((pg) => coverageByKey.has(pg.org_key))
+          .map((pg) => ({
+            ...pg,
+            display_name: coverageByKey.get(pg.org_key)?.display_name || pg.display_name,
+            is_primary: coverageByKey.get(pg.org_key)?.is_primary ?? pg.is_primary,
+          }));
+        for (const page of coveragePages) {
+          if (loadedPages.some((pg) => pg.org_key === page.org_key)) continue;
+          loadedPages.push({
+            org_key: page.org_key,
+            display_name: page.display_name,
+            is_primary: page.is_primary,
+            role: 'protagonist',
+            controllers: [],
+          });
+        }
+      }
       setPages(loadedPages);
 
       const initial: Record<string, string> = {};
@@ -136,8 +173,10 @@ export const PageAssignmentModal = ({
     ),
     participants: participants.map((p) => ({
       user_id: p.user_id,
+      role: p.role,
       full_name: p.user?.full_name,
     })),
+    trainerId,
   });
 
   if (loading) {

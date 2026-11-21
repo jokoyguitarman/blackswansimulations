@@ -608,6 +608,12 @@ export const SessionLobby = ({
               </button>
             </div>
           </div>
+          {coverage.uncovered.length > 0 && (
+            <div className="wr-note" style={{ margin: '0 0 12px' }}>
+              <WrIcon name="alert" size={13} />
+              <span>{pageCoverageMessage(coverage.uncovered)}</span>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {coverage.pages.map((pg) => {
               const missing = pg.assignees.length === 0;

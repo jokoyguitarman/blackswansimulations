@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useRoleVisibility } from '../../hooks/useRoleVisibility';
+import { useAuth } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { readAppIntent, isDesktopPath } from '../../lib/appIntents';
 import { useDeviceNav } from '../../lib/deviceNav';
@@ -82,6 +83,7 @@ export default function EmailApp() {
   const navigate = useNavigate();
   const deviceNav = useDeviceNav('email');
   const { isTrainer } = useRoleVisibility();
+  const { user } = useAuth();
   const [emails, setEmails] = useState<SimEmail[]>([]);
   const [selectedEmail, setSelectedEmail] = useState<SimEmail | null>(null);
   const [composing, setComposing] = useState(false);
@@ -116,8 +118,18 @@ export default function EmailApp() {
       .filter((e) => currentUserId && e.sent_by_player_id === currentUserId)
       .map((e) => e.from_address),
   ]);
-  const labelAddress = (address: string) =>
-    contacts.find((c) => c.address.toLowerCase() === address.toLowerCase())?.name || address;
+  const myName = user?.displayName?.trim() || '';
+  const selfAddressKeys = new Set(mySelfAddresses.map((a) => a.toLowerCase()));
+  const labelAddress = (address: string) => {
+    if (myName && selfAddressKeys.has(address.toLowerCase())) return myName;
+    return contacts.find((c) => c.address.toLowerCase() === address.toLowerCase())?.name || address;
+  };
+  const outgoing = normalizeRecipients(
+    [...toChips, ...splitAddresses(replyData.to)],
+    splitAddresses(ccText),
+    mySelfAddresses,
+  );
+  const canSend = outgoing.to.length > 0 && replyData.body.trim().length > 0;
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -335,7 +347,11 @@ export default function EmailApp() {
           forwarded_email_id: forwardingEmailId || undefined,
         }),
       });
-      if (!res.ok) return;
+      if (!res.ok) {
+        const body = (await res.json().catch(() => ({}))) as { error?: unknown };
+        alert(typeof body.error === 'string' ? body.error : 'Failed to send email');
+        return;
+      }
       setComposing(false);
       setReplying(false);
       setReplyTargetId(null);
@@ -349,7 +365,7 @@ export default function EmailApp() {
       }
       loadEmails();
     } catch {
-      /* ignore */
+      alert('Failed to send email');
     }
   }
 
@@ -537,8 +553,14 @@ export default function EmailApp() {
           <span className="text-[17px] font-semibold" style={{ color: '#000000' }}>
             {forwardingEmailId ? 'Forward' : 'New Message'}
           </span>
-          <button onClick={sendEmail} className="ios-btn-bounce" style={{ color: '#007AFF' }}>
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF">
+          <button
+            onClick={sendEmail}
+            disabled={!canSend}
+            aria-disabled={!canSend}
+            className="ios-btn-bounce"
+            style={{ color: canSend ? '#007AFF' : '#8E8E93' }}
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill={canSend ? '#007AFF' : '#8E8E93'}>
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
             </svg>
           </button>
@@ -818,8 +840,19 @@ export default function EmailApp() {
           </button>
           <div className="flex items-center gap-5" style={{ color: '#007AFF' }}>
             {replying ? (
-              <button data-testid="mail-send" onClick={sendEmail} className="ios-btn-bounce">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="#007AFF">
+              <button
+                data-testid="mail-send"
+                onClick={sendEmail}
+                disabled={!canSend}
+                aria-disabled={!canSend}
+                className="ios-btn-bounce"
+              >
+                <svg
+                  width="22"
+                  height="22"
+                  viewBox="0 0 24 24"
+                  fill={canSend ? '#007AFF' : '#8E8E93'}
+                >
                   <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                 </svg>
               </button>

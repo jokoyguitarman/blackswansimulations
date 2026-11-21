@@ -25,10 +25,13 @@ const NOT_APPLICABLE: SessionPageCoverage = {
 export async function getSessionPageCoverage(sessionId: string): Promise<SessionPageCoverage> {
   const { data: session } = await supabaseAdmin
     .from('sessions')
-    .select('id, trainer_id, scenario_id, sim_mode, status, join_token')
+    .select('id, trainer_id, scenario_id, sim_mode, status, start_time, join_token')
     .eq('id', sessionId)
     .maybeSingle();
-  if (!session || session.status !== 'scheduled') return NOT_APPLICABLE;
+  // Applies until the session has actually started. A scheduled → paused detour
+  // leaves start_time null, so it must still be gated. A real pause/resume
+  // already has start_time and is not gated, and must not be re-seeded.
+  if (!session || session.start_time) return NOT_APPLICABLE;
   if (isBoothJoinToken(session.join_token as string | null)) return NOT_APPLICABLE;
 
   const { data: scenario } = session.scenario_id

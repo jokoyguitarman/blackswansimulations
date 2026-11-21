@@ -113,6 +113,7 @@ function situation(over: Partial<Situation> = {}, team = 'Communications'): Situ
       displayName: 'Nurul Aisyah Rahim',
       handle: '@nurul_aisyah_rahim',
       address: 'nurul.aisyah.rahim@crisisresponse.sim',
+      addresses: ['nurul.aisyah.rahim@crisisresponse.sim'],
       teamName: team,
       isPageHolder: canPost,
       pageHandle: canPost ? '@amp' : null,

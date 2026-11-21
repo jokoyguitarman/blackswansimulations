@@ -207,7 +207,7 @@ export async function execute(action: BotAction, ctx: ExecContext): Promise<Exec
           (action.subject && action.subject.trim()) || `Re: ${email.subject}`.slice(0, 480);
         const auto = buildReplyRecipients(email, {
           all: true,
-          selfAddresses: [sit.me.address],
+          selfAddresses: sit.me.addresses.length > 0 ? sit.me.addresses : [sit.me.address],
           currentUserId: api.userId,
         });
         const to = action.to?.length ? action.to : auto.to.length ? auto.to : [email.from_address];
