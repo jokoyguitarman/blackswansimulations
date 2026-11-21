@@ -5,7 +5,7 @@ import { requireAuth, type AuthenticatedRequest } from '../middleware/auth.js';
 import { supabaseAdmin } from '../lib/supabaseAdmin.js';
 import { logger } from '../lib/logger.js';
 import { validate, schemas } from '../lib/validation.js';
-import { assertSessionAccess } from '../lib/access.js';
+import { assertSessionAccess, assertSessionOwner } from '../lib/access.js';
 import { createDefaultChannels } from '../services/channelService.js';
 import { sendInvitationEmail, sendPendingInvitationEmail } from '../services/emailService.js';
 import { initializeSessionObjectives } from '../services/objectiveTrackingService.js';
@@ -32,6 +32,8 @@ import {
   createSupabaseIdleSweepStore,
   recordKeepalive,
 } from '../services/sessionIdleSweeper.js';
+import { getSessionPageCoverage } from '../services/pageCoverageService.js';
+import { PAGES_UNASSIGNED, pageCoverageMessage } from '../../shared/sessionPageCoverage.js';
 
 const router = Router();
 
@@ -945,8 +947,7 @@ router.get(
               }>,
               de_escalation_factors: (latestFactors as { de_escalation_factors?: unknown })
                 .de_escalation_factors as
-                | Array<{ id: string; name: string; description: string }>
-                | undefined,
+                Array<{ id: string; name: string; description: string }> | undefined,
             }
           : null,
         pathways: latestPathways
@@ -1455,6 +1456,22 @@ router.patch(
         return res.status(403).json({ error: 'Access denied' });
       }
 
+      if (status === 'in_progress' && session.status === 'scheduled' && !session.start_time) {
+        const coverage = await getSessionPageCoverage(id);
+        if (coverage.applies && !coverage.covered) {
+          logger.info(
+            { sessionId: id, uncovered: coverage.uncovered.map((p) => p.org_key) },
+            'Session start blocked: pages without an assignee',
+          );
+          return res.status(409).json({
+            error: pageCoverageMessage(coverage.uncovered),
+            code: PAGES_UNASSIGNED,
+            uncovered: coverage.uncovered,
+            pages: coverage.pages,
+          });
+        }
+      }
+
       const updates: Record<string, unknown> = {};
       if (status !== undefined) updates.status = status;
       if (trainer_instructions !== undefined) updates.trainer_instructions = trainer_instructions;
@@ -1556,14 +1573,18 @@ router.patch(
       }
 
       const previousStatus = (session as { status?: string }).status;
-      const { data, error } = await supabaseAdmin
-        .from('sessions')
-        .update(updates)
-        .eq('id', id)
+      const startingFromScheduled = status === 'in_progress' && previousStatus === 'scheduled';
+      const updateBuilder = supabaseAdmin.from('sessions').update(updates).eq('id', id);
+      const { data, error } = await (
+        startingFromScheduled ? updateBuilder.eq('status', 'scheduled') : updateBuilder
+      )
         .select()
         .single();
 
       if (error) {
+        if (startingFromScheduled && error.code === 'PGRST116') {
+          return res.status(409).json({ error: 'Session already started' });
+        }
         logger.error({ error, sessionId: id }, 'Failed to update session');
         return res.status(500).json({ error: 'Failed to update session' });
       }
@@ -1882,6 +1903,12 @@ router.delete(
         logger.error({ error, sessionId: id, userId }, 'Failed to remove participant');
         return res.status(500).json({ error: 'Failed to remove participant' });
       }
+
+      await supabaseAdmin
+        .from('session_page_controllers')
+        .delete()
+        .eq('session_id', id)
+        .eq('user_id', userId);
 
       logger.info({ sessionId: id, userId, trainerId: user.id }, 'Participant removed');
       res.json({ success: true });
@@ -2361,6 +2388,23 @@ router.get(
       });
     } catch (err) {
       logger.error({ error: err }, 'Error in GET /sessions/:id/ready-status');
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  },
+);
+
+router.get(
+  '/:id/page-coverage',
+  requireAuth,
+  validate(schemas.id),
+  async (req: AuthenticatedRequest, res) => {
+    try {
+      const access = await assertSessionOwner(req.params.id, req.user!);
+      if (!access.ok) return res.status(access.status).json({ error: access.error });
+      const coverage = await getSessionPageCoverage(req.params.id);
+      res.json({ data: coverage });
+    } catch (err) {
+      logger.error({ error: err }, 'Error in GET /sessions/:id/page-coverage');
       res.status(500).json({ error: 'Internal server error' });
     }
   },

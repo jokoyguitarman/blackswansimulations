@@ -462,6 +462,19 @@ export async function flipUnstaffedOrgsToAi(sessionId: string): Promise<string[]
     .select('team_name, org_key')
     .eq('scenario_id', scenario?.id as string);
   const staffedTeams = new Set((teams || []).map((t) => String(t.team_name)));
+  const [{ data: controllerRows }, { data: participantRows }] = await Promise.all([
+    supabaseAdmin
+      .from('session_page_controllers')
+      .select('org_key, user_id')
+      .eq('session_id', sessionId),
+    supabaseAdmin.from('session_participants').select('user_id').eq('session_id', sessionId),
+  ]);
+  const present = new Set((participantRows ?? []).map((p) => String(p.user_id)));
+  const heldOrgs = new Set(
+    (controllerRows ?? [])
+      .filter((c) => present.has(String(c.user_id)))
+      .map((c) => String(c.org_key)),
+  );
   const flipped: string[] = [];
   for (const org of protagonists) {
     const orgTeams = (scenarioTeams || [])
@@ -469,6 +482,7 @@ export async function flipUnstaffedOrgsToAi(sessionId: string): Promise<string[]
       .map((t) => String(t.team_name));
     if (orgTeams.length === 0) continue;
     if (orgTeams.some((t) => staffedTeams.has(t))) continue;
+    if (heldOrgs.has(org.org_key)) continue;
     const { error } = await supabaseAdmin
       .from('sim_org_pages')
       .update({ control_mode: 'ai' })

@@ -5,6 +5,12 @@ import { useRoleVisibility } from '../../hooks/useRoleVisibility';
 import { supabase } from '../../lib/supabase';
 import { readAppIntent, isDesktopPath } from '../../lib/appIntents';
 import { useDeviceNav } from '../../lib/deviceNav';
+import {
+  buildReplyRecipients,
+  dedupeAddresses,
+  normalizeRecipients,
+  splitAddresses,
+} from '@shared/emailRecipients';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || '';
 
@@ -30,6 +36,7 @@ interface SimEmail {
   from_address: string;
   from_name: string;
   to_addresses: string[];
+  cc_addresses?: string[] | null;
   subject: string;
   body_text: string;
   body_html: string;
@@ -51,27 +58,6 @@ interface EmailDraft {
   body: string;
   replyToId?: string;
   savedAt: string;
-}
-
-/** Split a free-text recipient field on commas/semicolons into addresses. */
-function splitAddresses(raw: string): string[] {
-  return raw
-    .split(/[,;]/)
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/** Case-insensitive dedupe preserving first occurrence. */
-function dedupeAddresses(addresses: string[]): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const a of addresses) {
-    const key = a.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(a);
-  }
-  return out;
 }
 
 function getDraftsKey(sessionId: string): string {
@@ -109,6 +95,8 @@ export default function EmailApp() {
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [forwardingEmailId, setForwardingEmailId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [selfAddresses, setSelfAddresses] = useState<string[]>([]);
+  const [replyTargetId, setReplyTargetId] = useState<string | null>(null);
   const replyRef = useRef<HTMLTextAreaElement>(null);
   const [contacts, setContacts] = useState<
     Array<{
@@ -122,6 +110,14 @@ export default function EmailApp() {
     }>
   >([]);
   const [showContactDropdown, setShowContactDropdown] = useState(false);
+  const mySelfAddresses = dedupeAddresses([
+    ...selfAddresses,
+    ...emails
+      .filter((e) => currentUserId && e.sent_by_player_id === currentUserId)
+      .map((e) => e.from_address),
+  ]);
+  const labelAddress = (address: string) =>
+    contacts.find((c) => c.address.toLowerCase() === address.toLowerCase())?.name || address;
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -138,6 +134,7 @@ export default function EmailApp() {
     if (!to) return;
     setComposing(true);
     setReplying(false);
+    setReplyTargetId(null);
     setSelectedEmail(null);
     setToChips(dedupeAddresses([to]));
     setReplyData({ to: '', subject: intent?.subject ?? '', body: '' });
@@ -286,6 +283,7 @@ export default function EmailApp() {
       const res = await fetch(apiUrl(`/api/social/emails/session/${sessionId}`), { headers });
       const result = await res.json();
       if (result.data) setEmails(result.data);
+      if (Array.isArray(result.self_addresses)) setSelfAddresses(result.self_addresses);
     } catch {
       /* ignore */
     }
@@ -316,14 +314,15 @@ export default function EmailApp() {
   }
 
   async function sendEmail() {
-    const toAddresses = dedupeAddresses([...toChips, ...splitAddresses(replyData.to)]);
-    const ccAddresses = dedupeAddresses(splitAddresses(ccText)).filter(
-      (a) => !toAddresses.some((t) => t.toLowerCase() === a.toLowerCase()),
+    const { to: toAddresses, cc: ccAddresses } = normalizeRecipients(
+      [...toChips, ...splitAddresses(replyData.to)],
+      splitAddresses(ccText),
+      mySelfAddresses,
     );
     if (!replyData.body.trim() || toAddresses.length === 0 || !sessionId) return;
     try {
       const headers = await getAuthHeaders();
-      await fetch(apiUrl('/api/social/emails'), {
+      const res = await fetch(apiUrl('/api/social/emails'), {
         method: 'POST',
         headers,
         body: JSON.stringify({
@@ -332,12 +331,14 @@ export default function EmailApp() {
           ...(ccAddresses.length > 0 ? { cc_addresses: ccAddresses } : {}),
           subject: replyData.subject || '(No Subject)',
           body_text: replyData.body,
-          replied_to_id: selectedEmail?.id,
+          replied_to_id: replying ? (replyTargetId ?? selectedEmail?.id) : selectedEmail?.id,
           forwarded_email_id: forwardingEmailId || undefined,
         }),
       });
+      if (!res.ok) return;
       setComposing(false);
       setReplying(false);
+      setReplyTargetId(null);
       setReplyData({ to: '', subject: '', body: '' });
       setToChips([]);
       setCcText('');
@@ -425,19 +426,29 @@ export default function EmailApp() {
   function openEmail(email: SimEmail) {
     setSelectedEmail(email);
     setReplying(false);
+    setCcText('');
+    setReplyData({ to: '', subject: '', body: '' });
+    setReplyTargetId(null);
+    if (contacts.length === 0) loadContacts();
     if (!email.is_read) markRead(email.id);
   }
 
-  function startReply() {
+  function startReply(all = false) {
     if (!selectedEmail) return;
+    const thread = getThreadEmails(selectedEmail);
+    const target = thread[thread.length - 1] ?? selectedEmail;
+    const { to, cc } = buildReplyRecipients(target, {
+      all,
+      selfAddresses: mySelfAddresses,
+      currentUserId,
+    });
+    setReplyTargetId(target.id);
     setReplying(true);
     setToChips([]);
-    setCcText('');
+    setCcText(cc.join(', '));
     setReplyData({
-      to: selectedEmail.from_address,
-      subject: selectedEmail.subject.startsWith('RE:')
-        ? selectedEmail.subject
-        : `RE: ${selectedEmail.subject}`,
+      to: to.join(', '),
+      subject: target.subject.startsWith('RE:') ? target.subject : `RE: ${target.subject}`,
       body: '',
     });
     setTimeout(() => replyRef.current?.focus(), 100);
@@ -466,6 +477,7 @@ export default function EmailApp() {
     });
     setSelectedEmail(null);
     setReplying(false);
+    setReplyTargetId(null);
     setComposing(true);
     loadContacts();
   }
@@ -756,6 +768,19 @@ export default function EmailApp() {
     const threadEmails = getThreadEmails(selectedEmail);
     const detailCategoryBadge = getCategoryBadge(selectedEmail.email_category);
     const threadSubject = threadEmails[0]?.subject || selectedEmail.subject;
+    const lastInThread = threadEmails[threadEmails.length - 1] ?? selectedEmail;
+    const replyOne = buildReplyRecipients(lastInThread, {
+      all: false,
+      selfAddresses: mySelfAddresses,
+      currentUserId,
+    });
+    const replyAllSet = buildReplyRecipients(lastInThread, {
+      all: true,
+      selfAddresses: mySelfAddresses,
+      currentUserId,
+    });
+    const showReplyAll =
+      replyAllSet.to.length + replyAllSet.cc.length > replyOne.to.length + replyOne.cc.length;
 
     return (
       <div className="h-full flex flex-col" style={{ backgroundColor: '#FFFFFF' }}>
@@ -773,6 +798,9 @@ export default function EmailApp() {
             onClick={() => {
               setSelectedEmail(null);
               setReplying(false);
+              setCcText('');
+              setReplyData({ to: '', subject: '', body: '' });
+              setReplyTargetId(null);
             }}
             className="flex items-center gap-0.5 ios-btn-bounce"
             style={{ color: '#007AFF' }}
@@ -846,10 +874,38 @@ export default function EmailApp() {
           {/* Inline Reply Compose (shown at top when replying) */}
           {replying && (
             <>
-              <div className="px-4 pt-4 pb-2">
-                <p className="text-[13px]" style={{ color: '#8E8E93' }}>
-                  To: {replyData.to}
-                </p>
+              <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
+                <div className="flex items-center px-4 py-2.5">
+                  <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+                    To:
+                  </span>
+                  <input
+                    data-testid="mail-reply-to"
+                    value={replyData.to}
+                    onChange={(e) => setReplyData({ ...replyData, to: e.target.value })}
+                    className="flex-1 text-[15px] outline-none"
+                    style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+                    autoComplete="off"
+                    name={`sim-mail-reply-to-${sessionId ?? 'session'}`}
+                  />
+                </div>
+              </div>
+              <div style={{ borderBottom: '0.5px solid rgba(60,60,67,0.12)' }}>
+                <div className="flex items-center px-4 py-2.5">
+                  <span className="text-[15px] w-16" style={{ color: '#8E8E93' }}>
+                    Cc:
+                  </span>
+                  <input
+                    data-testid="mail-reply-cc"
+                    value={ccText}
+                    onChange={(e) => setCcText(e.target.value)}
+                    placeholder="Optional, comma-separated"
+                    className="flex-1 text-[15px] outline-none"
+                    style={{ color: '#000000', backgroundColor: '#FFFFFF' }}
+                    autoComplete="off"
+                    name={`sim-mail-reply-cc-${sessionId ?? 'session'}`}
+                  />
+                </div>
               </div>
               <div className="px-4 pb-3">
                 <textarea
@@ -914,6 +970,12 @@ export default function EmailApp() {
                     <p className="text-[12px] truncate" style={{ color: '#8E8E93' }}>
                       {msg.from_address}
                     </p>
+                    <p className="text-[12px] truncate" style={{ color: '#8E8E93' }}>
+                      To: {(msg.to_addresses ?? []).map(labelAddress).join(', ')}
+                      {msg.cc_addresses?.length
+                        ? ` · Cc: ${msg.cc_addresses.map(labelAddress).join(', ')}`
+                        : ''}
+                    </p>
                   </div>
                 </div>
                 <p
@@ -938,7 +1000,7 @@ export default function EmailApp() {
           >
             <button
               data-testid="mail-reply"
-              onClick={startReply}
+              onClick={() => startReply(false)}
               className="flex items-center gap-2 ios-btn-bounce"
               style={{ color: '#007AFF' }}
             >
@@ -957,6 +1019,30 @@ export default function EmailApp() {
               </svg>
               <span className="text-[15px]">Reply</span>
             </button>
+            {showReplyAll && (
+              <button
+                data-testid="mail-reply-all"
+                onClick={() => startReply(true)}
+                className="flex items-center gap-2 ios-btn-bounce"
+                style={{ color: '#007AFF' }}
+              >
+                <svg
+                  width="20"
+                  height="20"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <polyline points="7 17 2 12 7 7" />
+                  <polyline points="12 17 7 12 12 7" />
+                  <path d="M22 18v-2a4 4 0 0 0-4-4H7" />
+                </svg>
+                <span className="text-[15px]">Reply All</span>
+              </button>
+            )}
             <button
               onClick={startForward}
               className="flex items-center gap-2 ios-btn-bounce"

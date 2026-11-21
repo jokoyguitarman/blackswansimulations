@@ -458,7 +458,12 @@ export async function perceive(input: PerceiveInput): Promise<Situation> {
     (Array.isArray(e.target_teams) && e.target_teams.length > 0 && Boolean(e.inject_id));
   const priorityRank = (e: SimEmail) =>
     e.priority === 'urgent' || e.priority === 'high' ? 0 : e.priority === 'normal' ? 1 : 2;
+  const myAddr = address.toLowerCase();
+  const ccOnly = (e: SimEmail) =>
+    (e.cc_addresses ?? []).some((a) => a.toLowerCase() === myAddr) &&
+    !(e.to_addresses ?? []).some((a) => a.toLowerCase() === myAddr);
   const unanswered = inboundToMe
+    .filter((e) => !ccOnly(e))
     .filter((e) => !repliedTo.has(e.id) && !memory.repliedEmails.has(e.id))
     .filter((e) => (e.from_address ?? '').toLowerCase() !== 'system@sim.local')
     .sort((a, b) => {

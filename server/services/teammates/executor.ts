@@ -1,4 +1,5 @@
 ﻿import { logger } from '../../lib/logger.js';
+import { buildReplyRecipients } from '../../../shared/emailRecipients.js';
 import { ApiError, type BotApi } from './apiClient.js';
 import {
   claim,
@@ -204,8 +205,19 @@ export async function execute(action: BotAction, ctx: ExecContext): Promise<Exec
         }
         const subject =
           (action.subject && action.subject.trim()) || `Re: ${email.subject}`.slice(0, 480);
+        const auto = buildReplyRecipients(email, {
+          all: true,
+          selfAddresses: [sit.me.address],
+          currentUserId: api.userId,
+        });
+        const to = action.to?.length ? action.to : auto.to.length ? auto.to : [email.from_address];
+        const toKeys = new Set(to.map((a) => a.toLowerCase()));
+        const cc = auto.cc
+          .concat(action.to?.length ? auto.to : [])
+          .filter((a) => !toKeys.has(a.toLowerCase()));
         await api.sendEmail({
-          to_addresses: action.to?.length ? action.to : [email.from_address],
+          to_addresses: to,
+          ...(cc.length > 0 ? { cc_addresses: cc } : {}),
           subject,
           body_text: body,
           replied_to_id: email.id,
