@@ -1,6 +1,6 @@
 # Lay out the scene: the layout step opens with the site (WS4)
 
-**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds typical items and storeys for master D42 and D43; section 15.6 adds event placement for D46 and D47; section 15.7 adds storeys designed one by one, slopes and the business-as-usual population for D50, D51 and D53 (AC4.31 to AC4.36, T4.21 to T4.23).
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds typical items and storeys for master D42 and D43; section 15.6 adds event placement for D46 and D47; section 15.7 adds storeys designed one by one, slopes and the business-as-usual population for D50, D51 and D53 (AC4.31 to AC4.36, T4.21 to T4.23); section 15.8 brings the debug sandbox's charge picker and multi-level editor into this step for D61 (AC4.37, AC4.38, T4.24).
 **Workstream:** WS4
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `04-site-picker.md`
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
@@ -284,6 +284,8 @@ All paths in this table are in `frontend/src/components/SceneEditor/SceneEditor.
 34. **AC4.34** Given the mapped blueprint, when the trainer presses "Add population", then WS9's `populate` runs with the scene's seed and Setup's time and headcount, the people appear frozen as dots on every storey with the count per storey shown, and the readiness note "Typical occupancy, assumed (source: {type}, {hour})" appears. Proved by `frontend/tests/layoutPopulation.test.ts (new)`, case "populate".
 35. **AC4.35** Given a population, then the trainer can drag a person, delete a selection, add people by clicking, paint a region's density (quiet, normal, busy, packed) and re-run "Add population" for chosen regions only; her edits survive a re-run elsewhere; changing a wall that cuts a region asks whether to re-populate it. Proved by `layoutPopulation.test.ts`, case "edits".
 36. **AC4.36** Given a population of 12,000, then it is saved in `rts_scene_configs.population` under 1 MB, the participant projection never includes it (master 10.8 item 12), and a scene without a population compiles as before with crowd zones. Proved by `server/services/fieldOps/layout/sceneStore.test.ts (new)`, case "population column".
+37. **AC4.37** **Added 22 Nov 2026.** Given a planted device with an explosive type, 10 kg and a surface burst, when the trainer selects it, then `SceneInspector` shows the TNT equivalent and the lethal, serious, minor and glass radii from WS6's calculator, the map draws the four rings around it, changing the burst to free air at 3 m changes them to WS6's ground radii, and no control asks for a desired radius. Proved by `frontend/tests/layoutPlacement.test.ts (new)`, case "charge rings".
+38. **AC4.38** Given three designed levels, then the level switcher shows one level at a time with the others ghosted at 25 per cent, walls, doors and exits drawn on one level stay on it, a stair or lift placed on one appears on every level it joins at the same point, and the population tool and hazard panel act on the active level only. Proved by `frontend/tests/layoutStoreys.test.ts (new)`, case "level switcher".
 
 ## 5. Data model
 
@@ -2622,6 +2624,10 @@ Tasks are in build order. WS0's helpers, WS3's site contract and WS2's step regi
     - Steps: the button, the frozen dots on a canvas layer, the edit tools, the density paint, the column, the projection rule.
     - Done when: AC4.34 to AC4.36 pass.
 
+24. **T4.24 The charge picker and the level switcher in the layout step (added 22 Nov 2026; D61).**
+    - Files: `frontend/src/components/FieldOps/Layout/ChargeQuickForm.tsx (new)` (WS6's form fields in the inspector), `frontend/src/components/SceneEditor/SceneEditor.tsx` (touched, the rings and the ghosted levels), `frontend/tests/layoutPlacement.test.ts (new)`, `frontend/tests/layoutStoreys.test.ts (new)`.
+    - Done when: AC4.37 and AC4.38 pass.
+
 ## 13. Commit plan and backtracking
 
 | Commit | Tasks | What it contains | Safe to ship alone because | Backtracking |
@@ -2885,6 +2891,13 @@ export interface SceneSlopeArea { id: string; polygon: Array<[number, number]>; 
 **Readiness.** "Add the population, or the exercise uses the crowd zones" is a warning, not a blocker; "Storey {label} is not designed and copies {label}" is a note.
 
 **Tasks.** T4.21 (storeys and vertical links), T4.22 (slopes and regions), T4.23 (the population tool and column).
+
+### 15.8 The charge picker and the multi-level editor in the main game (added 22 Nov 2026)
+
+Master D61, 10.8 item 53. The debug sandbox has these features on `/debug/rts-sim` (the Project store's `spec-rts-charge-picker.md`, and `spec-rts-multilevel-editor.md` once written); the main game takes them as follows, with one calculation and one data source shared with the sandbox.
+
+- **Charge picker.** Selecting a planted device opens `ChargeQuickForm` in `SceneInspector`: explosive type (the explosive materials of WS6's library), amount in kilograms (0.1 to 2,000), burst (surface, or free air with a height of 0.5 to 30 m). It writes the device's `DeviceSpec` fields (`charge[0].material_key`, `charge[0].mass_kg`, `environment.elevation` and `environment.elevation_height_m`, `07-device-and-physics.md` section 15.8) and shows the TNT equivalent and the four radii from `calculateEffects`. The old manual radius stays as WS6's manual override. Consequences only (D47): no field for a device's make-up, and no function from a wanted radius to an amount.
+- **Multi-level editor.** Section 15.7's storeys, presented as the sandbox presents them: a level switcher, per-level walls, doors and exits, stairs and lifts placed once and linking levels, one level drawn at a time with the others ghosted.
 
 ## 16. Definition of done
 

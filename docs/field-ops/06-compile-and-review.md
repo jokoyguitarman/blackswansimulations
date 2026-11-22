@@ -1,6 +1,6 @@
 # Compile and review (WS5)
 
-**Status:** v1.2, 22 Nov 2026. Not built. **Added 3 Nov 2026:** revised for master D29, D31 and D36 and 10.8 items 35, 37 and 38 (section 2). **Added 22 Nov 2026:** revised for master D38 and 10.8 item 41: the dossier makes no model call, its area brief, material register and sensitive sites come from WS9's catalogue functions, and question 8 is answered (sections 6.4.2 and 6.19, AC5.41, T5.22). Later the same day, D46 adds compiling the new incident types (section 15.5, AC5.42, T5.23), and D49 and D51 add storylines and per-person casualties (AC5.43, T5.24); D58 and D59 add custom establishment doctrines and response standards in Review (section 15.6, AC5.44, T5.25).
+**Status:** v1.2, 22 Nov 2026. Not built. **Added 3 Nov 2026:** revised for master D29, D31 and D36 and 10.8 items 35, 37 and 38 (section 2). **Added 22 Nov 2026:** revised for master D38 and 10.8 item 41: the dossier makes no model call, its area brief, material register and sensitive sites come from WS9's catalogue functions, and question 8 is answered (sections 6.4.2 and 6.19, AC5.41, T5.22). Later the same day, D46 adds compiling the new incident types (section 15.5, AC5.42, T5.23), and D49 and D51 add storylines and per-person casualties (AC5.43, T5.24); D58 and D59 add custom establishment doctrines and response standards in Review (section 15.6, AC5.44, T5.25); D60 adds the quiet period at compile (section 15.7, AC5.45, T5.26).
 **Workstream:** WS5
 **Depends on:** [the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the setup screen spec](03-setup-screen.md), [the site picker spec](04-site-picker.md), [the layout step spec](05-layout-step.md), and softly [the device and physics spec](07-device-and-physics.md). **Added 3 Nov 2026:** WS9's living world spec, `11-living-world.md`, for the stored spread library and the compile-time fire spread (master 10.8 item 38)
 **Flags:** `ENABLE_FIELDOPS_V2`, `ENABLE_FIELDOPS_BLUEPRINT`, `ENABLE_FIELDOPS_DOCTRINES`, and `ENABLE_FIELDOPS_PHYSICS` as a soft dependency. Settings: `FIELDOPS_COMPILE_MAX_LLM_CALLS` (default 160, 40 to 400) and `FIELDOPS_COMPILE_MAX_MINUTES` (default 30, 5 to 120).
@@ -336,6 +336,7 @@ sequenceDiagram
 42. **AC5.42** **Added 22 Nov 2026.** Given a phase 1 type with its event and WS9's fake `initialEffectsFor`, when a compile runs, then WS6's `getEffectsForCompile` is not called, the physics snapshot's `payload.event` holds the `CompileEventEffects`, the casualty pins follow its casualty plan, the hazards it starts become pins with their minutes, the type's template supplies the teams and injects, Review shows "Event: {kind} · {class}, {band}" and every `assumed` input as Assumed, and no device row or device pool exists. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "event types".
 43. **AC5.43** **Added 22 Nov 2026.** Given a scene with a population of 3,000 on three storeys and a storyline of a fire at minute 0, a power failure `triggered_by` it and a device at minute 8, when a compile runs, then the casualty stage calls WS9's `casualtiesForPopulation` instead of WS6's crowd-zone casualty function, the patient pins are its clusters (at most 60), the storyline's events reach the narrative and inject generators in story order with their minutes or triggers, the triggered event is stored as a delayed hazard with its condition, and a scene without a population compiles with crowd zones as before. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "population and storyline".
 44. **AC5.44** **Added 22 Nov 2026.** Given a draft for client X with a custom venue team whose doctrine claims `less_lethal` and a public-road cordon, and SCDF and SPF cards with preset doctrines, when a compile runs, then the venue team's snapshot is the output of WS1's `mergeCustomDoctrine` (the level capped, the cordon a support step handed to SPF), the SCDF and SPF snapshots are byte-identical to a compile without the custom team, Review lists each precedence notice as `custom_precedence:{team}:{rule}` and blocks publishing only until the use-of-force cap is acknowledged, and each agency row shows its response standard from WS9's `responseStandardFor`. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "custom venue team".
+45. **AC5.45** **Added 22 Nov 2026.** Given `quiet_period_s` 60, a device at minute 0, an inject at minute 4, a delayed pin at minute 10 and an inject marked `pre_incident` at session minute 0.5, when a compile runs, then the inject's `trigger_time_minutes` is 5, the pin's `appears_at_minutes` 11, the device's detonation deadline one minute after session start, and the pre-incident inject keeps 0.5; with `quiet_period_s` 0 every value equals today's. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "quiet period".
 
 ## 5. Data model
 
@@ -3878,6 +3879,10 @@ These tasks need WS9's `loadSpreadLibrary`, `deteriorationFactsFor` and `buildSp
     - Files: `server/services/fieldOps/compile/reviewView.ts (new)` (the precedence and standard rows), `server/services/fieldOps/compile/persistPayload.ts (new)` (the `custom` flag in snapshot rows), their tests.
     - Done when: AC5.44 passes. Commits 4 and 5.
 
+26. **T5.26 The incident clock at compile (added 22 Nov 2026; D60).**
+    - Files: `server/services/fieldOps/compile/persistPayload.ts (new)` (the shift), `server/services/fieldOps/compile/generationStages.ts (new)` (the `pre_incident` flag on generated injects), their tests.
+    - Done when: AC5.45 passes. Commit 4.
+
 ## 13. Commit plan and backtracking
 
 Each commit adds its own test files to the `test` script of `package.json` and leaves `npm test` and `npx tsc --noEmit` green. Nothing a trainer can reach changes until commit 4 with `ENABLE_FIELDOPS_V2` on.
@@ -4115,6 +4120,10 @@ Master D46, 10.8 item 46.
 ### 15.6 Custom establishment doctrines and response standards (added 22 Nov 2026)
 
 Master D56, D58 and D59, 10.8 items 50 and 51. WS1's `resolveDoctrineForCompile` returns the merged doctrine for a custom card (`02-teams-and-doctrines.md` section 6.14.4); WS5 snapshots it with `custom: true` and the client organisation, never writes custom text to a `scenarios` column (master 10.8 item 16), and adds Review's precedence items. Preset agencies' snapshots never change because of a custom team (AC5.44). Review's agency rows show each agency's published response standard from WS9's `responseStandardFor`, or "No published standard in the library".
+
+### 15.7 The quiet period at compile (added 22 Nov 2026)
+
+Master D60, 10.8 item 52. Generators and Review work on the incident clock. When the payload is persisted, every session-clock column (`trigger_time_minutes`, `appears_at_minutes`, `spawn_condition.at_minutes`, detonation deadlines) gets `quiet_period_s / 60` added, except injects marked `pre_incident`, which keep the minute the trainer gave. Review shows both clocks: "Incident at T+01:00; inject at incident +4:00 (session 5:00)".
 
 ## 16. Definition of done
 

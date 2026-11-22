@@ -90,6 +90,9 @@ This spec is new as a whole on 3 Nov 2026, so its text of that day carries no "A
 | D54 | Decided | **Added 22 Nov 2026.** Unit kinds and equipment as seeded data, and RTS controls (W56, sections 6.32 and 7.13). |
 | D56 | Decided | **Added 22 Nov 2026.** Response standards, hospitals and specialties (migration 254, amended) and the hooks `responseStandardFor` and `chooseDestination` (section 6.33). |
 | D57 | Decided | **Added 22 Nov 2026.** The named-site rule of section 6.19 has one exception, `SITE_BOUND_RESPONDERS`, starting with Changi Airport Emergency Services (AC9.81). |
+| D60 | Decided | **Added 22 Nov 2026.** The opening sequence: the quiet period, the business-as-usual population moving, the highlighted initiating event and the incident clock (section 6.34). |
+| D61 | Decided | **Added 22 Nov 2026.** In-play rendering of the charge picker's rings, the storey view of the multi-level editor and animated fire and smoke (sections 6.34 and 7.14). |
+| D62 | Decided | **Added 22 Nov 2026.** The `blast_effects` and `fire_smoke_tenability` libraries (section 5.21). |
 
 Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS0's detectors for every table and function of 250 to 256); items 12 and 28 (fog filtering runs after WS0's participant projections and never widens them); item 16 (device positions and effects live only in WS9's tables, with row level security on and no policy, never in a `scenarios` column); item 17 (WS9 asks no model anything); item 21 (every foreign key to `scenarios` cascades); item 26 (WS9 does not touch the start branch of `PATCH /api/sessions/:id`; it reads the revision WS8's start claim pinned); item 31 (one refusal for a role, the bare 404 for a flag, WS0's client error class); item 32 (the prepare job's stages use WS0's stage context names); items 35 and 38 (the spread library and the compile-time timeline); item 39 (the live world's seams).
 
@@ -461,6 +464,16 @@ The test files are in section 11.1. Pure modules are tested without a database o
 125. **AC9.125** Given three hospitals (the nearest without a burns centre, a burns centre 8 minutes further, a third 25 minutes further), then a red patient with serious burns goes to the burns centre (`specialist`), a yellow patient with a fracture to the nearest, and a red burn patient whose burns centre is 15 minutes further to the nearest with `missing: ['burns_centre']`; a hospital past its surge share is skipped as `capacity`; the result is the same twice. Test: `server/services/fieldOps/world/health/destination.test.ts (new)`.
 126. **AC9.126** Given exposure records for a heat burn, carbon monoxide, a chemical release with contamination, a crushed child and a blast injury, then `needsForCasualty` gives the needs of section 6.33.3. Test: `destination.test.ts`, "needs".
 127. **AC9.127** Given a team's transport to a hospital other than the hook's choice, then the transport proceeds as ordered and the After-Action Review lists one destination note; with no hospital rows, no note and today's behaviour. Test: `server/services/fieldOps/world/health/destination.test.ts (new)`, "team's choice".
+
+**Added 22 Nov 2026: the opening sequence, in-play rendering and the pending libraries (D60 to D62)**
+
+128. **AC9.128** Given `quiet_period_s` 60 and a device event at minute 0, then from tick 0 to 59 the population moves without fleeing, no hazard, ring or blast site is in any view, only `pre_incident` injects fire, and the console counts down; at tick 60 the device's effects apply and injuries are computed at people's positions at tick 60. Test: `server/services/fieldOps/world/incidents/openingSequence.test.ts (new)`, "quiet period".
+129. **AC9.129** Given `quiet_period_s` 0, 60 and 600, then the first event happens at tick 0, 60 and 600, and an event at minute 5 at tick 300, 360 and 900; pausing for 30 s during the quiet period delays the event by 30 s of wall time and not at all on the session clock. Test: `openingSequence.test.ts`, "clocks".
+130. **AC9.130** Given a storyline of a device at minute 0 and a fire at minute 3, then one `fieldops_world.highlight` per event reaches every audience, including a team whose fog covers neither, with the banner text and position; the injury rings and hazards reach that team only through its cover. Test: `openingSequence.test.ts`, "highlight and fog".
+131. **AC9.131** Given a population frozen in the layout step, then at tick 0 walkers follow paths between doors of their region, standers stay within 2 m, seated people do not move, and nobody leaves the building. Test: `server/services/fieldOps/world/agents/agents.test.ts (new)`, "business as usual".
+132. **AC9.132** Given the trainer's and a participant's views of a session with a device, then the trainer's carries the lethal, serious, minor and glass rings from WS6's ring set and the participant's none. Test: `server/services/fieldOps/world/fog/views.test.ts (new)`, "rings by audience".
+133. **AC9.133** Given 8,000 visible studs with 500 burning and 2,000 smoky, then one animation frame's work stays under 4 ms in the benchmark, studs burning for under 10 s are flagged as the front, and low quality removes flicker and drift. Test: `frontend/tests/worldLayerModel.test.ts (new)`, "animation model".
+134. **AC9.134** Given the pending folders `blast-effects` and `fire-smoke-tenability`, then `KNOWLEDGE_LIBRARIES` and migration 259's checks accept both library keys, and the planning values stand while their files are pending. Test: `server/lib/fieldOps/knowledgeSchemas.test.ts (new)`, "pending libraries".
 
 ## 5. Data model
 
@@ -2686,7 +2699,8 @@ BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.fieldops_seed_runs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals')),
+  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals',
+    'blast_effects', 'fire_smoke_tenability')), -- the last two added 22 Nov 2026 (D62)
   run_kind TEXT NOT NULL CHECK (run_kind IN ('agent', 'person', 'import')),
   agent_model TEXT CHECK (agent_model IS NULL OR char_length(agent_model) BETWEEN 2 AND 120),
   brief_key TEXT CHECK (brief_key IS NULL OR brief_key ~ '^[a-z][a-z0-9_]{1,63}$'),
@@ -2725,7 +2739,8 @@ CREATE TABLE IF NOT EXISTS public.fieldops_knowledge_sources (
 
 CREATE TABLE IF NOT EXISTS public.fieldops_knowledge_coverage (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals')),
+  library TEXT NOT NULL CHECK (library IN ('doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals',
+    'blast_effects', 'fire_smoke_tenability')), -- the last two added 22 Nov 2026 (D62)
   country TEXT CHECK (country IS NULL OR country ~ '^[A-Z]{2}$'),
   subject_key TEXT NOT NULL CHECK (char_length(subject_key) BETWEEN 1 AND 120),
   status TEXT NOT NULL CHECK (status IN ('covered', 'assumed', 'gap')),
@@ -2780,7 +2795,7 @@ Two new files under `shared/` (master 10.7: no package imports, no enums), and o
 
 ```ts
 // shared/fieldOps/knowledge.ts (new). Owned by WS9. Types and constants only.
-export const KNOWLEDGE_LIBRARIES = ['doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals'] as const; // 'units' (unit kinds, equipment, response standards) and 'hospitals' added 22 Nov 2026
+export const KNOWLEDGE_LIBRARIES = ['doctrines', 'devices', 'spread', 'threats', 'building_hazards', 'movement', 'units', 'hospitals', 'blast_effects', 'fire_smoke_tenability'] as const; // the last two added 22 Nov 2026 (D62) // 'units' (unit kinds, equipment, response standards) and 'hospitals' added 22 Nov 2026
 export type KnowledgeLibrary = (typeof KNOWLEDGE_LIBRARIES)[number];
 export const COVERAGE_STATUSES = ['covered', 'assumed', 'gap'] as const;
 export type CoverageStatus = (typeof COVERAGE_STATUSES)[number];
@@ -3061,6 +3076,17 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | `breathing_height_crawling` | gas | 0.3 m | 0.2 to 0.5 | as above |
 
 **Corrections from the research of 22 Nov 2026.** The physics and movement research (pending seed files for review) found values above that contradict their own sources and a few gaps in the schema. Corrected: `crawl_speed` (0.71 m/s), the retail heat release per unit area (250 kW/m², Eurocode), the convective fraction (0.65), and the chlorine and propane density ratios (2.47, 1.55). Renamed: `irritant_speed` to `smoke_dark_reference_speed`, which is what Jin measured. Marked for the reviewer, with the evidence: `crush_density`, `compression_fatal_s` and the `compression` and `impact` exposure rows. Schema added: post-flashover yields (250), ISO 13571 model constants (250), sprinkler RTI (257), `ppm` and `pct` units (258), vessel mode and a `units` library (254, 259). The building-hazard research then corrected, from the Singapore Fire Code: the mall transformer's location (ground, not basement), the generator-room diesel (at most 700 l, with larger stocks a separate `diesel_bulk_tank`), the lithium-ion UPS (20 to 600 kWh per compartment) and the occupant densities (Table 1.4B design factors); and the formats of `building_tags` and of the `structural_state` and `gas_in_flammable_range` thresholds are now defined in migration 257.
+
+### 5.21 Two libraries for research still running (added 22 Nov 2026)
+
+D62. Two research streams write pending seed files to the Project store's knowledge-seeds folders named blast-effects and fire-smoke-tenability. Until their reviewed rows land, every value they cover keeps the planning value already in this spec or in WS6's, labelled as such.
+
+| Library | Covers | Imported into | Planning values that stand meanwhile |
+| --- | --- | --- | --- |
+| `blast_effects` | Blast curves (Kingery and Bulmash, both burst geometries), TNT-equivalence factors for pressure and impulse, injury criteria (lethal, serious, minor) and glass-breakage criteria | WS6's library: `blast-curves.json`, explosive materials (239), injury thresholds (240) (`07-device-and-physics.md` sections 5.5 to 5.8) | WS6's seed values, labelled "Unreviewed model" under D22 |
+| `fire_smoke_tenability` | Fire growth and heat release per unit area, soot and CO yields (with post-flashover yields), visibility constants, tenability limits (heat, radiant flux, toxic dose), smoke-layer criteria | WS9's spread materials (250), exposure rows (250, including `model_constants`) and movement parameters (258) | The values of sections 5.12, 5.19 and 6.30.7 |
+
+The importer of section 6.19 maps each pending file to these tables when it lands; corrections the research raises against the planning values are applied to this spec first, as for the earlier research (section 5.19's corrections). The briefs `blast_effects` and `fire_smoke_tenability` join the list of section 6.19.
 
 ### 5.20 Before 257 to 259 are applied (added 22 Nov 2026)
 
@@ -4719,6 +4745,19 @@ export function chooseDestination(
 
 With no hospital rows, transport uses today's behaviour and WS3's saved facilities, and the After-Action Review shows no destination notes; with no standards, Review shows "No published standard in the library", recorded as a coverage gap (W38).
 
+### 6.34 The opening sequence and the event highlight (added 22 Nov 2026)
+
+D60 and D61, master 10.8 items 52 and 53. The behaviour matches the debug sandbox's evacuation showcase (the Project store's `spec-demo-evacuation-physics-showcase.md`, section 2.1), on the live world.
+
+- **Two clocks.** The session clock starts when the session starts (tick 0). The incident clock starts at the initiating event, at tick `quiet_period_s` (`setup_v2.options.quiet_period_s`, default 60, 0 to 600). Every scenario minute (events' `at_min`, injects, pins, deterioration, device timers) is on the incident clock; WS5 writes session-clock values by adding the quiet period (`06-compile-and-review.md` section 15.7), so today's engines need no change.
+- **The quiet period.** The business-as-usual population (section 6.28) leaves its frozen positions at tick 0 and goes about its business: walkers follow corridors and loops between their region's doors, standers and queuers shift within 2 m, seated people stay, all at their profile's normal speed, with no fleeing and no evacuation. Hazards, rings and the blast site stay hidden from every audience; the effects of the first event are scheduled after it. Injects marked `pre_incident` (for example an ordinary announcement, or a report of an unattended bag) fire at their session-clock minute; no other inject fires. The trainer's console shows "Pre-incident · quiet period" and a countdown; players see the ordinary map.
+- **The initiating event.** At tick `quiet_period_s` the first event of the storyline happens (section 6.31): its effects apply (section 6.23.6 or the event's model), section 6.28's injuries are computed at each person's position at that tick, not their frozen one, and survivors react after their reaction delay (section 6.30.2).
+- **The highlight.** For every event, the world emits `fieldops_world.highlight` to every audience: `{ event_id, kind, at_tick, position, storey, banner }`. The client draws a white flash for 0.3 s, an expanding shock ring for 1.5 s and a fireball for a blast, a short map shake, and a banner ("Explosion · T+01:00", "Fire reported · T+03:20") for 6 s. The flash and the ring are effects anyone would see or hear, so they reach every team whatever its fog; the injury and glass rings, the damage and the hazards follow fog of war (section 6.10), and the trainer and spectators see the rings (section 7.14). The animation ages on wall-clock time, so it looks the same at any speed.
+- **Secondary hazards** then develop by the layered engine (sections 6.22 to 6.24): fire spreads beyond the blast, smoke thickens and descends, gas and plumes drift, structure degrades.
+- **Pause and speed** act on the session clock: a paused quiet period does not count down.
+- **Without the world.** The session still shows the quiet period: the client draws the highlight at the session-clock minute of the first event from the scenario's compiled data, and today's engines run on the shifted minutes.
+
+
 ## 7. Client
 
 ### 7.1 Files and where they render (Proposed)
@@ -5051,6 +5090,19 @@ D54, W39, master 10.8 item 49. Components in `frontend/src/components/FieldOps/W
 | Storeys | Units on another storey show as badges at their vertical link; selecting one switches the storey |
 
 Evacuees are drawn as dots on the canvas layer of section 7.12, one per agent in view on the active storey and outdoors: moving, fleeing, waiting and trapped in distinct shapes and tones, and "injured" for every casualty (the true triage colour stays hidden from participants, section 9.2). Below zoom 17 they cluster into counts. Every control has a keyboard path (AC9.121). Test: `frontend/tests/worldRtsControls.test.ts (new)`.
+
+### 7.14 Rings and animated hazards in the in-play map (added 22 Nov 2026)
+
+D61, master 10.8 item 53. The behaviour matches the debug sandbox's hazard animation spec (the Project store's `spec-rts-hazard-animation.md`, once written) and the showcase's explosion effects; the main game renders through `WorldLayersCanvas` (section 7.12).
+
+- **Rings.** For each device, the lethal, serious and minor rings and the glass-breakage ring from WS6's ring set (`toEffectRingSet`), drawn for the trainer and spectators (labelled, with "Unreviewed model" until D22's review), never for participants. Free-air bursts draw the ground radius.
+- **Smooth gradients.** Stud values (fire state, heat class, the chosen layer's smoke) are drawn into an offscreen image at one pixel per stud and scaled with bilinear smoothing, so cells blend rather than tile; values are interpolated between the 2-second deltas.
+- **Flicker.** Burning studs modulate brightness with seeded per-stud noise at 6 to 10 Hz, plus embers on studs in their first 30 s of burning.
+- **Drifting smoke.** A noise texture over smoky studs is offset over time along the smoke's flow direction (the wind outdoors, the gradient of smoke density indoors), at a speed tied to the flow.
+- **The spread front.** Studs that started burning in the last 10 s are outlined in a bright edge colour that fades; studs whose smoke class rose in the last 10 s pulse once.
+- **Budgets.** At most 4 ms of animation work per frame at 60 frames a second for 8,000 visible studs on a mid-range laptop; the image is rebuilt only for changed studs.
+- **Low quality.** A "Low-quality effects" toggle (kept in the browser) turns off flicker, drift and the flash shake and draws flat colours at 2 updates a second. It switches on by itself when frames take over 20 ms for 3 s, with the notice "Effects reduced to keep the map smooth." `prefers-reduced-motion` also turns off the flash, the shake and the flicker.
+- **Tests.** `frontend/tests/worldLayerModel.test.ts (new)` gains "animation model" (front detection, interpolation, low-quality output) and "rings by audience".
 
 ## 8. AI and LLM contracts
 
@@ -5407,6 +5459,10 @@ New files, appended to the `test` script in `package.json` with their tasks: `se
 
 New files, added to the `test` script in `package.json`: `server/services/fieldOps/world/health/responderSeeds.test.ts (new)` (AC9.123), `server/services/fieldOps/world/health/standards.test.ts (new)` (AC9.124) and `server/services/fieldOps/world/health/destination.test.ts (new)` (AC9.125 to AC9.127).
 
+### 11.10 Tests of the opening sequence and rendering (added 22 Nov 2026)
+
+New file, added to the `test` script in `package.json`: `server/services/fieldOps/world/incidents/openingSequence.test.ts (new)` (AC9.128 to AC9.130). Cases added: `agents.test.ts` "business as usual" (AC9.131), `views.test.ts` "rings by audience" (AC9.132), `frontend/tests/worldLayerModel.test.ts (new)` "animation model" (AC9.133), `knowledgeSchemas.test.ts` "pending libraries" (AC9.134). Manual step **M22**: a 60-second quiet period in a populated mall, then the explosion's flash, ring and banner, then fire and smoke spreading with flicker, drift and the front highlighted, with low quality toggled midway.
+
 ## 12. Tasks
 
 The tasks follow the slices of section 4.2 (master section 6, build-order item 7). Each slice ends with the flag still able to fall back to today's behaviour, and each task adds its test files to the `test` script of `package.json` as it creates them (section 11.5). A file is marked new where it is first created; later tasks extend it.
@@ -5680,6 +5736,12 @@ If slice 2 is not yet built when these tasks start, T9.8 and T9.9 are built dire
 54. **T9.54 `responseStandardFor` in Review and the After-Action Review.** Files: `server/services/fieldOps/world/health/standards.ts (new)` and its test. Done when AC9.124 passes. Commit: 20.
 55. **T9.55 `chooseDestination` and the transport hook.** Files: `server/services/fieldOps/world/health/destination.ts (new)` and its test; `server/services/fieldOps/world/engine/units.ts (new)` (the transport task). Done when AC9.125 to AC9.127 pass. Commit: 20.
 
+**Added 22 Nov 2026: the opening sequence and in-play rendering (D60 to D62)**
+
+56. **T9.56 Clocks, quiet period and highlight.** Files: `server/services/fieldOps/world/incidents/openingSequence.ts (new)` and its test; `server/services/fieldOps/world/runtime/worldRuntime.ts (new)` (the highlight event); `server/services/fieldOps/world/agents/agents.ts (new)` (business as usual). Done when AC9.128 to AC9.131 pass. Commit: 21.
+57. **T9.57 Rings and animated hazards.** Files: `server/services/fieldOps/world/fog/views.ts (new)` (rings by audience); in `frontend/src/components/FieldOps/World/`: `WorldLayersCanvas.tsx`, `worldLayerModel.ts`, `WorldHighlight.tsx`; `frontend/src/design/fieldops-world.css (new)`. Done when AC9.132, AC9.133 and M22 pass. Commit: 21.
+58. **T9.58 The pending libraries.** Files: `shared/fieldOps/knowledge.ts (new)`, `migrations/259_fieldops_knowledge_provenance.sql (new)` (the checks), the two briefs in `scripts/fieldops/knowledge/briefs/ (new)`. Done when AC9.134 passes; the import mapping is written when the files land. Commit: 21.
+
 ## 13. Commit plan and backtracking
 
 Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run typecheck`, `npm run lint` and `npm --prefix frontend run build` pass, and its migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), with their rollback comments tried on a branch database. Only then is each migration applied once, in order, on the shared project, which serves development, preview and production alike (section 10.2). A commit that fails any of them is fixed or reverted before the next one starts. Backing a commit out never runs a rollback on the shared project: its tables are additive, and nothing reads them once the code is reverted or the flag is off (D23).
@@ -5721,6 +5783,7 @@ Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run t
 | 18. "WS9: unit kinds and equipment" | T9.50 | Seeded kinds and equipment | Empty tables: `UNIT_CATALOGUE` applies, labelled Assumed |
 | 19. "WS9: RTS controls and the agent budget" | T9.51, T9.52 | The RTS client and its budget | Revert the client files; the units panel of section 7.3 still dispatches |
 | 20. "WS9: response standards and hospitals" (**added 22 Nov 2026**) | T9.53 to T9.55 | Standards in Review and the After-Action Review; destination choice | Empty tables: today's transport and no notes |
+| 21. "WS9: opening sequence, in-play rendering and pending libraries" (**added 22 Nov 2026**) | T9.56 to T9.58 | The quiet period, highlights, rings and animated hazards | `quiet_period_s` 0 gives today's start; low quality is the fallback for animation |
 
 Backtracking within a commit: when a task shows that an earlier decision of this spec is wrong (a budget missed, a gate too wide, a seed value implausible in play), the builder stops, changes the decision in this document first (section 2.2 and the section that applies it), adjusts the criteria, and only then the code. The D31 review can change any seed value without a code change, through the admin routes.
 
@@ -5925,6 +5988,8 @@ WS9's own questions:
 48. **Added 22 Nov 2026. Do hydrants come from data?** **Assumed (D54):** none are in the saved data; one is assumed every 100 m along roads, labelled Assumed, until a public source is approved.
 49. **Added 22 Nov 2026. How far may an ambulance bypass the nearest hospital for a specialist?** **Assumed (D56):** 10 minutes for red, 20 for yellow, none for green, until a medical reviewer sets them.
 50. **Added 22 Nov 2026. Should destination fit change scores?** **Assumed (D56):** no in this version; the After-Action Review only notes it.
+51. **Added 22 Nov 2026. Should participants see a ring at the shock?** **Assumed (D60):** the flash and the expanding shock ring are shown to everyone; the labelled injury and glass rings only to the trainer and spectators.
+52. **Added 22 Nov 2026. May pre-incident injects reveal the threat?** **Assumed (D60):** yes, if the trainer writes them so (an unattended bag report); the system adds none by itself.
 ### 15.3 Requests WS9 makes of other specs
 
 | To | Request | Why |
@@ -5999,3 +6064,4 @@ WS9 is done when every line below holds on staging, and the production lines hol
 20. **Added 22 Nov 2026.** Phase 1's criteria AC9.85 to AC9.96, AC9.102 to AC9.104 and manual steps M16 to M18 pass on staging.
 21. **Added 22 Nov 2026.** AC9.105 to AC9.122 pass with their tests, and M19 to M21 pass on staging; a populated three-storey scene runs within the budget of AC9.118.
 22. **Added 22 Nov 2026.** AC9.123 to AC9.127 pass; Singapore's response standards and hospital rows are reviewed and imported, each specialty with a source or absent.
+23. **Added 22 Nov 2026.** AC9.128 to AC9.134 pass and M22 passes on staging; the in-play map matches the debug sandbox's showcase and animation on the shared fixtures.

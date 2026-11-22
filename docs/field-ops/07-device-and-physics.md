@@ -1,6 +1,6 @@
 # Device specifics and physics (WS6)
 
-**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds the blast profile and the offline seeding of master D39, D41 and D45; section 15.6 scopes devices under D46.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds the blast profile and the offline seeding of master D39, D41 and D45; section 15.6 scopes devices under D46; section 15.8 brings the charge picker into the main game (D61) and names the blast-effects library (D62).
 **Workstream:** WS6
 **Depends on:** `00-master-plan.md`, `03-setup-screen.md`, `05-layout-step.md`; it also uses WS0's helpers (`01-prerequisites.md`) and WS5's snapshot table (`06-compile-and-review.md`)
 **Flags:** `ENABLE_FIELDOPS_PHYSICS` (`true`, `admin` or `false`, read through `physicsEnabledFor(role)`); the library reads follow `ENABLE_FIELDOPS_V2`
@@ -197,6 +197,7 @@ Not blast models, so out of this table: adversary-caused patients spawned 5 to 2
 - **AC6.28** Given the mockup's two-device setup, when a trainer fills the card, then tabs, groups, fields, chips, the effects panel, the assumed panel and the Unreviewed pill appear as in section 7, and the band bar matches `bandBarSegments` (`frontend/tests/fieldOpsDevices.test.ts (new)`, "band bar and tab subtitles"; manual step A6.1).
 - **AC6.29** Given a compiled scenario whose index holds rows for two devices, when `recordEffectIndex` runs twice with the same snapshot, then the rows are the same after each call and both calls return the same `written`; when it then runs with a newer snapshot that has one device, then only that device's row remains and it points at the newer snapshot (`server/services/fieldOps/physics/compileEffects.test.ts (new)`, "replaces the scenario's index").
 - **AC6.30** Given `DevicesCard` with `mode="published"` and the published bands of each device, when the trainer changes a charge mass or sets a radius by hand, then `onChange` receives the devices with that change (an override inside `effect_overrides`), no request goes to WS2's setup route or to `assume` with `read_words`, the last device cannot be removed, and the effects panel shows the published radii beside the preview (`frontend/tests/fieldOpsDevices.test.ts (new)`, "published mode"; manual step A6.9).
+- **AC6.31** **Added 22 Nov 2026.** Given an explosive type, 10 kg, and the same amount as a free-air burst at 1.5 m and 10 m, then `calculateEffects` gives the surface radii from the hemispherical curve, and the free-air ground radii as the square root of the 3D radius squared less the height squared (zero when the height exceeds it); the debug sandbox's `blastModel` gives the same radii within 0.1 m on the shared fixture (`server/services/fieldOps/physics/calculator.test.ts (new)`, "burst height"; parity case "sandbox parity").
 
 ## 5. Data model
 
@@ -2574,6 +2575,10 @@ Ordered; each names its commit (section 13). WS1's `shared/fieldOps/vocabulary.t
     - Done when: the "published mode" case passes, and manual step A6.9 passes once WS8's editor mounts the card.
     - Tests: `frontend/tests/fieldOpsDevices.test.ts (new)`; manual A6.9. Commit: CM6.
 
+22. **T6.22 Burst height and sandbox parity (added 22 Nov 2026; D61, D62).**
+    - Files: `shared/fieldOps/device.ts (new)` (`environment.elevation_height_m`), `server/lib/fieldOps/deviceSchemas.ts (new)`, `server/services/fieldOps/physics/calculator.ts (new)` and its test.
+    - Done when: AC6.31 passes, and the blast-effects research rows are imported through the pipeline once reviewed.
+
 ## 13. Commit plan and backtracking
 
 Every commit passes `npm test` (with its new test files added to the script), `npx tsc --noEmit`, and `npm --prefix frontend run build` (which type-checks `shared/`). Nothing reaches a user before CM4, and nothing reaches a trainer in production before the flag and the gate allow it.
@@ -2713,6 +2718,14 @@ Master D46, 10.8 item 46. `DevicesCard` and the calculator serve the four bombin
 ### 15.7 Casualties for a plotted population (added 22 Nov 2026)
 
 Master D51, 10.8 item 47. When a scene has a population, each person's outcome is WS9's `casualtiesForPopulation` (`11-living-world.md` section 6.28), which reads WS6's injury thresholds, the fragment band and the casualty shares within each band from the physics library, and the per-stud blast field from `blast_profile`. `allocateCrowd` and the crowd-zone casualty function stay for scenes without a population and for legacy scenes. WS6 adds `injuryShares(band)` to `shared/fieldOps/effects.ts (new)` so both paths draw the same shares; `server/services/fieldOps/physics/casualties.test.ts (new)` gains "shares match", proving the two paths agree for a uniform population.
+
+### 15.8 The charge picker in the main game, and the blast-effects library (added 22 Nov 2026)
+
+Master D61 and D62, 10.8 item 53.
+
+- **The picker** is WS4's `ChargeQuickForm` (`05-layout-step.md` section 15.8) and the existing `DeviceForm` in Setup: explosive type, amount, burst and height. `DeviceSpec.environment` gains `elevation_height_m: Sourced<number> | null` (0.5 to 30 m, used only when `elevation` is `elevated`); for an elevated burst the ground radius of each band is the square root of the 3D radius squared less the height squared. The rings in Setup, the layout step and the trainer's live map all come from `toEffectRingSet` (section 5.3).
+- **The debug sandbox** (`spec-rts-charge-picker.md` in the Project store) is a client-side subset of this calculator with an Assumed fallback dataset; once this calculator exists, the sandbox reads the same blast curves, materials and thresholds, so both give the same radii (AC6.31).
+- **The blast-effects library** (`blast_effects`, D62) is the research that fills `blast-curves.json`, the explosive materials (239) and the injury and glass thresholds (240), imported through WS9's pipeline and reviewed under D22. Until it lands, the seed values of sections 5.6 and 5.7 stand, labelled "Unreviewed model".
 
 ## 16. Definition of done
 

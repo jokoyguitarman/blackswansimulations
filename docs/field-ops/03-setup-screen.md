@@ -1,6 +1,6 @@
 # Setup screen: document, footprint radar, blueprint, five lanes and readiness (WS2)
 
-**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** master D46 and D47 widen the incident types in phases (section 15.5, AC2.36 to AC2.38, T2.23). The owner's answers of the same day: events combine (D49) and the armed-attacker types stay locked (D48). Section 15.6 adds the venue's own team and the client organisation for D58.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** master D46 and D47 widen the incident types in phases (section 15.5, AC2.36 to AC2.38, T2.23). The owner's answers of the same day: events combine (D49) and the armed-attacker types stay locked (D48). Section 15.6 adds the venue's own team and the client organisation for D58; section 15.7 adds the quiet period for D60.
 **Workstream:** WS2
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `02-teams-and-doctrines.md`, `04-site-picker.md`; softly `07-device-and-physics.md` and `08-people-or-ai.md`
 **Flags:** `ENABLE_FIELDOPS_V2` with `VITE_ENABLE_FIELDOPS_V2`, and `ENABLE_FIELDOPS_BLUEPRINT`
@@ -258,6 +258,7 @@ stateDiagram-v2
 36. **AC2.36** **Added 22 Nov 2026.** Given `ENABLE_FIELDOPS_INCIDENT_TYPES` empty, `phase1` and `stampede_crush,aircraft_impact`, when the page capabilities are read, then the lane offers the four bombing types; those plus the seven phase 1 types; and those plus the two named types; each group heading follows `fieldops_incident_types.type_group`. Proved by `server/lib/fieldOps/setupSchemas.test.ts (new)`, case "incident types by flag", and `frontend/tests/setupValidation.test.ts`, case "incident lane groups".
 37. **AC2.37** **Added 22 Nov 2026.** Given a document about a concert crush and the flag at `phase1`, when the radar runs, then it proposes `stampede_crush` with its evidence, proposes the type's default `incident.event` with no trigger point (the trainer places it), and proposes no device; with the flag empty, it names the type and marks it "soon" as rule A1 says. Proved by `server/services/fieldOps/radar/radarCore.test.ts (new)`, case "incident types beyond bombing".
 38. **AC2.38** **Added 22 Nov 2026.** Given a saved draft of each phase 1 type, then `incident.event` validates with WS9's `incidentEventSchema`, its kind matches the type's `event_kind`, the devices lane is hidden and `devices` is empty for every type but the bombing types, and readiness blocks the layout step until the type's event has the geometry its kind needs (marked "Place it in Lay out the scene"). Proved by `server/lib/fieldOps/setupSchemas.test.ts (new)`, case "incident event". **Updated 22 Nov 2026 (D49):** read `incident.events` for `incident.event`; a ramming at minute 2 and a device at minute 6 save as one storyline, a seventh event is refused, a `triggered_by` naming a later event is refused, and the devices lane shows whenever an event is a device.
+39. **AC2.39** **Added 22 Nov 2026.** Given Setup's options, when the trainer sets "Quiet period before the incident" to 0, 60 and 600 s, then `setup_v2.options.quiet_period_s` saves each, 601 and -1 are refused, a draft saved before the field existed reads 60, and the storyline list shows "Incident at T+{mm:ss}" after the quiet period. Proved by `server/lib/fieldOps/setupSchemas.test.ts (new)`, case "quiet period".
 
 ## 5. Data model
 
@@ -2753,6 +2754,10 @@ In order. Each task names its commit (section 13). "Tests" means written, passin
     - Steps: read `ENABLE_FIELDOPS_INCIDENT_TYPES` once at boot into `env.enableFieldopsIncidentTypes`; expose the enabled keys in the page capabilities; group the tiles; store the event; hide the devices lane outside the bombing types; extend the radar's closed list.
     - Done when: AC2.36 to AC2.38 pass. Commit: with T2.21 (section 13).
 
+24. **T2.24 The quiet period (added 22 Nov 2026; D60).**
+    - Files: `shared/fieldOps/setup.ts (new)`, `server/lib/fieldOps/setupSchemas.ts (new)` and its test, the options block of the setup page.
+    - Done when: AC2.39 passes. Commit: with T2.21 (section 13).
+
 ## 13. Commit plan and backtracking
 
 Six commits, each green on `npm test`, `npx tsc --noEmit` and the frontend build, each safe to deploy with the flags off.
@@ -2942,6 +2947,10 @@ Master D58, 10.8 item 51.
 - **Entry point.** The agency lane shows "Add the venue's own team" after the radar's cards. It adds a card with `custom: true` and opens WS1's drawer on its "Venue's own doctrine" tab (`02-teams-and-doctrines.md` section 7.13). When the radar reads the venue's own security or safety team in the document, it proposes this card, without a doctrine.
 - **Readiness.** A custom card whose doctrine is pending review blocks compile with "Review the venue team's doctrine"; it never blocks the layout step.
 - **Tests.** `server/lib/fieldOps/setupSchemas.test.ts (new)` gains "client organisation": another trainer's client is refused, null is allowed.
+
+### 15.7 The quiet period (added 22 Nov 2026)
+
+Master D60, 10.8 item 52. `setup_v2.options.quiet_period_s: number` (whole seconds, 0 to 600, default 60), set under the storyline as "Quiet period before the incident", with the help line "Ordinary activity before the first event. Injects marked pre-incident can play during it." Inject authoring in WS8's editor and in Review marks an inject `pre_incident` with its own minute inside the quiet period.
 
 ## 16. Definition of done
 
