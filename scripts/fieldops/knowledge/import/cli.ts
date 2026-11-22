@@ -4,6 +4,9 @@ import { annotateIssues } from './issues.js';
 import { buildManifest, manifestDifferences, readManifest, writeManifest } from './manifest.js';
 import { formatReport, validationReport } from './report.js';
 import { applyBulkReview, applyFileReview, type ReviewDecisionInput } from './reviewEdit.js';
+import { redact, resolveDbTarget, SafetyError } from './safety.js';
+import { stage } from './stage.js';
+import { status } from './status.js';
 
 const DEFAULT_DIR = 'scripts/fieldops/seeds';
 
@@ -48,19 +51,24 @@ function decisionInput(): ReviewDecisionInput {
   return { decision, reviewer, qualification, date, notes };
 }
 
-function main(): void {
+async function main(): Promise<number> {
   const command = process.argv[2];
   try {
     if (command === 'manifest') manifestCommand();
     else if (command === 'validate') validateCommand();
     else if (command === 'review') reviewCommand();
+    else if (command === 'stage') await stageCommand();
+    else if (command === 'status') await statusCommand();
     else {
-      console.error('Usage: npm run knowledge -- manifest|validate|review ...');
-      process.exit(1);
+      console.error('Usage: npm run knowledge -- manifest|validate|review|stage|status ...');
+      return 1;
     }
+    return 0;
   } catch (error) {
-    console.error(error instanceof Error ? error.message : error);
-    process.exit(1);
+    console.error(redact(error instanceof Error ? error.message : 'command failed'));
+    if (error instanceof SafetyError) return 3;
+    if (isDatabaseError(error)) return 2;
+    return 1;
   }
 }
 
@@ -128,4 +136,33 @@ function reviewCommand(): void {
   console.log(`reviewed ${file} ${key}`);
 }
 
-main();
+async function stageCommand(): Promise<void> {
+  if (has('dry-run') && has('apply'))
+    throw new Error('stage accepts only one of --dry-run or --apply');
+  const apply = has('apply');
+  const target = resolveDbTarget({ apply, confirmProject: arg('confirm-project') });
+  await stage({
+    dir: seedsDir(),
+    folders: flags('folder'),
+    apply,
+    allowManifestDrift: has('allow-manifest-drift'),
+    target,
+  });
+}
+
+async function statusCommand(): Promise<void> {
+  const target = resolveDbTarget({ apply: false, confirmProject: arg('confirm-project') });
+  const report = await status(target, arg('library'));
+  if (has('json')) console.log(JSON.stringify(report, null, 2));
+  else console.log(JSON.stringify(report));
+}
+
+function isDatabaseError(error: unknown): boolean {
+  if (!error || typeof error !== 'object' || !('code' in error)) return false;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' && (code.startsWith('E') || /^[0-9A-Z]{5}$/.test(code));
+}
+
+void main().then((code) => {
+  process.exit(code);
+});
