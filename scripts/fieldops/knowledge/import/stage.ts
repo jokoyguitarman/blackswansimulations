@@ -3,7 +3,7 @@ import path from 'node:path';
 import { canonicalJson, sha256Buffer, sha256Hex } from './canonical.js';
 import { loadSeeds, type LoadResult } from './classify.js';
 import { beginImport, withClient } from './db.js';
-import { annotateIssues, issueSummary } from './issues.js';
+import { annotateIssues, blockerCount, issueSummary, warningCount } from './issues.js';
 import { derivedPhysicsRunId, derivedResponderRunId, seedRunId } from './ids.js';
 import { buildManifest, manifestDifferences, readManifest } from './manifest.js';
 import { DANGLING_THREAT_KEYS, folderOf, MISSING_MOVEMENT_KEYS, REGISTRY } from './registry.js';
@@ -354,8 +354,9 @@ async function upsertRecord(
     decided_on: string | null;
     review: Record<string, unknown>;
     missing_since: Date | null;
+    issues: unknown;
   }>(
-    `SELECT payload_sha256, review_state, reviewer_name, decided_on::text, review, missing_since
+    `SELECT payload_sha256, review_state, reviewer_name, decided_on::text, review, missing_since, issues
        FROM public.fieldops_knowledge_records
       WHERE file_path = $1 AND record_kind = $2 AND record_key = $3`,
     [record.filePath, record.recordKind, record.recordKey],
@@ -371,6 +372,23 @@ async function upsertRecord(
     reviewSame &&
     !previous.missing_since
   ) {
+    if (stableJson(previous.issues) !== stableJson(record.issues)) {
+      await client.query(
+        `UPDATE public.fieldops_knowledge_records
+            SET issues = $4::jsonb, blocker_count = $5, warning_count = $6, last_import_run_id = $7
+          WHERE file_path = $1 AND record_kind = $2 AND record_key = $3`,
+        [
+          record.filePath,
+          record.recordKind,
+          record.recordKey,
+          JSON.stringify(record.issues),
+          blockerCount(record.issues),
+          warningCount(record.issues),
+          runId,
+        ],
+      );
+      return 'changed';
+    }
     await client.query(
       `UPDATE public.fieldops_knowledge_records SET last_import_run_id = $4
         WHERE file_path = $1 AND record_kind = $2 AND record_key = $3`,

@@ -67,6 +67,36 @@ async function ensureDatabase(url: string, database: string): Promise<void> {
   });
 }
 
+async function resetSchema(url: string, database: string): Promise<string> {
+  const admin = new pg.Client({ connectionString: withDatabase(url, 'postgres') });
+  await admin.connect();
+  try {
+    await admin.query(
+      `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+      [database],
+    );
+    await admin.query(`DROP DATABASE IF EXISTS ${database}`);
+    await admin.query(`CREATE DATABASE ${database}`);
+  } finally {
+    await admin.end();
+  }
+  const fixture = withDatabase(url, database);
+  const dump = execFileSync(
+    'pg_dump',
+    ['--schema-only', '--no-owner', '--no-privileges', '-d', url],
+    {
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  );
+  const target = new URL(fixture);
+  execFileSync('psql', ['-q', '-d', fixture, '-v', 'ON_ERROR_STOP=1'], {
+    input: dump,
+    env: { ...process.env, PGPASSWORD: decodeURIComponent(target.password) },
+  });
+  return fixture;
+}
+
 function copyMini(): string {
   const dir = mkdtempSync(path.join(tmpdir(), 'knowledge-mini-'));
   cpSync(MINI, dir, { recursive: true });
@@ -255,7 +285,8 @@ describe('knowledge stage on a local database', () => {
       const dir = materialiseSeeds();
       if (!dir) return;
       process.env.KNOWLEDGE_TARGET = 'local';
-      const target = { url, target: 'local' as const };
+      const fixture = await resetSchema(url, 'knowledge_stage_i2');
+      const target = { url: fixture, target: 'local' as const };
       const first = await stage({
         dir,
         folders: [],
@@ -263,7 +294,7 @@ describe('knowledge stage on a local database', () => {
         allowManifestDrift: false,
         target,
       });
-      const client = new pg.Client({ connectionString: url });
+      const client = new pg.Client({ connectionString: fixture });
       await client.connect();
       try {
         const records = await client.query<{ records: number; pending: number }>(
