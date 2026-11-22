@@ -5,8 +5,10 @@ import { buildManifest, manifestDifferences, readManifest, writeManifest } from 
 import { formatReport, validationReport } from './report.js';
 import { applyBulkReview, applyFileReview, type ReviewDecisionInput } from './reviewEdit.js';
 import { redact, resolveDbTarget, SafetyError } from './safety.js';
+import { promote } from './promote/index.js';
 import { stage } from './stage.js';
 import { status } from './status.js';
+import { verifyKnowledge } from './verify.js';
 
 const DEFAULT_DIR = 'scripts/fieldops/seeds';
 
@@ -58,9 +60,13 @@ async function main(): Promise<number> {
     else if (command === 'validate') validateCommand();
     else if (command === 'review') reviewCommand();
     else if (command === 'stage') await stageCommand();
+    else if (command === 'promote') await promoteCommand();
     else if (command === 'status') await statusCommand();
+    else if (command === 'verify') await verifyCommand();
     else {
-      console.error('Usage: npm run knowledge -- manifest|validate|review|stage|status ...');
+      console.error(
+        'Usage: npm run knowledge -- manifest|validate|review|stage|promote|status|verify ...',
+      );
       return 1;
     }
     return 0;
@@ -146,6 +152,32 @@ async function stageCommand(): Promise<void> {
     folders: flags('folder'),
     apply,
     allowManifestDrift: has('allow-manifest-drift'),
+    target,
+  });
+}
+
+async function promoteCommand(): Promise<void> {
+  if (has('dry-run') && has('apply'))
+    throw new Error('promote accepts only one of --dry-run or --apply');
+  const apply = has('apply');
+  const target = resolveDbTarget({ apply, confirmProject: arg('confirm-project') });
+  await promote({
+    apply,
+    allowUnscreenedDoctrines: has('allow-unscreened-doctrines'),
+    libraries: flags('library'),
+    target,
+  });
+}
+
+async function verifyCommand(): Promise<void> {
+  if (has('dry-run') && has('apply'))
+    throw new Error('verify accepts only one of --dry-run or --apply');
+  const apply = has('apply');
+  const target = resolveDbTarget({ apply, confirmProject: arg('confirm-project') });
+  await verifyKnowledge({
+    apply,
+    verifierEmail: arg('verifier-email'),
+    verifierUserId: arg('verifier-user-id'),
     target,
   });
 }
