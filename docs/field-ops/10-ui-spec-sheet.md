@@ -1,6 +1,6 @@
 # Field operations War Room: UI spec sheet
 
-**Status:** v1.1, 25 Oct 2026. Not built. Maps the approved mockup element by element. **Added 3 Nov 2026.** Brought up to date with the 3 Nov revisions of 02, 06 and 09 and with WS9's new spec (11), as additions only: every new or changed row, paragraph and list item starts with **Added 3 Nov 2026.**, and new sub-sections say "(added 3 Nov 2026)" after their title.
+**Status:** v1.1, 25 Oct 2026. Not built. Maps the approved mockup element by element. **Added 3 Nov 2026.** Brought up to date with the 3 Nov revisions of 02, 06 and 09 and with WS9's new spec (11), as additions only: every new or changed row, paragraph and list item starts with **Added 3 Nov 2026.**, and new sub-sections say "(added 3 Nov 2026)" after their title. **Added 22 Nov 2026.** Section 14.4 lists the surfaces of master D38 to D45.
 **Depends on:** the master plan and the nine workstream specs (01 to 09); every binding to a sibling contract names the owning spec. **Added 3 Nov 2026.** Also WS9's living world spec, `11-living-world.md`.
 **Mockup:** `docs/design/warroom/field-ops-setup.html` (1,457 lines on disk on 25 Oct 2026; four states).
 **Decisions:** D5, D14, D25 and D28. **Added 3 Nov 2026.** The additions rest on D29 to D35.
@@ -2769,6 +2769,18 @@ The sheet's requests, re-checked against each owner's current text:
 | **Added 3 Nov 2026.** WS9 (11) | Answered: 11 section 15.3's request of this sheet (item 19). WS9 has supplied the copy of item 22 and decided the glyphs of item 23 (11, sections 7.9 and 7.10) | Items 19, 22 and 23; rows 7.76 to 7.100 |
 | **Added 3 Nov 2026.** WS2 (03) | Taken in: the weather select's presets, "Not set" and help line, and the gap chip "Weather · not set" (item 25) | Rows 4.43 and 4.311; section 14.2, item 57 |
 | **Added 3 Nov 2026.** WS4 (05) | Taken in: the hazard panel's "Contents" select (item 26) | Row 6.96; section 14.2, item 58 |
+
+### 14.4 Surfaces of the 22 Nov decisions (added 22 Nov 2026)
+
+None of these is in the approved mockup, so each is a D28 difference that follows the owning spec's copy and the sheet's tokens.
+
+| Surface | Owner | Components and classes | Copy and glyphs |
+| --- | --- | --- | --- |
+| The layered map: storey bar, layered canvas, layer switch, stud profile | WS9 | `WorldStoreyBar`, `WorldLayersCanvas`, `WorldLayerSwitch`, `WorldStudProfile`; `fo-world-storeys`, `fo-world-layer-switch`, `fo-world-profile`, `fo-world-hatch-*` | `11-living-world.md` section 7.12; glyphs `crouch` and `crawl` added to `WrIcon` |
+| Use of force and legal authority in the doctrine drawer | WS1 | A collapsed section of `DoctrineDrawer`, read-only for seeds | `02-teams-and-doctrines.md` AC1.62 |
+| Building type and storeys on the site lane | WS3 | A select and two number fields under the primary card and in `InvolvedBuildingsList` | `04-site-picker.md` section 15.6 |
+| Typical items in the hazard panel; storey on hazards and crowd zones | WS4 | A group in `SceneToolsPanel`; a select in `SceneInspector` | `05-layout-step.md` section 15.5 |
+| Catalogue gaps in Review | WS5 | Review items `catalogue_gap:{key}` | `06-compile-and-review.md` section 6.19 |
 
 ## 15. Visual QA checklist
 

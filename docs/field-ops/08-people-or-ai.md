@@ -1,6 +1,6 @@
 # People or AI: AI-operated agencies, the lobby and the end of engine auto-play
 
-**Status:** v1.1, 25 Oct 2026, reconciled with the other specs and master 10.8 items 20 to 30. Not built.
+**Status:** v1.1, 25 Oct 2026, reconciled with the other specs and master 10.8 items 20 to 30. Not built. **Added 22 Nov 2026:** section 15.5 answers master D40 and D43 for AI agencies.
 **Workstream:** WS7
 **Depends on:** [the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the compile and review spec](06-compile-and-review.md), [the device and physics spec](07-device-and-physics.md) (text moderation), [the after-publish spec](09-after-publish.md) (the start claim)
 **Flags:** `ENABLE_FIELDOPS_AI_TEAMS` (new, this spec); existing `ENABLE_TEAMMATE_BOTS` is not required
@@ -2639,6 +2639,15 @@ Only requests still open after the master's rulings and the other specs' answers
 | To | Request | Why |
 | --- | --- | --- |
 | UI spec sheet (`10-ui-spec-sheet.md`) | Record that the copy of the lobby panel, the seat cards, the console, the decision log and the after-action chip (sections 7.4 to 7.7) is authoritative, because the mockup does not draw them. | D28 |
+
+### 15.5 Use of force and the layered world for AI agencies (added 22 Nov 2026)
+
+Master D40 and D43, 10.8 items 44 and 45; WS1's and WS9's requests.
+
+- **Use of force.** The doctrine plan's `never_do` now holds the force levels the agency's doctrine does not authorise (`02-teams-and-doctrines.md` section 5.4.1). The planner adds them to the agency's forbidden list as it adds every never-do item, and the action guard refuses a decision whose text the planner's classifier marks as ordering one of them, with the reason "Not authorised for this agency's units."
+- **Archetypes.** The three armed archetypes act through WS9's units and the talk-only scope; they gain no action kind in this version (`02-teams-and-doctrines.md` Choice 23).
+- **Perception.** An AI agency's view of the layered world carries each stud's storey and its head-layer classes as a person's does (`11-living-world.md` section 6.25); its dispatch targets name a storey. It reads the same fog.
+- **Tests.** `server/services/fieldOps/bots/planner.test.ts (new)` gains "force levels in never_do"; it is already in the `test` script.
 
 ## 16. Definition of done
 

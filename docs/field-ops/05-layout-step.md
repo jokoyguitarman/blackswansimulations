@@ -1,6 +1,6 @@
 # Lay out the scene: the layout step opens with the site (WS4)
 
-**Status:** v1, 25 Oct 2026. Not built.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds typical items and storeys for master D42 and D43.
 **Workstream:** WS4
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `04-site-picker.md`
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
@@ -2794,6 +2794,15 @@ The first draft's requests R4.1 to R4.8 and R4.10 to R4.12 are settled: R4.1 by 
 | To | Request | Why |
 | --- | --- | --- |
 | `00-master-plan.md` (owner) | R4.9: approve closing the read policy and the public bucket of `migrations/163_rts_scene_configs.sql` with the statements of section 9.2, under a migration number after 249, soon and on its own; keep `ENABLE_FIELDOPS_V2` off in production until it is applied. **Updated 8 Nov 2026:** migration 218 applied a narrower select policy in production; the other statements are still requested | Master risk 14: the anon key alone read every scene row until migration 218; not additive, so the owner decides |
+
+### 15.5 Typical items and storeys (added 22 Nov 2026)
+
+Master D42 and D43, 10.8 items 43 and 44; WS9's request in `11-living-world.md` section 15.3.
+
+- **Contract.** `SceneHazard` gains `typical_kind?: string | null`, a key of WS9's `fieldops_hazard_item_kinds` when the hazard was placed from a typical item, and `storey?: string | null`, a storey label (`B1`, `G`, `L2`), null meaning the exit storey. `CrowdZone` gains the same `storey`. `SceneConfigV2Authored` gains `removed_typical?: string[]`, the item kinds the trainer removed, at most 40. Walls stay one plan, replicated on every storey (WS9's W27).
+- **Panel.** The hazard panel of `SceneToolsPanel` gains a group "Typical for a {type}", listing WS9's `suggestionsFor(buildingType)`: each item's label, location in words and quantity band, with "Place" and "Not in this building". "Place" puts a hazard of the item's hazard type with `typical_kind` set at the point she clicks; "Not in this building" adds the kind to `removed_typical`. Category-only items are listed under "Category only", without a quantity, and are never placed for her. A note says: "Items you do not place or remove are placed by the live world where such buildings usually keep them, marked Assumed."
+- **Storey.** The hazard and crowd-zone inspectors gain a "Storey" select listing the storeys of the primary building from WS9's `storeysFor`, defaulting to the exit storey.
+- **Tests.** `frontend/tests/layoutReadiness.test.ts (new)` gains "typical items": placing and removing update the scene as above; the server's layout schema test gains the three fields with their caps. Both are in the `test` script with their files.
 
 ## 16. Definition of done
 

@@ -1,6 +1,6 @@
 # Device specifics and physics (WS6)
 
-**Status:** v1, 25 Oct 2026. Not built.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds the blast profile and the offline seeding of master D39, D41 and D45.
 **Workstream:** WS6
 **Depends on:** `00-master-plan.md`, `03-setup-screen.md`, `05-layout-step.md`; it also uses WS0's helpers (`01-prerequisites.md`) and WS5's snapshot table (`06-compile-and-review.md`)
 **Flags:** `ENABLE_FIELDOPS_PHYSICS` (`true`, `admin` or `false`, read through `physicsEnabledFor(role)`); the library reads follow `ENABLE_FIELDOPS_V2`
@@ -2695,6 +2695,16 @@ Only the requests still open. Settled and dropped: X6.1 and X6.2 (master risk 15
 | To | Request | Why |
 | --- | --- | --- |
 | `10-ui-spec-sheet.md` | X6.12: record the nine differences of section 7.8 and the class names of section 7.11; the device copy of `fo-notice` is scoped under `.fo-devices` so it cannot collide with WS1's drawer notice; the effects header uses `target`; add the published-mode keys `effects.published` and `setup.devices.remove.keepOne` of section 7.7. | D28. |
+
+### 15.5 The blast profile and offline seeding (added 22 Nov 2026)
+
+Master D39, D41 and D45, 10.8 items 42 and 44; WS9's request in `11-living-world.md` section 15.3.
+
+- **Blast profile.** `EffectEstimate` gains `blast_profile: Array<{ range_m: number; overpressure_kpa: number; impulse_kpa_ms: number }> | null`: 16 ranges spaced evenly in logarithm from 1 m to one and a half times the minor band's radius (at most 500 m), with the incident peak overpressure and positive-phase impulse `calculateEffects` already computes at each through `pressureAt` and the device's burst geometry. It is null in `legacy_bands` mode. It is part of the estimate, so it lives where the estimate lives (WS5's physics snapshot) and follows the same answer-key rules (section 9): never sent to a participant. WS9 interpolates it per stud and never reads a device input (`11-living-world.md` section 6.23.6).
+- **Pure curves for catalogue items.** `pressureAt` and `scaledDistanceFor` (`server/services/fieldOps/physics/blastCurves.ts (new)`) stay pure and importable, so WS9 evaluates a catalogue item's vessel burst or vapour-cloud ignition with WS6's reviewed curves.
+- **Seeding.** WS6's library seed files (explosive materials, injury thresholds, presets) may be drafted by WS9's offline research agent with the brief `device_material`, under this spec's source list (section 5.5) and safety stance; the D22 reviewer reviews every row before import. The brief forbids, as section 9.1 does, anything about how a device is made, armed, hidden or placed.
+- **Chemical other hazards.** Unchanged for devices: a device's chemical "other hazard" stays recorded and "not calculated in this release" (question Q5). Chemicals stored in buildings are WS9's catalogue's, released by its interaction rules (D41).
+- **Tests.** `server/services/fieldOps/physics/calculator.test.ts (new)` gains "blast profile": 16 ranges, monotone decreasing overpressure, equal to `pressureAt` at each range, null in legacy mode.
 
 ## 16. Definition of done
 
