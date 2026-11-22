@@ -2870,7 +2870,7 @@ export interface SceneVerticalLink {
   id: string;
   kind: 'stair' | 'lift' | 'firefighting_lift' | 'escalator' | 'ramp';
   position: [number, number];              // sim metres; the same on every storey it joins
-  width_m: number | null;                  // stairs, escalators, ramps: 0.8 to 4
+  width_m: number | null;                  // stairs, escalators, ramps: 0.8 to 4, default 1.2 (the multi-level editor sandbox's DEFAULT_STAIR_WIDTH_M)
   car_capacity: number | null;             // lifts: 4 to 30
   storeys: { from: string; to: string };   // inclusive
   blocked: boolean;
@@ -2894,10 +2894,10 @@ export interface SceneSlopeArea { id: string; polygon: Array<[number, number]>; 
 
 ### 15.8 The charge picker and the multi-level editor in the main game (added 22 Nov 2026)
 
-Master D61, 10.8 item 53. The debug sandbox has these features on `/debug/rts-sim` (the Project store's `spec-rts-charge-picker.md`, and `spec-rts-multilevel-editor.md` once written); the main game takes them as follows, with one calculation and one data source shared with the sandbox.
+Master D61, 10.8 item 53. The debug sandbox has these features on `/debug/rts-sim` (the Project store's `spec-rts-charge-picker.md` and `spec-rts-multilevel-editor.md`); the main game takes them as follows, with one calculation and one data source shared with the sandbox.
 
 - **Charge picker.** Selecting a planted device opens `ChargeQuickForm` in `SceneInspector`: explosive type (the explosive materials of WS6's library), amount in kilograms (0.1 to 2,000), burst (surface, or free air with a height of 0.5 to 30 m). It writes the device's `DeviceSpec` fields (`charge[0].material_key`, `charge[0].mass_kg`, `environment.elevation` and `environment.elevation_height_m`, `07-device-and-physics.md` section 15.8) and shows the TNT equivalent and the four radii from `calculateEffects`. The old manual radius stays as WS6's manual override. Consequences only (D47): no field for a device's make-up, and no function from a wanted radius to an amount.
-- **Multi-level editor.** Section 15.7's storeys, presented as the sandbox presents them: a level switcher, per-level walls, doors and exits, stairs and lifts placed once and linking levels, one level drawn at a time with the others ghosted.
+- **Multi-level editor.** Section 15.7's storeys, presented as the sandbox presents them: a level switcher, per-level walls, doors and exits, stairs and lifts placed once and linking levels, one level drawn at a time with the others ghosted. The sandbox's `LevelDef` corresponds to `SceneStoreyPlan` without regions, and its `Stairwell` (`kind`, `widthM`, `levels`) to `SceneVerticalLink` (`width_m`, `storeys`); an old stair's `connectsFloors` maps to storeys by index, as the sandbox maps it. Stair movement and shaft smoke use the parameters of `11-living-world.md` section 6.30.7, which the sandbox's constants mirror.
 
 ## 16. Definition of done
 

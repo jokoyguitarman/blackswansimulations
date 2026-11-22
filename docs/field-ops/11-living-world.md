@@ -472,7 +472,7 @@ The test files are in section 11.1. Pure modules are tested without a database o
 130. **AC9.130** Given a storyline of a device at minute 0 and a fire at minute 3, then one `fieldops_world.highlight` per event reaches every audience, including a team whose fog covers neither, with the banner text and position; the injury rings and hazards reach that team only through its cover. Test: `openingSequence.test.ts`, "highlight and fog".
 131. **AC9.131** Given a population frozen in the layout step, then at tick 0 walkers follow paths between doors of their region, standers stay within 2 m, seated people do not move, and nobody leaves the building. Test: `server/services/fieldOps/world/agents/agents.test.ts (new)`, "business as usual".
 132. **AC9.132** Given the trainer's and a participant's views of a session with a device, then the trainer's carries the lethal, serious, minor and glass rings from WS6's ring set and the participant's none. Test: `server/services/fieldOps/world/fog/views.test.ts (new)`, "rings by audience".
-133. **AC9.133** Given 8,000 visible studs with 500 burning and 2,000 smoky, then one animation frame's work stays under 4 ms in the benchmark, studs burning for under 10 s are flagged as the front, and low quality removes flicker and drift. Test: `frontend/tests/worldLayerModel.test.ts (new)`, "animation model".
+133. **AC9.133** Given 2,000 visible studs with 500 burning, 2,000 smoky and 400 embers on High, then hazard drawing stays under 4 ms at the 95th percentile in the benchmark; heating studs and the edges of burning studs next to unburnt ones are the front; Low halves the raster and caps embers at 120; Classic draws flat squares; a 60-frame average over 6 ms steps the level down once and never up. Test: `frontend/tests/worldLayerModel.test.ts (new)`, "animation model".
 134. **AC9.134** Given the pending folders `blast-effects` and `fire-smoke-tenability`, then `KNOWLEDGE_LIBRARIES` and migration 259's checks accept both library keys, and the planning values stand while their files are pending. Test: `server/lib/fieldOps/knowledgeSchemas.test.ts (new)`, "pending libraries".
 
 ## 5. Data model
@@ -3074,6 +3074,14 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | `water_stop_depth_m` | water | 0.7 m | 0.5 to 1.0 | as above |
 | `breathing_height_standing` | gas | 1.6 m | 1.4 to 1.7 | ISO 13571:2012 (tenability at breathing height) |
 | `breathing_height_crawling` | gas | 0.3 m | 0.2 to 0.5 | as above |
+| `stair_speed_down_free` (**added 22 Nov 2026**) | stairs | 0.694 m/s along the stair | 0.5 to 1.0 | physics-movement research seed (pending review); SFPE Handbook stair speeds |
+| `stair_speed_up_free` | stairs | 0.61 m/s | 0.4 to 0.9 | as above |
+| `stair_max_specific_flow` | stairs | 1.01 p/s per metre of effective width | 0.8 to 1.3 | as above |
+| `boundary_layer_stair` | stairs | 0.15 m each side | 0.1 to 0.2 | as above |
+| `stair_travel_factor` | stairs | 2.0 m of travel per metre of storey height | 1.5 to 3.0 | Assumed; stair geometry, pending the research |
+| `smoke_up_factor` | visibility | 1.5 times the lateral spread rate, upward through an open stair | 1.0 to 3.0 | Assumed; pending `fire_smoke_tenability` (stack effect) |
+| `lift_shaft_smoke_factor` | visibility | 0.3 times the stair factor | 0.1 to 1.0 | Assumed; pending `fire_smoke_tenability` |
+| `stair_fire_heat_s` | heat | 60 s to heat the stud above through an open stair | 30 to 300 | Assumed; pending `fire_smoke_tenability` |
 
 **Corrections from the research of 22 Nov 2026.** The physics and movement research (pending seed files for review) found values above that contradict their own sources and a few gaps in the schema. Corrected: `crawl_speed` (0.71 m/s), the retail heat release per unit area (250 kW/m², Eurocode), the convective fraction (0.65), and the chlorine and propane density ratios (2.47, 1.55). Renamed: `irritant_speed` to `smoke_dark_reference_speed`, which is what Jin measured. Marked for the reviewer, with the evidence: `crush_density`, `compression_fatal_s` and the `compression` and `impact` exposure rows. Schema added: post-flashover yields (250), ISO 13571 model constants (250), sprinkler RTI (257), `ppm` and `pct` units (258), vessel mode and a `units` library (254, 259). The building-hazard research then corrected, from the Singapore Fire Code: the mall transformer's location (ground, not basement), the generator-room diesel (at most 700 l, with larger stocks a separate `diesel_bulk_tank`), the lithium-ion UPS (20 to 600 kWh per compartment) and the occupant densities (Table 1.4B design factors); and the formats of `building_tags` and of the `structural_state` and `gas_in_flammable_range` thresholds are now defined in migration 257.
 
@@ -4396,7 +4404,7 @@ Each burning stud's heat release is `min(α t², hrrpua × A)`, with `t` the sec
 - **Regions.** A smoke region is a set of studs on one storey joined without crossing a closed solid wall; an open door, a breach or a broken glazed edge joins regions. Regions are recomputed when an edge opens, at most once every 10 ticks.
 - **Production.** A burning stud adds soot at `soot_yield × Q / ΔHc` and carbon monoxide at `co_yield × Q / ΔHc` into its region's ceiling layer, with `Q` its heat release and `ΔHc` its contents' heat of combustion.
 - **Filling.** The plume carries the axisymmetric plume's mass flow at the interface height into the hot layer (NFPA 92 (2018), axisymmetric plume), and the layer's temperature rises by the convective heat release less 60 per cent lost to the boundaries (Assumed (D45)), over that mass flow. Smoke fills the region's ceiling band first; when it is full the interface descends into the head band, then the waist and floor bands (W30). The interface height of a region is the storey height less the hot layer's volume over the region's area; every stud of the region carries it (AC9.63).
-- **Across regions.** Smoke above a door's head (2.1 m, in the ceiling band) flows into the neighbouring region's ceiling layer at 0.5 m/s across the depth of smoke below the door head times its width (planning value); stairs and shafts carry it upwards as section 6.7.3 says; openings to the outside vent it into a plume source.
+- **Across regions.** Smoke above a door's head (2.1 m, in the ceiling band) flows into the neighbouring region's ceiling layer at 0.5 m/s across the depth of smoke below the door head times its width (planning value); stairs and shafts carry it upwards at `smoke_up_factor` times the lateral rate, and lift shafts at `lift_shaft_smoke_factor` times the stair rate (**updated 22 Nov 2026**, matching the multi-level editor sandbox); a burning stair stud heats the stud above through an open stair after `stair_fire_heat_s`; openings to the outside vent it into a plume source.
 - **Visibility.** Each layer's extinction coefficient is the soot concentration times 8.7 m²/g (Mulholland and Croarkin, 2000); its visibility is `K / σ`, with `K` 8 while the power flag holds and 3 when it has fallen (Jin, 1978). `smokeLevelPermille(σ)` maps the coefficient back to section 6.7.3's permille levels for the exposure rows of section 5.12.4.
 - **Heat.** A layer below the interface is at ambient temperature; a burning stud's layers are in flame; the radiant flux at the floor below a hot layer follows from its temperature, so a layer near 200 °C makes the floor untenable at 2.5 kW/m² (ISO 13571:2012).
 
@@ -4662,7 +4670,7 @@ Every 10 s, or when what it perceives changes, an agent scores each exit and eac
 
 #### 6.30.4 Stairs and lifts
 
-A stair passes the stored stair flow per metre of width; where people join from a storey and from above, they merge half and half (Galea and others (2008), the HEED high-rise evacuation studies); opposite flows halve each direction's capacity. Lifts carry `lift_use_share` of agents at their car capacity and trip time until the alarm, when they return to the ground storey and stop for evacuees; a firefighting lift serves fire units only (the SCDF Fire Code's lift provisions, to verify) (AC9.112).
+A stair passes `stair_max_specific_flow` people a second per metre of effective width (its width less `boundary_layer_stair` on each side, at least 0.3 m); people move along it at `stair_speed_down_free` or `stair_speed_up_free`, capped by the density relation with `stair_k`, over a travel of the storey height times `stair_travel_factor` (**updated 22 Nov 2026**, matching the multi-level editor sandbox); where people join from a storey and from above, they merge half and half (Galea and others (2008), the HEED high-rise evacuation studies); opposite flows halve each direction's capacity. Lifts carry `lift_use_share` of agents at their car capacity and trip time until the alarm, when they return to the ground storey and stop for evacuees; a firefighting lift serves fire units only (the SCDF Fire Code's lift provisions, to verify) (AC9.112).
 
 #### 6.30.5 In the street
 
@@ -5093,16 +5101,17 @@ Evacuees are drawn as dots on the canvas layer of section 7.12, one per agent in
 
 ### 7.14 Rings and animated hazards in the in-play map (added 22 Nov 2026)
 
-D61, master 10.8 item 53. The behaviour matches the debug sandbox's hazard animation spec (the Project store's `spec-rts-hazard-animation.md`, once written) and the showcase's explosion effects; the main game renders through `WorldLayersCanvas` (section 7.12).
+D61, master 10.8 item 53. The main game uses the debug sandbox's hazard animation (the Project store's `spec-rts-hazard-animation.md`): the same modules in `frontend/src/lib/rts/fx/ (new)`, from the sandbox PR (`fxConstants.ts`, `hazardRaster.ts`, `noise.ts`, `embers.ts`, `drawHazardFx.ts`), the same constants and the same quality levels, rendered through `WorldLayersCanvas` (section 7.12). It is visual only: it reads the world's view and never writes it.
 
 - **Rings.** For each device, the lethal, serious and minor rings and the glass-breakage ring from WS6's ring set (`toEffectRingSet`), drawn for the trainer and spectators (labelled, with "Unreviewed model" until D22's review), never for participants. Free-air bursts draw the ground radius.
-- **Smooth gradients.** Stud values (fire state, heat class, the chosen layer's smoke) are drawn into an offscreen image at one pixel per stud and scaled with bilinear smoothing, so cells blend rather than tile; values are interpolated between the 2-second deltas.
-- **Flicker.** Burning studs modulate brightness with seeded per-stud noise at 6 to 10 Hz, plus embers on studs in their first 30 s of burning.
-- **Drifting smoke.** A noise texture over smoky studs is offset over time along the smoke's flow direction (the wind outdoors, the gradient of smoke density indoors), at a speed tied to the flow.
-- **The spread front.** Studs that started burning in the last 10 s are outlined in a bright edge colour that fades; studs whose smoke class rose in the last 10 s pulse once.
-- **Budgets.** At most 4 ms of animation work per frame at 60 frames a second for 8,000 visible studs on a mid-range laptop; the image is rebuilt only for changed studs.
-- **Low quality.** A "Low-quality effects" toggle (kept in the browser) turns off flicker, drift and the flash shake and draws flat colours at 2 updates a second. It switches on by itself when frames take over 20 ms for 3 s, with the notice "Effects reduced to keep the map smooth." `prefers-reduced-motion` also turns off the flash, the shake and the flicker.
-- **Tests.** `frontend/tests/worldLayerModel.test.ts (new)` gains "animation model" (front detection, interpolation, low-quality output) and "rings by audience".
+- **Smooth gradients.** One raster pixel per stud, scaled with bilinear smoothing and clipped to the building outline, as the sandbox draws it; in the main game, values are also interpolated between the 2-second deltas.
+- **Flicker and embers.** Burning studs glow with smooth noise (`FLICKER_AMP` 0.18, frequencies 1.3 and 3.1 Hz, phase from the stud id); embers spawn from burning studs at `EMBER_RATE_PER_STUD_S` up to the quality level's cap.
+- **Drifting smoke.** A tiled noise texture scrolls over smoky studs at `DRIFT_SPEED_PX_S`, in the wind's direction outdoors and `DRIFT_DIR` where no flow is known.
+- **The spread front.** Heating studs pulse at `FRONT_PULSE_HZ` (1.5 Hz), and the edges of burning studs next to unburnt ones are highlighted, as the sandbox defines it.
+- **Quality levels.** `Effects`: High (full raster, flicker with inner glow, up to 400 embers, front pulse and glow), Low (half-resolution raster, cheaper flicker, up to 120 embers, pulse only) and Classic (flat stud squares, no flicker, embers or front). Default High, kept in the browser.
+- **Budgets and downgrade.** Hazard drawing at most 4 ms at the 95th percentile with 2,000 studs and 400 embers on High on a mid-range laptop, and the whole frame within 16.7 ms. When the 60-frame moving average of hazard drawing passes `AUTO_DOWNGRADE_MS` (6 ms), the level steps down (High to Low, then Low to Classic) with the note "Effects lowered to keep the map smooth" and an Undo; it never steps up by itself. A large building (up to 8,000 visible studs) relies on this downgrade.
+- **Reduced motion.** With `prefers-reduced-motion`: static noise, constant glow, no embers, a static front outline, and no flash shake (the highlight of section 6.34 keeps its banner and ring).
+- **Tests.** `frontend/tests/worldLayerModel.test.ts (new)` gains "animation model" (front detection, interpolation, the three levels) and "rings by audience"; the sandbox's `frontend/tests/hazardFx.test.ts (new)` covers the shared modules.
 
 ## 8. AI and LLM contracts
 
@@ -5461,7 +5470,7 @@ New files, added to the `test` script in `package.json`: `server/services/fieldO
 
 ### 11.10 Tests of the opening sequence and rendering (added 22 Nov 2026)
 
-New file, added to the `test` script in `package.json`: `server/services/fieldOps/world/incidents/openingSequence.test.ts (new)` (AC9.128 to AC9.130). Cases added: `agents.test.ts` "business as usual" (AC9.131), `views.test.ts` "rings by audience" (AC9.132), `frontend/tests/worldLayerModel.test.ts (new)` "animation model" (AC9.133), `knowledgeSchemas.test.ts` "pending libraries" (AC9.134). Manual step **M22**: a 60-second quiet period in a populated mall, then the explosion's flash, ring and banner, then fire and smoke spreading with flicker, drift and the front highlighted, with low quality toggled midway.
+New file, added to the `test` script in `package.json`: `server/services/fieldOps/world/incidents/openingSequence.test.ts (new)` (AC9.128 to AC9.130). Cases added: `agents.test.ts` "business as usual" (AC9.131), `views.test.ts` "rings by audience" (AC9.132), `frontend/tests/worldLayerModel.test.ts (new)` "animation model" (AC9.133), `knowledgeSchemas.test.ts` "pending libraries" (AC9.134). Manual step **M22**: a 60-second quiet period in a populated mall, then the explosion's flash, ring and banner, then fire and smoke spreading with flicker, drift and the front highlighted, with the effects level switched from High to Low and Classic midway.
 
 ## 12. Tasks
 

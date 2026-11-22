@@ -2793,7 +2793,7 @@ None of these is in the approved mockup, so each is a D28 difference that follow
 | Precedence notices and response-standard rows in Review | WS5 | `ReviewPage` | `06-compile-and-review.md` section 15.6 |
 | "Quiet period before the incident" | WS2 | Setup's options | `03-setup-screen.md` section 15.7 |
 | The charge quick form and rings in the inspector; the level switcher with ghosted levels | WS4, WS6 | `SceneInspector`, `SceneCanvas` | `05-layout-step.md` section 15.8 |
-| The event highlight (flash, shock ring, banner), animated fire and smoke, the low-quality toggle | WS9 | `WorldHighlight`, `WorldLayersCanvas` | `11-living-world.md` sections 6.34 and 7.14 |
+| The event highlight (flash, shock ring, banner), animated fire and smoke, the Effects quality select (High, Low, Classic) | WS9 | `WorldHighlight`, `WorldLayersCanvas` | `11-living-world.md` sections 6.34 and 7.14 |
 
 ## 15. Visual QA checklist
 
