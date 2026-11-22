@@ -142,7 +142,7 @@ flowchart LR
 
 **Added 3 Nov 2026.** WS1 also takes D29 and D30: a country on every doctrine and alias, Southeast Asian seed doctrines, and a doctrine-document upload. WS6 takes D31's spread data. Their specs (02 and 07) carry a marked note and are revised before they are built (10.8 item 36).
 
-**Added 22 Nov 2026.** WS1 takes D40 (use of force, legal authority, military units and the three new archetypes) and adopts D39's pipeline for its seeds. WS5 takes D38: the dossier makes no model call. WS6 takes D39 for its device library and exports a blast profile for the per-stud evaluation. WS9 takes D39 and D41 to D45: the knowledge pipeline, the threat and agent library, the building-hazard catalogue, the layered 3D world, evacuee movement and the 2D rendering of the 3D state (`11-living-world.md` sections 5.15 to 5.18 and 6.19 to 6.26).
+**Added 22 Nov 2026.** WS1 takes D40 (use of force, legal authority, military units and the three new archetypes) and adopts D39's pipeline for its seeds. WS5 takes D38: the dossier makes no model call. WS6 takes D39 for its device library and exports a blast profile for the per-stud evaluation. WS9 takes D39 and D41 to D45: the knowledge pipeline, the threat and agent library, the building-hazard catalogue, the layered 3D world, evacuee movement and the 2D rendering of the 3D state (`11-living-world.md` sections 5.15 to 5.20 and 6.19 to 6.26).
 
 ## 6. Dependencies and order of work
 
