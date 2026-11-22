@@ -1,6 +1,6 @@
 # Field operations War Room: master plan
 
-**Status:** v1.2, 3 Nov 2026. Not built. Entries marked **Added 3 Nov 2026** record the owner's requirements of that day and how they are specified: in the revised 02 and 06, in WS9's new spec 11, and in marked additions to the other specs (10.8 item 36).
+**Status:** v1.3, 22 Nov 2026. Not built. Entries marked **Added 3 Nov 2026** record the owner's requirements of that day and how they are specified: in the revised 02 and 06, in WS9's new spec 11, and in marked additions to the other specs (10.8 item 36). Entries marked **Added 22 Nov 2026** record the owner's decisions of that day: no research or web search while a scenario is created, every fact from prebuilt databases seeded offline by a research agent under human review, use of force and military units in the doctrine library, a build-time physics library beyond bombs, a building-hazard catalogue, a 3D world shown on the 2D map, and evacuees who react to the hazards on their path (D38 to D45, 10.8 items 41 to 45, risks 23 to 28).
 **Workstream:** all
 **Depends on:** none
 **Flags:** see section 8
@@ -23,6 +23,7 @@ This document is the spine of the set. It records the decisions, fixes the names
 - A compile that honours the document, snapshots doctrines, and writes a draft that is reviewed and then published.
 - AI-operated agencies built on the corporate teammate-bot framework, with the doctrine as the planner.
 - A post-publish editor and a pressure runtime.
+- **Added 22 Nov 2026.** Prebuilt, versioned knowledge libraries that replace every research call made while a scenario is created: doctrines with use of force and legal authority (WS1), device physics (WS6), and spread, threat, building-hazard and movement data (WS9), all seeded offline by a research agent and reviewed by a person (D38, D39).
 
 **Out of scope**
 
@@ -36,6 +37,8 @@ This document is the spine of the set. It records the decisions, fixes the names
 A trainer opens the War Room and chooses field operations. One screen, **Setup**, asks "What happened?". She types a description or drops in a document. A **footprint radar** reads it and prefills five lanes: the incident (type, people present, devices), the site, the responding agencies, the pressure on them, and the adversaries. She corrects what is wrong.
 
 Each **agency** is a team card with an archetype, a rewritable description, a roster of roles, and People or AI. It is matched to a **doctrine** in a shared library; where none fits it says "No doctrine detected" and the trainer writes one, which joins the library as Unverified until an admin approves it. The **site** lane is the Scene Editor's map picker moved into Setup: she searches an address, landmark or street, the building, its neighbours and the streets are outlined from the saved map data at a 150 m radius that she can expand or shrink, and she marks the other buildings involved. A **device** can be described as precisely as she likes (charge and quantity, fragments, casing, other hazard materials, initiation, container, position); anything she leaves blank is assumed and labelled.
+
+**Added 22 Nov 2026.** Nothing is researched while she builds the exercise. Doctrines, physics, what a building of that type typically holds and how people move come from libraries that were seeded offline from cited public sources and reviewed by a person; where a library has nothing, the screen says the value is Assumed or Unverified rather than asking a model. On the day the world runs in three dimensions, storey by storey, and the players see it on the familiar top-down map.
 
 **Lay out the scene** opens with the site already loaded. She adds hazards, walks the site taking photos, plants the devices, paints crowd zones. **Compile** builds the exercise from her document, the doctrines, and the physics calculated from her device details, with no research step. A **Review** page shows what was built and where each part came from; she publishes it and can edit it afterwards, except while a session is live. On the day, agencies marked AI are run by AI, and the lobby can override any seat.
 
@@ -62,7 +65,7 @@ Each **agency** is a team card with an archetype, a rewritable description, a ro
 | D15 | Caps: 10 agencies, 6 pressure bodies, 3 adversaries, 6 devices, 5 involved buildings besides the primary. | Assumed | 03, 04, 07 |
 | D16 | Roster roles are labels and seats in version 1. Permissions (for example only the incident commander authorises) are deferred; the data model leaves room for them. | Assumed | 02, 08 |
 | D17 | Platform admins approve doctrines in an admin queue. A doctrine is usable while Unverified. Target response time is five working days. Admins can retire a doctrine. | Assumed | 02, 09 |
-| D18 | The area and vicinity dossier stays (hospitals, police and fire stations within 5 km, nearby hazards). | Assumed | 06 |
+| D18 | The area and vicinity dossier stays (hospitals, police and fire stations within 5 km, nearby hazards). **Updated 22 Nov 2026 (D38):** it is built only from the saved map data and WS9's building-hazard catalogue, with no model call; the four model calls of today's area brief are removed. | Decided | 06 |
 | D19 | Document privacy: a plain notice at upload and a size cap now; document text goes to the LLM provider through the privacy programme's aliasing layer when that ships. No redaction step in version 1. | Assumed | 03 |
 | D20 | Pressure kinds are the corporate five (regulator, union, NGO, community group, political) plus `media`. | Assumed | 03, 09 |
 | D21 | AI-operated agencies ship behind `ENABLE_FIELDOPS_AI_TEAMS`, off in production until validated on staging with the bot scorecard. | Assumed | 08 |
@@ -73,15 +76,23 @@ Each **agency** is a team card with an archetype, a rewritable description, a ro
 | D26 | Doctrine matching thresholds: 0.85 or more is assigned, 0.60 to below 0.85 is suggested, below 0.60 is "No doctrine detected". They are constants that can be tuned. | Assumed | 02 |
 | D27 | Credit semantics are unchanged: one scenario credit is taken when compile starts and is refunded if compile fails before a draft is written. | Assumed | 01, 06 |
 | D28 | Where the approved mockup and a spec would differ, the mockup wins, unless safety, accessibility, the data model or the design brief (`docs/design/warroom/IMPLEMENTATION_SPEC.md`) requires otherwise. Each difference is listed in the UI spec sheet. So agency cards follow the mockup (one card open, the others compact with an Edit control), and the layout tools use `WrIcon` instead of the mockup's emoji. | Assumed | 02, 05, 10 |
-| D29 | **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country. | Decided | 02 |
+| D29 | **Added 3 Nov 2026.** Doctrines are grouped by country and agency. During development the library is seeded with the doctrines of the response agencies of the Southeast Asian countries, researched once from public sources, reviewed by a person and stored in the database like the map data. Compile never researches doctrines, and matching considers the agency's country. **Updated 22 Nov 2026:** the research is drafted by D39's offline agent and reviewed by a person; Singapore comes first and other countries follow where public sources allow (D40). | Decided | 02 |
 | D30 | **Added 3 Nov 2026.** When an agency the trainer names matches no doctrine, she can pick any doctrine in the library, type one, or upload a doctrine document for that agency, organisation or team. She states its country, so the doctrine is grouped with the right country. An uploaded document is read into the doctrine's fields for her to check, and is saved as Unverified (D2). | Decided | 02 |
-| D31 | **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`. | Decided | 06, 07 |
+| D31 | **Added 3 Nov 2026.** All physics comes from stored data. The device library (WS6) and the spread and deterioration parameters (materials, fire and smoke behaviour, structural resistance, gas plumes) are seeded and reviewed during development. Compile never researches physics for a scenario: stored parameters replace the model call `researchDeteriorationPhysics`. **Updated 22 Nov 2026:** widened by D41 to dispersion, collapse, impact and flooding. | Decided | 06, 07 |
 | D32 | **Added 3 Nov 2026.** Field ops is a real-time strategy simulation. Compile turns every detail into the starting state of a live world. During the session a server-side simulation evolves it: fire and smoke spread through the building by material and wall, structural damage progresses with time and fire exposure, gas plumes drift, crowds move, and the world reacts to what the teams do. | Decided | new WS9 |
 | D33 | **Added 3 Nov 2026.** Teams place and move units. A unit has a type, the capabilities of its archetype, a position and a status. It is dispatched, travels over the saved road network with a travel time, and acts on arrival according to its capabilities. | Decided | new WS9 |
 | D34 | **Added 3 Nov 2026.** Fog of war. A team sees what its units and positions can observe, with range reduced by smoke and weather, plus what is reported to it. The trainer sees everything, and AI agencies see through the same fog as people. | Decided | new WS9 |
 | D35 | **Added 3 Nov 2026.** Weather and traffic are mechanics, not labels. Weather (rain, wind, haze, heat, visibility) changes spread, visibility, travel speed and casualties. Traffic (time-of-day congestion on the saved roads, cordons, closures, evacuation jams) changes unit travel times and so the teams' deployment choices. | Decided | 03, new WS9 |
 | D36 | **Added 3 Nov 2026.** Every detail the trainer gives builds the world: the scene description, the device, the hazards, the structures (walls, stairs, exits), the inspection points, the crowd zones, the weather and the time of day. | Decided | 03, 05, 06 |
 | D37 | **Added 4 Nov 2026.** A session with no human activity for 30 minutes ends by itself, after a warning at 25 that anyone in it can answer with "I'm still here"; and any session ends 12 hours after it started. AI teammates, NPC replies and the engines' own events never count as activity. It applies to every session type, needs no flag, and turns off with `SESSION_IDLE_END_MINUTES=0` and `SESSION_MAX_HOURS=0`. Four forgotten sessions ran from 29 Oct to 4 Nov 2026 and used up the OpenAI balance. | Decided | 01 |
+| D38 | **Added 22 Nov 2026.** No research and no web search while a scenario is created. Setup, compile, Review and the live world take every fact from prebuilt, versioned databases seeded offline (WS1's doctrines, WS6's device library, WS9's spread, threat, building-hazard and movement libraries) and from the saved map data. A model writes narrative and reads the trainer's words; it never supplies a fact that is scored or simulated. Where a library has no row, the value is labelled Assumed or Unverified and the gap is recorded for the seeding programme; nothing falls back to a model silently. | Decided | 02, 06, 07, 11 |
+| D39 | **Added 22 Nov 2026.** Seeding is an offline pipeline. An expert research agent with web access runs only there, never in a server process. It drafts seed files in each library's format with a cited source for every row; a person reviews each file in a review queue before it is imported; imported rows are Unverified until the library's reviewer or an admin verifies them; a re-run produces a diff for review and never overwrites a reviewed row. | Decided | 02, 07, 11 |
+| D40 | **Added 22 Nov 2026.** The doctrine library covers organisations mainly in Singapore, and in other countries where public sources allow: their doctrines and procedures, rules of engagement and use of force, legal authority, and military units. A doctrine gains optional use-of-force and legal-authority blocks, and three archetypes are added for armed and military units: `tactical_response`, `military_support` and `cbrn_defence`. Public material only (risk 21). | Decided | 02, 08, 11 |
+| D41 | **Added 22 Nov 2026.** The physics library is built at build time, never per run: gas and toxic dispersion, fire and smoke, explosions, and disasters, accidents and collisions (structural collapse, vehicle impact, flooding), with how each threat reacts with the environment. Incident types stay D11's four; the new threat profiles drive secondary events inside them and are ready when D11 widens. | Decided | 07, 11 |
+| D42 | **Added 22 Nov 2026.** A building-hazard catalogue, researched offline: building types (mainly Singapore, including production plants and military bases), the objects and hazards each typically holds (chemicals, gas lines and the like) with their physical properties, and an interaction-rules table from which their interactions are derived. It is generic per building type and never describes a named site. It replaces the model's material risk register (`inferHazardMaterialContext`). | Decided | 05, 06, 11 |
+| D43 | **Added 22 Nov 2026.** The simulation is three-dimensional: movement, reactions and interactions happen on every plane and across storeys. Players see a 2D top-down map of the location they chose, one storey at a time, with the 3D state drawn onto it. | Decided | 10, 11 |
+| D44 | **Added 22 Nov 2026.** Evacuees move by physically based rules that react to the hazards on their path: smoke at head height makes them crouch or crawl, slow down and reroute; toxic gas, heat, blocked exits, crowd density and visibility change their speed, route and exposure. Every parameter is stored with its published source. | Decided | 11 |
+| D45 | **Added 22 Nov 2026.** Hazard spread follows physics on the existing stud system. The 3 m studs of `buildingStudService` stay the spatial index and the unit of tracking and assignment; each stud becomes a column of layers on every storey; fire, smoke and gas step on that layered grid by physically based rules; explosions are evaluated per stud with analytic blast models; neighbours come from the grid index, not a pairwise search. | Decided | 11 |
 
 ## 4. Architecture overview
 
@@ -110,6 +121,7 @@ flowchart LR
 - **Added 3 Nov 2026.** The session is a live world. A simulation on the server evolves what compile built and reacts to what the teams do (D32 to D35).
 - A compiled scenario owns a snapshot of the doctrines and the physics it was built with. Later library changes never alter it.
 - Every long operation is a persisted job. Nothing depends on a browser tab or on process memory.
+- **Added 22 Nov 2026.** Knowledge is prebuilt. Nothing reaches the internet or asks a model for a fact while a scenario is created or played; the only place a research agent with web access runs is the offline seeding pipeline, whose output a person reviews (D38, D39).
 - Everything new is behind a flag and additive.
 
 ## 5. Workstreams
@@ -129,6 +141,8 @@ flowchart LR
 | WS9 | `11-living-world.md` (**Added 3 Nov 2026**) | The living world (D31 to D36): the stored spread and deterioration parameters; the server-side simulation of fire, smoke, structure, gas plumes and crowds during a session; units that are dispatched and travel over the saved roads; fog of war; weather and traffic as mechanics | WS4, WS5, WS6 | XL |
 
 **Added 3 Nov 2026.** WS1 also takes D29 and D30: a country on every doctrine and alias, Southeast Asian seed doctrines, and a doctrine-document upload. WS6 takes D31's spread data. Their specs (02 and 07) carry a marked note and are revised before they are built (10.8 item 36).
+
+**Added 22 Nov 2026.** WS1 takes D40 (use of force, legal authority, military units and the three new archetypes) and adopts D39's pipeline for its seeds. WS5 takes D38: the dossier makes no model call. WS6 takes D39 for its device library and exports a blast profile for the per-stud evaluation. WS9 takes D39 and D41 to D45: the knowledge pipeline, the threat and agent library, the building-hazard catalogue, the layered 3D world, evacuee movement and the 2D rendering of the 3D state (`11-living-world.md` sections 5.15 to 5.18 and 6.19 to 6.26).
 
 ## 6. Dependencies and order of work
 
@@ -166,6 +180,7 @@ The dotted arrow from WS6 to WS5 is soft: compile uses calculated effects when `
    - units with dispatch and travel;
    - fog of war;
    - weather and traffic effects.
+8. **Added 22 Nov 2026.** The knowledge libraries and the layered world, in this order: WS9's knowledge pipeline and coverage tables first, so every library is seeded the same way; then WS1's use-of-force fields and the Singapore registers with their military units; then WS9's building-hazard catalogue, because WS5's dossier needs it before v2 compiles reach production; then WS9's threat, agent and movement library; and last the layered 3D engine, which replaces the single-layer engine of build-order item 7 before slice 2 reaches production (`11-living-world.md` section 4.2).
 
 **Suggested release slices** (not binding):
 
@@ -218,6 +233,8 @@ Each flag is read once, at boot, into one `env` property named as in section 10.
 | **Added 4 Nov 2026.** `SESSION_IDLE_END_MINUTES` (default 30, 0 to 1,440), `SESSION_IDLE_WARN_MINUTES` (5, 0 to 60), `SESSION_MAX_HOURS` (12, 0 to 72) | WS0 | D37: minutes without human activity before any session ends, the warning before it, and the longest a session may run; 0 turns a rule off (`01-prerequisites.md` section 6.15) |
 | **Added 3 Nov 2026.** `FIELDOPS_WORLD_MAX_SESSIONS` (default 4, 0 to 8), `FIELDOPS_WORLD_WORKERS` (2, 1 to 4), `FIELDOPS_WORLD_LEASE_SECONDS` (30, 15 to 120), `FIELDOPS_WORLD_TICK_BUDGET_MS` (250, 50 to 900), `FIELDOPS_WORLD_SNAPSHOT_SECONDS` (60, 30 to 300) | WS9 | Live worlds per process, where 0 runs none and is the operational off switch; worker threads; the world lease; the tick's time budget before the world degrades; the snapshot interval (`11-living-world.md` section 6.13) |
 
+**Added 22 Nov 2026.** D38 to D45 add no flag. The building-hazard catalogue and the deterministic dossier ride on `ENABLE_FIELDOPS_V2`, the layered world on `ENABLE_FIELDOPS_WORLD_SIM`, and the use-of-force fields on `ENABLE_FIELDOPS_DOCTRINES`. The seeding agent's settings, `FIELDOPS_SEED_AGENT_MODEL` and `FIELDOPS_SEED_SEARCH_PROVIDER`, are read only by the offline scripts under `scripts/fieldops/knowledge/ (new)` and never by the server (`11-living-world.md` section 6.19).
+
 Existing flags this set relies on: `ENABLE_DOCUMENT_BLUEPRINT` (corporate; not used here), `ENABLE_TEAMMATE_BOTS` (corporate; the framework code is reused), `ENABLE_LOCAL_OSM_SINGAPORE` (the legacy map path; the new site picker reads the tables directly and does not depend on it).
 
 ## 9. Migrations
@@ -235,7 +252,9 @@ The latest migration at the baseline was `217_agreement_signed_copy_draft.sql`. 
 | WS6 | 238 to 242 | Device presets (238), explosive materials (239), injury thresholds (240), an effect-result index (241; the full result is in WS5's snapshot), physics reviews (242) |
 | WS7 | 243 to 245 | `scenario_teams.operation` with session settings and seats (243), bot enrolment (244), brain state and decisions (245) |
 | WS8 | 246 to 249 | Pressure runtime tables (246), scenario revisions (247), edit audit and edit jobs (248), the edit-apply function (249) |
-| WS9 | 250 to 257 | **Added 3 Nov 2026.** The spread library and its review record (250), world models (251), world sessions (252), the world log (253), units (254), visibility (255), weather presets and traffic profiles (256); 257 is kept unused for WS9's next revision (`11-living-world.md` section 5) |
+| WS9 | 250 to 260 | **Added 3 Nov 2026.** The spread library and its review record (250), world models (251), world sessions (252), the world log (253), units (254), visibility (255), weather presets and traffic profiles (256). **Updated 22 Nov 2026:** the building-hazard catalogue and its interaction rules (257), the threat, release-agent and movement library (258), seed runs, knowledge sources and coverage (259); 260 is kept unused for WS9's next revision. 250 and 251 are amended in place, because neither is applied (`11-living-world.md` section 5) |
+
+**Added 22 Nov 2026.** D40 adds three archetype keys to WS1's migration 221 (its closed list and seed rows) in place, because none of WS1's migrations is applied; the use-of-force and legal-authority blocks live in the doctrine content JSON of 222 and need no column. WS9's range grows from 257 to 260 because WS9 is the last range and nothing follows it.
 
 **Added 3 Nov 2026.** D29 and D30 need a `country` (ISO 3166-1 alpha-2) on doctrines and archetype aliases, and a table for uploaded doctrine documents. None of WS1's migrations is applied yet, so the change goes into 221 to 223 rather than a new number.
 
@@ -258,6 +277,11 @@ The latest migration at the baseline was `217_agreement_signed_copy_draft.sql`. 
 | `IncidentTypeKey` (named and stopped) | `open_field_shooting`, `knife_attack`, `gas_attack`, `poisoning`, `kidnapping`, `hijacking` |
 | `ArchetypeKey` (the eight that exist today) | `bomb_disposal_eod`, `medical_triage`, `fire_rescue`, `evacuation_crowd`, `media_comms`, `pursuit_investigation`, `incident_command`, `police_security` |
 | `ArchetypeKey` (new) | `transport_operator`, `venue_operations`, `hospital_ed`, `utilities`, `ministry_liaison` |
+| `ArchetypeKey` (**added 22 Nov 2026**, D40) | `tactical_response`, `military_support`, `cbrn_defence` |
+| `ForceLevel` (**added 22 Nov 2026**, WS1) | `presence`, `verbal`, `physical_control`, `less_lethal`, `lethal` |
+| `StudLayer` (**added 22 Nov 2026**, WS9) | `floor`, `waist`, `head`, `ceiling` |
+| `KnowledgeLibrary` (**added 22 Nov 2026**, WS9) | `doctrines`, `devices`, `spread`, `threats`, `building_hazards`, `movement` |
+| `CoverageStatus` (**added 22 Nov 2026**, WS9) | `covered`, `assumed`, `gap` |
 | `OperationMode` | `people`, `ai` |
 | `ValueOrigin` (an input value) | `yours`, `library`, `assumed` |
 | `EffectSource` (a calculated result) | `calculated`, `stored`, `ai_estimated`, `manual_override`. The new flow never produces `ai_estimated`: it labels legacy compiles only, whose casualty range came from a model. A device whose blanks were filled by library rules is shown as "Calculated from assumed inputs" (07) |
@@ -545,6 +569,28 @@ These decisions fix how the workstreams meet. They bind every spec. A spec that 
     - **The rule.** For a new-flow scenario, session start also copies the delayed hazards and casualties, and remaps every `parent_pin_id` to the session's copy of that parent. A legacy scenario keeps today's behaviour.
     - **Hidden until revealed.** The session's hazard and casualty lists filter only on `appears_at_minutes` (`server/routes/hazards.ts:40-46`, `server/routes/casualties.ts:59`), so a copied delayed row gets `appears_at_minutes` 1,000,000. Its minute stays in `spawn_condition.at_minutes`, which the reveal reads, and revealing sets `appears_at_minutes` to the current minute (`server/services/hazardDeteriorationService.ts:119-122`). Every delayed child compile writes has the `parent_unresolved` trigger, so none relies on its minute alone.
     - **Owner.** WS5, which already changes that function to read the device pool (`06-compile-and-review.md` section 5.8). With WS9's live world running, the deterioration service does not reveal the fire-spread children, because the world's own fires replace them (`11-living-world.md` section 6.12).
+41. **Added 22 Nov 2026. No research while a scenario is created (D38).** WS5 owns the compile side, WS9 the catalogue.
+    - **The dossier.** WS5's dossier stage makes no model call. `researchArea`, `extractAreaResearchStructured`, `inferHazardMaterialContext` and `extractSensitiveInfrastructureStructured` are not called by v2 in either doctrine mode. The area brief is WS9's deterministic `buildAreaBrief` over the saved buildings, roads and facilities; the material risk register is WS9's `materialContextFor`, which returns today's `HazardMaterialInference` shape built from the catalogue; the sensitive sites are WS3's saved facilities.
+    - **Labels.** A value the libraries do not hold is shown as Assumed (a stated default) or Unverified (a row nobody has verified). A model is never asked to fill it.
+    - **Proof.** WS5's AC5.39 is tightened: in library mode a recording fake chat client sees no research-service call at all (`06-compile-and-review.md` AC5.41), and WS9's static check covers the catalogue modules (`11-living-world.md` AC9.80).
+42. **Added 22 Nov 2026. The offline knowledge pipeline (D39).** WS9 owns the pipeline and its tables (migration 259); every library uses it.
+    - **Where it runs.** `scripts/fieldops/knowledge/ (new)`, run by a person with `npx tsx`, outside every server process. No module under `server/` or `shared/` imports it, and WS9's static check proves it.
+    - **What it writes.** Seed files in each library's existing format, with `provenance.drafted_by: 'agent'`, the run id and one or more cited sources per row, into an incoming folder. Nothing is written to the database by the agent.
+    - **Review.** A person reviews each file against its library's checklist; WS1's checklists and reviewers stay (02 section 6.11.3); WS6's D22 reviewer and WS9's W24 reviewer read their libraries. Only approved files are imported, as Unverified or unreviewed rows.
+    - **Re-runs and staleness.** A re-run writes a diff against the approved files; a changed row becomes a new pending change and never overwrites a reviewed row. Every source carries its access date and a review-due date, and the coverage table records what is covered, assumed or missing per library, country and key.
+43. **Added 22 Nov 2026. The building-hazard catalogue (D42).** WS9 owns it (migration 257) and the pure functions `buildingTypeFor`, `typicalHazardsFor`, `interactionsFor`, `materialContextFor` and `buildAreaBrief` in `server/services/fieldOps/world/catalogue/ (new)`.
+    - **Building type.** Derived from WS3's `place_class` and the raw building tag; the trainer may change it on the site lane (`04-site-picker.md` section 15.6). An unknown type is `generic_building`, labelled Assumed.
+    - **Typical items.** WS4's hazard panel offers the type's typical items as suggested hazards, "Typical for a {type}", which the trainer places, moves or removes (`05-layout-step.md` section 15.5). The world places any typical item she left unplaced by WS9's location rules, labelled Assumed.
+    - **Interactions.** Rows of the interaction-rules table (a trigger on an item kind gives an effect, with a threshold, a delay and a probability), replacing the free-text `interactions` field of the spread hazards for every new rule.
+44. **Added 22 Nov 2026. The layered 3D world on the studs (D43 to D45).** WS9 owns it.
+    - **Index.** The world's cells are `buildingStudService`'s studs with their ids; each stud has a column of four layers per storey (`StudLayer`), and the storeys come from WS3's levels and the catalogue's storey height.
+    - **Physics.** Fire grows by the t-squared classes, smoke fills from the ceiling down, gas moves by advection and diffusion with buoyancy, outdoor releases by plume models, and blasts are evaluated per stud from WS6's blast profile. Evacuees react to the layer at their breathing height.
+    - **Display.** Players see the active storey on `MapView`, coloured by the head-height layer by default, with the smoke-layer height, heat and gas tiers drawn as hatches and outlines (`11-living-world.md` section 6.25; `10-ui-spec-sheet.md` section 14.4).
+    - **Blast profile.** WS6 adds `blast_profile` to `EffectEstimate`: peak overpressure and impulse at a fixed set of ranges, so WS9 evaluates each stud without reading any device input (`07-device-and-physics.md` section 15.5).
+45. **Added 22 Nov 2026. Use of force, legal authority and military units (D40).** WS1 owns the content and the three archetypes.
+    - **Content.** `DoctrineContent` gains optional `legal_authorities` and `use_of_force` blocks, restating public law and published policy only; absent means not stated.
+    - **Readers.** WS1's projection turns force levels the unit is not authorised for into forbidden actions and the authorities into a standards finding, so today's judges read them without change; WS7's planner adds them to the agency's never-do list (`08-people-or-ai.md` section 15.5).
+    - **Units.** WS9's unit catalogue gains rows for the three archetypes (`11-living-world.md` section 5.10.1); WS1's agency registers list military and police units as organisations with their public role.
 
 ## 11. Global definition of done
 
@@ -594,6 +640,12 @@ A workstream is done when all of these hold:
 | 20 | **Added 3 Nov 2026.** As first specified, the new compile loses today's fire spread | 10.8 item 35 keeps it at compile from stored parameters until WS9 | 05, 06 |
 | 21 | **Added 3 Nov 2026.** Doctrines for Southeast Asian agencies: public material differs by country and language, some of it is restricted, and a wrong doctrine misleads players and the scoring | Researched once from public sources, each with a source note; reviewed by a person before it is Verified (D17); never restricted or classified material; country coverage grows over time | 02 |
 | 22 | **Added 3 Nov 2026.** Scope: an RTS-style live world is the largest piece of work in the set | WS9 ships in slices behind `ENABLE_FIELDOPS_WORLD_SIM` (section 6, item 7), each falling back to today's behaviour | new WS9 |
+| 23 | **Added 22 Nov 2026.** Staleness: doctrines, laws and codes change after they are seeded | Every row is versioned with its source's date; sources carry a review-due date; the pipeline re-runs on a schedule and produces diffs for review; compiled scenarios keep their snapshots, so published exercises do not drift (D39) | 02, 11 |
+| 24 | **Added 22 Nov 2026.** Restricted doctrine material: rules of engagement and use-of-force policies are often restricted, and a research agent may find leaked or marked copies | Public law and published policy only; the protective-marking check on every source; the agent refuses marked material; a reviewer with legal or service background reads every use-of-force block; summaries, never copies (D40, risk 21) | 02 |
+| 25 | **Added 22 Nov 2026.** Dual use: a catalogue of where hazardous items sit in buildings, military bases and plants could help someone plan harm | Generic per building type, never a named site; quantities as broad ranges; military and process-plant items at category level, never auto-placed and never with locations or quantities beyond a category; no optimisation over positions (D42; `11-living-world.md` section 9.8) | 11 |
+| 26 | **Added 22 Nov 2026.** An agent invents or misreads a source, so a wrong value looks authoritative | Every row cites a source and a locator; a row without one is refused; a person reviews every file; rows stay Unverified or "Unreviewed model" until verified; coverage gaps are shown, not filled (D38, D39) | 02, 07, 11 |
+| 27 | **Added 22 Nov 2026.** A layered 3D world costs more than the single-layer engine on a 1-CPU instance | Voxel, storey and group caps, an active set, grid-index neighbours, coarsening from 3 m to 5 m, the budgets of `11-living-world.md` section 6.17 and the soak; one world per process on the Standard plan (question 22) | 11 |
+| 28 | **Added 22 Nov 2026.** Physically based values look precise but are planning values; trainers may read them as engineering advice | "Unreviewed model" until the D22 and W24 reviews; values labelled as training values; sources visible to admins | 07, 11 |
 
 ## 14. Traceability
 
@@ -611,6 +663,8 @@ A workstream is done when all of these hold:
 | 15.7 Decision text auto-places assets without validation | AI teams go through placement validation | 08 |
 | 17.17 One Supabase project for all environments | Additive migrations and feature detection | all |
 | Chapter 8 (the field-ops detail view is read-only) | The post-publish editor | 09 |
+| 6.3 "Real-world research" is not grounded (**added 22 Nov 2026**) | No research while a scenario is created; every fact from reviewed, sourced libraries (D38, D39) | 02, 06, 11 |
+| 4.14 The compile-time simulation is quadratic and synchronous (**added 22 Nov 2026**) | Grid-index neighbours and a worker thread (D45) | 11 |
 
 ## 15. Glossary
 
@@ -624,6 +678,10 @@ A workstream is done when all of these hold:
 - **Involved building:** another building in the incident, handled at footprint level.
 - **Origin label:** whether a value is Yours, from the Library, or Assumed.
 - **Snapshot:** the copy of a doctrine or calculation stored inside a scenario at compile.
+- **Stud (added 22 Nov 2026):** one point of `buildingStudService`'s 3 m grid on one storey; the world's unit of tracking and assignment.
+- **Stud layer (added 22 Nov 2026):** one of four height bands of a stud on a storey (floor, waist, head, ceiling), holding smoke, gas and heat.
+- **Knowledge library (added 22 Nov 2026):** a reviewed, versioned database seeded offline (doctrines, devices, spread, threats, building hazards, movement).
+- **Building type (added 22 Nov 2026):** the catalogue's generic kind of building, such as a shopping mall or a chemical plant, never a named site.
 
 ## 16. Change log
 
@@ -646,3 +704,4 @@ A workstream is done when all of these hold:
 | 8 Nov 2026 | Re-checked against the launch security fix (commit a0fb07a), which is now the baseline. The 134 citations into `server/index.ts`, `server/lib/access.ts`, `server/routes/ai.ts` and `server/routes/scenarios.ts` moved to their lines there. The fix changed facts the set relied on, each marked **Updated 8 Nov 2026**. Browsers now read only the scenarios and scenes they created, or any as an admin (migration 218, applied in production). `GET /api/scenarios` shows players only the scenarios of sessions they joined. `GET /api/scenarios/:id` refuses strangers and drops `insider_knowledge` and `blueprint` for players, who still receive `sweep_device_pool`, so 10.8 item 16 stands. Risk 14's read half and WS9's fog-of-war gate are met; the public bucket and the rest of R4.9 are still the owner's. |
 | 8 Nov 2026 | T0.23 landed as commit 1cd539a and is live in production (Render deploy of 08:18 UTC). The citations into the eight files it changed moved to their lines there, its files lost their `(new)` marks, and the baseline is now 1cd539a. Manual step M14 is still to run. |
 | 9 Nov 2026 | Found reviewing T0.3, marked **Updated 9 Nov 2026** in `01-prerequisites.md` (section 6.5.3, AC0.8): `GET /api/scenarios/:id/scene-config` also gives the whole row to a trainer running a session of the scenario, as `GET /api/scenarios/:id` does. The trainer's Scene preview reads that route, so otherwise a trainer running someone else's scenario would see no planted devices. |
+| 22 Nov 2026 | v1.3. The owner's decisions of 22 Nov, marked **Added 22 Nov 2026**: D38 to D45; D18, D29 and D31 updated; section 1 scope; section 4 principle; section 5 assignments; section 6 build-order item 8; section 8 (no new flag; the seeding agent's script-only settings); section 9 (WS9's range grows to 260; 221, 250 and 251 amended in place); section 10.1 vocabulary; 10.8 items 41 to 45; risks 23 to 28; traceability of findings 6.3 and 4.14; glossary. Specs 02, 04, 05, 06, 07, 08, 10 and 11 carry the matching marked additions. The checker's nine errors and 26 warnings were fixed in the same change: citations to documents kept outside the repository are named without a path, and files that have landed lost their `(new)` marks. |
