@@ -1,6 +1,6 @@
 # The living world (WS9)
 
-**Status:** v1.1, 22 Nov 2026. Not built. Written on 3 Nov 2026. **Added 22 Nov 2026:** revised for master D38 to D45 (10.8 items 41 to 45): the offline knowledge pipeline, the threat, agent and movement library, the building-hazard catalogue, the layered 3D world on the studs, evacuees who react to hazards, and the 3D state on the 2D map. Every new or changed passage is marked **Added 22 Nov 2026** or **Updated 22 Nov 2026**.
+**Status:** v1.1, 22 Nov 2026. Not built. Written on 3 Nov 2026. **Added 22 Nov 2026:** revised for master D38 to D45 (10.8 items 41 to 45): the offline knowledge pipeline, the threat, agent and movement library, the building-hazard catalogue, the layered 3D world on the studs, evacuees who react to hazards, and the 3D state on the 2D map. Every new or changed passage is marked **Added 22 Nov 2026** or **Updated 22 Nov 2026**. Later on 22 Nov, D46 and D47 widened the incident types beyond bombing: section 6.27 specifies the event models, phase by phase.
 **Workstream:** WS9
 **Depends on:** [the master plan](00-master-plan.md); [01](01-prerequisites.md), [02](02-teams-and-doctrines.md) (added 22 Nov 2026, for the pipeline and the new archetypes), [04](04-site-picker.md), [05](05-layout-step.md), [06](06-compile-and-review.md), [07](07-device-and-physics.md) and [08](08-people-or-ai.md); softly [09](09-after-publish.md)
 **Flags:** `ENABLE_FIELDOPS_WORLD_SIM`
@@ -39,7 +39,7 @@ This spec is new as a whole on 3 Nov 2026, so its text of that day carries no "A
 - Computational fire models (field or zone models of the CFAST kind), per-person crowd agents, and any vertical model beyond the trainer's one plan replicated on at most four floors linked by her stairwells (section 15.2, question 11). **Updated 22 Nov 2026:** the vertical model is now in scope (G9.14), with zone-model behaviour resolved per stud (W30). Field models of the computational fluid dynamics kind and per-person agents stay out.
 - Explosions of stored materials (version 1 gives hazards no `explode` event), secondary devices planned by the world, and any blast physics: blast, structural and thermal radii come only from WS6, which "stays the owner of the blast calculator" (master 10.8 item 38). **Updated 22 Nov 2026:** catalogue items now burst, flash or ignite through the interaction rules (section 6.22), evaluated with WS6's published blast curves; device blasts still come only from WS6, as its blast profile (W33). Secondary devices planned by the world stay out.
 - **Added 22 Nov 2026.** Any inventory of a named site. The catalogue describes building types; the trainer places what her exercise needs (D42).
-- **Added 22 Nov 2026.** New incident types. D11 stands; the threat profiles serve secondary events until it widens (D41).
+- **Added 22 Nov 2026.** New incident types. D11 stands; the threat profiles serve secondary events until it widens (D41). **Updated 22 Nov 2026:** D46 widened it; section 6.27 specifies the new types. Still out: poisoning, kidnapping, hijacking as a hostage event, and anything D47 rules out.
 - **Added 22 Nov 2026.** Web access anywhere but the offline pipeline (D38, D39).
 - Live data of any kind (D5): no traffic or weather feed, no Overpass, no Google.
 - CCTV, drones and sensors as observers (section 15.2, question 13).
@@ -70,7 +70,7 @@ This spec is new as a whole on 3 Nov 2026, so its text of that day carries no "A
 | D34 | Decided | Slice 4: fog of war for people and AI agencies alike; the trainer sees everything. |
 | D35 | Decided | Slice 5: weather and traffic change spread, plumes, visibility, travel speed and casualties. |
 | D36 | Decided | Section 6.6 maps each detail the trainer gives to the part of the world it builds; AC9.14 proves none is dropped. |
-| D11 | Decided | **Added 22 Nov 2026.** The incident types stay the four bombing types. The threat profiles of D41 serve the secondary events inside them (a ruptured gas line, a vehicle fire, a flooded basement) and are ready when D11 widens. |
+| D11 | Decided | **Updated 22 Nov 2026 (D46):** widened in phases (section 6.27). **Added 22 Nov 2026.** The incident types stay the four bombing types. The threat profiles of D41 serve the secondary events inside them (a ruptured gas line, a vehicle fire, a flooded basement) and are ready when D11 widens. |
 | D38 | Decided | **Added 22 Nov 2026.** No module of the world or the catalogue calls a model or the network (AC9.54, AC9.80); compile's dossier takes its material context, area brief and sensitive sites from WS9's functions (section 6.21). A missing row is a coverage gap and an Assumed label, never a model call (W38). |
 | D39 | Decided | **Added 22 Nov 2026.** WS9 owns the offline pipeline and its tables (sections 5.17 and 6.19); WS1 and WS6 seed through it. |
 | D40 | Decided | **Added 22 Nov 2026.** The unit catalogue gains rows for `tactical_response`, `military_support` and `cbrn_defence` (section 5.10.1). |
@@ -79,6 +79,8 @@ This spec is new as a whole on 3 Nov 2026, so its text of that day carries no "A
 | D43 | Decided | **Added 22 Nov 2026.** Storeys and layers (W26, W27; section 6.23); one storey at a time on the 2D map (W39; section 6.25). |
 | D44 | Decided | **Added 22 Nov 2026.** Posture, speed, rerouting and exposure by the breathing layer, from stored parameters with sources (W34; sections 5.16 and 6.24). |
 | D45 | Decided | **Added 22 Nov 2026.** Studs as the index (W25), layers (W26), grid-index neighbours (W28), physically based steps (W29 to W32) and per-stud blasts (W33). |
+| D46 | Decided | **Added 22 Nov 2026.** Section 6.27: one event model per incident type on the layered world and the evacuee rules, with its threat profile, seeds, criteria AC9.85 to AC9.104 and tasks T9.34 to T9.42, in three phases. |
+| D47 | Decided | **Added 22 Nov 2026.** Section 6.27.10 and section 9.9: consequences only, generic classes and bands, the trainer places every event, nothing ranks targets, routes or timings. |
 
 Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS0's detectors for every table and function of 250 to 256); items 12 and 28 (fog filtering runs after WS0's participant projections and never widens them); item 16 (device positions and effects live only in WS9's tables, with row level security on and no policy, never in a `scenarios` column); item 17 (WS9 asks no model anything); item 21 (every foreign key to `scenarios` cascades); item 26 (WS9 does not touch the start branch of `PATCH /api/sessions/:id`; it reads the revision WS8's start claim pinned); item 31 (one refusal for a role, the bare 404 for a flag, WS0's client error class); item 32 (the prepare job's stages use WS0's stage context names); items 35 and 38 (the spread library and the compile-time timeline); item 39 (the live world's seams).
 
@@ -126,6 +128,13 @@ Settled interface decisions this spec owns or consumes (master 10.8): item 5 (WS
 | W38 | **Added 22 Nov 2026.** A gap is a row. When a library has nothing for a building type, an agent, a threat or a country, the gap is recorded in `fieldops_knowledge_coverage`, the generic row is used and labelled Assumed, and Review shows it. | D38: no silent fallback to a model. |
 | W39 | **Added 22 Nov 2026.** Players see one storey at a time on `MapView`. Each stud square is coloured by its head layer by default; the trainer may switch to floor, ceiling or worst. The smoke-layer height is a hatch, heat at head height an outline and gas tiers contours; other storeys show only badges at their vertical links. | D43. The head layer is what a person standing on that storey would see and breathe. |
 | W40 | **Added 22 Nov 2026.** Layer state is integer and physical: smoke as an extinction coefficient in hundredths per metre and temperature in tenths of a degree above ambient, each a `Uint16Array` per layer, and gas in parts per million, a `Uint32Array` per layer and agent, because a flammable range runs to tens of thousands of parts per million. | W9's determinism carries over; physical units make every threshold a stored value with a source. |
+| W41 | **Added 22 Nov 2026.** Every incident type is an `IncidentEventSpec` of one kind, evaluated twice by one module: `initialEffectsFor` at compile (pure, for WS5) and the kind's step in the live world. | One model per type, so compile and the world never disagree (master 10.8 item 46). |
+| W42 | **Added 22 Nov 2026.** An open-air venue (a festival ground, a station forecourt, a street) is a stud area too: WS4's crowd-zone polygons and the site ring are enumerated with `generateStudsForPolygon` as one storey with no walls or roof, stepped by the same engine. | Crowd crush and ramming happen outdoors, where version 1 had no grid (W7). |
+| W43 | **Added 22 Nov 2026.** Crowd crush is a density-and-pressure model on studs: a stud above the crush density whose inflow demand exceeds its outflow for a sustained time accrues a compression dose for the people on it, which becomes casualties. | D46: crush creates casualties; this replaces the event-only rule of section 6.24 and question 31. |
+| W44 | **Added 22 Nov 2026.** A ramming vehicle moves along the trainer's path at its class's mass and its speed band, loses speed to each person and obstacle it meets, and stops at a rated barrier it cannot pass, a facade or the path's end. Injuries come from published pedestrian injury-risk curves by impact speed. | D46, D47: kinematics and injury, with no route or target logic. |
+| W45 | **Added 22 Nov 2026.** An aircraft impact is evaluated once at its tick: an impact swath of collapsed and unsafe studs on the storeys the class spans, reduced fire resistance in the swath, a fuel fireball and pool fires on the impact storeys and down open shafts, closed stairs in the swath, and an outdoor debris cone; the layered engine then runs the fire, smoke and collapse. | D46: the impact itself is an event, not a process, and the building studies of the WTC and Pentagon describe it so. |
+| W46 | **Added 22 Nov 2026.** Groups that perceive a threat enter `fleeing`: no wait, a higher desired speed, the nearest exit away from the threat, and a higher density they will push into. Fleeing is what turns a ramming or an alarm into a crush. | Published crowd-disaster studies show crush follows from flight into a bottleneck. |
+| W47 | **Added 22 Nov 2026.** Phase 2 and phase 3 types reuse the same engine and add only their event kind; each is specified at the level of its model, data and criteria here, and gains its detailed steps when its phase starts (section 6.27.8). | Scope (master risk 30). |
 
 ### 2.3 Assumptions
 
@@ -383,6 +392,29 @@ The test files are in section 11.1. Pure modules are tested without a database o
 83. **AC9.83** Given a building type, an agent and a country with no row, when compile's dossier and the world build run with a recording fake chat client, then each uses its generic row labelled Assumed, writes one coverage row with status `gap` (once per key), Review lists `catalogue_gap:{key}`, and the chat client records no call. Test: `server/services/fieldOps/world/knowledge/coverage.test.ts (new)`, "gaps never ask a model".
 84. **AC9.84** Given sources whose review-due date has passed, when the coverage route is called by an admin, then they are listed as stale with their library and keys; a trainer gets 403. Test: `coverage.test.ts`, "staleness"; `server/routes/fieldOpsSpreadLibrary.test.ts (new)`, "coverage route".
 
+**Added 22 Nov 2026: incident types beyond bombing (D46, D47)**
+
+85. **AC9.85** Given every key of `INCIDENT_TYPES_BY_PHASE`, then `fieldops_incident_types` seed rows exist for each with a phase, an event kind, at least one threat profile, at least two responder archetypes and a template file; `incidentTypesEnabled('phase1')` gives the seven phase 1 keys plus the four bombing types; an empty flag gives the four bombing types only. Test: `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)`.
+86. **AC9.86** Given an `IncidentEventSpec` of each phase 1 kind, then `incidentEventSchema` accepts the valid one and refuses: a vehicle path of 1 or 51 points or outside the site ring; an aircraft class or speed band not in the lists; a release class other than small, medium or large; and any field D47 rules out (an exact speed, a time of day for an attack, a route request). Test: `server/lib/fieldOps/incidentEvents.test.ts (new)`.
+87. **AC9.87** Given 2,000 people walking towards a 2 m exit from a 10 m wide open-air area, when the flow is unobstructed, then the exit passes at most the stored maximum flow and no stud passes the crush density; when a surge trigger draws them to a point at the narrow end, then studs before the bottleneck pass the crush density, compression doses accrue only on studs whose inflow demand exceeds outflow for longer than the stored onset time, and casualties appear at the stored dose thresholds in the stored shares. Test: `server/services/fieldOps/world/incidents/crowdCrush.test.ts (new)`, "bottleneck".
+88. **AC9.88** Given a false alarm at minute 5 in a full venue, then every group starts at once with no wait, fleeing groups accept densities up to the stored fleeing limit, and two opposite flows on the same narrow studs halve their capacity; opening a second exit within 30 s of the first compression stops new doses within 60 s. Test: `crowdCrush.test.ts`, "alarm, counterflow and relief".
+89. **AC9.89** Given a car in the medium speed band on a path crossing a crowd zone, then the vehicle's speed falls by the momentum of each person it meets, each person met is hurt by the stored injury-risk curve at the vehicle's speed at that moment (drawn from the stream `impact`), it stops at the path's end, at a facade (raising the vehicle-impact threat of section 6.23.7) or at a barrier whose rating covers its kinetic energy, and passes a barrier whose rating does not; groups within the stored perception distance flee. Test: `server/services/fieldOps/world/incidents/ramming.test.ts (new)`.
+90. **AC9.90** Given a narrow-body aircraft class at the high speed band striking L20 of a 40-storey office tower, then the storeys the class spans around L20 have a swath of collapsed and unsafe studs to the class's penetration depth, the frames there take the stored reduced fire resistance, the fuel splits between the fireball and pool fires by the stored fractions, stairs inside the swath close, open shafts carry burning fuel to the stored number of storeys below, and the debris cone damages exterior studs beyond the far facade; groups above the impact storeys with no open stair are trapped. Test: `server/services/fieldOps/world/incidents/aircraftImpact.test.ts (new)`.
+91. **AC9.91** Given the same aircraft at ground level on open ground (an airport crash), then no building is damaged, the fuel forms a pool fire of the stored area for its volume, and the radiant field ignites combustible exterior studs above the threshold. Test: `aircraftImpact.test.ts`, "open ground".
+92. **AC9.92** Given a building fire event with one ignition point and, separately, an arson event with three points and an accelerant, then each point burns from tick 0 with its contents, or with `fuel_flammable_liquid` for the accelerant, and the layered engine of section 6.23 does the rest; a residential type's personal mobility device battery item adds its thermal-runaway rule. Test: `server/services/fieldOps/world/incidents/fireEvents.test.ts (new)`.
+93. **AC9.93** Given a town-gas leak of the medium class in a closed 4 by 5 m kitchen, then gas accumulates in the ceiling layer, and when an ignition draw fires while the region's mean concentration is within the flammable range, the vented-deflagration pressure follows the stored vent-area relation, glazing and partition walls fail where it passes their thresholds, a blast field leaves through the vents, and the flammable volume burns as a flash fire. Test: `server/services/fieldOps/world/incidents/gasExplosion.test.ts (new)`.
+94. **AC9.94** Given a large chlorine release from a process-plant tank and two groups, one sheltering indoors and one outdoors, then the outdoor concentration follows section 6.23.5, the indoor concentration follows the stored air-exchange rate, the sheltering group's dose is the indoor one, and the agencies' shelter or evacuate command switches a group's mode at the next tick. Test: `server/services/fieldOps/world/incidents/chemicalRelease.test.ts (new)`.
+95. **AC9.95** Given each phase 1 kind and the mockup fixture, when `initialEffectsFor` runs twice, then both results are deep-equal `CompileEventEffects` with a casualty plan by crowd zone, an initial damage list and the hazards started, and the live world started from the same scene reaches the same T+0 state. Test: `server/services/fieldOps/world/incidents/initialEffects.test.ts (new)`.
+96. **AC9.96** Given the source of `server/services/fieldOps/world/incidents/` and the incident seeds, then no function takes or returns a target ranking, a route suggestion or an optimised time; no seed row or text names a real site, a real event, an operator, a flight or a weapon; speeds appear only as bands in trainer-facing text. Test: `server/services/fieldOps/world/staticChecks.test.ts (new)`, "no attack planning"; `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)`, "seed hygiene".
+97. **AC9.97** Given a phase 2 structural-collapse zone, then the zone's studs collapse at its tick, the progressive rule of section 6.7.4 runs, voids hold trapped groups, and a rescue task frees them at the stored rescue rate. Test: `server/services/fieldOps/world/incidents/phase2.test.ts (new)`, "collapse".
+98. **AC9.98** Given a phase 2 rainfall event, then outdoor studs' water depth rises with intensity less drainage, people outdoors whose depth times velocity passes the stored stability limit are swept (casualties), and basements flood as section 6.23.7 says. Test: `phase2.test.ts`, "flash flood".
+99. **AC9.99** Given a phase 2 utility outage over a substation's area, then the power flag falls in every building within it, smoke control and lit signs stop, lifts hold their groups as trapped, and a rail station's arriving crowd grows by its stored rate. Test: `phase2.test.ts`, "utility cascade".
+100. **AC9.100** Given a phase 2 attacker route, then the abstract threat zone moves along it at a walking band, groups inside its perception distance flee or hide by the stored shares, hidden groups behind closed doors are not reached, harm inside the zone follows the stored abstract rate, and a tactical unit arriving ends it. Test: `phase2.test.ts`, "attacker".
+101. **AC9.101** Given a phase 2 rail event (a train stopped in a station with a fire in one car) and a road collision with a tanker, then the train's fire follows the stored rolling-stock heat release and the station's smoke extraction, passengers detrain to the platform, and the tanker's spill starts the rule's pool fire or release. Test: `phase2.test.ts`, "rail and road".
+102. **AC9.102** Given each phase 1 type compiled with `ENABLE_FIELDOPS_WORLD_SIM` off, then the scenario has pins from `initialEffectsFor` and deterioration facts from its threat profiles, and runs on today's scripted escalation. Test: `initialEffects.test.ts`, "no world".
+103. **AC9.103** Given the mockup's mall and a crowd zone of 3,000, then a vehicle ramming event leads to crush casualties at the exits only when the fleeing crowd meets a bottleneck, and the casualty rows carry `conditions.spawned_from` `world_crush` or `world_impact`. Test: `server/services/fieldOps/world/incidents/scenarios.test.ts (new)`.
+104. **AC9.104** Given the largest phase 1 world (an open-air venue of 30,000 people in 600 groups on 20,000 studs, a ramming vehicle and an alarm), then the tick budget of section 6.26 holds. Test: `server/services/fieldOps/world/perf/worldBudget.test.ts (new)`, "crowd event".
+
 ## 5. Data model
 
 ### 5.1 Where everything lives (Proposed)
@@ -513,7 +545,8 @@ CREATE TABLE IF NOT EXISTS public.fieldops_spread_hazards (
 );
 
 CREATE TABLE IF NOT EXISTS public.fieldops_spread_exposure (
-  agent TEXT PRIMARY KEY CHECK (agent IN ('smoke', 'toxic_gas', 'irritant_gas', 'heat', 'heat_stress', 'collapse')),
+  -- Updated 22 Nov 2026 (D46): compression (crowd crush) and impact (vehicles, debris) added.
+  agent TEXT PRIMARY KEY CHECK (agent IN ('smoke', 'toxic_gas', 'irritant_gas', 'heat', 'heat_stress', 'collapse', 'compression', 'impact')),
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
   incapacitation_bands JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(incapacitation_bands) = 'array'),
   light_at NUMERIC(6, 3) NOT NULL CHECK (light_at > 0),
@@ -574,7 +607,7 @@ CREATE TABLE IF NOT EXISTS public.fieldops_spread_changes (
   id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   -- Updated 22 Nov 2026: the tables of 257 and 258 are logged here too.
   table_name TEXT NOT NULL CHECK (table_name IN ('materials', 'hazards', 'exposure', 'weather_effects', 'road_speeds', 'traffic', 'weather_presets',
-    'building_types', 'item_kinds', 'building_items', 'interactions', 'agents', 'threats', 'movement')),
+    'building_types', 'item_kinds', 'building_items', 'interactions', 'agents', 'threats', 'movement', 'incident_types')),
   row_key TEXT NOT NULL CHECK (char_length(row_key) BETWEEN 1 AND 120),
   action TEXT NOT NULL CHECK (action IN ('seed', 'create', 'update', 'retire')),
   row_before JSONB,
@@ -1385,7 +1418,7 @@ export interface HazardBehaviour {
 }
 
 /** heat: the fire's heat; heat_stress: hot weather outdoors, whose level is the air temperature in tenths of a degree. */
-export const EXPOSURE_AGENTS = ['smoke', 'toxic_gas', 'irritant_gas', 'heat', 'heat_stress', 'collapse'] as const;
+export const EXPOSURE_AGENTS = ['smoke', 'toxic_gas', 'irritant_gas', 'heat', 'heat_stress', 'collapse', 'compression', 'impact'] as const; // the last two added 22 Nov 2026 (D46)
 export type ExposureAgent = (typeof EXPOSURE_AGENTS)[number];
 
 /** One row of fieldops_spread_exposure: a fractional effective dose model per agent. */
@@ -2309,6 +2342,7 @@ Release agents with their physical properties and exposure tiers, threat profile
 -- Service role only: row level security on with no policy, privileges revoked.
 --
 -- Rollback, tried on a branch database only, never on the shared project:
+--   DROP TABLE IF EXISTS public.fieldops_incident_types;
 --   DROP TABLE IF EXISTS public.fieldops_movement_parameters;
 --   DROP TABLE IF EXISTS public.fieldops_threat_profiles;
 --   DROP TABLE IF EXISTS public.fieldops_release_agents;
@@ -2342,11 +2376,14 @@ CREATE TABLE IF NOT EXISTS public.fieldops_release_agents (
 CREATE TABLE IF NOT EXISTS public.fieldops_threat_profiles (
   threat_key TEXT PRIMARY KEY CHECK (threat_key ~ '^[a-z][a-z0-9_]{1,47}$'),
   label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
+  -- Updated 22 Nov 2026 (D46): the incident types' categories and models.
   category TEXT NOT NULL CHECK (category IN ('explosion', 'fire', 'toxic_release', 'flammable_release',
-    'structural_collapse', 'vehicle_impact', 'flood')),
+    'structural_collapse', 'vehicle_impact', 'flood', 'crowd_crush', 'ramming', 'aircraft_impact', 'armed_attacker',
+    'rail', 'utility_failure', 'earthquake')),
   model TEXT NOT NULL CHECK (model IN ('blast_profile', 'vessel_burst', 'bleve_fireball', 'vapour_cloud', 'pool_fire',
     'jet_fire', 'flash_fire', 'gaussian_plume', 'dense_gas_plume', 'indoor_transport', 'progressive_collapse',
-    'kinetic_impact', 'water_ingress')),
+    'kinetic_impact', 'water_ingress', 'crowd_pressure', 'ramming_path', 'aircraft_impact', 'vented_deflagration',
+    'shelter_in_place', 'attacker_zone', 'rolling_stock_fire', 'surface_flood', 'utility_cascade', 'ground_shaking')),
   parameters JSONB NOT NULL CHECK (jsonb_typeof(parameters) = 'object' AND octet_length(parameters::text) <= 16384),
   environment JSONB NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(environment) = 'array'),
   source_keys TEXT[] NOT NULL DEFAULT '{}',
@@ -2394,6 +2431,36 @@ COMMENT ON TABLE public.fieldops_threat_profiles IS
   'WS9 (D41): how each threat is modelled and how it reacts with the environment. parameters is validated per model by threatParamsSchema.';
 COMMENT ON TABLE public.fieldops_movement_parameters IS
   'WS9 (D44): evacuee movement parameters with their published sources and plausible ranges.';
+
+-- Added 22 Nov 2026 (D46): one row per incident type beyond the bombing types.
+CREATE TABLE IF NOT EXISTS public.fieldops_incident_types (
+  incident_type TEXT PRIMARY KEY CHECK (incident_type ~ '^[a-z][a-z0-9_]{1,47}$'),
+  label TEXT NOT NULL CHECK (char_length(label) BETWEEN 1 AND 80),
+  type_group TEXT NOT NULL CHECK (type_group IN ('explosives', 'crowd_and_vehicle', 'fire_and_explosion', 'hazardous_materials',
+    'structural_and_transport', 'natural_hazards', 'armed_attack', 'utilities')),
+  phase SMALLINT NOT NULL CHECK (phase BETWEEN 1 AND 3),
+  event_kind TEXT NOT NULL CHECK (event_kind IN ('device', 'crowd_trigger', 'vehicle_path', 'aircraft_impact', 'ignition', 'gas_leak',
+    'release', 'collapse_zone', 'train_event', 'road_collision', 'rainfall', 'utility_outage', 'attacker_route')),
+  threat_keys TEXT[] NOT NULL CHECK (cardinality(threat_keys) >= 1),
+  responder_archetypes TEXT[] NOT NULL CHECK (cardinality(responder_archetypes) >= 2),
+  catalogue_needs TEXT[] NOT NULL DEFAULT '{}',
+  template_file TEXT NOT NULL CHECK (template_file ~ '^[a-z][a-z0-9_]{1,47}\.json$'),
+  sensitivity TEXT NOT NULL DEFAULT 'public' CHECK (sensitivity IN ('public', 'restricted_generic')),
+  briefing_note TEXT NOT NULL CHECK (char_length(briefing_note) BETWEEN 3 AND 400),
+  source_keys TEXT[] NOT NULL DEFAULT '{}',
+  source_ref TEXT NOT NULL CHECK (char_length(source_ref) BETWEEN 3 AND 300),
+  source_note TEXT NOT NULL CHECK (char_length(source_note) BETWEEN 3 AND 400),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'retired')),
+  row_version INTEGER NOT NULL DEFAULT 1 CHECK (row_version >= 1),
+  updated_by UUID REFERENCES public.user_profiles(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+DROP TRIGGER IF EXISTS trg_fieldops_incident_types_updated_at ON public.fieldops_incident_types;
+CREATE TRIGGER trg_fieldops_incident_types_updated_at BEFORE UPDATE ON public.fieldops_incident_types
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+ALTER TABLE public.fieldops_incident_types ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.fieldops_incident_types FROM PUBLIC, anon, authenticated;
 
 ALTER TABLE public.fieldops_release_agents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.fieldops_threat_profiles ENABLE ROW LEVEL SECURITY;
@@ -4137,7 +4204,7 @@ D44. Every number below is a row of `fieldops_movement_parameters` (section 5.19
 - **Route costs.** The flow field's cost of a step is its length over the speed a standing group would have there, times 3 on a stair, times 10 where the head layer is above `tenable_temp_head_c` or the floor receives more than `tenable_radiant_kw_m2`, and infinite where water passes `water_stop_depth_m` or the stud is burning or collapsed. Fields are recomputed when a cost class changes, at most every 10 ticks.
 - **Rerouting and turning back.** When the visibility at the group's breathing layer on its next three route studs falls under `reroute_visibility_m` and another route costs less than 1.5 times its own, the group switches; otherwise it continues at its posture. The first time it meets such smoke, `turn_back_permille` of its people, drawn from the stream `crowd_turn`, split off as a new group that turns back, while the world holds fewer than 400 groups (AC9.71).
 - **Exposure.** A group's dose accrues at its breathing layer (`BREATHING_LAYER`): smoke and heat through the exposure rows of section 5.12.4, and a release agent through its tiers as a toxic load with the agent's exponent, so that a dose of 1 is the third tier's concentration for its duration, the light and serious thresholds sit at the first and second tiers' equivalents, and the shares are the `toxic_gas` row's, or the `irritant_gas` row's for an irritant (AC9.73).
-- **Crowding.** A stud above `crush_density` for 10 seconds raises the event `crowd_crush_risk` for the trainer and the teams that see it. It creates no casualty in this version (section 15.2, question 31).
+- **Crowding.** A stud above `crush_density` for 10 seconds raises the event `crowd_crush_risk` for the trainer and the teams that see it. **Updated 22 Nov 2026 (D46, W43):** it also starts the crush model of section 6.27.2, which creates casualties; question 31 is answered.
 
 ### 6.25 The 3D state on the 2D map (added 22 Nov 2026)
 
@@ -4161,6 +4228,163 @@ These rows replace those of section 6.17 for the layered engine; the others of 6
 | Deltas | at most 64 KB per audience every 2 s, 8 bytes per changed stud | `encodeStoreyDelta` |
 | Client drawing | one storey, at most 8,000 stud squares through Leaflet's canvas renderer, a redraw under 16 ms on a mid-range laptop | section 7.12 |
 | Compile-time neighbours | under 100 ms for 20,000 studs, where the pairwise loop took seconds | the spatial hash (AC9.60) |
+
+### 6.27 Incident types beyond bombing (added 22 Nov 2026)
+
+D46 and D47, master 10.8 item 46. Every type below is one event kind evaluated by one module in `server/services/fieldOps/world/incidents/ (new)`: `initialEffectsFor` at compile and the kind's step in the live world (W41). Each type turns on through `ENABLE_FIELDOPS_INCIDENT_TYPES` only when its criteria pass and its rows are reviewed (W24).
+
+#### 6.27.1 The common contract
+
+```ts
+// shared/fieldOps/incidentEvents.ts (new). Owned by WS9. Types and constants only (master 10.7).
+export const INCIDENT_TYPES_BY_PHASE = {
+  1: ['stampede_crush', 'vehicle_ramming', 'aircraft_impact', 'building_fire', 'arson', 'gas_explosion', 'chemical_release'],
+  2: ['structural_collapse', 'rail_incident', 'road_collision', 'flash_flood', 'utility_failure', 'active_shooter', 'open_field_shooting', 'knife_attack'],
+  3: ['gas_attack', 'biohazard', 'maritime_incident', 'earthquake'],
+} as const;
+export const VEHICLE_CLASSES = ['car', 'van', 'rigid_truck', 'articulated_truck'] as const;
+export const AIRCRAFT_CLASSES = ['light', 'helicopter', 'regional_jet', 'narrow_body', 'wide_body'] as const;
+export const SPEED_BANDS = ['low', 'medium', 'high'] as const;              // vehicles; aircraft use 'low' and 'high'
+export const RELEASE_CLASSES = ['small', 'medium', 'large'] as const;       // as the Emergency Response Guidebook sizes spills
+export const CROWD_TRIGGERS = ['surge', 'panic', 'bottleneck', 'false_alarm'] as const;
+export type IncidentEventSpec =
+  | { kind: 'device' }
+  | { kind: 'crowd_trigger'; triggers: Array<{ trigger: (typeof CROWD_TRIGGERS)[number]; at_min: number; point: [number, number] | null; exit_id: string | null }> }
+  | { kind: 'vehicle_path'; vehicle_class: (typeof VEHICLE_CLASSES)[number]; speed_band: (typeof SPEED_BANDS)[number]; path: Array<[number, number]>; at_min: number }
+  | { kind: 'aircraft_impact'; aircraft_class: (typeof AIRCRAFT_CLASSES)[number]; speed_band: 'low' | 'high';
+      target: { building: 'primary' | 'open_ground' | string; point: [number, number]; storey: string | null; heading_deg: number }; at_min: number }
+  | { kind: 'ignition'; points: Array<{ point: [number, number]; storey: string | null }>; accelerant: boolean; at_min: number }
+  | { kind: 'gas_leak'; source: 'town_gas' | 'lpg'; leak_class: (typeof RELEASE_CLASSES)[number]; point: [number, number]; storey: string | null; at_min: number }
+  | { kind: 'release'; agent_key: string; release_class: (typeof RELEASE_CLASSES)[number]; point: [number, number]; exterior: boolean; at_min: number };
+// Phase 2 kinds (collapse_zone, train_event, road_collision, rainfall, utility_outage, attacker_route) are added to the union when phase 2 starts (W47).
+export interface CompileEventEffects {
+  event_kind: IncidentEventSpec['kind'];
+  casualty_plan: Array<{ crowd_zone_id: string | null; black: number; red: number; yellow: number; green: number }>;
+  damage: Array<{ stud_id: string; permille: number }>;
+  hazards: Array<{ hazard_type: string; point: [number, number]; storey: string | null; at_min: number }>;
+  assumed: string[];                      // the inputs filled by defaults, for Review
+}
+```
+
+`incidentEventSchema` (`server/lib/fieldOps/incidentEventSchemas.ts (new)`) validates it with caps: at most 6 crowd triggers, a path of 2 to 50 points inside the site ring, at most 6 ignition points, minutes from 0 to the exercise's duration. It has no field for an exact speed, a time of day, a target choice or a route request (D47, AC9.86).
+
+**Templates.** The existing templates `stampede_crush.json`, `vehicle_ramming.json`, `arson.json`, `active_shooter.json`, `open_field_shooting.json`, `knife_attack.json`, `gas_attack.json` and `biohazard.json` serve their types. New templates follow `vehicle_ramming.json`'s shape: `aircraft_impact.json`, `building_fire.json`, `gas_explosion.json`, `chemical_release.json`, `structural_collapse.json`, `rail_incident.json`, `road_collision.json`, `flash_flood.json`, `utility_failure.json`, `maritime_incident.json` and `earthquake.json`, each under `scenario_templates/scenario_types/ (new files)`, written by a person (they hold teams and inject templates, not facts) and reviewed with the type.
+
+**Responders and catalogue needs** are columns of `fieldops_incident_types`; the table in each subsection below gives the seed values. Archetype keys are WS1's (`02-teams-and-doctrines.md` section 6.11.7 lists the Singapore agencies).
+
+#### 6.27.2 Crowd crush and stampede (phase 1, `stampede_crush`)
+
+- **Where it plugs in.** Concerts, festivals, religious gatherings, stadiums and stations. The venue is the primary building's studs, or an open-air stud area (W42). Groups are those of section 6.24; a large crowd uses larger groups, at most 600 (the 400-group cap rises to 600 for this type only, inside section 6.26's budget, AC9.104).
+- **Triggers** (the trainer's `crowd_trigger` list, and any event that makes groups flee): **surge**, a point groups are drawn to (a stage, a gate, a giveaway); **panic**, a perceived threat (a ramming vehicle, fire, a blast, an attacker) within the stored perception distance; **bottleneck**, an exit closed or narrowed; **false alarm**, every group starts at once with no wait.
+- **Fleeing (W46).** No wait, desired speed `flee_speed`, the nearest usable exit away from the threat, and acceptance of densities up to `flee_density_limit`; opposite flows on the same studs halve their capacity (`counterflow_factor`).
+- **Pressure and compression (W43).** Each stud's density is its people over its area. When it passes `crush_density` and the inflow its upstream groups demand exceeds what it can pass for longer than `crush_onset_s`, every person on it accrues a compression dose at a rate that grows with the excess density (`compression_rate_per_p_m2`). Thresholds come from the `compression` exposure row: light (fainting, bruising), serious (crush injury), fatal (compressive asphyxia), with the share `trapped` for people down in a pile. When pressure falls (an exit opens, the surge stops), doses stop rising (AC9.87, AC9.88).
+- **Casualties.** Bridge operations as section 6.7.7, with `conditions.spawned_from` `world_crush`; patients carry the crush note of the exposure row for medical teams.
+- **Responders.** `evacuation_crowd`, `venue_operations`, `police_security`, `medical_triage`, `fire_rescue`, `incident_command`, `media_comms`.
+- **Catalogue needs.** Building types `stadium_venue`, `rail_station`, `place_of_worship`, and the new `open_air_venue` (an event ground or street, no building); items `crowd_barrier` (a mitigation that holds a line until its rated load) and `stage`.
+- **Parameters and sources.**
+
+| Key | Value | Plausible range | Source |
+| --- | --- | --- | --- |
+| `crush_density` | 5.0 p/m² | 4.5 to 6.0 | Fruin (1993), *The causes and prevention of crowd disasters*; Still (2014) |
+| `flee_density_limit` | 7.0 p/m² | 6 to 9 | Helbing, Johansson and Al-Abideen (2007), *Physical Review E* 75 |
+| `crush_onset_s` | 30 s | 10 to 60 | Lee and Hughes (2005), *Journal of Transportation Engineering* 131 |
+| `compression_fatal_s` | 300 s of sustained crush | 240 to 360 | Fruin (1993): compressive asphyxia within about four to six minutes |
+| `flee_speed` | 2.5 m/s | 1.8 to 3.5 | Helbing and others (2000), *Nature* 407 |
+| `perception_m` | 30 m | 10 to 60 | planning value, checked in review |
+| `counterflow_factor` | 0.5 | 0.3 to 0.8 | Green Guide, *Guide to Safety at Sports Grounds*, 6th edition (2018); HSE, *Managing crowds safely* (HSG154) |
+| `exit_flow_level` | 82 p/m/min | 60 to 109 | Green Guide (2018), rates of passage |
+
+Validation cases for the reviewer, from public inquiry reports only, never named in templates: a stadium terrace crush, a festival tunnel crush and a street crush in a narrow sloping alley. The model has no slope; the reviewer checks whether that matters for the cases.
+
+#### 6.27.3 Vehicle ramming into pedestrians (phase 1, `vehicle_ramming`)
+
+- **Where it plugs in.** The trainer draws a path on the site (WS4's tool, `05-layout-step.md` section 15.6), picks a vehicle class and a speed band, and a minute. The vehicle moves along the path on the ground storey's studs, indoor or open-air (W44).
+- **Kinematics.** Speed starts at the band's value. Each person met takes momentum: the vehicle's speed falls by the person's mass over the sum of masses; each obstacle (a wall, a facade, a parked vehicle row) stops it and raises section 6.23.7's vehicle impact; a barrier item stops it when the vehicle's kinetic energy is within the barrier's rating class, and is damaged otherwise. The vehicle never steers: the path is the trainer's.
+- **Injury.** Each person met is a casualty with the probability of the stored injury-risk curve for its impact speed: fatal, serious or slight (stream `impact`). Groups within `perception_m` flee (W46), so a ramming can lead to a crush at a bottleneck (AC9.103).
+- **Secondary fire.** A facade impact above the class's fire threshold starts its fuel pool fire, by the interaction rule `vehicle_post_crash_fire`.
+- **Responders.** `police_security`, `tactical_response`, `pursuit_investigation`, `medical_triage`, `fire_rescue`, `evacuation_crowd`, `incident_command`, `media_comms`.
+- **Catalogue needs.** Item kinds `bollard_rated` and `barrier_rated` (mitigation, by rating class) on `shopping_mall`, `rail_station`, `stadium_venue` and `open_air_venue` frontages, with likelihoods; never their positions at a real site.
+- **Parameters and sources.**
+
+| Key | Value | Source |
+| --- | --- | --- |
+| Vehicle classes | car 1,500 kg; van 3,500 kg; rigid truck 12,000 kg; articulated truck 30,000 kg (planning bands) | IWA 14-1:2013 and PAS 68:2013 test vehicle classes |
+| Speed bands | low under 30 km/h; medium 30 to 60; high over 60 (bands only; no exact speed is offered) | as above, impact test speeds |
+| Injury-risk curves | fatal, serious and slight probability against impact speed for an adult pedestrian | Rosén and Sander (2009), *Accident Analysis and Prevention* 41; Tefft (2013), *Accident Analysis and Prevention* 50 |
+| Barrier rating classes | the kinetic energy each class stops | IWA 14-1:2013; ASTM F2656 |
+| Person mass | 75 kg | planning value |
+
+#### 6.27.4 Aircraft impact into a building (phase 1, `aircraft_impact`)
+
+- **Where it plugs in.** The trainer picks an aircraft class, a speed band, the building (the primary, an involved building, or open ground), the impact point, the storey and the heading. Accidental crashes near an airport and an aircraft used as a weapon share the model; the difference is the story the template tells, never the physics (D47).
+- **Impact (W45).** The storeys the class spans around the impact storey (`span_storeys`) take a swath as wide as the class's `swath_m` from the impact point along the heading, to the depth `penetration_m` (capped by the building's depth): collapsed to the first third, unsafe beyond. Frames in the swath take `fire_resistance_factor` of their resistance (fireproofing dislodged). Stairs and shafts whose studs fall in the swath close; open shafts outside it carry burning fuel down `shaft_fuel_storeys` storeys. Exterior studs in a cone beyond the far facade take debris damage.
+- **Fuel.** The class's fuel band splits into a fireball (`fireball_fraction`, a radiant field for its duration, section 6.22) and pool fires spread over the impact storeys' studs at `pool_depth_mm`; the rest burns as the contents of those studs.
+- **Afterwards.** The layered engine runs fire, smoke through every open shaft, the reduced frames' creep and the progressive rule; groups above the impact storeys with no open stair are trapped, and rescue is the fire service's task (AC9.90). On open ground, only the pool fire and the radiant field apply (AC9.91).
+- **Responders.** `fire_rescue` (with an airport emergency service as its agency where the site is an airport), `medical_triage`, `police_security`, `incident_command`, `evacuation_crowd`, `utilities`, `transport_operator`, `media_comms`, and `military_support` for a deliberate act.
+- **Catalogue needs.** None new for buildings; the class table is a threat profile.
+- **Parameters and sources** (all class-level bands, from public engineering studies; no flight or approach data).
+
+| Key | Source |
+| --- | --- |
+| Class mass and fuel bands; `span_storeys` and `swath_m` | ICAO aerodrome reference codes for wingspan bands; manufacturers' public airport planning documents for typical maximum masses and fuel capacities |
+| `penetration_m`, the collapsed and unsafe split, `fire_resistance_factor` | NIST NCSTAR 1 (2005), the final report on the collapse of the WTC towers; FEMA 403 (2002), the WTC building performance study; ASCE (2003), *The Pentagon Building Performance Report* |
+| `fireball_fraction`, `shaft_fuel_storeys`, `pool_depth_mm` | as above (NIST NCSTAR 1-5 on fuel dispersal) |
+| Jet fuel properties (flash point, heat of combustion, soot yield) | SFPE Handbook; ASTM D1655 |
+| Open-ground crash pool fire | ICAO Airport Services Manual, Part 1, *Rescue and Firefighting* (practical and theoretical critical areas) |
+
+#### 6.27.5 Building fire without a device, and arson (phase 1, `building_fire`, `arson`)
+
+- **Where it plugs in.** The trainer places one ignition point (building fire) or up to six with an accelerant (arson); each burns from its minute with its stud's contents or with `fuel_flammable_liquid`. Everything else is section 6.23: growth, sprinklers, smoke layers, flashover, vertical spread, evacuee posture.
+- **Singapore relevance.** Fires in public housing blocks, including those started by personal mobility device batteries, are the commonest serious residential fires in the Singapore Civil Defence Force's published statistics; the catalogue adds `pmd_battery` (lithium-ion) to `public_housing_block` and `condominium`, with its thermal-runaway rule (AC9.92).
+- **Responders.** `fire_rescue`, `medical_triage`, `police_security`, `evacuation_crowd`, `incident_command`; `pursuit_investigation` for arson.
+- **Sources.** As section 5.19; SCDF's annual fire statistics for the PMD item's likelihood.
+
+#### 6.27.6 Accidental gas explosion (phase 1, `gas_explosion`)
+
+- **Where it plugs in.** A leak of town gas or LPG of a size class at a point (a catalogue item or the trainer's point). Gas accumulates by section 6.23.4 (town gas rises; LPG pools). An ignition draw each minute (`ignition_rate_per_min`, stream `interactions`) or the trainer's minute ignites the region when its concentration is in the flammable range.
+- **Deflagration.** The region's peak pressure follows the vented-deflagration relation of NFPA 68 for its volume and its vent area (glazing and doors that fail first); glazing and partitions fail at their thresholds; a blast field leaves through the vents with the multi-energy curve for the confinement; the flammable volume burns as a flash fire. A load-bearing wall failure can start the progressive rule (AC9.93).
+- **Responders.** `fire_rescue`, `utilities` (the gas operator), `medical_triage`, `police_security`, `evacuation_crowd`, `incident_command`.
+- **Catalogue needs.** `town_gas_service` and `lpg_cylinder_bank` (section 5.19); residential and food-centre types.
+- **Sources.** NFPA 68, *Standard on Explosion Protection by Deflagration Venting*; BS EN 14994; Energy Market Authority's gas-safety publications; the Ronan Point inquiry report (1968) as a progressive-collapse case.
+
+#### 6.27.7 Industrial chemical release (phase 1, `chemical_release`)
+
+- **Where it plugs in.** A release of an agent of a size class from a catalogue item (a process plant's store, pool chlorination, ammonia refrigeration) or a point the trainer places. Outdoors section 6.23.5's plumes; indoors section 6.23.4's transport, with infiltration at `air_changes_per_hour` while a group shelters.
+- **Protective actions.** Agencies command `shelter_in_place` or `evacuate` for a zone; sheltering groups breathe the indoor concentration; evacuating groups route across the plume's tiers with its costs (AC9.94).
+- **Responders.** `cbrn_defence`, `fire_rescue`, `medical_triage`, `police_security`, `evacuation_crowd`, `incident_command`, `ministry_liaison` (the environment and manpower ministries), `media_comms`.
+- **Catalogue needs.** Section 5.19's process-plant, hotel and cold-store items; `ammonia_refrigeration` added to `warehouse_logistics`.
+- **Sources.** The US EPA's *Risk Management Program Guidance for Offsite Consequence Analysis* (2009); NOAA ALOHA technical documentation; the Emergency Response Guidebook (2024) for size classes and protective-action distances; US EPA AEGL values; ASHRAE Fundamentals for air-change rates.
+
+#### 6.27.8 Phase 2 types
+
+Each reuses the engine and adds one event kind (W47); detailed steps are written when phase 2 starts, inside these bounds.
+
+| Type | Why for Singapore | Model on the layered world | Responders | Catalogue and sources |
+| --- | --- | --- | --- | --- |
+| `structural_collapse` | Construction and excavation failures have happened in Singapore and are investigated publicly | A collapse zone at a tick; the progressive rule of section 6.7.4; voids hold trapped groups freed by rescue at a stored rate (AC9.97) | `fire_rescue`, `medical_triage`, `police_security`, `utilities`, `incident_command` | UFC 4-023-03 (2016); INSARAG Guidelines (2020) for rescue rates; public inquiry reports as validation |
+| `rail_incident` | The rail network carries millions a day; underground stations and tunnels | A train stopped in a station or a tunnel section the trainer draws; rolling-stock fire by NFPA 130's design fires; station smoke extraction; detrainment flows (AC9.101) | `transport_operator`, `fire_rescue`, `medical_triage`, `police_security`, `evacuation_crowd`, `incident_command` | NFPA 130; LTA's published standards (to verify) |
+| `road_collision` | Expressway multi-vehicle and tanker incidents | Section 6.23.7's vehicle impact for each vehicle; a tanker's spill as a release or pool fire; WS9 traffic jams (AC9.101) | `police_security`, `fire_rescue`, `medical_triage`, `cbrn_defence`, `transport_operator` | Emergency Response Guidebook (2024); the threat rows of section 5.19 |
+| `flash_flood` | Intense tropical rainfall; the 2010 to 2011 flash floods in central Singapore | Rainfall intensity less drainage raises outdoor studs' depth; people whose depth times velocity passes the stability limit are swept; basements flood; utility rules (AC9.98) | `fire_rescue`, `police_security`, `utilities`, `evacuation_crowd`, `incident_command` | PUB's *Code of Practice on Surface Water Drainage*; Cox, Shand and Blacka (2010), *Appropriate safety criteria for people* (Australian Rainfall and Runoff, project 10) |
+| `utility_failure` | Power and rail disruptions with large crowds have been the subject of public inquiries | An outage over a substation's area: power flag down, smoke control and lit signs off, lifts trap groups, stations fill at a stored rate (AC9.99) | `utilities`, `transport_operator`, `fire_rescue`, `police_security`, `evacuation_crowd` | The public inquiry reports into rail disruptions; SP Group publications (to verify) |
+| `active_shooter`, `open_field_shooting`, `knife_attack` | National preparedness campaigns (SGSecure's "Run, Hide, Tell") train for them | An abstract threat zone moving along the trainer's waypoints at a walking band; groups flee or hide by stored shares; closed doors protect hidden groups; harm inside the zone at a stored abstract rate; a tactical unit's arrival ends it. No weapon, no tactic (AC9.100; section 6.27.10) | `police_security`, `tactical_response`, `medical_triage`, `evacuation_crowd`, `venue_operations`, `incident_command`, `media_comms` | Ministry of Home Affairs, SGSecure "Run, Hide, Tell"; public statistical studies of active-shooter incidents for duration bands only |
+
+#### 6.27.9 Phase 3 types, and what stays out
+
+| Type | Rationale | Plan |
+| --- | --- | --- |
+| `gas_attack`, `biohazard` | Deliberate release; high consequence, high dual-use sensitivity | Reuse section 6.27.7 with industrial chemicals' public data only (D47); biological agents only as a casualty-presentation scenario with no dispersion model |
+| `maritime_incident` | Singapore's port and ferries | Needs a water-surface model that does not exist; later |
+| `earthquake` | Low local hazard; distant tremors felt in tall buildings | Ground shaking as a damage-probability pass per frame class from public fragility curves (FEMA P-58); later |
+| Stay out | `poisoning`, `kidnapping`, `hijacking` as a hostage event, `assassination`, `hostage_siege`, `nuclear_plant_leak`, `infrastructure_attack` | No physical model adds value, or no local relevance; the radar keeps naming them "soon" |
+
+#### 6.27.10 Dual use for event types (D47)
+
+- **The trainer places every event.** Nothing in the world, the compile or the client proposes a target building, an impact point, a path, a release point, an attacker's route or a time.
+- **Classes and bands.** Vehicles, aircraft and releases are chosen from classes; speeds are bands; no exact speed, approach, altitude or quantity is offered, stored or shown to trainers beyond its band.
+- **No ranking or optimisation.** No function compares places, paths, times or classes by harm; the After-Action Review reports what happened in this exercise only. The static check refuses such exports (AC9.96).
+- **Protective measures.** Barriers, alarms and detection appear only as mitigations with public rating classes; nothing describes how to defeat them.
+- **Armed attackers and deliberate releases.** Abstract threat zones with no weapon or tactic; industrial chemicals' public data only, never warfare agents.
+- **Templates and seeds.** Generic names; no real event, site, operator, flight or person; each type's rows are reviewed by the W24 reviewer and, for the attack-like types, by a security reviewer before the type is turned on.
 
 ## 7. Client
 
@@ -4574,6 +4798,10 @@ WS9's log events start with `fieldops_world_` or `fieldops_spread_` (master 10.5
 - **The research agent.** It runs on a person's machine, not on the platform; its runs, review packs and seed files hold public material only; its outputs never reach a trainer before review.
 - **Logging.** No log line carries a quoted phrase, a source URL or an item's location; the pipeline's scripts print to the person running them, not to the server's logs.
 
+### 9.9 Event types and dual use (added 22 Nov 2026)
+
+Section 6.27.10 states the rules; the static check enforces the code half (AC9.96) and the reviewers the data half. The trainer-facing event controls (`05-layout-step.md` section 15.6) show classes and bands only. Logs carry the event kind, class and band, never a path or a point.
+
 ## 10. Flags, rollout and observability
 
 ### 10.1 The flag, the settings and the per-session switches
@@ -4818,6 +5046,10 @@ server/services/fieldOps/world/engine/movement.test.ts
 server/services/fieldOps/world/render/layerEncoding.test.ts
 ```
 
+### 11.7 Tests of the incident types (added 22 Nov 2026)
+
+New files, appended to the `test` script in `package.json` in this order with the tasks that create them: `server/lib/fieldOps/incidentEvents.test.ts (new)` (AC9.86), `server/services/fieldOps/world/incidents/incidentTypes.test.ts (new)` (AC9.85, AC9.96 "seed hygiene"), `server/services/fieldOps/world/incidents/initialEffects.test.ts (new)` (AC9.95, AC9.102), `server/services/fieldOps/world/incidents/crowdCrush.test.ts (new)` (AC9.87, AC9.88), `server/services/fieldOps/world/incidents/ramming.test.ts (new)` (AC9.89), `server/services/fieldOps/world/incidents/aircraftImpact.test.ts (new)` (AC9.90, AC9.91), `server/services/fieldOps/world/incidents/fireEvents.test.ts (new)` (AC9.92), `server/services/fieldOps/world/incidents/gasExplosion.test.ts (new)` (AC9.93), `server/services/fieldOps/world/incidents/chemicalRelease.test.ts (new)` (AC9.94), `server/services/fieldOps/world/incidents/scenarios.test.ts (new)` (AC9.103), and in phase 2 `server/services/fieldOps/world/incidents/phase2.test.ts (new)` (AC9.97 to AC9.101). `staticChecks.test.ts` gains "no attack planning" and `worldBudget.test.ts` "crowd event" (AC9.96, AC9.104). Manual steps: **M16** a concert crowd and a false alarm at a narrow gate on staging; **M17** a ramming path through a pedestrian street with a rated barrier halfway; **M18** an aircraft class striking a tower's mid storeys, with smoke reaching the top through the open shafts.
+
 ## 12. Tasks
 
 The tasks follow the slices of section 4.2 (master section 6, build-order item 7). Each slice ends with the flag still able to fall back to today's behaviour, and each task adds its test files to the `test` script of `package.json` as it creates them (section 11.5). A file is marked new where it is first created; later tasks extend it.
@@ -5040,6 +5272,38 @@ If slice 2 is not yet built when these tasks start, T9.8 and T9.9 are built dire
     - Done when: AC9.79 and AC9.80 pass; M14 and M15 pass on a development server; the soak passes at the layered sizes.
     - Tests: `layerEncoding.test.ts`, `worldLayerModel.test.ts` "layers", `worldBudget.test.ts` "layered". Commit: 11.
 
+**Added 22 Nov 2026: incident types beyond bombing (D46, D47)**
+
+34. **T9.34 The incident contract and table.**
+    - Goal: section 6.27.1 and `fieldops_incident_types`.
+    - Files: `shared/fieldOps/incidentEvents.ts (new)`, `server/lib/fieldOps/incidentEventSchemas.ts (new)`, `server/lib/fieldOps/incidentEvents.test.ts (new)`, `migrations/258_fieldops_threats_agents_movement.sql (new)` (the amended checks and table), `server/services/fieldOps/world/data/seed/incident-types.json (new)`, `server/services/fieldOps/world/incidents/incidentTypes.ts (new)` and its test, `package.json` (touched).
+    - Steps: the types and schema; `incidentTypesEnabled(flag)`; the seed rows with responders, needs and templates.
+    - Done when: AC9.85 and AC9.86 pass. Commit: 12.
+35. **T9.35 `initialEffectsFor` and the no-world path.**
+    - Goal: compile-time effects for every phase 1 kind (master 10.8 item 46).
+    - Files: `server/services/fieldOps/world/incidents/initialEffects.ts (new)` and its test; `server/services/fieldOps/world/spreadLibrary.ts (new)` (`deteriorationFactsFor` reads the type's threat profiles).
+    - Done when: AC9.95 and AC9.102 pass. Commit: 12.
+36. **T9.36 Crowd crush.**
+    - Files: `server/services/fieldOps/world/incidents/crowdCrush.ts (new)` and its test; `server/services/fieldOps/world/engine/movement.ts (new)` (fleeing); the open-air stud area in `server/services/fieldOps/world/engine/studIndex.ts (new)`; the `compression` exposure row and the crowd parameters in the seed files.
+    - Done when: AC9.87, AC9.88 and M16 pass. Commit: 13.
+37. **T9.37 Vehicle ramming.**
+    - Files: `server/services/fieldOps/world/incidents/ramming.ts (new)` and its test; the barrier items and `vehicle_post_crash_fire` rule in the seed files; the `impact` exposure row.
+    - Done when: AC9.89, AC9.103 and M17 pass. Commit: 13.
+38. **T9.38 Aircraft impact.**
+    - Files: `server/services/fieldOps/world/incidents/aircraftImpact.ts (new)` and its test; the class rows in `threat-profiles.json`.
+    - Done when: AC9.90, AC9.91 and M18 pass. Commit: 13.
+39. **T9.39 Building fire, arson, gas explosion and chemical release.**
+    - Files: `server/services/fieldOps/world/incidents/fireEvents.ts (new)`, `server/services/fieldOps/world/incidents/gasExplosion.ts (new)`, `server/services/fieldOps/world/incidents/chemicalRelease.ts (new)` and their tests; the `pmd_battery` and `ammonia_refrigeration` items.
+    - Done when: AC9.92 to AC9.94 pass. Commit: 13.
+40. **T9.40 Dual-use checks, the crowd-event budget and the new templates.**
+    - Files: `server/services/fieldOps/world/staticChecks.test.ts (new)` and `server/services/fieldOps/world/perf/worldBudget.test.ts (new)` (extended); `server/services/fieldOps/world/incidents/scenarios.test.ts (new)`; the phase 1 templates under `scenario_templates/scenario_types/ (new files)`.
+    - Done when: AC9.96, AC9.103 and AC9.104 pass; the security reviewer has signed the attack-like types' rows. Commit: 13.
+41. **T9.41 Phase 2 types.**
+    - Files: `server/services/fieldOps/world/incidents/phase2.ts (new)` and its test; the phase 2 event kinds in `shared/fieldOps/incidentEvents.ts (new)`; their seed rows and templates.
+    - Steps: section 6.27.8; this spec is first extended with each kind's steps (W47).
+    - Done when: AC9.97 to AC9.101 pass. Commit: 14.
+42. **T9.42 Phase 3 types.** Section 6.27.9, after the owner confirms them; this spec is first extended. Commit: 15.
+
 ## 13. Commit plan and backtracking
 
 Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run typecheck`, `npm run lint` and `npm --prefix frontend run build` pass, and its migrations apply twice without error on a scratch database (a Supabase branch or a local Postgres, never the shared project), with their rollback comments tried on a branch database. Only then is each migration applied once, in order, on the shared project, which serves development, preview and production alike (section 10.2). A commit that fails any of them is fixed or reverted before the next one starts. Backing a commit out never runs a rollback on the shared project: its tables are additive, and nothing reads them once the code is reverted or the flag is off (D23).
@@ -5062,6 +5326,15 @@ Seven commits, one or two a slice. Before each is pushed, `npm test`, `npm run t
 | 9. "WS9: compile without research" | T9.29 | WS5's dossier functions | AC9.75, AC9.77; WS5's AC5.41 | Revert only together with WS5's dossier change; otherwise make `loadCatalogue` answer null, which gives the generic type labelled Assumed, never a model call |
 | 10. "WS9: the stud index and the layered engine" | T9.30 to T9.32 | The layered world in tests and development sessions | AC9.58 to AC9.73, AC9.76, AC9.78; AC9.23 and AC9.10 still pass | Revert to commit 3's engine; worlds fall back as section 6.11.8 says. If AC9.80 fails, lower the caps of section 6.26 (and AC9.61 with them) before loosening the tick budget |
 | 11. "WS9: the layered map" | T9.33 | The storey bar, the layered canvas, the profile and the budgets | AC9.79, AC9.80; M14, M15 | Revert; the world layer draws the single-layer view of section 7.2 from the head layer |
+
+**Added 22 Nov 2026.** Commits for the incident types:
+
+| Commit | Tasks | Leaves working | Check | Backtracking |
+| --- | --- | --- | --- | --- |
+| 12. "WS9: incident contract and compile-time effects" | T9.34, T9.35 | WS5 can compile phase 1 types with the flag on | AC9.85, AC9.86, AC9.95, AC9.102 | Empty `ENABLE_FIELDOPS_INCIDENT_TYPES`: only bombing types are offered; revert if needed |
+| 13. "WS9: phase 1 event models" | T9.36 to T9.40 | Crush, ramming, aircraft impact, fire, gas explosion and chemical release in the live world | AC9.87 to AC9.96, AC9.103, AC9.104; M16 to M18 | Remove a type's key from the flag; its sessions keep running on compiled pins |
+| 14. "WS9: phase 2 event models" | T9.41 | Phase 2 types | AC9.97 to AC9.101 | As commit 13 |
+| 15. "WS9: phase 3 event models" | T9.42 | Phase 3 types | their criteria, when written | As commit 13 |
 
 Backtracking within a commit: when a task shows that an earlier decision of this spec is wrong (a budget missed, a gate too wide, a seed value implausible in play), the builder stops, changes the decision in this document first (section 2.2 and the section that applies it), adjusts the criteria, and only then the code. The D31 review can change any seed value without a code change, through the admin routes.
 
@@ -5118,6 +5391,11 @@ Backtracking within a commit: when a task shows that an earlier decision of this
 | `server/services/fieldOps/world/threats/threatLibrary.ts (new)` (**added 22 Nov 2026**) | The threat, agent and movement loader | T9.28 |
 | `server/services/fieldOps/world/knowledge/coverage.ts (new)` (**added 22 Nov 2026**) | Gaps, coverage and staleness | T9.28 |
 | `server/services/fieldOps/world/render/layerEncoding.ts (new)` (**added 22 Nov 2026**) | The storey delta encoding | T9.33 |
+| `shared/fieldOps/incidentEvents.ts (new)` (**added 22 Nov 2026**) | The incident event contract (section 6.27.1) | T9.34 |
+| `server/lib/fieldOps/incidentEventSchemas.ts (new)` (**added 22 Nov 2026**) | Its zod schema | T9.34 |
+| `server/services/fieldOps/world/incidents/ (new)` (**added 22 Nov 2026**) | `incidentTypes.ts`, `initialEffects.ts`, `crowdCrush.ts`, `ramming.ts`, `aircraftImpact.ts`, `fireEvents.ts`, `gasExplosion.ts`, `chemicalRelease.ts`, `phase2.ts` and their tests | T9.34 to T9.41 |
+| `server/services/fieldOps/world/data/seed/incident-types.json (new)` (**added 22 Nov 2026**) | The incident type rows | T9.34 |
+| `scenario_templates/scenario_types/ (new files)` (**added 22 Nov 2026**) | The eleven new templates of section 6.27.1; the eight existing ones are reused unchanged | T9.40, T9.41, T9.42 |
 | `server/services/fieldOps/world/__fixtures__/nfpa92LayerHeights.ts (new)` (**added 22 Nov 2026**) | AC9.63's reference values | T9.31 |
 | Engine files (**added 22 Nov 2026**) | `studIndex.ts`, `layers.ts`, `gasTransport.ts`, `outdoorPlume.ts`, `blastField.ts`, `threats.ts`, `movement.ts` in `server/services/fieldOps/world/engine/ (new)` | T9.30 to T9.32 |
 | Client files (**added 22 Nov 2026**) | `WorldStoreyBar.tsx`, `WorldLayersCanvas.tsx`, `WorldLayerSwitch.tsx`, `WorldStudProfile.tsx` in `frontend/src/components/FieldOps/World/ (new)` | T9.33 |
@@ -5199,6 +5477,9 @@ WS1's `CountryMatch` and `countryMatch` (`shared/fieldOps/doctrineCountry.ts (ne
 | R9.15 | **Added 22 Nov 2026.** The layered engine misses the tick budget on the 1-CPU instance | Caps, active set, sub-step limit, coarsening, one world per process on the Standard plan, AC9.80 and the soak (section 6.26; master risk 27) |
 | R9.16 | **Added 22 Nov 2026.** Zone-style smoke per region misleads in very large open spaces such as atria, where a real layer is not uniform | Regions split at 2,000 studs by distance from the plume, with the far part filling later; AC9.63 bounds the error in a simple room; the W24 reviewer checks an atrium case; a field model stays out of scope |
 | R9.17 | **Added 22 Nov 2026.** Sources go stale or change | Review-due dates, the monthly stale list, diffs on re-run, snapshots in compiled scenarios (section 6.19; master risk 23) |
+| R9.19 | **Added 22 Nov 2026.** Attack-like event models inform real planning (master risk 29) | Section 6.27.10; AC9.96; a security reviewer per attack-like type; classes and bands only |
+| R9.20 | **Added 22 Nov 2026.** Crush and aircraft-impact results are uncertain (master risk 31) | Ranges per parameter; validation cases from public reports; "Unreviewed model" until reviewed; training-value labels |
+| R9.21 | **Added 22 Nov 2026.** Large crowds exceed the group and tick budgets | 600 groups for crowd events only, measured by AC9.104; larger crowds use larger groups |
 | R9.18 | **Added 22 Nov 2026.** Planning values look precise | Plausible ranges on every movement row; "Unreviewed model" until the W24 review; Assumed labels in Review (master risk 28) |
 
 ### 15.2 Open questions
@@ -5231,11 +5512,17 @@ WS9's own questions:
 28. **Who reviews the catalogue, threat and movement libraries?** **Assumed (D39):** the W24 reviewer (fire engineering or fire service), with a process-safety reviewer for the process-plant and release rows.
 29. **May players switch the layer view?** **Assumed (D43):** no; players see head height, what a person standing there would see; the trainer and spectators can switch.
 30. **Should military camps and process plants be in the catalogue at all?** **Assumed (D42):** yes, as `restricted_generic` types chosen only by the trainer, with category-level items that are never placed automatically and carry no quantity.
-31. **Does crowd crush create casualties?** **Assumed (D44):** not in this version; it raises an event for the trainer.
+31. **Does crowd crush create casualties?** **Assumed (D44):** not in this version; it raises an event for the trainer. **Answered 22 Nov 2026 (D46):** yes, by the compression model of section 6.27.2.
 32. **Are 12 storeys and 128,000 layer cells enough?** **Assumed (D43):** yes for Singapore's malls and stations; measure on staging with the largest saved building.
 33. **Is 10 per cent the right blast transmission through an intact slab?** **Assumed (D45):** yes until the W24 reviewer sets it.
 34. **How often do the agents re-run?** **Assumed (D39):** when a source's review-due date passes: 180 days for doctrine and use-of-force sources, 365 by default, 730 for published standards.
 35. **Are typical items placed silently or offered?** **Assumed (D42):** offered in the layout step; those the trainer neither placed nor removed are placed by the world, labelled Assumed.
+37. **Added 22 Nov 2026. Who is the security reviewer for attack-like types?** **Assumed (D47):** a person with counter-terrorism or protective-security background, separate from the W24 reviewer, signs each such type before it is turned on.
+38. **Should a deliberate aircraft impact be offered at all, or only accidental crashes?** **Assumed (D46):** both, sharing one model, with the template telling the story; the owner may restrict the deliberate template to admins.
+39. **May a trainer combine events (for example a ramming followed by a device)?** **Assumed (D46):** one event per scenario in phase 1, plus the bombing types' secondary devices; combinations later.
+40. **Does the crowd model need slopes?** **Assumed (D44):** no in phase 1; the reviewer checks the sloping-alley case.
+41. **Which phase 2 type comes first?** **Assumed (D46):** flash flood and utility failure, for local frequency, then rail, structural collapse, road collision and armed attacker.
+42. **Which incident types do the four bombing templates' doctrines cover?** **Assumed (D46):** doctrines list their incident types in `applies_to`; an empty list still means all types, so existing seeds cover new types until a reviewer narrows them.
 36. **What is Singapore's town gas?** **Assumed (D41):** a flammable gas lighter than air with no toxic tier until the review confirms its composition from the Energy Market Authority's or City Energy's published data.
 
 ### 15.3 Requests WS9 makes of other specs
@@ -5261,6 +5548,10 @@ WS9's own questions:
 | WS5 (`06-compile-and-review.md`) (**added 22 Nov 2026**) | Use section 6.21's functions in the dossier instead of the four model calls; list `catalogue_gap:{key}` items in Review; record `catalogue_missing` | Master 10.8 item 41 |
 | WS6 (`07-device-and-physics.md`) (**added 22 Nov 2026**) | Add `blast_profile` to `EffectEstimate`; keep `pressureAt` and `scaledDistanceFor` pure and importable by the world; seed the device library through the pipeline | Section 6.23.6; master 10.8 item 44 |
 | WS7 (`08-people-or-ai.md`) (**added 22 Nov 2026**) | AI agencies read the storey and the head-layer classes in their view, and the never-do items WS1 projects from use of force | Master 10.8 item 45 |
+| WS2 (`03-setup-screen.md`) (**added 22 Nov 2026**) | Offer the incident types the flag enables, grouped as `fieldops_incident_types.type_group`, and store `incident.event` | D46; master 10.8 item 46 |
+| WS4 (`05-layout-step.md`) (**added 22 Nov 2026**) | Draw each event kind's geometry with classes and bands only (D47) | Section 6.27 |
+| WS5 (`06-compile-and-review.md`) (**added 22 Nov 2026**) | For a non-device event, call `initialEffectsFor` and store `payload.event` | Master 10.8 item 46 |
+| WS1 (`02-teams-and-doctrines.md`) (**added 22 Nov 2026**) | Doctrines and Singapore seeds for each type's responders | Section 6.27 |
 | UI spec sheet (`10-ui-spec-sheet.md`) (**added 22 Nov 2026**) | The layered view's components, classes, two glyphs and copy keys (section 7.12) | D28 |
 
 ### 15.4 Answers to WS5's requests (`06-compile-and-review.md` section 15.4)
@@ -5303,4 +5594,6 @@ WS9 is done when every line below holds on staging, and the production lines hol
 15. **Added 22 Nov 2026.** Migrations 257 to 259 applied as item 3 says; Singapore's catalogue, threat and movement seeds are reviewed and imported, and every Singapore building type is covered or has a recorded gap.
 16. **Added 22 Nov 2026.** No compile and no world calls a model or the network for a fact (AC9.77, AC9.80, AC9.83; WS5's AC5.41); the research agent exists only under `scripts/fieldops/knowledge/ (new)`.
 17. **Added 22 Nov 2026.** The layered world meets section 6.26's budgets in the soak on the production plan, or runs one world per process there.
+19. **Added 22 Nov 2026.** For each incident type turned on in production: its criteria pass, its rows and template are reviewed (and, for an attack-like type, signed by the security reviewer), and `ENABLE_FIELDOPS_INCIDENT_TYPES` lists it.
+20. **Added 22 Nov 2026.** Phase 1's criteria AC9.85 to AC9.96, AC9.102 to AC9.104 and manual steps M16 to M18 pass on staging.
 18. **Added 22 Nov 2026.** The W24 review covers the catalogue and threat libraries for their deployed dataset versions, or production runs layered worlds only for admins' sessions.
