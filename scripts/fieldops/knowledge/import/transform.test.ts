@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   assignDoctrineSourceKey,
+  collectInlineSources,
   fullDate,
   hospitalBeds,
   httpsUrl,
   overlaySpread,
   responseNumbers,
+  urlAlreadyDrafted,
 } from './transforms.js';
 
 describe('knowledge transforms', () => {
@@ -56,6 +58,34 @@ describe('knowledge transforms', () => {
     assert.match(first, /^[a-z0-9][a-z0-9_.:-]{2,119}$/);
     assert.notEqual(collision, first);
     assert.match(collision, /-[0-9a-f]{8}$/);
+  });
+
+  it('collects agency-unit URLs and skips nodes that already have a source key', () => {
+    const sources = collectInlineSources(
+      {
+        sources: [{ title: 'Agency page', url: 'https://example.test/agency' }],
+        units: [
+          {
+            sources: [
+              { title: 'Gurkha reply', url: 'https://example.test/gurkha' },
+              { source_key: 'scdf_dart_2026', url: 'https://example.test/dart' },
+            ],
+          },
+        ],
+      },
+      { sources: [{ source_key: 'file_source', url: 'https://example.test/file' }] },
+    );
+    assert.deepEqual(
+      sources.map((source) => source.url),
+      ['https://example.test/agency', 'https://example.test/gurkha'],
+    );
+  });
+
+  it('treats only an identical URL as already drafted', () => {
+    const drafts = [{ url: 'https://example.test/dart' }];
+    assert.equal(urlAlreadyDrafted('https://example.test/dart', drafts), true);
+    assert.equal(urlAlreadyDrafted('https://example.test/Dart', drafts), false);
+    assert.equal(urlAlreadyDrafted('dart', drafts), false);
   });
 
   it('keeps planning values where the research patch is null', () => {

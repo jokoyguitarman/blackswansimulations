@@ -1,4 +1,4 @@
-import { failedChecks } from '../../../../../server/lib/fieldOps/knowledgeSchemas.js';
+import { failedChecks } from '../knowledgeChecks.js';
 import { normaliseTeamText } from '../../../../../shared/fieldOps/matching.js';
 import { canonicalJson, sha256Hex } from '../canonical.js';
 import { beginImport, withClient } from '../db.js';
@@ -7,6 +7,7 @@ import { finishRun, startRun } from '../runLog.js';
 import type { DbTarget } from '../safety.js';
 import {
   assignDoctrineSourceKey,
+  collectInlineSources,
   cut,
   fullDate,
   hospitalBeds,
@@ -15,6 +16,7 @@ import {
   overlaySpread,
   responseNumbers,
   sourceRefFromTitles,
+  urlAlreadyDrafted,
   valuesNote,
 } from '../transforms.js';
 import type { NormalisedReview } from '../types.js';
@@ -317,7 +319,7 @@ async function writePromotion(
     }
     if (item.rows.length > 0 || item.table === 'doctrines') {
       await markPromoted(client, item, runId);
-      await cover(client, item, runId);
+      await cover(client, item);
       for (const record of item.records) {
         if (!record.seed_run_id) continue;
         imported.set(record.seed_run_id, (imported.get(record.seed_run_id) ?? 0) + 1);
@@ -915,7 +917,7 @@ function buildSources(
     for (const record of item.records) {
       for (const source of inlineSources(record)) {
         const url = text(source.url);
-        if (!url) continue;
+        if (!url || urlAlreadyDrafted(url, drafts)) continue;
         const key = assignDoctrineSourceKey(url, used);
         if (byKey.has(key) || blocked.has(key)) continue;
         const row = sourceFromInline(
@@ -1018,13 +1020,7 @@ function sourceFromInline(
 }
 
 function inlineSources(record: Staged): Record<string, unknown>[] {
-  const payload = record.approved_payload;
-  const fromProvenance = asArray(record.provenance?.sources).map(asObject);
-  const nested = asArray(asObject(payload.provenance).sources).map(asObject);
-  const own = asArray(payload.sources).map(asObject);
-  return [...fromProvenance, ...nested, ...own].filter(
-    (source) => !text(source.source_key) && text(source.url),
-  );
+  return collectInlineSources(record.approved_payload, record.provenance);
 }
 
 async function writeDoctrine(
@@ -1330,7 +1326,7 @@ async function markPromoted(client: pg.Client, item: Planned, runId: string): Pr
   }
 }
 
-async function cover(client: pg.Client, item: Planned, runId: string): Promise<void> {
+async function cover(client: pg.Client, item: Planned): Promise<void> {
   const record = item.records[0];
   if (!record) return;
   const subject = cut(`${item.table}:${item.key}`, 120);

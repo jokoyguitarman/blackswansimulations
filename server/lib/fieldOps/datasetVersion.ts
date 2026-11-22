@@ -65,9 +65,11 @@ export function datasetVersionOf(
 ): string {
   const payload = DATASET_TABLES[library].map((table) => ({
     table,
-    rows: [...(rowsByTable[table] ?? [])]
-      .map(normaliseRow)
-      .sort((a, b) => keyOf(table, a).localeCompare(keyOf(table, b))),
+    rows: [...(rowsByTable[table] ?? [])].map(normaliseRow).sort((a, b) => {
+      const left = keyOf(table, a);
+      const right = keyOf(table, b);
+      return left < right ? -1 : left > right ? 1 : 0;
+    }),
   }));
   return createHash('sha256').update(canonical(payload), 'utf8').digest('hex').slice(0, 16);
 }

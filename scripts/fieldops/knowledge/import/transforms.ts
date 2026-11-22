@@ -166,3 +166,40 @@ export function valuesNote(payload: Record<string, unknown>, values: unknown[]):
 function text(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asList(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+/**
+ * Inline sources on a doctrine or an agency register, including each unit.
+ * A node that already names a `source_key` is a file source, not a derived one.
+ */
+export function collectInlineSources(
+  payload: unknown,
+  provenance: unknown,
+): Record<string, unknown>[] {
+  const body = asRecord(payload);
+  const prov = asRecord(provenance);
+  const nodes = [
+    ...asList(prov?.sources),
+    ...asList(asRecord(body?.provenance)?.sources),
+    ...asList(body?.sources),
+    ...asList(body?.units).flatMap((unit) => asList(asRecord(unit)?.sources)),
+  ];
+  return nodes.filter((source): source is Record<string, unknown> => {
+    const row = asRecord(source);
+    return Boolean(row && !text(row.source_key) && text(row.url));
+  });
+}
+
+/** Exact URL match against a file-source draft. A substring or a different case does not match. */
+export function urlAlreadyDrafted(url: string, drafts: readonly { url?: unknown }[]): boolean {
+  return drafts.some((row) => row.url === url);
+}
