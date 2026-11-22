@@ -683,43 +683,46 @@ export class PolygonEvacuationEngine {
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
       if (ped.state === 'down' || ped.state === 'left_map' || ped.state === 'arrived') continue;
-      if (ped.level && this.blastLevel && ped.level !== this.blastLevel) continue;
-      const dx = body.position.x - site.x;
-      const dy = body.position.y - site.y;
-      const dist = Math.hypot(dx, dy);
-      let band: ReturnType<typeof blastInjuryBand>;
-      if (pressure) {
-        const near = isNearWallBehind(
-          { x: body.position.x, y: body.position.y },
-          site,
-          this.interiorWalls,
-          this.config.vertices,
-          this.exits,
-        );
-        const felt = blastPressureAt(pressure.spec, Math.hypot(dx, dy, h), near);
-        band = bandForEffectiveKpa(felt.effectiveKpa);
-        if (band !== 'none') {
-          ped.blastKpa = felt.effectiveKpa;
-          ped.nearWall = near;
+      // Other storeys are alarmed but not injured: the blast only hits its own floor.
+      const otherStorey = !!(ped.level && this.blastLevel && ped.level !== this.blastLevel);
+      if (!otherStorey) {
+        const dx = body.position.x - site.x;
+        const dy = body.position.y - site.y;
+        const dist = Math.hypot(dx, dy);
+        let band: ReturnType<typeof blastInjuryBand>;
+        if (pressure) {
+          const near = isNearWallBehind(
+            { x: body.position.x, y: body.position.y },
+            site,
+            this.interiorWalls,
+            this.config.vertices,
+            this.exits,
+          );
+          const felt = blastPressureAt(pressure.spec, Math.hypot(dx, dy, h), near);
+          band = bandForEffectiveKpa(felt.effectiveKpa);
+          if (band !== 'none') {
+            ped.blastKpa = felt.effectiveKpa;
+            ped.nearWall = near;
+          }
+        } else {
+          band = blastInjuryBand(dist, radius);
         }
-      } else {
-        band = blastInjuryBand(dist, radius);
-      }
-      if (band === 'lethal' || band === 'serious') {
-        ped.state = 'down';
-        ped.injury = band;
-        ped.evacuated = false;
-        Matter.Body.setStatic(body, true);
-        Matter.Body.setVelocity(body, { x: 0, y: 0 });
-        continue;
-      }
-      if (band === 'minor') {
-        ped.injury = 'minor';
-        const len = dist > 0.01 ? dist : 1;
-        ped.blastImpulse = {
-          x: (dx / len) * SHOWCASE.BLAST_PUSH_SPEED * dt,
-          y: (dy / len) * SHOWCASE.BLAST_PUSH_SPEED * dt,
-        };
+        if (band === 'lethal' || band === 'serious') {
+          ped.state = 'down';
+          ped.injury = band;
+          ped.evacuated = false;
+          Matter.Body.setStatic(body, true);
+          Matter.Body.setVelocity(body, { x: 0, y: 0 });
+          continue;
+        }
+        if (band === 'minor') {
+          ped.injury = 'minor';
+          const len = dist > 0.01 ? dist : 1;
+          ped.blastImpulse = {
+            x: (dx / len) * SHOWCASE.BLAST_PUSH_SPEED * dt,
+            y: (dy / len) * SHOWCASE.BLAST_PUSH_SPEED * dt,
+          };
+        }
       }
       ped.state = 'reacting';
       ped.reactAt = this.elapsed + samplePremovementS(this.rng!);
@@ -965,7 +968,7 @@ export class PolygonEvacuationEngine {
       if (ped.state !== 'evacuating' || !ped.targetExitId) continue;
       const exit = this.exits.find((e) => e.id === ped.targetExitId);
       if (!exit) continue;
-      const mouth = this.classifyWait(this.posOf(body), exit);
+      const mouth = this.classifyWait(this.posOf(body), exit, this.wallsNear(ped), ped.level ?? '');
       if (!mouth) continue;
       waiting.add(ped.pedId);
       const group = groups.get(mouth.key) ?? { flow: mouth.flow, waiters: [] };
@@ -995,10 +998,15 @@ export class PolygonEvacuationEngine {
   }
 
   /** Door approach first, otherwise the exit opening, when the person is in it. */
-  private classifyWait(pos: Vec2, exit: ExitDef): { key: string; flow: number; dist: number } | null {
-    const door = committedDoor(pos, exitApproachInside(exit, this.config.vertices), this.interiorWalls);
+  private classifyWait(
+    pos: Vec2,
+    exit: ExitDef,
+    walls: InteriorWallDef[],
+    level: string,
+  ): { key: string; flow: number; dist: number } | null {
+    const door = committedDoor(pos, exitApproachInside(exit, this.config.vertices), walls);
     if (door) {
-      return { key: `d${door.index}`, flow: openingFlowPerS(door.width), dist: door.dist };
+      return { key: `${level}|d${door.index}`, flow: openingFlowPerS(door.width), dist: door.dist };
     }
     if (exit.exitType === 'service') return null;
     const gap = exitGapSlot(pos, exit, this.config.vertices);
@@ -1006,7 +1014,7 @@ export class PolygonEvacuationEngine {
     // The radiant shell (a burning stud pushes out to 5 m) sits outside the
     // mouth. Queue there, or the crowd never reaches the opening to be counted.
     if (gap.planeDist > SHOWCASE.FIRE_AVOID_RADIUS_M || gap.planeDist < 0) return null;
-    return { key: `e:${exit.id}`, flow: openingFlowPerS(exit.width), dist: gap.planeDist };
+    return { key: `${level}|e:${exit.id}`, flow: openingFlowPerS(exit.width), dist: gap.planeDist };
   }
 
   /**
@@ -1019,20 +1027,23 @@ export class PolygonEvacuationEngine {
     const slipping = new Set<Matter.Body>();
     for (const body of this.pedestrians) {
       const ped = this.pedOf(body);
-      if (ped.state !== 'evacuating' || !ped.targetExitId) continue;
-      const exit = this.exits.find((e) => e.id === ped.targetExitId);
-      if (!exit) continue;
+      if (ped.state !== 'evacuating') continue;
+      const goal = this.steerGoal(ped);
+      if (!goal) continue;
       const pos = this.posOf(body);
       let inMouth = false;
-      for (const wall of this.interiorWalls) {
+      for (const wall of this.wallsNear(ped)) {
         if (!wall.hasDoor) continue;
-        const mouth = mouthProgress(pos, wall, exit.center);
+        const mouth = mouthProgress(pos, wall, goal);
         if (mouth && mouth.dist <= 1.05 && mouth.through < 0.55 && mouth.through > -1.05) {
           inMouth = true;
           break;
         }
       }
-      if (!inMouth && exit.exitType !== 'service') {
+      const exit = ped.targetExitId
+        ? this.exits.find((e) => e.id === ped.targetExitId)
+        : undefined;
+      if (!inMouth && exit && exit.exitType !== 'service') {
         const gap = exitGapSlot(pos, exit, this.config.vertices);
         if (
           gap &&
@@ -1048,13 +1059,15 @@ export class PolygonEvacuationEngine {
       const released = this.mouthGrant.has(ped.pedId);
       let pastLine = false;
       if (inMouth && !released) {
-        for (const wall of this.interiorWalls) {
+        for (const wall of this.wallsNear(ped)) {
           if (!wall.hasDoor) continue;
-          const mouth = mouthProgress(pos, wall, exit.center);
+          const mouth = mouthProgress(pos, wall, goal);
           if (mouth && mouth.through > 0) pastLine = true;
         }
-        const gap = exitGapSlot(pos, exit, this.config.vertices);
-        if (gap && gap.planeDist < 0.15) pastLine = true;
+        if (exit) {
+          const gap = exitGapSlot(pos, exit, this.config.vertices);
+          if (gap && gap.planeDist < 0.15) pastLine = true;
+        }
       }
       if (inMouth && (released || pastLine)) slipping.add(body);
     }
@@ -1065,6 +1078,21 @@ export class PolygonEvacuationEngine {
       const category = body.collisionFilter.category ?? 0;
       body.collisionFilter.mask = slipping.has(body) ? rest & ~category : rest;
     }
+  }
+
+  private wallsNear(ped: PedLabel): InteriorWallDef[] {
+    if (ped.level && this.wallsByLevel.has(ped.level)) return this.wallsByLevel.get(ped.level)!;
+    return this.interiorWalls;
+  }
+
+  /** Where this person is actually walking: a stair end, or their exit. */
+  private steerGoal(ped: PedLabel): Vec2 | null {
+    if (this.levelPlan && ped.level && ped.targetStairId) {
+      const stair = this.stairById(ped.targetStairId);
+      if (stair) return stair.pos;
+    }
+    const exit = this.exits.find((e) => e.id === ped.targetExitId);
+    return exit ? exit.center : null;
   }
 
   /**
@@ -1079,7 +1107,7 @@ export class PolygonEvacuationEngine {
       const ped = this.pedOf(body);
       if (ped.state === 'down' || ped.state === 'left_map') continue;
       const pos = this.posOf(body);
-      const next = separateFromWalls(pos, walls, clear);
+      const next = separateFromWalls(pos, [...walls, ...this.wallsNear(ped)], clear);
       if (Math.hypot(next.x - pos.x, next.y - pos.y) < 1e-3) continue;
       Matter.Body.setPosition(body, next);
       const nx = next.x - pos.x;
@@ -1139,11 +1167,16 @@ export class PolygonEvacuationEngine {
    * through. `hold` keeps them on the near side until the flow cap releases them.
    * A target on the jamb leaves the body pinned on the slab.
    */
-  private exitSteerTarget(pos: Vec2, exit: ExitDef, hold = false): Vec2 {
+  private exitSteerTarget(
+    pos: Vec2,
+    exit: ExitDef,
+    hold = false,
+    walls: InteriorWallDef[] = this.interiorWalls,
+  ): Vec2 {
     const verts = this.config.vertices;
     const gap = exitGapSlot(pos, exit, verts);
     if (!gap) {
-      return steerToTarget(pos, exitApproachInside(exit, verts), this.interiorWalls, hold);
+      return steerToTarget(pos, exitApproachInside(exit, verts), walls, hold);
     }
     const edge = verts[exit.edgeIndex];
     const edgeB = verts[(exit.edgeIndex + 1) % verts.length];
@@ -1169,7 +1202,7 @@ export class PolygonEvacuationEngine {
           x: slot.x + gap.inward.x * (hold ? waitDist : 0.7),
           y: slot.y + gap.inward.y * (hold ? waitDist : 0.7),
         };
-    return steerToTarget(pos, goal, this.interiorWalls, hold);
+    return steerToTarget(pos, goal, walls, hold);
   }
 
   private noteAvoid(ped: PedLabel, exitId: string, sticky = false) {
@@ -1837,16 +1870,45 @@ export class PolygonEvacuationEngine {
       this.applyRoute(ped, pos, true);
       ped.nextCheckAt = this.elapsed + SHOWCASE.REROUTE_CHECK_S;
     }
+    const walls = this.wallsByLevel.get(ped.level ?? '') ?? [];
     if (ped.sheltering) {
       ped.shelterTarget = field.lowestKWithin(pos.x, pos.y, 6) ?? ped.shelterTarget ?? null;
       ped.posture = 'crawl';
       const shelter = ped.shelterTarget ?? pos;
-      this.steer(body, nextIndoorWaypoint(pos, shelter, this.wallsByLevel.get(ped.level ?? '') ?? []), speed, field);
+      this.steer(body, steerToTarget(pos, shelter, walls), speed, field);
       return;
     }
-    const target = this.routeTarget(ped) ?? pos;
-    const walls = this.wallsByLevel.get(ped.level ?? '') ?? [];
-    this.steer(body, nextIndoorWaypoint(pos, target, walls), speed, field);
+    if (ped.targetStairId) {
+      const stair = this.stairById(ped.targetStairId);
+      const slot = stair ? this.stairAim(pos, stair, ped.pedId) : (this.routeTarget(ped) ?? pos);
+      this.steer(body, steerToTarget(pos, slot, walls), speed, field);
+      return;
+    }
+    const exit = this.exits.find((e) => e.id === ped.targetExitId);
+    const held = this.mouthWait.has(ped.pedId) && !this.mouthGrant.has(ped.pedId);
+    const aim = exit
+      ? this.exitSteerTarget(pos, exit, held, walls)
+      : steerToTarget(pos, this.routeTarget(ped) ?? pos, walls);
+    const keepForward = ped.forcedCrawl === true || this.mouthGrant.has(ped.pedId);
+    this.steer(body, aim, speed, field, keepForward);
+  }
+
+  /**
+   * Spread people across the stair opening. The offset stays inside the
+   * capture radius, and anyone already at the stair aims at its centre.
+   */
+  private stairAim(pos: Vec2, stair: Stairwell, pedId: number): Vec2 {
+    const dx = stair.pos.x - pos.x;
+    const dy = stair.pos.y - pos.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 0.6) return stair.pos;
+    const width = stair.widthM ?? LEVEL.DEFAULT_STAIR_WIDTH_M;
+    const half = Math.min(0.45, Math.max(0, width / 2 - 0.25));
+    const px = -dy / len;
+    const py = dx / len;
+    const lane = ((Math.imul(pedId + 1, 0x9e3779b1) >>> 0) % 1000) / 999;
+    const shift = (lane - 0.5) * 2 * half;
+    return { x: stair.pos.x + px * shift, y: stair.pos.y + py * shift };
   }
 
   private routeTarget(ped: PedLabel): Vec2 | null {

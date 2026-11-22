@@ -36,6 +36,7 @@ import {
   normaliseStairwell,
   sortLevels,
 } from '../lib/rts/levels';
+import { generateSceneStuds } from '../lib/rts/sceneStuds';
 import { RTSEngine } from '../lib/rts/engine';
 import { renderRTS, computeMapRenderContext, toSim as rcToSim } from '../lib/rts/renderer';
 import type { RenderContext } from '../lib/rts/renderer';
@@ -252,69 +253,12 @@ const ENABLE_AI_ENRICHMENT = false;
 const ENABLE_MICROSOFT_FOOTPRINT = false;
 
 // ── Client-side stud generation for drawn/loaded buildings ──────────────
-const STUD_SPACING_M = 3;
-const EXTERIOR_PADDING_M = 150;
-
 function generateStudsForPolygon(
   polygon: [number, number][],
   _spacingM: number,
   buildingIndex: number,
 ): StudPoint[] {
-  if (polygon.length < 3) return [];
-
-  let minLat = Infinity,
-    maxLat = -Infinity,
-    minLng = Infinity,
-    maxLng = -Infinity;
-  for (const [la, ln] of polygon) {
-    if (la < minLat) minLat = la;
-    if (la > maxLat) maxLat = la;
-    if (ln < minLng) minLng = ln;
-    if (ln > maxLng) maxLng = ln;
-  }
-
-  const midLat = (minLat + maxLat) / 2;
-  const studs: StudPoint[] = [];
-
-  const dLat = STUD_SPACING_M / 111_320;
-  const dLng = STUD_SPACING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
-  const extPadLat = EXTERIOR_PADDING_M / 111_320;
-  const extPadLng = EXTERIOR_PADDING_M / (111_320 * Math.cos((midLat * Math.PI) / 180));
-
-  let row = 0;
-  for (let lat = minLat - extPadLat + dLat / 2; lat <= maxLat + extPadLat; lat += dLat) {
-    let col = 0;
-    for (let lng = minLng - extPadLng + dLng / 2; lng <= maxLng + extPadLng; lng += dLng) {
-      const inside = pointInPolygonLatLng(lat, lng, polygon);
-      studs.push({
-        id: inside ? `bldg-${buildingIndex}-G-${row}-${col}` : `ext-${buildingIndex}-${row}-${col}`,
-        lat,
-        lng,
-        floor: 'G',
-        studType: inside ? 'building' : 'outdoor',
-        blastBand: null,
-        operationalZone: null,
-        distFromIncidentM: null,
-        spatialContext: inside ? 'inside_building' : 'open_air',
-      });
-      col++;
-    }
-    row++;
-  }
-
-  return studs;
-}
-
-function pointInPolygonLatLng(lat: number, lng: number, polygon: [number, number][]): boolean {
-  let inside = false;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const [yi, xi] = polygon[i];
-    const [yj, xj] = polygon[j];
-    if (yi > lat !== yj > lat && lng < ((xj - xi) * (lat - yi)) / (yj - yi) + xi) {
-      inside = !inside;
-    }
-  }
-  return inside;
+  return generateSceneStuds(polygon, buildingIndex, ['G']);
 }
 
 // ── OSM types ───────────────────────────────────────────────────────────
@@ -1410,13 +1354,15 @@ export function DebugRTSSim() {
       const sc = await loadSceneConfig(id);
       setSceneConfigId(sc.id);
 
+      const savedLevels = Array.isArray(sc.levels) ? (sc.levels as LevelDef[]) : [];
+      const levelIds = savedLevels.length > 0 ? savedLevels.map((level) => level.id) : ['G'];
       const grid: GridItem = {
         buildingIndex: 0,
         buildingName: sc.building_name,
         polygon: sc.building_polygon,
-        floors: ['Ground'],
+        floors: levelIds,
         spacingM: 5,
-        studs: generateStudsForPolygon(sc.building_polygon, 5, 0),
+        studs: generateSceneStuds(sc.building_polygon, 0, levelIds),
       };
       setFetchResult({
         grids: [grid],
@@ -1466,7 +1412,6 @@ export function DebugRTSSim() {
         setBlastSite(null);
         setBlastLevel('G');
       }
-      const savedLevels = Array.isArray(sc.levels) ? (sc.levels as LevelDef[]) : [];
       setLevels(savedLevels.length > 0 ? savedLevels : defaultLevels(['G']));
       setActiveLevel('G');
       setSelectedStairId(null);
@@ -6562,10 +6507,19 @@ function StairEditor({
         Width (m)
         <input
           type="number"
-          min={0.6}
+          min={0.8}
+          max={4}
           step={0.1}
           value={stair.widthM ?? LEVEL.DEFAULT_STAIR_WIDTH_M}
-          onChange={(e) => onChange({ ...stair, widthM: Number(e.target.value) || LEVEL.DEFAULT_STAIR_WIDTH_M })}
+          onChange={(e) => {
+            const raw = e.target.value;
+            const n = Number(raw);
+            const width =
+              raw === '' || !Number.isFinite(n)
+                ? LEVEL.DEFAULT_STAIR_WIDTH_M
+                : Math.min(4, Math.max(0.8, n));
+            onChange({ ...stair, widthM: width });
+          }}
           className="w-full bg-gray-800 border border-slate-700 text-slate-200 px-1 py-0.5 rounded"
         />
       </label>

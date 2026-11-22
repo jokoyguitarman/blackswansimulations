@@ -21,6 +21,7 @@ import {
   linkLevels,
   normaliseStairwell,
 } from '../src/lib/rts/levels.ts';
+import { generateSceneStuds } from '../src/lib/rts/sceneStuds.ts';
 import type { InteriorWall, LevelDef, Stairwell } from '../src/lib/rts/types.ts';
 
 const NEIGHBOR_RADIUS = 8;
@@ -231,13 +232,22 @@ describe('rts levels', () => {
       };
     };
     const open = heat('stair', false, 'g');
-    assert.notEqual(open.u, 'none');
+    assert.equal(open.u, 'burning');
     const blocked = heat('stair', true, 'g');
-    assert.notEqual(blocked.u, 'none');
+    assert.equal(blocked.u, 'burning');
     const down = heat('stair', false, 'u');
     assert.equal(down.g, 'none');
     const lift = heat('lift', false, 'g');
     assert.equal(lift.u, 'none');
+
+    const timed = new FireSimulation();
+    timed.init(studs);
+    timed.setShaftPairs([{ lower: 'g', upper: 'u', kind: 'stair', blocked: false, coeffPerS: 0.2 }]);
+    timed.ignite(['g']);
+    for (let i = 0; i < LEVEL.STAIR_FIRE_HEAT_S - 1; i++) timed.step(1, [], []);
+    assert.equal(timed.states.get('u')!.state, 'none');
+    timed.step(1, [], []);
+    assert.equal(timed.states.get('u')!.state, 'burning');
   });
 
   it('chooses a clear stair, refuses blocked stairs, and takes a local exit', () => {
@@ -419,7 +429,7 @@ describe('rts levels', () => {
     eng.destroy();
   });
 
-  it('switches stairs within half a second when the one in use is burning', () => {
+  it('switches stairs within half a second when the one in use is smoke-logged', () => {
     const levels = [levelDef('G', 0), levelDef('L1', 1), levelDef('L2', 2)];
     const stairs: Stairwell[] = [
       {
@@ -456,8 +466,8 @@ describe('rts levels', () => {
         heights: { G: 4, L1: 4, L2: 4 },
       },
     );
-    const smoky = new HazardField([{ id: 'burn', simPos: { x: 4, y: 10 }, indoor: true }], 3);
-    smoky.setStates(new Map([['burn', { smoke: 1, fire: { state: 'burning' } }]]));
+    const smoky = new HazardField([{ id: 'top', simPos: { x: 4, y: 10 }, indoor: true }], 3);
+    smoky.setStates(new Map([['top', { smoke: 1, fire: { state: 'none' } }]]));
     const empty = new HazardField([], 3);
     eng.setHazardFields(new Map([['L2', smoky], ['L1', empty], ['G', empty]]));
     const body = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians[0];
@@ -473,6 +483,60 @@ describe('rts levels', () => {
     for (let i = 0; i < steps; i++) eng.step();
     assert.equal(ped.targetStairId, 'clear');
     eng.destroy();
+  });
+
+  it('alarms every storey from triggerBlast', () => {
+    const eng = new PolygonEvacuationEngine(
+      { ...DEFAULT_POLYGON_CONFIG, vertices: RECT, pedestrianCount: 0 },
+      [exitOn('out', 'G')],
+      [],
+      [],
+      { afterExit: 'zone', zones: [], seed: 1 },
+      {
+        ids: ['G', 'L1'],
+        exitsByLevel: { G: [exitOn('out', 'G')], L1: [] },
+        wallsByLevel: { G: [], L1: [] },
+        stairs: [],
+        counts: { G: 1, L1: 1 },
+        heights: { G: 4, L1: 4 },
+      },
+    );
+    eng.setBlastLevel('G');
+    const bodies = (eng as unknown as { pedestrians: Matter.Body[] }).pedestrians;
+    for (const body of bodies) Matter.Body.setPosition(body, { x: 10, y: 10 });
+    eng.triggerBlast({ x: 10, y: 10 }, 8);
+    const byLevel = new Map<string, { state: string; injury: string }>();
+    for (const body of bodies) {
+      const ped = (body as Matter.Body & { __ped: { level: string; state: string; injury: string } }).__ped;
+      byLevel.set(ped.level, { state: ped.state, injury: ped.injury });
+    }
+    assert.equal(byLevel.get('G')?.state, 'down');
+    assert.equal(byLevel.get('L1')?.state, 'reacting');
+    assert.equal(byLevel.get('L1')?.injury, 'none');
+    eng.destroy();
+  });
+
+  it('reloads indoor studs on every saved storey', () => {
+    const polygon: [number, number][] = [
+      [51.5, -0.12],
+      [51.5, -0.1196],
+      [51.50036, -0.1196],
+      [51.50036, -0.12],
+    ];
+    const studs = generateSceneStuds(polygon, 0, ['G', 'L1', 'B1']);
+    const inside = (floor: string) =>
+      studs.filter((s) => s.spatialContext === 'inside_building' && s.floor === floor);
+    assert.ok(inside('G').length > 0);
+    assert.equal(inside('L1').length, inside('G').length);
+    assert.equal(inside('B1').length, inside('G').length);
+    assert.ok(inside('L1').every((s) => s.id.includes('-L1-')));
+    const outdoor = studs.filter((s) => s.spatialContext === 'open_air');
+    assert.ok(outdoor.length > 0);
+    assert.ok(outdoor.every((s) => s.floor === 'G'));
+    assert.equal(new Set(studs.map((s) => s.id)).size, studs.length);
+    const groundOnly = generateSceneStuds(polygon, 0, ['G']);
+    assert.ok(groundOnly.some((s) => s.id.startsWith('bldg-0-G-')));
+    assert.equal(groundOnly.filter((s) => s.floor === 'L1').length, 0);
   });
 
   it('initialises four storeys of studs within half a second', () => {

@@ -278,9 +278,9 @@ export class FireSimulation {
       if (burned + 1e-9 < LEVEL.STAIR_FIRE_HEAT_S) continue;
       const upper = this.states.get(pair.upper);
       if (!upper || upper.state !== 'none') continue;
-      upper.state = 'heating';
-      upper.timer = this.params.heatTransferRate;
       upper.fuelFactor = 1;
+      upper.state = 'burning';
+      upper.timer = this.params.burnDuration;
     }
   }
 
