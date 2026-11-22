@@ -3090,7 +3090,7 @@ Sources: BS PD 7974-1:2019 (design fire growth and heat release per unit area by
 | `stair_max_specific_flow` | stairs | 1.01 p/s per metre of effective width | 0.8 to 1.3 | as above |
 | `boundary_layer_stair` | stairs | 0.15 m each side | 0.1 to 0.2 | as above |
 | `stair_travel_factor` | stairs | 2.0 m of travel per metre of storey height | 1.5 to 3.0 | Assumed; stair geometry, pending the research |
-| `smoke_up_factor`, `lift_shaft_smoke_factor` | visibility | Retired from the engine 22 Nov 2026 | none | Replaced by stack-driven flow through landing doors (section 6.23.3, `stack_pressure` and `vent_flow_orifice` from the fire research); the debug sandbox keeps 1.5 and 0.3 as its simplified constants |
+| `smoke_up_factor`, `lift_shaft_smoke_factor` | visibility | Retired from the engine 22 Nov 2026 | none | Replaced by stack-driven flow through landing doors (section 6.23.3, `stack_pressure` and `vent_flow_orifice` from the fire research); the debug sandbox (`spec-rts-multilevel-editor.md`) uses the same stack-driven flow, upward only, with qualitative parity (direction, order of magnitude and which links carry smoke), not a numeric oracle |
 | `stair_fire_heat_s` | heat | 60 s to heat the stud above through an open stair | 30 to 300 | Assumed; the fire research gives no value. Where the stud above has a radiant flux, the ignition-time rule of section 6.23.2 governs instead |
 | `door_leak_gap_mm` (**added 22 Nov 2026**) | visibility | 10 mm under a smoke-control door; 10 mm full height for a fire door without seals | 5 to 20 | C/VM2 leakage areas |
 | `orifice_coefficient` | visibility | 0.7 | 0.6 to 0.8 | CFAST orifice flow (door and window vents) |
