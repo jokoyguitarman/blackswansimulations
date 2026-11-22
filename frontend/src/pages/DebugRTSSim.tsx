@@ -12,8 +12,20 @@ import {
 import L from 'leaflet';
 import { supabase } from '../lib/supabase';
 import { PolygonEvacuationEngine } from '../lib/evacuation/engine';
-import type { PedSnapshot } from '../lib/evacuation/engine';
-import type { ExitDef, PolygonSimConfig, Vec2 } from '../lib/evacuation/types';
+import type { PedSnapshot, ShowcaseMetrics } from '../lib/evacuation/engine';
+import type { ExitDef, PolygonSimConfig, Vec2, ZoneKind } from '../lib/evacuation/types';
+import {
+  HazardField,
+  assemblyMinDistanceM,
+  distanceToOutline,
+} from '../lib/evacuation/hazardSensing';
+import { SHOWCASE, SHOWCASE_SOURCES } from '../lib/evacuation/showcaseConstants';
+import {
+  blastEffectsTriggerSec,
+  countdownLabel,
+  isBlastDue,
+  shiftEvents,
+} from '../lib/evacuation/showcase';
 import { DEFAULT_POLYGON_CONFIG } from '../lib/evacuation/types';
 import { projectPolygon, nearestEdge, edgeLength } from '../lib/evacuation/geometry';
 import { RTSEngine } from '../lib/rts/engine';
@@ -47,7 +59,7 @@ import {
   type WallInspectionPoint,
 } from '../lib/rts/wallInspection';
 import { generateSingleCasualty } from '../lib/rts/casualtyPresets';
-import { type FireParams } from '../lib/rts/fireSimulation';
+import { DEFAULT_FIRE_PARAMS, type FireParams } from '../lib/rts/fireSimulation';
 import {
   SpatialEffectsEngine,
   type StudEffectState,
@@ -65,6 +77,39 @@ import {
 import 'leaflet/dist/leaflet.css';
 
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
+
+function readShowcaseSettings(params: URLSearchParams): {
+  showcase: boolean;
+  afterExit: 'zone' | 'disperse' | 'mixed';
+} {
+  let stored: { showcase?: boolean; afterExit?: string } = {};
+  try {
+    const raw = localStorage.getItem('rtsShowcaseSettings');
+    if (raw) stored = JSON.parse(raw) as { showcase?: boolean; afterExit?: string };
+  } catch {
+    stored = {};
+  }
+  const afterExit =
+    stored.afterExit === 'disperse' || stored.afterExit === 'mixed' || stored.afterExit === 'zone'
+      ? stored.afterExit
+      : 'zone';
+  const showcase = params.has('showcase') ? params.get('showcase') === '1' : Boolean(stored.showcase);
+  return { showcase, afterExit };
+}
+
+function aboveGroundHeightM(floors: string[] | undefined): number {
+  const list = floors && floors.length > 0 ? floors : ['G'];
+  const n = list.filter((f) => {
+    const id = f === 'Ground' ? 'G' : f;
+    return id === 'G' || id.startsWith('L');
+  }).length;
+  return Math.max(1, n) * SHOWCASE.BUILDING_STOREY_HEIGHT_M;
+}
+
+const ASSUMED_VALUE_TOOLTIP = Object.entries(SHOWCASE_SOURCES)
+  .filter(([, source]) => source.status === 'assumed')
+  .map(([key, source]) => `${key}: ${source.ref}`)
+  .join('\n');
 
 // ── API helpers ─────────────────────────────────────────────────────────
 const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
@@ -584,6 +629,43 @@ export function DebugRTSSim() {
 
   // ── Blast radius ──────────────────────────────────────────────────────
   const [blastRadius, setBlastRadius] = useState(20);
+  const blastRadiusRef = useRef(blastRadius);
+  blastRadiusRef.current = blastRadius;
+
+  // ── Evacuation showcase ───────────────────────────────────────────────
+  const showcasePrefs = useMemo(() => readShowcaseSettings(searchParams), [searchParams]);
+  const [showcase, setShowcase] = useState(showcasePrefs.showcase);
+  const [afterExit, setAfterExit] = useState<'zone' | 'disperse' | 'mixed'>(showcasePrefs.afterExit);
+  const [zoneKinds, setZoneKinds] = useState<Record<string, ZoneKind>>({});
+  const blastFiredRef = useRef(false);
+  const explosionStartRef = useRef<number | null>(null);
+  const [banner, setBanner] = useState<{ until: number; text: string } | null>(null);
+  const hazardFieldRef = useRef<HazardField | null>(null);
+  const showcaseRef = useRef(showcase);
+  showcaseRef.current = showcase;
+  const afterExitRef = useRef(afterExit);
+  afterExitRef.current = afterExit;
+  const zoneKindsRef = useRef(zoneKinds);
+  zoneKindsRef.current = zoneKinds;
+  const reducedMotion = useMemo(
+    () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false,
+    [],
+  );
+  const reducedMotionRef = useRef(reducedMotion);
+  reducedMotionRef.current = reducedMotion;
+  const [showcaseHud, setShowcaseHud] = useState<{
+    metrics: ShowcaseMetrics | null;
+    burning: number;
+    smoke: number;
+  } | null>(null);
+  const hudAtRef = useRef(0);
+  useEffect(() => {
+    try {
+      localStorage.setItem('rtsShowcaseSettings', JSON.stringify({ showcase, afterExit }));
+    } catch {
+      /* private mode or quota */
+    }
+  }, [showcase, afterExit]);
 
   // ── Operational zones (hot/warm/cold) ─────────────────────────────────
   const [gameZones, setGameZones] = useState([
@@ -666,6 +748,8 @@ export function DebugRTSSim() {
 
   const simStudsRef = useRef(allSimStuds);
   simStudsRef.current = allSimStuds;
+  const floorsRef = useRef(selectedGrid?.floors ?? ['G']);
+  floorsRef.current = selectedGrid?.floors ?? ['G'];
 
   const snapToStud = useCallback((simPos: Vec2): { pos: Vec2; stud: SimStud | null } => {
     const studs = simStudsRef.current;
@@ -1265,16 +1349,52 @@ export function DebugRTSSim() {
       doorPosition: w.doorPosition,
     }));
 
-    const obstacles = [
-      ...hazardZones.map((hz) => ({ x: hz.pos.x, y: hz.pos.y, radius: hz.radius })),
-      ...casualtyPins.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: 1.5 })),
-    ];
+    const obstacles = showcase
+      ? casualtyPins.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: 1.5 }))
+      : [
+          ...hazardZones.map((hz) => ({ x: hz.pos.x, y: hz.pos.y, radius: hz.radius })),
+          ...casualtyPins.map((c) => ({ x: c.pos.x, y: c.pos.y, radius: 1.5 })),
+        ];
 
-    evacEngRef.current = new PolygonEvacuationEngine(config, exits, iwDefs, obstacles);
+    const zones = rtsRef.current.state.equipment
+      .filter((e) => e.def.kind === 'assembly_point' && e.active)
+      .map((e) => ({
+        id: e.id,
+        pos: e.pos,
+        radius: e.def.radius,
+        label: e.def.label,
+        kind: zoneKinds[e.id] ?? ('assembly' as const),
+      }));
+    evacEngRef.current = new PolygonEvacuationEngine(
+      config,
+      exits,
+      iwDefs,
+      obstacles,
+      showcase
+        ? {
+            afterExit,
+            zones,
+            seed: SHOWCASE.RNG_SEED,
+            buildingHeightM: aboveGroundHeightM(selectedGrid?.floors),
+          }
+        : undefined,
+    );
+    if (showcase) evacEngRef.current.setInteriorWalls(iwDefs);
     rtsRef.current.setBuildingVertices(projectedVerts);
     rtsRef.current.setExits(exits);
     setPedestrians(evacEngRef.current.getSnapshots());
-  }, [projectedVerts, exits, pedestrianCount, interiorWalls, hazardZones, casualtyPins]);
+  }, [
+    projectedVerts,
+    exits,
+    pedestrianCount,
+    interiorWalls,
+    hazardZones,
+    casualtyPins,
+    showcase,
+    afterExit,
+    zoneKinds,
+    selectedGrid,
+  ]);
 
   // Keep engine exits in sync when exits change (for pathfinding)
   useEffect(() => {
@@ -1358,13 +1478,54 @@ export function DebugRTSSim() {
       const rts = rtsRef.current;
       rts.tick(dt);
 
+      const showcaseOn = showcaseRef.current;
+      if (
+        showcaseOn &&
+        rts.state.clock.phase !== 'setup' &&
+        isBlastDue(rts.state.clock.elapsed, blastFiredRef.current)
+      ) {
+        blastFiredRef.current = true;
+        const site = blastSiteRef.current;
+        if (site) evacEngRef.current?.triggerBlast(site, blastRadiusRef.current);
+        explosionStartRef.current = performance.now();
+        setBanner({
+          until: performance.now() + SHOWCASE.BANNER_S * 1000,
+          text: `EXPLOSION · ${rts.formatClock()}`,
+        });
+      }
+
       const evac = evacEngRef.current;
       if (evac && !rts.state.clock.paused && rts.state.clock.phase !== 'setup') {
+        if (showcaseOn) {
+          const liveEffects = effectsEngineRef.current;
+          if (liveEffects) hazardFieldRef.current?.setStates(liveEffects.studStates);
+          evac.syncExits(exitsRef.current);
+          evac.setZones(
+            rts.state.equipment
+              .filter((e) => e.def.kind === 'assembly_point' && e.active)
+              .map((e) => ({
+                id: e.id,
+                pos: e.pos,
+                radius: e.def.radius,
+                label: e.def.label,
+                kind: zoneKindsRef.current[e.id] ?? 'assembly',
+              })),
+          );
+        }
         const stepsPerFrame = Math.max(1, Math.round(rts.state.clock.speed));
         for (let i = 0; i < stepsPerFrame; i++) evac.step();
         const snaps = evac.getSnapshots();
         pedestriansRef.current = snaps;
         setPedestrians(snaps);
+        if (showcaseOn && performance.now() - hudAtRef.current >= 250) {
+          hudAtRef.current = performance.now();
+          const stats = effectsEngineRef.current?.getStats();
+          setShowcaseHud({
+            metrics: evac.getMetrics().showcase ?? null,
+            burning: stats?.fire.burning ?? 0,
+            smoke: stats?.smokeAffected ?? 0,
+          });
+        }
       }
 
       const effectsEng = effectsEngineRef.current;
@@ -1437,9 +1598,13 @@ export function DebugRTSSim() {
             casualtyPinsRef.current,
             activeCasualtyRef.current?.id ?? null,
             interiorWallsRef.current,
-            hazardZonesRef.current,
+            showcaseOn && !blastFiredRef.current
+              ? hazardZonesRef.current.filter((h) => h.id !== 'blast-direct')
+              : hazardZonesRef.current,
             stairwellsRef.current,
-            blastSiteRef.current,
+            showcaseOn && rts.state.clock.phase !== 'setup' && !blastFiredRef.current
+              ? null
+              : blastSiteRef.current,
             showGameZonesRef.current ? gameZonesRef.current : undefined,
             (() => {
               const mode = rtsRef.current.state.interactionMode;
@@ -1456,9 +1621,46 @@ export function DebugRTSSim() {
               : null,
             showStudGridRef.current ? simStudsRef.current : null,
             effectStatesRef.current,
-            undefined,
-            true,
+            showcaseOn ? blastRadiusRef.current : undefined,
+            showcaseOn ? false : true,
             showGameZonesRef.current,
+            null,
+            showcaseOn
+              ? {
+                  hazardStuds: simStudsRef.current,
+                  effectStates: effectsEngineRef.current?.studStates ?? null,
+                  cellM: 3,
+                  explosion: (() => {
+                    if (!explosionStartRef.current || !blastSiteRef.current) return null;
+                    const ageS = (performance.now() - explosionStartRef.current) / 1000;
+                    if (ageS > SHOWCASE.FX_FIREBALL_S) return null;
+                    return {
+                      pos: blastSiteRef.current,
+                      radiusM: blastRadiusRef.current,
+                      ageS,
+                      reducedMotion: reducedMotionRef.current,
+                    };
+                  })(),
+                  injuryRings:
+                    blastFiredRef.current && blastSiteRef.current
+                      ? { pos: blastSiteRef.current, radiusM: blastRadiusRef.current }
+                      : null,
+                  zones: rts.state.equipment
+                    .filter((e) => e.def.kind === 'assembly_point' && e.active)
+                    .map((e) => ({
+                      id: e.id,
+                      pos: e.pos,
+                      radius: e.def.radius,
+                      label: e.def.label,
+                      kind: zoneKindsRef.current[e.id] ?? ('assembly' as const),
+                    })),
+                  zoneCounts: evac?.getMetrics().showcase?.arrived ?? {},
+                  assemblyRingM:
+                    rts.state.clock.phase === 'setup'
+                      ? assemblyMinDistanceM(aboveGroundHeightM(floorsRef.current))
+                      : null,
+                }
+              : null,
           );
         }
       }
@@ -2508,7 +2710,8 @@ export function DebugRTSSim() {
   const rts = rtsRef.current;
   const gameState = rts.state;
   const clockDisplay = rts.formatClock();
-  const phaseLabel = rts.phaseLabel();
+  const phaseLabel =
+    showcase && !blastFiredRef.current ? 'PRE-INCIDENT — QUIET PERIOD' : rts.phaseLabel();
   const parsedLat = parseFloat(lat);
   const parsedLng = parseFloat(lng);
   const parsedRadius = parseInt(radius, 10) || 500;
@@ -2516,6 +2719,84 @@ export function DebugRTSSim() {
   const initEffectsEngine = useCallback(() => {
     const studs = simStudsRef.current;
     if (studs.length === 0 || !blastSite) return;
+
+    if (showcaseRef.current) {
+      const radius = blastRadiusRef.current;
+      const engine = new SpatialEffectsEngine({
+        ...(fireParams ?? DEFAULT_FIRE_PARAMS),
+        ambientSpread: true,
+        ambientHeatSec: SHOWCASE.AMBIENT_HEAT_S,
+      });
+      engine.init(
+        studs.map((s) => ({ id: s.id, simPos: s.simPos, spatialContext: s.spatialContext })),
+      );
+      const t0 = blastEffectsTriggerSec(engine.timeScale);
+      if (enrichResult?.hazardAnalysis) {
+        for (const ha of enrichResult.hazardAnalysis) {
+          if ((ha.events && ha.events.length > 0) || ha.hazardStates) {
+            engine.registerHazard(
+              ha.hazardId,
+              shiftEvents((ha.events ?? []) as HazardEvent[], t0),
+              ha.hazardStates ?? {
+                initial: 'Unknown',
+                triggered: 'Unknown',
+                worsening: 'Unknown',
+                critical: 'Unknown',
+              },
+            );
+          }
+        }
+      }
+      const affectedStuds = studs
+        .filter((s) => Math.hypot(s.simPos.x - blastSite.x, s.simPos.y - blastSite.y) <= radius)
+        .map((s) => s.id);
+      engine.registerHazard(
+        'blast-direct',
+        [
+          {
+            triggerTimeSec: t0,
+            eventType: 'explode',
+            spreadType: 'fire',
+            spreadRadius: radius,
+            spreadRate: 10,
+            description: 'Direct blast ignition',
+            severity: 'critical',
+            smokeGeneration: 'heavy',
+            affectedStuds,
+          },
+        ],
+        {
+          initial: 'Pre-detonation',
+          triggered: 'Blast wave',
+          worsening: 'Fire spreading',
+          critical: 'Engulfed',
+        },
+      );
+      hazardZonesRef.current = [
+        ...hazardZonesRef.current.filter((h) => h.id !== 'blast-direct'),
+        { id: 'blast-direct', pos: blastSite, radius } as HazardZone,
+      ];
+      hazardFieldRef.current = new HazardField(
+        studs.map((s) => ({
+          id: s.id,
+          simPos: s.simPos,
+          indoor: s.spatialContext === 'inside_building',
+        })),
+        3,
+      );
+      evacEngRef.current?.setHazardField(hazardFieldRef.current);
+      effectsEngineRef.current = engine;
+      setEffectStates(new Map(engine.studStates));
+      setHazardRuntimeStates(
+        new Map(
+          Array.from(engine.hazardStates.entries()).map(([k, v]) => [
+            k,
+            { phase: v.phase, phaseDescription: v.phaseDescription },
+          ]),
+        ),
+      );
+      return;
+    }
 
     const engine = new SpatialEffectsEngine(fireParams ?? undefined);
     engine.init(
@@ -2589,6 +2870,13 @@ export function DebugRTSSim() {
 
   const handleDetonation = useCallback(async () => {
     if (exits.length === 0) return;
+    if (showcaseRef.current && (!blastSiteRef.current || simStudsRef.current.length === 0)) return;
+
+    blastFiredRef.current = false;
+    explosionStartRef.current = null;
+    setBanner(null);
+    setShowcaseHud(null);
+    hudAtRef.current = 0;
 
     if (!enrichResult && hazardZones.length > 0) {
       setDetonationLoading(true);
@@ -3123,6 +3411,15 @@ export function DebugRTSSim() {
                 onTouchMove={handleTouchMove}
                 onTouchEnd={handleTouchEnd}
               />
+              {banner && performance.now() < banner.until && (
+                <div
+                  role="status"
+                  className="absolute left-1/2 top-4 -translate-x-1/2 bg-red-700 text-white font-bold px-4 py-2 rounded pointer-events-none"
+                  style={{ zIndex: 1100 }}
+                >
+                  {banner.text}
+                </div>
+              )}
               {/* Mode indicator overlay */}
               <div
                 className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-black/70 rounded px-3 py-1.5 text-xs text-green-400 pointer-events-none"
@@ -4233,14 +4530,27 @@ export function DebugRTSSim() {
               <div className="text-2xl text-amber-300 font-bold text-center mb-3">
                 {clockDisplay}
               </div>
+              {showcase && !blastFiredRef.current && countdownLabel(gameState.clock.elapsed) && (
+                <div className="text-center text-amber-200 text-sm mb-2">
+                  {countdownLabel(gameState.clock.elapsed)}
+                </div>
+              )}
               <div className="flex gap-2">
                 {gameState.clock.phase === 'setup' ? (
                   <button
                     onClick={handleDetonation}
-                    disabled={exits.length === 0 || detonationLoading}
+                    disabled={
+                      exits.length === 0 ||
+                      detonationLoading ||
+                      (showcase && (!blastSite || allSimStuds.length === 0))
+                    }
                     className="flex-1 bg-red-800 hover:bg-red-700 disabled:opacity-30 text-white text-xs px-2 py-2 rounded border border-red-600 font-bold"
                   >
-                    {detonationLoading ? '⏳ Enriching...' : '💥 DETONATE'}
+                    {detonationLoading
+                      ? '⏳ Enriching...'
+                      : showcase
+                        ? '▶ START SHOWCASE'
+                        : '💥 DETONATE'}
                   </button>
                 ) : (
                   <button
@@ -4275,6 +4585,149 @@ export function DebugRTSSim() {
                 </div>
               )}
             </div>
+
+            <div className="bg-gray-900 border border-green-800 rounded p-3 space-y-2">
+              <label className="flex items-center gap-2 text-xs text-green-300">
+                <input
+                  type="checkbox"
+                  checked={showcase}
+                  onChange={(e) => setShowcase(e.target.checked)}
+                />
+                Showcase mode
+              </label>
+              {showcase && (
+                <div className="space-y-2 text-xs">
+                  <label className="block text-green-500">
+                    After exiting
+                    <select
+                      value={afterExit}
+                      onChange={(e) =>
+                        setAfterExit(e.target.value as 'zone' | 'disperse' | 'mixed')
+                      }
+                      className="mt-1 w-full bg-black border border-green-800 text-green-300 px-2 py-1 rounded"
+                    >
+                      <option value="zone">Go to assigned zones</option>
+                      <option value="disperse">Keep running off the map</option>
+                      <option value="mixed">Mixed (30% disperse)</option>
+                    </select>
+                  </label>
+                  <div className="space-y-1">
+                    {gameState.equipment
+                      .filter((e) => e.def.kind === 'assembly_point' && e.active)
+                      .map((e) => {
+                        const minD = assemblyMinDistanceM(aboveGroundHeightM(selectedGrid?.floors));
+                        const notes: string[] = [];
+                        if (
+                          projectedVerts.length >= 3 &&
+                          distanceToOutline(e.pos.x, e.pos.y, projectedVerts) < minD
+                        ) {
+                          notes.push(`Too close to building (< ${minD} m)`);
+                        }
+                        if (
+                          blastSite &&
+                          Math.hypot(e.pos.x - blastSite.x, e.pos.y - blastSite.y) <=
+                            SHOWCASE.ZONE_UNSAFE_FACTOR * blastRadius
+                        ) {
+                          notes.push('Inside glass-injury radius');
+                        }
+                        const status = notes.length > 0 ? notes.join(' · ') : 'OK';
+                        return (
+                          <div key={e.id} className="border border-green-900 rounded p-2 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span>{e.def.label}</span>
+                              <select
+                                value={zoneKinds[e.id] ?? 'assembly'}
+                                onChange={(ev) =>
+                                  setZoneKinds((prev) => ({
+                                    ...prev,
+                                    [e.id]: ev.target.value as ZoneKind,
+                                  }))
+                                }
+                                className="bg-black border border-green-800 text-green-300 px-1 py-0.5 rounded"
+                              >
+                                <option value="assembly">Assembly</option>
+                                <option value="safe">Safe</option>
+                                <option value="convening">Convening</option>
+                              </select>
+                            </div>
+                            <div className={status === 'OK' ? 'text-green-500' : 'text-amber-400'}>
+                              {status}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        rts.setInteractionMode({
+                          type: 'place_equipment',
+                          equipmentKind: 'assembly_point',
+                        });
+                        rerender();
+                      }}
+                      className="w-full text-left px-2 py-1.5 rounded border border-green-900 text-green-400 hover:border-green-700"
+                    >
+                      + Add zone
+                    </button>
+                  </div>
+                  <div className="space-y-1">
+                    {exits.map((ex, i) => (
+                      <label key={ex.id} className="flex items-center justify-between gap-2">
+                        <span>Exit {i + 1}</span>
+                        <select
+                          value={
+                            ex.status === 'blocked' || ex.status === 'congested' ? ex.status : 'open'
+                          }
+                          onChange={(ev) => {
+                            const status = ev.target.value as ExitDef['status'];
+                            setExits((prev) =>
+                              prev.map((item) => (item.id === ex.id ? { ...item, status } : item)),
+                            );
+                          }}
+                          className="bg-black border border-green-800 text-green-300 px-1 py-0.5 rounded"
+                        >
+                          <option value="open">open</option>
+                          <option value="congested">congested</option>
+                          <option value="blocked">blocked</option>
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-amber-500" title={ASSUMED_VALUE_TOOLTIP}>
+                    Illustrative values, pending review
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {showcase && gameState.clock.phase !== 'setup' && showcaseHud?.metrics && (
+              <div className="bg-gray-900 border border-green-800 rounded p-3 text-xs space-y-1 text-green-300">
+                <div>Idle {showcaseHud.metrics.idle}</div>
+                <div>Reacting {showcaseHud.metrics.reacting}</div>
+                <div>
+                  Evacuating {showcaseHud.metrics.evacuating} (crawling {showcaseHud.metrics.crawling})
+                </div>
+                <div>Outside {showcaseHud.metrics.outside}</div>
+                {Object.keys(showcaseHud.metrics.arrived).length === 0 ? (
+                  <div>Arrived 0</div>
+                ) : (
+                  Object.entries(showcaseHud.metrics.arrived).map(([id, n]) => (
+                    <div key={id}>
+                      Arrived {id}: {n}
+                    </div>
+                  ))
+                )}
+                <div>Left map {showcaseHud.metrics.leftMap}</div>
+                <div>
+                  Down {showcaseHud.metrics.down.lethal} lethal / {showcaseHud.metrics.down.serious}{' '}
+                  serious
+                </div>
+                <div>Minor injured {showcaseHud.metrics.minorInjured}</div>
+                <div>Reroutes {showcaseHud.metrics.reroutes}</div>
+                <div>Burning studs {showcaseHud.burning}</div>
+                <div>Smoke-affected studs {showcaseHud.smoke}</div>
+              </div>
+            )}
 
             {/* Setup tools */}
             {gameState.clock.phase === 'setup' && (

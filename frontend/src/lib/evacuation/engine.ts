@@ -1,6 +1,36 @@
 import Matter from 'matter-js';
-import type { ExitDef, PolygonSimConfig, Vec2 } from './types';
+import type {
+  EvacShowcaseOptions,
+  EvacState,
+  ExitDef,
+  PolygonSimConfig,
+  ShowcaseZone,
+  Vec2,
+} from './types';
 import { isInsidePolygon, polygonBounds } from './geometry';
+import type { Bounds } from './geometry';
+import {
+  HazardField,
+  assemblyMinDistanceM,
+  chooseExit,
+  distanceToOutline,
+  extinctionK,
+  mulberry32,
+  nextIndoorWaypoint,
+  nextPosture,
+  outdoorSpeed,
+  samplePremovementS,
+  smokeAheadAction,
+  walkingSpeed,
+  type ExitChoice,
+  type Familiarity,
+  type Posture,
+} from './hazardSensing';
+import { SHOWCASE } from './showcaseConstants';
+import { blastInjuryBand } from './showcase';
+import { computePathThroughExits } from '../rts/pathfinding';
+
+export type { Posture } from './hazardSensing';
 
 const WALL_THICKNESS = 0.8;
 const PED_CATEGORY = 0x0001;
@@ -14,6 +44,26 @@ export interface PedSnapshot {
   vy: number;
   speed: number;
   evacuated: boolean;
+  state?: EvacState;
+  posture?: Posture;
+  familiarity?: Familiarity;
+  injury?: 'none' | 'minor' | 'serious' | 'lethal';
+  zoneId?: string | null;
+}
+
+export interface ShowcaseMetrics {
+  idle: number;
+  reacting: number;
+  evacuating: number;
+  crouching: number;
+  crawling: number;
+  turnedBack: number;
+  outside: number;
+  arrived: Record<string, number>;
+  leftMap: number;
+  down: { lethal: number; serious: number };
+  minorInjured: number;
+  reroutes: number;
 }
 
 export interface EvacMetrics {
@@ -23,6 +73,7 @@ export interface EvacMetrics {
   remaining: number;
   avgSpeed: number;
   exitFlows: { exitId: string; count: number }[];
+  showcase?: ShowcaseMetrics;
 }
 
 interface PedLabel {
@@ -30,6 +81,30 @@ interface PedLabel {
   pedId: number;
   evacuated: boolean;
   targetExitId: string;
+  state?: EvacState;
+  posture?: Posture;
+  familiarity?: Familiarity;
+  injury?: 'none' | 'minor' | 'serious' | 'lethal';
+  reactAt?: number;
+  exitCost?: number;
+  nextCheckAt?: number;
+  waypoints?: Vec2[];
+  zoneId?: string | null;
+  wanderTarget?: Vec2 | null;
+  wanderUntil?: number;
+  spawn?: Vec2;
+  smokeRollDone?: boolean;
+  /** Lookahead already acted on this episode of fire or untenable smoke ahead. */
+  lookaheadLatch?: boolean;
+  sheltering?: boolean;
+  forcedCrawl?: boolean;
+  shelterTarget?: Vec2 | null;
+  blastImpulse?: Vec2 | null;
+  exitUsed?: Vec2 | null;
+  jitterTarget?: Vec2 | null;
+  jitterUntil?: number;
+  disperse?: boolean;
+  lastDir?: Vec2 | null;
 }
 
 export interface ObstaclePoint {
@@ -58,16 +133,35 @@ export class PolygonEvacuationEngine {
   private exitCounts = new Map<string, number>();
   private pedIdCounter = 0;
   private obstacles: ObstaclePoint[] = [];
+  private showcase: EvacShowcaseOptions | null = null;
+  private rng: (() => number) | null = null;
+  private hazardField: HazardField | null = null;
+  private interiorWalls: InteriorWallDef[] = [];
+  private zones: ShowcaseZone[] = [];
+  private blast: { site: Vec2; radius: number } | null = null;
+  private turnedBackCount = 0;
+  private rerouteCount = 0;
+  private leftMapCount = 0;
+  private arrivedCounts = new Map<string, number>();
+  private buildingHeightM: number = SHOWCASE.BUILDING_STOREY_HEIGHT_M;
 
   constructor(
     config: PolygonSimConfig,
     exits: ExitDef[],
     interiorWalls?: InteriorWallDef[],
     obstacles?: ObstaclePoint[],
+    showcase?: EvacShowcaseOptions,
   ) {
     this.config = config;
     this.exits = exits;
     this.obstacles = obstacles ?? [];
+    this.interiorWalls = interiorWalls ? interiorWalls.map((w) => ({ ...w })) : [];
+    if (showcase) {
+      this.showcase = showcase;
+      this.rng = mulberry32(showcase.seed ?? SHOWCASE.RNG_SEED);
+      this.zones = showcase.zones.map((z) => ({ ...z, pos: { ...z.pos } }));
+      if (showcase.buildingHeightM != null) this.buildingHeightM = showcase.buildingHeightM;
+    }
 
     this.engine = Matter.Engine.create({
       gravity: { x: 0, y: 0, scale: 1 },
@@ -202,8 +296,9 @@ export class PolygonEvacuationEngine {
 
     while (spawned < pedestrianCount && attempts < maxAttempts) {
       attempts++;
-      const x = bounds.minX + margin + Math.random() * (bounds.width - 2 * margin);
-      const y = bounds.minY + margin + Math.random() * (bounds.height - 2 * margin);
+      const rnd = () => (this.rng ? this.rng() : Math.random());
+      const x = bounds.minX + margin + rnd() * (bounds.width - 2 * margin);
+      const y = bounds.minY + margin + rnd() * (bounds.height - 2 * margin);
 
       if (!isInsidePolygon(x, y, vertices)) continue;
 
@@ -221,12 +316,42 @@ export class PolygonEvacuationEngine {
         mask: PED_CATEGORY | WALL_CATEGORY,
       };
 
-      const pedLabel: PedLabel = {
-        kind: 'pedestrian',
-        pedId: this.pedIdCounter++,
-        evacuated: false,
-        targetExitId: this.pickNearestExit(x, y),
-      };
+      const pedLabel: PedLabel = this.showcase
+        ? {
+            kind: 'pedestrian',
+            pedId: this.pedIdCounter++,
+            evacuated: false,
+            targetExitId: '',
+            state: 'idle',
+            posture: 'stand',
+            familiarity: this.rng!() < SHOWCASE.STAFF_SHARE ? 'staff' : 'visitor',
+            injury: 'none',
+            reactAt: Infinity,
+            exitCost: Infinity,
+            nextCheckAt: 0,
+            waypoints: [],
+            zoneId: null,
+            wanderTarget: null,
+            wanderUntil: 0,
+            spawn: { x, y },
+            smokeRollDone: false,
+            lookaheadLatch: false,
+            sheltering: false,
+            forcedCrawl: false,
+            shelterTarget: null,
+            blastImpulse: null,
+            exitUsed: null,
+            jitterTarget: null,
+            jitterUntil: 0,
+            disperse: false,
+            lastDir: null,
+          }
+        : {
+            kind: 'pedestrian',
+            pedId: this.pedIdCounter++,
+            evacuated: false,
+            targetExitId: this.pickNearestExit(x, y),
+          };
       (body as any).__ped = pedLabel;
 
       this.pedestrians.push(body);
@@ -254,6 +379,10 @@ export class PolygonEvacuationEngine {
   }
 
   step() {
+    if (this.showcase) {
+      this.stepShowcase();
+      return;
+    }
     const { dt, desiredSpeed, panicFactor } = this.config;
     const targetSpeed = desiredSpeed * (1 + panicFactor * 0.6);
     const tau = 0.4;
@@ -379,10 +508,560 @@ export class PolygonEvacuationEngine {
     Matter.Body.setVelocity(body, { x: 0, y: 0 });
   }
 
+  setHazardField(field: HazardField | null) {
+    if (!this.showcase) return;
+    this.hazardField = field;
+  }
+
+  setInteriorWalls(walls: InteriorWallDef[]) {
+    if (!this.showcase) return;
+    this.interiorWalls = walls.map((w) => ({ ...w }));
+  }
+
+  syncExits(exits: ExitDef[]) {
+    if (!this.showcase) return;
+    for (const incoming of exits) {
+      const cur = this.exits.find((e) => e.id === incoming.id);
+      if (cur) cur.status = incoming.status;
+    }
+  }
+
+  setZones(zones: ShowcaseZone[]) {
+    if (!this.showcase) return;
+    this.zones = zones.map((z) => ({ ...z, pos: { ...z.pos } }));
+  }
+
+  /** Illustrative blast. A second call does nothing. */
+  triggerBlast(site: Vec2, radius: number) {
+    if (!this.showcase || this.blast) return;
+    this.blast = { site: { x: site.x, y: site.y }, radius };
+    const dt = this.config.dt;
+    for (const body of this.pedestrians) {
+      const ped = this.pedOf(body);
+      if (ped.state === 'down' || ped.state === 'left_map' || ped.state === 'arrived') continue;
+      const dx = body.position.x - site.x;
+      const dy = body.position.y - site.y;
+      const dist = Math.hypot(dx, dy);
+      const band = blastInjuryBand(dist, radius);
+      if (band === 'lethal' || band === 'serious') {
+        ped.state = 'down';
+        ped.injury = band;
+        ped.evacuated = false;
+        Matter.Body.setStatic(body, true);
+        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        continue;
+      }
+      if (band === 'minor') {
+        ped.injury = 'minor';
+        const len = dist > 0.01 ? dist : 1;
+        ped.blastImpulse = {
+          x: (dx / len) * SHOWCASE.BLAST_PUSH_SPEED * dt,
+          y: (dy / len) * SHOWCASE.BLAST_PUSH_SPEED * dt,
+        };
+      }
+      ped.state = 'reacting';
+      ped.reactAt = this.elapsed + samplePremovementS(this.rng!);
+    }
+  }
+
+  private pedOf(body: Matter.Body): PedLabel {
+    return (body as Matter.Body & { __ped: PedLabel }).__ped;
+  }
+
+  private field(): HazardField {
+    if (!this.hazardField) this.hazardField = new HazardField([]);
+    return this.hazardField;
+  }
+
+  private stepShowcase() {
+    const dt = this.config.dt;
+    const outside: Array<{ id: number; x: number; y: number }> = [];
+    for (const body of this.pedestrians) {
+      const ped = this.pedOf(body);
+      if (ped.state === 'outside') {
+        outside.push({ id: ped.pedId, x: body.position.x, y: body.position.y });
+      }
+    }
+
+    for (const body of this.pedestrians) {
+      const ped = this.pedOf(body);
+      if (ped.state === 'down' || ped.state === 'left_map') continue;
+      if (ped.state === 'arrived') {
+        this.stepArrived(body, ped);
+        continue;
+      }
+      if (ped.state === 'idle') {
+        this.stepIdle(body, ped);
+        continue;
+      }
+      if (ped.state === 'reacting') {
+        if (this.elapsed + 1e-9 >= (ped.reactAt ?? Infinity)) {
+          ped.state = 'evacuating';
+          ped.posture = ped.posture ?? 'stand';
+          const offset = (ped.pedId % 30) * dt;
+          ped.nextCheckAt = this.elapsed + (offset === 0 ? SHOWCASE.REROUTE_CHECK_S : offset);
+          this.assignChoice(ped, this.posOf(body), this.pickInitialExit(this.posOf(body)), false);
+          this.stepEvacuating(body, ped);
+        } else if (ped.blastImpulse) {
+          Matter.Body.setVelocity(body, ped.blastImpulse);
+          ped.blastImpulse = null;
+        } else {
+          Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        }
+        continue;
+      }
+      if (ped.state === 'evacuating') {
+        this.stepEvacuating(body, ped);
+        continue;
+      }
+      if (ped.state === 'outside') {
+        this.stepOutside(body, ped, this.localDensity(outside, body.position.x, body.position.y, ped.pedId));
+      }
+    }
+
+    Matter.Engine.update(this.engine, dt * 1000);
+
+    const { vertices } = this.config;
+    for (const body of this.pedestrians) {
+      const ped = this.pedOf(body);
+      if (ped.state === 'evacuating') this.checkEvacuatedShowcase(body, ped);
+      else if (
+        (ped.state === 'idle' || ped.state === 'reacting') &&
+        !isInsidePolygon(body.position.x, body.position.y, vertices)
+      ) {
+        this.pushBackInside(body, vertices);
+      }
+    }
+
+    this.elapsed += dt;
+  }
+
+  private posOf(body: Matter.Body): Vec2 {
+    return { x: body.position.x, y: body.position.y };
+  }
+
+  private stepIdle(body: Matter.Body, ped: PedLabel) {
+    const pos = this.posOf(body);
+    if ((ped.wanderUntil ?? 0) > this.elapsed) {
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      return;
+    }
+    if (!ped.wanderTarget) {
+      ped.wanderTarget = this.pickWander(ped.spawn ?? pos);
+    }
+    const d = Math.hypot(ped.wanderTarget.x - pos.x, ped.wanderTarget.y - pos.y);
+    if (d < 0.4) {
+      ped.wanderTarget = null;
+      ped.wanderUntil = this.elapsed + 2 + this.rng!() * 4;
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      return;
+    }
+    this.steer(body, ped.wanderTarget, SHOWCASE.IDLE_WANDER_SPEED, null);
+  }
+
+  private pickWander(spawn: Vec2): Vec2 {
+    const r = SHOWCASE.IDLE_WANDER_RADIUS_M;
+    const verts = this.config.vertices;
+    for (let i = 0; i < 20; i++) {
+      const ang = this.rng!() * Math.PI * 2;
+      const rad = Math.sqrt(this.rng!()) * r;
+      const p = { x: spawn.x + Math.cos(ang) * rad, y: spawn.y + Math.sin(ang) * rad };
+      if (isInsidePolygon(p.x, p.y, verts)) return p;
+    }
+    return { x: spawn.x, y: spawn.y };
+  }
+
+  private stepEvacuating(body: Matter.Body, ped: PedLabel) {
+    const pos = this.posOf(body);
+    const field = this.field();
+    const sample = field.sample(pos.x, pos.y);
+    const fam = ped.familiarity ?? 'visitor';
+    if (!ped.forcedCrawl && !ped.sheltering) {
+      ped.posture = nextPosture(ped.posture ?? 'stand', sample.smoke, fam);
+    } else {
+      ped.posture = 'crawl';
+    }
+    const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
+    const speed = walkingSpeed(extinctionK(sample.smoke), ped.posture ?? 'stand', SHOWCASE.SHOWCASE_PANIC, injuryFactor);
+
+    const exit = this.exits.find((e) => e.id === ped.targetExitId);
+    const provisional = ped.sheltering && ped.shelterTarget
+      ? ped.shelterTarget
+      : exit
+        ? nextIndoorWaypoint(pos, exit.center, this.interiorWalls)
+        : pos;
+    const vx = body.velocity.x;
+    const vy = body.velocity.y;
+    let dx = provisional.x - pos.x;
+    let dy = provisional.y - pos.y;
+    if (Math.hypot(vx, vy) > 1e-4) {
+      dx = vx;
+      dy = vy;
+    }
+    const dlen = Math.hypot(dx, dy) || 1;
+    const ux = dx / dlen;
+    const uy = dy / dlen;
+
+    let ka = 0;
+    let burningAhead = false;
+    for (const m of SHOWCASE.LOOKAHEAD_SAMPLES_M) {
+      const s = field.sample(pos.x + ux * m, pos.y + uy * m);
+      ka = Math.max(ka, extinctionK(s.smoke));
+      if (s.fire === 'burning') burningAhead = true;
+    }
+
+    const ahead = (burningAhead || ka > SHOWCASE.REROUTE_EXTINCTION) && !!ped.targetExitId;
+    if (!ahead) ped.lookaheadLatch = false;
+    if (ahead && !ped.lookaheadLatch && ped.targetExitId) {
+      ped.lookaheadLatch = true;
+      if (burningAhead) {
+        const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), {
+          excludeId: ped.targetExitId,
+        });
+        this.assignChoice(ped, pos, alt, true);
+      } else {
+        let turned = false;
+        if (!ped.smokeRollDone) {
+          ped.smokeRollDone = true;
+          if (this.rng!() < SHOWCASE.TURN_BACK_PERMILLE / 1000) {
+            turned = true;
+            this.turnedBackCount++;
+            this.rerouteCount++;
+            const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), {
+              ignoreHysteresis: true,
+              excludeId: ped.targetExitId,
+            });
+            this.assignChoice(ped, pos, alt, false);
+          }
+        }
+        if (!turned) {
+          const alt = chooseExit(pos, this.exits, this.config.vertices, field, this.currentChoice(ped), {
+            excludeId: ped.targetExitId,
+          });
+          const altCost = alt && !alt.forced ? alt.cost : null;
+          if (smokeAheadAction(ka, ped.exitCost ?? Infinity, altCost) === 'switch' && alt) {
+            this.assignChoice(ped, pos, alt, true);
+          } else if (!alt) {
+            this.assignChoice(ped, pos, null, true);
+          }
+        }
+      }
+    }
+
+    if (this.elapsed + 1e-9 >= (ped.nextCheckAt ?? 0)) {
+      const choice = chooseExit(
+        pos,
+        this.exits,
+        this.config.vertices,
+        field,
+        ped.targetExitId ? this.currentChoice(ped) : null,
+      );
+      ped.nextCheckAt = this.elapsed + SHOWCASE.REROUTE_CHECK_S;
+      this.assignChoice(ped, pos, choice, true);
+    }
+
+    if (ped.sheltering) {
+      ped.shelterTarget = field.lowestKWithin(pos.x, pos.y, 6) ?? ped.shelterTarget ?? null;
+      ped.posture = 'crawl';
+    }
+
+    const liveExit = this.exits.find((e) => e.id === ped.targetExitId);
+    const target =
+      ped.sheltering && ped.shelterTarget
+        ? nextIndoorWaypoint(pos, ped.shelterTarget, this.interiorWalls)
+        : liveExit
+          ? nextIndoorWaypoint(pos, liveExit.center, this.interiorWalls)
+          : provisional;
+    this.steer(body, target, speed, field);
+  }
+
+  private currentChoice(ped: PedLabel): { id: string; cost: number } {
+    return { id: ped.targetExitId, cost: ped.exitCost ?? Infinity };
+  }
+
+  private pickInitialExit(pos: Vec2): ExitChoice | null {
+    return chooseExit(pos, this.exits, this.config.vertices, this.field(), null);
+  }
+
+  private assignChoice(ped: PedLabel, pos: Vec2, choice: ExitChoice | null, count: boolean) {
+    if (!choice) {
+      const changed = !ped.sheltering;
+      ped.sheltering = true;
+      ped.forcedCrawl = true;
+      ped.posture = 'crawl';
+      ped.shelterTarget = this.field().lowestKWithin(pos.x, pos.y, 6) ?? ped.shelterTarget ?? null;
+      if (count && changed) this.rerouteCount++;
+      return;
+    }
+    const changed = choice.id !== ped.targetExitId;
+    ped.targetExitId = choice.id;
+    ped.exitCost = choice.cost;
+    ped.sheltering = false;
+    ped.forcedCrawl = choice.forced;
+    if (choice.forced) ped.posture = 'crawl';
+    if (count && changed) this.rerouteCount++;
+  }
+
+  private stepOutside(body: Matter.Body, ped: PedLabel, density: number) {
+    const pos = this.posOf(body);
+    if (ped.zoneId && !ped.disperse) {
+      const z = this.zones.find((zone) => zone.id === ped.zoneId);
+      if (z && Math.hypot(pos.x - z.pos.x, pos.y - z.pos.y) <= z.radius) {
+        this.arrive(ped, z.id);
+        Matter.Body.setVelocity(body, { x: 0, y: 0 });
+        return;
+      }
+    }
+    const bounds = polygonBounds(this.config.vertices);
+    if (this.outsideGrown(pos, bounds)) {
+      this.leaveMap(body, ped);
+      return;
+    }
+    const wps = ped.waypoints ?? [];
+    if (wps.length > 0 && Math.hypot(wps[0].x - pos.x, wps[0].y - pos.y) < 1.5) wps.shift();
+    const injuryFactor = ped.injury === 'minor' ? SHOWCASE.MINOR_INJURY_SPEED_FACTOR : 1;
+    const distExit = ped.exitUsed ? Math.hypot(pos.x - ped.exitUsed.x, pos.y - ped.exitUsed.y) : 0;
+    const speed = outdoorSpeed(distExit, density, injuryFactor);
+    if (wps.length > 0) {
+      ped.lastDir = { x: wps[0].x - pos.x, y: wps[0].y - pos.y };
+      this.steer(body, wps[0], speed, null);
+      return;
+    }
+    if (ped.disperse) {
+      const dir = ped.lastDir ?? { x: 1, y: 0 };
+      const len = Math.hypot(dir.x, dir.y) || 1;
+      this.steer(body, { x: pos.x + (dir.x / len) * 5, y: pos.y + (dir.y / len) * 5 }, speed, null);
+      return;
+    }
+    const z = this.zones.find((zone) => zone.id === ped.zoneId);
+    if (z) this.steer(body, z.pos, speed, null);
+  }
+
+  private stepArrived(body: Matter.Body, ped: PedLabel) {
+    const z = this.zones.find((zone) => zone.id === ped.zoneId);
+    if (!z) {
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      return;
+    }
+    if (!ped.jitterTarget || (ped.jitterUntil ?? 0) <= this.elapsed) {
+      const ang = this.rng!() * Math.PI * 2;
+      const rad = Math.sqrt(this.rng!()) * z.radius;
+      ped.jitterTarget = { x: z.pos.x + Math.cos(ang) * rad, y: z.pos.y + Math.sin(ang) * rad };
+      ped.jitterUntil = this.elapsed + 4;
+    }
+    this.steer(body, ped.jitterTarget, SHOWCASE.IDLE_WANDER_SPEED * 0.3, null);
+  }
+
+  private checkEvacuatedShowcase(body: Matter.Body, ped: PedLabel) {
+    const { vertices } = this.config;
+    const x = body.position.x;
+    const y = body.position.y;
+    if (isInsidePolygon(x, y, vertices)) return;
+
+    let best: ExitDef | null = null;
+    let bestD = Infinity;
+    for (const exit of this.exits) {
+      if (exit.exitType === 'service') continue;
+      const d = Math.hypot(x - exit.center.x, y - exit.center.y);
+      if (d < exit.width + 1.5 && d < bestD) {
+        best = exit;
+        bestD = d;
+      }
+    }
+    if (best) {
+      this.exitCounts.set(best.id, (this.exitCounts.get(best.id) ?? 0) + 1);
+      this.planOutdoor(ped, best, { x, y });
+      return;
+    }
+    this.pushBackInside(body, vertices);
+  }
+
+  private planOutdoor(ped: PedLabel, exit: ExitDef, pos: Vec2) {
+    ped.state = 'outside';
+    ped.evacuated = true;
+    ped.exitUsed = { x: exit.center.x, y: exit.center.y };
+    const mode = this.showcase?.afterExit ?? 'zone';
+    const rollDisperse = mode === 'mixed' && this.rng!() < SHOWCASE.DISPERSE_SHARE;
+    const safe = this.zones.filter((z) => this.zoneSafe(z));
+    const useZone = !rollDisperse && mode !== 'disperse' && this.zones.length > 0;
+    if (!useZone) {
+      ped.disperse = true;
+      ped.zoneId = null;
+      const blast = this.blast?.site ?? pos;
+      const target = this.disperseTarget(blast, exit.center);
+      ped.waypoints = computePathThroughExits(pos, target, this.config.vertices, this.exits);
+      ped.lastDir = { x: target.x - pos.x, y: target.y - pos.y };
+      return;
+    }
+    const pool = safe.length > 0 ? safe : this.zones;
+    let pick = pool[0];
+    if (safe.length > 0) {
+      let best = Infinity;
+      for (const z of safe) {
+        const d = Math.hypot(z.pos.x - exit.center.x, z.pos.y - exit.center.y);
+        if (d < best) {
+          best = d;
+          pick = z;
+        }
+      }
+    } else {
+      const blast = this.blast?.site ?? exit.center;
+      let best = -1;
+      for (const z of this.zones) {
+        const d = Math.hypot(z.pos.x - blast.x, z.pos.y - blast.y);
+        if (d > best) {
+          best = d;
+          pick = z;
+        }
+      }
+    }
+    ped.disperse = false;
+    ped.zoneId = pick.id;
+    const ang = this.rng!() * Math.PI * 2;
+    const rad = Math.sqrt(this.rng!()) * 0.8 * pick.radius;
+    const target = { x: pick.pos.x + Math.cos(ang) * rad, y: pick.pos.y + Math.sin(ang) * rad };
+    ped.waypoints = computePathThroughExits(pos, target, this.config.vertices, this.exits);
+    ped.lastDir = { x: target.x - pos.x, y: target.y - pos.y };
+  }
+
+  private zoneSafe(zone: ShowcaseZone): boolean {
+    const minD = assemblyMinDistanceM(this.buildingHeightM);
+    if (distanceToOutline(zone.pos.x, zone.pos.y, this.config.vertices) < minD) return false;
+    if (this.blast) {
+      const d = Math.hypot(zone.pos.x - this.blast.site.x, zone.pos.y - this.blast.site.y);
+      if (d <= SHOWCASE.ZONE_UNSAFE_FACTOR * this.blast.radius) return false;
+    }
+    return true;
+  }
+
+  private disperseTarget(blast: Vec2, exitCenter: Vec2): Vec2 {
+    const bounds = polygonBounds(this.config.vertices);
+    const minX = bounds.minX - SHOWCASE.MAP_MARGIN_M;
+    const maxX = bounds.maxX + SHOWCASE.MAP_MARGIN_M;
+    const minY = bounds.minY - SHOWCASE.MAP_MARGIN_M;
+    const maxY = bounds.maxY + SHOWCASE.MAP_MARGIN_M;
+    let dx = exitCenter.x - blast.x;
+    let dy = exitCenter.y - blast.y;
+    const len = Math.hypot(dx, dy) || 1;
+    dx /= len;
+    dy /= len;
+    let tHit = Infinity;
+    if (dx > 1e-9) tHit = Math.min(tHit, (maxX - blast.x) / dx);
+    if (dx < -1e-9) tHit = Math.min(tHit, (minX - blast.x) / dx);
+    if (dy > 1e-9) tHit = Math.min(tHit, (maxY - blast.y) / dy);
+    if (dy < -1e-9) tHit = Math.min(tHit, (minY - blast.y) / dy);
+    const t = (Number.isFinite(tHit) ? tHit : 0) + SHOWCASE.LEAVE_OVERSHOOT_M;
+    return { x: blast.x + dx * t, y: blast.y + dy * t };
+  }
+
+  private outsideGrown(pos: Vec2, bounds: Bounds): boolean {
+    return (
+      pos.x < bounds.minX - SHOWCASE.MAP_MARGIN_M ||
+      pos.x > bounds.maxX + SHOWCASE.MAP_MARGIN_M ||
+      pos.y < bounds.minY - SHOWCASE.MAP_MARGIN_M ||
+      pos.y > bounds.maxY + SHOWCASE.MAP_MARGIN_M
+    );
+  }
+
+  private arrive(ped: PedLabel, zoneId: string) {
+    if (ped.state === 'arrived') return;
+    ped.state = 'arrived';
+    ped.evacuated = true;
+    ped.zoneId = zoneId;
+    this.arrivedCounts.set(zoneId, (this.arrivedCounts.get(zoneId) ?? 0) + 1);
+  }
+
+  private leaveMap(body: Matter.Body, ped: PedLabel) {
+    if (ped.state === 'left_map') return;
+    ped.state = 'left_map';
+    ped.evacuated = true;
+    Matter.Composite.remove(this.engine.world, body);
+    this.leftMapCount++;
+  }
+
+  private localDensity(
+    people: Array<{ id: number; x: number; y: number }>,
+    x: number,
+    y: number,
+    selfId: number,
+  ): number {
+    const cell = 1;
+    const buckets = new Map<string, Array<{ id: number; x: number; y: number }>>();
+    for (const p of people) {
+      const key = `${Math.floor(p.x / cell)},${Math.floor(p.y / cell)}`;
+      const list = buckets.get(key);
+      if (list) list.push(p);
+      else buckets.set(key, [p]);
+    }
+    const cx = Math.floor(x / cell);
+    const cy = Math.floor(y / cell);
+    let n = 0;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        const list = buckets.get(`${cx + dx},${cy + dy}`);
+        if (!list) continue;
+        for (const p of list) {
+          if (p.id === selfId) continue;
+          if (Math.hypot(p.x - x, p.y - y) <= 1) n++;
+        }
+      }
+    }
+    return n / Math.PI;
+  }
+
+  private steer(body: Matter.Body, target: Vec2, targetSpeed: number, fireField: HazardField | null) {
+    const dt = this.config.dt;
+    const dx = target.x - body.position.x;
+    const dy = target.y - body.position.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 0.01) {
+      Matter.Body.setVelocity(body, { x: 0, y: 0 });
+      return;
+    }
+    const nx = dx / dist;
+    const ny = dy / dist;
+    let repX = 0;
+    let repY = 0;
+    for (const obs of this.obstacles) {
+      const odx = body.position.x - obs.x;
+      const ody = body.position.y - obs.y;
+      const oDist = Math.hypot(odx, ody);
+      if (oDist < obs.radius && oDist > 0.01) {
+        const strength = ((obs.radius - oDist) / obs.radius) * targetSpeed * dt * 2;
+        repX += (odx / oDist) * strength;
+        repY += (ody / oDist) * strength;
+      }
+    }
+    if (fireField) {
+      for (const f of fireField.firesNear(body.position.x, body.position.y, SHOWCASE.FIRE_AVOID_RADIUS_M)) {
+        const r = f.state === 'burning' ? SHOWCASE.FIRE_AVOID_RADIUS_M : SHOWCASE.HEAT_AVOID_RADIUS_M;
+        const odx = body.position.x - f.pos.x;
+        const ody = body.position.y - f.pos.y;
+        const oDist = Math.hypot(odx, ody);
+        if (oDist < r && oDist > 0.01) {
+          const strength = ((r - oDist) / r) * targetSpeed * dt * 2;
+          repX += (odx / oDist) * strength;
+          repY += (ody / oDist) * strength;
+        }
+      }
+    }
+    const blend = Math.min(1, dt / 0.4);
+    let newVx = body.velocity.x + (nx * targetSpeed * dt + repX - body.velocity.x) * blend;
+    let newVy = body.velocity.y + (ny * targetSpeed * dt + repY - body.velocity.y) * blend;
+    const currentSpeed = Math.hypot(newVx, newVy);
+    const maxSpeed = targetSpeed * dt * 1.3;
+    if (currentSpeed > maxSpeed && currentSpeed > 0) {
+      const s = maxSpeed / currentSpeed;
+      newVx *= s;
+      newVy *= s;
+    }
+    Matter.Body.setVelocity(body, { x: newVx, y: newVy });
+  }
+
   getSnapshots(): PedSnapshot[] {
     return this.pedestrians.map((body) => {
       const ped: PedLabel = (body as any).__ped;
-      return {
+      const snap: PedSnapshot = {
         id: ped.pedId,
         x: body.position.x,
         y: body.position.y,
@@ -391,6 +1070,14 @@ export class PolygonEvacuationEngine {
         speed: Math.sqrt(body.velocity.x ** 2 + body.velocity.y ** 2) / this.config.dt,
         evacuated: ped.evacuated,
       };
+      if (ped.state) {
+        snap.state = ped.state;
+        snap.posture = ped.posture;
+        snap.familiarity = ped.familiarity;
+        snap.injury = ped.injury;
+        snap.zoneId = ped.zoneId ?? null;
+      }
+      return snap;
     });
   }
 
@@ -406,13 +1093,58 @@ export class PolygonEvacuationEngine {
       count: this.exitCounts.get(e.id) ?? 0,
     }));
 
-    return {
+    const metrics: EvacMetrics = {
       elapsed: this.elapsed,
       totalPedestrians: snaps.length,
       evacuated,
       remaining: active.length,
       avgSpeed,
       exitFlows,
+    };
+    if (this.showcase) {
+      const showcase = this.showcaseMetrics(snaps);
+      metrics.showcase = showcase;
+      metrics.remaining = showcase.idle + showcase.reacting + showcase.evacuating;
+    }
+    return metrics;
+  }
+
+  private showcaseMetrics(snaps: PedSnapshot[]): ShowcaseMetrics {
+    let idle = 0;
+    let reacting = 0;
+    let evacuating = 0;
+    let crouching = 0;
+    let crawling = 0;
+    let outside = 0;
+    let minorInjured = 0;
+    let lethal = 0;
+    let serious = 0;
+    for (const s of snaps) {
+      if (s.state === 'idle') idle++;
+      else if (s.state === 'reacting') reacting++;
+      else if (s.state === 'evacuating') evacuating++;
+      else if (s.state === 'outside') outside++;
+      if (s.posture === 'crouch') crouching++;
+      if (s.posture === 'crawl') crawling++;
+      if (s.injury === 'minor') minorInjured++;
+      if (s.state === 'down' && s.injury === 'lethal') lethal++;
+      if (s.state === 'down' && s.injury === 'serious') serious++;
+    }
+    const arrived: Record<string, number> = {};
+    for (const [id, n] of this.arrivedCounts) arrived[id] = n;
+    return {
+      idle,
+      reacting,
+      evacuating,
+      crouching,
+      crawling,
+      turnedBack: this.turnedBackCount,
+      outside,
+      arrived,
+      leftMap: this.leftMapCount,
+      down: { lethal, serious },
+      minorInjured,
+      reroutes: this.rerouteCount,
     };
   }
 
