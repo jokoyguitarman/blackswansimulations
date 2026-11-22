@@ -1,6 +1,6 @@
 # Compile and review (WS5)
 
-**Status:** v1.2, 22 Nov 2026. Not built. **Added 3 Nov 2026:** revised for master D29, D31 and D36 and 10.8 items 35, 37 and 38 (section 2). **Added 22 Nov 2026:** revised for master D38 and 10.8 item 41: the dossier makes no model call, its area brief, material register and sensitive sites come from WS9's catalogue functions, and question 8 is answered (sections 6.4.2 and 6.19, AC5.41, T5.22).
+**Status:** v1.2, 22 Nov 2026. Not built. **Added 3 Nov 2026:** revised for master D29, D31 and D36 and 10.8 items 35, 37 and 38 (section 2). **Added 22 Nov 2026:** revised for master D38 and 10.8 item 41: the dossier makes no model call, its area brief, material register and sensitive sites come from WS9's catalogue functions, and question 8 is answered (sections 6.4.2 and 6.19, AC5.41, T5.22). Later the same day, D46 adds compiling the new incident types (section 15.5, AC5.42, T5.23).
 **Workstream:** WS5
 **Depends on:** [the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the setup screen spec](03-setup-screen.md), [the site picker spec](04-site-picker.md), [the layout step spec](05-layout-step.md), and softly [the device and physics spec](07-device-and-physics.md). **Added 3 Nov 2026:** WS9's living world spec, `11-living-world.md`, for the stored spread library and the compile-time fire spread (master 10.8 item 38)
 **Flags:** `ENABLE_FIELDOPS_V2`, `ENABLE_FIELDOPS_BLUEPRINT`, `ENABLE_FIELDOPS_DOCTRINES`, and `ENABLE_FIELDOPS_PHYSICS` as a soft dependency. Settings: `FIELDOPS_COMPILE_MAX_LLM_CALLS` (default 160, 40 to 400) and `FIELDOPS_COMPILE_MAX_MINUTES` (default 30, 5 to 120).
@@ -333,6 +333,7 @@ sequenceDiagram
 39. **AC5.39** Given library mode, when a compile runs with fakes for every function of the research service and for `enrichScene`, then none of `researchSimilarCases`, `researchCrowdDynamics`, `researchStandardsPerTeam`, `researchForbiddenActionsPerTeam`, `researchTeamWorkflows`, `researchDeteriorationPhysics`, `persistResearchCases`, `linkResearchToScenario` or `enrichScene` is called, and only the dossier's four calls of section 6.4.2 are. Given legacy-research mode, the three doctrine research functions are called and nothing else changes. Proved by `v2Variant.test.ts`, case "no research in library mode". **Updated 22 Nov 2026:** AC5.41 removes the dossier's four calls too.
 40. **AC5.40** **Added 3 Nov 2026.** Given a new-flow scenario with a scene hazard, two delayed fire-spread children of it and one delayed casualty child, when a session starts, then the session holds copies of all four, and each child's `parent_pin_id` is the id of the session's copy of the hazard. Each copied child has `appears_at_minutes` 1,000,000, so the session's hazard and casualty lists leave it out at its own minute. When the hazard's copy then deteriorates past a child's `at_minutes`, the deterioration service reveals the child, and the lists show it from then on. Given a legacy scenario with the same rows, the session holds only the hazard, as today. Proved by `devicePool.test.ts`, case "session start copies delayed pins for new-flow scenarios".
 41. **AC5.41** **Added 22 Nov 2026.** Given either doctrine mode, the mockup fixture, WS9's catalogue fixture and a recording fake chat client, when the dossier stage runs, then none of `researchArea`, `extractAreaResearchStructured`, `inferHazardMaterialContext` or `extractSensitiveInfrastructureStructured` is called and the chat client records no call from the stage; `hazard_material_context` deep-equals WS9's `materialContextFor` for the site's building types, `area_summary` equals `buildAreaBrief`, `area_structured` equals `areaStructuredFor` and `sensitive_infrastructure` equals `sensitiveSitesFor`; given a building type the catalogue lacks, the material context's confidence is `low`, Review shows one `catalogue_gap:{type}` item that does not block publishing, and WS9's gap recorder is called once; given `loadCatalogue` answers null, the manifest's warnings hold `catalogue_missing` and the stage still makes no model call. Proved by `server/services/fieldOps/compile/dossier.test.ts` (new), case "no model in the dossier", and `server/services/fieldOps/compile/reviewView.test.ts` (new), case "catalogue items".
+42. **AC5.42** **Added 22 Nov 2026.** Given a phase 1 type with its event and WS9's fake `initialEffectsFor`, when a compile runs, then WS6's `getEffectsForCompile` is not called, the physics snapshot's `payload.event` holds the `CompileEventEffects`, the casualty pins follow its casualty plan, the hazards it starts become pins with their minutes, the type's template supplies the teams and injects, Review shows "Event: {kind} · {class}, {band}" and every `assumed` input as Assumed, and no device row or device pool exists. Proved by `server/services/fieldOps/compile/v2Variant.test.ts` (new), case "event types".
 
 ## 5. Data model
 
@@ -3862,6 +3863,11 @@ These tasks need WS9's `loadSpreadLibrary`, `deteriorationFactsFor` and `buildSp
     - Done when: AC5.41 passes, and the stage table of section 6.3 shows the dossier with 0 model calls.
     - Tests: `dossier.test.ts` "no model in the dossier", `reviewView.test.ts` "catalogue items". Commits 3 (the dossier) and 5 (Review).
 
+23. **T5.23 Compiling the new incident types (added 22 Nov 2026; D46, master 10.8 item 46).**
+    - Goal: section 15.5.
+    - Files: `server/services/fieldOps/compile/stageInputs.ts (new)`, `server/services/fieldOps/compile/generationStages.ts (new)`, `server/services/fieldOps/compile/persistPayload.ts (new)`, `server/services/fieldOps/compile/reviewView.ts (new)`, `shared/fieldOps/compile.ts (new)` (`payload.event`), their tests.
+    - Done when: AC5.42 passes for each phase 1 type. Commits 4 and 5.
+
 ## 13. Commit plan and backtracking
 
 Each commit adds its own test files to the `test` script of `package.json` and leaves `npm test` and `npx tsc --noEmit` green. Nothing a trainer can reach changes until commit 4 with `ENABLE_FIELDOPS_V2` on.
@@ -4084,6 +4090,16 @@ Only the requests still open after the master's rulings; the others of this spec
 | To | Request | Why |
 | --- | --- | --- |
 | WS4 (`05-layout-step.md`) | `buildTrainerScene` need not fill `blastSite.bands`, `casualtyPlan`, `involvedBuildings` or `crowdZones`: WS5 fills them from `CompileEffects` and your `extras`, so that part of WS5's earlier request is withdrawn. | Section 6.11 here |
+
+### 15.5 Compiling the new incident types (added 22 Nov 2026)
+
+Master D46, 10.8 item 46.
+
+- **Physics.** For an event other than `device`, the physics stage calls WS9's `initialEffectsFor(event, scene, libraries)` in place of WS6's `getEffectsForCompile`; `scenario_physics_snapshots.payload.event` stores the result; the casualty stage places pins from its casualty plan as it does from WS6's; the hazards it starts become pins with their minutes and `properties.spawned_from` `incident_event`.
+- **Templates.** `getRequiredTeamsFromTemplate` reads the type's template, as today for bombing types; the honour layer and generators run unchanged with the type's key.
+- **Deterioration.** `deteriorationFactsFor` includes the type's threat profiles' fact lines (`11-living-world.md` T9.35).
+- **Review.** An "Event" row with the kind, class and band; the event's `assumed` inputs as Assumed; no physics rows of WS6.
+- **Without the world flag.** The compiled pins and facts run on today's scripted escalation (AC9.102).
 
 ## 16. Definition of done
 

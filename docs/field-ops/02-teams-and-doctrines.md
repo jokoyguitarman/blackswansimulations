@@ -1,6 +1,6 @@
 # Teams, archetypes and the doctrine library
 
-**Status:** v1.2, 22 Nov 2026. Not built. Revised on 3 Nov 2026 for master D29 and D30 (10.8 item 37); every new or changed passage is marked **Added 3 Nov 2026**. Revised on 22 Nov 2026 for master D38 to D40 (10.8 items 41, 42 and 45): use of force and legal authority in a doctrine, three archetypes for armed and military units, units in the agency registers, and seeds drafted by the offline research agent; every such passage is marked **Added 22 Nov 2026**.
+**Status:** v1.2, 22 Nov 2026. Not built. Revised on 3 Nov 2026 for master D29 and D30 (10.8 item 37); every new or changed passage is marked **Added 3 Nov 2026**. Revised on 22 Nov 2026 for master D38 to D40 (10.8 items 41, 42 and 45): use of force and legal authority in a doctrine, three archetypes for armed and military units, units in the agency registers, and seeds drafted by the offline research agent; every such passage is marked **Added 22 Nov 2026**. Later on 22 Nov, D46 added responders and seeds for the new incident types (section 6.11.7, AC1.63, T1.23).
 **Workstream:** WS1
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`
 **Flags:** `ENABLE_FIELDOPS_DOCTRINES`
@@ -282,6 +282,7 @@ The fuzzy lookup is `resolveTeamDoctrines` (`server/services/environmentalConsis
 | AC1.60 | **Added 22 Nov 2026.** a seeding run for SG with registers for police and fire and a recorded gap for bomb disposal; then a card for a country with no register | the seeder runs with `--apply` against fakes, then `rankDoctrines` runs for the card | coverage rows `covered` for SG police and fire and `gap` for SG bomb disposal; the card's lookup records one `gap` for its country and archetype, once a minute at most, and shows "No doctrine for {country} yet"; no model is called | `server/services/fieldOps/doctrine/seedRegister.test.ts (new)`, `server/services/fieldOps/doctrine/resolve.test.ts (new)` |
 | AC1.61 | **Added 22 Nov 2026.** "Draft it for me" with text, and with an uploaded document that states a power of arrest | the drafting call runs with a recording fake | its schema and its output hold no `use_of_force` or `legal_authorities`; the prompt asks for neither | `server/services/fieldOps/doctrine/doctrineDraft.test.ts (new)` |
 | AC1.62 | **Added 22 Nov 2026.** the drawer on a seeded doctrine with a use-of-force block, and on the trainer's own new doctrine | it renders | the seed shows "Use of force and legal authority" read-only with the authorities and levels; her own shows the editable section, collapsed, and saving a level not in the framework shows "That level is outside this framework." | `frontend/tests/doctrineDrawerState.test.ts (new)` |
+| AC1.63 | **Added 22 Nov 2026.** `DOCTRINE_INCIDENT_TYPES_ALL` and a doctrine whose `applies_to` names `stampede_crush` | the list is compared with master 10.1 and `rankDoctrines` runs for a `stampede_crush` card and a `bombing` card | the list holds every live key of every phase; the doctrine is offered for the crush card and not for the bombing card; a doctrine with an empty `applies_to` is offered for both | `server/lib/fieldOps/vocabulary.test.ts (new)`, `server/services/fieldOps/doctrine/resolve.test.ts (new)` |
 
 ## 5. Data model
 
@@ -3265,6 +3266,22 @@ D40. The register and the doctrine seeds carry three more kinds of content, all 
 - **Countries.** Singapore first, then `SEA_SEED_COUNTRIES` in order, then `GLOBAL_SEED_COUNTRIES` (default `['GB', 'AU', 'NZ', 'US']`, Choice 26), each when its register passes review.
 - **Staleness.** Doctrine and use-of-force sources are due for review after 180 days (`11-living-world.md` section 6.19); a changed source becomes a new version of the doctrine through review, and compiled scenarios keep their snapshots.
 
+#### 6.11.7 Responders for the new incident types (added 22 Nov 2026)
+
+Master D46. Each incident type lists its responding archetypes in WS9's `fieldops_incident_types` (`11-living-world.md` section 6.27). Doctrines name the types they cover in `applies_to`; an empty list still means every type. The Singapore register gains, to verify against each agency's publications, the agencies the new types need:
+
+| Type | Singapore agencies to add or confirm (to verify) |
+| --- | --- |
+| `stampede_crush` | SPF and its event-policing units; SCDF; venue operators' security; the Ministry of Health's hospitals |
+| `vehicle_ramming` | SPF (including its tactical units); SCDF; LTA for road closures |
+| `aircraft_impact` | The Civil Aviation Authority of Singapore; the airport emergency service at Changi Airport (its operator to verify); SCDF; SPF; the Republic of Singapore Air Force under `military_support` for a deliberate act |
+| `building_fire`, `arson` | SCDF; the Housing and Development Board and town councils for public housing; SPF for arson |
+| `gas_explosion` | SCDF; the Energy Market Authority and the town gas operator under `utilities` |
+| `chemical_release` | SCDF's hazardous-materials units; the National Environment Agency; the Ministry of Manpower |
+| Phase 2 | the Land Transport Authority and rail operators; the national water agency PUB for floods; SP Group for power; the Building and Construction Authority for collapses |
+
+Seeds for these agencies and types are drafted by WS9's pipeline with the `doctrine_agency` brief and reviewed as section 6.11.3 says; a type whose agency has no seed records a coverage gap (section 6.11.6).
+
 ### 6.12 Logging
 
 Pino, snake-case events starting with `fieldops_` (master 10.5). Never the text of a doctrine, a description or a document; counts, ids, keys and durations only. **Added 3 Nov 2026:** nor the filename or the agency name of an uploaded document; a country code is not personal and may be logged.
@@ -4661,6 +4678,10 @@ Prerequisite: WS0's `server/lib/schemaFeatures.ts (new)`, `shared/fieldOps/jobs.
     - Steps: sections 6.11.5 and 6.11.6; the register's `units`; provenance with `drafted_by` and `run_id`; the seeder's provenance and coverage rows; `recordGap` in `rankDoctrines`.
     - Done when: AC1.58 to AC1.60 pass; Singapore's register with its units and legal authorities is reviewed and seeded in development.
     - Tests: `seedRegister.test.ts`, `resolve.test.ts`. Commit 7.
+23. **T1.23 Responders for the new incident types (added 22 Nov 2026).**
+    - Goal: section 6.11.7.
+    - Files: touched `shared/fieldOps/vocabulary.ts (new)`, `server/services/fieldOps/doctrine/resolve.ts (new)`, `scripts/fieldops/seeds/sea/SG/agencies.json (new)`, their tests.
+    - Done when: AC1.63 passes; the Singapore register holds the agencies of section 6.11.7, reviewed or recorded as gaps. Commit 7.
 
 ## 13. Commit plan and backtracking
 

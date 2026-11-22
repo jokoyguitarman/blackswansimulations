@@ -135,9 +135,9 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <div class="eyebrow">Field operations War Room</div>
 <h1>Build specifications</h1>
 <dl class="metagrid">
-<div><dt>Status</dt><dd>v1.3, 22 Nov 2026. Not built. Entries marked <strong>Added 3 Nov 2026</strong> record the owner's requirements of that day and how they are specified: in the revised 02 and 06, in WS9's new spec 11, and in marked additions to the other specs (10.8 item 36). Entries marked <strong>Added 22 Nov 2026</strong> record the owner's decisions of that day: no research or web search while a scenario is created, every fact from prebuilt databases seeded offline by a research agent under human review, use of force and military units in the doctrine library, a build-time physics library beyond bombs, a building-hazard catalogue, a 3D world shown on the 2D map, and evacuees who react to the hazards on their path (<abbr class="dref" title="D38 (Decided): **Added 22 Nov 2026.** No research and no web search while a scenario is created. Setup, compile, Review and the live world take every fact from prebuilt, versioned databases seeded offline (WS1's doctrines, WS6's device library, WS9's spread, threat, building-hazard and movement libraries) and from the saved map data. A model writes narrative and reads the trainer's words; it never supplies a fact that is scored or simulated. Where a library has no row, the value is labelled Assumed or Unverified and the gap is recorded for the seeding programme; nothing falls back to a model silently.">D38</abbr> to <abbr class="dref" title="D45 (Decided): **Added 22 Nov 2026.** Hazard spread follows physics on the existing stud system. The 3 m studs of `buildingStudService` stay the spatial index and the unit of tracking and assignment; each stud becomes a column of layers on every storey; fire, smoke and gas step on that layered grid by physically based rules; explosions are evaluated per stud with analytic blast models; neighbours come from the grid index, not a pairwise search.">D45</abbr>, 10.8 items 41 to 45, risks 23 to 28).</dd></div>
+<div><dt>Status</dt><dd>v1.3, 22 Nov 2026. Not built. Entries marked <strong>Added 3 Nov 2026</strong> record the owner's requirements of that day and how they are specified: in the revised 02 and 06, in WS9's new spec 11, and in marked additions to the other specs (10.8 item 36). Entries marked <strong>Added 22 Nov 2026</strong> record the owner's decisions of that day: no research or web search while a scenario is created, every fact from prebuilt databases seeded offline by a research agent under human review, use of force and military units in the doctrine library, a build-time physics library beyond bombs, a building-hazard catalogue, a 3D world shown on the 2D map, and evacuees who react to the hazards on their path (<abbr class="dref" title="D38 (Decided): **Added 22 Nov 2026.** No research and no web search while a scenario is created. Setup, compile, Review and the live world take every fact from prebuilt, versioned databases seeded offline (WS1's doctrines, WS6's device library, WS9's spread, threat, building-hazard and movement libraries) and from the saved map data. A model writes narrative and reads the trainer's words; it never supplies a fact that is scored or simulated. Where a library has no row, the value is labelled Assumed or Unverified and the gap is recorded for the seeding programme; nothing falls back to a model silently.">D38</abbr> to <abbr class="dref" title="D45 (Decided): **Added 22 Nov 2026.** Hazard spread follows physics on the existing stud system. The 3 m studs of `buildingStudService` stay the spatial index and the unit of tracking and assignment; each stud becomes a column of layers on every storey; fire, smoke and gas step on that layered grid by physically based rules; explosions are evaluated per stud with analytic blast models; neighbours come from the grid index, not a pairwise search.">D45</abbr>, 10.8 items 41 to 45, risks 23 to 28). Later the same day the owner widened <abbr class="dref" title="D11 (Decided): Incident types are the four live bombing types. A document about any other type is named, marked &quot;soon&quot;, and nothing is compiled. **Updated 22 Nov 2026:** widened by D46; the &quot;soon&quot; rule now applies only to types outside the phases `ENABLE_FIELDOPS_INCIDENT_TYPES` turns on.">D11</abbr>: incident types beyond bombing ship in three phases, each a first-class scenario with its own threat model (<abbr class="dref" title="D46 (Decided): **Added 22 Nov 2026.** Incident types widen beyond the four bombing types, in phases. Phase 1: crowd crush or stampede, vehicle ramming into pedestrians, aircraft impact into a building (including an aircraft used as a weapon), building fire without a device (and arson), accidental gas explosion, and industrial chemical release. Phase 2: structural collapse, rail incident, road collision, flash flood, utility failure cascade, and armed attacker. Phase 3: deliberate chemical or biological release, maritime incident, earthquake. Each is a first-class scenario with its own threat profile, physics or behaviour model, seeds, acceptance criteria and tests, built on the layered stud world and the evacuee rules. A crowd crush creates casualties. Poisoning, kidnapping, hijacking as a hostage event, assassination and nuclear incidents stay out.">D46</abbr>, <abbr class="dref" title="D47 (Decided): **Added 22 Nov 2026.** Attack-like events are modelled for their consequences only. The trainer places the event; the model takes generic classes and bands (vehicle class and speed band, aircraft class and speed band, release size class), never a target choice, a route, an approach, a timing or a way to defeat a protective measure. Nothing ranks places, routes or moments by harm. Armed attackers are an abstract moving threat with no weapon detail; deliberate chemical releases use industrial chemicals' public data only, never warfare agents.">D47</abbr>, 10.8 item 46, risks 29 to 32).</dd></div>
 <div><dt>Baseline</dt><dd>Verified against commit 1cd539a (8 Nov 2026); see the README.</dd></div>
-<div><dt>Decisions</dt><dd>45 in the <a href="00-master-plan.html#3-decision-log">decision log</a>; 30 decided, 15 assumed.</dd></div>
+<div><dt>Decisions</dt><dd>47 in the <a href="00-master-plan.html#3-decision-log">decision log</a>; 32 decided, 15 assumed.</dd></div>
 </dl>
 </div></header>
 <div class="layout">
@@ -149,9 +149,9 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <p>Markdown is the source of truth; these pages are generated from it.</p>
 <div class="stats">
 <div class="stat"><b>12</b><span>Documents</span></div>
-<div class="stat"><b>39,685</b><span>Lines</span></div>
-<div class="stat"><b>226</b><span>Tasks</span></div>
-<div class="stat"><b>506</b><span>Acceptance criteria</span></div>
+<div class="stat"><b>40,072</b><span>Lines</span></div>
+<div class="stat"><b>238</b><span>Tasks</span></div>
+<div class="stat"><b>531</b><span>Acceptance criteria</span></div>
 </div>
 
 <h2 id="documents"><span class="num">2</span>Documents, in build order</h2>
@@ -160,7 +160,7 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="00-master-plan.html">00  Master plan</a></td>
 <td>All</td>
-<td>708</td>
+<td>726</td>
 <td>·</td>
 <td>6</td>
 <td>·</td>
@@ -180,9 +180,9 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="02-teams-and-doctrines.html">02  Teams and doctrines</a></td>
 <td>WS1</td>
-<td>4,861</td>
-<td>22</td>
-<td>62</td>
+<td>4,882</td>
+<td>23</td>
+<td>63</td>
 <td><span class="pill">221</span><span class="pill">222</span><span class="pill">223</span><span class="pill">224</span><span class="pill">master section 9)</span></td>
 <td><span class="pill">ENABLE_FIELDOPS_DOCTRINES</span></td>
 <td>00-master-plan.md, 01-prerequisites.md</td>
@@ -190,9 +190,9 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="03-setup-screen.html">03  Setup screen</a></td>
 <td>WS2</td>
-<td>2,929</td>
-<td>22</td>
-<td>35</td>
+<td>2,951</td>
+<td>23</td>
+<td>38</td>
 <td><span class="pill">226</span><span class="pill">227</span><span class="pill">master section 9)</span></td>
 <td><span class="pill">ENABLE_FIELDOPS_V2 with VITE_ENABLE_FIELDOPS_V2</span><span class="pill">ENABLE_FIELDOPS_BLUEPRINT</span></td>
 <td>00-master-plan.md, 01-prerequisites.md, 02-teams-and-doctrines.md, 04-site-picker.md; softly 07-device-and-physics.md and 08-people-or-ai.md</td>
@@ -210,7 +210,7 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="05-layout-step.html">05  Layout step</a></td>
 <td>WS4</td>
-<td>2,820</td>
+<td>2,830</td>
 <td>20</td>
 <td>30</td>
 <td><span class="pill">233</span><span class="pill">master section 9)</span></td>
@@ -220,9 +220,9 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="06-compile-and-review.html">06  Compile and review</a></td>
 <td>WS5</td>
-<td>4,105</td>
-<td>22</td>
-<td>41</td>
+<td>4,121</td>
+<td>23</td>
+<td>42</td>
 <td><span class="pill">235</span><span class="pill">236</span><span class="pill">master section 9)</span></td>
 <td><span class="pill">ENABLE_FIELDOPS_V2</span><span class="pill">ENABLE_FIELDOPS_BLUEPRINT</span><span class="pill">ENABLE_FIELDOPS_DOCTRINES</span><span class="pill">40 to 400)</span><span class="pill">FIELDOPS_COMPILE_MAX_MINUTES (default 30</span><span class="pill">5 to 120).</span></td>
 <td>[the master plan](00-master-plan.md), [the prerequisites spec](01-prerequisites.md), [the teams and doctrines spec](02-teams-and-doctrines.md), [the setup screen spec](03-setup-screen.md), [the site picker spec](04-site-picker.md), [the layout step spec](05-layout-step.md), and softly [the device and physics spec](07-device-and-physics.md). **Added 3 Nov 2026:** WS9's living world spec, 11-living-world.md, for the stored spread library and the compile-time fire spread (master 10.8 item 38)</td>
@@ -230,7 +230,7 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="07-device-and-physics.html">07  Device and physics</a></td>
 <td>WS6</td>
-<td>2,724</td>
+<td>2,728</td>
 <td>21</td>
 <td>30</td>
 <td><span class="pill">238</span><span class="pill">239</span><span class="pill">240</span><span class="pill">241</span><span class="pill">master section 9)</span></td>
@@ -260,7 +260,7 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="10-ui-spec-sheet.html">10  UI spec sheet</a></td>
 <td>UI</td>
-<td>2,905</td>
+<td>2,908</td>
 <td>·</td>
 <td>71</td>
 <td>·</td>
@@ -270,9 +270,9 @@ abbr.dref{text-decoration:underline dotted var(--accent);text-underline-offset:3
 <tr>
 <td><a href="11-living-world.html">11  Living world</a></td>
 <td>WS9</td>
-<td>5,307</td>
-<td>33</td>
-<td>84</td>
+<td>5,600</td>
+<td>42</td>
+<td>104</td>
 <td><span class="pill">250 to 259</span><span class="pill">**updated 22 Nov 2026**: 257 to 259 added</span><span class="pill">250</span><span class="pill">251 amended in place</span><span class="pill">master section 9)</span></td>
 <td><span class="pill">ENABLE_FIELDOPS_WORLD_SIM</span></td>
 <td>[the master plan](00-master-plan.md); [01](01-prerequisites.md), [02](02-teams-and-doctrines.md) (added 22 Nov 2026, for the pipeline and the new archetypes), [04](04-site-picker.md), [05](05-layout-step.md), [06](06-compile-and-review.md), [07](07-device-and-physics.md) and [08](08-people-or-ai.md); softly [09](09-after-publish.md)</td>

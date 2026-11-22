@@ -1,6 +1,6 @@
 # Lay out the scene: the layout step opens with the site (WS4)
 
-**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds typical items and storeys for master D42 and D43.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds typical items and storeys for master D42 and D43; section 15.6 adds event placement for D46 and D47.
 **Workstream:** WS4
 **Depends on:** `00-master-plan.md`, `01-prerequisites.md`, `04-site-picker.md`
 **Flags:** `ENABLE_FIELDOPS_V2` and `VITE_ENABLE_FIELDOPS_V2`
@@ -2803,6 +2803,16 @@ Master D42 and D43, 10.8 items 43 and 44; WS9's request in `11-living-world.md` 
 - **Panel.** The hazard panel of `SceneToolsPanel` gains a group "Typical for a {type}", listing WS9's `suggestionsFor(buildingType)`: each item's label, location in words and quantity band, with "Place" and "Not in this building". "Place" puts a hazard of the item's hazard type with `typical_kind` set at the point she clicks; "Not in this building" adds the kind to `removed_typical`. Category-only items are listed under "Category only", without a quantity, and are never placed for her. A note says: "Items you do not place or remove are placed by the live world where such buildings usually keep them, marked Assumed."
 - **Storey.** The hazard and crowd-zone inspectors gain a "Storey" select listing the storeys of the primary building from WS9's `storeysFor`, defaulting to the exit storey.
 - **Tests.** `frontend/tests/layoutReadiness.test.ts (new)` gains "typical items": placing and removing update the scene as above; the server's layout schema test gains the three fields with their caps. Both are in the `test` script with their files.
+
+### 15.6 Placing the incident event (added 22 Nov 2026)
+
+Master D46 and D47, 10.8 item 46; WS9's request in `11-living-world.md` section 15.3.
+
+- **Contract.** `SceneConfigV2Authored` gains `event_geometry`, the geometry the event kind needs, which WS2's `incident.event` reads at compile: crowd trigger points and the exits they name; a vehicle path of 2 to 50 points; an aircraft impact point, storey and heading; ignition points with storeys; a leak or release point with its storey; and, in phase 2, a collapse zone polygon, a train position, collision points, a rainfall area, an outage area or attacker waypoints.
+- **Tools.** An "Event" group in `SceneToolsPanel` shows only the tool of the scenario's kind: "Draw the vehicle's path", "Place the impact point", "Place a trigger", "Place the ignition point", "Place the leak", "Place the release". Class and band fields live on Setup's incident lane; the layout step never offers an exact speed, a route suggestion or a target suggestion (D47).
+- **Barriers.** Rated barriers and bollards are placed with the existing hazard panel as WS9's mitigation items, each with its rating class.
+- **Readiness.** `getLayoutReadiness` gains "The event is not placed yet" for a kind whose geometry is missing; it blocks compile.
+- **Tests.** `server/lib/fieldOps/layoutSchemas.test.ts (new)` gains "event geometry" (caps, the path inside the site ring, the storey a known one) and `frontend/tests/layoutReadiness.test.ts (new)` gains "event placed".
 
 ## 16. Definition of done
 

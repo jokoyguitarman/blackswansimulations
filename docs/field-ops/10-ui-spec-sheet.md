@@ -2781,6 +2781,9 @@ None of these is in the approved mockup, so each is a D28 difference that follow
 | Building type and storeys on the site lane | WS3 | A select and two number fields under the primary card and in `InvolvedBuildingsList` | `04-site-picker.md` section 15.6 |
 | Typical items in the hazard panel; storey on hazards and crowd zones | WS4 | A group in `SceneToolsPanel`; a select in `SceneInspector` | `05-layout-step.md` section 15.5 |
 | Catalogue gaps in Review | WS5 | Review items `catalogue_gap:{key}` | `06-compile-and-review.md` section 6.19 |
+| Incident tiles grouped by type, with "Coming soon" | WS2 | `IncidentLane` | `03-setup-screen.md` section 15.5; `WrIcon` glyphs, no emoji |
+| Event placement tools | WS4 | An "Event" group in `SceneToolsPanel` | `05-layout-step.md` section 15.6 |
+| The event row in Review | WS5 | `ReviewPage` | `06-compile-and-review.md` section 15.5 |
 
 ## 15. Visual QA checklist
 

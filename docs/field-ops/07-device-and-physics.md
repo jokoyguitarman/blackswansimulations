@@ -1,6 +1,6 @@
 # Device specifics and physics (WS6)
 
-**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds the blast profile and the offline seeding of master D39, D41 and D45.
+**Status:** v1, 25 Oct 2026. Not built. **Added 22 Nov 2026:** section 15.5 adds the blast profile and the offline seeding of master D39, D41 and D45; section 15.6 scopes devices under D46.
 **Workstream:** WS6
 **Depends on:** `00-master-plan.md`, `03-setup-screen.md`, `05-layout-step.md`; it also uses WS0's helpers (`01-prerequisites.md`) and WS5's snapshot table (`06-compile-and-review.md`)
 **Flags:** `ENABLE_FIELDOPS_PHYSICS` (`true`, `admin` or `false`, read through `physicsEnabledFor(role)`); the library reads follow `ENABLE_FIELDOPS_V2`
@@ -2705,6 +2705,10 @@ Master D39, D41 and D45, 10.8 items 42 and 44; WS9's request in `11-living-world
 - **Seeding.** WS6's library seed files (explosive materials, injury thresholds, presets) may be drafted by WS9's offline research agent with the brief `device_material`, under this spec's source list (section 5.5) and safety stance; the D22 reviewer reviews every row before import. The brief forbids, as section 9.1 does, anything about how a device is made, armed, hidden or placed.
 - **Chemical other hazards.** Unchanged for devices: a device's chemical "other hazard" stays recorded and "not calculated in this release" (question Q5). Chemicals stored in buildings are WS9's catalogue's, released by its interaction rules (D41).
 - **Tests.** `server/services/fieldOps/physics/calculator.test.ts (new)` gains "blast profile": 16 ranges, monotone decreasing overpressure, equal to `pressureAt` at each range, null in legacy mode.
+
+### 15.6 Devices and the new incident types (added 22 Nov 2026)
+
+Master D46, 10.8 item 46. `DevicesCard` and the calculator serve the four bombing types only in this version; for every other type the devices lane is hidden and `devices` is empty (`03-setup-screen.md` AC2.38). Vehicles, aircraft, gas leaks and releases are not devices and never reach `calculateEffects`: their effects are WS9's (`11-living-world.md` section 6.27). A gas explosion's blast uses WS6's published curves through `pressureAt` (section 15.5), never the device library. Combining a device with another event is a later question (`11-living-world.md` section 15.2, question 39).
 
 ## 16. Definition of done
 
